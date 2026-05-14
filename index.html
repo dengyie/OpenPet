@@ -5,10 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>桌面小猫</title>
     <style>
+        /* 全局 border-box 让宽高计算更直观，避免 padding 撑破透明窗口。 */
         * {
             box-sizing: border-box;
         }
 
+        /* Electron 窗口本身是透明的，页面也必须保持透明背景才能露出桌面。 */
         html,
         body {
             width: 100%;
@@ -20,12 +22,14 @@
             -webkit-user-select: none;
         }
 
+        /* 页面只有一个桌面宠物，所以用 grid 把主容器铺满整个窗口。 */
         body {
             display: grid;
             place-items: center;
             font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
         }
 
+        /* #pet 是拖拽、点击、右键菜单的事件承载层，尺寸等于整个 Electron 窗口。 */
         #pet {
             position: relative;
             width: 100vw;
@@ -33,23 +37,29 @@
             cursor: grab;
         }
 
+        /* 拖拽时切换光标，给用户明确反馈。 */
         #pet.dragging {
             cursor: grabbing;
         }
 
+        /* 小猫图片固定在窗口底部中间。
+           --cat-direction 由 renderer.js 控制，用 scaleX 做左右朝向翻转。 */
         #cat {
             --cat-direction: 1;
+            --cat-scale: 1;
             position: absolute;
             left: 50%;
             bottom: 8px;
-            width: 220px;
-            height: 220px;
+            width: 260px;
+            height: 260px;
             object-fit: contain;
-            transform: translateX(-50%) scaleX(var(--cat-direction));
+            transform: translateX(-50%) scaleX(var(--cat-direction)) scale(var(--cat-scale));
+            transform-origin: center bottom;
             filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.22));
             pointer-events: none;
         }
 
+        /* 气泡默认隐藏在小猫头顶，显示时通过 opacity 和 transform 做轻量过渡。 */
         #bubble {
             position: absolute;
             left: 50%;
@@ -70,11 +80,13 @@
             pointer-events: none;
         }
 
+        /* show 类由 renderer.js 临时添加，持续一段时间后自动移除。 */
         #bubble.show {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
         }
 
+        /* 右键菜单固定在窗口右下角，默认不占布局。 */
         #menu {
             position: absolute;
             right: 12px;
@@ -88,11 +100,13 @@
             box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
         }
 
+        /* 菜单打开时用 grid 排列按钮和分隔线。 */
         #menu.open {
             display: grid;
             gap: 4px;
         }
 
+        /* 菜单按钮保持轻量样式，避免在小窗口里显得拥挤。 */
         #menu button {
             width: 100%;
             min-height: 30px;
@@ -105,10 +119,12 @@
             cursor: pointer;
         }
 
+        /* 悬停反馈只改变背景，不改变尺寸，避免菜单抖动。 */
         #menu button:hover {
             background: rgba(0, 0, 0, 0.07);
         }
 
+        /* 分隔动作按钮和固定控制按钮。 */
         #menu .divider {
             width: 100%;
             height: 1px;
@@ -118,11 +134,19 @@
     </style>
 </head>
 <body>
+    <!-- 主容器承载所有交互；aria-label 让辅助技术知道这是桌面小猫区域。 -->
     <main id="pet" aria-label="桌面小猫">
+        <!-- 气泡由 renderer.js 写入文本并控制显示隐藏。 -->
         <div id="bubble"></div>
+
+        <!-- 小猫帧动画使用同一个 img 标签，不断替换 src。 -->
         <img id="cat" alt="">
+
+        <!-- 右键菜单内容由 renderer.js 根据动作文件夹动态生成。 -->
         <nav id="menu" aria-label="小猫菜单"></nav>
     </main>
+
+    <!-- 渲染层逻辑：加载动作、播放动画、处理拖拽/菜单/散步。 -->
     <script src="renderer.js"></script>
 </body>
 </html>

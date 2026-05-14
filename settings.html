@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f5f5f5;
+            color: #262626;
+            padding: 18px 20px;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-app-region: drag;
+        }
+
+        button, input, select {
+            -webkit-app-region: no-drag;
+        }
+
+        .header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 14px;
+            position: relative;
+        }
+
+        .header h2 {
+            font-size: 15px;
+            margin: 0;
+        }
+
+        .btn-close {
+            -webkit-app-region: no-drag;
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 28px;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            font-size: 18px;
+            line-height: 1;
+            color: #888;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-close:hover {
+            background: rgba(0, 0, 0, 0.08);
+            color: #333;
+        }
+
+        .field {
+            margin-bottom: 12px;
+        }
+
+        .field-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .field-value {
+            font-size: 11px;
+            color: #888;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #f28b82;
+        }
+
+        .options {
+            display: flex;
+            gap: 6px;
+        }
+
+        .options button {
+            flex: 1;
+            padding: 5px 0;
+            border: 1.5px solid #d0d0d0;
+            border-radius: 6px;
+            background: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            transition: border-color 120ms, background 120ms;
+        }
+
+        .options button.active {
+            border-color: #f28b82;
+            background: #fff0ef;
+            color: #c0392b;
+        }
+
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .toggle-row span {
+            font-size: 12px;
+        }
+
+        .toggle {
+            width: 40px;
+            height: 22px;
+            border-radius: 11px;
+            border: 1px solid #d0d0d0;
+            background: #d0d0d0;
+            cursor: pointer;
+            transition: background 160ms, border-color 160ms;
+            position: relative;
+        }
+
+        .toggle.on {
+            background: #f28b82;
+            border-color: #f28b82;
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 1px;
+            left: 1px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            transition: transform 160ms;
+        }
+
+        .toggle.on::after {
+            transform: translateX(18px);
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .actions button {
+            flex: 1;
+            padding: 7px 0;
+            border-radius: 7px;
+            border: 0;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .btn-save {
+            background: #f28b82;
+            color: #fff;
+        }
+
+        .btn-save:hover {
+            background: #e67a73;
+        }
+
+        .btn-cancel {
+            background: #e0e0e0;
+            color: #555;
+        }
+
+        .btn-cancel:hover {
+            background: #d0d0d0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>设置</h2>
+        <button class="btn-close" id="btn-close" title="关闭">&times;</button>
+    </div>
+
+    <div class="field">
+        <div class="field-label">
+            <span>宠物大小</span>
+            <span class="field-value" id="scale-value">100%</span>
+        </div>
+        <input type="range" id="scale" min="50" max="150" value="100" step="5">
+    </div>
+
+    <div class="field">
+        <div class="field-label">
+            <span>散步速度</span>
+        </div>
+        <div class="options" id="walk-speed-options">
+            <button data-value="1">慢</button>
+            <button data-value="2">中</button>
+            <button data-value="3">快</button>
+        </div>
+    </div>
+
+    <!-- 散步时长：控制小猫每次散步持续多久后自动停下。
+         data-value 存储毫秒值，settings-renderer.js 读取后保存到主进程。 -->
+    <div class="field">
+        <div class="field-label">
+            <span>散步时长</span>
+        </div>
+        <div class="options" id="walk-duration-options">
+            <button data-value="10000">10秒</button>
+            <button data-value="15000">15秒</button>
+            <button data-value="30000">30秒</button>
+            <button data-value="60000">60秒</button>
+        </div>
+    </div>
+
+    <div class="field">
+        <div class="field-label">
+            <span>气泡显示时长</span>
+        </div>
+        <div class="options" id="bubble-duration-options">
+            <button data-value="800">短</button>
+            <button data-value="1300">中</button>
+            <button data-value="2000">长</button>
+        </div>
+    </div>
+
+    <div class="field">
+        <div class="toggle-row">
+            <span>开机自启</span>
+            <button class="toggle" id="auto-start" role="switch"></button>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn-cancel" id="btn-cancel">取消</button>
+        <button class="btn-save" id="btn-save">保存</button>
+    </div>
+
+    <script src="settings-renderer.js"></script>
+</body>
+</html>

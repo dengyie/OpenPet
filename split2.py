@@ -3,6 +3,8 @@ import numpy as np
 import os
 
 def smart_split_frames(image_path, output_dir='output_frames_smart'):
+    """按行列间距把一张多帧猫图自动切成若干单帧图片。"""
+
     # 1. 读取图片
     img = cv2.imread(image_path)
     if img is None:
@@ -39,6 +41,7 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
     ch, cw = cropped_content.shape
 
     # 3. 水平投影检测列边界
+    # 对每一列求灰度均值，亮度很高的连续区域通常是帧与帧之间的空白间距。
     col_means = np.mean(cropped_content, axis=0)
     
     # 寻找所有的“间距”（峰值，代表白色背景）
@@ -46,7 +49,7 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
     gap_threshold = 205 # 比背景更亮
     gaps = np.where(col_means > gap_threshold)[0]
     
-    # 将连续的 gap 像素归类为同一个间距
+    # 将连续的 gap 像素归类为同一个间距，避免一个空白区被切成多个边界。
     col_splits = []
     if len(gaps) > 0:
         start = gaps[0]
@@ -56,7 +59,8 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
                 start = gaps[i]
         col_splits.append((start, gaps[-1])) # 添加最后一个
 
-    # 将间距转换为帧的边界 (x1, x2)
+    # 将间距转换为帧的边界 (x1, x2)。
+    # 例如两个空白间距之间的区域就是一列动作帧。
     col_bounds = []
     if not col_splits: # 如果没找到 gap，使用之前的 fallback
         print("未检测到明显列间距，使用 Fallback 方案")
@@ -75,6 +79,7 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
 
     # 4. 垂直投影检测行边界
     # 在裁剪后的图像上重复
+    # 行检测逻辑和列检测一致：找亮色空白带，再把空白带之间的区域当成帧行。
     row_means_content = np.mean(cropped_content, axis=1)
     
     gaps_row = np.where(row_means_content > gap_threshold)[0]
@@ -105,6 +110,7 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
     print(f"检测到 {len(row_bounds)} 行")
 
     # 5. 执行分割
+    # 逐行逐列裁剪帧图，并用 frame_01.jpg、frame_02.jpg 这样的顺序文件名保存。
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -114,11 +120,11 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
         for c_idx, (x1, x2) in enumerate(col_bounds):
             # 每一列检测到的宽度范围
             
-            # 确保坐标合法且区域不为零
+            # 确保坐标合法且区域不为零。
             if y2 > y1 and x2 > x1:
                 frame = cropped_color[y1:y2, x1:x2]
                 
-                # 再次确认：如果图片过小，可能是误检的杂质，跳过
+                # 再次确认：如果图片过小，可能是误检的杂质，跳过。
                 fh, fw = frame.shape[:2]
                 if fh < 100 or fw < 50:
                     continue
@@ -132,4 +138,5 @@ def smart_split_frames(image_path, output_dir='output_frames_smart'):
 
 # 使用脚本
 # 将 'your_cat_image.jpg' 替换为你的文件名
+# 当前默认处理 bai.png，并把结果放到 cat_anime/frames_smart。
 smart_split_frames('./cat_anime/bai.png', output_dir='cat_anime/frames_smart')

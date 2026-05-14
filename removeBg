@@ -2,12 +2,17 @@ import os
 import sys
 from rembg import remove, new_session
 from PIL import Image, ImageFile
+
+# 允许 PIL 读取部分截断但仍可恢复的图片，避免批处理因为单张图片轻微损坏而中断。
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 def process_image(input_path, output_path, session):
+    """读取单张图片，使用 rembg 去背景，并保存为带 alpha 通道的 PNG。"""
+
     print(f"正在处理: {input_path}")
     try:
         with Image.open(input_path) as img:
+            # 统一转为 RGBA，确保输出图片一定有透明通道。
             img = img.convert("RGBA")
             
             output_img = remove(
@@ -20,6 +25,7 @@ def process_image(input_path, output_path, session):
                 post_process_mask=True,        # 对 mask 做后处理，边缘更干净
             )
             
+            # 去背景结果保存为 PNG，文件名会带 _no_bg，供 Electron 动作扫描逻辑识别使用。
             output_img.save(output_path, "PNG")
             print(f"✅ 成功保存到: {output_path}")
 
@@ -27,6 +33,8 @@ def process_image(input_path, output_path, session):
         print(f"处理失败 {input_path}: {e}")
 
 def process_folder(input_dir, output_dir):
+    """批量处理输入目录里的图片，把透明背景结果输出到指定目录。"""
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"创建输出文件夹: {output_dir}")
@@ -38,6 +46,7 @@ def process_folder(input_dir, output_dir):
     valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
     processed_count = 0
 
+    # 逐个处理支持的图片格式；非图片文件会被自动忽略。
     for filename in os.listdir(input_dir):
         if filename.lower().endswith(valid_extensions):
             input_path = os.path.join(input_dir, filename)
@@ -54,11 +63,13 @@ def process_folder(input_dir, output_dir):
         print(f"🎉 批量处理完成，共处理 {processed_count} 张图片。")
 
 if __name__ == "__main__":
+    # 默认处理 eat 动作原始帧。需要处理其他动作时改 input_folder / output_folder。
     input_folder = "./cat_anime/flames/eat"
     output_folder = "./transparent_cats"
 
     print("--- AI 抠图脚本启动 ---")
     
+    # 如果输入目录不存在，就创建目录并提示用户先放入待处理图片。
     if not os.path.exists(input_folder):
         os.makedirs(input_folder)
         print(f"已自动创建 '{input_folder}'，请放入图片后重新运行。")
