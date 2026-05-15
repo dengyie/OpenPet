@@ -1,88 +1,89 @@
+/**
+ * ibot 设置面板渲染层。
+ *
+ * 为什么独立：设置窗口是独立的 BrowserWindow，有自己的 HTML 和交互逻辑，
+ * 与宠物窗口的动画/散步/拖拽完全解耦。
+ */
+
+// ── DOM 引用 ──
 const scaleSlider = document.getElementById('scale')
 const scaleValue = document.getElementById('scale-value')
-const walkSpeedOptions = document.getElementById('walk-speed-options')
-// 散步时长选项容器，data-value 为毫秒值（10000/15000/30000/60000）。
-const walkDurationOptions = document.getElementById('walk-duration-options')
-const bubbleDurationOptions = document.getElementById('bubble-duration-options')
+const walkSpeedOpts = document.getElementById('walk-speed-options')
+const walkDurationOpts = document.getElementById('walk-duration-options')
+const bubbleDurationOpts = document.getElementById('bubble-duration-options')
 const autoStartToggle = document.getElementById('auto-start')
 const btnSave = document.getElementById('btn-save')
 const btnCancel = document.getElementById('btn-cancel')
 const btnClose = document.getElementById('btn-close')
 
+// 打开面板时从主进程读取的原始值，取消时恢复
 let currentSettings = {}
 
-const setActiveOption = (container, value) => {
-  container.querySelectorAll('button').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.value === String(value))
+// ── 辅助函数 ──
+
+/** 在选项按钮组中高亮 value 对应的按钮。 */
+const setActive = (container, value) => {
+  container.querySelectorAll('button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.value === String(value))
   })
 }
 
-const renderSettings = (settings) => {
-  currentSettings = settings
-  scaleSlider.value = Math.round(settings.scale * 100)
-  scaleValue.textContent = `${Math.round(settings.scale * 100)}%`
-  setActiveOption(walkSpeedOptions, settings.walkSpeed)
-  // 高亮当前散步时长对应的按钮（默认 15000 即 15 秒）。
-  setActiveOption(walkDurationOptions, settings.walkDuration)
-  setActiveOption(bubbleDurationOptions, settings.bubbleDuration)
-  autoStartToggle.classList.toggle('on', settings.autoStart)
+/** 关闭面板前恢复预览缩放（防止宠物窗口卡在中间值）。 */
+const closeSettings = () => {
+  window.settingsAPI.previewScale(currentSettings.scale)
+  window.settingsAPI.close()
 }
 
+/** 将从主进程读取的设置渲染到 UI 控件。 */
+const renderSettings = (s) => {
+  currentSettings = s
+  scaleSlider.value = Math.round(s.scale * 100)
+  scaleValue.textContent = Math.round(s.scale * 100) + '%'
+  setActive(walkSpeedOpts, s.walkSpeed)
+  setActive(walkDurationOpts, s.walkDuration)
+  setActive(bubbleDurationOpts, s.bubbleDuration)
+  autoStartToggle.classList.toggle('on', s.autoStart)
+}
+
+// ── 事件绑定 ──
+
+// 缩放滑块：拖动时实时预览（不持久化）
 scaleSlider.addEventListener('input', () => {
-  const percent = scaleSlider.value
-  scaleValue.textContent = `${percent}%`
-  window.settingsAPI.previewScale(Number(percent) / 100)
+  scaleValue.textContent = scaleSlider.value + '%'
+  window.settingsAPI.previewScale(Number(scaleSlider.value) / 100)
 })
 
-walkSpeedOptions.addEventListener('click', (event) => {
-  const btn = event.target.closest('button')
-  if (!btn) return
-  setActiveOption(walkSpeedOptions, btn.dataset.value)
+// 选项按钮组：点击高亮
+walkSpeedOpts.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (b) setActive(walkSpeedOpts, b.dataset.value)
+})
+walkDurationOpts.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (b) setActive(walkDurationOpts, b.dataset.value)
+})
+bubbleDurationOpts.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (b) setActive(bubbleDurationOpts, b.dataset.value)
 })
 
-// 散步时长选项点击：切换高亮按钮，保存时读取 button.active 的 data-value。
-walkDurationOptions.addEventListener('click', (event) => {
-  const btn = event.target.closest('button')
-  if (!btn) return
-  setActiveOption(walkDurationOptions, btn.dataset.value)
-})
+// 开机自启开关
+autoStartToggle.addEventListener('click', () => autoStartToggle.classList.toggle('on'))
 
-bubbleDurationOptions.addEventListener('click', (event) => {
-  const btn = event.target.closest('button')
-  if (!btn) return
-  setActiveOption(bubbleDurationOptions, btn.dataset.value)
-})
-
-autoStartToggle.addEventListener('click', () => {
-  autoStartToggle.classList.toggle('on')
-})
-
+// 保存：收集所有控件值 → 持久化 → 关闭
 btnSave.addEventListener('click', async () => {
   const settings = {
     scale: Number(scaleSlider.value) / 100,
-    walkSpeed: Number(walkSpeedOptions.querySelector('button.active')?.dataset.value || 2),
-    // 散步时长：读取当前高亮按钮的 data-value（毫秒），默认 15000ms = 15 秒。
-    walkDuration: Number(walkDurationOptions.querySelector('button.active')?.dataset.value || 15000),
-    bubbleDuration: Number(bubbleDurationOptions.querySelector('button.active')?.dataset.value || 1300),
+    walkSpeed: Number(walkSpeedOpts.querySelector('button.active')?.dataset.value || 2),
+    walkDuration: Number(walkDurationOpts.querySelector('button.active')?.dataset.value || 15000),
+    bubbleDuration: Number(bubbleDurationOpts.querySelector('button.active')?.dataset.value || 1300),
     autoStart: autoStartToggle.classList.contains('on')
   }
   await window.settingsAPI.saveSettings(settings)
   window.settingsAPI.close()
 })
 
-btnCancel.addEventListener('click', () => {
-  window.settingsAPI.previewScale(currentSettings.scale)
-  window.settingsAPI.close()
-})
+btnCancel.addEventListener('click', closeSettings)
+btnClose.addEventListener('click', closeSettings)
 
-btnClose.addEventListener('click', () => {
-  window.settingsAPI.previewScale(currentSettings.scale)
-  window.settingsAPI.close()
-})
-
-const start = async () => {
-  const settings = await window.settingsAPI.getSettings()
-  renderSettings(settings)
-}
-
-start()
+// ── 启动 ──
+;(async () => {
+  renderSettings(await window.settingsAPI.getSettings())
+})()

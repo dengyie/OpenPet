@@ -1,9 +1,13 @@
 <!DOCTYPE html>
+<!--
+  ibot 宠物窗口 —— 透明背景的桌面小猫。
+  由 Electron 无边框透明窗口承载，视觉上小猫直接站在桌面上。
+-->
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>桌面小猫</title>
+    <title>ibot</title>
     <style>
         /* 全局 border-box 让宽高计算更直观，避免 padding 撑破透明窗口。 */
         * {
@@ -42,17 +46,21 @@
             cursor: grabbing;
         }
 
-        /* 小猫图片固定在窗口底部中间。
-           --cat-direction 由 renderer.js 控制，用 scaleX 做左右朝向翻转。 */
+        /*
+           小猫帧动画通过 div + background-image + background-position-x 实现精灵图播放，
+           不再使用 img src 替换，避免频繁触发图片解码。
+           --cat-direction：水平翻转（1 或 -1），由 walk.js 控制。
+           --cat-scale：缩放比例，由设置面板实时更新。
+        */
         #cat {
             --cat-direction: 1;
             --cat-scale: 1;
             position: absolute;
             left: 50%;
             bottom: 8px;
-            width: 260px;
-            height: 260px;
-            object-fit: contain;
+            background-repeat: no-repeat;
+            background-size: auto 100%;
+            background-position: left bottom;
             transform: translateX(-50%) scaleX(var(--cat-direction)) scale(var(--cat-scale));
             transform-origin: center bottom;
             filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.22));
@@ -80,7 +88,7 @@
             pointer-events: none;
         }
 
-        /* show 类由 renderer.js 临时添加，持续一段时间后自动移除。 */
+        /* show 类由 bubble.js 临时添加，持续一段时间后自动移除。 */
         #bubble.show {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
@@ -136,17 +144,17 @@
 <body>
     <!-- 主容器承载所有交互；aria-label 让辅助技术知道这是桌面小猫区域。 -->
     <main id="pet" aria-label="桌面小猫">
-        <!-- 气泡由 renderer.js 写入文本并控制显示隐藏。 -->
+        <!-- 气泡由 bubble.js 写入文本并控制显示隐藏。 -->
         <div id="bubble"></div>
 
-        <!-- 小猫帧动画使用同一个 img 标签，不断替换 src。 -->
-        <img id="cat" alt="">
+        <!-- 小猫帧动画使用 div + background-image 逐帧偏移播放。 -->
+        <div id="cat"></div>
 
-        <!-- 右键菜单内容由 renderer.js 根据动作文件夹动态生成。 -->
+        <!-- 右键菜单内容由 menu.js 根据 animations.json 动态生成。 -->
         <nav id="menu" aria-label="小猫菜单"></nav>
     </main>
 
-    <!-- 渲染层逻辑：加载动作、播放动画、处理拖拽/菜单/散步。 -->
+    <!-- 渲染层入口（ES 模块），组装各模块并绑定事件、启动应用。 -->
     <script src="renderer.js"></script>
 </body>
 </html>

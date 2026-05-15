@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls *)",
+      "Bash(du *)",
+      "Bash(find *)",
+      "Bash(file *)",
+      "Bash(sips *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(cat *)"
+    ]
+  }
+}

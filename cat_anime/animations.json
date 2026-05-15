@@ -1,0 +1,26 @@
+{
+  "defaultAction": "bai_no_bg",
+  "clickAction": "eat_no_bg",
+  "actions": [
+    {
+      "id": "bai_no_bg",
+      "label": "待机",
+      "loop": true,
+      "frameMs": 95,
+      "frameWidth": 191,
+      "frameHeight": 453,
+      "sprite": "cat_anime/sprites/bai_no_bg.png",
+      "frameCount": 16
+    },
+    {
+      "id": "eat_no_bg",
+      "label": "喂食",
+      "loop": false,
+      "frameMs": 85,
+      "frameWidth": 381,
+      "frameHeight": 253,
+      "sprite": "cat_anime/sprites/eat_no_bg.png",
+      "frameCount": 16
+    }
+  ]
+}
