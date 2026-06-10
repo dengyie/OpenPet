@@ -19,7 +19,7 @@
 当前进度：
 
 - Phase 1 Core service layer：已完成基础落地。
-- Phase 2 Runtime contract：未开始。
+- Phase 2 Runtime contract：已完成基础落地。
 - Phase 3 Control Center：未开始。
 - Phase 4 AI chat：未开始。
 - Phase 5 Plugin runtime：未开始。
@@ -42,6 +42,23 @@ Phase 1 当前范围：
 - `src/main/ipc.js` 通过 `PetService` 读取动作和设置。
 - 保留现有宠物窗口、preload、renderer、设置 UI 和素材格式。
 - 未引入 Control Center、AI、插件和本地 HTTP API。
+
+Phase 2 已新增：
+
+```text
+src/main/pet-pack/schema.js
+src/main/pet-pack/loader.js
+src/main/pet-pack/importer.js
+tests/pet-pack/*.test.js
+```
+
+Phase 2 当前范围：
+
+- 定义 `pet.json` manifest 归一化规则。
+- 支持从 pet pack 目录读取 `pet.json`。
+- 支持把当前 `cat_anime/animations.json` legacy 配置包装成 runtime pet pack。
+- `ActionService` 内部面向 pet pack，外部仍保持 renderer 需要的旧动画配置形状。
+- 尚未实现 Control Center 的动作帧导入 UI。
 
 ## 2. 参考方向
 
