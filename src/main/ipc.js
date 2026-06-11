@@ -58,10 +58,24 @@ const triggerAiSemanticAction = (petService, reply) => {
   }
 }
 
+const executeBehaviorDecision = (petService, decision) => {
+  if (!decision?.matched) return decision
+  if (decision.type === 'say') {
+    return { ...decision, result: petService.say({ text: decision.text, source: 'ai:behavior' }) }
+  }
+  if (decision.type === 'setEvent') {
+    return { ...decision, result: petService.setEvent({ event: decision.event, message: decision.message, source: 'ai:behavior' }) }
+  }
+  if (decision.type === 'playAction') {
+    return { ...decision, ...petService.playAction({ actionId: decision.actionId, source: 'ai:behavior' }) }
+  }
+  return decision
+}
+
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, pluginService, pluginInstallService, localHttpService, actionImportService, applyWindowScale,
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, localHttpService, actionImportService, applyWindowScale,
   clampToWorkArea, getMovementState, createSettingsWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -245,8 +259,30 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMain.handle(IPC.AI_CHAT, async (_event, payload) => {
     const result = await aiService.chat(payload)
     petService.say({ text: result.reply, source: 'ai' })
+    if (behaviorOrchestratorService?.getConfig?.().enabled) {
+      const decision = behaviorOrchestratorService.evaluate({
+        reply: result.reply,
+        behaviorIntent: result.behaviorIntent,
+        actions: petService.getAnimations()?.actions || []
+      })
+      const behavior = executeBehaviorDecision(petService, decision)
+      return behavior?.matched && behavior.type === 'playAction'
+        ? { ...result, behavior, action: behavior }
+        : { ...result, behavior }
+    }
     const action = triggerAiSemanticAction(petService, result.reply)
     return action ? { ...result, action } : result
+  })
+
+  ipcMain.handle(IPC.AI_BEHAVIOR_GET, () => behaviorOrchestratorService.getConfig())
+
+  ipcMain.handle(IPC.AI_BEHAVIOR_SAVE, (_event, payload) => behaviorOrchestratorService.saveConfig(payload))
+
+  ipcMain.handle(IPC.AI_BEHAVIOR_DRY_RUN, (_event, payload) => {
+    return behaviorOrchestratorService.dryRun({
+      ...payload,
+      actions: petService.getAnimations()?.actions || []
+    })
   })
 
   ipcMain.handle(IPC.PLUGINS_LIST, () => pluginService.listPlugins())
@@ -357,4 +393,4 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 }
 
-module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers, triggerAiSemanticAction }
+module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers, triggerAiSemanticAction, executeBehaviorDecision }

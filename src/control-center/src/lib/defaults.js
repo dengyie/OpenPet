@@ -13,6 +13,13 @@ export const defaultAiConfig = {
   model: 'gpt-4o-mini',
   apiKeyRef: 'ai.default',
   systemPrompt: 'You are a friendly desktop pet companion.',
+  behavior: {
+    enabled: false,
+    useTools: true,
+    cooldownMs: 1500,
+    rules: [],
+    decisions: []
+  },
   hasApiKey: false
 }
 
@@ -44,7 +51,18 @@ export const defaultPetPacks = {
 
 export const cloneSettings = (settings) => ({ ...defaultSettings, ...settings })
 
-export const cloneAiConfig = (config) => ({ ...defaultAiConfig, ...config })
+export const cloneAiBehavior = (behavior) => ({
+  ...defaultAiConfig.behavior,
+  ...(behavior || {}),
+  rules: Array.isArray(behavior?.rules) ? behavior.rules : [],
+  decisions: Array.isArray(behavior?.decisions) ? behavior.decisions : []
+})
+
+export const cloneAiConfig = (config) => ({
+  ...defaultAiConfig,
+  ...config,
+  behavior: cloneAiBehavior(config?.behavior)
+})
 
 export const cloneServiceStatus = (status) => ({
   config: { ...defaultServiceStatus.config, ...(status?.config || {}) },

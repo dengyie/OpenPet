@@ -352,6 +352,31 @@ button {
   gap: 10px;
 }
 
+.behavior-rules {
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.behavior-dry-run {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.behavior-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.behavior-result strong {
+  color: #1f2937;
+}
+
 .actions-workspace {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);

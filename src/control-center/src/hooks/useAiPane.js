@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.js'
-import { cloneAiConfig, cloneChatMessages, defaultAiConfig } from '../lib/defaults.js'
+import { cloneAiBehavior, cloneAiConfig, cloneChatMessages, defaultAiConfig } from '../lib/defaults.js'
 
 export function useAiPane() {
   const [loading, setLoading] = useState(true)
@@ -11,16 +11,24 @@ export function useAiPane() {
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState([])
   const [chatting, setChatting] = useState(false)
+  const [behavior, setBehavior] = useState(defaultAiConfig.behavior)
+  const [behaviorRulesText, setBehaviorRulesText] = useState('[]')
+  const [dryRunText, setDryRunText] = useState('')
+  const [dryRunResult, setDryRunResult] = useState(null)
 
   useEffect(() => {
     let mounted = true
     Promise.all([
       api.getAiConfig(),
-      api.getAiConversation('control-center')
-    ]).then(([loadedConfig, loadedChatMessages]) => {
+      api.getAiConversation('control-center'),
+      api.getAiBehavior()
+    ]).then(([loadedConfig, loadedChatMessages, loadedBehavior]) => {
       if (!mounted) return
       setConfig(cloneAiConfig(loadedConfig))
       setChatMessages(cloneChatMessages(loadedChatMessages))
+      const nextBehavior = cloneAiBehavior(loadedBehavior || loadedConfig?.behavior)
+      setBehavior(nextBehavior)
+      setBehaviorRulesText(JSON.stringify(nextBehavior.rules || [], null, 2))
       setLoading(false)
     })
     return () => { mounted = false }
@@ -30,13 +38,48 @@ export function useAiPane() {
     setSaving(true)
     setStatus('')
     try {
-      const savedConfig = cloneAiConfig(await api.saveAiConfig(config))
+      const { behavior: _behavior, ...configWithoutBehavior } = config
+      const savedConfig = cloneAiConfig(await api.saveAiConfig(configWithoutBehavior))
       setConfig(savedConfig)
       setStatus('AI 配置已保存')
     } catch (error) {
       setStatus(error.message || '保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const onSaveBehavior = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const parsedRules = JSON.parse(behaviorRulesText || '[]')
+      if (!Array.isArray(parsedRules)) throw new Error('Behavior rules must be a JSON array')
+      const savedBehavior = cloneAiBehavior(await api.saveAiBehavior({ ...behavior, rules: parsedRules }))
+      setBehavior(savedBehavior)
+      setBehaviorRulesText(JSON.stringify(savedBehavior.rules || [], null, 2))
+      setConfig({ ...config, behavior: savedBehavior })
+      setStatus('Behavior 配置已保存')
+    } catch (error) {
+      setStatus(error.message || 'Behavior 配置保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onDryRunBehavior = async () => {
+    const reply = dryRunText.trim()
+    if (!reply) return
+    setStatus('')
+    try {
+      const parsedRules = JSON.parse(behaviorRulesText || '[]')
+      if (!Array.isArray(parsedRules)) throw new Error('Behavior rules must be a JSON array')
+      const result = await api.dryRunAiBehavior({ reply, behavior: { ...behavior, rules: parsedRules } })
+      setDryRunResult(result)
+      setStatus(result.matched ? `Dry run 命中：${result.reason}` : `Dry run 未命中：${result.reason}`)
+    } catch (error) {
+      setDryRunResult(null)
+      setStatus(error.message || 'Dry run 失败')
     }
   }
 
@@ -105,10 +148,19 @@ export function useAiPane() {
       setChatDraft,
       chatMessages,
       chatting,
+      behavior,
+      behaviorRulesText,
+      dryRunText,
+      dryRunResult,
+      setDryRunText,
+      setBehaviorRulesText,
+      onChangeBehavior: (partial) => setBehavior({ ...behavior, ...partial }),
       onChange: (partial) => setConfig({ ...config, ...partial }),
       onSave,
+      onSaveBehavior,
       onSaveApiKey,
       onTest,
+      onDryRunBehavior,
       onSendChat
     }
   }

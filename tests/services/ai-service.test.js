@@ -41,6 +41,13 @@ test('ai service exposes config without secret values', () => {
     model: 'gpt-4o-mini',
     apiKeyRef: 'ai.default',
     systemPrompt: 'You are a friendly desktop pet companion.',
+    behavior: {
+      enabled: false,
+      useTools: true,
+      cooldownMs: 1500,
+      rules: [],
+      decisions: []
+    },
     hasApiKey: true
   })
 })
@@ -134,6 +141,65 @@ test('ai service sends openai-compatible chat completions requests', async () =>
       { role: 'system', content: 'Stay cheerful.' },
       { role: 'user', content: 'Hi' }
     ]
+  })
+})
+
+test('ai service sends behavior tool definition and parses tool call intent', async () => {
+  const requests = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        behavior: {
+          enabled: true,
+          useTools: true
+        }
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => {
+      requests.push(JSON.parse(options.body))
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: '',
+              tool_calls: [{
+                function: {
+                  name: 'ibot_behavior',
+                  arguments: JSON.stringify({
+                    intent: 'success',
+                    actionId: 'done',
+                    confidence: 0.9,
+                    bubbleText: '完成了'
+                  })
+                }
+              }]
+            }
+          }]
+        })
+      }
+    }
+  })
+
+  const result = await service.chat({ message: 'Finish it' })
+
+  assert.equal(requests[0].tools[0].function.name, 'ibot_behavior')
+  assert.equal(result.reply, '完成了')
+  assert.deepEqual(result.behaviorIntent, {
+    intent: 'success',
+    actionId: 'done',
+    confidence: 0.9,
+    bubbleText: '完成了'
   })
 })
 

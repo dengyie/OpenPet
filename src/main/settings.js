@@ -28,6 +28,13 @@ const defaultSettings = {
     model: 'gpt-4o-mini',
     apiKeyRef: 'ai.default',
     systemPrompt: 'You are a friendly desktop pet companion.',
+    behavior: {
+      enabled: false,
+      useTools: true,
+      cooldownMs: 1500,
+      rules: [],
+      decisions: []
+    },
     conversations: {}
   },
   plugins: {
@@ -57,6 +64,12 @@ const mergeSettings = (settings = {}) => ({
   ai: {
     ...defaultSettings.ai,
     ...(isPlainObject(settings.ai) ? settings.ai : {}),
+    behavior: {
+      ...defaultSettings.ai.behavior,
+      ...(isPlainObject(settings.ai?.behavior) ? settings.ai.behavior : {}),
+      rules: Array.isArray(settings.ai?.behavior?.rules) ? settings.ai.behavior.rules : defaultSettings.ai.behavior.rules,
+      decisions: Array.isArray(settings.ai?.behavior?.decisions) ? settings.ai.behavior.decisions : defaultSettings.ai.behavior.decisions
+    },
     conversations: isPlainObject(settings.ai?.conversations)
       ? settings.ai.conversations
       : defaultSettings.ai.conversations

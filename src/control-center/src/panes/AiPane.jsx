@@ -15,7 +15,16 @@ export function AiPane({
   chatDraft,
   setChatDraft,
   chatMessages,
-  chatting
+  chatting,
+  behavior,
+  behaviorRulesText,
+  setBehaviorRulesText,
+  onChangeBehavior,
+  onSaveBehavior,
+  dryRunText,
+  setDryRunText,
+  dryRunResult,
+  onDryRunBehavior
 }) {
   return (
     <section className="pane">
@@ -99,6 +108,72 @@ export function AiPane({
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}
+
+      <div className="section">
+        <div className="field-row">
+          <div>
+            <div className="field-label">Behavior</div>
+            <div className="field-note">AI 行为编排</div>
+          </div>
+          <Toggle checked={behavior.enabled} onChange={(enabled) => onChangeBehavior({ enabled })} />
+        </div>
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">Provider tools</div>
+            <div className="field-note">ibot_behavior tool_call</div>
+          </div>
+          <Toggle checked={behavior.useTools} onChange={(useTools) => onChangeBehavior({ useTools })} />
+        </div>
+
+        <label className="field-row">
+          <span className="field-label">Cooldown</span>
+          <input
+            className="text-input"
+            type="number"
+            min="0"
+            value={behavior.cooldownMs}
+            onChange={(event) => onChangeBehavior({ cooldownMs: Number(event.target.value) })}
+          />
+        </label>
+
+        <label className="field-row tall">
+          <span className="field-label">Rules JSON</span>
+          <textarea
+            className="text-input textarea behavior-rules"
+            value={behaviorRulesText}
+            onChange={(event) => setBehaviorRulesText(event.target.value)}
+          />
+        </label>
+
+        <div className="field-row tall">
+          <div className="field-label">Dry run</div>
+          <div className="behavior-dry-run">
+            <div className="inline-action">
+              <input
+                className="text-input"
+                value={dryRunText}
+                placeholder="输入一段 AI 回复"
+                onChange={(event) => setDryRunText(event.target.value)}
+              />
+              <button type="button" className="ghost" onClick={onDryRunBehavior} disabled={!dryRunText.trim()}>
+                测试
+              </button>
+              <button type="button" className="primary" onClick={onSaveBehavior} disabled={saving}>
+                保存 Behavior
+              </button>
+            </div>
+            {dryRunResult ? (
+              <div className="behavior-result">
+                <strong>{dryRunResult.matched ? 'Matched' : 'No match'}</strong>
+                <span>{dryRunResult.reason}</span>
+                {dryRunResult.actionId ? <span>{dryRunResult.actionId}</span> : null}
+                {dryRunResult.ruleId ? <span>{dryRunResult.ruleId}</span> : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
 
       <div className="chat-panel">
         <div className="chat-transcript" aria-live="polite">

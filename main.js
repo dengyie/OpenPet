@@ -21,6 +21,7 @@ const { createPetPackService } = require('./src/main/services/pet-pack-service')
 const { createPetService } = require('./src/main/services/pet-service')
 const { createSecretService } = require('./src/main/services/secret-service')
 const { createAiService } = require('./src/main/services/ai-service')
+const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
 const { createPluginInstallService } = require('./src/main/services/plugin-install-service')
 const { createLocalHttpService } = require('./src/main/services/local-http-service')
@@ -61,6 +62,7 @@ app.whenReady().then(() => {
   const petService = createPetService({ eventBus, settingsService, actionService })
   const secretService = createSecretService()
   const aiService = createAiService({ settingsService, secretService })
+  const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const actionImportService = createActionImportService({
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
@@ -101,6 +103,7 @@ app.whenReady().then(() => {
     petService,
     petPackService,
     aiService,
+    behaviorOrchestratorService,
     pluginService,
     pluginInstallService,
     localHttpService,

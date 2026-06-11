@@ -4,7 +4,14 @@ const DEFAULT_AI_CONFIG = {
   baseUrl: 'https://api.openai.com/v1',
   model: 'gpt-4o-mini',
   apiKeyRef: 'ai.default',
-  systemPrompt: 'You are a friendly desktop pet companion.'
+  systemPrompt: 'You are a friendly desktop pet companion.',
+  behavior: {
+    enabled: false,
+    useTools: true,
+    cooldownMs: 1500,
+    rules: [],
+    decisions: []
+  }
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000
@@ -18,22 +25,83 @@ const HISTORY_ROLES = new Set(['user', 'assistant'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
+const normalizeBehaviorConfig = (behavior = {}) => ({
+  ...DEFAULT_AI_CONFIG.behavior,
+  ...(isPlainObject(behavior) ? behavior : {}),
+  enabled: Boolean(behavior?.enabled),
+  useTools: behavior?.useTools !== false,
+  cooldownMs: Math.max(0, Number(behavior?.cooldownMs ?? DEFAULT_AI_CONFIG.behavior.cooldownMs) || 0),
+  rules: Array.isArray(behavior?.rules) ? behavior.rules : [],
+  decisions: Array.isArray(behavior?.decisions) ? behavior.decisions : []
+})
+
 const normalizeConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
   baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
   model: config.model || DEFAULT_AI_CONFIG.model,
   apiKeyRef: config.apiKeyRef || DEFAULT_AI_CONFIG.apiKeyRef,
   systemPrompt: config.systemPrompt ?? DEFAULT_AI_CONFIG.systemPrompt,
-  enabled: Boolean(config.enabled)
+  enabled: Boolean(config.enabled),
+  behavior: normalizeBehaviorConfig(config.behavior)
 })
 
-const parseChatReply = (data) => {
-  const reply = data?.choices?.[0]?.message?.content
-  if (typeof reply !== 'string' || !reply.trim()) {
+const parseBehaviorToolArguments = (value) => {
+  if (!value || typeof value !== 'string') return null
+  try {
+    const parsed = JSON.parse(value)
+    if (!isPlainObject(parsed)) return null
+    return {
+      intent: typeof parsed.intent === 'string' ? parsed.intent : '',
+      actionId: typeof parsed.actionId === 'string' ? parsed.actionId : '',
+      confidence: Number.isFinite(Number(parsed.confidence)) ? Number(parsed.confidence) : 0,
+      bubbleText: typeof parsed.bubbleText === 'string' ? parsed.bubbleText : ''
+    }
+  } catch (_) {
+    return null
+  }
+}
+
+const parseBehaviorIntent = (message = {}) => {
+  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : []
+  for (const toolCall of toolCalls) {
+    if (toolCall?.function?.name !== 'ibot_behavior') continue
+    const intent = parseBehaviorToolArguments(toolCall.function.arguments)
+    if (intent) return intent
+  }
+  return null
+}
+
+const parseChatResult = (data) => {
+  const message = data?.choices?.[0]?.message || {}
+  const behaviorIntent = parseBehaviorIntent(message)
+  const reply = typeof message.content === 'string' ? message.content.trim() : ''
+  const fallbackReply = behaviorIntent?.bubbleText?.trim() || ''
+  if (!reply && !fallbackReply) {
     throw new Error('AI provider returned an empty response')
   }
-  return reply
+  return {
+    reply: reply || fallbackReply,
+    behaviorIntent
+  }
 }
+
+const getBehaviorToolDefinition = () => ({
+  type: 'function',
+  function: {
+    name: 'ibot_behavior',
+    description: 'Choose an ibot pet behavior for this assistant reply.',
+    parameters: {
+      type: 'object',
+      properties: {
+        intent: { type: 'string' },
+        actionId: { type: 'string' },
+        confidence: { type: 'number' },
+        bubbleText: { type: 'string' }
+      },
+      required: ['intent', 'confidence']
+    }
+  }
+})
 
 const trimHistory = (messages, maxHistoryMessages) => {
   if (messages.length <= maxHistoryMessages) return messages
@@ -191,7 +259,7 @@ const createAiService = ({
     return []
   }
 
-  const complete = async ({ messages }) => {
+  const complete = async ({ messages, tools = [] }) => {
     const config = getRawConfig()
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     if (!apiKey) throw new Error('AI API key is not configured')
@@ -202,6 +270,12 @@ const createAiService = ({
 
     const timeout = createTimeoutController(requestTimeoutMs)
     let response
+    const body = {
+      model: config.model,
+      messages
+    }
+    if (tools.length) body.tools = tools
+
     try {
       response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -210,10 +284,7 @@ const createAiService = ({
           'Content-Type': 'application/json'
         },
         signal: timeout.signal,
-        body: JSON.stringify({
-          model: config.model,
-          messages
-        })
+        body: JSON.stringify(body)
       })
     } catch (error) {
       if (error?.name === 'AbortError') {
@@ -229,7 +300,7 @@ const createAiService = ({
       const message = data?.error?.message || `AI provider request failed with status ${response.status}`
       throw new Error(message)
     }
-    return parseChatReply(data)
+    return parseChatResult(data)
   }
 
   const chat = async ({ message, conversationId }) => {
@@ -245,22 +316,23 @@ const createAiService = ({
       const messages = []
       if (config.systemPrompt) messages.push({ role: 'system', content: config.systemPrompt })
       messages.push(...history, userMessage)
-      const reply = await complete({ messages })
+      const tools = config.behavior.enabled && config.behavior.useTools ? [getBehaviorToolDefinition()] : []
+      const result = await complete({ messages, tools })
       let nextMessages
       if (normalizedConversationId) {
-        nextMessages = rememberConversation(normalizedConversationId, [...history, userMessage, { role: 'assistant', content: reply }])
+        nextMessages = rememberConversation(normalizedConversationId, [...history, userMessage, { role: 'assistant', content: result.reply }])
       }
-      return { conversationId: normalizedConversationId || undefined, reply, messages: nextMessages }
+      return { conversationId: normalizedConversationId || undefined, reply: result.reply, behaviorIntent: result.behaviorIntent || undefined, messages: nextMessages }
     })
   }
 
   const testConnection = async () => {
-    const reply = await complete({
+    const result = await complete({
       messages: [
         { role: 'user', content: 'Reply with ok.' }
       ]
     })
-    return { ok: true, reply }
+    return { ok: true, reply: result.reply }
   }
 
   return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, testConnection }
@@ -273,5 +345,7 @@ module.exports = {
   DEFAULT_REQUEST_TIMEOUT_MS,
   MAX_CONVERSATION_ID_CHARS,
   MAX_USER_MESSAGE_CHARS,
+  getBehaviorToolDefinition,
+  parseChatResult,
   createAiService
 }
