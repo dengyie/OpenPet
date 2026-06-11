@@ -20,6 +20,12 @@ const sendToPetWindow = (getPetWindow, channel, data) => {
   }
 }
 
+const reloadAndSendAnimations = (getPetWindow, petService) => {
+  const animations = petService.reloadAnimations()
+  sendToPetWindow(getPetWindow, IPC.PET_ANIMATIONS_CHANGED, animations)
+  return animations
+}
+
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
@@ -94,9 +100,20 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
       actionId: payload.actionId,
       label: payload.label
     })
-    const animations = petService.reloadAnimations()
-    sendToPetWindow(getPetWindow, IPC.PET_ANIMATIONS_CHANGED, animations)
+    const animations = reloadAndSendAnimations(getPetWindow, petService)
     return { canceled: false, result, animations }
+  })
+
+  ipcMain.handle(IPC.ACTIONS_SAVE_CONFIG, async (_event, payload) => {
+    const result = await actionImportService.updateActionConfig(payload)
+    const animations = reloadAndSendAnimations(getPetWindow, petService)
+    return { result, animations }
+  })
+
+  ipcMain.handle(IPC.ACTIONS_DELETE, async (_event, payload) => {
+    const result = await actionImportService.deleteAction(payload.actionId)
+    const animations = reloadAndSendAnimations(getPetWindow, petService)
+    return { result, animations }
   })
 
   // 设置面板点击"保存"：持久化并通知宠物窗口应用变更

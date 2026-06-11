@@ -158,8 +158,10 @@ Actions 导入当前范围：
 - 用户可填写 action id / 显示名称，点击导入后选择一个动作帧文件夹。
 - 导入会复制帧到 `cat_anime/flames/<action-id>/`，重新生成 `cat_anime/sprites/*.png` 和 `cat_anime/animations.json`。
 - 导入完成后主进程刷新 `ActionService` 缓存，并通知宠物窗口重新加载动作菜单和默认动作。
+- Actions 页面可配置默认动作和点击动作。
+- Actions 页面可删除动作，删除会移除 `cat_anime/flames/<action-id>/` 和对应 sprite。
 - action id 只允许字母、数字、下划线和连字符，防止路径穿越。
-- 尚未实现动作删除、默认/点击动作 UI 配置、动作预览器和导入前逐帧校验报告。
+- 尚未实现动作预览器、动作重命名和导入前逐帧校验报告。
 
 ## 2. 参考方向
 

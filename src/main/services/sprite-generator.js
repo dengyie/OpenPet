@@ -117,7 +117,17 @@ const processActionFolder = async ({ folderEntry, framesRoot, spritesDir, labels
   }
 }
 
-const generateSpritesFromFrames = async ({ framesRoot, spritesDir, configPath, labels = {}, logger = console }) => {
+const pickExistingAction = (actions, actionId) => actions.find((action) => action.id === actionId)?.id || ''
+
+const generateSpritesFromFrames = async ({
+  framesRoot,
+  spritesDir,
+  configPath,
+  labels = {},
+  defaultAction,
+  clickAction,
+  logger = console
+}) => {
   if (!fs.existsSync(framesRoot)) throw new Error(`Frames root not found: ${framesRoot}`)
   fs.mkdirSync(spritesDir, { recursive: true })
 
@@ -134,14 +144,16 @@ const generateSpritesFromFrames = async ({ framesRoot, spritesDir, configPath, l
 
   if (!actions.length) throw new Error('No valid actions found.')
 
-  const defaultAction = actions.find((action) => /^idle$/i.test(action.id))?.id
+  const nextDefaultAction = pickExistingAction(actions, defaultAction)
+    || actions.find((action) => /^idle$/i.test(action.id))?.id
     || actions.find((action) => /bai/i.test(action.id))?.id
     || actions[0]?.id
-  const clickAction = actions.find((action) => /eat/i.test(action.id))?.id
-    || actions.find((action) => action.id !== defaultAction)?.id
-    || defaultAction
+  const nextClickAction = pickExistingAction(actions, clickAction)
+    || actions.find((action) => /eat/i.test(action.id))?.id
+    || actions.find((action) => action.id !== nextDefaultAction)?.id
+    || nextDefaultAction
 
-  const config = { defaultAction, clickAction, actions }
+  const config = { defaultAction: nextDefaultAction, clickAction: nextClickAction, actions }
   fs.mkdirSync(path.dirname(configPath), { recursive: true })
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
   return config

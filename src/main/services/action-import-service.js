@@ -11,6 +11,25 @@ const copyDirectory = (sourceDir, targetDir) => {
 }
 
 const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
+  const readCurrentConfig = () => {
+    try {
+      return JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+    } catch (_) {
+      return {}
+    }
+  }
+
+  const regenerate = async (overrides = {}) => {
+    const currentConfig = readCurrentConfig()
+    return generateSpritesFromFrames({
+      framesRoot,
+      spritesDir,
+      configPath,
+      defaultAction: overrides.defaultAction ?? currentConfig.defaultAction,
+      clickAction: overrides.clickAction ?? currentConfig.clickAction
+    })
+  }
+
   const importActionFrames = async ({ sourceDir, actionId, label }) => {
     if (!isSafeActionId(actionId)) throw new Error('Invalid action id')
     if (!sourceDir || !fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
@@ -23,13 +42,24 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       framesRoot,
       spritesDir,
       configPath,
+      defaultAction: readCurrentConfig().defaultAction,
+      clickAction: readCurrentConfig().clickAction,
       labels: label ? { [actionId]: label } : {}
     })
     const importedAction = config.actions.find((action) => action.id === actionId)
     return { ...config, importedAction }
   }
 
-  return { importActionFrames }
+  const updateActionConfig = async ({ defaultAction, clickAction }) => regenerate({ defaultAction, clickAction })
+
+  const deleteAction = async (actionId) => {
+    if (!isSafeActionId(actionId)) throw new Error('Invalid action id')
+    fs.rmSync(path.join(framesRoot, actionId), { recursive: true, force: true })
+    fs.rmSync(path.join(spritesDir, `${actionId}.png`), { force: true })
+    return regenerate()
+  }
+
+  return { deleteAction, importActionFrames, regenerate, updateActionConfig }
 }
 
 module.exports = { createActionImportService, isSafeActionId }

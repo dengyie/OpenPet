@@ -22,6 +22,8 @@ const IPC = {
   SETTINGS_CHANGED: 'settings:changed',
   ACTIONS_GET: 'actions:get',
   ACTIONS_IMPORT_FRAMES: 'actions:import-frames',
+  ACTIONS_SAVE_CONFIG: 'actions:save-config',
+  ACTIONS_DELETE: 'actions:delete',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
   AI_SAVE_API_KEY: 'ai:save-api-key',

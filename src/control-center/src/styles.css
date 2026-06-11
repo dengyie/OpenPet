@@ -389,6 +389,19 @@ button {
   gap: 10px;
 }
 
+.danger-text {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.danger-text:disabled {
+  color: #9ca3af;
+  cursor: default;
+}
+
 .plugin-list {
   display: grid;
   gap: 0;
