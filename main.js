@@ -22,6 +22,7 @@ const { createPetService } = require('./src/main/services/pet-service')
 const { createSecretService } = require('./src/main/services/secret-service')
 const { createAiService } = require('./src/main/services/ai-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
+const { createPluginInstallService } = require('./src/main/services/plugin-install-service')
 const { createLocalHttpService } = require('./src/main/services/local-http-service')
 const { createActionImportService } = require('./src/main/services/action-import-service')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
@@ -66,13 +67,18 @@ app.whenReady().then(() => {
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
     configPath: path.join(__dirname, 'cat_anime', 'animations.json')
   })
+  const pluginDir = path.join(app.getPath('userData'), 'plugins')
   const pluginService = createPluginService({
     settingsService,
     petService,
     petPackService,
     aiService,
-    pluginDirs: [path.join(app.getPath('userData'), 'plugins')],
+    pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()]
+  })
+  const pluginInstallService = createPluginInstallService({
+    settingsService,
+    pluginDir
   })
   let localHttpConfig = petService.getSettings().localHttp
   if (localHttpConfig?.enabled) {
@@ -96,6 +102,7 @@ app.whenReady().then(() => {
     petPackService,
     aiService,
     pluginService,
+    pluginInstallService,
     localHttpService,
     actionImportService,
     applyWindowScale: (scale) => applyWindowScale(petWindow, scale),

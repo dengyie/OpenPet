@@ -27,7 +27,36 @@ test('normalizes a plugin manifest with permissions and commands', () => {
     configSchema: 'config.schema.json',
     permissions: ['pet:say'],
     network: { allowlist: ['api.example.com', 'cdn.example.com:8443'] },
+    signature: null,
     commands: [{ id: 'start', title: 'Start focus' }]
+  })
+})
+
+test('normalizes optional plugin signature metadata', () => {
+  assert.deepEqual(normalizePluginManifest({
+    id: 'signed-plugin',
+    name: 'Signed Plugin',
+    version: '1.0.0',
+    signature: {
+      algorithm: 'ed25519',
+      signer: 'ibot-labs',
+      value: 'sig-example'
+    }
+  }).signature, {
+    algorithm: 'ed25519',
+    signer: 'ibot-labs',
+    value: 'sig-example'
+  })
+
+  assert.deepEqual(normalizePluginManifest({
+    id: 'string-signed-plugin',
+    name: 'String Signed Plugin',
+    version: '1.0.0',
+    signature: 'sig-example'
+  }).signature, {
+    algorithm: 'unknown',
+    signer: '',
+    value: 'sig-example'
   })
 })
 
@@ -82,6 +111,21 @@ test('rejects plugin manifests without required identity fields', () => {
     name: 'Missing Id',
     version: '1.0.0'
   }), /Plugin id is required/)
+
+  assert.throws(() => normalizePluginManifest({
+    id: '../bad',
+    name: 'Bad Id',
+    version: '1.0.0'
+  }), /Plugin id must be a safe id/)
+})
+
+test('rejects unsafe plugin command ids', () => {
+  assert.throws(() => normalizePluginManifest({
+    id: 'bad-command',
+    name: 'Bad Command',
+    version: '1.0.0',
+    commands: [{ id: '../start' }]
+  }), /Plugin command id must be a safe id/)
 })
 
 test('rejects unsafe plugin main paths', () => {

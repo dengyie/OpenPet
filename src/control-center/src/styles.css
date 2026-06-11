@@ -579,6 +579,61 @@ button {
   border-top: 1px solid #dde2e8;
 }
 
+.plugin-review-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dde2e8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.plugin-review-panel.warning {
+  border-color: #d97706;
+  background: #fffaf0;
+}
+
+.plugin-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-review-header h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.plugin-review-header span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.plugin-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.plugin-review-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plugin-review-grid strong {
+  color: #374151;
+  font-size: 12px;
+}
+
+.plugin-review-grid span {
+  color: #6b7280;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .plugin-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

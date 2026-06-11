@@ -11,6 +11,10 @@ export function usePluginsPane() {
   const [runningCommand, setRunningCommand] = useState('')
   const [savingConfig, setSavingConfig] = useState('')
   const [clearingStorage, setClearingStorage] = useState('')
+  const [pluginReview, setPluginReview] = useState(null)
+  const [inspectingPlugin, setInspectingPlugin] = useState(false)
+  const [installingPlugin, setInstallingPlugin] = useState(false)
+  const [uninstallingPlugin, setUninstallingPlugin] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -38,6 +42,70 @@ export function usePluginsPane() {
 
   const refreshLogs = async () => {
     setLogs(await api.getPluginLogs(filters))
+  }
+
+  const refreshPlugins = async () => {
+    setPlugins(await api.getPlugins())
+  }
+
+  const onInspectPluginPackage = async () => {
+    setInspectingPlugin(true)
+    setStatus('')
+    try {
+      const result = await api.inspectPluginPackage()
+      if (result.canceled) return
+      setPluginReview(result)
+      setStatus(result.installMode === 'update' ? '已读取插件更新包' : '已读取插件安装包')
+    } catch (error) {
+      setStatus(error.message || '插件包检查失败')
+    } finally {
+      setInspectingPlugin(false)
+    }
+  }
+
+  const onClearPluginReview = async () => {
+    try {
+      if (pluginReview?.selectionId) await api.clearPluginSelection(pluginReview.selectionId)
+    } catch (_) {}
+    setPluginReview(null)
+  }
+
+  const onInstallReviewedPlugin = async () => {
+    if (!pluginReview?.selectionId) return
+    setInstallingPlugin(true)
+    setStatus('')
+    try {
+      const result = pluginReview.installMode === 'update'
+        ? await api.updatePlugin(pluginReview.selectionId)
+        : await api.installPlugin(pluginReview.selectionId)
+      setPlugins(result.plugins || await api.getPlugins())
+      setPluginReview(null)
+      await refreshLogs()
+      setStatus(pluginReview.installMode === 'update' ? '插件已更新，默认保持停用' : '插件已安装，默认保持停用')
+    } catch (error) {
+      setStatus(error.message || '插件安装失败')
+      await refreshPlugins()
+    } finally {
+      setInstallingPlugin(false)
+    }
+  }
+
+  const onUninstallPlugin = async (pluginId) => {
+    if (!window.confirm(`卸载插件 ${pluginId}？插件文件和配置会被移除。`)) return
+    const removeStorage = window.confirm('同时删除这个插件的私有存储？')
+    setUninstallingPlugin(pluginId)
+    setStatus('')
+    try {
+      const result = await api.uninstallPlugin(pluginId, { removeStorage })
+      setPlugins(result.plugins || await api.getPlugins())
+      await refreshLogs()
+      setStatus(removeStorage ? '插件已卸载，私有存储已删除' : '插件已卸载，私有存储已保留')
+    } catch (error) {
+      setStatus(error.message || '插件卸载失败')
+      await refreshPlugins()
+    } finally {
+      setUninstallingPlugin('')
+    }
   }
 
   const onToggle = async (pluginId, enabled) => {
@@ -150,7 +218,15 @@ export function usePluginsPane() {
       runningCommand,
       savingConfig,
       clearingStorage,
+      pluginReview,
+      inspectingPlugin,
+      installingPlugin,
+      uninstallingPlugin,
       onToggle,
+      onInspectPluginPackage,
+      onClearPluginReview,
+      onInstallReviewedPlugin,
+      onUninstallPlugin,
       onChangeConfig,
       onSaveConfig,
       onRun,

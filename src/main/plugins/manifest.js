@@ -8,13 +8,43 @@ const KNOWN_PLUGIN_PERMISSIONS = new Set([
   'commands'
 ])
 
+const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
+
+const assertSafeId = (value, fieldName) => {
+  if (typeof value !== 'string' || !SAFE_ID_PATTERN.test(value)) {
+    throw new Error(`Plugin ${fieldName} must be a safe id`)
+  }
+}
+
 const normalizeCommands = (commands = []) => commands.map((command) => {
   if (!command?.id) throw new Error('Plugin command id is required')
+  assertSafeId(command.id, 'command id')
   return {
     id: command.id,
     title: command.title || command.id
   }
 })
+
+const normalizeSignature = (signature) => {
+  if (!signature) return null
+  if (typeof signature === 'string') {
+    return {
+      algorithm: 'unknown',
+      signer: '',
+      value: signature
+    }
+  }
+  if (typeof signature !== 'object' || Array.isArray(signature)) {
+    throw new Error('Plugin signature must be a string or object')
+  }
+  const value = String(signature.value || signature.signature || '').trim()
+  if (!value) throw new Error('Plugin signature value is required')
+  return {
+    algorithm: String(signature.algorithm || 'unknown').trim() || 'unknown',
+    signer: String(signature.signer || '').trim(),
+    value
+  }
+}
 
 const normalizeNetworkHost = (value) => {
   if (typeof value !== 'string' || !value.trim()) throw new Error('Plugin network allowlist host must be a string')
@@ -64,6 +94,7 @@ const normalizeRelativeFilePath = (value = '', fieldName, extension) => {
 
 const normalizePluginManifest = (manifest, { source = 'local', basePath = '' } = {}) => {
   if (!manifest?.id) throw new Error('Plugin id is required')
+  assertSafeId(manifest.id, 'id')
   if (!manifest.name) throw new Error('Plugin name is required')
   if (!manifest.version) throw new Error('Plugin version is required')
 
@@ -85,8 +116,9 @@ const normalizePluginManifest = (manifest, { source = 'local', basePath = '' } =
     configSchema: normalizeRelativeFilePath(manifest.configSchema, 'configSchema', '.json'),
     permissions: [...permissions],
     network: normalizeNetwork(manifest.network),
+    signature: normalizeSignature(manifest.signature),
     commands: normalizeCommands(manifest.commands)
   }
 }
 
-module.exports = { KNOWN_PLUGIN_PERMISSIONS, normalizePluginManifest }
+module.exports = { KNOWN_PLUGIN_PERMISSIONS, normalizePluginManifest, normalizeSignature }

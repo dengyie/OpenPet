@@ -14,6 +14,21 @@ const MAX_PLUGIN_NETWORK_REQUEST_BYTES = 64 * 1024
 const MAX_PLUGIN_NETWORK_RESPONSE_BYTES = 128 * 1024
 const LOCAL_PLUGIN_RUNNER_PATH = path.join(__dirname, '../plugins/local-plugin-runner.js')
 
+const getSignatureStatus = (manifest) => {
+  if (manifest.source === 'official') {
+    return { status: 'official', label: 'Official plugin', signer: 'ibot', algorithm: 'bundled' }
+  }
+  if (!manifest.signature) {
+    return { status: 'unsigned', label: 'Unsigned plugin', signer: '', algorithm: '' }
+  }
+  return {
+    status: 'present-unverified',
+    label: 'Signature metadata present, not verified',
+    signer: manifest.signature.signer || '',
+    algorithm: manifest.signature.algorithm || 'unknown'
+  }
+}
+
 const resolveLocalPluginFile = (manifest, fieldName) => {
   const relativePath = manifest[fieldName]
   if (!relativePath) return ''
@@ -442,6 +457,23 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
 
   const getStorageMap = () => settingsService.get().plugins?.storage || {}
 
+  const getInstalledMap = () => settingsService.get().plugins?.installed || {}
+
+  const getPluginSignatureStatus = (manifest) => {
+    if (manifest.source === 'official') return getSignatureStatus(manifest)
+    const installed = getInstalledMap()[manifest.id]
+    if (installed?.signatureStatus) {
+      if (installed.signatureStatus === 'hash-verified') {
+        return { status: 'hash-verified', label: 'Signature hash metadata verified', signer: installed.signer || '', algorithm: '' }
+      }
+      if (installed.signatureStatus === 'unsigned') {
+        return { status: 'unsigned', label: 'Unsigned plugin', signer: '', algorithm: '' }
+      }
+      return { status: installed.signatureStatus, label: 'Signature metadata present, not verified', signer: installed.signer || '', algorithm: '' }
+    }
+    return getSignatureStatus(manifest)
+  }
+
   const getPluginStorageStats = (pluginId) => {
     try {
       const storage = getPluginStorage(pluginId)
@@ -535,6 +567,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     ...plugin.manifest,
     enabled: Boolean(getEnabledMap()[plugin.manifest.id]),
     runnable: typeof plugin.activate === 'function' || Boolean(plugin.mainPath),
+    signatureStatus: getPluginSignatureStatus(plugin.manifest),
     configSchema: plugin.configSchema,
     config: getPluginConfig(plugin.manifest.id, plugin.configSchema),
     storage: getPluginStorageStats(plugin.manifest.id)

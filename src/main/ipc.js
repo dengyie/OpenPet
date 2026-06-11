@@ -61,7 +61,7 @@ const triggerAiSemanticAction = (petService, reply) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, pluginService, localHttpService, actionImportService, applyWindowScale,
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, pluginService, pluginInstallService, localHttpService, actionImportService, applyWindowScale,
   clampToWorkArea, getMovementState, createSettingsWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -261,6 +261,38 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMain.handle(IPC.PLUGINS_RUN_COMMAND, (_event, payload) => {
     return pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload)
+  })
+
+  ipcMain.handle(IPC.PLUGINS_INSPECT_PACKAGE, async () => {
+    const selected = await dialog.showOpenDialog({
+      title: '选择插件目录或 .ibot-plugin.zip',
+      properties: ['openFile', 'openDirectory'],
+      filters: [
+        { name: 'ibot Plugin', extensions: ['zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+    if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
+    return { canceled: false, ...pluginInstallService.inspectPluginPackage(selected.filePaths[0]) }
+  })
+
+  ipcMain.handle(IPC.PLUGINS_CLEAR_SELECTION, (_event, payload) => {
+    return pluginInstallService.clearPendingSelection(payload?.selectionId)
+  })
+
+  ipcMain.handle(IPC.PLUGINS_INSTALL, (_event, payload) => {
+    const result = pluginInstallService.installPlugin(payload.selectionId)
+    return { ...result, plugins: pluginService.listPlugins() }
+  })
+
+  ipcMain.handle(IPC.PLUGINS_UPDATE, (_event, payload) => {
+    const result = pluginInstallService.updatePlugin(payload.selectionId)
+    return { ...result, plugins: pluginService.listPlugins() }
+  })
+
+  ipcMain.handle(IPC.PLUGINS_UNINSTALL, (_event, payload) => {
+    const result = pluginInstallService.uninstallPlugin(payload.pluginId, { removeStorage: Boolean(payload.removeStorage) })
+    return { ...result, plugins: pluginService.listPlugins() }
   })
 
   ipcMain.handle(IPC.PLUGINS_GET_LOGS, (_event, filters) => pluginService.getLogs(filters))
