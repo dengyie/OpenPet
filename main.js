@@ -14,7 +14,7 @@ const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/mai
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
 const { getPetAnimations } = require('./src/main/animations')
 const { applyWindowScale, createWindow, createSettingsWindow } = require('./src/main/window')
-const { registerIpcHandlers } = require('./src/main/ipc')
+const { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers } = require('./src/main/ipc')
 const { createEventBus } = require('./src/main/services/event-bus')
 const { createSettingsService } = require('./src/main/services/settings-service')
 const { createActionService } = require('./src/main/services/action-service')
@@ -62,8 +62,14 @@ app.whenReady().then(() => {
     pluginDirs: [path.join(app.getPath('userData'), 'plugins')],
     officialPlugins: [createBasicBehaviorPlugin()]
   })
-  const localHttpConfig = petService.getSettings().localHttp
+  let localHttpConfig = petService.getSettings().localHttp
   if (localHttpConfig?.enabled) {
+    const normalizedConfig = normalizeLocalHttpConfig(localHttpConfig, localHttpConfig)
+    if (normalizedConfig.token !== localHttpConfig.token) {
+      const currentSettings = petService.getSettings()
+      petService.saveSettings({ ...currentSettings, localHttp: normalizedConfig })
+      localHttpConfig = normalizedConfig
+    }
     localHttpService.start(localHttpConfig).catch((error) => {
       console.error('Failed to start local HTTP service:', error.message)
     })
@@ -91,7 +97,7 @@ app.whenReady().then(() => {
   petWindow.webContents.on('did-finish-load', () => {
     const settings = petService.getSettings()
     applyWindowScale(petWindow, settings.scale)
-    petWindow.webContents.send(IPC.SETTINGS_CHANGED, settings)
+    petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(settings))
   })
 
   // macOS：Dock 图标点击时若窗口已关闭则重建

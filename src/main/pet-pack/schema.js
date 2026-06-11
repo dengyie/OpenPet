@@ -1,5 +1,7 @@
 const DEFAULT_VERSION = '1.0.0'
 const DEFAULT_SCHEMA_VERSION = 1
+const MIN_FRAME_MS = 16
+const MAX_FRAME_MS = 5000
 
 const inferActionKind = (actionId) => {
   if (/idle|bai|stand/i.test(actionId)) return 'idle'
@@ -19,20 +21,42 @@ const assertNonEmptyString = (value, fieldName) => {
   }
 }
 
+const assertSafeRelativePath = (value, fieldName) => {
+  assertNonEmptyString(value, fieldName)
+  const normalized = value.replace(/\\/g, '/')
+  if (
+    normalized.startsWith('/') ||
+    /^[a-zA-Z]:\//.test(normalized) ||
+    normalized.includes('\0') ||
+    normalized.split('/').includes('..')
+  ) {
+    throw new Error(`pet pack ${fieldName} must be a safe relative path`)
+  }
+  return normalized
+}
+
+const toPositiveInteger = (value, fieldName, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < min || number > max) {
+    throw new Error(`pet pack ${fieldName} must be an integer between ${min} and ${max}`)
+  }
+  return number
+}
+
 const normalizeAction = (action) => {
   assertNonEmptyString(action?.id, 'action.id')
-  assertNonEmptyString(action?.sprite, `action(${action.id}).sprite`)
+  const sprite = assertSafeRelativePath(action?.sprite, `action(${action.id}).sprite`)
 
   return {
     id: action.id,
     label: action.label || action.id,
     kind: action.kind || inferActionKind(action.id),
     loop: Boolean(action.loop),
-    frameCount: Number(action.frameCount || 1),
-    frameMs: Number(action.frameMs || 100),
-    frameWidth: Number(action.frameWidth || 0),
-    frameHeight: Number(action.frameHeight || 0),
-    sprite: action.sprite
+    frameCount: toPositiveInteger(action.frameCount, `action(${action.id}).frameCount`),
+    frameMs: toPositiveInteger(action.frameMs, `action(${action.id}).frameMs`, { min: MIN_FRAME_MS, max: MAX_FRAME_MS }),
+    frameWidth: toPositiveInteger(action.frameWidth, `action(${action.id}).frameWidth`),
+    frameHeight: toPositiveInteger(action.frameHeight, `action(${action.id}).frameHeight`),
+    sprite
   }
 }
 

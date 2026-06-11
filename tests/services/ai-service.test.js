@@ -177,6 +177,79 @@ test('ai service keeps message history by conversation id', async () => {
   ])
 })
 
+test('ai service trims conversation history by message count', async () => {
+  const requests = []
+  let count = 0
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: 'Stay cheerful.'
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => {
+      requests.push(JSON.parse(options.body))
+      count += 1
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: `reply ${count}` } }] })
+      }
+    },
+    maxHistoryMessages: 2
+  })
+
+  await service.chat({ conversationId: 'control-center', message: 'one' })
+  await service.chat({ conversationId: 'control-center', message: 'two' })
+  await service.chat({ conversationId: 'control-center', message: 'three' })
+
+  assert.deepEqual(requests[2].messages, [
+    { role: 'system', content: 'Stay cheerful.' },
+    { role: 'user', content: 'two' },
+    { role: 'assistant', content: 'reply 2' },
+    { role: 'user', content: 'three' }
+  ])
+})
+
+test('ai service times out stalled provider requests', async () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted')
+        error.name = 'AbortError'
+        reject(error)
+      })
+    }),
+    requestTimeoutMs: 5
+  })
+
+  await assert.rejects(
+    () => service.chat({ conversationId: 'control-center', message: 'Hi' }),
+    /timed out/
+  )
+})
+
 test('ai service testConnection validates provider response', async () => {
   const service = createAiService({
     settingsService: createSettingsService({

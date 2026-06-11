@@ -18,6 +18,58 @@ const compareFrameName = (left, right) => {
     : leftNumber - rightNumber
 }
 
+const readFrameMetadata = async (folderPath, frameFiles) => {
+  const frames = []
+  const errors = []
+  const warnings = []
+
+  for (const fileName of frameFiles) {
+    try {
+      const metadata = await sharp(path.join(folderPath, fileName)).metadata()
+      frames.push({
+        fileName,
+        width: metadata.width || 0,
+        height: metadata.height || 0,
+        hasAlpha: Boolean(metadata.hasAlpha)
+      })
+      if (!metadata.hasAlpha) errors.push(`${fileName} has no alpha channel`)
+    } catch (error) {
+      errors.push(`${fileName} cannot be read: ${error.message}`)
+    }
+  }
+
+  const dimensions = new Set(frames.map((frame) => `${frame.width}x${frame.height}`))
+  if (dimensions.size > 1) warnings.push('Frame dimensions differ; frames will be centered in the largest cell')
+
+  return { frames, errors, warnings }
+}
+
+const inspectFrameFolder = async (folderPath) => {
+  if (!folderPath || !fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    throw new Error('Frame folder does not exist')
+  }
+
+  const entries = fs.readdirSync(folderPath)
+  const frameFiles = entries.filter(isImageFile).sort(compareFrameName)
+  const skippedFiles = entries.filter((fileName) => !isImageFile(fileName)).sort(compareFrameName)
+  const { frames, errors, warnings } = await readFrameMetadata(folderPath, frameFiles)
+  const maxWidth = frames.reduce((max, frame) => Math.max(max, frame.width), 0)
+  const maxHeight = frames.reduce((max, frame) => Math.max(max, frame.height), 0)
+
+  if (!frameFiles.length) errors.push('No image files found')
+
+  return {
+    valid: frameFiles.length > 0 && errors.length === 0,
+    frameCount: frameFiles.length,
+    maxWidth,
+    maxHeight,
+    frames,
+    skippedFiles,
+    errors,
+    warnings
+  }
+}
+
 const toActionLabel = (folderName, labels = {}) => {
   if (labels[folderName]) return labels[folderName]
   if (actionLabels[folderName]) return actionLabels[folderName]
@@ -39,42 +91,32 @@ const processActionFolder = async ({ folderEntry, framesRoot, spritesDir, labels
     return null
   }
 
-  const metadatas = []
-  for (const file of frameFiles) {
-    try {
-      const metadata = await sharp(path.join(folderPath, file)).metadata()
-      metadatas.push(metadata)
-    } catch (error) {
-      logger.warn?.(`  [skip] ${folderEntry.name}: cannot read ${file} (${error.message})`)
-      return null
-    }
-  }
-
-  if (!metadatas[0].hasAlpha) {
-    logger.warn?.(`  [skip] ${folderEntry.name}: no alpha channel`)
+  const inspection = await inspectFrameFolder(folderPath)
+  if (!inspection.valid) {
+    logger.warn?.(`  [skip] ${folderEntry.name}: ${inspection.errors.join('; ')}`)
     return null
   }
 
   let cellW = 0
   let cellH = 0
-  for (const metadata of metadatas) {
-    if (metadata.width > cellW) cellW = metadata.width
-    if (metadata.height > cellH) cellH = metadata.height
+  for (const frame of inspection.frames) {
+    if (frame.width > cellW) cellW = frame.width
+    if (frame.height > cellH) cellH = frame.height
   }
 
   const composites = []
   for (let i = 0; i < frameFiles.length; i++) {
-    const metadata = metadatas[i]
-    const leftPad = Math.floor((cellW - metadata.width) / 2)
-    const topPad = Math.floor((cellH - metadata.height) / 2)
+    const frame = inspection.frames[i]
+    const leftPad = Math.floor((cellW - frame.width) / 2)
+    const topPad = Math.floor((cellH - frame.height) / 2)
 
     const buffer = await sharp(path.join(folderPath, frameFiles[i]))
       .ensureAlpha()
       .extend({
         top: topPad,
-        bottom: cellH - metadata.height - topPad,
+        bottom: cellH - frame.height - topPad,
         left: leftPad,
-        right: cellW - metadata.width - leftPad,
+        right: cellW - frame.width - leftPad,
         background: { r: 0, g: 0, b: 0, alpha: 0 }
       })
       .raw()
@@ -162,6 +204,7 @@ const generateSpritesFromFrames = async ({
 module.exports = {
   compareFrameName,
   generateSpritesFromFrames,
+  inspectFrameFolder,
   isImageFile,
   isLoopAction,
   toActionLabel

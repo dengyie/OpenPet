@@ -15,7 +15,7 @@ test('loads and normalizes a pet pack manifest from a directory', () => {
     displayName: 'Cat',
     defaultAction: 'idle',
     actions: [
-      { id: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100 }
+      { id: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 }
     ]
   }))
 
@@ -25,6 +25,32 @@ test('loads and normalizes a pet pack manifest from a directory', () => {
   assert.equal(pack.manifest.id, 'cat')
   assert.equal(pack.manifest.defaultAction, 'idle')
   assert.equal(pack.manifest.actions[0].sprite, 'sprites/idle.png')
+})
+
+test('fills legacy animation defaults before strict manifest normalization', () => {
+  const pack = loadLegacyPetPack({
+    id: 'legacy-cat',
+    displayName: 'Legacy Cat',
+    getPetAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'eat',
+      actions: [
+        { id: 'idle', label: '待机', loop: true, sprite: 'sprites/idle.png' },
+        { id: 'eat', label: '喂食', loop: false, sprite: 'sprites/eat.png' }
+      ]
+    })
+  })
+
+  assert.deepEqual(pack.manifest.actions.map((action) => ({
+    id: action.id,
+    frameCount: action.frameCount,
+    frameMs: action.frameMs,
+    frameWidth: action.frameWidth,
+    frameHeight: action.frameHeight
+  })), [
+    { id: 'idle', frameCount: 1, frameMs: 100, frameWidth: 1, frameHeight: 1 },
+    { id: 'eat', frameCount: 1, frameMs: 100, frameWidth: 1, frameHeight: 1 }
+  ])
 })
 
 test('converts legacy animation config into a pet pack manifest', () => {

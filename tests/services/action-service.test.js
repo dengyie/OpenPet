@@ -9,8 +9,8 @@ test('action service returns legacy animation config as runtime actions', () => 
       defaultAction: 'idle',
       clickAction: 'eat',
       actions: [
-        { id: 'idle', label: '待机', loop: true, sprite: 'sprites/idle.png' },
-        { id: 'eat', label: '喂食', loop: false, sprite: 'sprites/eat.png' }
+        { id: 'idle', label: '待机', loop: true, frameCount: 16, frameMs: 95, frameWidth: 191, frameHeight: 453, sprite: 'sprites/idle.png' },
+        { id: 'eat', label: '喂食', loop: false, frameCount: 16, frameMs: 85, frameWidth: 381, frameHeight: 253, sprite: 'sprites/eat.png' }
       ]
     })
   })
@@ -24,10 +24,10 @@ test('action service returns legacy animation config as runtime actions', () => 
         label: '待机',
         kind: 'idle',
         loop: true,
-        frameCount: 1,
-        frameMs: 100,
-        frameWidth: 0,
-        frameHeight: 0,
+        frameCount: 16,
+        frameMs: 95,
+        frameWidth: 191,
+        frameHeight: 453,
         sprite: 'sprites/idle.png'
       },
       {
@@ -35,10 +35,10 @@ test('action service returns legacy animation config as runtime actions', () => 
         label: '喂食',
         kind: 'click',
         loop: false,
-        frameCount: 1,
-        frameMs: 100,
-        frameWidth: 0,
-        frameHeight: 0,
+        frameCount: 16,
+        frameMs: 85,
+        frameWidth: 381,
+        frameHeight: 253,
         sprite: 'sprites/eat.png'
       }
     ]
@@ -81,7 +81,7 @@ test('action service can expose preview-safe file urls for sprites', () => {
       defaultAction: 'idle',
       clickAction: 'idle',
       actions: [
-        { id: 'idle', label: '待机', sprite: 'cat_anime/sprites/idle.png' }
+        { id: 'idle', label: '待机', frameCount: 16, frameMs: 95, frameWidth: 191, frameHeight: 453, sprite: 'cat_anime/sprites/idle.png' }
       ]
     })
   })

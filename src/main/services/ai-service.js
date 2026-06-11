@@ -7,6 +7,11 @@ const DEFAULT_AI_CONFIG = {
   systemPrompt: 'You are a friendly desktop pet companion.'
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30000
+const DEFAULT_MAX_HISTORY_MESSAGES = 20
+const DEFAULT_MAX_CONVERSATIONS = 20
+const MAX_USER_MESSAGE_CHARS = 4000
+
 const normalizeConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
   baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
@@ -24,7 +29,28 @@ const parseChatReply = (data) => {
   return reply
 }
 
-const createAiService = ({ settingsService, secretService, fetchImpl = globalThis.fetch }) => {
+const trimHistory = (messages, maxHistoryMessages) => {
+  if (messages.length <= maxHistoryMessages) return messages
+  return messages.slice(messages.length - maxHistoryMessages)
+}
+
+const createTimeoutController = (timeoutMs) => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer)
+  }
+}
+
+const createAiService = ({
+  settingsService,
+  secretService,
+  fetchImpl = globalThis.fetch,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
+  maxConversations = DEFAULT_MAX_CONVERSATIONS
+}) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
 
@@ -53,6 +79,13 @@ const createAiService = ({ settingsService, secretService, fetchImpl = globalThi
     return { apiKeyRef: config.apiKeyRef, hasApiKey: Boolean(value) }
   }
 
+  const rememberConversation = (conversationId, messages) => {
+    if (!conversations.has(conversationId) && conversations.size >= maxConversations) {
+      conversations.delete(conversations.keys().next().value)
+    }
+    conversations.set(conversationId, trimHistory(messages, maxHistoryMessages))
+  }
+
   const complete = async ({ messages }) => {
     const config = getRawConfig()
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
@@ -62,17 +95,29 @@ const createAiService = ({ settingsService, secretService, fetchImpl = globalThi
     }
     if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
 
-    const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages
+    const timeout = createTimeoutController(requestTimeoutMs)
+    let response
+    try {
+      response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: timeout.signal,
+        body: JSON.stringify({
+          model: config.model,
+          messages
+        })
       })
-    })
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error('AI provider request timed out')
+      }
+      throw error
+    } finally {
+      timeout.clear()
+    }
 
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
@@ -86,13 +131,16 @@ const createAiService = ({ settingsService, secretService, fetchImpl = globalThi
     const config = getRawConfig()
     if (!config.enabled) throw new Error('AI chat is disabled')
     const history = conversationId ? conversations.get(conversationId) || [] : []
-    const userMessage = { role: 'user', content: String(message || '') }
+    const content = String(message || '').trim()
+    if (!content) throw new Error('AI chat message is empty')
+    if (content.length > MAX_USER_MESSAGE_CHARS) throw new Error('AI chat message is too long')
+    const userMessage = { role: 'user', content }
     const messages = []
     if (config.systemPrompt) messages.push({ role: 'system', content: config.systemPrompt })
     messages.push(...history, userMessage)
     const reply = await complete({ messages })
     if (conversationId) {
-      conversations.set(conversationId, [...history, userMessage, { role: 'assistant', content: reply }])
+      rememberConversation(conversationId, [...history, userMessage, { role: 'assistant', content: reply }])
     }
     return { conversationId, reply }
   }
@@ -109,4 +157,11 @@ const createAiService = ({ settingsService, secretService, fetchImpl = globalThi
   return { getConfig, saveConfig, saveApiKey, chat, testConnection }
 }
 
-module.exports = { DEFAULT_AI_CONFIG, createAiService }
+module.exports = {
+  DEFAULT_AI_CONFIG,
+  DEFAULT_MAX_CONVERSATIONS,
+  DEFAULT_MAX_HISTORY_MESSAGES,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  MAX_USER_MESSAGE_CHARS,
+  createAiService
+}

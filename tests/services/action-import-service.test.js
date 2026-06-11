@@ -49,6 +49,61 @@ test('action import service copies selected frames folder and regenerates action
   assert.equal(result.actions.length, 1)
 })
 
+test('action import service inspects a selected frames folder for an action id', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ibot-action-inspect-'))
+  const sourceDir = path.join(root, 'source-wave')
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await createFrame(path.join(sourceDir, '02_no_bg.png'))
+  await createFrame(path.join(sourceDir, '10_no_bg.png'))
+
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  const result = await service.inspectActionFrames({ sourceDir, actionId: 'wave' })
+
+  assert.equal(result.folderName, 'source-wave')
+  assert.equal(result.actionId, 'wave')
+  assert.equal(result.inspection.valid, true)
+  assert.deepEqual(result.inspection.errors, [])
+})
+
+test('action import service reports duplicate action ids during inspection', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ibot-action-duplicate-'))
+  const sourceDir = path.join(root, 'source-idle')
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await createFrame(path.join(sourceDir, '01_no_bg.png'))
+  await createActionFolder(framesRoot, 'idle')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+
+  const result = await service.inspectActionFrames({ sourceDir, actionId: 'idle' })
+
+  assert.equal(result.inspection.valid, false)
+  assert.deepEqual(result.inspection.errors, ['Action ID already exists: idle'])
+})
+
+test('action import service blocks duplicate action ids during final import', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ibot-action-import-duplicate-'))
+  const sourceDir = path.join(root, 'source-idle')
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await createFrame(path.join(sourceDir, '01_no_bg.png'))
+  await createActionFolder(framesRoot, 'idle')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+
+  await assert.rejects(
+    () => service.importActionFrames({ sourceDir, actionId: 'idle' }),
+    /Action ID already exists: idle/
+  )
+})
+
 test('action import service updates default and click actions without dropping actions', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ibot-action-config-'))
   const framesRoot = path.join(root, 'cat_anime', 'flames')
@@ -105,6 +160,25 @@ test('action import service deletes an action and regenerates config', async () 
   assert.deepEqual(result.actions.map((action) => action.id), ['idle'])
   assert.equal(result.defaultAction, 'idle')
   assert.equal(result.clickAction, 'idle')
+})
+
+test('action import service refuses to delete the last valid action', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ibot-action-delete-last-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+
+  await assert.rejects(
+    () => service.deleteAction('idle'),
+    /Cannot delete the last action/
+  )
+
+  assert.equal(fs.existsSync(path.join(framesRoot, 'idle')), true)
+  assert.equal(fs.existsSync(path.join(spritesDir, 'idle.png')), true)
+  assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).defaultAction, 'idle')
 })
 
 test('action import service rejects unsafe action ids', async () => {

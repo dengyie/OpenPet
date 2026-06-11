@@ -10,8 +10,8 @@ test('creates a normalized pet pack manifest from generated action metadata', ()
     defaultAction: 'idle',
     clickAction: 'eat',
     actions: [
-      { id: 'idle', sprite: 'sprites/idle.png', frameCount: 16, frameMs: 95 },
-      { id: 'eat', sprite: 'sprites/eat.png', frameCount: 16, frameMs: 85 }
+      { id: 'idle', sprite: 'sprites/idle.png', frameCount: 16, frameMs: 95, frameWidth: 191, frameHeight: 453 },
+      { id: 'eat', sprite: 'sprites/eat.png', frameCount: 16, frameMs: 85, frameWidth: 381, frameHeight: 253 }
     ]
   })
 

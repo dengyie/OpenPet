@@ -8,6 +8,27 @@
  */
 const { ipcMain, BrowserWindow, app, dialog } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { createLocalHttpToken } = require('./services/local-http-service')
+
+const createPetRendererSettings = (settings = {}) => ({
+  scale: settings.scale,
+  walkSpeed: settings.walkSpeed,
+  walkDuration: settings.walkDuration,
+  bubbleDuration: settings.bubbleDuration
+})
+
+const normalizeLocalHttpConfig = (currentConfig = {}, nextConfig = {}) => {
+  const enabled = Boolean(nextConfig.enabled)
+  const token = nextConfig.token || currentConfig.token || (enabled ? createLocalHttpToken() : '')
+  return {
+    ...currentConfig,
+    ...nextConfig,
+    host: '127.0.0.1',
+    port: Number(nextConfig.port ?? currentConfig.port ?? 0),
+    enabled,
+    token
+  }
+}
 
 /**
  * 向宠物窗口安全推送消息的薄封装。
@@ -31,6 +52,23 @@ const reloadAndSendAnimations = (getPetWindow, petService) => {
  */
 const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginService, localHttpService, actionImportService, applyWindowScale,
   clampToWorkArea, getMovementState, createSettingsWindow }) => {
+  let pendingActionFrameSelection = null
+
+  const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+  const getPendingActionFrameSelection = (selectionId) => {
+    if (!pendingActionFrameSelection || pendingActionFrameSelection.id !== selectionId) {
+      throw new Error('Selected frame folder is no longer available')
+    }
+    return pendingActionFrameSelection
+  }
+
+  const inspectPendingActionFrameSelection = async ({ selectionId, actionId }) => {
+    const selection = getPendingActionFrameSelection(selectionId)
+    const result = await actionImportService.inspectActionFrames({ sourceDir: selection.sourceDir, actionId })
+    return { selectionId: selection.id, ...result }
+  }
+
   petService.onSay?.((payload) => {
     sendToPetWindow(getPetWindow, IPC.PET_SAY, payload)
   })
@@ -88,20 +126,46 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
 
   ipcMain.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
 
-  ipcMain.handle(IPC.ACTIONS_IMPORT_FRAMES, async (_event, payload) => {
+  ipcMain.handle(IPC.ACTIONS_INSPECT_FRAMES, async (_event, payload) => {
     const selected = await dialog.showOpenDialog({
       title: '选择动作帧文件夹',
       properties: ['openDirectory']
     })
     if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
 
+    const selectionId = createSelectionId()
+    const sourceDir = selected.filePaths[0]
+    const result = await actionImportService.inspectActionFrames({ sourceDir, actionId: payload.actionId })
+    pendingActionFrameSelection = { id: selectionId, sourceDir }
+    return { canceled: false, selectionId, ...result }
+  })
+
+  ipcMain.handle(IPC.ACTIONS_REINSPECT_FRAMES, async (_event, payload) => {
+    return inspectPendingActionFrameSelection({ selectionId: payload.selectionId, actionId: payload.actionId })
+  })
+
+  ipcMain.handle(IPC.ACTIONS_CLEAR_FRAME_SELECTION, (_event, payload) => {
+    if (!payload?.selectionId || pendingActionFrameSelection?.id === payload.selectionId) {
+      pendingActionFrameSelection = null
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.ACTIONS_IMPORT_FRAMES, async (_event, payload) => {
+    const selection = getPendingActionFrameSelection(payload.selectionId)
+    const inspectionResult = await inspectPendingActionFrameSelection({ selectionId: payload.selectionId, actionId: payload.actionId })
+    if (!inspectionResult.inspection.valid) {
+      return { ok: false, inspectionResult }
+    }
+
     const result = await actionImportService.importActionFrames({
-      sourceDir: selected.filePaths[0],
+      sourceDir: selection.sourceDir,
       actionId: payload.actionId,
       label: payload.label
     })
-    const animations = reloadAndSendAnimations(getPetWindow, petService)
-    return { canceled: false, result, animations: petService.getPreviewAnimations() }
+    pendingActionFrameSelection = null
+    reloadAndSendAnimations(getPetWindow, petService)
+    return { ok: true, canceled: false, result, animations: petService.getPreviewAnimations() }
   })
 
   ipcMain.handle(IPC.ACTIONS_SAVE_CONFIG, async (_event, payload) => {
@@ -119,7 +183,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
   // 设置面板点击"保存"：持久化并通知宠物窗口应用变更
   ipcMain.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
     const savedSettings = petService.saveSettings(settings)
-    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, savedSettings)
+    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
     applyWindowScale(getPetWindow(), savedSettings.scale)
     return savedSettings
   })
@@ -155,17 +219,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
 
   ipcMain.handle(IPC.SERVICE_SAVE_CONFIG, async (_event, config) => {
     const currentSettings = petService.getSettings()
-    const nextConfig = {
-      ...currentSettings.localHttp,
-      ...config,
-      host: '127.0.0.1',
-      port: Number(config.port || 0),
-      enabled: Boolean(config.enabled)
-    }
-    const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
+    const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, config)
     const runtime = nextConfig.enabled
       ? await localHttpService.start(nextConfig)
       : await localHttpService.stop()
+    const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
     return { config: savedSettings.localHttp, runtime }
   })
 
@@ -189,4 +247,4 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
   })
 }
 
-module.exports = { registerIpcHandlers }
+module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers }

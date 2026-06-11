@@ -52,7 +52,8 @@ const defaultServiceStatus = {
   config: {
     enabled: false,
     host: '127.0.0.1',
-    port: 0
+    port: 0,
+    token: ''
   },
   runtime: {
     enabled: false,
@@ -67,12 +68,35 @@ const defaultActionsConfig = {
   actions: []
 }
 
+const createDemoInspection = (actionId = 'wave') => ({
+  canceled: false,
+  selectionId: 'demo-selection',
+  folderName: 'demo-wave',
+  actionId,
+  inspection: {
+    valid: true,
+    frameCount: 2,
+    maxWidth: 8,
+    maxHeight: 8,
+    frames: [
+      { fileName: '01_no_bg.png', width: 8, height: 8, hasAlpha: true },
+      { fileName: '02_no_bg.png', width: 8, height: 8, hasAlpha: true }
+    ],
+    skippedFiles: [],
+    errors: [],
+    warnings: []
+  }
+})
+
 const api = window.controlCenterAPI || {
   getSettings: async () => defaultSettings,
   saveSettings: async (settings) => settings,
   previewScale: () => {},
   getActions: async () => defaultActionsConfig,
-  importActionFrames: async () => ({ canceled: true }),
+  inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
+  reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
+  clearActionFrameSelection: async () => ({ ok: true }),
+  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: defaultActionsConfig }),
   saveActionsConfig: async (config) => ({ animations: config }),
   deleteAction: async () => ({ animations: defaultActionsConfig }),
   getAiConfig: async () => defaultAiConfig,
@@ -380,16 +404,64 @@ function ActionPreview({ action }) {
   )
 }
 
+function FrameInspectionReport({ report }) {
+  if (!report) return null
+  const inspection = report.inspection || {}
+  const frames = Array.isArray(inspection.frames) ? inspection.frames : []
+  const skippedFiles = Array.isArray(inspection.skippedFiles) ? inspection.skippedFiles : []
+  const errors = Array.isArray(inspection.errors) ? inspection.errors : []
+  const warnings = Array.isArray(inspection.warnings) ? inspection.warnings : []
+
+  return (
+    <div className={inspection.valid ? 'inspection-report' : 'inspection-report invalid'}>
+      <div className="inspection-summary">
+        <strong>{report.folderName}</strong>
+        <span>{inspection.frameCount || 0} 帧 · 最大尺寸 {inspection.maxWidth || 0}x{inspection.maxHeight || 0}</span>
+      </div>
+      {errors.length ? (
+        <div className="inspection-block error">
+          <strong>错误</strong>
+          {errors.map((error) => <span key={error}>{error}</span>)}
+        </div>
+      ) : null}
+      {warnings.length ? (
+        <div className="inspection-block">
+          <strong>提示</strong>
+          {warnings.map((warning) => <span key={warning}>{warning}</span>)}
+        </div>
+      ) : null}
+      {skippedFiles.length ? (
+        <div className="inspection-block">
+          <strong>已忽略文件</strong>
+          <span>{skippedFiles.join(' · ')}</span>
+        </div>
+      ) : null}
+      {frames.length ? (
+        <div className="frame-list">
+          {frames.slice(0, 8).map((frame) => (
+            <span key={frame.fileName}>{frame.fileName} · {frame.width}x{frame.height}</span>
+          ))}
+          {frames.length > 8 ? <span>还有 {frames.length - 8} 帧</span> : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ActionsPane({
   actionsConfig,
   selectedActionId,
   importDraft,
-  setImportDraft,
+  importInspection,
   status,
   working,
   onSelectAction,
+  onChangeImportDraft,
   onChangeConfig,
   onSaveConfig,
+  onInspect,
+  onReinspect,
+  onClearInspection,
   onImport,
   onDelete
 }) {
@@ -408,8 +480,19 @@ function ActionsPane({
           <button type="button" className="ghost" onClick={onSaveConfig} disabled={working || actionsConfig.actions.length === 0}>
             保存配置
           </button>
-          <button type="button" className="primary" onClick={onImport} disabled={working || !importDraft.actionId.trim()}>
-            {working ? '处理中' : '选择文件夹导入'}
+          <button type="button" className="ghost" onClick={onInspect} disabled={working || !importDraft.actionId.trim()}>
+            {working ? '处理中' : '选择并检查'}
+          </button>
+          <button type="button" className="ghost" onClick={onReinspect} disabled={working || !importInspection?.selectionId}>
+            重新检查
+          </button>
+          <button
+            type="button"
+            className="primary"
+            onClick={onImport}
+            disabled={working || !importDraft.actionId.trim() || !importInspection?.selectionId || !importInspection?.inspection?.valid}
+          >
+            确认导入
           </button>
         </div>
       </header>
@@ -421,7 +504,7 @@ function ActionsPane({
             className="text-input"
             value={importDraft.actionId}
             placeholder="wave"
-            onChange={(event) => setImportDraft({ ...importDraft, actionId: event.target.value })}
+            onChange={(event) => onChangeImportDraft({ actionId: event.target.value }, true)}
           />
         </label>
 
@@ -431,9 +514,18 @@ function ActionsPane({
             className="text-input"
             value={importDraft.label}
             placeholder="挥手"
-            onChange={(event) => setImportDraft({ ...importDraft, label: event.target.value })}
+            onChange={(event) => onChangeImportDraft({ label: event.target.value })}
           />
         </label>
+
+        {importInspection ? (
+          <div className="inspection-row">
+            <FrameInspectionReport report={importInspection} />
+            <button type="button" className="danger-text" onClick={onClearInspection} disabled={working}>
+              清除选择
+            </button>
+          </div>
+        ) : null}
 
         <div className="readonly-row">
           <span>默认动作</span>
@@ -621,6 +713,11 @@ function ServicePane({ serviceStatus, status, saving, onChange, onSave }) {
         </div>
 
         <div className="readonly-row">
+          <span>访问令牌</span>
+          <code className="endpoint-text">{config.token || '启用服务后生成'}</code>
+        </div>
+
+        <div className="readonly-row">
           <span>MCP</span>
           <strong>后续阶段</strong>
         </div>
@@ -661,6 +758,7 @@ function App() {
   const [actionsConfig, setActionsConfig] = useState(defaultActionsConfig)
   const [selectedActionId, setSelectedActionId] = useState('')
   const [importDraft, setImportDraft] = useState({ actionId: '', label: '' })
+  const [importInspection, setImportInspection] = useState(null)
   const [actionStatus, setActionStatus] = useState('')
   const [actionWorking, setActionWorking] = useState(false)
   const [aiConfig, setAiConfig] = useState(defaultAiConfig)
@@ -744,10 +842,18 @@ function App() {
           actionsConfig={actionsConfig}
           selectedActionId={selectedActionId}
           importDraft={importDraft}
-          setImportDraft={setImportDraft}
+          importInspection={importInspection}
           status={actionStatus}
           working={actionWorking}
           onSelectAction={setSelectedActionId}
+          onChangeImportDraft={(partial, clearInspection) => {
+            setImportDraft({ ...importDraft, ...partial })
+            if (actionStatus) setActionStatus('')
+            if (clearInspection && importInspection?.selectionId) {
+              api.clearActionFrameSelection({ selectionId: importInspection.selectionId }).catch(() => {})
+              setImportInspection(null)
+            }
+          }}
           onChangeConfig={(partial) => setActionsConfig({ ...actionsConfig, ...partial })}
           onSaveConfig={async () => {
             setActionWorking(true)
@@ -765,16 +871,69 @@ function App() {
               setActionWorking(false)
             }
           }}
+          onInspect={async () => {
+            setActionWorking(true)
+            setActionStatus('')
+            try {
+              const response = await api.inspectActionFrames({ actionId: importDraft.actionId.trim() })
+              if (response.canceled) {
+                setActionStatus('已取消选择')
+              } else {
+                setImportInspection(response)
+                setActionStatus(response.inspection.valid ? '帧文件夹检查通过' : '帧文件夹需要修正')
+              }
+            } catch (error) {
+              setImportInspection(null)
+              setActionStatus(error.message || '检查失败')
+            } finally {
+              setActionWorking(false)
+            }
+          }}
+          onReinspect={async () => {
+            if (!importInspection?.selectionId) return
+            setActionWorking(true)
+            setActionStatus('')
+            try {
+              const response = await api.reinspectActionFrames({
+                selectionId: importInspection.selectionId,
+                actionId: importDraft.actionId.trim()
+              })
+              setImportInspection(response)
+              setActionStatus(response.inspection.valid ? '帧文件夹检查通过' : '帧文件夹需要修正')
+            } catch (error) {
+              setImportInspection(null)
+              setActionStatus(error.message || '重新检查失败')
+            } finally {
+              setActionWorking(false)
+            }
+          }}
+          onClearInspection={async () => {
+            const selectionId = importInspection?.selectionId
+            setImportInspection(null)
+            setActionStatus('已清除选择')
+            if (!selectionId) return
+            try {
+              await api.clearActionFrameSelection({ selectionId })
+            } catch (_) {}
+          }}
           onImport={async () => {
             setActionWorking(true)
             setActionStatus('')
             try {
-              const response = await api.importActionFrames(importDraft)
-              if (response.canceled) {
+              const response = await api.importActionFrames({
+                selectionId: importInspection?.selectionId,
+                actionId: importDraft.actionId.trim(),
+                label: importDraft.label
+              })
+              if (response.ok === false) {
+                setImportInspection(response.inspectionResult)
+                setActionStatus('帧文件夹需要修正')
+              } else if (response.canceled) {
                 setActionStatus('已取消导入')
               } else {
                 setActionsConfig(cloneActionsConfig(response.animations))
                 if (response.result.importedAction?.id) setSelectedActionId(response.result.importedAction.id)
+                setImportInspection(null)
                 setActionStatus(`已导入 ${response.result.importedAction?.label || importDraft.actionId}`)
               }
             } catch (error) {
@@ -939,7 +1098,7 @@ function App() {
       { label: 'Control Center', value: 'Phase 5' },
       { label: 'Runtime contract', value: 'Phase 2' }
     ]} />
-  }, [activeTab, actionStatus, actionWorking, actionsConfig, aiConfig, aiStatus, apiKeyDraft, chatDraft, chatMessages, chatting, importDraft, originalSettings, pluginStatus, plugins, runningCommand, saving, serviceMessage, serviceStatus, settings])
+  }, [activeTab, actionStatus, actionWorking, actionsConfig, aiConfig, aiStatus, apiKeyDraft, chatDraft, chatMessages, chatting, importDraft, importInspection, originalSettings, pluginStatus, plugins, runningCommand, saving, serviceMessage, serviceStatus, settings])
 
   return (
     <main className="shell">
