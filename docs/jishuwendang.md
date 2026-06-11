@@ -61,8 +61,14 @@ ibot/
 │   │   ├── index.html
 │   │   ├── vite.config.js
 │   │   └── src/
-│   │       ├── main.jsx           # React Control Center（约 1263 行）
-│   │       └── styles.css         # 样式（约 739 行）
+│   │       ├── main.jsx           # React root 挂载
+│   │       ├── App.jsx            # Control Center shell / tabs
+│   │       ├── api/               # preload API facade + demo fallback
+│   │       ├── components/        # 共享 UI 控件
+│   │       ├── hooks/             # 各 pane 数据加载与操作逻辑
+│   │       ├── lib/               # 默认值、格式化、下载 helper
+│   │       ├── panes/             # Pet / Actions / AI / Plugins / Service / About
+│   │       └── styles.css         # 样式
 │   └── shared/
 │       └── ipc-channels.js        # 所有 IPC 通道名常量（主进程侧）
 ├── tests/                         # Node 原生 test runner 测试
@@ -253,7 +259,7 @@ EventBus → SettingsService → ActionService → PetService
 
 ### 4.5 Control Center
 
-React + Vite 构建的 Web 应用，嵌入 Electron BrowserWindow（900×640px, 可调整大小）。包含 6 个 Tab 页面：
+React + Vite 构建的 Web 应用，嵌入 Electron BrowserWindow（900×640px, 可调整大小）。入口 `main.jsx` 只挂载 root，`App.jsx` 管 shell/tab，各页面在 `panes/` 中，数据加载和保存动作在 `hooks/` 中。包含 6 个 Tab 页面：
 - **Pet**：缩放、散步速度、散步时长、气泡时长、开机自启
 - **Actions**：动作列表、导入帧文件夹、删除、设置默认/点击动作
 - **AI**：provider 配置、API Key、连接测试、聊天窗口
@@ -337,5 +343,6 @@ npm run build:control-center  # 仅构建 Control Center
 npm run pack                  # electron-builder 目录打包验证
 npm run generate-sprites      # 重新生成精灵图
 npm test                      # 运行测试（114 个测试）
-npm run check:syntax          # 语法检查
+npm run check:node            # 逐个 node --check 主进程 / service / test JS 文件
+npm run check:syntax          # check:node + Vite 构建校验 Control Center JSX
 ```

@@ -11,7 +11,8 @@
     "pack": "npm run build:control-center && electron-builder --dir",
     "dist": "npm run build:control-center && electron-builder",
     "generate-sprites": "node scripts/generate-sprites.js",
-    "check:syntax": "node --check main.js preload.js control-center-preload.js renderer.js scripts/generate-sprites.js src/main/*.js src/main/services/*.js src/main/runtime/*.js src/main/pet-pack/*.js src/main/plugins/*.js src/main/plugins/official/*.js src/shared/*.js src/control-center/src/*.jsx tests/services/*.test.js tests/pet-pack/*.test.js tests/plugins/*.test.js",
+    "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
+    "check:syntax": "npm run check:node && npm run build:control-center",
     "test": "node --test \"tests/**/*.test.js\""
   },
   "build": {

@@ -10,7 +10,7 @@
 
 - `PetService` 是唯一宠物状态源，AI、插件、HTTP、MCP 都通过它触发 `say`、`playAction`、`setEvent`。
 - Pet pack runtime 已有 `schema` / `loader` / `importer`，legacy `cat_anime/animations.json` 已能包装为 runtime pack。
-- Control Center 已覆盖 Pet / Actions / AI / Plugins / Service / About；Service 页已拆成 `ServicePane.jsx`。
+- Control Center 已覆盖 Pet / Actions / AI / Plugins / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper。
 - AI 已支持 OpenAI-compatible provider、API Key secret 隔离、请求超时、有界持久会话、轻量语义动作触发。
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
@@ -26,7 +26,7 @@
 | AI 行为编排 | 关键词/label/kind 语义匹配 | 结构化 tool-call、可配置行为规则、调试/回放、规则安全边界 |
 | MCP | 最小 JSON-RPC bridge | 客户端兼容矩阵、streamable HTTP/SSE、外部 agent 使用文档、会话管理 |
 | 分发 | `pack` 可跑 | app icon、签名/公证、安装包验证、自动更新、发布流水线 |
-| Control Center | 功能集中在 `main.jsx` | Pane 拆分、共享 UI、状态 hooks、后续生态页面承载能力 |
+| Control Center | 已完成 Phase 1 模块化 | 继续承载 Pet pack / 插件安装 / AI 规则 / MCP session 等生态页面 |
 
 ## 2. 产品化原则
 
@@ -587,20 +587,20 @@ CSC_KEY_PASSWORD
 
 ## 14. 推荐下一步
 
-最稳的下一步是从 Phase 1 开始拆 Control Center。理由很朴素：Pet pack 管理、插件安装 review、AI 行为规则、MCP session 管理都需要新增复杂 UI；如果不先把 `main.jsx` 降下来，后面每个阶段都会变慢。
+Phase 1 已完成，下一步进入 Phase 2：Pet pack 完整管理体验。这个阶段会把已有 runtime/schema/loader/importer 从底层能力提升为用户可见的安装、预览、切换和版本管理闭环。
 
-建议第一张任务卡：
+建议下一张任务卡：
 
 ```text
-title: Split Control Center into pane modules
+title: Add Pet Pack management experience
 scope:
-  - create App.jsx and api/control-center-api.js
-  - move PetPane, AiPane, PluginsPane, ActionsPane out of main.jsx
-  - keep ServicePane wiring intact
-  - no behavior changes
+  - create PetPackService for installed pack metadata and active pack switching
+  - add pet pack inspect/import/remove IPC and preload APIs
+  - extend ActionService to load the active pack while preserving legacy cat fallback
+  - add Control Center Pet Packs view under Actions
 acceptance:
   - npm run build:control-center
   - npm run check:syntax
   - npm test
-  - manual smoke: Pet save, Actions refresh, AI config load, Plugins list, Service status
+  - manual smoke: import pack, preview pack, switch active pack, reject invalid pack
 ```

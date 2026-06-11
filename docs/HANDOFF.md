@@ -1,7 +1,7 @@
 # ibot 项目交接文档
 
-> 最后更新：2026-06-12 | 分支：`main`
-> 当前状态：平台重构与质量修复已合入主线，后续功能从 `main` 继续迭代。
+> 最后更新：2026-06-12 | 分支：`codex/productization-completion`
+> 当前状态：平台重构与质量修复已合入主线，产品化补齐从当前分支分阶段推进。
 
 ---
 
@@ -99,8 +99,13 @@ src/control-center/
 ├── index.html                     # 入口 HTML
 ├── vite.config.js                 # Vite 配置（React + 构建到 dist/）
 └── src/
-    ├── main.jsx                   # React 主应用
-    ├── ServicePane.jsx            # 本地服务管理页
+    ├── main.jsx                   # React root 挂载
+    ├── App.jsx                    # Control Center shell / tabs
+    ├── api/                       # preload API facade + demo fallback
+    ├── components/                # 共享 UI 控件
+    ├── hooks/                     # 各 pane 数据加载与操作逻辑
+    ├── lib/                       # 默认值、格式化、下载 helper
+    ├── panes/                     # Pet / Actions / AI / Plugins / Service / About
     └── styles.css                 # 所有样式
 ```
 
@@ -224,7 +229,7 @@ tests/services/local-http-service.test.js # HTTP token、安全日志与 MCP ses
 
 ### 技术债
 
-- [ ] Control Center main.jsx 仍需继续拆分；Service 页已拆出 `ServicePane.jsx`
+- [x] Control Center 已完成 Phase 1 模块化：`main.jsx` 只负责 root 挂载，pane / hook / api / lib 已拆分
 - [x] 旧 settings.html/settings-preload.js/settings-renderer.js 已删除
 - [x] `src/main/settings.js` 与 SettingsService 职责已收敛：磁盘写入副作用由 SettingsService 注入协调
 - [x] `src/main/animations.js` 已合并到 pet-pack loader

@@ -1,24 +1,11 @@
 import React from 'react'
+import { Toggle } from '../components/Toggle.jsx'
 
 const formatLogTime = (timestamp) => {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-function Toggle({ checked, onChange }) {
-  return (
-    <button
-      type="button"
-      className={checked ? 'toggle on' : 'toggle'}
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
-  )
 }
 
 export function ServicePane({ serviceStatus, logs, status, saving, onChange, onSave, onRotateToken, onRefreshLogs, onExportLogs, onClearLogs }) {
