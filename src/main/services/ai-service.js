@@ -10,7 +10,13 @@ const DEFAULT_AI_CONFIG = {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30000
 const DEFAULT_MAX_HISTORY_MESSAGES = 20
 const DEFAULT_MAX_CONVERSATIONS = 20
+const MAX_CONVERSATION_ID_CHARS = 160
+const MAX_STORED_MESSAGE_CHARS = 8000
 const MAX_USER_MESSAGE_CHARS = 4000
+
+const HISTORY_ROLES = new Set(['user', 'assistant'])
+
+const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
 const normalizeConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
@@ -34,6 +40,47 @@ const trimHistory = (messages, maxHistoryMessages) => {
   return messages.slice(messages.length - maxHistoryMessages)
 }
 
+const normalizeConversationId = (conversationId) => {
+  if (typeof conversationId !== 'string') return ''
+  return conversationId.trim()
+}
+
+const assertValidConversationId = (conversationId) => {
+  if (conversationId.length > MAX_CONVERSATION_ID_CHARS) {
+    throw new Error('AI conversation id is too long')
+  }
+  return conversationId
+}
+
+const normalizeStoredConversationId = (conversationId) => {
+  const normalizedId = normalizeConversationId(conversationId)
+  return normalizedId.length <= MAX_CONVERSATION_ID_CHARS ? normalizedId : ''
+}
+
+const normalizeHistoryMessage = (message) => {
+  if (!isPlainObject(message) || !HISTORY_ROLES.has(message.role)) return null
+  if (typeof message.content !== 'string') return null
+  const content = message.content.trim().slice(0, MAX_STORED_MESSAGE_CHARS)
+  if (!content) return null
+  return { role: message.role, content }
+}
+
+const normalizeHistory = (messages, maxHistoryMessages) => {
+  if (!Array.isArray(messages)) return []
+  return trimHistory(messages.map(normalizeHistoryMessage).filter(Boolean), maxHistoryMessages)
+}
+
+const cloneHistory = (messages, maxHistoryMessages) => normalizeHistory(messages, maxHistoryMessages)
+
+const normalizeConversationStore = (store, maxHistoryMessages) => {
+  if (!isPlainObject(store)) return {}
+  return Object.fromEntries(
+    Object.entries(store)
+      .map(([conversationId, messages]) => [normalizeStoredConversationId(conversationId), normalizeHistory(messages, maxHistoryMessages)])
+      .filter(([conversationId, messages]) => conversationId && messages.length)
+  )
+}
+
 const createTimeoutController = (timeoutMs) => {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -54,9 +101,36 @@ const createAiService = ({
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
 
-  const conversations = new Map()
+  const historyLimit = Math.max(0, Number(maxHistoryMessages) || 0)
+  const conversationLimit = Math.max(0, Number(maxConversations) || 0)
+  const conversationQueues = new Map()
 
   const getRawConfig = () => normalizeConfig(settingsService.get().ai)
+
+  const enqueueConversation = (conversationId, task) => {
+    if (!conversationId) return task()
+    const previous = conversationQueues.get(conversationId) || Promise.resolve()
+    const queued = previous.catch(() => {}).then(task)
+    const marker = queued.catch(() => {}).finally(() => {
+      if (conversationQueues.get(conversationId) === marker) conversationQueues.delete(conversationId)
+    })
+    conversationQueues.set(conversationId, marker)
+    return queued
+  }
+
+  const getStoredConversations = () => normalizeConversationStore(settingsService.get().ai?.conversations, historyLimit)
+
+  const persistConversations = (conversations) => {
+    const settings = settingsService.get()
+    const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
+    settingsService.save({
+      ...settings,
+      ai: {
+        ...normalizeConfig(currentAi),
+        conversations
+      }
+    })
+  }
 
   const getConfig = () => {
     const config = getRawConfig()
@@ -68,7 +142,10 @@ const createAiService = ({
 
   const saveConfig = (partialConfig) => {
     const settings = settingsService.get()
-    const nextAi = normalizeConfig({ ...settings.ai, ...partialConfig })
+    const nextAi = {
+      ...normalizeConfig({ ...settings.ai, ...partialConfig }),
+      conversations: getStoredConversations()
+    }
     settingsService.save({ ...settings, ai: nextAi })
     return getConfig()
   }
@@ -80,10 +157,38 @@ const createAiService = ({
   }
 
   const rememberConversation = (conversationId, messages) => {
-    if (!conversations.has(conversationId) && conversations.size >= maxConversations) {
-      conversations.delete(conversations.keys().next().value)
+    if (!conversationId || conversationLimit <= 0) return []
+    const conversations = getStoredConversations()
+    const nextConversations = { ...conversations }
+    const history = normalizeHistory(messages, historyLimit)
+    if (Object.hasOwn(nextConversations, conversationId)) delete nextConversations[conversationId]
+    if (!history.length) {
+      persistConversations(nextConversations)
+      return []
     }
-    conversations.set(conversationId, trimHistory(messages, maxHistoryMessages))
+    while (Object.keys(nextConversations).length >= conversationLimit) {
+      delete nextConversations[Object.keys(nextConversations)[0]]
+    }
+    nextConversations[conversationId] = history
+    persistConversations(nextConversations)
+    return cloneHistory(history, historyLimit)
+  }
+
+  const getConversation = (conversationId) => {
+    const normalizedId = assertValidConversationId(normalizeConversationId(conversationId))
+    if (!normalizedId) return []
+    return cloneHistory(getStoredConversations()[normalizedId], historyLimit)
+  }
+
+  const clearConversation = (conversationId) => {
+    const normalizedId = assertValidConversationId(normalizeConversationId(conversationId))
+    if (!normalizedId) return []
+    const conversations = getStoredConversations()
+    if (Object.hasOwn(conversations, normalizedId)) {
+      delete conversations[normalizedId]
+      persistConversations(conversations)
+    }
+    return []
   }
 
   const complete = async ({ messages }) => {
@@ -128,21 +233,25 @@ const createAiService = ({
   }
 
   const chat = async ({ message, conversationId }) => {
-    const config = getRawConfig()
-    if (!config.enabled) throw new Error('AI chat is disabled')
-    const history = conversationId ? conversations.get(conversationId) || [] : []
-    const content = String(message || '').trim()
-    if (!content) throw new Error('AI chat message is empty')
-    if (content.length > MAX_USER_MESSAGE_CHARS) throw new Error('AI chat message is too long')
-    const userMessage = { role: 'user', content }
-    const messages = []
-    if (config.systemPrompt) messages.push({ role: 'system', content: config.systemPrompt })
-    messages.push(...history, userMessage)
-    const reply = await complete({ messages })
-    if (conversationId) {
-      rememberConversation(conversationId, [...history, userMessage, { role: 'assistant', content: reply }])
-    }
-    return { conversationId, reply }
+    const normalizedConversationId = assertValidConversationId(normalizeConversationId(conversationId))
+    return enqueueConversation(normalizedConversationId, async () => {
+      const config = getRawConfig()
+      if (!config.enabled) throw new Error('AI chat is disabled')
+      const history = normalizedConversationId ? getConversation(normalizedConversationId) : []
+      const content = String(message || '').trim()
+      if (!content) throw new Error('AI chat message is empty')
+      if (content.length > MAX_USER_MESSAGE_CHARS) throw new Error('AI chat message is too long')
+      const userMessage = { role: 'user', content }
+      const messages = []
+      if (config.systemPrompt) messages.push({ role: 'system', content: config.systemPrompt })
+      messages.push(...history, userMessage)
+      const reply = await complete({ messages })
+      let nextMessages
+      if (normalizedConversationId) {
+        nextMessages = rememberConversation(normalizedConversationId, [...history, userMessage, { role: 'assistant', content: reply }])
+      }
+      return { conversationId: normalizedConversationId || undefined, reply, messages: nextMessages }
+    })
   }
 
   const testConnection = async () => {
@@ -154,7 +263,7 @@ const createAiService = ({
     return { ok: true, reply }
   }
 
-  return { getConfig, saveConfig, saveApiKey, chat, testConnection }
+  return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, testConnection }
 }
 
 module.exports = {
@@ -162,6 +271,7 @@ module.exports = {
   DEFAULT_MAX_CONVERSATIONS,
   DEFAULT_MAX_HISTORY_MESSAGES,
   DEFAULT_REQUEST_TIMEOUT_MS,
+  MAX_CONVERSATION_ID_CHARS,
   MAX_USER_MESSAGE_CHARS,
   createAiService
 }

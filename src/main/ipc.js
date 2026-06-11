@@ -8,6 +8,7 @@
  */
 const { ipcMain, BrowserWindow, app, dialog } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { findSemanticAction } = require('./services/ai-action-orchestrator')
 const { createLocalHttpToken } = require('./services/local-http-service')
 
 const createPetRendererSettings = (settings = {}) => ({
@@ -45,6 +46,16 @@ const reloadAndSendAnimations = (getPetWindow, petService) => {
   const animations = petService.reloadAnimations()
   sendToPetWindow(getPetWindow, IPC.PET_ANIMATIONS_CHANGED, animations)
   return animations
+}
+
+const triggerAiSemanticAction = (petService, reply) => {
+  const action = findSemanticAction(reply, petService.getAnimations()?.actions || [])
+  if (!action) return null
+  try {
+    return { ...action, ...petService.playAction({ actionId: action.actionId, source: 'ai' }) }
+  } catch (error) {
+    return { ...action, error: error.message }
+  }
 }
 
 /**
@@ -196,10 +207,15 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
 
   ipcMain.handle(IPC.AI_TEST_CONNECTION, () => aiService.testConnection())
 
+  ipcMain.handle(IPC.AI_GET_CONVERSATION, (_event, payload) => {
+    return aiService.getConversation(payload?.conversationId || payload)
+  })
+
   ipcMain.handle(IPC.AI_CHAT, async (_event, payload) => {
     const result = await aiService.chat(payload)
     petService.say({ text: result.reply, source: 'ai' })
-    return result
+    const action = triggerAiSemanticAction(petService, result.reply)
+    return action ? { ...result, action } : result
   })
 
   ipcMain.handle(IPC.PLUGINS_LIST, () => pluginService.listPlugins())
@@ -259,4 +275,4 @@ const registerIpcHandlers = ({ getPetWindow, petService, aiService, pluginServic
   })
 }
 
-module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers }
+module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers, triggerAiSemanticAction }

@@ -167,7 +167,7 @@ test('ai service keeps message history by conversation id', async () => {
   })
 
   await service.chat({ conversationId: 'control-center', message: 'Hi' })
-  await service.chat({ conversationId: 'control-center', message: 'Again' })
+  const result = await service.chat({ conversationId: 'control-center', message: 'Again' })
 
   assert.deepEqual(requests[1].messages, [
     { role: 'system', content: 'Stay cheerful.' },
@@ -175,6 +175,49 @@ test('ai service keeps message history by conversation id', async () => {
     { role: 'assistant', content: 'first reply' },
     { role: 'user', content: 'Again' }
   ])
+  assert.deepEqual(result.messages, [
+    { role: 'user', content: 'Hi' },
+    { role: 'assistant', content: 'first reply' },
+    { role: 'user', content: 'Again' },
+    { role: 'assistant', content: 'second reply' }
+  ])
+})
+
+test('ai service persists conversation history in settings', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://example.test/v1',
+      model: 'example-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: 'Stay cheerful.',
+      hasApiKey: true,
+      unexpectedField: 'ignore me'
+    }
+  })
+  const createService = (reply) => createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: reply } }] })
+    })
+  })
+
+  await createService('stored reply').chat({ conversationId: 'control-center', message: 'Hi' })
+  const reloadedService = createService('next reply')
+
+  assert.deepEqual(reloadedService.getConversation('control-center'), [
+    { role: 'user', content: 'Hi' },
+    { role: 'assistant', content: 'stored reply' }
+  ])
+  assert.equal(Object.hasOwn(reloadedService.getConfig(), 'conversations'), false)
+  assert.equal(Object.hasOwn(settingsService.get().ai, 'hasApiKey'), false)
+  assert.equal(Object.hasOwn(settingsService.get().ai, 'unexpectedField'), false)
 })
 
 test('ai service trims conversation history by message count', async () => {
@@ -215,6 +258,200 @@ test('ai service trims conversation history by message count', async () => {
     { role: 'user', content: 'two' },
     { role: 'assistant', content: 'reply 2' },
     { role: 'user', content: 'three' }
+  ])
+})
+
+test('ai service evicts old conversations by configured limit', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://example.test/v1',
+      model: 'example-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: ''
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'reply' } }] })
+    }),
+    maxConversations: 2
+  })
+
+  await service.chat({ conversationId: 'one', message: '1' })
+  await service.chat({ conversationId: 'two', message: '2' })
+  await service.chat({ conversationId: 'three', message: '3' })
+
+  assert.deepEqual(Object.keys(settingsService.get().ai.conversations), ['two', 'three'])
+  assert.deepEqual(service.getConversation('one'), [])
+})
+
+test('ai service rejects overlong conversation ids instead of truncating them', async () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'reply' } }] })
+    })
+  })
+
+  await assert.rejects(
+    () => service.chat({ conversationId: 'x'.repeat(161), message: 'Hi' }),
+    /conversation id is too long/
+  )
+})
+
+test('ai service serializes concurrent chats for the same conversation', async () => {
+  const requests = []
+  const resolvers = []
+  const waitForRequestCount = async (count) => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (requests.length >= count) return
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    assert.equal(requests.length, count)
+  }
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => {
+      const requestIndex = requests.length
+      requests.push(JSON.parse(options.body))
+      return new Promise((resolve) => {
+        resolvers[requestIndex] = () => resolve({
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: `reply ${requestIndex + 1}` } }] })
+        })
+      })
+    }
+  })
+
+  const first = service.chat({ conversationId: 'control-center', message: 'one' })
+  const second = service.chat({ conversationId: 'control-center', message: 'two' })
+
+  await waitForRequestCount(1)
+  assert.equal(requests.length, 1)
+  resolvers[0]()
+  await first
+  assert.equal(requests.length, 1)
+  await waitForRequestCount(2)
+
+  assert.equal(requests.length, 2)
+  assert.deepEqual(requests[1].messages, [
+    { role: 'user', content: 'one' },
+    { role: 'assistant', content: 'reply 1' },
+    { role: 'user', content: 'two' }
+  ])
+  resolvers[1]()
+
+  assert.deepEqual((await second).messages, [
+    { role: 'user', content: 'one' },
+    { role: 'assistant', content: 'reply 1' },
+    { role: 'user', content: 'two' },
+    { role: 'assistant', content: 'reply 2' }
+  ])
+})
+
+test('ai service saveConfig preserves persisted conversations', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://example.test/v1',
+      model: 'example-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      conversations: {
+        existing: [
+          { role: 'user', content: 'Hi' },
+          { role: 'assistant', content: 'Hello' }
+        ]
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  service.saveConfig({ model: 'next-model', hasApiKey: true })
+
+  assert.deepEqual(settingsService.get().ai.conversations, {
+    existing: [
+      { role: 'user', content: 'Hi' },
+      { role: 'assistant', content: 'Hello' }
+    ]
+  })
+  assert.equal(Object.hasOwn(settingsService.get().ai, 'hasApiKey'), false)
+})
+
+test('ai service sanitizes stored conversations and returns clones', () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        conversations: {
+          ' control-center ': [
+            { role: 'system', content: 'do not return' },
+            { role: 'user', content: ' Hi ' },
+            { role: 'assistant', content: 'Hello', ignored: true },
+            { role: 'assistant', content: '' }
+          ]
+        }
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    }
+  })
+
+  const messages = service.getConversation('control-center')
+  messages[0].content = 'mutated'
+
+  assert.deepEqual(service.getConversation('control-center'), [
+    { role: 'user', content: 'Hi' },
+    { role: 'assistant', content: 'Hello' }
   ])
 })
 

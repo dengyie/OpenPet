@@ -31,6 +31,7 @@ const IPC = {
   AI_SAVE_CONFIG: 'ai:save-config',
   AI_SAVE_API_KEY: 'ai:save-api-key',
   AI_TEST_CONNECTION: 'ai:test-connection',
+  AI_GET_CONVERSATION: 'ai:get-conversation',
   AI_CHAT: 'ai:chat',
   PLUGINS_LIST: 'plugins:list',
   PLUGINS_SET_ENABLED: 'plugins:set-enabled',

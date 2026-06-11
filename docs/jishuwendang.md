@@ -11,7 +11,7 @@
 | Electron | ^42.4.0 | 桌面窗口框架 |
 | React + Vite | ^19.2 / ^8.0 | Control Center UI |
 | sharp | ^0.34.5 | 精灵图合成（开发时） |
-| Node 原生 test runner | — | 测试框架（94 个测试） |
+| Node 原生 test runner | — | 测试框架（106 个测试） |
 | HTML / CSS / JS | — | 宠物窗口渲染层 UI 与动画 |
 
 ---
@@ -55,7 +55,8 @@ ibot/
 │   │       ├── action-service.js  # 动作配置读取,封装 pet pack 转换
 │   │       ├── action-import-service.js  # 动作帧文件夹导入、配置更新、删除
 │   │       ├── sprite-generator.js    # 精灵图生成 + 帧文件夹检验
-│   │       ├── ai-service.js      # provider-agnostic AI 聊天
+│   │       ├── ai-service.js      # provider-agnostic AI 聊天与持久会话
+│   │       ├── ai-action-orchestrator.js # AI 回复语义匹配动作
 │   │       ├── secret-service.js  # API Key 安全存储（0600 权限）
 │   │       ├── plugin-service.js  # 插件发现、启用/禁用、配置保存、私有存储、命令运行、隔离 runner、运行日志
 │   │       ├── local-http-service.js  # 本地 loopback HTTP API
@@ -69,7 +70,7 @@ ibot/
 │   └── shared/
 │       └── ipc-channels.js        # 所有 IPC 通道名常量（主进程侧）
 ├── tests/                         # Node 原生 test runner 测试
-│   ├── services/                  # 10 个 service 测试文件
+│   ├── services/                  # 11 个 service 测试文件
 │   ├── pet-pack/                  # 3 个 pet-pack 测试文件
 │   └── plugins/                   # 1 个 plugin 测试文件
 ├── cat_anime/
@@ -138,7 +139,7 @@ ibot/
 1. **PetService 是唯一状态源** — 所有 pet 操作（say/action/event）必须经过 PetService，渲染层只负责显示
 2. **API Key 隔离** — 存储在 secrets.json（0600 权限），renderer 和插件不可见明文
 3. **Control Center 内置** — 通过 Electron IPC 调用主进程 service，不通过网络暴露
-4. **插件权限白名单** — 第三方 JS 暂不执行，只支持官方内置插件
+4. **插件权限白名单** — 第三方 JS 只通过隔离 runner 与受限 SDK 执行，不能访问 Node/Electron
 5. **精灵图自动生成** — `npm run generate-sprites` 或通过 action-import-service 在 UI 中导入新动作帧文件夹
 
 ---
@@ -213,6 +214,7 @@ EventBus → SettingsService → ActionService → PetService
 | `ai:save-config` | CC→主 | invoke | 保存 AI 配置 |
 | `ai:save-api-key` | CC→主 | invoke | 保存 API Key 到 secret store |
 | `ai:test-connection` | CC→主 | invoke | 测试 AI provider 连接 |
+| `ai:get-conversation` | CC→主 | invoke | 读取指定 AI 会话历史 |
 | `ai:chat` | CC→主 | invoke | 发送聊天消息 |
 
 **插件 & 服务通道：**
@@ -269,7 +271,9 @@ React + Vite 构建的 Web 应用，嵌入 Electron BrowserWindow（900×640px, 
 
 **ActionService：** 动作配置读取，封装 pet pack 到旧动画配置的转换。
 
-**AiService：** provider-agnostic AI 聊天，OpenAI-compatible 实现。请求带 timeout，conversation history 有上限。
+**AiService：** provider-agnostic AI 聊天，OpenAI-compatible 实现。请求带 timeout，conversation history 持久化在 `settings.ai.conversations`，并限制单会话历史与总会话数。AI 配置接口不返回 conversation history。
+
+**AI Action Orchestrator：** 对 AI 回复做轻量语义匹配，按动作 id/label/kind 触发 `PetService.playAction()`；默认忽略 idle，避免普通回复误触发待机动作。
 
 **SecretService（58 行）：** API Key 安全存储（0600 权限），renderer 不可见明文。
 
@@ -299,7 +303,7 @@ React + Vite 构建的 Web 应用，嵌入 Electron BrowserWindow（900×640px, 
 | `contextIsolation: true` | 安全最佳实践，防止渲染进程直接访问 Node API |
 | PetService 是唯一状态源 | 渲染层只负责显示，AI/插件/HTTP 都通过 PetService 操作宠物 |
 | API Key 存储在 secrets.json（0600） | renderer 和插件不可见明文 |
-| 插件权限白名单 | 第三方 JS 暂不执行，只支持官方内置插件 |
+| 插件权限白名单 | 第三方 JS 只通过隔离 runner 与受限 SDK 执行，不能访问 Node/Electron |
 | Control Center 内置而非独立进程 | UI 操作通过 Electron IPC 走主进程 service，不经过网络 |
 
 ---
@@ -331,6 +335,6 @@ npm start                     # 构建 Control Center + 启动 Electron
 npm run dev:control-center    # 仅启动 Control Center dev server（热更新）
 npm run build:control-center  # 仅构建 Control Center
 npm run generate-sprites      # 重新生成精灵图
-npm test                      # 运行测试（79 个测试）
+npm test                      # 运行测试（106 个测试）
 npm run check:syntax          # 语法检查
 ```

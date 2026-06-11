@@ -103,6 +103,7 @@ const api = window.controlCenterAPI || {
   saveAiConfig: async (config) => ({ ...defaultAiConfig, ...config }),
   saveAiApiKey: async () => ({ apiKeyRef: 'ai.default', hasApiKey: true }),
   testAiConnection: async () => ({ ok: true, reply: 'ok' }),
+  getAiConversation: async () => [],
   chat: async ({ message }) => ({ reply: `Echo: ${message}` }),
   getPlugins: async () => [],
   setPluginEnabled: async (pluginId, enabled) => ({ id: pluginId, enabled }),
@@ -128,6 +129,9 @@ const cloneActionsConfig = (config) => ({
   ...config,
   actions: Array.isArray(config?.actions) ? config.actions : []
 })
+const cloneChatMessages = (messages) => (Array.isArray(messages) ? messages : [])
+  .filter((message) => ['user', 'assistant'].includes(message?.role) && typeof message.content === 'string')
+  .map((message) => ({ role: message.role, content: message.content }))
 
 const formatPluginLogTime = (timestamp) => {
   if (!timestamp) return ''
@@ -923,10 +927,11 @@ function App() {
       api.getSettings(),
       api.getActions(),
       api.getAiConfig(),
+      api.getAiConversation('control-center'),
       api.getPlugins(),
       api.getPluginLogs(pluginLogFilters),
       api.getServiceStatus()
-    ]).then(([loadedSettings, loadedActions, loadedAiConfig, loadedPlugins, loadedPluginLogs, loadedServiceStatus]) => {
+    ]).then(([loadedSettings, loadedActions, loadedAiConfig, loadedChatMessages, loadedPlugins, loadedPluginLogs, loadedServiceStatus]) => {
       if (!mounted) return
       const nextSettings = cloneSettings(loadedSettings)
       originalRef.current = nextSettings
@@ -934,6 +939,7 @@ function App() {
       setOriginalSettings(nextSettings)
       setActionsConfig(cloneActionsConfig(loadedActions))
       setAiConfig(cloneAiConfig(loadedAiConfig))
+      setChatMessages(cloneChatMessages(loadedChatMessages))
       setPlugins(loadedPlugins)
       setPluginLogs(Array.isArray(loadedPluginLogs) ? loadedPluginLogs : [])
       setServiceStatus(cloneServiceStatus(loadedServiceStatus))
@@ -1176,7 +1182,14 @@ function App() {
             setAiStatus('')
             try {
               const result = await api.chat({ conversationId: 'control-center', message })
-              setChatMessages([...nextMessages, { role: 'assistant', content: result.reply }])
+              setChatMessages(Array.isArray(result.messages)
+                ? cloneChatMessages(result.messages)
+                : [...nextMessages, { role: 'assistant', content: result.reply }])
+              if (result.action?.actionId) {
+                setAiStatus(result.action.error
+                  ? `动作触发失败：${result.action.error}`
+                  : `已触发动作：${result.action.label || result.action.actionId}`)
+              }
             } catch (error) {
               setAiStatus(error.message || '发送失败')
             } finally {

@@ -12,6 +12,8 @@ const { app } = require('electron')
 // 设置保存在 Electron 用户数据目录，卸载重装后仍然保留。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json')
 
+const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+
 // 所有可配置项的默认值。新增设置项时只需在此处添加。
 const defaultSettings = {
   scale: 1.0,            // 宠物缩放比例（1.0 = 100%）
@@ -25,7 +27,8 @@ const defaultSettings = {
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
     apiKeyRef: 'ai.default',
-    systemPrompt: 'You are a friendly desktop pet companion.'
+    systemPrompt: 'You are a friendly desktop pet companion.',
+    conversations: {}
   },
   plugins: {
     enabled: {
@@ -48,7 +51,10 @@ const mergeSettings = (settings = {}) => ({
   ...settings,
   ai: {
     ...defaultSettings.ai,
-    ...(settings.ai || {})
+    ...(isPlainObject(settings.ai) ? settings.ai : {}),
+    conversations: isPlainObject(settings.ai?.conversations)
+      ? settings.ai.conversations
+      : defaultSettings.ai.conversations
   },
   plugins: {
     ...defaultSettings.plugins,
