@@ -16,6 +16,16 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'GitHub Release tag to upload assets to'
+        required: true
+        default: 'v1.0.0'
+      checkout_ref:
+        description: 'Git ref to build from'
+        required: true
+        default: 'v1.0.0'
 
 jobs:
   test-build:
@@ -44,8 +54,8 @@ jobs:
       - name: Pack unsigned app
         run: npm run pack
 
-  signed-release:
-    if: github.event_name == 'push'
+  release:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     permissions:
       contents: write
@@ -53,6 +63,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.checkout_ref || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -69,7 +81,20 @@ jobs:
       - name: Check syntax
         run: npm run check:syntax
 
-      - name: Validate signing secrets
+      - name: Resolve release metadata
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "tag=$INPUT_RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Inspect signing secrets
+        id: signing
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -77,13 +102,23 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          test -n "$CSC_LINK" || { echo "CSC_LINK is required for tag releases"; exit 1; }
-          test -n "$CSC_KEY_PASSWORD" || { echo "CSC_KEY_PASSWORD is required for tag releases"; exit 1; }
-          test -n "$APPLE_ID" || { echo "APPLE_ID is required for tag releases"; exit 1; }
-          test -n "$APPLE_APP_SPECIFIC_PASSWORD" || { echo "APPLE_APP_SPECIFIC_PASSWORD is required for tag releases"; exit 1; }
-          test -n "$APPLE_TEAM_ID" || { echo "APPLE_TEAM_ID is required for tag releases"; exit 1; }
+          missing=""
+          test -n "$CSC_LINK" || missing="$missing CSC_LINK"
+          test -n "$CSC_KEY_PASSWORD" || missing="$missing CSC_KEY_PASSWORD"
+          test -n "$APPLE_ID" || missing="$missing APPLE_ID"
+          test -n "$APPLE_APP_SPECIFIC_PASSWORD" || missing="$missing APPLE_APP_SPECIFIC_PASSWORD"
+          test -n "$APPLE_TEAM_ID" || missing="$missing APPLE_TEAM_ID"
+
+          if [ -z "$missing" ]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+            echo "All signing and notarization secrets are present. Building a signed macOS release."
+          else
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+            echo "::notice::Missing signing secrets:$missing. Building an unsigned macOS release."
+          fi
 
       - name: Build signed distribution
+        if: steps.signing.outputs.mode == 'signed'
         run: npm run dist -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,20 +128,28 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Build unsigned distribution
+        if: steps.signing.outputs.mode == 'unsigned'
+        run: npm run dist -- --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release.outputs.tag }}
           files: |
             release/*.dmg
             release/*.zip
             release/*.blockmap
             release/latest*.yml
-          generate_release_notes: true
+          overwrite_files: true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ibot-macos-${{ github.ref_name }}
+          name: ibot-macos-${{ steps.release.outputs.tag }}
           path: |
             release/*.dmg
             release/*.zip
