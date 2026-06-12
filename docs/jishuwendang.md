@@ -192,7 +192,7 @@ EventBus → SettingsService → ActionService → PetService
 
 **屏幕边界限制：** 拖拽和散步时,窗口坐标被限制在当前屏幕工作区内。
 
-**设置持久化：** 保存在 `app.getPath('userData')/settings.json`，包含 scale、walkSpeed、walkDuration、bubbleDuration、autoStart、ai、plugins、localHttp 配置。
+**设置持久化：** OpenPet 启动时会将 Electron `userData` 固定到旧版 `app.getPath('appData')/ibot` 目录，确保改名升级后继续读取原有数据。设置保存在该目录下的 `settings.json`，包含 scale、walkSpeed、walkDuration、bubbleDuration、autoStart、ai、plugins、localHttp 配置。
 
 ### 4.2 IPC 通道一览
 

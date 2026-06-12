@@ -29,7 +29,7 @@
 | 指标 | 结果 | 说明 |
 |------|------|------|
 | **功能完整性** | 95% | 所有承诺功能已实现 |
-| **测试覆盖** | 167/167 ✅ | service 层全覆盖 |
+| **测试覆盖** | 171/171 ✅ | service 层全覆盖 |
 | **架构质量** | ⭐⭐⭐⭐⭐ | 分层清晰、安全可靠 |
 | **代码质量** | ⭐⭐⭐⭐⭐ | 模块化彻底、职责单一 |
 | **文档完整性** | ⭐⭐⭐⭐☆ | 技术文档完整，缺用户文档 |
@@ -112,6 +112,7 @@ control-center-preload.js       # Control Center preload
 | `ipc.js` | 所有 IPC handler 注册（依赖注入） |
 | `window.js` | 窗口创建（宠物窗口 + Control Center） |
 | `screen.js` | 屏幕工作区钳制 |
+| `user-data-path.js` | OpenPet 改名兼容：在设置与 service 读取前固定使用旧版 `ibot` userData 目录 |
 | `settings.js` | 设置默认值、merge、磁盘路径与 macOS 登录项 helper |
 
 ### Control Center (`src/control-center/`)
@@ -198,6 +199,7 @@ Control Center 页面（Tab 式导航）：
 - 本地 HTTP 访问日志持久化在 `settings.localHttp.logs`，不记录 token；Control Center 可刷新、导出、清空。
 - MCP bridge 暴露在 `POST /mcp`，需 token + `Mcp-Session-Id`；token 轮换会清空 MCP session。
 - `pet.json` pet pack 使用严格 schema：sprite path 必须是安全相对路径，frameCount/frameMs/frameWidth/frameHeight 必须是有效正整数。
+- OpenPet 改名后仍将 Electron `userData` 固定到旧版 `app.getPath('appData')/ibot` 目录，保证升级用户保留 `settings.json`、`secrets.json`、插件、Pet packs 与本地服务日志。
 - 用户安装的 Pet pack 存储在 `app.getPath('userData')/pet-packs/<pack-id>/`；内置 legacy cat 使用保留 id `legacy-cat`，不能删除或覆盖。
 - legacy `cat_anime/animations.json` 会先补兼容默认值再进入严格 schema；缺尺寸的旧动作可加载，但应通过 `npm run generate-sprites` 或 Control Center 导入流程恢复准确帧尺寸。
 

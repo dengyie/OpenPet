@@ -10,10 +10,10 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
-const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/main/settings')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
 const { applyWindowScale, createWindow, createSettingsWindow } = require('./src/main/window')
 const { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers } = require('./src/main/ipc')
+const { configureUserDataPath } = require('./src/main/user-data-path')
 const { createEventBus } = require('./src/main/services/event-bus')
 const { createSettingsService } = require('./src/main/services/settings-service')
 const { createActionService } = require('./src/main/services/action-service')
@@ -49,6 +49,10 @@ if (!gotTheLock) {
 
 // ── 应用就绪 ──
 app.whenReady().then(() => {
+  // Keep the pre-OpenPet userData directory so upgrades retain settings,
+  // secrets, installed plugins, pet packs, and local service state.
+  configureUserDataPath({ app })
+  const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/main/settings')
   const eventBus = createEventBus()
   const settingsService = createSettingsService({
     eventBus,
