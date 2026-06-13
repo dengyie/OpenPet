@@ -28,13 +28,20 @@
 
 目标：把 release workflow 从 macOS-only 扩展成 macOS + Windows。
 
-计划：
+交付：
 
-- PR 路径增加 Windows test/build job。
-- tag / manual release 路径增加 `windows-latest` release job。
+- PR 路径使用 macOS + Windows matrix，分别执行 test、syntax 和 unsigned pack。
+- tag / manual release 路径拆成 `release-macos` 与 `release-windows` 两个 job。
 - Windows job 上传 `.exe`、`.zip`、`.blockmap`、`latest.yml`。
 - macOS job 继续上传 `.dmg`、`.zip`、`.blockmap`、`latest-mac.yml`。
-- artifact name 必须带平台，避免 About 页和手工下载混淆。
+- `package.json build.artifactName` 统一使用 `${productName}-${version}-${os}-${arch}.${ext}`，避免 macOS ZIP 和 Windows ZIP 重名。
+
+验收：
+
+- `.github/workflows/release.yml` 可被 YAML parser 解析。
+- macOS 本机 `npx electron-builder --win --x64 --dir --publish never` 仍可生成 Windows unpacked 包。
+- `npm run pack` 仍可生成 macOS 目录包。
+- `npm run check:syntax` 和 `npm test` 通过。
 
 ### Phase 8.3：Windows 签名策略与发布清单
 
@@ -76,3 +83,22 @@
 - Windows 代码签名尚未配置。
 - `.github/workflows/release.yml` 仍是 macOS-only，需要 Phase 8.2 处理。
 - About/update 仍需后续验证平台 artifact 展示。
+
+## 3. Phase 8.2 实施记录
+
+本阶段把 CI/release 从 macOS-only 推进到双平台产物，但 Windows 仍默认 unsigned。这样可以先建立可下载、可审查的 Windows artifact，再在后续阶段补代码签名与真实机器冒烟。
+
+实现决策：
+
+- PR workflow 改为 matrix：`macos-latest` 执行 `npm run pack`，`windows-latest` 执行 `electron-builder --win --x64 --dir --publish never`。
+- release workflow 拆为 `release-macos` 与 `release-windows`，降低签名条件互相影响的风险。
+- macOS release 保留 Apple signing / notarization secret 检查，缺少 secrets 时继续生成 unsigned macOS prerelease artifact。
+- Windows release 使用 unsigned build，并显式关闭 code signing auto discovery。
+- artifact 命名增加 `${os}-${arch}`，避免双平台 ZIP 与 blockmap 混淆。
+
+剩余风险：
+
+- Windows release job 需要 GitHub Actions 实跑验证。
+- Windows 代码签名和 SmartScreen reputation 尚未解决。
+- About/update asset 展示目前仍只做通用 install asset 摘要，后续需要按当前平台筛选。
+- 真实 Windows 安装、卸载、透明窗口与 plugin runner 冒烟仍未完成。
