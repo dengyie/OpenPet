@@ -4,6 +4,7 @@
 
 ## 1. Preflight
 
+- Confirm `CHANGELOG.md` has an entry for the release tag.
 - Confirm `npm test` passes.
 - Confirm `npm run check:syntax` passes.
 - Confirm `npm run pack` creates an unsigned directory package.
@@ -33,11 +34,13 @@ The app must continue to build unsigned local packages when these variables are 
 
 ## 4. Release Build
 
-- Create a tag named `vX.Y.Z`.
+- Create a tag named `vX.Y.Z` or `vX.Y.Z-rc.N`.
 - Let GitHub Actions run the release workflow from the tag.
 - Download the generated DMG/ZIP artifacts.
 - Verify the app launches and shows the pet window.
 - Open Control Center and smoke test Pet, Actions, AI, Plugins, Service, and About.
+
+Current RC target: `v1.0.1-rc.1`.
 
 ## 5. macOS Verification
 

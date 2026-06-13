@@ -67,3 +67,5 @@ Blocklist checks are applied in four places:
 - pet pack import/activate
 
 `sha256` may match either the downloaded package hash or the installed content hash, depending on how the item entered the system.
+
+`openpetApiVersion` is the preferred compatibility field for plugin catalog entries. Existing `ibotApiVersion` metadata is still normalized by `CatalogService` for legacy catalog compatibility.

@@ -23,7 +23,9 @@
 - Phase 3 Control Center：已完成落地。
 - Phase 4 AI chat：已完成落地。
 - Phase 5 Plugin runtime：已完成落地。
-- Phase 6 Local HTTP/MCP：HTTP 基础已完成落地，MCP bridge 后置。
+- Phase 6 Local HTTP/MCP：已完成落地。
+- Phase 7 Ecosystem catalog/blocklist：已完成落地。
+- v1.0.1-rc.1：OpenPet 改名、GitHub 仓库迁移、旧 userData 路径兼容与公开 API 命名兼容已完成。
 
 Phase 1 已新增：
 

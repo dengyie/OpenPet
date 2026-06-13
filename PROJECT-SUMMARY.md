@@ -1,9 +1,9 @@
 # OpenPet 项目完整总结
 
-**评估日期**: 2026-06-12  
-**分支**: `codex/productization-completion`  
-**版本**: v1.0.0  
-**状态**: ✅ 可立即发布
+**评估日期**: 2026-06-13
+**分支**: `main`
+**版本**: v1.0.1-rc.1
+**状态**: ✅ RC 可发布，v1.0 产品化基线已完成
 
 ---
 
@@ -16,7 +16,7 @@ OpenPet 是一个从单体桌宠演化为**可扩展 pet runtime 平台**的 Ele
 | 指标 | 数值 | 状态 |
 |------|------|------|
 | **代码质量** | 95/100 | ✅ 优秀 |
-| **测试覆盖** | 167/167 通过 | ✅ 100% |
+| **测试覆盖** | 171/171 通过 | ✅ 100% |
 | **测试文件** | 22 个 | ✅ 完整 |
 | **文档完整性** | 15+ 篇 | ✅ 完整 |
 | **提交历史** | 8 个 phase commits | ✅ 清晰 |
@@ -102,6 +102,16 @@ OpenPet 是一个从单体桌宠演化为**可扩展 pet runtime 平台**的 Ele
 
 **提交**: `92d7494 docs: add bilingual README and project status review`
 
+### 🔖 v1.0.1-rc.1: OpenPet 改名与升级兼容
+- ✅ 应用、包名、窗口标题、文档与 GitHub 仓库迁移至 OpenPet / openpet
+- ✅ GitHub 仓库改名为 `dengyie/openpet`
+- ✅ 保留旧版 `appData/ibot` userData 路径，升级用户继续读取 settings、secrets、插件、Pet packs 和本地服务日志
+- ✅ 新增 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`
+- ✅ 保留 `ibot.*`、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` legacy alias
+- ✅ `npm test` 与 `npm run check:syntax` 通过
+
+**提交范围**: `7100194` → `d48b3d0`
+
 ---
 
 ## 🏗️ 架构亮点
@@ -134,7 +144,7 @@ BehaviorOrchestrator  CatalogService  McpTransport
 ## 🧪 测试覆盖
 
 ### 测试统计
-- **总测试数**: 167 个
+- **总测试数**: 171 个
 - **测试文件**: 22 个
 - **通过率**: 100%
 - **执行时间**: ~1.1 秒
@@ -213,7 +223,7 @@ BehaviorOrchestrator  CatalogService  McpTransport
 
 ### ✅ 已完成
 - [x] 所有 Phase 1-7 功能实现
-- [x] 167 个测试全部通过
+- [x] 171 个测试全部通过
 - [x] 双语 README（英/中）
 - [x] 完整文档体系
 - [x] GitHub Actions CI/CD
@@ -230,15 +240,16 @@ BehaviorOrchestrator  CatalogService  McpTransport
 ### 🎉 可立即执行的发布步骤
 
 ```bash
-# 1. 推送分支
-git push origin codex/productization-completion
+# 1. 确认 main 与远端同步
+git status -sb --ahead-behind
+git push origin main
 
-# 2. 创建 PR 到 main
-gh pr create --title "Release v1.0.0" --body "See docs/project-status-review.md"
+# 2. RC tag 已存在时可直接触发 release workflow
+git tag -l v1.0.1-rc.1
 
-# 3. 合并后创建 tag
-git tag -a v1.0.0 -m "Release v1.0.0 - Full productization complete"
-git push origin v1.0.0
+# 3. 正式版从 RC 提升时创建最终 tag
+git tag -a v1.0.1 -m "Release v1.0.1 - OpenPet rename and upgrade compatibility"
+git push origin v1.0.1
 
 # 4. GitHub Actions 自动构建和发布
 # 无需手动操作，CI/CD 会自动打包并创建 Release
@@ -271,7 +282,7 @@ git push origin v1.0.0
 
 ### 技术亮点
 1. **清晰的 Service 层架构** - 19 个职责单一的 service
-2. **完整的测试覆盖** - 167 个测试，100% 通过
+2. **完整的测试覆盖** - 171 个测试，100% 通过
 3. **安全的插件沙箱** - Node permission model + VM 隔离
 4. **结构化 AI 编排** - 从关键词到 tool-call 的升级
 5. **生态治理闭环** - Catalog + Blocklist 双保险
@@ -296,16 +307,16 @@ git push origin v1.0.0
 OpenPet 项目已完成从单体桌宠到可扩展平台的**完整产品化重构**。
 
 - ✅ **功能完整度**: 95%（所有 7 大承诺功能已实现）
-- ✅ **测试覆盖**: 167/167 通过（100%）
+- ✅ **测试覆盖**: 171/171 通过（100%）
 - ✅ **架构质量**: ⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - ✅ **文档完整性**: ⭐⭐⭐⭐⭐（双语 README + 15+ 篇文档）
-- ✅ **可发布性**: ✅ **立即可发布 v1.0**
+- ✅ **可发布性**: ✅ **v1.0.1-rc.1 可发布**
 
-**建议**: 立即发布 v1.0 正式版本，剩余 5% 缺口（前端测试、示例插件）规划至 v1.1。
+**建议**: 先发布 v1.0.1 RC 验证 OpenPet 改名升级路径；确认无回归后提升为 v1.0.1 正式版，剩余 5% 缺口（前端测试、示例插件）规划至 v1.1。
 
 ---
 
-**项目评估人**: Codex AI  
-**评估时间**: 2026-06-12  
-**评估分支**: `codex/productization-completion`  
+**项目评估人**: Codex AI
+**评估时间**: 2026-06-13
+**评估分支**: `main`
 **最终评分**: **95/100** ⭐⭐⭐⭐⭐

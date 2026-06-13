@@ -1,6 +1,6 @@
 # OpenPet MCP Compatibility Matrix
 
-> Last updated: 2026-06-12
+> Last updated: 2026-06-13
 
 | Client | Transport | Auth | Status | Notes |
 |--------|-----------|------|--------|-------|
@@ -19,6 +19,7 @@
 - Token rotation and Service-tab session revocation.
 - Tool argument schema validation.
 - MCP-specific access log paths such as `/mcp/tools/call/openpet.say`.
+- Legacy `ibot.*` tool names are accepted as aliases for OpenPet upgrade compatibility.
 
 ## Known Gaps
 

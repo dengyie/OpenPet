@@ -78,6 +78,8 @@ The service responds with a short `text/event-stream` endpoint event.
 - `openpet.play_action`: plays an action by id.
 - `openpet.set_event`: sets a pet event with an optional message.
 
+Legacy `ibot.*` tool names remain accepted for upgrade compatibility, but new integrations should use `openpet.*`.
+
 ## Security Notes
 
 - The service binds only to loopback hosts.

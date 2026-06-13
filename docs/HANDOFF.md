@@ -1,8 +1,8 @@
 # OpenPet 项目交接文档
 
-> 最后更新：2026-06-12 | 分支：`codex/productization-completion`  
-> 当前状态：平台重构与产品化 Phase 1-7 已完成，生态 catalog / blocklist 闭环已接入当前分支  
-> **项目评估：95/100 分，建议立即发布 v1.0**（详见 [project-status-review.md](./project-status-review.md)）
+> 最后更新：2026-06-13 | 分支：`main`
+> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容
+> **项目评估：95/100 分，建议发布 v1.0.1 RC 后提升正式版**（详见 [project-status-review.md](./project-status-review.md)）
 
 ---
 
@@ -32,15 +32,15 @@
 | **测试覆盖** | 171/171 ✅ | service 层全覆盖 |
 | **架构质量** | ⭐⭐⭐⭐⭐ | 分层清晰、安全可靠 |
 | **代码质量** | ⭐⭐⭐⭐⭐ | 模块化彻底、职责单一 |
-| **文档完整性** | ⭐⭐⭐⭐☆ | 技术文档完整，缺用户文档 |
-| **可发布性** | ✅ 立即可发布 | v1.0 已就绪 |
+| **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
+| **可发布性** | ✅ RC 可发布 | v1.0.1-rc.1 已就绪 |
 
 ---
 
 ## 测试与验收
 
 ```bash
-npm test                  # 167 tests, all pass
+npm test                  # 171 tests, all pass
 npm run build:control-center  # Vite build pass
 npm run generate-sprites  # CLI works
 npm run check:syntax      # all JS syntax pass
@@ -208,6 +208,8 @@ Control Center 页面（Tab 式导航）：
 ## 最近变更
 
 ```
+CHANGELOG.md                              # 版本记录，含 v1.0.1-rc.1 OpenPet 改名与兼容说明
+src/main/user-data-path.js                # OpenPet 改名后固定使用旧版 ibot userData 路径
 catalog/openpet-catalog.json                # 内置生态 catalog 元数据
 src/main/services/catalog-service.js      # catalog 加载、下载 hash 校验、安装审查流桥接
 src/main/services/ecosystem-policy.js     # pluginId / packId / sha256 blocklist 策略
@@ -287,7 +289,7 @@ npm start                    # 构建 Control Center + 启动 Electron
 npm run dev:control-center   # http://127.0.0.1:5173
 
 # 测试
-npm test                     # 167 tests
+npm test                     # 171 tests
 
 # 精灵图生成
 npm run generate-sprites     # 扫描 cat_anime/flames/ 生成 sprites/
@@ -301,7 +303,7 @@ npm run pack                 # 构建 Control Center 并生成 release/mac-arm64
 # 提交
 git add -A
 git commit -m "feat: ..."
-git push origin codex/productization-completion
+git push origin main
 ```
 
 ### 测试添加流程

@@ -21,11 +21,11 @@ on:
       release_tag:
         description: 'GitHub Release tag to upload assets to'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.0.1-rc.1'
       checkout_ref:
         description: 'Git ref to build from'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.0.1-rc.1'
 
 jobs:
   test-build:
@@ -149,7 +149,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ibot-macos-${{ steps.release.outputs.tag }}
+          name: openpet-macos-${{ steps.release.outputs.tag }}
           path: |
             release/*.dmg
             release/*.zip

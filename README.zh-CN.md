@@ -4,10 +4,10 @@
 
 **一个可扩展、可分发、可运营的 Electron 桌面宠物平台**
 
-[![Tests](https://img.shields.io/badge/tests-167%20passed-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-171%20passed-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
@@ -120,7 +120,7 @@ npm start
 ```bash
 npm start                    # 构建 Control Center + 启动 Electron
 npm run dev:control-center   # Control Center 热重载 (http://127.0.0.1:5173)
-npm test                     # 运行全部测试（167 个测试）
+npm test                     # 运行全部测试（171 个测试）
 npm run check:syntax         # JS 语法验证
 npm run generate-sprites     # 从 cat_anime/flames/ 重新生成 sprite sheets
 npm run pack                 # electron-builder 目录打包
@@ -133,6 +133,7 @@ npm run dist                 # 生成安装包（DMG/ZIP）
 
 ### 主要文档
 
+- **[CHANGELOG.md](./CHANGELOG.md)** - 版本记录与发布说明
 - **[HANDOFF.md](./docs/HANDOFF.md)** - 项目交接文档
 - **[jishuwendang.md](./docs/jishuwendang.md)** - 技术文档（中文）
 - **[productization-roadmap.md](./docs/productization-roadmap.md)** - 产品化路线图
@@ -292,7 +293,7 @@ const response = await ctx.network.fetch(url, options);
 
 ## 🧪 测试
 
-项目使用 **Node 原生 test runner**，当前有 **167 个测试全部通过**。
+项目使用 **Node 原生 test runner**，当前有 **171 个测试全部通过**。
 
 ```bash
 npm test                     # 运行全部测试
@@ -340,7 +341,14 @@ npm run build:control-center # Control Center 构建验证
 
 ## 🗺️ 路线图
 
-### v1.0（当前版本）✅
+### v1.0.1-rc.1（当前版本）✅
+
+- ✅ 项目与仓库改名为 OpenPet
+- ✅ 保留旧版 `appData/ibot` 用户数据兼容
+- ✅ OpenPet MCP/API/插件命名与 legacy alias
+- ✅ RC 验证与版本记录
+
+### v1.0 ✅
 
 - ✅ Control Center 模块化
 - ✅ Pet pack 管理

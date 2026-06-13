@@ -4,10 +4,10 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-167%20passed-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-171%20passed-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
@@ -122,7 +122,7 @@ npm start
 ```bash
 npm start                    # Build Control Center + launch Electron
 npm run dev:control-center   # Control Center hot reload (http://127.0.0.1:5173)
-npm test                     # Run all tests (167 tests)
+npm test                     # Run all tests (171 tests)
 npm run check:syntax         # JS syntax validation
 npm run generate-sprites     # Regenerate sprite sheets from cat_anime/flames/
 npm run pack                 # electron-builder directory package
@@ -135,6 +135,7 @@ npm run dist                 # Generate installer (DMG/ZIP)
 
 ### Main Docs
 
+- **[CHANGELOG.md](./CHANGELOG.md)** - Release notes and version history
 - **[HANDOFF.md](./docs/HANDOFF.md)** - Project handoff document
 - **[jishuwendang.md](./docs/jishuwendang.md)** - Technical documentation (Chinese)
 - **[productization-roadmap.md](./docs/productization-roadmap.md)** - Productization roadmap
@@ -294,7 +295,7 @@ For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evalu
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** with **167 tests all passing**.
+The project uses **Node native test runner** with **171 tests all passing**.
 
 ```bash
 npm test                     # Run all tests
@@ -342,7 +343,14 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 
 ## 🗺️ Roadmap
 
-### v1.0 (Current) ✅
+### v1.0.1-rc.1 (Current) ✅
+
+- ✅ Product/repository rename to OpenPet
+- ✅ Legacy `appData/ibot` user data compatibility
+- ✅ OpenPet MCP/API/plugin naming with legacy aliases
+- ✅ RC validation and release notes
+
+### v1.0 ✅
 
 - ✅ Control Center modularization
 - ✅ Pet pack management

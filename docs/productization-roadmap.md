@@ -1,7 +1,7 @@
 # OpenPet 产品化补齐开发设计文档
 
-> 最后更新：2026-06-12  
-> 基线：`main` 已完成平台骨架、核心服务、Control Center、AI 聊天、插件隔离 runner、本地 HTTP/MCP、electron-builder 打包目录验证。  
+> 最后更新：2026-06-13
+> 基线：`main` 已完成平台骨架、核心服务、Control Center、AI 聊天、插件隔离 runner、本地 HTTP/MCP、electron-builder 打包目录验证。
 > 目标：把 OpenPet 从“可开发、可验证、可推 main”的可扩展桌面宠物平台，补齐为“可分发、可运营、可承载生态”的产品。
 
 ## 1. 当前基线
@@ -15,7 +15,8 @@
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
 - `npm run pack` 已通过目录打包验证，`electron-builder` 基础配置可用。
-- CI / 测试已覆盖 service、pet-pack、plugin、AI、MCP、release、catalog 核心路径，当前验证为 167 个测试。
+- CI / 测试已覆盖 service、pet-pack、plugin、AI、MCP、release、catalog 核心路径，当前验证为 171 个测试。
+- v1.0.1-rc.1 已完成 OpenPet 改名、GitHub 仓库迁移、旧 userData 路径保留与公开 API 命名兼容。
 
 ### 1.2 仍未产品化的深水区
 
@@ -587,14 +588,14 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已在 `codex/productization-completion` 分阶段完成。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、分发流水线、生态 catalog 与本地 blocklist 治理闭环。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。
 
 ### 完成验证
 
 **所有质量门槛已通过**：
 
 ```bash
-npm test                      # ✅ 167/167 tests pass
+npm test                      # ✅ 171/171 tests pass
 npm run check:syntax          # ✅ all JS syntax pass
 npm run build:control-center  # ✅ Vite build pass
 npm run pack                  # ✅ electron-builder pass
@@ -614,21 +615,21 @@ npm run pack                  # ✅ electron-builder pass
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）
-- 测试覆盖：167/167 通过（100%）
+- 测试覆盖：171/171 通过（100%）
 - 架构质量：⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - 代码质量：⭐⭐⭐⭐⭐（模块化彻底、职责单一）
-- 文档完整性：⭐⭐⭐⭐☆（技术文档完整，缺用户文档）
+- 文档完整性：⭐⭐⭐⭐⭐（双语 README、技术文档、版本记录与发布清单完整）
 
 详见 [project-status-review.md](./project-status-review.md) 全面评估报告。
 
 ### 发布建议
 
-**✅ 建议立即发布 v1.0 正式版本**
+**✅ 建议发布 v1.0.1-rc.1**
 
-发布前可选补充（1-2 天）：
-1. 添加 README.md（项目介绍、快速开始、功能特性）
-2. 添加 docs/user-guide.md（用户手册）
-3. 创建 1-2 个示例插件（展示插件开发流程）
+RC 重点验证：
+1. 旧 `appData/ibot` 数据可被 OpenPet 继续读取。
+2. `openpet.*` 新 MCP tool 名可用，旧 `ibot.*` alias 仍可用。
+3. GitHub Releases、About 更新检查和本地 remote 均指向 `dengyie/openpet`。
 
 v1.1 版本规划（可选）：
 1. 前端自动化测试（Playwright）

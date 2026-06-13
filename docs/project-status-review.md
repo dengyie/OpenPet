@@ -1,9 +1,9 @@
 # OpenPet 项目全面评估报告
 
-> 评估时间：2026-06-12  
-> 分支：`codex/productization-completion`  
-> 评估人：项目全面审视  
-> 状态：**Phase 1-7 产品化完成，可发布 v1.0**
+> 评估时间：2026-06-13
+> 分支：`main`
+> 评估人：项目全面审视
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容**
 
 ---
 
@@ -11,7 +11,7 @@
 
 OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，并完成 7 个阶段的产品化工作。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为文档和增强项。
 
-**建议：可以立即发布 v1.0 正式版本。**
+**建议：发布 v1.0.1 RC 验证 OpenPet 改名升级路径，确认无回归后提升为 v1.0.1 正式版。**
 
 ---
 
@@ -32,8 +32,16 @@ OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，并完
 src/main/services/        # 19 个 service，职责清晰
 src/main/pet-pack/        # Pet pack 运行时
 src/main/plugins/         # 插件系统
-tests/                    # 22 个测试文件，167 个测试全过
+tests/                    # 22 个测试文件，171 个测试全过
 ```
+
+### v1.0.1-rc.1 增量状态
+
+- GitHub 仓库已迁移到 `dengyie/openpet`。
+- Electron `userData` 保持旧版 `appData/ibot`，避免改名后丢失用户设置、密钥、插件、Pet packs 与本地服务日志。
+- 新公开命名为 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`。
+- 旧 `ibot.*` MCP tools、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` 保留兼容。
+- 当前验证：`npm test` 171/171，`npm run check:syntax` 通过。
 
 ### 2. UI 配置化 ✅ 完全实现
 
@@ -174,7 +182,7 @@ docs/release-checklist.md         # 发布清单
 - 最近决策日志
 
 ### 3. 测试覆盖完整
-- **167 个测试全部通过**
+- **171 个测试全部通过**
 - 22 个测试文件覆盖所有核心 service
 - 恶意输入测试（路径穿越、超大 body、非法 schema）
 
@@ -189,20 +197,20 @@ docs/release-checklist.md         # 发布清单
 
 ### 高优先级（应补齐）
 
-#### 1. README.md 和用户文档 ❌
+#### 1. v1.0.1 RC 升级路径验证 ⚠️
 
 **现状**：
-- 项目根目录无 README.md
-- 技术文档完整（docs/ 下 15 个文档），但缺少用户向文档
+- OpenPet 改名、仓库迁移与 legacy userData 兼容已经落地。
+- 本地 RC smoke test 已验证旧 `Library/Application Support/ibot` 数据可被 OpenPet 继续读取。
 
 **影响**：
-- 新用户上手门槛高
-- GitHub 项目页面缺少快速介绍
+- 改名版本发布前仍需真实安装包和 GitHub Release 链路验证。
+- 外部 MCP 客户端需要确认 `openpet.*` 新名与 `ibot.*` alias 均可用。
 
 **建议**：
-- 添加 README.md（项目介绍、快速开始、功能特性）
-- 添加 docs/user-guide.md（用户手册）
-- 添加 docs/plugin-development.md（插件开发指南）
+- 发布 v1.0.1-rc.1。
+- 在真实用户数据副本上完成升级 smoke test。
+- 确认 About 更新检查、release asset 与远端仓库均指向 `dengyie/openpet`。
 
 ---
 
@@ -282,7 +290,7 @@ docs/release-checklist.md         # 发布清单
 
 | 指标 | 结果 |
 |------|------|
-| 测试通过率 | **167/167 (100%)** |
+| 测试通过率 | **171/171 (100%)** |
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 干净 |
@@ -321,7 +329,7 @@ docs/release-checklist.md         # 发布清单
 
 **验证命令全部通过**：
 ```bash
-npm test                      # 167 tests pass
+npm test                      # 171 tests pass
 npm run check:syntax          # all JS syntax pass
 npm run build:control-center  # Vite build pass
 npm run pack                  # electron-builder pass
@@ -347,7 +355,7 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | 缺少前端自动化测试 | UI 回归依赖手动验证 | 中优先级：引入 Playwright |
 | 生态冷启动 | 缺少真实插件示例 | 中优先级：创建示例插件 |
-| 用户文档缺失 | 新用户上手门槛高 | 高优先级：补充 README |
+| 真实升级样本不足 | 改名版本可能遗漏边界数据 | 高优先级：发布 RC 并扩大 smoke test |
 
 ---
 
@@ -359,8 +367,8 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | **功能完整性** | ⭐⭐⭐⭐⭐ | 所有承诺功能全部实现 |
 | **架构设计** | ⭐⭐⭐⭐⭐ | 分层清晰、可扩展性强 |
-| **代码质量** | ⭐⭐⭐⭐⭐ | 167 tests、模块化、安全考虑周全 |
-| **文档完整性** | ⭐⭐⭐⭐☆ | 技术文档完整，缺少用户文档 |
+| **代码质量** | ⭐⭐⭐⭐⭐ | 171 tests、模块化、安全考虑周全 |
+| **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
 | **可维护性** | ⭐⭐⭐⭐⭐ | 重构彻底、职责清晰 |
 | **生态基础** | ⭐⭐⭐⭐☆ | 技术完整，缺少真实案例 |
 
@@ -370,14 +378,14 @@ npm run pack                  # electron-builder pass
 
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
-3. ✅ **测试覆盖完整**：167 个测试，service 层全覆盖
+3. ✅ **测试覆盖完整**：171 个测试，service 层全覆盖
 4. ✅ **文档齐全**：14 个开发/review 文档 + 交接文档
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
 
 ### 改进空间
 
-1. ⚠️ 补充 README 和用户文档（高优先级）
+1. ⚠️ 发布 RC 并验证升级路径（高优先级）
 2. ⚠️ 考虑前端自动化测试（中优先级）
 3. ⚠️ 社区生态冷启动（中优先级）
 
@@ -387,31 +395,27 @@ npm run pack                  # electron-builder pass
 
 ### 立即可做
 
-**✅ 建议立即发布 v1.0 正式版本**
+**✅ 建议发布 v1.0.1-rc.1**
 
 **理由**：
 1. 所有核心功能已完成并验证
-2. 测试覆盖完整（167/167 通过）
+2. 测试覆盖完整（171/171 通过）
 3. 架构稳定、代码质量高
 4. 分发流程已就绪
 5. 剩余项为增强项，不阻塞发布
 
-### 发布前建议补充（1-2 天）
+### RC 验证建议
 
-1. **添加 README.md**（必须）
-   - 项目介绍
-   - 快速开始
-   - 功能特性
-   - 截图展示
+1. **验证升级兼容**
+   - 使用旧版 `appData/ibot` 数据启动 OpenPet
+   - 确认 settings、secrets、plugins、pet packs 与 local HTTP logs 均保留
 
-2. **添加基础用户文档**（建议）
-   - 安装指南
-   - 功能使用说明
-   - 常见问题 FAQ
+2. **验证新旧集成命名**
+   - `openpet.*` MCP tools 正常工作
+   - 旧 `ibot.*` aliases 仍可调用
 
-3. **创建 1-2 个示例插件**（建议）
-   - 展示插件开发流程
-   - 验证第三方开发体验
+3. **验证发布链路**
+   - GitHub Releases 和 About 更新检查均指向 `dengyie/openpet`
 
 ### v1.1 版本规划（可选）
 
@@ -428,19 +432,19 @@ npm run pack                  # electron-builder pass
 
 **核心指标**：
 - ✅ 功能完整性：95%（所有承诺功能已实现）
-- ✅ 代码质量：167/167 测试通过
+- ✅ 代码质量：171/171 测试通过
 - ✅ 架构质量：优秀（分层清晰、安全可靠）
 - ✅ 可维护性：优秀（模块化彻底）
-- ⚠️ 文档完整性：技术文档完整，缺少用户文档
+- ✅ 文档完整性：双语 README、技术文档、版本记录与发布清单完整
 
 **最终建议**：
 
-1. **立即可发布 v1.0**（当前版本已达到生产级别）
-2. **发布前补充 README**（1-2 天，提升用户体验）
+1. **发布 v1.0.1-rc.1**（验证 OpenPet 改名与升级兼容）
+2. **确认无回归后提升 v1.0.1 正式版**
 3. **v1.1 迭代增强**（前端测试、示例插件、用户反馈）
 
 ---
 
-**评估日期**：2026-06-12  
-**分支状态**：`codex/productization-completion`  
-**下一步行动**：补充 README.md → 发布 v1.0
+**评估日期**：2026-06-13
+**分支状态**：`main`
+**下一步行动**：发布 v1.0.1-rc.1 → 验证升级路径 → 提升 v1.0.1
