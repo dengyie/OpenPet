@@ -10,6 +10,7 @@
     "build:control-center": "vite build --config src/control-center/vite.config.js",
     "pack": "npm run build:control-center && electron-builder --dir",
     "dist": "npm run build:control-center && electron-builder",
+    "generate-icons": "node scripts/generate-icons.js",
     "generate-sprites": "node scripts/generate-sprites.js",
     "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
     "check:syntax": "npm run check:node && npm run build:control-center",
@@ -55,6 +56,33 @@
         "dmg",
         "zip"
       ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenPet",
+      "deleteAppDataOnUninstall": false
     }
   },
   "devDependencies": {

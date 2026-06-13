@@ -157,6 +157,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 5 - MCP Transport Productization](./docs/phases/phase-5-mcp-agent-productization.md)
 - [Phase 6 - Distribution & Release Pipeline](./docs/phases/phase-6-distribution-release.md)
 - [Phase 7 - Ecosystem Catalog Operations](./docs/phases/phase-7-ecosystem-operations.md)
+- [Phase 8 - Windows Desktop Release](./docs/phases/phase-8-windows-desktop-release.md)
 
 ---
 

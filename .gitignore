@@ -4,6 +4,7 @@ build/*
 !build/
 !build/icon.png
 !build/icon.icns
+!build/icon.ico
 !build/entitlements.mac.plist
 !build/notarize.js
 release/
