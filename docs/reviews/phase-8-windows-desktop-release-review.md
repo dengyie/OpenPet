@@ -1,6 +1,6 @@
 # Phase 8 Windows Desktop Release Review
 
-> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, and Phase 8.5a Windows smoke evidence gate.
+> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, and Phase 8.5b Windows smoke report CI artifact generation.
 
 ## Phase 8.1 Findings
 
@@ -146,4 +146,34 @@ npm run validate-windows-smoke-report -- docs/release-evidence/windows-smoke-rep
 node --test tests/release/windows-smoke-report.test.js # 6/6 pass
 npm run check:syntax                         # pass
 npm test                                     # 181/181 pass
+```
+
+## Phase 8.5b Findings
+
+No blocking issues found in the Windows smoke report artifact generation change.
+
+## Phase 8.5b Review Notes
+
+- `scripts/create-windows-smoke-report.js` reuses the validator's `REQUIRED_CHECKS`, so the generated pending report cannot silently drop a required Windows smoke item.
+- The script defaults to Windows-only generation and requires `--allow-non-windows` for local structure checks, reducing the chance that a macOS developer report is mistaken for Windows runner evidence.
+- Required artifact discovery fails when the installer, Windows zip, or `latest.yml` is missing, so the release workflow cannot upload a report that has no install/update artifact basis.
+- Authenticode collection uses PowerShell on Windows and only treats `Status : Valid` as signed. Unsigned prerelease artifacts remain represented as not signed.
+- The release workflow validates the generated report with `--allow-pending` before publishing assets. This proves report structure, not runtime success.
+- The pending report is uploaded as a GitHub Actions artifact, not a public GitHub Release asset, which keeps user-facing release downloads focused on installers and archives.
+
+## Phase 8.5b Residual Risk
+
+- This phase still does not execute the app on Windows, install/uninstall the NSIS package, inspect the transparent pet window, or exercise plugin/pet-pack flows.
+- `Get-AuthenticodeSignature` evidence is only meaningful after the Windows release job runs with real artifacts.
+- Official Windows readiness still requires a complete non-pending smoke report and, for stable releases, `--require-signed` validation.
+- SmartScreen reputation remains external to the repository and cannot be proven by this report artifact alone.
+
+## Phase 8.5b Verification
+
+```bash
+node --check scripts/create-windows-smoke-report.js # pass
+node --test tests/release/create-windows-smoke-report.test.js # 5/5 pass
+ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"' # pass
+npm run check:syntax                         # pass
+npm test                                     # 186/186 pass
 ```

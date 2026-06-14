@@ -96,6 +96,26 @@
 - `--require-signed` 额外要求 `artifact.signed === true`、Authenticode 状态为 `Valid`，并填写签名验证证据。
 - 本阶段不声称真实 Windows smoke validation 已完成。
 
+### Phase 8.5b：Windows 冒烟报告 CI 产物
+
+目标：让每次 Windows release job 自动生成一份结构化 pending 冒烟报告，记录本次构建产物、版本、runner 与 Authenticode 状态，作为后续真实 Windows 验证补证据的起点。
+
+交付：
+
+- 新增 `scripts/create-windows-smoke-report.js`，从 `release/` 目录生成 `windows-smoke-report.json`。
+- 新增 `npm run create-windows-smoke-report`。
+- Windows release workflow 在上传用户安装资产前生成并校验 pending 报告。
+- Windows release workflow 将 `release/windows-smoke-report.json` 作为 GitHub Actions artifact 上传，不混入公开 Release 用户下载资产。
+- 新增 `tests/release/create-windows-smoke-report.test.js`，覆盖 Windows artifact 选择、Authenticode 状态解析、pending 报告结构校验、非 Windows 本机保护和缺失产物错误。
+
+验收：
+
+- 生成脚本默认要求在 Windows 上运行；本地结构测试可显式使用 `--allow-non-windows`。
+- 生成报告只能作为 `--allow-pending` 结构证据，不证明 install / launch / 透明窗口 / plugin runner 已通过。
+- 报告必须包含 `.exe`、`.zip`、`latest.yml`，并记录 blockmap 与文件大小。
+- Windows runner 上如果能执行 `Get-AuthenticodeSignature`，报告记录 Authenticode 状态与原始证据。
+- 本阶段不声称真实 Windows smoke validation 已完成。
+
 ### Phase 8.5：Windows 冒烟验证
 
 目标：Windows 支持声明前完成真实运行验证。
@@ -224,3 +244,31 @@
 - `node --test tests/release/windows-smoke-report.test.js` 通过，6/6。
 - `npm run check:syntax` 通过。
 - `npm test` 通过，当前为 181/181。
+
+## 7. Phase 8.5b 实施记录
+
+本阶段把 Phase 8.5a 的“报告格式和门禁”接入 Windows release job 的实际产物链路。它解决的是“每次 Windows 构建都有一份结构化证据起点”，不是“Windows 已经 smoke 通过”。报告里的 runtime checks 仍保持 `pending`，必须由真实 Windows clean-machine 或 CI-backed manual 验证补 evidence 后，才能用默认 validator 模式证明 release readiness。
+
+实现决策：
+
+- `createWindowsSmokeReport()` 复用 `validate-windows-smoke-report.js` 的 `REQUIRED_CHECKS`，避免生成脚本和验证脚本的检查项漂移。
+- 脚本默认只允许 `process.platform === 'win32'`，防止 macOS/Linux 本地误生成看似真实的 Windows runner 报告；单元测试和文档结构检查可以显式传 `--allow-non-windows`。
+- 产物识别要求 `.exe` installer、Windows `.zip` 和 `latest.yml` 同时存在；`.blockmap` 和文件大小作为补充 artifact metadata 写入报告。
+- Windows 上通过 PowerShell `Get-AuthenticodeSignature -LiteralPath <installer>` 采集签名状态。只有 `Status : Valid` 才把 `artifact.signed` 标为 `true`。
+- release workflow 在 publish 前运行 `npm run create-windows-smoke-report -- --output release/windows-smoke-report.json`，再用 `npm run validate-windows-smoke-report -- release/windows-smoke-report.json --allow-pending` 校验结构。
+- `windows-smoke-report.json` 只上传为 Actions artifact，避免普通用户在 GitHub Release 下载区把 pending 报告误解成安装资产。
+
+剩余风险：
+
+- 仓库仍未包含真实 Windows clean-machine smoke report。
+- 生成的 pending 报告不能证明 install、launch、透明窗口、拖拽边界、Control Center、plugin runner、pet pack import、本地 HTTP/MCP 或 API key isolation 已通过。
+- 签名状态采集需要 Windows runner 实跑后才有真实证据；本地 macOS 只能验证脚本结构和非 Windows 保护路径。
+- SmartScreen reputation 仍是外部信任问题，不能由报告生成脚本单独证明。
+
+验证：
+
+- `node --check scripts/create-windows-smoke-report.js` 通过。
+- `node --test tests/release/create-windows-smoke-report.test.js` 通过，5/5。
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"'` 通过。
+- `npm run check:syntax` 通过。
+- `npm test` 通过，当前为 186/186。

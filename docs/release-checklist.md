@@ -2,12 +2,12 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence-gate baselines, but must not be called release-ready until signed release evidence and real smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting baselines, but must not be called release-ready until signed release evidence and real smoke tests are complete.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
 | macOS | Baseline implemented | Release candidate path exists; official artifacts should be signed/notarized |
-| Windows | Packaging/CI/signing-policy/smoke-evidence-gate baseline implemented | Do not publish as supported until the Windows checklist passes |
+| Windows | Packaging/CI/signing-policy/smoke-evidence/reporting baseline implemented | Do not publish as supported until the Windows checklist passes |
 | Linux | Deferred | Out of current release scope |
 | Mobile | Out of scope | Not part of this desktop release track |
 
@@ -20,6 +20,13 @@ Current desktop scope: macOS and Windows. macOS has a validated release baseline
 
 ```bash
 npm run validate-windows-smoke-report -- docs/release-evidence/windows-smoke-report.template.json --allow-pending
+```
+
+- For Windows release jobs, confirm the generated pending report remains structurally valid before uploading artifacts:
+
+```bash
+npm run create-windows-smoke-report -- --output release/windows-smoke-report.json
+npm run validate-windows-smoke-report -- release/windows-smoke-report.json --allow-pending
 ```
 
 - Confirm `npm run pack` creates an unsigned directory package.
@@ -99,7 +106,10 @@ Windows release support requires these gates before public release claims:
 - [x] Document the Windows signing provider and CI secret names before producing official signed releases.
 - [x] Allow unsigned local/prerelease builds only when artifacts are clearly labeled as unsigned.
 - [x] Add a structured Windows smoke report validator and pending evidence template.
+- [x] Generate and upload a pending Windows smoke report artifact from the Windows release job.
 - [ ] Verify install, launch, update check, and uninstall on a clean Windows machine.
+
+The generated `release/windows-smoke-report.json` captures artifact metadata and Authenticode status from the Windows runner, but all runtime smoke checks remain `pending` until a real Windows validation run fills evidence.
 
 For a real Windows validation run, copy `docs/release-evidence/windows-smoke-report.template.json` to a versioned report path, fill environment/artifact/check evidence, then run:
 

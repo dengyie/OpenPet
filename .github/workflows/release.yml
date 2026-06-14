@@ -258,6 +258,12 @@ jobs:
         if: steps.signing.outputs.mode == 'unsigned-prerelease'
         run: npm run prepare-windows-release-assets
 
+      - name: Create pending Windows smoke report
+        run: npm run create-windows-smoke-report -- --output release/windows-smoke-report.json
+
+      - name: Validate pending Windows smoke report
+        run: npm run validate-windows-smoke-report -- release/windows-smoke-report.json --allow-pending
+
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -278,4 +284,11 @@ jobs:
             release/*.zip
             release/*.blockmap
             release/latest.yml
+          if-no-files-found: error
+
+      - name: Upload Windows smoke report
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpet-windows-smoke-report-${{ steps.release.outputs.tag }}
+          path: release/windows-smoke-report.json
           if-no-files-found: error
