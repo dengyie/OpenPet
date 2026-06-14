@@ -77,18 +77,40 @@
 - `npm run check:syntax` 通过。
 - `npm test` 通过。
 
+### Phase 8.5a：Windows 冒烟证据门禁
+
+目标：在真实 Windows 机器验证前，先把 Windows 冒烟报告格式、必填检查项和签名证据门禁固化为可测试脚本，避免后续用零散文字或截图口头声明 release-ready。
+
+交付：
+
+- 新增 `scripts/validate-windows-smoke-report.js`，校验 Windows 冒烟报告 JSON。
+- 新增 `docs/release-evidence/windows-smoke-report.template.json`，作为真实 Windows 验证时复制填写的模板。
+- 新增 `npm run validate-windows-smoke-report`。
+- 新增 `tests/release/windows-smoke-report.test.js`，覆盖 pending 模板、缺失检查、通过但无证据、unsigned prerelease、signed official readiness 等路径。
+- 修正 `.gitignore` 的 `release/` 忽略规则为根目录 `/release/`，避免误忽略 `tests/release/`。
+
+验收：
+
+- 模板只能在 `--allow-pending` 下证明结构有效。
+- 默认模式要求所有必填 Windows 冒烟项均为 `pass` 且包含证据。
+- `--require-signed` 额外要求 `artifact.signed === true`、Authenticode 状态为 `Valid`，并填写签名验证证据。
+- 本阶段不声称真实 Windows smoke validation 已完成。
+
 ### Phase 8.5：Windows 冒烟验证
 
 目标：Windows 支持声明前完成真实运行验证。
 
 计划：
 
+- 复制 `docs/release-evidence/windows-smoke-report.template.json` 为版本化报告，并在真实 Windows 环境中填写证据。
 - 验证安装、启动、卸载。
 - 验证透明宠物窗口、拖拽、边界、always-on-top、taskbar 行为。
 - 验证 Control Center 全 tab。
 - 验证 plugin runner、pet-pack import、sprite/native dependency。
 - 验证 Local HTTP/MCP 默认关闭、loopback only、token-gated。
 - 验证 API key 不暴露给 renderer 或普通插件。
+- 对 RC/beta/alpha 报告运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json`。
+- 对官方稳定版报告额外运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed`。
 
 ## 2. Phase 8.1 实施记录
 
@@ -175,3 +197,30 @@
 - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"'` 通过。
 - `npm run check:syntax` 通过。
 - `npm test` 通过，当前为 175/175。
+
+## 6. Phase 8.5a 实施记录
+
+本阶段没有执行真实 Windows 安装验证，而是补齐未来执行真实验证时必须提交的结构化证据门禁。这样后续在 Windows clean VM、实体机或 CI-backed manual 环境里跑冒烟时，可以用同一份 JSON 报告和同一个脚本判断是否足以支撑 Windows support claim。
+
+实现决策：
+
+- `REQUIRED_CHECKS` 固定覆盖 install、launch、透明窗口、拖拽边界、Control Center tabs、pet actions、pet pack import、plugin runner、Local HTTP/MCP 默认关闭与 token-gated、API key isolation、About/update assets、uninstall。
+- `validateReport()` 默认要求所有必填项 `pass`，且每个通过项必须有 evidence；`fail` / `blocked` 必须有 notes。
+- `--allow-pending` 只用于模板或进行中的报告结构检查，不设置 release readiness。
+- `--require-signed` 单独作为官方稳定 Windows release 的签名门槛，要求 Authenticode `Valid` 证据。
+- unsigned prerelease smoke report 可以证明冒烟矩阵通过，但脚本会警告它不能证明 official release readiness。
+- `.gitignore` 改为只忽略根目录 `/release/`，保留构建产物忽略语义，同时允许 `tests/release/` 入库。
+
+剩余风险：
+
+- 仓库仍未包含真实 Windows clean-machine smoke report。
+- 仓库仍未包含 signed Windows artifact 与 `Get-AuthenticodeSignature` 证据。
+- SmartScreen reputation 仍是外部信任问题，不能由本地校验脚本单独证明。
+
+验证：
+
+- `node --check scripts/validate-windows-smoke-report.js` 通过。
+- `npm run validate-windows-smoke-report -- docs/release-evidence/windows-smoke-report.template.json --allow-pending` 通过，显示 `Checks: 0/13 passed` 且只声明结构有效。
+- `node --test tests/release/windows-smoke-report.test.js` 通过，6/6。
+- `npm run check:syntax` 通过。
+- `npm test` 通过，当前为 181/181。

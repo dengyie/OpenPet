@@ -12,6 +12,7 @@
     "dist": "npm run build:control-center && electron-builder",
     "generate-icons": "node scripts/generate-icons.js",
     "prepare-windows-release-assets": "node scripts/prepare-windows-release-assets.js",
+    "validate-windows-smoke-report": "node scripts/validate-windows-smoke-report.js",
     "generate-sprites": "node scripts/generate-sprites.js",
     "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
     "check:syntax": "npm run check:node && npm run build:control-center",

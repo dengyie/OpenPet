@@ -7,6 +7,6 @@ build/*
 !build/icon.ico
 !build/entitlements.mac.plist
 !build/notarize.js
-release/
+/release/
 .DS_Store
 npm-debug.log*

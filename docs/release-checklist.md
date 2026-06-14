@@ -2,12 +2,12 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy baselines, but must not be called release-ready until signed release evidence and smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence-gate baselines, but must not be called release-ready until signed release evidence and real smoke tests are complete.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
 | macOS | Baseline implemented | Release candidate path exists; official artifacts should be signed/notarized |
-| Windows | Packaging/CI/signing-policy baseline implemented | Do not publish as supported until the Windows checklist passes |
+| Windows | Packaging/CI/signing-policy/smoke-evidence-gate baseline implemented | Do not publish as supported until the Windows checklist passes |
 | Linux | Deferred | Out of current release scope |
 | Mobile | Out of scope | Not part of this desktop release track |
 
@@ -16,6 +16,12 @@ Current desktop scope: macOS and Windows. macOS has a validated release baseline
 - Confirm `CHANGELOG.md` has an entry for the release tag.
 - Confirm `npm test` passes.
 - Confirm `npm run check:syntax` passes.
+- Confirm the Windows smoke report template remains structurally valid:
+
+```bash
+npm run validate-windows-smoke-report -- docs/release-evidence/windows-smoke-report.template.json --allow-pending
+```
+
 - Confirm `npm run pack` creates an unsigned directory package.
 - Confirm the About page shows the expected app version and packaged state.
 - Confirm local HTTP remains disabled by default after a fresh install.
@@ -92,7 +98,22 @@ Windows release support requires these gates before public release claims:
 - [x] Filter About/update assets by current desktop platform.
 - [x] Document the Windows signing provider and CI secret names before producing official signed releases.
 - [x] Allow unsigned local/prerelease builds only when artifacts are clearly labeled as unsigned.
+- [x] Add a structured Windows smoke report validator and pending evidence template.
 - [ ] Verify install, launch, update check, and uninstall on a clean Windows machine.
+
+For a real Windows validation run, copy `docs/release-evidence/windows-smoke-report.template.json` to a versioned report path, fill environment/artifact/check evidence, then run:
+
+```bash
+npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json
+```
+
+For official stable Windows release readiness, the same report must also pass signed artifact validation:
+
+```bash
+npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed
+```
+
+Do not mark the clean-machine validation item complete while the report is still pending or unsigned for an official stable release.
 
 Windows smoke checks:
 

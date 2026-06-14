@@ -1,6 +1,6 @@
 # Phase 8 Windows Desktop Release Review
 
-> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, and Phase 8.4 Windows signing policy enforcement.
+> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, and Phase 8.5a Windows smoke evidence gate.
 
 ## Phase 8.1 Findings
 
@@ -117,4 +117,33 @@ node --check scripts/prepare-windows-release-assets.js # pass
 ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"' # pass
 npm run check:syntax                         # pass
 npm test                                     # 175/175 pass
+```
+
+## Phase 8.5a Findings
+
+No blocking issues found in the Windows smoke evidence gate.
+
+## Phase 8.5a Review Notes
+
+- `scripts/validate-windows-smoke-report.js` keeps smoke readiness and official signed readiness separate. A complete unsigned prerelease report can pass the smoke matrix, but the CLI still warns that official release readiness requires signed artifact validation.
+- The report requires evidence for every passing check, which prevents a future Windows support claim from being based only on status labels.
+- `--allow-pending` is appropriately limited to template or in-progress report validation; pending checks still fail in the default readiness path.
+- `--require-signed` requires `artifact.signed`, Authenticode status `Valid`, and signature evidence, matching the Phase 8.4 signing policy.
+- The template is intentionally pending and therefore records no smoke success by itself.
+- The `.gitignore` change from `release/` to `/release/` preserves root build-output ignoring while allowing the new `tests/release/` test file to be tracked.
+
+## Phase 8.5a Residual Risk
+
+- This phase does not run on Windows and does not prove installer, uninstall, transparent window, plugin runner, or Windows path behavior.
+- No signed Windows artifact or Authenticode evidence exists in the repository yet.
+- SmartScreen reputation remains an external trust gate even after a signed artifact validates.
+
+## Phase 8.5a Verification
+
+```bash
+node --check scripts/validate-windows-smoke-report.js # pass
+npm run validate-windows-smoke-report -- docs/release-evidence/windows-smoke-report.template.json --allow-pending # pass; structure only, 0/13 passed
+node --test tests/release/windows-smoke-report.test.js # 6/6 pass
+npm run check:syntax                         # pass
+npm test                                     # 181/181 pass
 ```

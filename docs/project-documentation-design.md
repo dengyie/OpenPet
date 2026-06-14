@@ -49,7 +49,8 @@ For the Windows desktop release track, the current sequence is:
 - Phase 8.2: macOS + Windows release workflow split.
 - Phase 8.3: platform-aware About/update assets and release checklist alignment.
 - Phase 8.4: Windows signing policy.
-- Phase 8.5: Windows smoke validation on a clean machine or CI-backed manual environment.
+- Phase 8.5a: Windows smoke evidence gate and pending report template.
+- Phase 8.5: Real Windows smoke validation on a clean machine or CI-backed manual environment.
 
 ## 4. Support Claim Rules
 
@@ -58,11 +59,11 @@ Support language must match what the repository can actually prove:
 | Platform | Allowed Wording Now | Do Not Claim Yet |
 |----------|---------------------|------------------|
 | macOS | Validated release baseline; official artifacts should be signed/notarized | That every tag is notarized unless the release artifact was verified |
-| Windows | Packaging/CI/signing-policy baseline implemented; not release-ready until signed artifact evidence and smoke validation pass | Public user support, SmartScreen trust, or completed installer validation |
+| Windows | Packaging/CI/signing-policy/smoke-evidence-gate baseline implemented; not release-ready until signed artifact evidence and real smoke validation pass | Public user support, SmartScreen trust, or completed installer validation |
 | Linux | Deferred | Any active release target |
 | Mobile | Out of scope | Any mobile app plan for the current release track |
 
-If a document needs one sentence, use: "macOS release baseline is complete; Windows desktop build/CI/signing-policy baseline is implemented but not release-ready; mobile is out of scope."
+If a document needs one sentence, use: "macOS release baseline is complete; Windows desktop build/CI/signing-policy/smoke-evidence-gate baseline is implemented but not release-ready; mobile is out of scope."
 
 ## 5. Architecture Invariants
 
@@ -78,10 +79,10 @@ Documentation and code changes should preserve these invariants:
 
 ## 6. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 8.4:
+The repository now has a coherent phase history through Phase 8.5a:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
 - macOS release baseline is complete.
-- Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, and signing policy enforcement are implemented.
+- Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, and smoke evidence validation are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.

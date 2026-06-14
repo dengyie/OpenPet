@@ -1,0 +1,99 @@
+{
+  "platform": "win32",
+  "arch": "x64",
+  "environment": {
+    "windowsVersion": "",
+    "machine": "clean Windows VM or physical machine",
+    "runner": "",
+    "evidence": ""
+  },
+  "artifact": {
+    "version": "",
+    "installer": "OpenPet-<version>-win32-x64.exe",
+    "zip": "OpenPet-<version>-win32-x64.zip",
+    "latestYml": "latest.yml",
+    "signed": false,
+    "authenticodeStatus": "NotSigned",
+    "authenticodeEvidence": ""
+  },
+  "checks": [
+    {
+      "id": "install",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Install NSIS package on a clean Windows machine."
+    },
+    {
+      "id": "launch",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Launch installed app and confirm it remains running."
+    },
+    {
+      "id": "transparent-window",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Confirm transparent pet window renders with alpha."
+    },
+    {
+      "id": "drag-bounds",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Confirm drag, screen bounds, always-on-top, focus, and taskbar behavior."
+    },
+    {
+      "id": "control-center-tabs",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Open Pet, Actions, AI, Plugins, Catalog, Service, and About tabs."
+    },
+    {
+      "id": "pet-actions",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Run built-in actions and import an ordered frame folder."
+    },
+    {
+      "id": "pet-pack-import",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Inspect, import, enable, and delete a pet pack under Windows userData paths."
+    },
+    {
+      "id": "plugin-runner",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Run official and local plugin commands through the restricted SDK."
+    },
+    {
+      "id": "local-http-default-off",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Fresh install keeps Local HTTP/MCP disabled by default."
+    },
+    {
+      "id": "local-http-token-gated",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Enable Local HTTP/MCP and verify loopback-only token-gated behavior."
+    },
+    {
+      "id": "api-key-isolation",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Verify API keys do not appear in renderer, plugin SDK responses, logs, or exports."
+    },
+    {
+      "id": "about-update-assets",
+      "status": "pending",
+      "evidence": "",
+      "notes": "About update check shows Windows installers and hides macOS assets/feed metadata."
+    },
+    {
+      "id": "uninstall",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Uninstall and verify user data preservation strategy."
+    }
+  ]
+}
