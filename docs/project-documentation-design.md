@@ -78,6 +78,7 @@ For the Windows desktop release track, the current sequence is:
 - Phase 8.4: Windows signing policy.
 - Phase 8.5a: Windows smoke evidence gate and pending report template.
 - Phase 8.5b: Windows release job pending smoke report artifact generation.
+- Phase 8.5c: Windows smoke report filling/update tooling.
 - Phase 8.5: Real Windows smoke validation on a clean machine or CI-backed manual environment.
 
 ## 5. Support Claim Rules
@@ -151,12 +152,12 @@ Do not rewrite historical phase verification counts unless the phase document is
 
 ## 8. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 8.5b:
+The repository now has a coherent phase history through Phase 8.5c:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
 - macOS release baseline is complete.
-- Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, and CI pending report generation are implemented.
+- Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.
 
 ## 9. Next Documentation Priorities

@@ -116,6 +116,25 @@
 - Windows runner 上如果能执行 `Get-AuthenticodeSignature`，报告记录 Authenticode 状态与原始证据。
 - 本阶段不声称真实 Windows smoke validation 已完成。
 
+### Phase 8.5c：Windows 冒烟报告填写工具
+
+目标：让真实 Windows 验证人员可以用命令逐项补充环境、产物和 smoke check 证据，减少手改 JSON 出错或误把 pending 报告当成 ready 报告的风险。
+
+交付：
+
+- 新增 `scripts/update-windows-smoke-report.js`，支持列出 required checks、更新环境信息、更新 artifact metadata、逐项填写 status/evidence/notes。
+- 新增 `npm run update-windows-smoke-report`。
+- 支持 `--validate-ready` 用默认 readiness 规则校验所有 required checks 必须 pass。
+- 支持 `--validate-ready --require-signed` 额外要求 Authenticode signed official readiness。
+- 新增 `tests/release/update-windows-smoke-report.test.js`，覆盖参数边界、字段白名单、evidence file、pending/ready/signed 验证路径。
+
+验收：
+
+- 默认更新后只做结构校验并允许 pending，方便真实 Windows 验证过程中逐步补证据。
+- `--validate-ready` 不能通过仍有 pending/blocked/fail 的报告。
+- `--require-signed` 必须与 `--validate-ready` 搭配使用，不能单独制造 signed-ready 口径。
+- 本阶段不声称真实 Windows smoke validation 已完成。
+
 ### Phase 8.5：Windows 冒烟验证
 
 目标：Windows 支持声明前完成真实运行验证。
@@ -129,6 +148,7 @@
 - 验证 plugin runner、pet-pack import、sprite/native dependency。
 - 验证 Local HTTP/MCP 默认关闭、loopback only、token-gated。
 - 验证 API key 不暴露给 renderer 或普通插件。
+- 使用 `npm run update-windows-smoke-report` 逐项填写真实证据。
 - 对 RC/beta/alpha 报告运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json`。
 - 对官方稳定版报告额外运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed`。
 
@@ -272,3 +292,32 @@
 - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"'` 通过。
 - `npm run check:syntax` 通过。
 - `npm test` 通过，当前为 186/186。
+
+## 8. Phase 8.5c 实施记录
+
+本阶段继续服务于真实 Windows smoke validation，但仍不执行或伪造真实 Windows 运行结果。它把 Phase 8.5b 生成的 pending report 变成可持续填写、可重复校验的操作对象：验证人员可以在 Windows clean VM 或手动验证环境中逐项补齐 evidence，然后用同一套 validator 判断是否足以支撑 Windows support claim。
+
+实现决策：
+
+- `update-windows-smoke-report.js` 复用 `validate-windows-smoke-report.js` 的 `REQUIRED_CHECKS` 和 `validateReport()`，避免填写工具与 readiness 门禁漂移。
+- `--list-checks` 只列出检查项并退出，不会顺手改写报告。
+- `--set-env` 和 `--set-artifact` 使用白名单字段，避免把临时笔记、macOS 产物或无约束对象塞进 release evidence schema。
+- `artifact.signed` 只接受 boolean-like 值，并归一化为 JSON boolean。
+- `--evidence-file` 支持从 PowerShell transcript、日志摘录或人工记录文件中读取证据，写入前会 trim 外层空白。
+- 默认验证等同 `allowPending: true`，只证明报告结构仍有效；`--validate-ready` 才要求全部 required checks 通过。
+- `--require-signed` 必须搭配 `--validate-ready`，避免单独运行时制造“签名已验证但 smoke 未完成”的模糊状态。
+
+剩余风险：
+
+- 仓库仍未包含真实 Windows clean-machine smoke report。
+- 该工具只能帮助记录证据，不能替代真实安装、启动、透明窗口、插件 runner、pet pack、Local HTTP/MCP 和 API key isolation 验证。
+- 官方稳定版仍需要真实 signed artifact 与 `Get-AuthenticodeSignature` 的 `Status : Valid` 证据。
+- SmartScreen reputation 仍是外部信任问题，不能由本地填写工具证明。
+
+验证：
+
+- `node --check scripts/update-windows-smoke-report.js` 通过。
+- `node --check tests/release/update-windows-smoke-report.test.js` 通过。
+- `node --test tests/release/update-windows-smoke-report.test.js` 通过，10/10。
+- `npm run check:syntax` 通过。
+- `npm test` 通过，当前为 196/196。

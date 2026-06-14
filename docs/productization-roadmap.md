@@ -14,8 +14,8 @@
 - AI 已支持 OpenAI-compatible provider、API Key secret 隔离、请求超时、有界持久会话、轻量语义动作触发。
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
-- `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁与 pending 报告产物已落地，但尚未完成真实签名产物验证和 Windows 冒烟。
-- CI / 测试已覆盖 service、pet-pack、plugin、AI、MCP、release、catalog 核心路径，当前验证为 186 个测试。
+- `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告产物与报告填写工具已落地，但尚未完成真实签名产物验证和 Windows 冒烟。
+- CI / 测试已覆盖 service、pet-pack、plugin、AI、MCP、release、catalog 核心路径，当前验证为 196 个测试。
 - v1.0.1-rc.1 已完成 OpenPet 改名、GitHub 仓库迁移、旧 userData 路径保留与公开 API 命名兼容。
 
 ### 1.2 仍未产品化的深水区
@@ -26,7 +26,7 @@
 | Pet pack | Phase 2 已支持多 pack 列表、整包检查/导入/启用/删除 | 后续补版本升级、包导出、catalog 运营 |
 | AI 行为编排 | 关键词/label/kind 语义匹配 | 结构化 tool-call、可配置行为规则、调试/回放、规则安全边界 |
 | MCP | 最小 JSON-RPC bridge | 客户端兼容矩阵、streamable HTTP/SSE、外部 agent 使用文档、会话管理 |
-| 分发 | macOS release baseline 已完成；Windows 打包/CI/签名策略/冒烟证据与报告基线已落地 | Windows 签名产物验证、安装/卸载冒烟验证、真实 Windows 支持声明 |
+| 分发 | macOS release baseline 已完成；Windows 打包/CI/签名策略/冒烟证据与报告工具基线已落地 | Windows 签名产物验证、安装/卸载冒烟验证、真实 Windows 支持声明 |
 | Control Center | 已完成 Phase 1 模块化 | 继续承载 Pet pack / 插件安装 / AI 规则 / MCP session 等生态页面 |
 
 ## 2. 产品化原则
@@ -53,7 +53,7 @@ Phase 6  分发、更新与发布流水线
 Phase 7  生态运营闭环
 ```
 
-桌面发布扩展说明：Phase 6 的已交付范围是 macOS 分发基线。Windows 桌面分发属于后续 release-track 扩展；当前已完成打包/CI/签名策略/冒烟证据门禁和 pending 报告产物，真实签名产物证据和 Windows 冒烟仍按 [`desktop-release-design.md`](./desktop-release-design.md) 的验收门槛推进。
+桌面发布扩展说明：Phase 6 的已交付范围是 macOS 分发基线。Windows 桌面分发属于后续 release-track 扩展；当前已完成打包/CI/签名策略/冒烟证据门禁、pending 报告产物和报告填写工具，真实签名产物证据和 Windows 冒烟仍按 [`desktop-release-design.md`](./desktop-release-design.md) 的验收门槛推进。
 
 ## 4. Phase 0：基线冻结与开发日志对齐
 
@@ -529,7 +529,7 @@ CSC_KEY_PASSWORD
 
 ### Windows 桌面扩展
 
-后续补齐 Windows 桌面分发时，按 [`desktop-release-design.md`](./desktop-release-design.md) 执行。`build/win` targets（NSIS + ZIP）、`build/icon.ico`、`windows-latest` release job、平台化 About/update 资产筛选、Windows 签名策略护栏、冒烟证据门禁和 pending 报告产物已经完成；剩余重点是签名产物验证和安装/卸载/透明窗口/插件 runner 冒烟矩阵。完成前，文档与 README 不应声明 Windows release-ready。
+后续补齐 Windows 桌面分发时，按 [`desktop-release-design.md`](./desktop-release-design.md) 执行。`build/win` targets（NSIS + ZIP）、`build/icon.ico`、`windows-latest` release job、平台化 About/update 资产筛选、Windows 签名策略护栏、冒烟证据门禁、pending 报告产物和报告填写工具已经完成；剩余重点是签名产物验证和安装/卸载/透明窗口/插件 runner 冒烟矩阵。完成前，文档与 README 不应声明 Windows release-ready。
 
 ## 11. Phase 7：生态运营闭环
 
@@ -580,7 +580,7 @@ CSC_KEY_PASSWORD
 - `npm run pack` 保持每阶段可跑。
 - 分发阶段增加 `npm run dist` 验证；当前验证对象是 macOS DMG/ZIP。
 - 对 macOS 签名/公证使用单独 release workflow，避免 PR 泄露证书。
-- Windows 分发继续补齐签名产物验证、安装/卸载冒烟；`windows-latest` 构建、平台资产更新检查、签名策略护栏、冒烟证据门禁和 pending 报告产物已进入基线。
+- Windows 分发继续补齐签名产物验证、安装/卸载冒烟；`windows-latest` 构建、平台资产更新检查、签名策略护栏、冒烟证据门禁、pending 报告产物和报告填写工具已进入基线。
 
 ## 13. 风险清单
 
@@ -603,7 +603,7 @@ Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Producti
 **所有质量门槛已通过**：
 
 ```bash
-npm test                      # ✅ 186/186 tests pass
+npm test                      # ✅ 196/196 tests pass
 npm run check:syntax          # ✅ all JS syntax pass
 npm run build:control-center  # ✅ Vite build pass
 npm run pack                  # ✅ electron-builder pass
@@ -623,7 +623,7 @@ npm run pack                  # ✅ electron-builder pass
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）
-- 测试覆盖：186/186 通过（100%）
+- 测试覆盖：196/196 通过（100%）
 - 架构质量：⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - 代码质量：⭐⭐⭐⭐⭐（模块化彻底、职责单一）
 - 文档完整性：⭐⭐⭐⭐⭐（双语 README、技术文档、版本记录与发布清单完整）

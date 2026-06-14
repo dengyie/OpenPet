@@ -1,6 +1,6 @@
 # Phase 8 Windows Desktop Release Review
 
-> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, and Phase 8.5b Windows smoke report CI artifact generation.
+> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, and Phase 8.5c Windows smoke report filling/update tooling.
 
 ## Phase 8.1 Findings
 
@@ -176,4 +176,36 @@ node --test tests/release/create-windows-smoke-report.test.js # 5/5 pass
 ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"' # pass
 npm run check:syntax                         # pass
 npm test                                     # 186/186 pass
+```
+
+## Phase 8.5c Findings
+
+No blocking issues found in the Windows smoke report filling/update tooling change.
+
+## Phase 8.5c Review Notes
+
+- `scripts/update-windows-smoke-report.js` reuses the validator's `REQUIRED_CHECKS` and `validateReport()` instead of maintaining a separate readiness rule set.
+- `--list-checks` exits after printing the check matrix, so it cannot accidentally rewrite a report while an operator is only looking up ids.
+- Metadata updates are constrained to explicit environment and artifact key allowlists, which keeps evidence reports aligned with the schema instead of becoming arbitrary release notes blobs.
+- `artifact.signed` is normalized to a JSON boolean and rejects ambiguous values, which matters because signed official readiness depends on strict `true` plus Authenticode evidence.
+- Default validation allows pending checks for incremental filling, while `--validate-ready` uses the stricter all-pass path. This preserves the distinction between in-progress evidence and release readiness.
+- `--require-signed` must be paired with `--validate-ready`, preventing a partially filled report from being presented as signed official readiness.
+- Tests cover argument validation, metadata allowlists, evidence-file ingestion, incremental pending validation, all-pass readiness validation, and signed official readiness validation.
+
+## Phase 8.5c Residual Risk
+
+- This phase still does not run the Windows app, install the NSIS package, verify transparent window behavior, or exercise Windows plugin/pet-pack paths.
+- The tool can make evidence collection more consistent, but the evidence itself still has to come from a real Windows clean-machine or CI-backed manual validation run.
+- Official Windows readiness still requires a signed artifact with `Get-AuthenticodeSignature` reporting `Status : Valid` and a complete non-pending smoke report.
+- SmartScreen reputation remains outside repository control and cannot be proven by the report tooling.
+
+## Phase 8.5c Verification
+
+```bash
+node --check scripts/update-windows-smoke-report.js # pass
+node --check tests/release/update-windows-smoke-report.test.js # pass
+node --test tests/release/update-windows-smoke-report.test.js # 10/10 pass
+npm run check:syntax                         # pass
+npm test                                     # 196/196 pass
+git diff --check                             # pass
 ```

@@ -29,6 +29,12 @@ npm run create-windows-smoke-report -- --output release/windows-smoke-report.jso
 npm run validate-windows-smoke-report -- release/windows-smoke-report.json --allow-pending
 ```
 
+- Confirm the Windows smoke report filling tool lists the current required check ids:
+
+```bash
+npm run update-windows-smoke-report -- --list-checks
+```
+
 - Confirm `npm run pack` creates an unsigned directory package.
 - Confirm the About page shows the expected app version and packaged state.
 - Confirm local HTTP remains disabled by default after a fresh install.
@@ -107,20 +113,32 @@ Windows release support requires these gates before public release claims:
 - [x] Allow unsigned local/prerelease builds only when artifacts are clearly labeled as unsigned.
 - [x] Add a structured Windows smoke report validator and pending evidence template.
 - [x] Generate and upload a pending Windows smoke report artifact from the Windows release job.
+- [x] Add command-driven Windows smoke report filling/update tooling.
 - [ ] Verify install, launch, update check, and uninstall on a clean Windows machine.
 
 The generated `release/windows-smoke-report.json` captures artifact metadata and Authenticode status from the Windows runner, but all runtime smoke checks remain `pending` until a real Windows validation run fills evidence.
 
-For a real Windows validation run, copy `docs/release-evidence/windows-smoke-report.template.json` to a versioned report path, fill environment/artifact/check evidence, then run:
+For a real Windows validation run, copy `docs/release-evidence/windows-smoke-report.template.json` to a versioned report path or download the generated CI pending report, then fill environment/artifact/check evidence with the update tool:
+
+```bash
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --list-checks
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --set-env windowsVersion="Windows 11 23H2" --set-env machine="clean Windows VM"
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --set-artifact version="1.0.1-rc.1" --set-artifact installer="OpenPet-1.0.1-rc.1-win32-x64.exe"
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --check launch --status pass --evidence "Installed app launched from Start Menu and stayed running for 60 seconds"
+```
+
+During validation, updates default to structural validation and may leave other checks pending. Once all checks have evidence, run readiness validation:
 
 ```bash
 npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --validate-ready
 ```
 
 For official stable Windows release readiness, the same report must also pass signed artifact validation:
 
 ```bash
 npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --validate-ready --require-signed
 ```
 
 Do not mark the clean-machine validation item complete while the report is still pending or unsigned for an official stable release.
