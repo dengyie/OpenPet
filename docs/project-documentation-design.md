@@ -18,35 +18,47 @@ OpenPet is not just a single desktop mascot. The original project goal is an ext
 
 This goal is the anchor for every project document. New documents should explain how the platform becomes safer, more operable, easier to extend, or more distributable. They should not pull the project toward mobile or unrelated runtime targets during the current track.
 
-## 2. Documentation Layers
+## 2. Documentation Goals
+
+The documentation system has four jobs:
+
+1. Preserve the original product intent so implementation work does not drift into unrelated targets.
+2. Give a new contributor a fast path from public overview to current state, architecture, release operations, and phase history.
+3. Keep support claims evidence-based, especially around Windows release readiness.
+4. Make every completed phase auditable: what changed, how it was reviewed, how it was verified, and what risk remains.
+
+The documentation should prefer factual status over aspiration. Roadmaps may describe intent, but README, HANDOFF, release docs, and status reviews must only claim what the repository can currently prove.
+
+## 3. Documentation Layers
 
 The docs should be read as layered sources of truth, not as interchangeable notes:
 
-| Layer | Documents | Owns |
-|-------|-----------|------|
-| Product entry | `README.md`, `README.zh-CN.md` | Public feature list, quick start, support claims, documentation index |
-| Current state | `docs/HANDOFF.md`, `docs/project-status-review.md` | What is true now, what is verified, what remains risky |
-| Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants |
-| Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md` | System design, completed productization arc, planned enhancements |
-| Release operations | `docs/desktop-release-design.md`, `docs/release-checklist.md`, `docs/release-evidence/*.json` | macOS/Windows release gates, signing, smoke evidence, operator checklist |
-| Phase records | `docs/phases/phase-*.md`, `docs/reviews/phase-*-review.md` | Implementation decisions, verification, review findings, residual risks |
-| Domain references | `docs/mcp-usage.md`, `docs/mcp-compatibility.md`, `docs/plugin-sandbox-evaluation.md`, `docs/ecosystem-catalog.md` | Focused reference material for one subsystem |
-| Historical remediation | `docs/code-quality-remediation-plan.md`, `docs/superpowers/plans/*.md` | Historical context; update only when explicitly continuing that thread |
+| Layer | Documents | Owns | Detail Level |
+|-------|-----------|------|--------------|
+| Product entry | `README.md`, `README.zh-CN.md` | Public feature list, quick start, support claims, documentation index | Broad, user-facing, concise |
+| Current state | `docs/HANDOFF.md`, `docs/project-status-review.md` | What is true now, what is verified, what remains risky | Operational handoff and status snapshot |
+| Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants | Normative project rules |
+| Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md` | System design, completed productization arc, planned enhancements | Architecture and sequencing |
+| Release operations | `docs/desktop-release-design.md`, `docs/release-checklist.md`, `docs/release-evidence/*.json` | macOS/Windows release gates, signing, smoke evidence, operator checklist | Evidence and release procedure |
+| Phase records | `docs/phases/phase-*.md`, `docs/reviews/phase-*-review.md` | Implementation decisions, verification, review findings, residual risks | Append-only phase audit trail |
+| Domain references | `docs/mcp-usage.md`, `docs/mcp-compatibility.md`, `docs/plugin-sandbox-evaluation.md`, `docs/ecosystem-catalog.md` | Focused reference material for one subsystem | Subsystem usage and threat/risk notes |
+| Historical remediation | `docs/code-quality-remediation-plan.md`, `docs/superpowers/plans/*.md` | Historical context; update only when explicitly continuing that thread | Archived context |
 
 When documents disagree, prefer the narrowest factual source for the topic:
 
 - Release readiness: `docs/desktop-release-design.md` and `docs/release-checklist.md`.
 - Current project status: `docs/HANDOFF.md` and `docs/project-status-review.md`.
-- Original goal and support wording: this document.
+- Original goal, documentation governance, and support wording: this document.
 - Implementation history: phase docs and review docs.
+- Contributor constraints: `AGENTS.md`.
 
-## 3. Documentation Map
+## 4. Documentation Map
 
 | Document | Role | Update When |
 |----------|------|-------------|
 | `AGENTS.md` | Local contributor instructions and non-negotiable project constraints | Test counts, commands, architecture invariants, or support scope change |
-| `README.md` / `README.zh-CN.md` | Public entry point, feature list, quick start, roadmap | User-facing capabilities, commands, or support claims change |
-| `docs/HANDOFF.md` | Current factual project state and file map | A phase lands, service map changes, release status changes, or test totals change |
+| `README.md` / `README.zh-CN.md` | Public entry point, feature list, quick start, roadmap | User-facing capabilities, commands, test totals, or support claims change |
+| `docs/HANDOFF.md` | Current factual project state, next work, file map, command map | A phase lands, service map changes, release status changes, or test totals change |
 | `docs/project-documentation-design.md` | Project goal anchor and documentation governance | Documentation structure, support claim rules, or phase governance changes |
 | `docs/pet-platform-development-plan.md` | Historical platform architecture and staged refactor plan | Core architecture contracts or completed phase status changes |
 | `docs/productization-roadmap.md` | Productization roadmap and long-running risks | Roadmap sequencing, risk status, or release-track scope changes |
@@ -58,7 +70,24 @@ When documents disagree, prefer the narrowest factual source for the topic:
 | `docs/reviews/phase-*-review.md` | Phase code review notes, residual risks, verification | After each phase implementation and before commit |
 | `docs/release-evidence/*.json` | Structured release evidence templates or filled reports | Smoke evidence schema or a real release validation run changes |
 
-## 4. Phase Governance
+## 5. Reader Paths
+
+Use these paths when onboarding or when deciding which document to update:
+
+| Reader Need | Start Here | Then Read |
+|-------------|------------|-----------|
+| Understand what OpenPet is | `README.zh-CN.md` or `README.md` | `docs/project-documentation-design.md`, `docs/HANDOFF.md` |
+| Continue development today | `AGENTS.md` | `docs/HANDOFF.md`, relevant phase/review docs |
+| Understand architecture | `docs/jishuwendang.md` | `docs/pet-platform-development-plan.md`, service tests |
+| Continue productization | `docs/productization-roadmap.md` | latest `docs/phases/` and `docs/reviews/` pair |
+| Work on release readiness | `docs/desktop-release-design.md` | `docs/release-checklist.md`, `docs/release-evidence/` |
+| Validate Windows claims | `docs/release-checklist.md` | `docs/phases/phase-8-windows-desktop-release.md`, `docs/reviews/phase-8-windows-desktop-release-review.md` |
+| Add or review plugins | `docs/plugin-sandbox-evaluation.md` | `docs/ecosystem-catalog.md`, plugin service tests |
+| Integrate external agents | `docs/mcp-usage.md` | `docs/mcp-compatibility.md`, Service tab notes in `docs/jishuwendang.md` |
+
+README should stay navigational. Deep implementation details belong in the technical, roadmap, release, or phase documents linked from it.
+
+## 6. Phase Governance
 
 Each implementation phase should leave the repository easier to continue from than it found it:
 
@@ -84,7 +113,23 @@ For the Windows desktop release track, the current sequence is:
 - Phase 8.5f: Windows smoke evidence bundle validation.
 - Phase 8.5: Real Windows smoke validation on a clean machine or CI-backed manual environment.
 
-## 5. Support Claim Rules
+Phase 9 is a documentation-governance phase. It does not change release readiness, but it records the rules in this document as an auditable phase with a paired review.
+
+Do not skip the review document. If a phase changes release claims, security boundaries, plugin permissions, or API-key handling, the review must explicitly state whether those boundaries still hold.
+
+## 7. Cross-Platform Scope
+
+Current product scope is desktop only:
+
+- macOS remains the validated release baseline.
+- Windows is in the desktop release track, with build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation tooling implemented.
+- Windows release readiness still requires signed artifact evidence and real Windows smoke validation.
+- Linux is deferred.
+- Mobile is out of scope for this track.
+
+Project structure is acceptable for macOS + Windows Electron desktop work because platform-specific release concerns live in electron-builder config, release workflow, and release docs, while app logic remains in the shared main/service/control-center layers. It is not designed as a mobile codebase: there is no mobile runtime, no mobile UI shell, no native mobile packaging, and no mobile support claim should appear in current docs.
+
+## 8. Support Claim Rules
 
 Support language must match what the repository can actually prove:
 
@@ -104,7 +149,7 @@ Avoid these phrases until evidence exists:
 - "Cross-platform desktop release complete".
 - "Mobile roadmap" for the current release track.
 
-## 6. Architecture Invariants
+## 9. Architecture Invariants
 
 Documentation and code changes should preserve these invariants:
 
@@ -117,7 +162,7 @@ Documentation and code changes should preserve these invariants:
 - Build output, temporary files, and secrets stay out of source control.
 - `npm start`, `npm run check:syntax`, and `npm test` remain the minimum local health checks for ordinary implementation phases.
 
-## 7. Update Playbooks
+## 10. Update Playbooks
 
 Use these lightweight playbooks to keep documentation from drifting.
 
@@ -129,6 +174,19 @@ Update:
 - `docs/HANDOFF.md` if file maps, services, UI tabs, commands, or current capabilities changed.
 - `docs/jishuwendang.md` if service responsibilities, IPC, or technical architecture changed.
 - `README.md` and `README.zh-CN.md` only when the feature is user-facing or changes developer commands.
+
+### Phase Completion
+
+Update:
+
+- The relevant `docs/phases/phase-*.md` implementation record.
+- The paired `docs/reviews/phase-*-review.md` review section.
+- `docs/HANDOFF.md` if current state, next work, metrics, service map, commands, or file maps changed.
+- `docs/project-status-review.md` for major checkpoints or readiness changes.
+- `docs/productization-roadmap.md` if roadmap sequencing, risk status, or release baseline changed.
+- README files only for public status, command, roadmap, or support-claim changes.
+
+Commit after the phase is documented and verified. The next phase should start from a clean, explainable state.
 
 ### Release Or Platform Change
 
@@ -151,19 +209,47 @@ Update:
 - `docs/jishuwendang.md` technical status.
 - `AGENTS.md` development instructions.
 
+Use actual current totals in live status documents. Do not keep stale badge numbers or command comments because they become the first source of confusion for new contributors.
+
+### Windows Evidence Change
+
+Update:
+
+- `docs/desktop-release-design.md` for acceptance-gate state.
+- `docs/release-checklist.md` for operator commands and checked items.
+- `docs/release-evidence/` for templates or filled reports.
+- `docs/phases/phase-8-windows-desktop-release.md` and its review for implementation/review history.
+- Public/current state docs only after the evidence changes what can honestly be claimed.
+
+Real Windows smoke evidence should be stored or referenced as evidence, not rewritten into a broad support claim until the checklist passes.
+
 Do not rewrite historical phase verification counts unless the phase document is explicitly being corrected. Historical records may say, for example, "181/181" for a phase that was true at the time.
 
-## 8. Current Documentation Status
+## 11. Documentation Quality Bar
 
-The repository now has a coherent phase history through Phase 8.5f:
+Every live document should satisfy these checks:
+
+- It has one clear owner role in the documentation map.
+- It does not duplicate detailed procedures that belong in a narrower release, architecture, or phase document.
+- It uses the current support wording for macOS, Windows, Linux, and mobile.
+- It distinguishes completed work from planned work.
+- It lists commands that exist in `package.json` when users are expected to run them.
+- It keeps evidence-based status separate from roadmap language.
+
+Before committing documentation-only work, run at least a link/path sanity check with `rg` plus `npm run check:syntax` when package scripts, code snippets, or release scripts are touched. If only Markdown prose changed, `git diff --check` is the minimum whitespace check.
+
+## 12. Current Documentation Status
+
+The repository now has a coherent phase history through Phase 9:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
+- Phase 9 documents the project documentation-governance layer itself, including reader paths, support-claim rules, phase completion playbooks, and live-status drift checks.
 - macOS release baseline is complete.
 - Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, and report filling tooling are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.
 
-## 9. Next Documentation Priorities
+## 13. Next Documentation Priorities
 
 The next documentation work should follow the implementation track rather than inventing a parallel roadmap:
 

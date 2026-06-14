@@ -4,7 +4,7 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-210%20passed-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-219%20passed-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -122,7 +122,7 @@ npm start
 ```bash
 npm start                    # Build Control Center + launch Electron
 npm run dev:control-center   # Control Center hot reload (http://127.0.0.1:5173)
-npm test                     # Run all tests (210 tests)
+npm test                     # Run all tests (219 tests)
 npm run check:syntax         # JS syntax validation
 npm run generate-sprites     # Regenerate sprite sheets from cat_anime/flames/
 npm run pack                 # electron-builder directory package
@@ -136,12 +136,13 @@ npm run dist                 # Generate current-host installer (macOS validated:
 ### Main Docs
 
 - **[CHANGELOG.md](./CHANGELOG.md)** - Release notes and version history
+- **[project-documentation-design.md](./docs/project-documentation-design.md)** - Project goal, documentation layers, support-claim rules, and update playbooks
 - **[HANDOFF.md](./docs/HANDOFF.md)** - Project handoff document
 - **[jishuwendang.md](./docs/jishuwendang.md)** - Technical documentation (Chinese)
 - **[productization-roadmap.md](./docs/productization-roadmap.md)** - Productization roadmap
 - **[project-status-review.md](./docs/project-status-review.md)** - Comprehensive project review
-- **[project-documentation-design.md](./docs/project-documentation-design.md)** - Project goal and documentation architecture
 - **[desktop-release-design.md](./docs/desktop-release-design.md)** - macOS + Windows desktop release design
+- **[release-checklist.md](./docs/release-checklist.md)** - Release operator checklist and Windows evidence gates
 
 ### Architecture Docs
 
@@ -159,6 +160,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 6 - Distribution & Release Pipeline](./docs/phases/phase-6-distribution-release.md)
 - [Phase 7 - Ecosystem Catalog Operations](./docs/phases/phase-7-ecosystem-operations.md)
 - [Phase 8 - Windows Desktop Release](./docs/phases/phase-8-windows-desktop-release.md)
+- [Phase 9 - Project Documentation Governance](./docs/phases/phase-9-project-documentation-governance.md)
 
 ---
 
@@ -298,7 +300,7 @@ For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evalu
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** with **210 tests all passing**.
+The project uses **Node native test runner** with **219 tests all passing**.
 
 ```bash
 npm test                     # Run all tests

@@ -23,6 +23,17 @@
 
 所有配置通过 UI 操作，用户不需要手动编辑 JSON 文件。
 
+### 文档入口顺序
+
+后续接手时建议按这个顺序读文档：
+
+1. [`project-documentation-design.md`](./project-documentation-design.md)：项目目标锚点、文档分层、支持声明规则和阶段治理。
+2. 本文件：当前事实状态、文件地图、待办和开发命令。
+3. [`desktop-release-design.md`](./desktop-release-design.md) 与 [`release-checklist.md`](./release-checklist.md)：macOS + Windows 桌面发布边界、签名、冒烟证据和验收门槛。
+4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新文档治理阶段为 [`phase-9-project-documentation-governance.md`](./phases/phase-9-project-documentation-governance.md) 与 [`phase-9-project-documentation-governance-review.md`](./reviews/phase-9-project-documentation-governance-review.md)。
+
+当前支持口径必须保持为：macOS release baseline complete；Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation baseline implemented but not release-ready；移动端不在当前范围。
+
 ---
 
 ## 核心指标
@@ -41,7 +52,7 @@
 ## 测试与验收
 
 ```bash
-npm test                  # 210 tests, all pass
+npm test                  # 219 tests, all pass
 npm run build:control-center  # Vite build pass
 npm run generate-sprites  # CLI works
 npm run check:syntax      # all JS syntax pass
@@ -291,7 +302,7 @@ npm start                    # 构建 Control Center + 启动 Electron
 npm run dev:control-center   # http://127.0.0.1:5173
 
 # 测试
-npm test                     # 210 tests
+npm test                     # 219 tests
 
 # 精灵图生成
 npm run generate-sprites     # 扫描 cat_anime/flames/ 生成 sprites/

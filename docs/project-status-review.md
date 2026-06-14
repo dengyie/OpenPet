@@ -3,7 +3,7 @@
 > 评估时间：2026-06-14
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验基线**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验基线；Phase 9 完成项目文档治理层**
 
 ---
 
@@ -330,10 +330,12 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Phase 5 | MCP transport 产品化 | `1db6f17` | ✅ | ✅ | 完成 |
 | Phase 6 | 分发与 release pipeline | `cb4895a` | ✅ | ✅ | 完成 |
 | Phase 7 | 生态 catalog 运营闭环 | `edd1307` | ✅ | ✅ | 完成 |
+| Phase 8 | Windows 桌面分发基线 | 多阶段提交 | ✅ | ✅ | 基线完成，未 release-ready |
+| Phase 9 | 项目文档治理完善 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **验证命令全部通过**：
 ```bash
-npm test                      # 210 tests pass
+npm test                      # 219 tests pass
 npm run check:syntax          # all JS syntax pass
 npm run build:control-center  # Vite build pass
 npm run pack                  # electron-builder pass
@@ -371,7 +373,7 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | **功能完整性** | ⭐⭐⭐⭐⭐ | 所有承诺功能全部实现 |
 | **架构设计** | ⭐⭐⭐⭐⭐ | 分层清晰、可扩展性强 |
-| **代码质量** | ⭐⭐⭐⭐⭐ | 210 tests、模块化、安全考虑周全 |
+| **代码质量** | ⭐⭐⭐⭐⭐ | 219 tests、模块化、安全考虑周全 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
 | **可维护性** | ⭐⭐⭐⭐⭐ | 重构彻底、职责清晰 |
 | **生态基础** | ⭐⭐⭐⭐☆ | 技术完整，缺少真实案例 |
@@ -383,7 +385,7 @@ npm run pack                  # electron-builder pass
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
 3. ✅ **测试覆盖完整**：219 个测试，service / release 门禁覆盖
-4. ✅ **文档齐全**：14 个开发/review 文档 + 交接文档
+4. ✅ **文档齐全**：18 个开发/review 文档 + 交接文档 + 文档治理入口
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
 

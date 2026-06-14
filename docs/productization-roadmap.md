@@ -1,7 +1,7 @@
 # OpenPet 产品化补齐开发设计文档
 
 > 最后更新：2026-06-14
-> 基线：`main` 已完成平台骨架、核心服务、Control Center、AI 聊天、插件隔离 runner、本地 HTTP/MCP、electron-builder 打包目录验证、macOS 分发基线与 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验基线。
+> 基线：`main` 已完成平台骨架、核心服务、Control Center、AI 聊天、插件隔离 runner、本地 HTTP/MCP、electron-builder 打包目录验证、macOS 分发基线、Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验基线，以及项目文档治理层。
 > 目标：把 OpenPet 从“可开发、可验证、可推 main”的可扩展桌面宠物平台，补齐为“可分发、可运营、可承载生态”的产品；当前桌面发布范围只覆盖 macOS 与 Windows，移动端不进入本轮设计。
 
 ## 1. 当前基线
@@ -596,7 +596,7 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验基线，但尚未进入“已发布就绪”状态。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验基线，但尚未进入“已发布就绪”状态。Phase 9 已补齐项目文档治理层，明确项目目标锚点、文档分层、reader paths、支持声明规则、阶段 completion playbook 和 Windows evidence 更新规则。
 
 ### 完成验证
 
