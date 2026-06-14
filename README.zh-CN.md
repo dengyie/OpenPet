@@ -4,7 +4,7 @@
 
 **一个可扩展、可分发、可运营的 Electron 桌面宠物平台**
 
-[![Tests](https://img.shields.io/badge/tests-202%20passed-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-210%20passed-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -29,7 +29,7 @@
 - 📦 **Pet Pack 管理** - 多宠物包支持，一键安装
 - 🌐 **HTTP API + MCP** - 本地 API 支持外部 agent 集成
 - 🎛️ **Control Center** - React + Vite 控制面板，所有配置可视化
-- 🚀 **桌面分发轨道** - macOS 分发基线；Windows 打包/CI/签名策略/冒烟证据、报告与 runbook 工具基线已落地，release-ready 门槛仍未完成
+- 🚀 **桌面分发轨道** - macOS 分发基线；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector 工具基线已落地，release-ready 门槛仍未完成
 
 ---
 
@@ -99,7 +99,7 @@
 
 - **Node.js**: >= 18.x
 - **npm**: >= 9.x
-- **操作系统**: macOS 已验证；Windows 打包/CI/签名策略/冒烟证据、报告与 runbook 工具基线已落地但尚未 release-ready；Linux / 移动端不在当前发布范围
+- **操作系统**: macOS 已验证；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector 工具基线已落地但尚未 release-ready；Linux / 移动端不在当前发布范围
 
 ### 安装
 
@@ -120,7 +120,7 @@ npm start
 ```bash
 npm start                    # 构建 Control Center + 启动 Electron
 npm run dev:control-center   # Control Center 热重载 (http://127.0.0.1:5173)
-npm test                     # 运行全部测试（202 个测试）
+npm test                     # 运行全部测试（210 个测试）
 npm run check:syntax         # JS 语法验证
 npm run generate-sprites     # 从 cat_anime/flames/ 重新生成 sprite sheets
 npm run pack                 # electron-builder 目录打包
@@ -296,7 +296,7 @@ const response = await ctx.network.fetch(url, options);
 
 ## 🧪 测试
 
-项目使用 **Node 原生 test runner**，当前有 **202 个测试全部通过**。
+项目使用 **Node 原生 test runner**，当前有 **210 个测试全部通过**。
 
 ```bash
 npm test                     # 运行全部测试
@@ -305,7 +305,7 @@ npm run build:control-center # Control Center 构建验证
 ```
 
 测试覆盖：
-- ✅ Service / release 门禁覆盖（28 个测试文件）
+- ✅ Service / release 门禁覆盖（29 个测试文件）
 - ✅ Pet pack schema / loader / importer
 - ✅ 插件 manifest / runner / SDK
 - ✅ AI service / behavior orchestrator

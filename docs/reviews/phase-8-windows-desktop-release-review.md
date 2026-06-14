@@ -1,6 +1,6 @@
 # Phase 8 Windows Desktop Release Review
 
-> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, Phase 8.5c Windows smoke report filling/update tooling, and Phase 8.5d Windows smoke validation runbook generation.
+> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, Phase 8.5c Windows smoke report filling/update tooling, Phase 8.5d Windows smoke validation runbook generation, and Phase 8.5e Windows smoke evidence collector generation.
 
 ## Phase 8.1 Findings
 
@@ -240,4 +240,39 @@ ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "
 npm run check:syntax                         # pass
 npm test                                     # 202/202 pass
 git diff --check                             # pass
+```
+
+## Phase 8.5e Findings
+
+No blocking issues found in the Windows smoke evidence collector artifact change.
+
+## Phase 8.5e Review Notes
+
+- `scripts/create-windows-smoke-collector.js` validates the input report with `allowPending: true`, so malformed or incomplete required-check matrices cannot produce an official-looking collector.
+- The collector embeds a manual checklist generated from `REQUIRED_CHECKS` and reuses the runbook evidence guidance, keeping the JSON validator, Markdown runbook, and PowerShell helper aligned.
+- The generated PowerShell records environment, Authenticode, process, and uninstall-registry snapshots under `windows-smoke-evidence/`, which gives operators concrete files to reference while filling the report.
+- The helper intentionally does not write the JSON report and does not emit any `--status pass` command. It gathers evidence only; readiness still depends on explicit operator review plus validator success.
+- The release workflow now uploads the pending report, runbook, and collector as one smoke evidence artifact, while keeping these files out of public user-facing GitHub Release downloads.
+- The runbook now points operators to the collector as an optional first step and repeats that it does not mark smoke checks as passed.
+- Tests cover CLI parsing, default output placement, required-check guidance coverage, command-note boundaries, invalid report rejection, and PowerShell file writing.
+
+## Phase 8.5e Residual Risk
+
+- This phase still does not run the Windows installer or app, and it does not create real clean-machine smoke evidence.
+- The collector can gather useful local snapshots, but visual/interactive checks such as transparent window, drag bounds, Control Center tabs, plugin runner, pet packs, Local HTTP/MCP, API key isolation, and uninstall behavior still require real validation evidence.
+- Official Windows readiness still requires a signed artifact with `Get-AuthenticodeSignature` reporting `Status : Valid` plus full smoke evidence.
+- SmartScreen reputation remains outside repository control.
+
+## Phase 8.5e Verification
+
+```bash
+node --check scripts/create-windows-smoke-collector.js # pass
+node --check tests/release/create-windows-smoke-collector.test.js # pass
+node --check scripts/create-windows-smoke-runbook.js # pass
+node --check tests/release/create-windows-smoke-runbook.test.js # pass
+node --test tests/release/create-windows-smoke-runbook.test.js tests/release/create-windows-smoke-collector.test.js # 14/14 pass
+ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"' # pass
+find tests -name '*.test.js' | wc -l # 29
+npm run check:syntax # pass
+npm test # 210/210 pass
 ```

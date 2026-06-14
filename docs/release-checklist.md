@@ -2,12 +2,12 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook baselines, but must not be called release-ready until signed release evidence and real smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector baselines, but must not be called release-ready until signed release evidence and real smoke tests are complete.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
 | macOS | Baseline implemented | Release candidate path exists; official artifacts should be signed/notarized |
-| Windows | Packaging/CI/signing-policy/smoke-evidence/reporting/runbook baseline implemented | Do not publish as supported until the Windows checklist passes |
+| Windows | Packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector baseline implemented | Do not publish as supported until the Windows checklist passes |
 | Linux | Deferred | Out of current release scope |
 | Mobile | Out of scope | Not part of this desktop release track |
 
@@ -28,6 +28,7 @@ npm run validate-windows-smoke-report -- docs/release-evidence/windows-smoke-rep
 npm run create-windows-smoke-report -- --output release/windows-smoke-report.json
 npm run validate-windows-smoke-report -- release/windows-smoke-report.json --allow-pending
 npm run create-windows-smoke-runbook -- release/windows-smoke-report.json --output release/windows-smoke-runbook.md
+npm run create-windows-smoke-collector -- release/windows-smoke-report.json --output release/windows-smoke-collector.ps1
 ```
 
 - Confirm the Windows smoke report filling tool lists the current required check ids:
@@ -116,11 +117,12 @@ Windows release support requires these gates before public release claims:
 - [x] Generate and upload a pending Windows smoke report artifact from the Windows release job.
 - [x] Add command-driven Windows smoke report filling/update tooling.
 - [x] Generate and upload a Windows smoke validation runbook beside the pending report.
+- [x] Generate and upload a Windows smoke evidence collector beside the pending report and runbook.
 - [ ] Verify install, launch, update check, and uninstall on a clean Windows machine.
 
-The generated `release/windows-smoke-report.json` captures artifact metadata and Authenticode status from the Windows runner, and `release/windows-smoke-runbook.md` gives the operator the matching required-check commands. All runtime smoke checks remain `pending` until a real Windows validation run fills evidence.
+The generated `release/windows-smoke-report.json` captures artifact metadata and Authenticode status from the Windows runner, `release/windows-smoke-runbook.md` gives the operator the matching required-check commands, and `release/windows-smoke-collector.ps1` gathers local Windows evidence snapshots. All runtime smoke checks remain `pending` until a real Windows validation run fills evidence.
 
-For a real Windows validation run, copy `docs/release-evidence/windows-smoke-report.template.json` to a versioned report path or download the generated CI pending report plus runbook artifact, then fill environment/artifact/check evidence with the update tool:
+For a real Windows validation run, copy `docs/release-evidence/windows-smoke-report.template.json` to a versioned report path or download the generated CI pending report plus runbook/collector artifact, then fill environment/artifact/check evidence with the update tool:
 
 ```bash
 npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --list-checks
@@ -129,11 +131,20 @@ npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --set
 npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --check launch --status pass --evidence "Installed app launched from Start Menu and stayed running for 60 seconds"
 ```
 
-If starting from an existing pending report, generate or refresh its local runbook before validation:
+If starting from an existing pending report, generate or refresh its local runbook and collector before validation:
 
 ```bash
 npm run create-windows-smoke-runbook -- docs/release-evidence/<report>.json --output docs/release-evidence/<report>-runbook.md
+npm run create-windows-smoke-collector -- docs/release-evidence/<report>.json --output docs/release-evidence/<report>-collector.ps1
 ```
+
+When using the generated collector on Windows, run it from the directory that also contains the pending report and installer artifacts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows-smoke-collector.ps1 -ReportPath .\windows-smoke-report.json
+```
+
+The collector writes evidence snapshots only; it does not mark checks as pass and does not prove release readiness by itself.
 
 During validation, updates default to structural validation and may leave other checks pending. Once all checks have evidence, run readiness validation:
 

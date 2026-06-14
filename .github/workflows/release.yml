@@ -267,6 +267,9 @@ jobs:
       - name: Create Windows smoke validation runbook
         run: npm run create-windows-smoke-runbook -- release/windows-smoke-report.json --output release/windows-smoke-runbook.md
 
+      - name: Create Windows smoke evidence collector
+        run: npm run create-windows-smoke-collector -- release/windows-smoke-report.json --output release/windows-smoke-collector.ps1
+
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -296,4 +299,5 @@ jobs:
           path: |
             release/windows-smoke-report.json
             release/windows-smoke-runbook.md
+            release/windows-smoke-collector.ps1
           if-no-files-found: error

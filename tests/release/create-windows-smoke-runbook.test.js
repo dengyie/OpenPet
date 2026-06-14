@@ -73,6 +73,9 @@ test('createRunbook documents every required Windows smoke check', () => {
   assert.match(runbook, /Generated: 2026-06-14T01:00:00.000Z/)
   assert.match(runbook, /Installer: OpenPet-1\.0\.1-rc\.1-win32-x64-unsigned\.exe/)
   assert.match(runbook, /This file does not prove Windows support by itself/)
+  assert.match(runbook, /## Optional Evidence Collector/)
+  assert.match(runbook, /windows-smoke-collector\.ps1 -ReportPath \.\\windows-smoke-report\.json/)
+  assert.match(runbook, /it does not mark any smoke check as passed/)
   assert.match(runbook, /npm run validate-windows-smoke-report -- release\/windows-smoke-report\.json/)
   assert.match(runbook, /--validate-ready --require-signed/)
 

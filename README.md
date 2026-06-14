@@ -4,7 +4,7 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-202%20passed-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-210%20passed-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -31,7 +31,7 @@
 - 📦 **Pet Pack Management** - Multi-pet pack support with one-click installation
 - 🌐 **HTTP API + MCP** - Local API for external agent integration
 - 🎛️ **Control Center** - React + Vite control panel with full UI configuration
-- 🚀 **Desktop Release Track** - macOS release baseline; Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook tooling baseline with release-readiness gates still open
+- 🚀 **Desktop Release Track** - macOS release baseline; Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector tooling baseline with release-readiness gates still open
 
 ---
 
@@ -101,7 +101,7 @@
 
 - **Node.js**: >= 18.x
 - **npm**: >= 9.x
-- **OS**: macOS validated; Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook tooling baseline implemented but not release-ready; Linux/mobile are out of the current release scope
+- **OS**: macOS validated; Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector tooling baseline implemented but not release-ready; Linux/mobile are out of the current release scope
 
 ### Installation
 
@@ -122,7 +122,7 @@ npm start
 ```bash
 npm start                    # Build Control Center + launch Electron
 npm run dev:control-center   # Control Center hot reload (http://127.0.0.1:5173)
-npm test                     # Run all tests (202 tests)
+npm test                     # Run all tests (210 tests)
 npm run check:syntax         # JS syntax validation
 npm run generate-sprites     # Regenerate sprite sheets from cat_anime/flames/
 npm run pack                 # electron-builder directory package
@@ -298,7 +298,7 @@ For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evalu
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** with **202 tests all passing**.
+The project uses **Node native test runner** with **210 tests all passing**.
 
 ```bash
 npm test                     # Run all tests
@@ -307,7 +307,7 @@ npm run build:control-center # Control Center build verification
 ```
 
 Test Coverage:
-- ✅ Full service/release coverage (28 test files)
+- ✅ Full service/release coverage (29 test files)
 - ✅ Pet pack schema / loader / importer
 - ✅ Plugin manifest / runner / SDK
 - ✅ AI service / behavior orchestrator

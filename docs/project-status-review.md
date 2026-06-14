@@ -1,9 +1,9 @@
 # OpenPet 项目全面评估报告
 
-> 评估时间：2026-06-13
+> 评估时间：2026-06-14
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告与 runbook 基线**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector 基线**
 
 ---
 
@@ -32,7 +32,7 @@ OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，并完
 src/main/services/        # 19 个 service，职责清晰
 src/main/pet-pack/        # Pet pack 运行时
 src/main/plugins/         # 插件系统
-tests/                    # 28 个测试文件，202 个测试全过
+tests/                    # 29 个测试文件，210 个测试全过
 ```
 
 ### v1.0.1-rc.1 增量状态
@@ -41,7 +41,7 @@ tests/                    # 28 个测试文件，202 个测试全过
 - Electron `userData` 保持旧版 `appData/ibot`，避免改名后丢失用户设置、密钥、插件、Pet packs 与本地服务日志。
 - 新公开命名为 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`。
 - 旧 `ibot.*` MCP tools、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` 保留兼容。
-- 当前验证：`npm test` 202/202，`npm run check:syntax` 通过。
+- 当前验证：`npm test` 210/210，`npm run check:syntax` 通过。
 
 ### 2. UI 配置化 ✅ 完全实现
 
@@ -144,7 +144,7 @@ docs/mcp-usage.md                            # 使用文档
 docs/mcp-compatibility.md                    # 兼容矩阵
 ```
 
-### 7. 分发与更新 ✅ macOS 基线完成，Windows 打包/CI/签名策略/冒烟证据、报告与 runbook 工具基线已落地
+### 7. 分发与更新 ✅ macOS 基线完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector 工具基线已落地
 
 **期望**：可打包、可分发、可检查更新
 
@@ -155,7 +155,7 @@ docs/mcp-compatibility.md                    # 兼容矩阵
 - ✅ About 页面：版本信息 + 更新检查
 - ✅ notarize.js 公证脚本
 - ✅ `npm run pack` / `npm run dist` 可用于当前 macOS release path
-- ✅ Windows 桌面分发设计、`build.win` targets、`build/icon.ico`、Windows release job、pending smoke report/runbook artifact、报告填写工具与平台化 About/update asset 筛选已补齐
+- ✅ Windows 桌面分发设计、`build.win` targets、`build/icon.ico`、Windows release job、签名策略护栏、冒烟证据门禁、pending smoke report/runbook/collector artifact、报告填写工具与平台化 About/update asset 筛选已补齐
 - 📝 Windows 仍需真实签名产物证据、SmartScreen/reputation 验证和真实 Windows 冒烟验证
 
 **证据**：
@@ -186,8 +186,8 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 - 最近决策日志
 
 ### 3. 测试覆盖完整
-- **202 个测试全部通过**
-- 28 个测试文件覆盖所有核心 service、发布资产脚本与 Windows 冒烟证据门禁/报告生成/填写/runbook 工具
+- **210 个测试全部通过**
+- 29 个测试文件覆盖所有核心 service、发布资产脚本与 Windows 冒烟证据门禁/报告生成/填写/runbook 与 collector 工具
 - 恶意输入测试（路径穿越、超大 body、非法 schema）
 
 ### 4. Control Center 模块化（Phase 1）
@@ -294,7 +294,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 | 指标 | 结果 |
 |------|------|
-| 测试通过率 | **202/202 (100%)** |
+| 测试通过率 | **210/210 (100%)** |
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 干净 |
@@ -333,7 +333,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 **验证命令全部通过**：
 ```bash
-npm test                      # 202 tests pass
+npm test                      # 210 tests pass
 npm run check:syntax          # all JS syntax pass
 npm run build:control-center  # Vite build pass
 npm run pack                  # electron-builder pass
@@ -371,7 +371,7 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | **功能完整性** | ⭐⭐⭐⭐⭐ | 所有承诺功能全部实现 |
 | **架构设计** | ⭐⭐⭐⭐⭐ | 分层清晰、可扩展性强 |
-| **代码质量** | ⭐⭐⭐⭐⭐ | 202 tests、模块化、安全考虑周全 |
+| **代码质量** | ⭐⭐⭐⭐⭐ | 210 tests、模块化、安全考虑周全 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
 | **可维护性** | ⭐⭐⭐⭐⭐ | 重构彻底、职责清晰 |
 | **生态基础** | ⭐⭐⭐⭐☆ | 技术完整，缺少真实案例 |
@@ -382,7 +382,7 @@ npm run pack                  # electron-builder pass
 
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
-3. ✅ **测试覆盖完整**：202 个测试，service / release 门禁覆盖
+3. ✅ **测试覆盖完整**：210 个测试，service / release 门禁覆盖
 4. ✅ **文档齐全**：14 个开发/review 文档 + 交接文档
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
@@ -403,9 +403,9 @@ npm run pack                  # electron-builder pass
 
 **理由**：
 1. 所有核心功能已完成并验证
-2. 测试覆盖完整（202/202 通过）
+2. 测试覆盖完整（210/210 通过）
 3. 架构稳定、代码质量高
-4. macOS 分发流程已就绪；Windows 打包/CI/签名策略/冒烟证据、报告与 runbook 工具基线已落地但尚未 release-ready
+4. macOS 分发流程已就绪；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector 工具基线已落地但尚未 release-ready
 5. 剩余项为增强项，不阻塞发布
 
 ### RC 验证建议
@@ -438,7 +438,7 @@ npm run pack                  # electron-builder pass
 
 **核心指标**：
 - ✅ 功能完整性：95%（所有承诺功能已实现）
-- ✅ 代码质量：202/202 测试通过
+- ✅ 代码质量：210/210 测试通过
 - ✅ 架构质量：优秀（分层清晰、安全可靠）
 - ✅ 可维护性：优秀（模块化彻底）
 - ✅ 文档完整性：双语 README、技术文档、版本记录与发布清单完整
@@ -451,6 +451,6 @@ npm run pack                  # electron-builder pass
 
 ---
 
-**评估日期**：2026-06-13
+**评估日期**：2026-06-14
 **分支状态**：`main`
 **下一步行动**：发布 v1.0.1-rc.1 → 验证升级路径 → 提升 v1.0.1

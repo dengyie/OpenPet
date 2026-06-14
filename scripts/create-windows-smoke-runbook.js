@@ -88,6 +88,7 @@ const createRunbook = ({ report, reportPath, generatedAt = new Date() }) => {
   }
 
   const reportCommandPath = commandPath(reportPath)
+  const reportFileName = path.basename(reportPath || 'windows-smoke-report.json')
   const lines = []
   lines.push('# OpenPet Windows Smoke Validation Runbook')
   lines.push('')
@@ -113,6 +114,14 @@ const createRunbook = ({ report, reportPath, generatedAt = new Date() }) => {
   lines.push('```bash')
   lines.push(`npm run update-windows-smoke-report -- ${reportCommandPath} --list-checks`)
   lines.push(`npm run update-windows-smoke-report -- ${reportCommandPath} --set-env windowsVersion="Windows 11 23H2" --set-env machine="clean Windows VM"`)
+  lines.push('```')
+  lines.push('')
+  lines.push('## Optional Evidence Collector')
+  lines.push('')
+  lines.push('If this runbook was downloaded from the CI smoke evidence artifact, run the generated collector on the Windows validation machine before filling pass/fail results. The collector only writes evidence files; it does not mark any smoke check as passed.')
+  lines.push('')
+  lines.push('```powershell')
+  lines.push(`powershell -ExecutionPolicy Bypass -File .\\windows-smoke-collector.ps1 -ReportPath .\\${reportFileName}`)
   lines.push('```')
   lines.push('')
   lines.push('## Required Checks')

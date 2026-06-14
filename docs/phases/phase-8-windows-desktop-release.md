@@ -154,6 +154,26 @@
 - 无效或缺项 report 不能生成 runbook。
 - 真实 Windows release-ready 仍必须由填写后的 JSON report 通过 validator 证明。
 
+### Phase 8.5e：Windows 冒烟证据采集脚手架
+
+目标：让 Windows smoke evidence artifact 不只包含 pending report 和人工 runbook，还包含一个可在真实 Windows 验证机器上运行的 PowerShell collector，用来采集环境、签名、进程和安装注册表快照，降低人工证据采集漏项风险。
+
+计划：
+
+- 新增 `scripts/create-windows-smoke-collector.js`，从结构有效的 Windows smoke report 生成 `windows-smoke-collector.ps1`。
+- 新增 `npm run create-windows-smoke-collector`。
+- Windows release workflow 在生成 runbook 后生成 `release/windows-smoke-collector.ps1`。
+- Windows smoke evidence artifact 同时上传 JSON report、Markdown runbook 和 PowerShell collector。
+- runbook 增加 collector 使用提示，但继续强调 collector 不会把任何 smoke check 标成 pass。
+- 新增测试覆盖参数解析、required check 清单同步、无效 report 拒绝、collector 输出边界和文件写入。
+
+验收：
+
+- collector 必须复用 `REQUIRED_CHECKS` 和 runbook evidence guidance，不能维护另一套检查项。
+- collector 只能采集证据文件，不能声明 Windows smoke validation 已通过，不能生成 `--status pass` 命令。
+- 无效或缺项 report 不能生成 collector。
+- 真实 Windows release-ready 仍必须由填写后的 JSON report 通过 validator 证明。
+
 ### Phase 8.5：Windows 冒烟验证
 
 目标：Windows 支持声明前完成真实运行验证。
@@ -369,3 +389,36 @@
 - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"'` 通过。
 - `npm run check:syntax` 通过。
 - `npm test` 通过，当前为 202/202。
+
+## 10. Phase 8.5e 实施记录
+
+本阶段继续把 Windows smoke validation 往真实执行环境靠近，但仍不执行或伪造真实 Windows 验证结果。它把 release job 的 smoke evidence artifact 扩展为“pending JSON + 操作 runbook + PowerShell evidence collector”：验证人员下载 artifact 后，可以先在 Windows 验证机器上运行 collector，生成环境、Authenticode、进程、安装注册表和人工检查清单文件，再把这些证据摘录进 JSON report。
+
+实现决策：
+
+- `create-windows-smoke-collector.js` 复用 `validate-windows-smoke-report.js` 的 `REQUIRED_CHECKS` 和 `validateReport()`，生成前先确认 report 在 `--allow-pending` 语义下结构有效。
+- collector 嵌入的 `manual-checks.md` 来自同一 required check 矩阵，并复用 `create-windows-smoke-runbook.js` 的 evidence guidance，避免三套验证口径漂移。
+- collector 默认把证据写入 `windows-smoke-evidence/`，包括 `environment.txt`、`authenticode.txt`、`process.txt`、`install-registry.txt`、`manual-checks.md` 和 `update-report-commands.md`。
+- collector 会尝试从 report 的 `artifact.installer` 推导 installer path，并运行 `Get-AuthenticodeSignature`；如果找不到 installer，只记录缺失提示，不把签名或 smoke 状态伪造成通过。
+- collector 生成的 update command notes 只包含环境和签名证据字段更新、结构校验命令，不生成任何 `--status pass` 命令。
+- release workflow 在 runbook 后生成 `release/windows-smoke-collector.ps1`，并把它和 pending report、runbook 一起上传到 `openpet-windows-smoke-evidence-<tag>` artifact。
+- runbook 新增 “Optional Evidence Collector” 小节，提示验证人员可以先运行 collector，但它不会把任何 smoke check 标成 pass。
+
+剩余风险：
+
+- 仓库仍未包含真实 Windows clean-machine smoke report。
+- collector 能采集环境和系统快照，但透明窗口、拖拽、Control Center、插件 runner、pet pack、Local HTTP/MCP、API key isolation 和卸载仍需要人工或自动化真实操作证据。
+- 官方稳定版仍需要真实 signed artifact 与 `Get-AuthenticodeSignature` 的 `Status : Valid` 证据。
+- SmartScreen reputation 仍是外部信任问题，不能由 collector 或本地脚本证明。
+
+验证：
+
+- `node --check scripts/create-windows-smoke-collector.js` 通过。
+- `node --check tests/release/create-windows-smoke-collector.test.js` 通过。
+- `node --check scripts/create-windows-smoke-runbook.js` 通过。
+- `node --check tests/release/create-windows-smoke-runbook.test.js` 通过。
+- `node --test tests/release/create-windows-smoke-runbook.test.js tests/release/create-windows-smoke-collector.test.js` 通过，14/14。
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"'` 通过。
+- `find tests -name '*.test.js' | wc -l` 输出 29。
+- `npm run check:syntax` 通过。
+- `npm test` 通过，当前为 210/210。

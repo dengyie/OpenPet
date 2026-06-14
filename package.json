@@ -14,6 +14,7 @@
     "prepare-windows-release-assets": "node scripts/prepare-windows-release-assets.js",
     "create-windows-smoke-report": "node scripts/create-windows-smoke-report.js",
     "create-windows-smoke-runbook": "node scripts/create-windows-smoke-runbook.js",
+    "create-windows-smoke-collector": "node scripts/create-windows-smoke-collector.js",
     "update-windows-smoke-report": "node scripts/update-windows-smoke-report.js",
     "validate-windows-smoke-report": "node scripts/validate-windows-smoke-report.js",
     "generate-sprites": "node scripts/generate-sprites.js",
