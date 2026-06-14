@@ -1,6 +1,6 @@
 # Phase 8 Windows Desktop Release Review
 
-> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, Phase 8.5c Windows smoke report filling/update tooling, Phase 8.5d Windows smoke validation runbook generation, Phase 8.5e Windows smoke evidence collector generation, Phase 8.5f Windows smoke evidence bundle validation, and Phase 8.5g Windows smoke evidence summary/archive generation.
+> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, Phase 8.5c Windows smoke report filling/update tooling, Phase 8.5d Windows smoke validation runbook generation, Phase 8.5e Windows smoke evidence collector generation, Phase 8.5f Windows smoke evidence bundle validation, Phase 8.5g Windows smoke evidence summary/archive generation, and Phase 8.5h Windows smoke archive manifest generation.
 
 ## Phase 8.1 Findings
 
@@ -340,5 +340,39 @@ ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "
 find tests -name '*.test.js' | wc -l # 31
 npm run check:syntax # pass
 npm test # 226/226 pass
+git diff --check # pass
+```
+
+## Phase 8.5h Findings
+
+No blocking issues found in the Windows smoke archive manifest change.
+
+## Phase 8.5h Review Notes
+
+- `scripts/create-windows-smoke-archive-manifest.js` reuses the evidence bundle validator, evidence summary generator, and smoke report validator, so it does not introduce a separate Windows readiness rule set.
+- The tool checks the full reviewed archive shape: report, runbook, collector, evidence directory, and evidence summary. Missing top-level archive files fail `ok` even when other evidence files exist.
+- The manifest records byte counts and SHA-256 hashes for the archive's top-level files and evidence files, giving release reviews stable references without embedding raw evidence content.
+- Markdown and JSON summary validation compare the checked-in summary against a freshly recomputed summary state. This catches stale or edited summaries before they are used as release evidence.
+- Pending archives can be structurally valid with `ok: true`, but `releaseReady` remains false unless the paired report passes strict readiness validation and the evidence bundle validates.
+- `--require-signed` keeps Authenticode evidence and signed report metadata in the same gate as the bundle/summary/report tooling. It does not create a shortcut around signed official readiness.
+- The CLI writes a manifest even for invalid archives, then exits non-zero. This is useful for diagnostics and does not mask failure because automation still sees exit 1.
+- Tests cover argument parsing, standard archive path resolution, pending non-ready archives, JSON summaries, missing archive files, summary mismatch, signed gate failure, signed all-pass readiness, and manifest writing.
+
+## Phase 8.5h Residual Risk
+
+- This phase still does not run the Windows installer or app, and it does not create real clean-machine smoke evidence.
+- An archive manifest proves archive completeness, hashing, and summary consistency only. It cannot prove visual/interactive Windows behavior without a filled real Windows smoke report.
+- Official Windows readiness still requires a signed artifact with `Get-AuthenticodeSignature` reporting `Status : Valid` plus full smoke evidence that passes readiness validation.
+- SmartScreen reputation remains outside repository control.
+
+## Phase 8.5h Verification
+
+```bash
+node --check scripts/create-windows-smoke-archive-manifest.js # pass
+node --check tests/release/create-windows-smoke-archive-manifest.test.js # pass
+node --test tests/release/create-windows-smoke-archive-manifest.test.js # 10/10 pass
+find tests -name '*.test.js' | wc -l # 32
+npm run check:syntax # pass
+npm test # 236/236 pass
 git diff --check # pass
 ```

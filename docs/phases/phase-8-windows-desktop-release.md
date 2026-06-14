@@ -217,6 +217,27 @@
 - `--require-signed` 必须继续失败于缺少 `Status : Valid` 或 report signed metadata 的情况。
 - summary 不生成 `--status pass` 命令，不修改 smoke report，不替代真实 Windows 验证。
 
+### Phase 8.5h：Windows 冒烟归档 Manifest
+
+目标：在真实 Windows 验证材料被人工审阅并整理成归档目录后，生成一份可审计的 archive manifest，统一记录 report、runbook、collector、evidence directory 与 summary 的存在性、字节数、SHA-256 和一致性状态，避免后续传阅或长期保存时无法判断归档是否完整。
+
+计划：
+
+- 新增 `scripts/create-windows-smoke-archive-manifest.js`，复用 evidence bundle validator、evidence summary 生成器与 smoke report validator。
+- 新增 `npm run create-windows-smoke-archive-manifest`。
+- 默认校验 `windows-smoke-archive/` 下的标准文件：`windows-smoke-report.json`、`windows-smoke-runbook.md`、`windows-smoke-collector.ps1`、`windows-smoke-evidence/`、`windows-smoke-evidence-summary.md` 或 `.json`。
+- 为 report、runbook、collector、summary 和 evidence files 记录 size 与 SHA-256。
+- 校验 summary 内容必须与重新计算的 evidence/report 状态一致，避免归档摘要被手改后仍被误引用。
+- 支持 `--require-signed`，沿用 signed evidence、summary 与 report readiness 门禁。
+- 新增测试覆盖参数解析、默认路径、pending archive 非 ready、JSON summary、缺文件、summary mismatch、signed gate、signed all-pass ready 与 manifest 写入。
+
+验收：
+
+- 完整 pending archive 可以 `ok: true`，但必须保持 `releaseReady: false`。
+- `releaseReady: true` 只允许在 evidence bundle 通过且 paired report strict readiness validation 通过时出现。
+- 缺 report/runbook/collector/summary 或 summary 与重算状态不一致时 manifest 必须失败。
+- archive manifest 不生成 `--status pass` 命令，不修改 smoke report，不替代真实 Windows 验证。
+
 ### Phase 8.5：Windows 冒烟验证
 
 目标：Windows 支持声明前完成真实运行验证。
@@ -233,6 +254,7 @@
 - 使用 `npm run update-windows-smoke-report` 逐项填写真实证据。
 - 运行 `npm run validate-windows-smoke-evidence-bundle -- windows-smoke-evidence --report docs/release-evidence/<report>.json` 校验证据包完整性。
 - 运行 `npm run create-windows-smoke-evidence-summary -- windows-smoke-evidence --report docs/release-evidence/<report>.json --output docs/release-evidence/<report>-summary.md` 归档证据摘要。
+- 将 report、runbook、collector、evidence directory 与 summary 组装到 reviewed archive 后，运行 `npm run create-windows-smoke-archive-manifest -- --archive-dir windows-smoke-archive` 生成归档 manifest。
 - 对 RC/beta/alpha 报告运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json`。
 - 对官方稳定版报告额外运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed`。
 
@@ -529,4 +551,34 @@
 - `find tests -name '*.test.js' | wc -l` 输出 31。
 - `npm run check:syntax` 通过。
 - `npm test` 通过，当前为 226/226。
+- `git diff --check` 通过。
+
+## 13. Phase 8.5h 实施记录
+
+本阶段继续完善 Windows smoke validation 的证据治理，但仍不执行或伪造真实 Windows 验证结果。它补齐的是 reviewed archive 层：当验证人员把 pending/filled report、runbook、collector、collector evidence directory 和 summary 放进一个归档目录后，可以生成一份 JSON manifest 来证明归档结构完整、summary 与重算状态一致，并记录可长期引用的 SHA-256。
+
+实现决策：
+
+- `create-windows-smoke-archive-manifest.js` 默认读取 `windows-smoke-archive/`，也支持通过 `--report`、`--evidence-dir`、`--runbook`、`--collector`、`--summary` 和 `--output` 指定非标准路径。
+- manifest 对 report、runbook、collector、summary 记录 `bytes` 与 `sha256`；evidence files 复用 evidence bundle validator 生成的文件 manifest。
+- summary 校验支持 Markdown 与 JSON。Markdown 会检查 `Windows release-ready`、`Evidence/report validation valid` 和 `Required files present` 是否与重算状态一致；JSON 会检查 `releaseReady`、`ok`、`requireSigned` 和 evidence counts。
+- `releaseReady` 只由 evidence bundle validation 与 paired report strict readiness validation 共同决定；pending archive 可以结构有效，但不会被标为 release-ready。
+- `--require-signed` 传递给 evidence/report/summary 校验路径，官方稳定版归档缺少 Authenticode `Status : Valid` 或 signed metadata 时会失败。
+- CLI 即使发现 archive 无效也会写出 manifest，再以 exit 1 失败，方便发布负责人拿到诊断文件。
+
+剩余风险：
+
+- 仓库仍未包含真实 Windows clean-machine smoke report 或 reviewed archive。
+- archive manifest 只能证明归档文件完整性、hash 和 summary 一致性，不能替代真实安装、启动、透明窗口、插件 runner、pet pack、Local HTTP/MCP、API key isolation 和卸载验证。
+- 官方稳定版仍需要真实 signed artifact、`Get-AuthenticodeSignature Status : Valid` 证据，以及填写完成的 JSON smoke report 通过 `--require-signed` readiness 校验。
+- SmartScreen reputation 仍是外部信任问题，不能由 archive manifest 证明。
+
+验证：
+
+- `node --check scripts/create-windows-smoke-archive-manifest.js` 通过。
+- `node --check tests/release/create-windows-smoke-archive-manifest.test.js` 通过。
+- `node --test tests/release/create-windows-smoke-archive-manifest.test.js` 通过，10/10。
+- `find tests -name '*.test.js' | wc -l` 输出 32。
+- `npm run check:syntax` 通过。
+- `npm test` 通过，当前为 236/236。
 - `git diff --check` 通过。

@@ -18,7 +18,7 @@ The project has evolved from a single-window pet app into a multi-layer platform
 
 - Use `npm start` to build the Control Center and launch Electron
 - Use `npm run dev:control-center` for Control Center hot-reload at http://127.0.0.1:5173
-- Use `npm test` to run all tests — currently 226 tests using Node native test runner
+- Use `npm test` to run all tests — currently 236 tests using Node native test runner
 - Use `npm run generate-sprites` to regenerate sprite sheets from `cat_anime/flames/`
 - Use `npm run check:syntax` for JS syntax validation
 - Do not commit `node_modules/`, `dist/`, build output, or temporary OS files

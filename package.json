@@ -16,6 +16,7 @@
     "create-windows-smoke-runbook": "node scripts/create-windows-smoke-runbook.js",
     "create-windows-smoke-collector": "node scripts/create-windows-smoke-collector.js",
     "create-windows-smoke-evidence-summary": "node scripts/create-windows-smoke-evidence-summary.js",
+    "create-windows-smoke-archive-manifest": "node scripts/create-windows-smoke-archive-manifest.js",
     "update-windows-smoke-report": "node scripts/update-windows-smoke-report.js",
     "validate-windows-smoke-report": "node scripts/validate-windows-smoke-report.js",
     "validate-windows-smoke-evidence-bundle": "node scripts/validate-windows-smoke-evidence-bundle.js",
