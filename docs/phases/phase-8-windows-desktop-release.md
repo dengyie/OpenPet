@@ -196,6 +196,27 @@
 - paired report 可以保持 pending；bundle validation 不会声称 runtime smoke 已通过。
 - 真实 Windows release-ready 仍必须由填写后的 JSON report 通过 validator 证明。
 
+### Phase 8.5g：Windows 冒烟证据汇总归档
+
+目标：把 collector 输出的证据目录、配套 smoke report、文件哈希、签名状态、检查项状态和 readiness validator 结果汇总成可审阅的 Markdown/JSON 摘要，方便 release issue、PR 或审阅文档引用，而不把 pending/unsigned evidence 误写成 Windows release-ready。
+
+计划：
+
+- 新增 `scripts/create-windows-smoke-evidence-summary.js`，复用 evidence bundle validator 与 smoke report validator。
+- 新增 `npm run create-windows-smoke-evidence-summary`。
+- 支持默认 Markdown 输出，也支持 `--json` 结构化输出。
+- 支持 `--report <report.json>` 汇总配套 report 的平台、架构、产物、签名、检查项状态和 readiness flags。
+- 支持 `--require-signed`，沿用 signed evidence gate，不绕过 Authenticode 要求。
+- release checklist 增加 collector 运行后的 summary 归档命令；summary 不在 Windows release job 中自动生成，因为真实 evidence directory 只会在验证机器运行 collector 后出现。
+- 新增测试覆盖参数解析、pending summary、Markdown 渲染、signed gate、all-pass signed ready 摘要和文件写入。
+
+验收：
+
+- pending 或 unsigned evidence summary 必须明确显示 `Windows release-ready: no`。
+- summary 可以显示文件 size/SHA-256、paired report 检查项分布、structural/readiness validation flags。
+- `--require-signed` 必须继续失败于缺少 `Status : Valid` 或 report signed metadata 的情况。
+- summary 不生成 `--status pass` 命令，不修改 smoke report，不替代真实 Windows 验证。
+
 ### Phase 8.5：Windows 冒烟验证
 
 目标：Windows 支持声明前完成真实运行验证。
@@ -211,6 +232,7 @@
 - 验证 API key 不暴露给 renderer 或普通插件。
 - 使用 `npm run update-windows-smoke-report` 逐项填写真实证据。
 - 运行 `npm run validate-windows-smoke-evidence-bundle -- windows-smoke-evidence --report docs/release-evidence/<report>.json` 校验证据包完整性。
+- 运行 `npm run create-windows-smoke-evidence-summary -- windows-smoke-evidence --report docs/release-evidence/<report>.json --output docs/release-evidence/<report>-summary.md` 归档证据摘要。
 - 对 RC/beta/alpha 报告运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json`。
 - 对官方稳定版报告额外运行 `npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed`。
 
@@ -475,4 +497,36 @@
 - `find tests -name '*.test.js' | wc -l` 输出 30。
 - `npm run check:syntax` 通过。
 - `npm test` 通过，当前为 219/219。
+- `git diff --check` 通过。
+
+## 12. Phase 8.5g 实施记录
+
+本阶段继续完善 Windows smoke validation 的证据治理，但仍不执行或伪造真实 Windows 验证结果。它补齐的是 evidence bundle 校验之后的审阅层：验证人员或发布负责人可以把 collector 目录、配套 report、文件哈希、签名状态、检查项分布和 readiness flags 汇总成 Markdown/JSON，作为 release issue 或 review doc 的稳定引用。
+
+实现决策：
+
+- `create-windows-smoke-evidence-summary.js` 复用 `validate-windows-smoke-evidence-bundle.js` 与 `validate-windows-smoke-report.js`，不维护另一套 evidence 或 readiness 规则。
+- 默认输出 Markdown，适合粘贴进 release issue、PR 或审阅文档；`--json` 用于自动化消费。
+- summary 记录 evidence directory、必需文件数量、每个文件的 `bytes` 与 `sha256`、Authenticode evidence 是否 `Valid`。
+- 配套 `--report` 时，summary 记录 report path、platform、arch、artifact version/installer/zip/latestYml/signed/authenticodeStatus、检查项状态分布，以及 structural/readiness validator flags。
+- `--require-signed` 直接传给 evidence bundle validator 和 report validator；缺少 `Status : Valid` 或 signed metadata 时 summary 失败。
+- `releaseReady` 只有在 evidence bundle 通过且 paired report readiness validation 通过时才为 true；pending report 会明确显示 `Windows release-ready: no`。
+- summary 作为真实 Windows 验证后的归档工具使用，不在 release job 中自动生成；原因是 CI 只生成 collector 文件，真正的 `windows-smoke-evidence/` 目录需要在 clean Windows 验证机器运行 collector 后才存在。
+
+剩余风险：
+
+- 仓库仍未包含真实 Windows clean-machine smoke report。
+- summary 只能让证据更容易审阅和归档，不能替代真实安装、启动、透明窗口、插件 runner、pet pack、Local HTTP/MCP、API key isolation 和卸载验证。
+- 官方稳定版仍需要真实 signed artifact、`Get-AuthenticodeSignature Status : Valid` 证据，以及填写完成的 JSON smoke report 通过 `--require-signed` readiness 校验。
+- SmartScreen reputation 仍是外部信任问题，不能由 summary 证明。
+
+验证：
+
+- `node --check scripts/create-windows-smoke-evidence-summary.js` 通过。
+- `node --check tests/release/create-windows-smoke-evidence-summary.test.js` 通过。
+- `node --test tests/release/create-windows-smoke-evidence-summary.test.js` 通过，7/7。
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"'` 通过。
+- `find tests -name '*.test.js' | wc -l` 输出 31。
+- `npm run check:syntax` 通过。
+- `npm test` 通过，当前为 226/226。
 - `git diff --check` 通过。

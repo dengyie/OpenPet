@@ -1,6 +1,6 @@
 # Phase 8 Windows Desktop Release Review
 
-> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, Phase 8.5c Windows smoke report filling/update tooling, Phase 8.5d Windows smoke validation runbook generation, Phase 8.5e Windows smoke evidence collector generation, and Phase 8.5f Windows smoke evidence bundle validation.
+> Reviewed scope: Phase 8.1 Windows packaging config, Phase 8.2 dual-platform release workflow, Phase 8.3 platform-aware About/update asset filtering, Phase 8.4 Windows signing policy enforcement, Phase 8.5a Windows smoke evidence gate, Phase 8.5b Windows smoke report CI artifact generation, Phase 8.5c Windows smoke report filling/update tooling, Phase 8.5d Windows smoke validation runbook generation, Phase 8.5e Windows smoke evidence collector generation, Phase 8.5f Windows smoke evidence bundle validation, and Phase 8.5g Windows smoke evidence summary/archive generation.
 
 ## Phase 8.1 Findings
 
@@ -307,5 +307,38 @@ node --test tests/release/validate-windows-smoke-evidence-bundle.test.js # 9/9 p
 find tests -name '*.test.js' | wc -l # 30
 npm run check:syntax # pass
 npm test # 219/219 pass
+git diff --check # pass
+```
+
+## Phase 8.5g Findings
+
+No blocking issues found in the Windows smoke evidence summary/archive change.
+
+## Phase 8.5g Review Notes
+
+- `scripts/create-windows-smoke-evidence-summary.js` reuses the evidence bundle validator and smoke report validator, so summary output reflects the same gates used elsewhere instead of introducing a parallel readiness definition.
+- The Markdown summary is appropriate for release issue/review consumption: it records evidence directory, file size/hash metadata, paired report artifact fields, check status counts, and structural/readiness flags.
+- Pending reports remain visibly non-ready because the summary separately reports structural validation and readiness validation, and `releaseReady` only becomes true when the paired report passes the strict all-pass path.
+- `--require-signed` is passed through to both validators. Missing Authenticode `Status : Valid` evidence or unsigned report metadata still fails the summary operation.
+- The summary is kept as a post-collector archive tool rather than a release-job artifact. This is appropriate because the release job creates the collector script, while the real `windows-smoke-evidence/` directory only exists after running that collector on a Windows validation machine.
+- Tests cover CLI argument parsing, default evidence directory handling, pending non-ready summaries, Markdown rendering, signed gate failures, signed all-pass summaries, and Markdown/JSON file writing.
+
+## Phase 8.5g Residual Risk
+
+- This phase still does not run the Windows installer or app, and it does not create real clean-machine smoke evidence.
+- A summary can make evidence easier to review and archive, but it cannot prove visual/interactive Windows behavior without a filled real Windows smoke report.
+- Official Windows readiness still requires a signed artifact with `Get-AuthenticodeSignature` reporting `Status : Valid` plus full smoke evidence that passes readiness validation.
+- SmartScreen reputation remains outside repository control.
+
+## Phase 8.5g Verification
+
+```bash
+node --check scripts/create-windows-smoke-evidence-summary.js # pass
+node --check tests/release/create-windows-smoke-evidence-summary.test.js # pass
+node --test tests/release/create-windows-smoke-evidence-summary.test.js # 7/7 pass
+ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "workflow yaml ok"' # pass
+find tests -name '*.test.js' | wc -l # 31
+npm run check:syntax # pass
+npm test # 226/226 pass
 git diff --check # pass
 ```

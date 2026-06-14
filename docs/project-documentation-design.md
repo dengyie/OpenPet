@@ -1,7 +1,7 @@
 # OpenPet Project Documentation Design
 
 > Scope: documentation architecture for the OpenPet desktop pet platform. The active product target is macOS + Windows desktop. Mobile is out of scope, and Linux is deferred until there is an explicit support decision.
-> Current release truth: macOS release baseline is complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation baseline is implemented but not release-ready.
+> Current release truth: macOS release baseline is complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary baseline is implemented but not release-ready.
 
 ## 1. Project Goal Anchor
 
@@ -111,6 +111,7 @@ For the Windows desktop release track, the current sequence is:
 - Phase 8.5d: Windows smoke validation runbook generation and CI artifact upload.
 - Phase 8.5e: Windows smoke evidence collector generation and CI artifact upload.
 - Phase 8.5f: Windows smoke evidence bundle validation.
+- Phase 8.5g: Windows smoke evidence summary/archive generation.
 - Phase 8.5: Real Windows smoke validation on a clean machine or CI-backed manual environment.
 
 Phase 9 is a documentation-governance phase. It does not change release readiness, but it records the rules in this document as an auditable phase with a paired review.
@@ -122,7 +123,7 @@ Do not skip the review document. If a phase changes release claims, security bou
 Current product scope is desktop only:
 
 - macOS remains the validated release baseline.
-- Windows is in the desktop release track, with build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation tooling implemented.
+- Windows is in the desktop release track, with build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary tooling implemented.
 - Windows release readiness still requires signed artifact evidence and real Windows smoke validation.
 - Linux is deferred.
 - Mobile is out of scope for this track.
@@ -136,11 +137,11 @@ Support language must match what the repository can actually prove:
 | Platform | Allowed Wording Now | Do Not Claim Yet |
 |----------|---------------------|------------------|
 | macOS | Validated release baseline; official artifacts should be signed/notarized | That every tag is notarized unless the release artifact was verified |
-| Windows | Packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation baseline implemented; not release-ready until signed artifact evidence and real smoke validation pass | Public user support, SmartScreen trust, or completed installer validation |
+| Windows | Packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary baseline implemented; not release-ready until signed artifact evidence and real smoke validation pass | Public user support, SmartScreen trust, or completed installer validation |
 | Linux | Deferred | Any active release target |
 | Mobile | Out of scope | Any mobile app plan for the current release track |
 
-If a document needs one sentence, use: "macOS release baseline is complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation baseline is implemented but not release-ready; mobile is out of scope."
+If a document needs one sentence, use: "macOS release baseline is complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary baseline is implemented but not release-ready; mobile is out of scope."
 
 Avoid these phrases until evidence exists:
 
@@ -246,7 +247,7 @@ The repository now has a coherent phase history through Phase 9:
 - Phase 8 documents the macOS + Windows desktop release extension.
 - Phase 9 documents the project documentation-governance layer itself, including reader paths, support-claim rules, phase completion playbooks, and live-status drift checks.
 - macOS release baseline is complete.
-- Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, and report filling tooling are implemented.
+- Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, evidence summary/archive generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.
 
 ## 13. Next Documentation Priorities

@@ -4,7 +4,7 @@
 
 ## 1. Current Baseline
 
-OpenPet is already an Electron desktop pet runtime platform with a macOS release baseline and a Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation baseline:
+OpenPet is already an Electron desktop pet runtime platform with a macOS release baseline and a Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary baseline:
 
 - `npm start` builds the Control Center and launches Electron for development.
 - `npm run pack` creates a local directory package with the current electron-builder config.
@@ -14,18 +14,18 @@ OpenPet is already an Electron desktop pet runtime platform with a macOS release
 - `.github/workflows/release.yml` has macOS and Windows PR packaging checks and separate release jobs.
 - About/update asset selection is platform-aware: macOS users see macOS installers, Windows users see Windows installers, and feed metadata/blockmaps are hidden from the user-facing asset list.
 - Windows release policy is enforced in CI: stable Windows tags require signing secrets, while unsigned prerelease assets are explicitly labeled before upload.
-- `npm run create-windows-smoke-report` creates a pending Windows smoke report from release artifacts on the Windows runner, `npm run create-windows-smoke-runbook` generates the matching operator runbook, `npm run create-windows-smoke-collector` generates a PowerShell evidence collector, `npm run validate-windows-smoke-evidence-bundle` checks collector output, `npm run update-windows-smoke-report` fills evidence during real validation, and `npm run validate-windows-smoke-report` validates structured Windows smoke evidence reports.
+- `npm run create-windows-smoke-report` creates a pending Windows smoke report from release artifacts on the Windows runner, `npm run create-windows-smoke-runbook` generates the matching operator runbook, `npm run create-windows-smoke-collector` generates a PowerShell evidence collector, `npm run validate-windows-smoke-evidence-bundle` checks collector output, `npm run create-windows-smoke-evidence-summary` archives reviewed collector/report metadata, `npm run update-windows-smoke-report` fills evidence during real validation, and `npm run validate-windows-smoke-report` validates structured Windows smoke evidence reports.
 - The pending template lives at `docs/release-evidence/windows-smoke-report.template.json`.
 - `docs/release-checklist.md` documents macOS signing, notarization, update checks, and upgrade compatibility.
 
-Windows is an Electron-compatible target with build configuration, CI release jobs, update asset filtering, signing policy, smoke evidence schema, pending report/runbook/collector artifact generation, evidence bundle validation, and report filling tooling in place, but it is not release-ready yet. The remaining gates are signed artifact evidence, SmartScreen/reputation expectations, GitHub Actions run evidence, and a real Windows smoke-test matrix.
+Windows is an Electron-compatible target with build configuration, CI release jobs, update asset filtering, signing policy, smoke evidence schema, pending report/runbook/collector artifact generation, evidence bundle validation, evidence summary/archive tooling, and report filling tooling in place, but it is not release-ready yet. The remaining gates are signed artifact evidence, SmartScreen/reputation expectations, GitHub Actions run evidence, and a real Windows smoke-test matrix.
 
 ## 2. Platform Support Statement
 
 | Platform | Current Status | Release Claim |
 |----------|----------------|---------------|
 | macOS | Implemented and locally validated | Release baseline exists; official release requires signed/notarized artifacts |
-| Windows | Packaging, CI, signing-policy, and smoke-evidence/reporting/runbook/collector/bundle-validation baseline implemented | Do not claim release-ready until signed artifact evidence and real smoke tests land |
+| Windows | Packaging, CI, signing-policy, and smoke-evidence/reporting/runbook/collector/bundle-validation/summary baseline implemented | Do not claim release-ready until signed artifact evidence and real smoke tests land |
 | Linux | Deferred | Do not include in current support matrix |
 | Mobile | Out of scope | Do not design or document for this release track |
 
@@ -81,7 +81,7 @@ Release uploads should keep artifact names platform-explicit, for example `OpenP
 
 PR workflows remain unsigned and must not require signing secrets. The macOS tag/manual release job can sign and notarize when Apple secrets are present, otherwise it produces unsigned artifacts. The Windows tag/manual release job now inspects `WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD`: stable tags fail if either secret is absent, while RC/beta/alpha tags may continue unsigned after `npm run prepare-windows-release-assets` adds `unsigned` to asset names and updates `latest.yml` references.
 
-Windows smoke evidence is recorded separately from user-facing release assets. The Windows release job creates `release/windows-smoke-report.json`, validates it with `--allow-pending`, generates `release/windows-smoke-runbook.md` and `release/windows-smoke-collector.ps1`, and uploads all three as a GitHub Actions artifact so each Windows build has structured build/signature metadata, an operator checklist, and a local evidence collection helper for real validation. This generated report/runbook/collector set does not prove runtime smoke success until every pending check is filled with real Windows evidence. Use `docs/release-evidence/windows-smoke-report.template.json` for manual validation runs, generate or download the matching runbook and collector with `npm run create-windows-smoke-runbook` and `npm run create-windows-smoke-collector`, run the collector on Windows, validate its output with `npm run validate-windows-smoke-evidence-bundle`, fill reports with `npm run update-windows-smoke-report`, and validate filled reports with `npm run validate-windows-smoke-report`. Official stable readiness must also pass `--require-signed` for both the evidence bundle and the filled report.
+Windows smoke evidence is recorded separately from user-facing release assets. The Windows release job creates `release/windows-smoke-report.json`, validates it with `--allow-pending`, generates `release/windows-smoke-runbook.md` and `release/windows-smoke-collector.ps1`, and uploads all three as a GitHub Actions artifact so each Windows build has structured build/signature metadata, an operator checklist, and a local evidence collection helper for real validation. This generated report/runbook/collector set does not prove runtime smoke success until every pending check is filled with real Windows evidence. Use `docs/release-evidence/windows-smoke-report.template.json` for manual validation runs, generate or download the matching runbook and collector with `npm run create-windows-smoke-runbook` and `npm run create-windows-smoke-collector`, run the collector on Windows, validate its output with `npm run validate-windows-smoke-evidence-bundle`, archive reviewed metadata with `npm run create-windows-smoke-evidence-summary`, fill reports with `npm run update-windows-smoke-report`, and validate filled reports with `npm run validate-windows-smoke-report`. Official stable readiness must also pass `--require-signed` for the evidence bundle, the evidence summary, and the filled report.
 
 ## 6. Desktop Verification Matrix
 
@@ -121,10 +121,10 @@ Windows desktop support can be called release-ready only after all of these are 
 - `package.json` defines Windows package targets and Windows icon assets.
 - Release workflow has a Windows runner and uploads Windows artifacts.
 - Windows signing policy is documented and enforced by the release workflow, even if early prereleases remain unsigned.
-- Windows smoke evidence reports have a checked-in template, validator, CI pending-report/runbook/collector artifact, collector-output bundle validator, command-driven filling tool, and readiness validator.
+- Windows smoke evidence reports have a checked-in template, validator, CI pending-report/runbook/collector artifact, collector-output bundle validator, evidence summary/archive tool, command-driven filling tool, and readiness validator.
 - Signed Windows release artifacts have been produced and verified with `Get-AuthenticodeSignature`.
 - The desktop verification matrix passes on a clean Windows machine or CI-backed manual test environment.
 - About/update behavior distinguishes macOS and Windows release assets.
 - `npm start`, `npm test`, `npm run check:syntax`, and macOS packaging remain functional after the Windows changes.
 
-Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, and report filling tooling are implemented; signed artifact evidence and real Windows smoke validation remain open. Until those remaining gates pass, the correct project status is: macOS release baseline complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation baseline implemented but not release-ready.
+Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, evidence summary/archive tooling, and report filling tooling are implemented; signed artifact evidence and real Windows smoke validation remain open. Until those remaining gates pass, the correct project status is: macOS release baseline complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary baseline implemented but not release-ready.
