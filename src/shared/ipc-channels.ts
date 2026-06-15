@@ -1,10 +1,4 @@
-/**
- * IPC 通道名常量 —— 主进程侧的通信契约。
- *
- * 注意：此文件仅被 src/main/ 各模块通过 require 引用。
- * preload 脚本因沙盒 require 限制，需内联定义自己的 IPC 常量副本。
- */
-const IPC = Object.freeze({
+export const IPC = Object.freeze({
   PET_GET_ANIMATIONS: 'pet:get-animations',
   PET_ANIMATIONS_CHANGED: 'pet:animations-changed',
   PET_GET_BOUNDS: 'pet:get-bounds',
@@ -70,6 +64,6 @@ const IPC = Object.freeze({
   CATALOG_CLEAR_SELECTION: 'catalog:clear-selection',
   CATALOG_ADD_BLOCKLIST: 'catalog:add-blocklist',
   CATALOG_REMOVE_BLOCKLIST: 'catalog:remove-blocklist'
-})
+} as const)
 
-module.exports = { IPC }
+export type IpcChannelName = typeof IPC[keyof typeof IPC]
