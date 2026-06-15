@@ -4,7 +4,7 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-260%20node%20%2B%209%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-262%20node%20%2B%209%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -122,7 +122,7 @@ npm start
 ```bash
 npm start                    # Build Control Center + launch Electron
 npm run dev:control-center   # Control Center hot reload (http://127.0.0.1:5173)
-npm test                     # Run Node tests (260 tests)
+npm test                     # Run Node tests (262 tests)
 npm run test:control-center  # Run Control Center Playwright UI regression tests
 npm run check:syntax         # JS syntax validation
 npm run generate-sprites     # Regenerate sprite sheets from cat_anime/flames/
@@ -172,17 +172,21 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 17 - Electron Plugin Package IPC Smoke](./docs/phases/phase-17-electron-plugin-package-ipc-smoke.md)
 - [Phase 18 - Desktop Native Picker Smoke Evidence](./docs/phases/phase-18-desktop-native-picker-smoke-evidence.md)
 - [Phase 19 - Project Documentation Design Completion](./docs/phases/phase-19-project-documentation-design-completion.md)
+- [Phase 20 - Example Plugin Developer Asset](./docs/phases/phase-20-example-plugin-developer-asset.md)
 
 ---
 
 ## 🧩 Plugin Development
+
+Start with the tested [Focus Timer example plugin](./examples/plugins/focus-timer/), then read the full [plugin development guide](./docs/plugin-development.md).
 
 ### Plugin Structure
 
 ```
 my-plugin/
 ├── plugin.json              # Plugin manifest
-└── main.js                  # Plugin entry point
+├── config.schema.json       # Optional Control Center configuration schema
+└── index.js                 # Plugin entry point
 ```
 
 ### plugin.json Example
@@ -193,72 +197,68 @@ my-plugin/
   "name": "My Plugin",
   "version": "1.0.0",
   "description": "A sample plugin",
-  "author": "Your Name",
-  "openpetApiVersion": "1.x",
-  "permissions": ["pet:say", "ai:chat"],
-  "networkAllowlist": ["https://api.example.com"],
+  "main": "index.js",
+  "configSchema": "config.schema.json",
+  "permissions": ["pet:say", "storage"],
+  "network": {
+    "allowlist": []
+  },
   "commands": [
     {
       "id": "greet",
-      "name": "Greet",
-      "description": "Say hello"
+      "title": "Greet"
     }
-  ],
-  "configSchema": {
-    "message": {
-      "type": "string",
-      "default": "Hello!",
-      "description": "Greeting message"
-    }
-  }
+  ]
 }
 ```
 
-### main.js Example
+### index.js Example
 
 ```javascript
-// Plugin entry, export command handler functions
-module.exports = {
-  async greet(ctx) {
-    const message = await ctx.config.get('message');
-    await ctx.pet.say(message);
+module.exports = function activate(ctx) {
+  return {
+    greet: async () => {
+      const message = ctx.config.get('message') || 'Hello!'
+      await ctx.pet.say(message)
+      return { ok: true }
+    }
   }
-};
+}
 ```
 
 ### Available SDK APIs
 
 ```javascript
 // Pet operations
-await ctx.pet.say(text);
-await ctx.pet.playAction(actionId);
-await ctx.pet.setEvent(event);
+await ctx.pet.say(text)
+await ctx.pet.playAction(actionId)
+await ctx.pet.setEvent(event)
 
-// Config read/write
-const value = await ctx.config.get(key);
-await ctx.config.set(key, value);
+// Config read
+const value = ctx.config.get(key)
 
 // Private storage (requires storage permission)
-const data = await ctx.storage.get(key);
-await ctx.storage.set(key, value);
-await ctx.storage.remove(key);
-await ctx.storage.clear();
+const data = await ctx.storage.get(key)
+await ctx.storage.set(key, value)
+await ctx.storage.remove(key)
+await ctx.storage.clear()
 
 // AI chat (requires ai:chat permission)
-const reply = await ctx.ai.chat(conversationId, userMessage);
+const reply = await ctx.ai.chat({ message: userMessage, conversationId })
 
 // Network requests (requires network permission + allowlist)
-const response = await ctx.network.fetch(url, options);
+const response = await ctx.network.fetch(url, options)
 ```
 
 ### Plugin Development Guide
 
-1. Create plugin directory: `<userData>/plugins/<plugin-id>/`
-2. Write `plugin.json` and `main.js`
-3. Enable plugin in Control Center → Plugins tab
-4. Run commands to test
+1. Create a plugin directory with `plugin.json` at its root.
+2. Write `index.js` and optional `config.schema.json`.
+3. Install it through Control Center → Plugins → Install plugin package.
+4. Review permissions, install, then manually enable it.
+5. Run commands to test.
 
-For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evaluation.md)
+For more details, see [plugin-development.md](./docs/plugin-development.md) and [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evaluation.md).
 
 ---
 
@@ -311,7 +311,7 @@ For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evalu
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** for service/release/IPC coverage with **260 tests all passing**, plus a **Playwright Control Center UI regression baseline** with 9 UI tests.
+The project uses **Node native test runner** for service/release/IPC/example-plugin coverage with **262 tests all passing**, plus a **Playwright Control Center UI regression baseline** with 9 UI tests.
 
 ```bash
 npm test                     # Run Node tests
@@ -321,9 +321,10 @@ npm run build:control-center # Control Center build verification
 ```
 
 Test Coverage:
-- ✅ Full service/release/IPC coverage (35 test files)
+- ✅ Full service/release/IPC/example coverage (36 test files)
 - ✅ Control Center shell / tab / Pet / About smoke coverage, Pet / AI / Service saved configuration flows, Catalog install/update flows, Service MCP session management, and manual plugin package install review (9 Playwright tests)
 - ✅ Main-process plugin package IPC smoke coverage with a real `.openpet-plugin.zip` fixture
+- ✅ Focus Timer example plugin install/run coverage through the real local plugin services
 - ✅ Desktop native picker smoke evidence tooling for packaged macOS / Windows validation reports and runbooks
 - ✅ Pet pack schema / loader / importer
 - ✅ Plugin manifest / runner / SDK
@@ -385,7 +386,7 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 
 - ⚡ Windows signed-artifact verification and smoke testing
 - ⚡ Fill and archive real packaged-app native picker smoke evidence for macOS / Windows
-- ⚡ More example plugins (weather, pomodoro, RSS)
+- ⚡ Additional example plugins beyond Focus Timer (weather, RSS)
 - ⚡ Plugin development tutorial videos
 - ⚡ User feedback collection & iteration
 

@@ -1,0 +1,26 @@
+{
+  "title": "Focus Timer Settings",
+  "description": "Configurable text and timing defaults for the Focus Timer example plugin.",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "title": "Session label",
+      "description": "Name shown when a focus session starts.",
+      "default": "Focus"
+    },
+    "minutes": {
+      "type": "number",
+      "title": "Minutes",
+      "description": "Default focus duration announced by the pet.",
+      "default": 25,
+      "enum": [15, 25, 45]
+    },
+    "strictMode": {
+      "type": "boolean",
+      "title": "Strict mode",
+      "description": "Adds a short no-distractions reminder to the pet message.",
+      "default": false
+    }
+  }
+}

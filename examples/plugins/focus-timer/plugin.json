@@ -1,0 +1,19 @@
+{
+  "id": "openpet.example.focus-timer",
+  "name": "Focus Timer",
+  "version": "1.0.0",
+  "description": "Example local plugin that tracks focus sessions and asks the pet to announce state changes.",
+  "main": "index.js",
+  "configSchema": "config.schema.json",
+  "permissions": ["pet:say", "storage"],
+  "commands": [
+    {
+      "id": "start",
+      "title": "Start focus"
+    },
+    {
+      "id": "reset",
+      "title": "Reset sessions"
+    }
+  ]
+}
