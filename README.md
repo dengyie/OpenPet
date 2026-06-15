@@ -130,12 +130,14 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 ```
 
 Read [plugin-development.md](./docs/plugin-development.md) and [plugin-submission-workflow-playbook.md](./docs/plugin-submission-workflow-playbook.md) for the full path.
+Plugin authors should also read [plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) for the hard compatibility and review rules.
 
 ## Documentation
 
 - [CHANGELOG.md](./CHANGELOG.md) - release notes.
 - [docs/development-summary.md](./docs/development-summary.md) - current engineering summary.
 - [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff.
+- [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - plugin author contract, compatibility rules, and review guardrails.
 - [docs/project-context.json](./docs/project-context.json) - compact machine-readable project context.
 - [docs/project-documentation-design.md](./docs/project-documentation-design.md) - documentation rules and support-claim policy.
 - [docs/desktop-release-design.md](./docs/desktop-release-design.md) and [docs/release-checklist.md](./docs/release-checklist.md) - desktop release evidence gates.

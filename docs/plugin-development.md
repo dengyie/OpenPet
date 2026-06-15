@@ -2,6 +2,8 @@
 
 OpenPet plugins are local JavaScript packages installed through the Control Center. They run in a short-lived isolated Node runner and can only reach the app through a permission-gated SDK.
 
+Before starting a new plugin, read [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md). It is the authoritative rulebook for package safety, permission budgeting, compatibility targets, config limits, review expectations, and submission discipline.
+
 For complete tested packages, start with [`examples/plugins/focus-timer`](../examples/plugins/focus-timer/) for storage and pet speech, [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for JSON network allowlist usage, or [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) for public feed fetching and cached announcements.
 
 ## Package Layout
@@ -44,10 +46,22 @@ Important fields:
 - `main`: safe relative path to a JavaScript file.
 - `configSchema`: optional safe relative path to an object JSON schema.
 - `permissions`: explicit capabilities requested from the SDK.
-- `network.allowlist`: HTTPS public DNS hosts only, such as `api.example.com`.
+- `network.allowlist`: HTTPS public DNS hosts, optionally with an explicit port, such as `api.example.com` or `api.example.com:8443`. Do not include paths, query strings, credentials, or schemes.
 - `commands`: command ids and titles shown in Control Center.
 
 Allowed permissions are `pet:say`, `pet:action`, `pet:event`, `ai:chat`, `storage`, `network`, and `commands`.
+
+## Ecosystem Guardrails
+
+Plugin authors should design to the current OpenPet contract, not internal implementation details.
+
+- Plugins are command-driven, short-lived, and must tolerate isolated execution.
+- Use `ctx.storage` for durable state; do not rely on in-memory globals between commands.
+- Do not require user secrets in plugin config. There is no dedicated plugin secret store yet.
+- Keep permissions and `network.allowlist` minimal. New permissions or hosts on update will trigger review and disable the plugin until re-enabled.
+- Treat `.openpet-plugin.zip` as the preferred package format. Legacy `.ibot-plugin.zip` is compatibility-only.
+
+See [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md) for the full policy and reviewer checklist.
 
 ## Entry Point
 
@@ -133,7 +147,7 @@ SDK calls are permission checked in the main process:
 
 ### Network Example
 
-Use `network.allowlist` for public HTTPS hosts, then keep requests narrow and free of credentials:
+Use `network.allowlist` for public HTTPS hosts, optionally with explicit ports, then keep requests narrow and free of credentials:
 
 ```json
 {
@@ -152,7 +166,7 @@ const response = await ctx.network.fetch('https://api.weather.example.com/v1/cur
 })
 ```
 
-The runtime rejects non-HTTPS URLs, hosts outside the allowlist, unsupported methods, sensitive headers such as `authorization` or `cookie`, oversized request bodies, oversized responses, and redirects to non-allowlisted hosts. See [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for a complete package.
+The runtime rejects non-HTTPS URLs, hosts outside the allowlist, allowlist entries with paths or query strings, unsupported methods, sensitive headers such as `authorization` or `cookie`, oversized request bodies, oversized responses, and redirects to non-allowlisted hosts. See [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for a complete package.
 
 ### RSS/Feed Example
 
