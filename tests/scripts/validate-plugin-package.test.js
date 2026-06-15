@@ -59,3 +59,33 @@ test('validate plugin package reports signature metadata hash errors', () => {
   assert.match(result.errors.join('\n'), /Signature error: plugin\.json hash does not match/)
   assert.match(result.errors.join('\n'), /Signature error: Signature metadata does not cover files: index\.js/)
 })
+
+test('validate plugin package rejects secret-like config fields', () => {
+  const pluginPath = createPluginPackage()
+  fs.writeFileSync(path.join(pluginPath, 'plugin.json'), JSON.stringify({
+    id: 'openpet.example.secret-config',
+    name: 'Secret Config',
+    version: '1.0.0',
+    main: 'index.js',
+    configSchema: 'config.schema.json',
+    permissions: ['network'],
+    network: { allowlist: ['api.example.com'] },
+    commands: [{ id: 'refresh', title: 'Refresh' }]
+  }, null, 2))
+  fs.writeFileSync(path.join(pluginPath, 'config.schema.json'), JSON.stringify({
+    title: 'Secret Config Settings',
+    type: 'object',
+    properties: {
+      apiKey: {
+        type: 'string',
+        title: 'API Key',
+        description: 'Private provider API key'
+      }
+    }
+  }, null, 2))
+
+  assert.throws(
+    () => validatePluginPackage(pluginPath),
+    /Plugin config apiKey looks like a secret/
+  )
+})

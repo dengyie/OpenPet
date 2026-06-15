@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
+const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
 
 test('normalizes a plugin manifest with permissions and commands', () => {
   const manifest = normalizePluginManifest({
@@ -158,4 +159,29 @@ test('rejects unsafe plugin config schema paths', () => {
     version: '1.0.0',
     configSchema: 'config.js'
   }), /Plugin configSchema must point to a JSON file/)
+})
+
+test('rejects plugin config schemas that look like secret storage', () => {
+  assert.throws(() => normalizeConfigSchema({
+    title: 'Credentials',
+    type: 'object',
+    properties: {
+      accessToken: {
+        type: 'string',
+        title: 'Access Token'
+      }
+    }
+  }), /Plugin config accessToken looks like a secret/)
+
+  assert.throws(() => normalizeConfigSchema({
+    title: 'Credentials',
+    type: 'object',
+    properties: {
+      endpoint: {
+        type: 'string',
+        title: 'Endpoint',
+        format: 'password'
+      }
+    }
+  }), /Plugin config endpoint uses password-style secret metadata/)
 })

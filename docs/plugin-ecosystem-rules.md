@@ -284,6 +284,7 @@ Until the platform has a dedicated plugin secret capability:
 - do not design plugins that require private API keys
 - do not instruct users to store tokens in plugin config
 - do not claim a plugin is secure if it depends on user-pasted secrets in ordinary settings
+- expect package validation and runtime loading to reject secret-like config fields such as API keys, access tokens, passwords, credentials, private keys, `format: "password"`, or `writeOnly: true`
 
 ## 9. Compatibility And Upgrade Rules
 

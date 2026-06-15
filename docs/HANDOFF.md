@@ -44,6 +44,7 @@ npm test
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
+npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
 npm run create-packaged-runtime-smoke-report
 npm run create-packaged-runtime-smoke-runbook
 npm run validate-packaged-runtime-smoke-report
@@ -61,9 +62,10 @@ npm run create-release-evidence-archive-manifest
 - `scripts/create-packaged-runtime-smoke-report.js` and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
 - `scripts/create-release-evidence-archive-manifest.js` for release-level evidence archive validation.
 - `docs/plugin-submission-workflow-playbook.md` for plugin onboarding.
+- `scripts/create-openpet-plugin.js` for plugin starter templates.
 
 ## Next Steps
 
 1. Use `docs/productization-v1.1-todo-design.md` as the near-term execution entry for the next productization phases.
-2. Fill real packaged runtime, picker, and signed archive evidence before claiming packaged runtime or release readiness.
-3. Continue TypeScript migration from shared IPC and Control Center view contracts into the API facade, hooks, and main-process boundaries.
+2. Continue with Phase 39 plugin sandbox evaluation before expanding plugin trust.
+3. Fill real packaged runtime, picker, and signed archive evidence before claiming packaged runtime or release readiness.

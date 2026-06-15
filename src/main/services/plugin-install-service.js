@@ -4,6 +4,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 const { normalizePluginManifest, normalizeSignature } = require('../plugins/manifest')
+const { normalizeConfigSchema } = require('../plugins/config-schema')
 
 const PLUGIN_SELECTION_TTL_MS = 10 * 60 * 1000
 const SAFE_ZIP_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
@@ -233,7 +234,8 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
     const manifest = normalizePluginManifest(readJsonFile(manifestPath, 'Plugin manifest'), { source: 'local', basePath: rootPath })
     if (!manifest.main) throw new Error('Plugin package must declare a main JavaScript file')
     resolvePluginFile(manifest, 'main')
-    resolvePluginFile(manifest, 'configSchema')
+    const configSchemaPath = resolvePluginFile(manifest, 'configSchema')
+    if (configSchemaPath) normalizeConfigSchema(readJsonFile(configSchemaPath, 'Plugin config schema'))
 
     const fileHashes = getFileHashes(rootPath)
     const fileEntries = Object.keys(fileHashes)

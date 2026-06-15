@@ -20,6 +20,8 @@
     "TypeScript migration baseline covers shared IPC and Control Center view contracts",
     "Packaged runtime smoke evidence tooling is available but real archived runtime evidence is still pending",
     "Release evidence archive manifest tooling is available but real signed release evidence is still pending",
+    "Plugin config is public settings; secret-like plugin config fields are rejected",
+    "Plugin scaffolding is available through npm run create-openpet-plugin",
     "The Phase 38+ TODO design lives in docs/productization-v1.1-todo-design.md"
   ],
   "validation": {
@@ -30,6 +32,7 @@
       "npm run test:control-center",
       "npm run typecheck",
       "npm run check:syntax",
+      "npm run create-openpet-plugin",
       "npm run validate-packaged-runtime-smoke-report",
       "npm run create-release-evidence-archive-manifest"
     ]

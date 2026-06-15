@@ -2,10 +2,10 @@ const fs = require('fs')
 const path = require('path')
 const { fork } = require('child_process')
 const { normalizePluginManifest } = require('../plugins/manifest')
+const { coerceConfigValue, normalizeConfigSchema } = require('../plugins/config-schema')
 
 const LOCAL_PLUGIN_COMMAND_TIMEOUT_MS = 5000
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
-const SUPPORTED_CONFIG_TYPES = new Set(['string', 'number', 'boolean'])
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
 const MAX_PLUGIN_STORAGE_BYTES = 64 * 1024
 const MAX_PLUGIN_STORAGE_VALUE_BYTES = 16 * 1024
@@ -206,61 +206,6 @@ const assertStorageSize = (storage) => {
 const assertStorageKey = (key) => {
   if (typeof key !== 'string' || !STORAGE_KEY_PATTERN.test(key)) {
     throw new Error('Plugin storage key must be 1-128 characters using letters, numbers, _, ., :, or -')
-  }
-}
-
-const coerceConfigValue = (value, field) => {
-  let normalized = value
-  if (normalized == null || normalized === '') {
-    if (hasOwn(field, 'default')) return field.default
-    if (field.required) throw new Error(`Plugin config ${field.key} is required`)
-    if (field.type === 'boolean') return false
-    if (field.type === 'string') return ''
-    return undefined
-  }
-
-  if (field.type === 'string') normalized = String(normalized)
-  if (field.type === 'number') {
-    normalized = Number(normalized)
-    if (!Number.isFinite(normalized)) throw new Error(`Plugin config ${field.key} must be a number`)
-  }
-  if (field.type === 'boolean') {
-    normalized = normalized === true || normalized === 'true' || normalized === 1 || normalized === '1'
-  }
-
-  if (field.enum?.length && !field.enum.includes(normalized)) {
-    throw new Error(`Plugin config ${field.key} must be one of: ${field.enum.join(', ')}`)
-  }
-
-  return normalized
-}
-
-const normalizeConfigField = (key, rawField = {}, required = false) => {
-  if (!/^[a-zA-Z0-9_.-]+$/.test(key)) throw new Error(`Plugin config key is invalid: ${key}`)
-  const type = rawField.type || 'string'
-  if (!SUPPORTED_CONFIG_TYPES.has(type)) throw new Error(`Unsupported plugin config type: ${type}`)
-  const field = {
-    key,
-    type,
-    title: rawField.title || key,
-    description: rawField.description || '',
-    required: Boolean(required)
-  }
-  if (Array.isArray(rawField.enum)) field.enum = rawField.enum.map((value) => coerceConfigValue(value, { key, type }))
-  if (hasOwn(rawField, 'default')) field.default = coerceConfigValue(rawField.default, field)
-  return field
-}
-
-const normalizeConfigSchema = (schema = {}) => {
-  if (!schema || schema.type !== 'object' || !schema.properties || typeof schema.properties !== 'object') {
-    throw new Error('Plugin config schema must be an object schema with properties')
-  }
-  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
-  const properties = Object.entries(schema.properties).map(([key, field]) => normalizeConfigField(key, field, required.has(key)))
-  return {
-    title: schema.title || 'Plugin Configuration',
-    description: schema.description || '',
-    properties
   }
 }
 

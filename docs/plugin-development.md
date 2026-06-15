@@ -4,7 +4,15 @@ OpenPet plugins are local JavaScript packages installed through the Control Cent
 
 Before starting a new plugin, read [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md). It is the authoritative rulebook for package safety, permission budgeting, compatibility targets, config limits, review expectations, and submission discipline.
 
-For complete tested packages, start with [`examples/plugins/focus-timer`](../examples/plugins/focus-timer/) for storage and pet speech, [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for JSON network allowlist usage, or [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) for public feed fetching and cached announcements.
+For a new local package, start with the scaffold command:
+
+```bash
+npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
+npm run create-openpet-plugin -- "Weather Badge" --template network --output-dir scratch/plugins
+npm run create-openpet-plugin -- "Counter Buddy" --template storage --output-dir scratch/plugins
+```
+
+For complete tested packages, read [`examples/plugins/focus-timer`](../examples/plugins/focus-timer/) for storage and pet speech, [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for JSON network allowlist usage, or [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) for public feed fetching and cached announcements.
 
 ## Package Layout
 
@@ -57,7 +65,7 @@ Plugin authors should design to the current OpenPet contract, not internal imple
 
 - Plugins are command-driven, short-lived, and must tolerate isolated execution.
 - Use `ctx.storage` for durable state; do not rely on in-memory globals between commands.
-- Do not require user secrets in plugin config. There is no dedicated plugin secret store yet.
+- Do not require user secrets in plugin config. There is no dedicated plugin secret store yet, and secret-like config fields are rejected during package validation and runtime loading.
 - Keep permissions and `network.allowlist` minimal. New permissions or hosts on update will trigger review and disable the plugin until re-enabled.
 - Treat `.openpet-plugin.zip` as the preferred package format. Legacy `.ibot-plugin.zip` is compatibility-only.
 
@@ -84,6 +92,8 @@ ES module style `export default function activate(ctx) {}` is also accepted by t
 ## Configuration Schema
 
 OpenPet supports object schemas with `string`, `number`, and `boolean` properties. `enum`, `default`, `title`, `description`, and `required` are supported.
+
+Plugin config is ordinary app settings, not secret storage. Fields that look like `apiKey`, `accessToken`, `authToken`, `password`, `credential`, `privateKey`, or password-style metadata such as `format: "password"` / `writeOnly: true` are rejected. Network plugins must use public allowlisted hosts and public request settings only.
 
 ```json
 {
@@ -310,6 +320,7 @@ Use the service tests as the source of truth for current runtime behavior:
 Before submitting a plugin-related change, run:
 
 ```bash
+npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
 npm run validate:plugin -- <plugin-dir-or-zip>
 npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready

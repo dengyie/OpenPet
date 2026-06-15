@@ -30,6 +30,7 @@ OpenPet is now a desktop pet platform with:
 - v1.1 TODO design that turns the Phase 37+ open work into phase-ready release evidence, plugin, pet pack, AI debugging, TypeScript, and documentation tracks.
 - Packaged runtime smoke evidence tooling for pet window, transparency, sprite visibility, built-in pet pack switching, and linked picker evidence.
 - Release evidence archive manifest tooling that hashes and validates macOS signing evidence plus Windows smoke, desktop picker, and packaged runtime reports without claiming readiness for pending evidence.
+- Plugin secrets decision and scaffolding: plugin config remains public settings, secret-like fields are rejected, and `create-openpet-plugin` generates minimal/network/storage starter templates.
 
 ## Validation Baseline
 
@@ -44,8 +45,8 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 
 - Windows is still not release-ready until real signed installer evidence and smoke reports are archived.
 - Packaged native picker, packaged runtime, and signed release archive evidence still need real archived runs.
-- The plugin ecosystem has submission tooling and example assets, but wider community onboarding is still future work.
-- The next prioritized work is filling real packaged runtime/picker evidence, release evidence hardening, and continuing TypeScript contract migration.
+- The plugin ecosystem has submission tooling, examples, and scaffolding, but sandbox evaluation and wider community onboarding are still future work.
+- The next prioritized work is Phase 39 sandbox evaluation, filling real packaged runtime/picker evidence, release evidence hardening, and continuing TypeScript contract migration.
 
 ## Next Migration Steps
 

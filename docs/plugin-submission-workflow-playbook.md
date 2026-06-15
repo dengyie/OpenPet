@@ -23,9 +23,11 @@ It does not:
 
 ## 2. Recommended Rehearsal Order
 
-Start from a tested local example plugin such as `examples/plugins/focus-timer`.
+Start from a generated local plugin or a tested example plugin such as `examples/plugins/focus-timer`.
 
 ```bash
+npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
+npm run validate:plugin -- scratch/plugins/openpet.plugin.my-plugin
 npm run validate:plugin -- examples/plugins/focus-timer
 npm run create-plugin-submission-report -- examples/plugins/focus-timer --output plugin-submission-report.md
 npm run create-plugin-submission-pr -- examples/plugins/focus-timer --output plugin-submission-pr.md
@@ -34,6 +36,8 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 ```
 
 If the bundle is blocked before human review, fix the package or signature issue first, then rerun the bundle and validator commands.
+
+Plugin config is not a secret store. If validation rejects fields such as `apiKey`, `accessToken`, `password`, `credential`, `format: "password"`, or `writeOnly: true`, remove the private credential flow instead of renaming it.
 
 ## 3. What Each Artifact Means
 

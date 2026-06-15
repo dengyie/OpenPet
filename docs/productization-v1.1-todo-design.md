@@ -98,6 +98,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Plugin secret policy is consistent across docs, validator output, review packet, and Control Center install/update review.
 - Existing example plugins still pass validation.
 
+**Status**: completed in the current Phase 38 implementation. The next open track is Phase 39.
+
 ### Phase 39: Plugin Sandbox Evaluation
 
 **Goal**: compare the current child process + Node permission-model runner against stronger isolation candidates before expanding third-party trust.

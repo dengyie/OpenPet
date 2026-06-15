@@ -32,6 +32,7 @@
     "create-rc-upgrade-smoke-report": "node scripts/create-rc-upgrade-smoke-report.js",
     "validate-rc-upgrade-smoke-report": "node scripts/validate-rc-upgrade-smoke-report.js",
     "validate:plugin": "node scripts/validate-plugin-package.js",
+    "create-openpet-plugin": "node scripts/create-openpet-plugin.js",
     "create-plugin-submission-report": "node scripts/create-plugin-submission-report.js",
     "create-plugin-submission-pr": "node scripts/create-plugin-submission-pr.js",
     "create-plugin-submission-bundle": "node scripts/create-plugin-submission-bundle.js",
