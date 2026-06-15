@@ -161,6 +161,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 7 - Ecosystem Catalog Operations](./docs/phases/phase-7-ecosystem-operations.md)
 - [Phase 8 - Windows Desktop Release](./docs/phases/phase-8-windows-desktop-release.md)
 - [Phase 9 - Project Documentation Governance](./docs/phases/phase-9-project-documentation-governance.md)
+- [Phase 10 - Project Documentation Design Hardening](./docs/phases/phase-10-project-documentation-design-hardening.md)
 
 ---
 

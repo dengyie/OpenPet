@@ -30,7 +30,7 @@
 1. [`project-documentation-design.md`](./project-documentation-design.md)：项目目标锚点、文档分层、支持声明规则和阶段治理。
 2. 本文件：当前事实状态、文件地图、待办和开发命令。
 3. [`desktop-release-design.md`](./desktop-release-design.md) 与 [`release-checklist.md`](./release-checklist.md)：macOS + Windows 桌面发布边界、签名、冒烟证据和验收门槛。
-4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新文档治理阶段为 [`phase-9-project-documentation-governance.md`](./phases/phase-9-project-documentation-governance.md) 与 [`phase-9-project-documentation-governance-review.md`](./reviews/phase-9-project-documentation-governance-review.md)。
+4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新文档设计阶段为 [`phase-10-project-documentation-design-hardening.md`](./phases/phase-10-project-documentation-design-hardening.md) 与 [`phase-10-project-documentation-design-hardening-review.md`](./reviews/phase-10-project-documentation-design-hardening-review.md)。
 
 当前支持口径必须保持为：macOS release baseline complete；Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baseline implemented but not release-ready；移动端不在当前范围。
 
