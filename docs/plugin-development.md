@@ -246,6 +246,22 @@ npm run create-plugin-submission-pr -- path/to/my-plugin.openpet-plugin.zip --re
 
 The PR packet does not approve publication, establish signing trust, or replace manual review.
 
+## Submission Workflow Bundle
+
+For a complete local submission packet, generate all review artifacts in one directory:
+
+```bash
+npm run create-plugin-submission-bundle -- path/to/my-plugin.openpet-plugin.zip --output-dir plugin-submission-bundle
+```
+
+The bundle writes:
+
+- `plugin-submission-report.md`
+- `plugin-submission-pr.md`
+- `plugin-submission-summary.json`
+
+Use the bundle summary to confirm whether the package is ready for human review, then paste or attach the Markdown files in the plugin submission PR. The bundle still does not approve publication, establish signing trust, install the plugin, enable the plugin, or run plugin code.
+
 ## Packaging
 
 To create a local distributable archive, zip the contents of the plugin directory so `plugin.json` is at the archive root, then name it with `.openpet-plugin.zip`.
@@ -271,6 +287,7 @@ Before submitting a plugin-related change, run:
 
 ```bash
 npm run validate:plugin -- <plugin-dir-or-zip>
+npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle
 npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md
 npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md
 npm test
