@@ -5,7 +5,7 @@
 > Current release track: `v1.0.1-rc.2`
 
 This is the short engineering summary for the current repository state. For long phase history, read `docs/phases/` and `docs/reviews/`. For support claims and documentation rules, read `docs/project-documentation-design.md`.
-For the next execution-oriented productization sequence, read `docs/productization-next-steps-design.md`.
+For the next execution-oriented productization sequence, read `docs/productization-next-steps-design.md`. For the implementation-oriented TODO breakdown, read `docs/productization-todo-design.md`.
 
 ## Current State
 
@@ -17,7 +17,7 @@ OpenPet is now a desktop pet platform with:
 - AI chat with secret storage in the main process,
 - a permission-limited plugin system,
 - loopback-only local HTTP / MCP endpoints,
-- and a TypeScript migration baseline.
+- and a TypeScript migration baseline covering shared IPC and Control Center view contracts.
 
 ## Latest Delivered Changes
 
@@ -25,7 +25,8 @@ OpenPet is now a desktop pet platform with:
 - Native Codex pet zip import for `.codex-pet.zip` packages.
 - Bundled built-in pet packs: `doro`, `duodong`, `chispa`.
 - Bundled pet renderer fix so packaged sprite URLs resolve correctly.
-- TypeScript migration scaffold with `tsconfig.json`, `npm run typecheck`, and a shared IPC contract sample.
+- TypeScript migration scaffold with `tsconfig.json`, `npm run typecheck`, shared IPC contracts, and typed Control Center view defaults.
+- Productization TODO design that turns the remaining review items into prioritized implementation phases.
 
 ## Validation Baseline
 
@@ -45,7 +46,7 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 
 ## Next Migration Steps
 
-1. Use `docs/productization-next-steps-design.md` to drive the next productization phases.
-2. Expand TypeScript from shared contracts into the next main-process and Control Center boundaries.
+1. Use `docs/productization-next-steps-design.md` and `docs/productization-todo-design.md` to drive the next productization phases.
+2. Expand TypeScript from shared IPC and Control Center view contracts into the Control Center API facade, hooks, and main-process service boundaries.
 3. Keep `npm start` functional during each migration step.
 4. Keep new user-facing configuration in Control Center, not in hidden JSON files.

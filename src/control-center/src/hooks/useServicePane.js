@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.js'
-import { cloneServiceLogs, cloneServiceStatus, defaultServiceStatus } from '../lib/defaults.js'
+import { cloneServiceLogs, cloneServiceStatus, defaultServiceStatus } from '../lib/defaults'
 import { downloadTextFile } from '../lib/download.js'
 
 export function useServicePane() {

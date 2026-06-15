@@ -1,10 +1,25 @@
+import type {
+  AboutInfoViewState,
+  ActionsConfigViewState,
+  AiBehaviorConfig,
+  AiConfigViewState,
+  BlocklistState,
+  CatalogState,
+  ChatMessage,
+  ControlCenterSettings,
+  PetPacksViewState,
+  ServiceLogEntry,
+  ServiceStatusViewState,
+  UpdateCheckViewState
+} from '../../../shared/openpet-contracts'
+
 export const defaultSettings = {
   scale: 1,
   walkSpeed: 2,
   walkDuration: 15000,
   bubbleDuration: 1300,
   autoStart: false
-}
+} satisfies ControlCenterSettings
 
 export const defaultAiConfig = {
   enabled: false,
@@ -21,7 +36,7 @@ export const defaultAiConfig = {
     decisions: []
   },
   hasApiKey: false
-}
+} satisfies AiConfigViewState
 
 export const defaultServiceStatus = {
   config: {
@@ -40,18 +55,18 @@ export const defaultServiceStatus = {
       sessionTtlMs: 0
     }
   }
-}
+} satisfies ServiceStatusViewState
 
 export const defaultActionsConfig = {
   defaultAction: '',
   clickAction: '',
   actions: []
-}
+} satisfies ActionsConfigViewState
 
 export const defaultPetPacks = {
   activePackId: 'legacy-cat',
   packs: []
-}
+} satisfies PetPacksViewState
 
 export const defaultCatalog = {
   schemaVersion: 1,
@@ -74,7 +89,7 @@ export const defaultCatalog = {
   },
   plugins: [],
   petPacks: []
-}
+} satisfies CatalogState
 
 export const defaultAboutInfo = {
   name: 'openpet',
@@ -89,7 +104,7 @@ export const defaultAboutInfo = {
     channel: '',
     url: ''
   }
-}
+} satisfies AboutInfoViewState
 
 export const defaultUpdateCheck = {
   status: 'idle',
@@ -102,24 +117,27 @@ export const defaultUpdateCheck = {
   assets: [],
   checkedAt: '',
   message: ''
-}
+} satisfies UpdateCheckViewState
 
-export const cloneSettings = (settings) => ({ ...defaultSettings, ...settings })
+export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
+  ...defaultSettings,
+  ...(settings || {})
+})
 
-export const cloneAiBehavior = (behavior) => ({
+export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({
   ...defaultAiConfig.behavior,
   ...(behavior || {}),
   rules: Array.isArray(behavior?.rules) ? behavior.rules : [],
   decisions: Array.isArray(behavior?.decisions) ? behavior.decisions : []
 })
 
-export const cloneAiConfig = (config) => ({
+export const cloneAiConfig = (config: Partial<AiConfigViewState> | null | undefined): AiConfigViewState => ({
   ...defaultAiConfig,
-  ...config,
+  ...(config || {}),
   behavior: cloneAiBehavior(config?.behavior)
 })
 
-export const cloneServiceStatus = (status) => ({
+export const cloneServiceStatus = (status: Partial<ServiceStatusViewState> | null | undefined): ServiceStatusViewState => ({
   config: { ...defaultServiceStatus.config, ...(status?.config || {}) },
   runtime: {
     ...defaultServiceStatus.runtime,
@@ -131,38 +149,40 @@ export const cloneServiceStatus = (status) => ({
   }
 })
 
-export const cloneServiceLogs = (logs) => (Array.isArray(logs) ? logs : [])
-  .filter((log) => log && typeof log.path === 'string')
-  .map((log) => ({
-    id: log.id || `${log.timestamp}-${log.method}-${log.path}-${log.statusCode}`,
-    timestamp: log.timestamp || '',
-    method: log.method || '',
-    path: log.path,
-    statusCode: Number(log.statusCode || 0),
-    authorized: Boolean(log.authorized),
-    remoteAddress: log.remoteAddress || '',
-    error: log.error || ''
-  }))
+export const cloneServiceLogs = (logs: Array<Partial<ServiceLogEntry> & { path?: string }> | null | undefined): ServiceLogEntry[] => (
+  (Array.isArray(logs) ? logs : [])
+    .filter((log) => log && typeof log.path === 'string')
+    .map((log) => ({
+      id: log.id || `${log.timestamp}-${log.method}-${log.path}-${log.statusCode}`,
+      timestamp: log.timestamp || '',
+      method: log.method || '',
+      path: log.path || '',
+      statusCode: Number(log.statusCode || 0),
+      authorized: Boolean(log.authorized),
+      remoteAddress: log.remoteAddress || '',
+      error: log.error || ''
+    }))
+)
 
-export const cloneActionsConfig = (config) => ({
+export const cloneActionsConfig = (config: Partial<ActionsConfigViewState> | null | undefined): ActionsConfigViewState => ({
   ...defaultActionsConfig,
-  ...config,
+  ...(config || {}),
   actions: Array.isArray(config?.actions) ? config.actions : []
 })
 
-export const clonePetPacks = (petPacks) => ({
+export const clonePetPacks = (petPacks: Partial<PetPacksViewState> | null | undefined): PetPacksViewState => ({
   ...defaultPetPacks,
-  ...petPacks,
+  ...(petPacks || {}),
   packs: Array.isArray(petPacks?.packs) ? petPacks.packs : []
 })
 
-export const cloneBlocklist = (blocklist) => ({
+export const cloneBlocklist = (blocklist: Partial<BlocklistState> | null | undefined): BlocklistState => ({
   pluginIds: Array.isArray(blocklist?.pluginIds) ? blocklist.pluginIds : [],
   packIds: Array.isArray(blocklist?.packIds) ? blocklist.packIds : [],
   sha256: Array.isArray(blocklist?.sha256) ? blocklist.sha256 : []
 })
 
-export const cloneCatalog = (catalog) => ({
+export const cloneCatalog = (catalog: Partial<CatalogState> | null | undefined): CatalogState => ({
   ...defaultCatalog,
   ...(catalog || {}),
   localBlocklist: cloneBlocklist(catalog?.localBlocklist),
@@ -172,11 +192,18 @@ export const cloneCatalog = (catalog) => ({
   petPacks: Array.isArray(catalog?.petPacks) ? catalog.petPacks : []
 })
 
-export const cloneChatMessages = (messages) => (Array.isArray(messages) ? messages : [])
-  .filter((message) => ['user', 'assistant'].includes(message?.role) && typeof message.content === 'string')
-  .map((message) => ({ role: message.role, content: message.content }))
+export const cloneChatMessages = (messages: Array<Partial<ChatMessage> | null | undefined> | null | undefined): ChatMessage[] => (
+  (Array.isArray(messages) ? messages : [])
+    .flatMap((message) => {
+      if (!message || !['user', 'assistant'].includes(message.role || '') || typeof message.content !== 'string') return []
+      return [{
+        role: message.role === 'assistant' ? 'assistant' : 'user',
+        content: message.content
+      }]
+    })
+)
 
-export const cloneAboutInfo = (info) => ({
+export const cloneAboutInfo = (info: Partial<AboutInfoViewState> | null | undefined): AboutInfoViewState => ({
   ...defaultAboutInfo,
   ...(info || {}),
   update: {
@@ -185,7 +212,7 @@ export const cloneAboutInfo = (info) => ({
   }
 })
 
-export const cloneUpdateCheck = (result) => ({
+export const cloneUpdateCheck = (result: Partial<UpdateCheckViewState> | null | undefined): UpdateCheckViewState => ({
   ...defaultUpdateCheck,
   ...(result || {}),
   assets: Array.isArray(result?.assets) ? result.assets : []

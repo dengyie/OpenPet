@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.js'
-import { cloneSettings, defaultSettings } from '../lib/defaults.js'
+import { cloneSettings, defaultSettings } from '../lib/defaults'
 
 export function usePetSettingsPane() {
   const [loading, setLoading] = useState(true)

@@ -17,7 +17,7 @@
     "Local HTTP and MCP are loopback-only and disabled by default",
     "Codex pet directory and zip import are supported",
     "Bundled pets include doro, duodong, and chispa",
-    "TypeScript migration baseline is in place"
+    "TypeScript migration baseline covers shared IPC and Control Center view contracts"
   ],
   "validation": {
     "nodeTests": 319,

@@ -1,6 +1,6 @@
 # OpenPet 产品化补齐开发设计文档
 
-> 最后更新：2026-06-15
+> 最后更新：2026-06-16
 > 基线：`main` 已完成平台骨架、核心服务、Control Center、AI 聊天、插件隔离 runner、本地 HTTP/MCP、electron-builder 打包目录验证、macOS 分发基线、Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线、packaged desktop native picker smoke evidence 工具链、项目文档治理层，以及 Control Center Playwright UI 回归测试基线。
 > 目标：把 OpenPet 从“可开发、可验证、可推 main”的可扩展桌面宠物平台，补齐为“可分发、可运营、可承载生态”的产品；当前桌面发布范围只覆盖 macOS 与 Windows，移动端不进入本轮设计。
 
@@ -16,7 +16,7 @@
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
 - `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest、报告填写工具和 desktop picker smoke evidence 工具链已落地，但尚未完成真实签名产物验证和 Windows 冒烟。
 - CI / 测试已覆盖 service、pet-pack、Codex pet import、Codex pet zip import、bundled Codex pets、TypeScript migration gate、plugin、example plugin、plugin submission validation、plugin submission report、plugin submission PR packet、plugin submission workflow bundle、plugin submission bundle validation、RC upgrade smoke evidence、AI、MCP、release、catalog、主进程 IPC 与 desktop picker smoke evidence 核心路径，当前 Node 验证为 319 个测试；Control Center 已有 9 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
-- v1.0.1-rc.2 发布轨道包含 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架。
+- v1.0.1-rc.2 发布轨道包含 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架；TypeScript baseline 已覆盖 shared IPC 和 Control Center view contracts。
 
 ### 1.2 仍未产品化的深水区
 
@@ -596,7 +596,7 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.2 在此基线上完成 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归。Phase 17 将插件包安装从 demo UI 推进到主进程 IPC + 真实 `.openpet-plugin.zip` fixture 覆盖。Phase 18 将真实 Electron 原生 OS 文件选择器缺口推进为 packaged app smoke evidence 工具链，但真实 macOS / Windows picker evidence 和 Windows 安装包验证仍需后续烟测归档。Phase 19 将项目文档设计完善为可执行操作模型，补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。Phase 20-29 完成示例插件、插件提交工作流与 RC 升级 smoke 证据工具。Phase 30-33 完成 Codex pet import、Codex pet zip import、内置 Codex pets 与 TypeScript 迁移框架。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.2 在此基线上完成 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归。Phase 17 将插件包安装从 demo UI 推进到主进程 IPC + 真实 `.openpet-plugin.zip` fixture 覆盖。Phase 18 将真实 Electron 原生 OS 文件选择器缺口推进为 packaged app smoke evidence 工具链，但真实 macOS / Windows picker evidence 和 Windows 安装包验证仍需后续烟测归档。Phase 19 将项目文档设计完善为可执行操作模型，补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。Phase 20-29 完成示例插件、插件提交工作流与 RC 升级 smoke 证据工具。Phase 30-35 完成 Codex pet import、Codex pet zip import、内置 Codex pets、TypeScript 迁移框架、产品化 TODO 落地设计与 Control Center view contract 迁移。
 
 ### 完成验证
 
@@ -646,6 +646,9 @@ npm run pack                  # ✅ electron-builder pass
 | 30 | Codex Pet 原生导入 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 31 | Codex Pet Zip 原生导入 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 32 | 内置 Codex Pets 基础资产 | 本阶段提交 | ✅ | ✅ | 完成 |
+| 33 | TypeScript 迁移框架 | 本阶段提交 | ✅ | ✅ | 完成 |
+| 34 | 插件开发者体验设计 | 本阶段提交 | ✅ | ✅ | 完成 |
+| 35 | TypeScript Control Center 契约迁移 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）

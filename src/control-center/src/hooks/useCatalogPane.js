@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.js'
-import { cloneCatalog, defaultCatalog } from '../lib/defaults.js'
+import { cloneCatalog, defaultCatalog } from '../lib/defaults'
 
 export function useCatalogPane() {
   const [loading, setLoading] = useState(true)
