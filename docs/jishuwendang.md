@@ -28,9 +28,9 @@
 - ✅ macOS 分发流程：electron-builder + GitHub Actions + 更新检查；Windows 打包/CI/平台化更新资产/签名策略护栏/冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest、报告填写工具和 desktop picker smoke evidence 工具链已完成，真实签名产物验证、packaged picker 真实证据与 Windows 冒烟待补齐
 
 **质量指标**：
-- ✅ 294/294 Node 测试通过（service / release / 示例插件 / 插件提交校验、审核包、PR packet 与 workflow bundle 门禁覆盖）
+- ✅ 294/294 Node 测试通过（service / release / 示例插件 / 插件提交校验、审核包、PR packet、workflow bundle 与 bundle validation 门禁覆盖）
 - ✅ 9/9 Control Center Playwright UI 测试通过（shell / tab / Pet / About 基础交互，Pet / AI / Service 保存配置流程，Catalog 安装/更新流程，Service MCP session 管理，手动插件包安装 review）
-- ✅ 43 个测试文件（恶意输入、示例插件、插件提交校验、审核包、PR packet 与 workflow bundle、主进程 IPC 与 release 证据门禁/报告生成/填写/runbook、collector、证据包校验、summary、archive-manifest 与 desktop picker smoke evidence 工具测试完整）
+- ✅ 43 个测试文件（恶意输入、示例插件、插件提交校验、审核包、PR packet、workflow bundle 与 bundle validation、主进程 IPC 与 release 证据门禁/报告生成/填写/runbook、collector、证据包校验、summary、archive-manifest 与 desktop picker smoke evidence 工具测试完整）
 - ✅ 架构质量：依赖注入 + 事件驱动 + 不可变状态 + 安全默认
 
 详见 [project-status-review.md](./project-status-review.md) 全面评估报告。

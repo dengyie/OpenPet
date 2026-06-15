@@ -3,13 +3,13 @@
 > 评估时间：2026-06-16
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-16 建立并扩展 Control Center Playwright UI 回归基线；Phase 17 已补主进程插件包 IPC + 真实 zip fixture 烟测；Phase 18 已补 desktop 原生文件选择器烟测证据工具链；Phase 19 已完成项目文档设计操作模型、阶段完成契约、完成标准和决策记录完善；Phase 20 已补 Focus Timer 示例插件、插件开发文档与真实本地插件服务测试；Phase 21 已补 Weather Status 示例插件、network allowlist 开发者路径与真实本地插件服务测试；Phase 22 已补 RSS Reader 示例插件、公开 feed 开发者路径与真实本地插件服务测试；Phase 23 已补插件提交前校验 CLI 与测试；Phase 24 已补插件提交审核包 CLI 与测试；Phase 25 已补插件提交 PR 模板与 PR packet CLI；Phase 26 已补插件提交工作流包 CLI；Phase 27 已补插件提交工作流包验证 CLI**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-16 建立并扩展 Control Center Playwright UI 回归基线；Phase 17 已补主进程插件包 IPC + 真实 zip fixture 烟测；Phase 18 已补 desktop 原生文件选择器烟测证据工具链；Phase 19 已完成项目文档设计操作模型、阶段完成契约、完成标准和决策记录完善；Phase 20 已补 Focus Timer 示例插件、插件开发文档与真实本地插件服务测试；Phase 21 已补 Weather Status 示例插件、network allowlist 开发者路径与真实本地插件服务测试；Phase 22 已补 RSS Reader 示例插件、公开 feed 开发者路径与真实本地插件服务测试；Phase 23 已补插件提交前校验 CLI 与测试；Phase 24 已补插件提交审核包 CLI 与测试；Phase 25 已补插件提交 PR 模板与 PR packet CLI；Phase 26 已补插件提交工作流包 CLI；Phase 27 已补插件提交工作流包验证 CLI；Phase 28 已补插件提交工作流演练手册**
 
 ---
 
 ## 执行摘要
 
-OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-27 补齐 Windows 分发基线、文档治理、Control Center UI 自动化、主进程插件包 IPC 烟测、desktop 原生文件选择器烟测证据工具链、文档设计操作模型、三个互补的真实示例插件开发者资产、插件提交前校验入口、插件提交审核包、插件提交 PR 模板、插件提交工作流包与工作流包验证。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为发布验证和增强项。
+OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-28 补齐 Windows 分发基线、文档治理、Control Center UI 自动化、主进程插件包 IPC 烟测、desktop 原生文件选择器烟测证据工具链、文档设计操作模型、三个互补的真实示例插件开发者资产、插件提交前校验入口、插件提交审核包、插件提交 PR 模板、插件提交工作流包、工作流包验证与工作流演练手册。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为发布验证和增强项。
 
 **建议：发布 v1.0.1 RC 验证 OpenPet 改名升级路径，确认无回归后提升为 v1.0.1 正式版。**
 
@@ -247,6 +247,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 - 已有 `npm run create-plugin-submission-pr -- <plugin-dir-or-zip>` PR packet 入口和 `.github/PULL_REQUEST_TEMPLATE/plugin-submission.md`
 - 已有 `npm run create-plugin-submission-bundle -- <plugin-dir-or-zip>` 工作流包入口，可一次生成 report、PR body 和 summary JSON
 - 已有 `npm run validate-plugin-submission-bundle -- <bundle-dir>` 验证入口，可检查 bundle 文件齐备、summary 一致性和 ready 状态
+- 已有 `docs/plugin-submission-workflow-playbook.md`，把提交前校验、审核包、PR packet、workflow bundle 和 bundle validation 串成第三方作者可照着跑的 rehearsal
 - catalog 仍只有 1 个官方插件示例，真实第三方审核演练与社区运营尚未形成
 
 **影响**：
@@ -303,7 +304,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 阶段提交后应保持干净 |
-| 文档完整性 | ✅ 27 个阶段开发文档 + 27 个 review 文档 + 交接文档 |
+| 文档完整性 | ✅ 28 个阶段开发文档 + 28 个 review 文档 + 交接文档 |
 
 ### 架构质量 ✅
 
@@ -320,7 +321,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Control Center 主文件 | 1364 行 | 62 行 (App.jsx) |
 | 模块化 | 单体组件 | panes / hooks / services 分层 |
 | 测试覆盖 | 部分 | service/release 层覆盖 + Control Center UI 回归基线 |
-| 文档 | 零散 | 系统化 (50 个阶段开发/review 文档) |
+| 文档 | 零散 | 系统化 (56 个阶段开发/review 文档) |
 
 ---
 
@@ -355,6 +356,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Phase 25 | 插件提交 PR 模板 | 本阶段提交 | ✅ | ✅ | 完成 |
 | Phase 26 | 插件提交工作流包 | 本阶段提交 | ✅ | ✅ | 完成 |
 | Phase 27 | 插件提交工作流包验证 | 本阶段提交 | ✅ | ✅ | 完成 |
+| Phase 28 | 插件提交工作流演练手册 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **验证命令全部通过**：
 ```bash
@@ -409,7 +411,7 @@ npm run pack                  # electron-builder pass
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
 3. ✅ **测试覆盖完整**：294 个 Node 测试覆盖 service / release / 示例插件 / 插件提交校验、审核包、PR packet、workflow bundle 与 workflow bundle validation / 主进程 IPC / desktop picker evidence 门禁，9 个 Playwright 测试覆盖 Control Center 冒烟、保存配置路径、Catalog 安装/更新路径、Service MCP session 管理路径与手动插件包 review 路径
-4. ✅ **文档齐全**：50 个阶段开发/review 文档 + 交接文档 + 文档治理入口
+4. ✅ **文档齐全**：56 个阶段开发/review 文档 + 交接文档 + 文档治理入口
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
 
@@ -460,7 +462,7 @@ npm run pack                  # electron-builder pass
 
 ## 九、结论 🎯
 
-**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化/IPC 加固/desktop picker evidence、文档操作模型、示例插件生态资产、提交前校验入口、审核包生成、PR 模板、工作流包和工作流包验证 Phase 8-27 均已高质量交付。**
+**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化/IPC 加固/desktop picker evidence、文档操作模型、示例插件生态资产、提交前校验入口、审核包生成、PR 模板、工作流包、工作流包验证和工作流演练手册 Phase 8-28 均已高质量交付。**
 
 **核心指标**：
 - ✅ 功能完整性：95%（所有承诺功能已实现）

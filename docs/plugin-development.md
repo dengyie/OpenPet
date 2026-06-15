@@ -270,6 +270,8 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 
 The validator checks the required bundle files, summary JSON, ready/decision state, package hash, and consistency between the summary and Markdown artifacts. `--require-ready` fails if the bundle is only a blocked preflight artifact. Validation still does not approve publication, establish signing trust, install the plugin, enable the plugin, or run plugin code.
 
+For an end-to-end rehearsal path, see [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md).
+
 ## Packaging
 
 To create a local distributable archive, zip the contents of the plugin directory so `plugin.json` is at the archive root, then name it with `.openpet-plugin.zip`.

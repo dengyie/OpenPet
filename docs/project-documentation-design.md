@@ -285,6 +285,8 @@ Phase 26 is a plugin submission workflow bundle phase. It keeps runtime security
 
 Phase 27 is a plugin submission workflow bundle validation phase. It keeps runtime security boundaries and release readiness unchanged, adds a local `validate-plugin-submission-bundle` CLI that checks the Phase 26 bundle files, summary consistency, and ready-for-review status, and records that validation is still only local preflight, not approval or signing trust.
 
+Phase 28 is a plugin submission workflow playbook phase. It keeps runtime security boundaries and release readiness unchanged, adds a documentation-only rehearsal path that connects the Phase 23-27 validation, report, PR packet, workflow bundle, and bundle validation commands for third-party plugin authors, and records that the playbook is guidance rather than approval or signing trust.
+
 Do not skip the review document. If a phase changes release claims, security boundaries, plugin permissions, or API-key handling, the review must explicitly state whether those boundaries still hold.
 
 ### 9.1 Phase Completion Contract
@@ -620,7 +622,7 @@ Durable documentation decisions should be recorded here when they affect future 
 
 ## 17. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 27:
+The repository now has a coherent phase history through Phase 28:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
@@ -643,6 +645,7 @@ The repository now has a coherent phase history through Phase 27:
 - Phase 25 adds the plugin submission PR template and PR packet CLI, turning the review packet into a GitHub-ready PR body, contributor checklist, reviewer checklist, and explicit human approval boundary.
 - Phase 26 adds the plugin submission workflow bundle CLI, packaging the reviewer report, PR body, and summary JSON into one local directory while keeping install/enable/run and signing-trust boundaries out of scope.
 - Phase 27 adds the plugin submission workflow bundle validation CLI, checking bundle file presence, summary consistency, and ready-for-human-review status while keeping install/enable/run and signing-trust boundaries out of scope.
+- Phase 28 adds the plugin submission workflow playbook, giving third-party plugin authors a single local rehearsal path from validation through bundle validation while keeping install/enable/run and signing-trust boundaries out of scope.
 - macOS release baseline is complete.
 - Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, evidence summary/archive generation, archive manifest generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence, filled packaged native picker evidence, and real Windows smoke validation remain open release gates.

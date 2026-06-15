@@ -181,12 +181,13 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 25 - Plugin Submission PR Template](./docs/phases/phase-25-plugin-submission-pr-template.md)
 - [Phase 26 - Plugin Submission Workflow Bundle](./docs/phases/phase-26-plugin-submission-workflow-bundle.md)
 - [Phase 27 - Plugin Submission Bundle Validation](./docs/phases/phase-27-plugin-submission-bundle-validation.md)
+- [Phase 28 - Plugin Submission Workflow Playbook](./docs/phases/phase-28-plugin-submission-workflow-playbook.md)
 
 ---
 
 ## 🧩 Plugin Development
 
-Start with the tested [Focus Timer example plugin](./examples/plugins/focus-timer/) for storage and pet speech, the tested [Weather Status example plugin](./examples/plugins/weather-status/) for JSON network allowlist usage, or the tested [RSS Reader example plugin](./examples/plugins/rss-reader/) for public feed fetching and cached announcements. Then read the full [plugin development guide](./docs/plugin-development.md).
+Start with the tested [Focus Timer example plugin](./examples/plugins/focus-timer/) for storage and pet speech, the tested [Weather Status example plugin](./examples/plugins/weather-status/) for JSON network allowlist usage, or the tested [RSS Reader example plugin](./examples/plugins/rss-reader/) for public feed fetching and cached announcements. Then read the full [plugin development guide](./docs/plugin-development.md) and the [plugin submission workflow playbook](./docs/plugin-submission-workflow-playbook.md).
 
 ### Plugin Structure
 
@@ -264,14 +265,15 @@ const response = await ctx.network.fetch(url, options)
 2. Write `index.js` and optional `config.schema.json`.
 3. Install it through Control Center → Plugins → Install plugin package.
 4. Review permissions, install, then manually enable it.
-5. Run `npm run validate:plugin -- <plugin-dir-or-zip>` before submitting.
-6. Run `npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle` for a full submission bundle.
-7. Run `npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready` before review.
-8. Run `npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md` and include the report.
-9. Run `npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md` and use the plugin PR template.
-10. Run commands to test.
+5. Follow the [plugin submission workflow playbook](./docs/plugin-submission-workflow-playbook.md) before submitting.
+6. Run `npm run validate:plugin -- <plugin-dir-or-zip>`.
+7. Run `npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md` and include the report.
+8. Run `npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md` and use the plugin PR template.
+9. Run `npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle` for a full submission bundle.
+10. Run `npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready` before review.
+11. Run commands to test.
 
-For more details, see [plugin-development.md](./docs/plugin-development.md) and [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evaluation.md).
+For more details, see [plugin-development.md](./docs/plugin-development.md), [plugin-submission-workflow-playbook.md](./docs/plugin-submission-workflow-playbook.md), and [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evaluation.md).
 
 ---
 
@@ -373,11 +375,12 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 1. Add plugin entry in `catalog/openpet-catalog.json`
 2. Provide plugin source code or download link
 3. Run `npm run validate:plugin -- <plugin-dir-or-zip>` and include the result
-4. Run `npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle` and include the bundle
-5. Run `npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready`
-6. Run `npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md` and include the report
-7. Run `npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md` and use the plugin PR template
-8. Submit PR explaining plugin functionality and permissions
+4. Follow the [plugin submission workflow playbook](./docs/plugin-submission-workflow-playbook.md)
+5. Run `npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md` and include the report
+6. Run `npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md` and use the plugin PR template
+7. Run `npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle` and include the bundle
+8. Run `npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready`
+9. Submit PR explaining plugin functionality and permissions
 
 ---
 
@@ -410,6 +413,7 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 - ✅ Plugin submission PR template and packet generation
 - ✅ Plugin submission workflow bundle generation
 - ✅ Plugin submission workflow bundle validation
+- ✅ Plugin submission workflow playbook
 - ⚡ Plugin development tutorial videos
 - ⚡ User feedback collection & iteration
 
