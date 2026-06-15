@@ -166,6 +166,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 11 - Control Center Frontend Automation](./docs/phases/phase-11-control-center-frontend-automation.md)
 - [Phase 12 - Control Center Saved Configuration Automation](./docs/phases/phase-12-control-center-saved-configuration-automation.md)
 - [Phase 13 - Control Center Catalog Automation](./docs/phases/phase-13-control-center-catalog-automation.md)
+- [Phase 14 - Control Center MCP Session Automation](./docs/phases/phase-14-control-center-mcp-session-automation.md)
 
 ---
 
@@ -305,7 +306,7 @@ For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evalu
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** for service/release coverage with **236 tests all passing**, plus a **Playwright Control Center UI regression baseline** with 7 UI tests.
+The project uses **Node native test runner** for service/release coverage with **236 tests all passing**, plus a **Playwright Control Center UI regression baseline** with 8 UI tests.
 
 ```bash
 npm test                     # Run Node tests
@@ -316,7 +317,7 @@ npm run build:control-center # Control Center build verification
 
 Test Coverage:
 - ✅ Full service/release coverage (32 test files)
-- ✅ Control Center shell / tab / Pet / About smoke coverage, Pet / AI / Service saved configuration flows, and Catalog install/update flows (7 Playwright tests)
+- ✅ Control Center shell / tab / Pet / About smoke coverage, Pet / AI / Service saved configuration flows, Catalog install/update flows, and Service MCP session management (8 Playwright tests)
 - ✅ Pet pack schema / loader / importer
 - ✅ Plugin manifest / runner / SDK
 - ✅ AI service / behavior orchestrator
@@ -376,7 +377,7 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 ### v1.1 (Planned)
 
 - ⚡ Windows signed-artifact verification and smoke testing
-- ⚡ Broader Control Center automation for manual plugin package install review and AI/MCP session management
+- ⚡ Broader Control Center automation for manual plugin package install review
 - ⚡ More example plugins (weather, pomodoro, RSS)
 - ⚡ Plugin development tutorial videos
 - ⚡ User feedback collection & iteration

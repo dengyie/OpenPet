@@ -139,10 +139,29 @@ const createDemoPetPackReview = (item) => ({
   }
 })
 
+const createDemoServiceStatus = () => cloneServiceStatus({
+  ...defaultServiceStatus,
+  config: {
+    ...defaultServiceStatus.config,
+    enabled: true,
+    port: 4317,
+    token: 'demo-token'
+  },
+  runtime: {
+    ...defaultServiceStatus.runtime,
+    enabled: true,
+    port: 4317,
+    mcp: {
+      activeSessions: 2,
+      sessionTtlMs: 300000
+    }
+  }
+})
+
 const createDefaultDemoState = () => ({
   settings: cloneSettings(defaultSettings),
   aiConfig: cloneAiConfig(defaultAiConfig),
-  serviceStatus: cloneServiceStatus(defaultServiceStatus),
+  serviceStatus: createDemoServiceStatus(),
   catalog: createDemoCatalog()
 })
 
@@ -265,7 +284,11 @@ const demoApi = {
   rotateServiceToken: async () => {
     demoState.serviceStatus = cloneServiceStatus({
       ...demoState.serviceStatus,
-      config: { ...demoState.serviceStatus.config, token: 'demo-token-rotated' }
+      config: { ...demoState.serviceStatus.config, token: 'demo-token-rotated' },
+      runtime: {
+        ...demoState.serviceStatus.runtime,
+        mcp: { ...demoState.serviceStatus.runtime.mcp, activeSessions: 0 }
+      }
     })
     writeDemoState()
     return cloneServiceStatus(demoState.serviceStatus)

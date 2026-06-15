@@ -100,18 +100,47 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Service' }).click()
 
-    await page.getByLabel('端口').fill('4317')
-    await page.locator('.field-row', { hasText: 'HTTP API' }).getByRole('switch').click()
+    await page.getByLabel('端口').fill('4318')
     await page.getByRole('button', { name: '保存', exact: true }).click()
 
     await expect(page.locator('.status-line')).toContainText('本地服务已启动')
-    await expect(page.locator('.readonly-row', { hasText: '当前端点' })).toContainText('http://127.0.0.1:4317/api/status')
-    await expect(page.getByText('MCPhttp://127.0.0.1:4317/mcp')).toBeVisible()
+    await expect(page.locator('.readonly-row', { hasText: '当前端点' })).toContainText('http://127.0.0.1:4318/api/status')
+    await expect(page.getByText('MCPhttp://127.0.0.1:4318/mcp')).toBeVisible()
 
     await page.reload()
     await page.getByRole('button', { name: 'Service' }).click()
-    await expect(page.getByLabel('端口')).toHaveValue('4317')
-    await expect(page.locator('.readonly-row', { hasText: '当前端点' })).toContainText('http://127.0.0.1:4317/api/status')
+    await expect(page.getByLabel('端口')).toHaveValue('4318')
+    await expect(page.locator('.readonly-row', { hasText: '当前端点' })).toContainText('http://127.0.0.1:4318/api/status')
+  })
+
+  test('manages MCP sessions from the Service tab with the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Service' }).click()
+
+    const mcpSessionsRow = page.locator('.readonly-row', { hasText: 'MCP Sessions' })
+    await expect(page.locator('.field-row', { hasText: 'HTTP API' })).toContainText('运行中')
+    await expect(mcpSessionsRow).toContainText('2')
+
+    await mcpSessionsRow.getByRole('button', { name: '撤销全部' }).click()
+    await expect(page.locator('.status-line')).toContainText('MCP sessions 已撤销')
+    await expect(mcpSessionsRow).toContainText('0')
+    await expect(mcpSessionsRow.getByRole('button', { name: '撤销全部' })).toBeDisabled()
+
+    await page.reload()
+    await page.getByRole('button', { name: 'Service' }).click()
+    await expect(page.locator('.readonly-row', { hasText: 'MCP Sessions' })).toContainText('0')
+
+    await page.evaluate(() => window.sessionStorage.removeItem('openpet.controlCenter.demoState'))
+    await page.reload()
+    await page.getByRole('button', { name: 'Service' }).click()
+
+    const resetMcpSessionsRow = page.locator('.readonly-row', { hasText: 'MCP Sessions' })
+    await expect(resetMcpSessionsRow).toContainText('2')
+    await expect(page.locator('.readonly-row', { hasText: '访问令牌' })).toContainText('demo-token')
+    await page.getByRole('button', { name: '轮换令牌' }).click()
+    await expect(page.locator('.status-line')).toContainText('访问令牌已轮换')
+    await expect(page.locator('.readonly-row', { hasText: '访问令牌' })).toContainText('demo-token-rotated')
+    await expect(resetMcpSessionsRow).toContainText('0')
   })
 
   test('installs Catalog plugins from the review panel with the demo API', async ({ page }) => {

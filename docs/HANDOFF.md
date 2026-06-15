@@ -15,7 +15,7 @@
 - ✅ 底层 Service 层（19 个 service，EventBus → SettingsService → ActionService → PetService）
 - ✅ Pet pack 运行时契约（schema / loader / importer）
 - ✅ Vite + React Control Center（7 个 Tab：Pet/Actions/AI/Plugins/Catalog/Service/About）
-- ✅ Control Center Playwright UI 回归基线（demo API 模式覆盖 shell、全部 tab、Pet/About 关键交互、Pet/AI/Service 保存配置流程，以及 Catalog 安装/更新流程）
+- ✅ Control Center Playwright UI 回归基线（demo API 模式覆盖 shell、全部 tab、Pet/About 关键交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程，以及 Service MCP session 管理）
 - ✅ AI 聊天（OpenAI-compatible，API Key 安全存储、持久会话、结构化行为编排）
 - ✅ 权限化插件系统（隔离 runner + SDK + catalog + blocklist）
 - ✅ 本地 HTTP API + MCP transport（loopback only，默认关闭）
@@ -31,7 +31,7 @@
 1. [`project-documentation-design.md`](./project-documentation-design.md)：项目目标锚点、文档分层、支持声明规则和阶段治理。
 2. 本文件：当前事实状态、文件地图、待办和开发命令。
 3. [`desktop-release-design.md`](./desktop-release-design.md) 与 [`release-checklist.md`](./release-checklist.md)：macOS + Windows 桌面发布边界、签名、冒烟证据和验收门槛。
-4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-13-control-center-catalog-automation.md`](./phases/phase-13-control-center-catalog-automation.md) 与 [`phase-13-control-center-catalog-automation-review.md`](./reviews/phase-13-control-center-catalog-automation-review.md)。
+4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-14-control-center-mcp-session-automation.md`](./phases/phase-14-control-center-mcp-session-automation.md) 与 [`phase-14-control-center-mcp-session-automation-review.md`](./reviews/phase-14-control-center-mcp-session-automation-review.md)。
 
 当前支持口径必须保持为：macOS release baseline complete；Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baseline implemented but not release-ready；移动端不在当前范围。
 
@@ -42,7 +42,7 @@
 | 指标 | 结果 | 说明 |
 |------|------|------|
 | **功能完整性** | 95% | 所有承诺功能已实现 |
-| **测试覆盖** | 236 Node + 7 UI ✅ | service / release 门禁覆盖；Control Center Playwright UI 回归基线 |
+| **测试覆盖** | 236 Node + 8 UI ✅ | service / release 门禁覆盖；Control Center Playwright UI 回归基线 |
 | **架构质量** | ⭐⭐⭐⭐⭐ | 分层清晰、安全可靠 |
 | **代码质量** | ⭐⭐⭐⭐⭐ | 模块化彻底、职责单一 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
@@ -54,7 +54,7 @@
 
 ```bash
 npm test                  # 236 Node tests, all pass
-npm run test:control-center # 7 Control Center Playwright UI tests, all pass
+npm run test:control-center # 8 Control Center Playwright UI tests, all pass
 npm run build:control-center  # Vite build pass
 npm run generate-sprites  # CLI works
 npm run check:syntax      # all JS syntax pass
@@ -305,7 +305,7 @@ npm run dev:control-center   # http://127.0.0.1:5173
 
 # 测试
 npm test                     # 236 Node tests
-npm run test:control-center  # 7 Control Center Playwright UI tests
+npm run test:control-center  # 8 Control Center Playwright UI tests
 
 # 精灵图生成
 npm run generate-sprites     # 扫描 cat_anime/flames/ 生成 sprites/
