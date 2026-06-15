@@ -86,7 +86,7 @@ The docs should be read as layered sources of truth, not as interchangeable note
 | Product entry | `README.md`, `README.zh-CN.md` | Public feature list, quick start, support claims, documentation index | Broad, user-facing, concise |
 | Current state | `docs/HANDOFF.md`, `docs/project-status-review.md` | What is true now, what is verified, what remains risky | Operational handoff and status snapshot |
 | Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants | Normative project rules |
-| Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md` | System design, completed productization arc, planned enhancements | Architecture and sequencing |
+| Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md`, `docs/productization-next-steps-design.md` | System design, completed productization arc, near-term productization sequence, planned enhancements | Architecture and sequencing |
 | Release operations | `docs/desktop-release-design.md`, `docs/release-checklist.md`, `docs/release-evidence/*.json` | macOS/Windows release gates, signing, smoke evidence, operator checklist | Evidence and release procedure |
 | Phase records | `docs/phases/phase-*.md`, `docs/reviews/phase-*-review.md` | Implementation decisions, verification, review findings, residual risks | Append-only phase audit trail |
 | Domain references | `docs/mcp-usage.md`, `docs/mcp-compatibility.md`, `docs/plugin-sandbox-evaluation.md`, `docs/ecosystem-catalog.md` | Focused reference material for one subsystem | Subsystem usage and threat/risk notes |
@@ -111,6 +111,7 @@ docs/HANDOFF.md                    # current project state and next work
 docs/project-documentation-design.md # goal anchor and documentation operating model
 docs/jishuwendang.md               # Chinese technical architecture reference
 docs/productization-roadmap.md     # productization sequence and long-running risks
+docs/productization-next-steps-design.md # near-term productization design and prioritized TODOs
 docs/project-status-review.md      # milestone-level project assessment
 docs/desktop-release-design.md     # macOS + Windows release architecture
 docs/release-checklist.md          # release operator checklist
@@ -132,6 +133,7 @@ New folders should earn their place by having a distinct lifecycle. For example,
 | `docs/project-documentation-design.md` | Project goal anchor and documentation governance | Documentation structure, support claim rules, or phase governance changes |
 | `docs/pet-platform-development-plan.md` | Historical platform architecture and staged refactor plan | Core architecture contracts or completed phase status changes |
 | `docs/productization-roadmap.md` | Productization roadmap and long-running risks | Roadmap sequencing, risk status, or release-track scope changes |
+| `docs/productization-next-steps-design.md` | Near-term productization design and prioritized TODOs | Next-phase sequencing, acceptance gates, or implementation planning |
 | `docs/project-status-review.md` | Snapshot assessment of implementation vs original goal | Major status checkpoints, release candidates, or readiness claims |
 | `docs/jishuwendang.md` | Chinese technical architecture reference | Service structure, IPC surface, commands, or technical status changes |
 | `docs/desktop-release-design.md` | macOS + Windows desktop release design and acceptance gates | Packaging, CI, signing, update, or platform support status changes |
@@ -150,6 +152,7 @@ Use this matrix to decide where a fact belongs before editing multiple documents
 | Current project status | `docs/HANDOFF.md` | `docs/project-status-review.md`, README badges/status |
 | Service architecture | `docs/jishuwendang.md` | `docs/HANDOFF.md`, `AGENTS.md` |
 | Productization sequence | `docs/productization-roadmap.md` | phase docs, status review |
+| Near-term TODO design | `docs/productization-next-steps-design.md` | `docs/productization-roadmap.md`, latest phase and review docs |
 | Release gates | `docs/desktop-release-design.md` | `docs/release-checklist.md`, README support wording |
 | Release operator steps | `docs/release-checklist.md` | `docs/desktop-release-design.md` |
 | Windows smoke evidence schema | `docs/release-evidence/*.json` and release scripts | release checklist, Phase 8 records |
@@ -170,7 +173,7 @@ Use these paths when onboarding or when deciding which document to update:
 | Understand what OpenPet is | `README.zh-CN.md` or `README.md` | `docs/project-documentation-design.md`, `docs/HANDOFF.md` |
 | Continue development today | `AGENTS.md` | `docs/HANDOFF.md`, relevant phase/review docs |
 | Understand architecture | `docs/jishuwendang.md` | `docs/pet-platform-development-plan.md`, service tests |
-| Continue productization | `docs/productization-roadmap.md` | latest `docs/phases/` and `docs/reviews/` pair |
+| Continue productization | `docs/productization-next-steps-design.md` | `docs/productization-roadmap.md`, latest `docs/phases/` and `docs/reviews/` pair |
 | Work on release readiness | `docs/desktop-release-design.md` | `docs/release-checklist.md`, `docs/release-evidence/` |
 | Validate Windows claims | `docs/release-checklist.md` | `docs/phases/phase-8-windows-desktop-release.md`, `docs/reviews/phase-8-windows-desktop-release-review.md` |
 | Add or review plugins | `docs/plugin-sandbox-evaluation.md` | `docs/ecosystem-catalog.md`, plugin service tests |

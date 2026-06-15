@@ -5,6 +5,7 @@
 > Current release track: `v1.0.1-rc.2`
 
 This is the short engineering summary for the current repository state. For long phase history, read `docs/phases/` and `docs/reviews/`. For support claims and documentation rules, read `docs/project-documentation-design.md`.
+For the next execution-oriented productization sequence, read `docs/productization-next-steps-design.md`.
 
 ## Current State
 
@@ -40,10 +41,11 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 - Windows is still not release-ready until real signed installer evidence and smoke reports are archived.
 - Packaged native picker evidence still needs real archived runs.
 - The plugin ecosystem has submission tooling and example assets, but wider community onboarding is still future work.
+- The next prioritized work is packaged app runtime smoke, release evidence hardening, and TypeScript contract migration.
 
 ## Next Migration Steps
 
-1. Expand TypeScript from shared contracts into the next main-process and Control Center boundaries.
-2. Keep `npm start` functional during each migration step.
-3. Keep new user-facing configuration in Control Center, not in hidden JSON files.
-4. Keep API keys out of renderer and ordinary plugins.
+1. Use `docs/productization-next-steps-design.md` to drive the next productization phases.
+2. Expand TypeScript from shared contracts into the next main-process and Control Center boundaries.
+3. Keep `npm start` functional during each migration step.
+4. Keep new user-facing configuration in Control Center, not in hidden JSON files.

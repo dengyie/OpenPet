@@ -22,6 +22,7 @@ OpenPet is a desktop pet platform with:
 3. [`docs/project-context.json`](./project-context.json)
 4. [`CHANGELOG.md`](./CHANGELOG.md)
 5. [`docs/release-checklist.md`](./release-checklist.md)
+6. [`docs/productization-next-steps-design.md`](./productization-next-steps-design.md)
 
 ## Facts To Preserve
 
@@ -53,6 +54,6 @@ npm run check:syntax
 
 ## Next Steps
 
-1. Continue TypeScript migration by boundary.
-2. Keep release notes and README short and current.
+1. Use `docs/productization-next-steps-design.md` as the near-term execution entry for the next productization phases.
+2. Continue TypeScript migration by boundary.
 3. Fill real Windows and packaged picker evidence before claiming release readiness there.
