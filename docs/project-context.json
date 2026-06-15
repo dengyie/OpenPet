@@ -1,0 +1,36 @@
+{
+  "project": "OpenPet",
+  "release": "1.0.1-rc.2",
+  "updated": "2026-06-16",
+  "branch": "main",
+  "scope": {
+    "platform": ["macOS", "Windows"],
+    "mobile": false,
+    "linux": "deferred"
+  },
+  "currentFacts": [
+    "Electron desktop pet platform with Control Center",
+    "PetService is the single source of truth for pet state",
+    "Control Center owns user-facing configuration",
+    "API keys stay in the main-process secret store",
+    "Plugins run with permission review and isolation",
+    "Local HTTP and MCP are loopback-only and disabled by default",
+    "Codex pet directory and zip import are supported",
+    "Bundled pets include doro, duodong, and chispa",
+    "TypeScript migration baseline is in place"
+  ],
+  "validation": {
+    "nodeTests": 319,
+    "uiTests": 9,
+    "commands": [
+      "npm test",
+      "npm run test:control-center",
+      "npm run typecheck",
+      "npm run check:syntax"
+    ]
+  },
+  "releaseNotes": {
+    "humanFacing": "Keep README and CHANGELOG short, factual, and free of phase-by-phase history.",
+    "machineFacing": "Use this file plus docs/project-documentation-design.md for quick programmatic context."
+  }
+}

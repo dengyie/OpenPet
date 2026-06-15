@@ -3,7 +3,7 @@
 > 评估时间：2026-06-16
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-16 建立并扩展 Control Center Playwright UI 回归基线；Phase 17 已补主进程插件包 IPC + 真实 zip fixture 烟测；Phase 18 已补 desktop 原生文件选择器烟测证据工具链；Phase 19 已完成项目文档设计操作模型、阶段完成契约、完成标准和决策记录完善；Phase 20 已补 Focus Timer 示例插件、插件开发文档与真实本地插件服务测试；Phase 21 已补 Weather Status 示例插件、network allowlist 开发者路径与真实本地插件服务测试；Phase 22 已补 RSS Reader 示例插件、公开 feed 开发者路径与真实本地插件服务测试；Phase 23 已补插件提交前校验 CLI 与测试；Phase 24 已补插件提交审核包 CLI 与测试；Phase 25 已补插件提交 PR 模板与 PR packet CLI；Phase 26 已补插件提交工作流包 CLI；Phase 27 已补插件提交工作流包验证 CLI；Phase 28 已补插件提交工作流演练手册；Phase 29 已补 RC 升级兼容 smoke 证据工具；Phase 30 已补 Codex pet 原生导入；Phase 31 已补 Codex pet zip 原生导入；Phase 32 已补内置 Codex pets 基础资产**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.2 完成当前发布轨道整理；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-16 建立并扩展 Control Center Playwright UI 回归基线；Phase 17 已补主进程插件包 IPC + 真实 zip fixture 烟测；Phase 18 已补 desktop 原生文件选择器烟测证据工具链；Phase 19 已完成项目文档设计操作模型、阶段完成契约、完成标准和决策记录完善；Phase 20 已补 Focus Timer 示例插件、插件开发文档与真实本地插件服务测试；Phase 21 已补 Weather Status 示例插件、network allowlist 开发者路径与真实本地插件服务测试；Phase 22 已补 RSS Reader 示例插件、公开 feed 开发者路径与真实本地插件服务测试；Phase 23 已补插件提交前校验 CLI 与测试；Phase 24 已补插件提交审核包 CLI 与测试；Phase 25 已补插件提交 PR 模板与 PR packet CLI；Phase 26 已补插件提交工作流包 CLI；Phase 27 已补插件提交工作流包验证 CLI；Phase 28 已补插件提交工作流演练手册；Phase 29 已补 RC 升级兼容 smoke 证据工具；Phase 30 已补 Codex pet 原生导入；Phase 31 已补 Codex pet zip 原生导入；Phase 32 已补内置 Codex pets 基础资产；Phase 33 已补 TypeScript 迁移框架**
 
 ---
 
@@ -11,7 +11,7 @@
 
 OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-32 补齐 Windows 分发基线、文档治理、Control Center UI 自动化、主进程插件包 IPC 烟测、desktop 原生文件选择器烟测证据工具链、文档设计操作模型、三个互补的真实示例插件开发者资产、插件提交前校验入口、插件提交审核包、插件提交 PR 模板、插件提交工作流包、工作流包验证、工作流演练手册、RC 升级兼容 smoke 证据工具、Codex pet 原生导入、Codex pet zip 原生导入与内置 Codex pets 基础资产。**核心愿景实现度：97%**，关键承诺已兑现，剩余项主要是发布验证和生态增强。
 
-**建议：发布 v1.0.1 RC 验证 OpenPet 改名升级路径，确认无回归后提升为 v1.0.1 正式版。**
+**建议：发布 v1.0.1-rc.2 作为当前对外版本，并继续保留 Windows 真实签名与冒烟证据门禁。**
 
 ---
 
@@ -32,16 +32,16 @@ OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心
 src/main/services/        # 19 个 service，职责清晰
 src/main/pet-pack/        # Pet pack 运行时
 src/main/plugins/         # 插件系统
-tests/                    # 44 个 Node 测试文件，317 个测试全过；Control Center Playwright UI 回归 9 个测试全过
+tests/                    # 44 个 Node 测试文件，319 个测试全过；Control Center Playwright UI 回归 9 个测试全过
 ```
 
-### v1.0.1-rc.1 增量状态
+### 当前增量状态
 
 - GitHub 仓库已迁移到 `dengyie/OpenPet`。
 - Electron `userData` 保持旧版 `appData/ibot`，避免改名后丢失用户设置、密钥、插件、Pet packs 与本地服务日志。
 - 新公开命名为 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`。
 - 旧 `ibot.*` MCP tools、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` 保留兼容。
-- 当前验证：`npm test` 317/317，`npm run test:control-center` 9/9，`npm run check:syntax` 通过。
+- 当前验证：`npm test` 319/319，`npm run test:control-center` 9/9，`npm run check:syntax` 通过。
 
 ### 2. UI 配置化 ✅ 完全实现
 
@@ -186,7 +186,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 - 最近决策日志
 
 ### 3. 测试覆盖完整
-- **317 个 Node 测试全部通过，9 个 Control Center Playwright UI 测试全部通过**
+- **319 个 Node 测试全部通过，9 个 Control Center Playwright UI 测试全部通过**
 - 44 个 Node 测试文件覆盖所有核心 service、示例插件、插件提交校验、审核包、PR packet、workflow bundle 与 workflow bundle validation、RC upgrade smoke、主进程 IPC、发布资产脚本与 Windows 冒烟证据门禁/报告生成/填写/runbook、collector、证据包校验、summary、archive-manifest 与 desktop picker smoke evidence 工具
 - 恶意输入测试（路径穿越、超大 body、非法 schema）
 - Playwright UI 测试覆盖 Control Center shell、全部 tab、Pet / About 基础交互、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理流程，以及手动插件包安装 review 流程
@@ -202,18 +202,18 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 ### 高优先级（应补齐）
 
-#### 1. v1.0.1 RC 升级路径验证 ⚠️
+#### 1. v1.0.1 RC 发布验证 ⚠️
 
 **现状**：
 - OpenPet 改名、仓库迁移与 legacy userData 兼容已经落地。
 - 本地 RC smoke test 已验证旧 `Library/Application Support/ibot` 数据可被 OpenPet 继续读取。
 
 **影响**：
-- 改名版本发布前仍需真实安装包和 GitHub Release 链路验证。
+- 当前 RC 发布前仍需真实安装包和 GitHub Release 链路验证。
 - 外部 MCP 客户端需要确认 `openpet.*` 新名与 `ibot.*` alias 均可用。
 
 **建议**：
-- 发布 v1.0.1-rc.1。
+- 发布 v1.0.1-rc.2。
 - 在真实用户数据副本上完成升级 smoke test。
 - 确认 About 更新检查、release asset 与远端仓库均指向 `dengyie/OpenPet`。
 
@@ -300,7 +300,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 | 指标 | 结果 |
 |------|------|
-| 测试通过率 | **317/317 Node + 9/9 UI (100%)** |
+| 测试通过率 | **319/319 Node + 9/9 UI (100%)** |
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 阶段提交后应保持干净 |
@@ -364,7 +364,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 **验证命令全部通过**：
 ```bash
-npm test                      # 317 Node tests pass
+npm test                      # 319 Node tests pass
 npm run test:control-center   # 9 UI tests pass
 npm run check:syntax          # all JS syntax pass
 npm run build:control-center  # Vite build pass
@@ -403,7 +403,7 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | **功能完整性** | ⭐⭐⭐⭐⭐ | 所有承诺功能全部实现 |
 | **架构设计** | ⭐⭐⭐⭐⭐ | 分层清晰、可扩展性强 |
-| **代码质量** | ⭐⭐⭐⭐⭐ | 317 Node tests + 9 UI tests、模块化、安全考虑周全 |
+| **代码质量** | ⭐⭐⭐⭐⭐ | 319 Node tests + 9 UI tests、模块化、安全考虑周全 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
 | **可维护性** | ⭐⭐⭐⭐⭐ | 重构彻底、职责清晰 |
 | **生态基础** | ⭐⭐⭐⭐☆ | 技术完整，缺少真实案例 |
@@ -414,7 +414,7 @@ npm run pack                  # electron-builder pass
 
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
-3. ✅ **测试覆盖完整**：317 个 Node 测试覆盖 service / release / 示例插件 / 插件提交校验、审核包、PR packet、workflow bundle 与 workflow bundle validation / RC upgrade smoke / 主进程 IPC / desktop picker evidence 门禁，9 个 Playwright 测试覆盖 Control Center 冒烟、保存配置路径、Catalog 安装/更新路径、Service MCP session 管理路径与手动插件包 review 路径
+3. ✅ **测试覆盖完整**：319 个 Node 测试覆盖 service / release / 示例插件 / 插件提交校验、审核包、PR packet、workflow bundle 与 workflow bundle validation / RC upgrade smoke / 主进程 IPC / desktop picker evidence 门禁，9 个 Playwright 测试覆盖 Control Center 冒烟、保存配置路径、Catalog 安装/更新路径、Service MCP session 管理路径与手动插件包 review 路径
 4. ✅ **文档齐全**：64 个阶段开发/review 文档 + 交接文档 + 文档治理入口
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
@@ -431,11 +431,11 @@ npm run pack                  # electron-builder pass
 
 ### 立即可做
 
-**✅ 建议发布 v1.0.1-rc.1**
+**✅ 建议发布 v1.0.1-rc.2**
 
 **理由**：
 1. 所有核心功能已完成并验证
-2. 测试覆盖完整（317/317 Node 测试通过，9/9 UI 测试通过）
+2. 测试覆盖完整（319/319 Node 测试通过，9/9 UI 测试通过）
 3. 架构稳定、代码质量高
 4. macOS 分发流程已就绪；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest、packaged native picker smoke evidence 工具基线已落地但尚未 release-ready
 5. 剩余项为增强项，不阻塞发布
@@ -466,23 +466,23 @@ npm run pack                  # electron-builder pass
 
 ## 九、结论 🎯
 
-**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化/IPC 加固/desktop picker evidence、文档操作模型、示例插件生态资产、提交前校验入口、审核包生成、PR 模板、工作流包、工作流包验证、工作流演练手册、RC 升级兼容 smoke 证据工具、Codex pet 原生导入、Codex pet zip 原生导入和内置 Codex pets 基础资产 Phase 8-32 均已高质量交付。**
+**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化/IPC 加固/desktop picker evidence、文档操作模型、示例插件生态资产、提交前校验入口、审核包生成、PR 模板、工作流包、工作流包验证、工作流演练手册、RC 升级兼容 smoke 证据工具、Codex pet 原生导入、Codex pet zip 原生导入、内置 Codex pets 基础资产和 TypeScript 迁移框架均已交付。**
 
 **核心指标**：
 - ✅ 功能完整性：96%（关键承诺已实现，剩余主要为发布验证和生态增强）
-- ✅ 代码质量：317/317 Node 测试通过，9/9 UI 测试通过
+- ✅ 代码质量：319/319 Node 测试通过，9/9 UI 测试通过
 - ✅ 架构质量：优秀（分层清晰、安全可靠）
 - ✅ 可维护性：优秀（模块化彻底）
 - ✅ 文档完整性：双语 README、技术文档、版本记录与发布清单完整
 
 **最终建议**：
 
-1. **发布 v1.0.1-rc.1**（验证 OpenPet 改名与升级兼容）
-2. **确认无回归后提升 v1.0.1 正式版**
+1. **发布 v1.0.1-rc.2**（验证当前发布轨道与 bundled pet / TS 迁移增量）
+2. **继续保留 Windows 真实签名与冒烟证据门禁**
 3. **v1.1 迭代增强**（packaged smoke 证据、生态教程、用户反馈）
 
 ---
 
 **评估日期**：2026-06-15
 **分支状态**：`main`
-**下一步行动**：发布 v1.0.1-rc.1 → 验证升级路径 → 提升 v1.0.1
+**下一步行动**：发布 v1.0.1-rc.2 → 继续补 Windows 真实证据 → 再评估正式版

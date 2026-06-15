@@ -1,154 +1,49 @@
-# OpenPet 开发小结
+# OpenPet Development Summary
 
-> 最后更新：2026-06-16
-> 当前阶段：Phase 33 已完成
-> 当前分支：`main`
-> 最新阶段提交：本阶段提交
+> Last updated: 2026-06-16
+> Branch: `main`
+> Current release track: `v1.0.1-rc.2`
 
-本文是 OpenPet 当前开发进度的快照版小结。更完整的目标、架构、支持声明和验收规则以 [`project-documentation-design.md`](./project-documentation-design.md)、[`HANDOFF.md`](./HANDOFF.md)、[`productization-roadmap.md`](./productization-roadmap.md) 和 [`project-status-review.md`](./project-status-review.md) 为准。
+This is the short engineering summary for the current repository state. For long phase history, read `docs/phases/` and `docs/reviews/`. For support claims and documentation rules, read `docs/project-documentation-design.md`.
 
-## 1. 当前总体状态
+## Current State
 
-OpenPet 已从单体桌宠应用演进为一个 Electron 桌面宠物平台。当前范围聚焦 macOS 与 Windows 桌面端，不包含移动端。
+OpenPet is now a desktop pet platform with:
 
-已完成：
+- an Electron pet window,
+- a React + Vite Control Center,
+- pet pack import and bundled pet packs,
+- AI chat with secret storage in the main process,
+- a permission-limited plugin system,
+- loopback-only local HTTP / MCP endpoints,
+- and a TypeScript migration baseline.
 
-- v1.0 产品化基线。
-- v1.0.1-rc.1 的 OpenPet 改名、GitHub 仓库迁移和旧 `ibot` userData 升级兼容准备。
-- macOS 分发基线。
-- Windows 打包、CI、签名策略、冒烟证据、报告、runbook、collector、证据包校验、summary/archive-manifest 与 packaged native picker smoke evidence 工具基线。
-- Control Center Playwright UI 回归基线。
-- 主进程插件包 IPC 到真实 `.openpet-plugin.zip` 的 inspect/install 烟测。
-- 三个可运行示例插件：Focus Timer、Weather Status、RSS Reader。
-- 插件提交前本地校验入口：`npm run validate:plugin -- <plugin-dir-or-zip>`。
-- 插件提交审核包生成入口：`npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md`。
-- 插件提交 PR packet 生成入口：`npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md`。
-- 插件提交工作流包生成入口：`npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle`。
-- 插件提交工作流包验证入口：`npm run validate-plugin-submission-bundle -- <bundle-dir>`。
-- 插件提交工作流演练手册：[`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md)。
-- RC 升级兼容 smoke 证据入口：`npm run create-rc-upgrade-smoke-report -- --app-data-dir <dir> --observed-user-data-dir <dir> --output rc-upgrade-smoke-report.json` 与 `npm run validate-rc-upgrade-smoke-report -- rc-upgrade-smoke-report.json`。
-- Codex pet 原生导入：Control Center → Actions → Pet Packs 可直接检查、导入并启用 hatch-pet 输出的 `pet.json` + `spritesheet.webp` 目录。
-- 内置 Codex pets：`doro`、`duodong`、`chispa` 作为只读 bundled packs 随应用提供。
-- TypeScript 迁移框架：新增 `tsconfig.json`、`npm run typecheck`、`check:syntax` type gate，以及 shared IPC contract 的 TS 迁移样板。
+## Latest Delivered Changes
 
-仍需保持谨慎口径：
+- Native Codex pet import for `pet.json` + `spritesheet.webp` directories.
+- Native Codex pet zip import for `.codex-pet.zip` packages.
+- Bundled built-in pet packs: `doro`, `duodong`, `chispa`.
+- Bundled pet renderer fix so packaged sprite URLs resolve correctly.
+- TypeScript migration scaffold with `tsconfig.json`, `npm run typecheck`, and a shared IPC contract sample.
 
-- Windows 不能声明 release-ready，直到完成真实签名产物证据、SmartScreen/reputation 验证和真实 Windows 冒烟验证。
-- packaged app 原生 OS 文件选择器已有证据工具链，但真实 macOS / Windows 证据仍需归档。
-- 插件生态已有示例资产、提交前校验入口、reviewer 审核包入口、PR 模板/packet 入口、workflow bundle 入口、bundle 验证入口和 workflow playbook，但真实第三方审核演练、教程视频和社区运营还未闭环。
-- RC upgrade smoke 仍是本地证据工具；真实 packaged RC、签名产物和 GitHub Release 链路验证不能由本地报告替代。
-
-## 2. 阶段开发总览
-
-### Phase 1-7：核心产品化闭环
-
-| Phase | 主题 | 结果 |
-|-------|------|------|
-| 1 | Control Center 模块化 | React + Vite Control Center 拆分为 shell、panes、hooks、api facade、shared components 与 lib helper。 |
-| 2 | Pet pack 管理 | 建立 pet pack manifest、loader、importer、整包检查、导入、启用、删除和 legacy cat 包兼容。 |
-| 3 | 插件生态产品化 | 建立插件权限白名单、安装 review、隔离 runner、SDK、配置 schema、私有 storage 和默认 disabled 安装策略。 |
-| 4 | AI 行为编排 | 增加结构化 behavior tool-call、action 白名单、cooldown、dry-run 和最近决策日志。 |
-| 5 | MCP transport 产品化 | 拆出 MCP transport service，补 session TTL、Service 页 session 管理、tool schema 校验和日志路径。 |
-| 6 | 分发与 release pipeline | 完成 macOS 打包、公证脚本、GitHub release workflow、About 更新检查和发布清单。 |
-| 7 | 生态 catalog 运营闭环 | 建立 catalog、hash 校验、本地 blocklist、权限 diff review 和 plugin/pet pack 安装路径。 |
-
-### Phase 8-19：发布、自动化与文档治理加固
-
-| Phase | 主题 | 结果 |
-|-------|------|------|
-| 8 | Windows 桌面分发基线 | 补 Windows build config、CI、签名策略、冒烟证据门禁、报告、runbook、collector、summary 和 archive manifest 基线；仍未 release-ready。 |
-| 9 | 项目文档治理完善 | 补齐文档入口、状态说明、阶段记录和治理口径。 |
-| 10 | 项目文档设计加固 | 加固项目目标锚点、桌面结构决策、support claim 升级规则和模板。 |
-| 11 | Control Center 前端自动化基线 | 建立 Playwright smoke baseline，覆盖 app shell、tab 和基础交互。 |
-| 12 | Control Center 保存配置自动化 | 覆盖 Pet、AI、Service 保存配置路径。 |
-| 13 | Control Center Catalog 自动化 | 覆盖 Catalog 插件安装、插件更新和 pet pack 安装路径。 |
-| 14 | Control Center MCP Session 自动化 | 覆盖 Service tab MCP session 展示、撤销和 token 轮换失效。 |
-| 15 | 项目文档设计收口 | 收口文档目标、结构、阶段和支持声明规则。 |
-| 16 | Control Center 手动插件安装自动化 | 将手动插件包安装 review 纳入 demo API Playwright 回归。 |
-| 17 | Electron 插件包 IPC 安装烟测 | 用真实 zip fixture 覆盖主进程 `plugins:inspect-package` / `plugins:install` 链路。 |
-| 18 | Desktop 原生文件选择器烟测证据工具链 | 提供 macOS / Windows packaged native picker pending report、runbook、update 和 validator 工具。 |
-| 19 | 项目文档设计完善 | 补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。 |
-
-### Phase 20-30：插件生态、RC 验证资产与 Codex Pet 兼容
-
-| Phase | 主题 | 结果 |
-|-------|------|------|
-| 20 | Focus Timer 示例插件 | 覆盖 `storage` 与 `pet:say`，并通过真实 `PluginInstallService` + `PluginService` 测试。 |
-| 21 | Weather Status 示例插件 | 覆盖 `network` permission、HTTPS allowlist、JSON 响应处理、storage 和 pet speech，测试使用注入 fake fetch。 |
-| 22 | RSS Reader 示例插件 | 覆盖公开 RSS/Atom feed 拉取、轻量 XML 解析、storage 缓存和 pet speech，测试使用注入 fake fetch。 |
-| 23 | 插件提交校验入口 | 新增 `validate:plugin` CLI，复用 `PluginInstallService` 检查目录/zip、签名 metadata、blocklist 和 review 风险。 |
-| 24 | 插件提交审核包 | 新增 `create-plugin-submission-report` CLI，把 validation result 渲染为 reviewer Markdown/JSON、checklist 和人工审核边界。 |
-| 25 | 插件提交 PR 模板 | 新增 `create-plugin-submission-pr` CLI 与 GitHub PR template，把审核包转成 PR 正文和提交 checklist。 |
-| 26 | 插件提交工作流包 | 新增 `create-plugin-submission-bundle` CLI，把 report、PR packet 和 summary 一次性归档为提交工作流包。 |
-| 27 | 插件提交工作流包验证 | 新增 `validate-plugin-submission-bundle` CLI，把文件存在性、summary 一致性和 ready 状态纳入本地验收。 |
-| 28 | 插件提交工作流演练手册 | 新增 workflow playbook，把 Phase 23-27 命令串成第三方作者可照着跑的 rehearsal。 |
-| 29 | RC 升级兼容 smoke 证据 | 新增 `create-rc-upgrade-smoke-report` 与 `validate-rc-upgrade-smoke-report` CLI，把 legacy `ibot` userData 兼容验证变成本地可生成、可校验的 smoke 证据。 |
-| 30 | Codex Pet 原生导入 | 新增 Codex pet adapter，支持 `pet.json` + `spritesheet.webp` 固定 atlas 导入、atlas row 播放和逐帧时长。 |
-
-## 3. 当前质量基线
-
-截至 Phase 33，当前记录的质量基线为：
+## Validation Baseline
 
 ```bash
-npm test                    # 319/319 Node tests pass
-npm run test:control-center # 9/9 Control Center Playwright UI tests pass
-npm run typecheck           # TypeScript no-emit checks pass
-npm run check:syntax        # Node syntax check + TypeScript check + Control Center Vite build pass
+npm test                     # 319/319 Node tests
+npm run test:control-center  # 9/9 Playwright UI tests
+npm run typecheck            # TypeScript no-emit checks
+npm run check:syntax         # Node syntax + typecheck + Control Center build
 ```
 
-测试覆盖面包括：
+## What Still Needs Care
 
-- Service 层核心行为。
-- Pet pack runtime。
-- Codex-compatible pet import adapter and atlas playback metadata。
-- 插件 manifest、安装 review、runner isolation、SDK 权限、config、storage、AI、network 和 logs。
-- 示例插件 install/run。
-- 插件提交前 package validation CLI、reviewer submission report CLI、PR packet CLI、workflow bundle CLI 与 workflow bundle validation CLI。
-- RC upgrade smoke report generation / validation CLI。
-- 主进程插件包 IPC。
-- Windows release evidence tools。
-- Desktop picker smoke evidence tools。
-- Control Center UI 回归。
+- Windows is still not release-ready until real signed installer evidence and smoke reports are archived.
+- Packaged native picker evidence still needs real archived runs.
+- The plugin ecosystem has submission tooling and example assets, but wider community onboarding is still future work.
 
-## 4. 当前架构锚点
+## Next Migration Steps
 
-- `PetService` 是宠物状态唯一事实源，所有 say/action/event 都通过它。
-- `main.js` 负责组装服务，service 层保持依赖注入。
-- API key 只进入 `SecretService`，不暴露给 renderer 或普通插件。
-- 插件必须经过 manifest 权限声明、安装 review、默认 disabled 和受限 SDK。
-- 本地 HTTP / MCP 默认关闭，只允许 loopback，并受 token/session gate 保护。
-- macOS 支持可作为 release baseline；Windows 只声明 tooling baseline，不能提前声明 release-ready。
-
-## 5. 下一步建议
-
-优先级建议：
-
-1. 发布 v1.0.1-rc.1，并用 Phase 29 工具在真实 legacy `ibot` 数据副本上记录升级 smoke evidence。
-2. 用 Phase 18 工具链填写并归档 macOS / Windows packaged app 原生 OS 文件选择器真实烟测证据。
-3. 补 Windows 签名产物、SmartScreen/reputation、安装/卸载/透明窗口和原生 picker 真实烟测证据。
-4. 把插件生态从提交前校验、审核包生成、PR 模板、工作流包、工作流包验证和演练手册推进到真实第三方审核演练、教程视频和社区流程。
-5. 后续再评估远端 marketplace、真实第三方签名根信任、SES 或 Electron utilityProcess 等增强项。
-
-## 6. 最近阶段提交
-
-```text
-本阶段提交 Phase 33 TypeScript 迁移框架
-本阶段提交 Phase 32 Bundled Codex Pets
-本阶段提交 Phase 31 Codex Pet Zip 原生导入
-本阶段提交 Phase 30 Codex Pet 原生导入
-本阶段提交 Phase 29 RC 升级兼容 smoke 证据
-f9d4cf6 docs: add plugin submission workflow playbook
-864d42d test: add plugin submission bundle validation
-64fde05 test: add plugin submission workflow bundle
-34041ed test: add plugin submission pr template
-c31d3bf test: add plugin submission review packet
-cf28929 test: add plugin submission validation
-a1fd496 test: add rss example plugin
-6253744 test: add weather example plugin
-d8cc3dc test: add focus timer example plugin
-4f22748 docs: complete project documentation design
-3770f21 test: add desktop picker smoke evidence tooling
-976516c test: cover plugin package ipc install path
-8d3ce0b test: cover manual plugin install review
-1767180 docs: consolidate project documentation design
-```
+1. Expand TypeScript from shared contracts into the next main-process and Control Center boundaries.
+2. Keep `npm start` functional during each migration step.
+3. Keep new user-facing configuration in Control Center, not in hidden JSON files.
+4. Keep API keys out of renderer and ordinary plugins.

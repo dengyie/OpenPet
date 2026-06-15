@@ -86,7 +86,7 @@ npm run create-desktop-picker-smoke-runbook -- release/desktop-picker-smoke-repo
 npm run update-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --list-checks
 ```
 
-Current RC target: `v1.0.1-rc.1`.
+Current RC target: `v1.0.1-rc.2`.
 
 ## 5. macOS Verification
 
@@ -157,7 +157,7 @@ For a real Windows validation run, copy `docs/release-evidence/windows-smoke-rep
 ```bash
 npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --list-checks
 npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --set-env windowsVersion="Windows 11 23H2" --set-env machine="clean Windows VM"
-npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --set-artifact version="1.0.1-rc.1" --set-artifact installer="OpenPet-1.0.1-rc.1-win32-x64.exe"
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --set-artifact version="1.0.1-rc.2" --set-artifact installer="OpenPet-1.0.1-rc.2-win32-x64.exe"
 npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --check launch --status pass --evidence "Installed app launched from Start Menu and stayed running for 60 seconds"
 ```
 

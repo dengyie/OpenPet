@@ -25,7 +25,7 @@
 - Phase 5 Plugin runtime：已完成落地。
 - Phase 6 Local HTTP/MCP：已完成落地。
 - Phase 7 Ecosystem catalog/blocklist：已完成落地。
-- v1.0.1-rc.1：OpenPet 改名、GitHub 仓库迁移、旧 userData 路径兼容、公开 API 命名兼容与标题/展示文案审查已完成。
+- v1.0.1-rc.2：OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架已完成。
 
 Phase 1 已新增：
 

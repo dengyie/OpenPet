@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const packageJson = require('../../package.json')
 
 const {
   createWindowsSmokeReport,
@@ -77,7 +78,7 @@ test('createWindowsSmokeReport writes a pending report that passes structural va
   assert.equal(report.environment.windowsVersion, 'Windows 10.0.22631')
   assert.equal(report.environment.machine, 'windows-smoke-vm')
   assert.equal(report.environment.evidence, 'https://github.com/dengyie/OpenPet/actions/runs/12345')
-  assert.equal(report.artifact.version, '1.0.1-rc.1')
+  assert.equal(report.artifact.version, packageJson.version)
   assert.equal(report.artifact.signed, false)
   assert.equal(report.artifact.authenticodeStatus, 'NotSigned')
   assert.equal(report.checks.length, REQUIRED_CHECKS.length)

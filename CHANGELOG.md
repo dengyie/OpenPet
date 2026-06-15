@@ -1,6 +1,31 @@
 # Changelog
 
-All notable OpenPet release records are kept here. Dates use Asia/Shanghai local time.
+OpenPet release records. Dates use Asia/Shanghai local time.
+
+## v1.0.1-rc.2 - 2026-06-16
+
+### Added
+
+- Native Codex pet import for `pet.json` + `spritesheet.webp` directories.
+- Native Codex pet zip import for `.codex-pet.zip` packages.
+- Built-in read-only pet packs: `doro`, `duodong`, and `chispa`.
+- TypeScript migration baseline with `tsconfig.json`, `npm run typecheck`, and a shared IPC contract sample.
+
+### Fixed
+
+- Resolved bundled pet sprite URLs to packaged `file://` paths so built-in Codex pets render in the desktop pet window instead of appearing transparent.
+
+### Changed
+
+- `npm run check:syntax` now runs Node syntax checks, TypeScript no-emit checks, and the Control Center production build.
+- README files now focus on product use and contributor entry points; phase details remain in `docs/phases/` and `docs/reviews/`.
+
+### Validation
+
+- `npm test`: 319/319 Node tests.
+- `npm run test:control-center`: 9/9 Playwright UI tests.
+- `npm run typecheck`: passed.
+- `npm run check:syntax`: passed.
 
 ## v1.0.1-rc.1 - 2026-06-13
 
@@ -19,8 +44,8 @@ All notable OpenPet release records are kept here. Dates use Asia/Shanghai local
 
 ### Validation
 
-- `npm test` passes: 171/171 tests.
-- `npm run check:syntax` passes, including the Control Center production build.
+- `npm test`: 305/305 Node tests at the time of the release.
+- `npm run check:syntax`: passed, including the Control Center production build.
 - Local RC upgrade smoke test passed with seeded legacy `Library/Application Support/ibot` data.
 
 ## v1.0.0 - 2026-06-12
