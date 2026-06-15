@@ -26,6 +26,7 @@
     "validate-desktop-picker-smoke-report": "node scripts/validate-desktop-picker-smoke-report.js",
     "validate:plugin": "node scripts/validate-plugin-package.js",
     "create-plugin-submission-report": "node scripts/create-plugin-submission-report.js",
+    "create-plugin-submission-pr": "node scripts/create-plugin-submission-pr.js",
     "generate-sprites": "node scripts/generate-sprites.js",
     "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests examples -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
     "check:syntax": "npm run check:node && npm run build:control-center",
