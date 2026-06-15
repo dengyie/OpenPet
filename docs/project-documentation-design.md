@@ -168,7 +168,7 @@ These items can improve macOS/Windows confidence without changing the architectu
 
 - Add real Windows smoke reports once signed Windows artifacts exist.
 - Keep release scripts idempotent and evidence-producing instead of relying on manual prose.
-- Expand UI automation in demo API mode for Control Center flows, then separately validate Electron-hosted behavior where native dialogs, file pickers, or OS integration matter.
+- Expand UI automation in demo API mode for Control Center flows, keep main-process IPC glue covered with fixture-based Node tests, then separately validate launched Electron behavior where native dialogs, file pickers, or OS integration matter.
 - Add platform-specific notes only in release docs or service docs that own the behavior.
 - Keep plugin runner and local file path behavior covered by service tests plus real Windows smoke evidence before making Windows support claims.
 
@@ -215,6 +215,8 @@ Phase 14 is a Control Center MCP session automation phase. It expands the Playwr
 Phase 15 is a project documentation design consolidation phase. It keeps the same runtime and release truth, corrects live documentation drift, strengthens this document with desktop structure decision records and phase/update templates, and records the documentation-only work with a paired review.
 
 Phase 16 is a Control Center manual plugin install automation phase. It expands the Playwright demo API baseline to cover the Plugins tab manual package review, cancel, install, disabled-by-default result, log persistence, and reload persistence, while keeping real Electron file picker and zip validation smoke out of scope.
+
+Phase 17 is an Electron plugin package IPC smoke phase. It keeps production IPC behavior unchanged, adds injectable `ipcMain` / `dialog` seams for tests, covers `plugins:inspect-package` and `plugins:install` with a real `.openpet-plugin.zip` fixture, and records that launched native OS file picker validation and Windows packaged-app smoke remain out of scope.
 
 Do not skip the review document. If a phase changes release claims, security boundaries, plugin permissions, or API-key handling, the review must explicitly state whether those boundaries still hold.
 
@@ -482,7 +484,7 @@ Before committing documentation-only work, run at least a link/path sanity check
 
 ## 16. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 16:
+The repository now has a coherent phase history through Phase 17:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
@@ -494,6 +496,7 @@ The repository now has a coherent phase history through Phase 16:
 - Phase 14 expands the Control Center Playwright baseline to Service MCP session management flows.
 - Phase 15 consolidates the project documentation design, fixes live documentation drift, and adds durable structure/scope/update templates for future phases.
 - Phase 16 expands the Control Center Playwright baseline to manual plugin package install review flows in demo API mode.
+- Phase 17 expands Node regression coverage to the main-process plugin package IPC inspect/install path with a real zip fixture.
 - macOS release baseline is complete.
 - Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, evidence summary/archive generation, archive manifest generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.
@@ -505,4 +508,4 @@ The next documentation work should follow the implementation track rather than i
 - Add a filled Windows smoke report only after real Windows validation exists.
 - Update release status only after signed artifact evidence and real smoke evidence pass the checklist.
 - Keep mobile out of scope until a separate product decision introduces it.
-- Add Electron-hosted smoke evidence for native file picker and real plugin package zip validation when that path changes.
+- Add launched Electron / packaged-app smoke evidence for native OS file picker behavior when that path changes.
