@@ -191,6 +191,25 @@ The app inspects the package before install:
 
 Users must manually enable installed plugins before commands can run.
 
+## Submission Validation
+
+Before sharing a plugin package or opening a catalog PR, run the same package review logic used by the app:
+
+```bash
+npm run validate:plugin -- examples/plugins/focus-timer
+npm run validate:plugin -- path/to/my-plugin.openpet-plugin.zip
+```
+
+The command validates the package through `PluginInstallService` without installing or running plugin code. It prints the plugin id, version, permissions, network allowlist, signature status, package hash, file count, and review risk.
+
+Unsigned local plugins can pass structural validation with warnings. For stricter catalog or release preflight, require verified hash metadata:
+
+```bash
+npm run validate:plugin -- path/to/my-plugin.openpet-plugin.zip --require-signature
+```
+
+`--require-signature` only checks the current `signature.json` hash metadata status; it is not a public-key trust chain.
+
 ## Packaging
 
 To create a local distributable archive, zip the contents of the plugin directory so `plugin.json` is at the archive root, then name it with `.openpet-plugin.zip`.
@@ -215,6 +234,7 @@ Use the service tests as the source of truth for current runtime behavior:
 Before submitting a plugin-related change, run:
 
 ```bash
+npm run validate:plugin -- <plugin-dir-or-zip>
 npm test
 npm run check:syntax
 ```

@@ -10,12 +10,12 @@
 
 - `PetService` 是唯一宠物状态源，AI、插件、HTTP、MCP 都通过它触发 `say`、`playAction`、`setEvent`。
 - Pet pack runtime 已有 `schema` / `loader` / `importer`，并已补齐用户可操作的整包检查、导入、启用、删除体验。
-- Control Center 已覆盖 Pet / Actions / AI / Plugins / Catalog / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper；Phase 11 已新增 Playwright 冒烟基线，Phase 12 已覆盖 Pet / AI / Service 保存配置 UI 回归，Phase 13 已覆盖 Catalog 安装/更新 UI 回归，Phase 14 已覆盖 Service MCP session 管理 UI 回归，Phase 15 已把文档设计收口为可执行的目标、结构、阶段和支持声明规则，Phase 16 已覆盖手动插件包安装 review UI 回归，Phase 17 已覆盖主进程插件包 IPC 到真实 zip 安装服务链路，Phase 18 已补 packaged app 原生文件选择器烟测证据工具链，Phase 19 已补文档操作模型、生命周期、阶段完成契约和完成标准，Phase 20 已补 Focus Timer 示例插件与插件开发文档，Phase 21 已补 Weather Status 示例插件与 network allowlist 开发者路径，Phase 22 已补 RSS Reader 示例插件与 public feed 开发者路径。
+- Control Center 已覆盖 Pet / Actions / AI / Plugins / Catalog / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper；Phase 11 已新增 Playwright 冒烟基线，Phase 12 已覆盖 Pet / AI / Service 保存配置 UI 回归，Phase 13 已覆盖 Catalog 安装/更新 UI 回归，Phase 14 已覆盖 Service MCP session 管理 UI 回归，Phase 15 已把文档设计收口为可执行的目标、结构、阶段和支持声明规则，Phase 16 已覆盖手动插件包安装 review UI 回归，Phase 17 已覆盖主进程插件包 IPC 到真实 zip 安装服务链路，Phase 18 已补 packaged app 原生文件选择器烟测证据工具链，Phase 19 已补文档操作模型、生命周期、阶段完成契约和完成标准，Phase 20 已补 Focus Timer 示例插件与插件开发文档，Phase 21 已补 Weather Status 示例插件与 network allowlist 开发者路径，Phase 22 已补 RSS Reader 示例插件与 public feed 开发者路径，Phase 23 已补插件提交前校验 CLI。
 - AI 已支持 OpenAI-compatible provider、API Key secret 隔离、请求超时、有界持久会话、轻量语义动作触发。
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
 - `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest、报告填写工具和 desktop picker smoke evidence 工具链已落地，但尚未完成真实签名产物验证和 Windows 冒烟。
-- CI / 测试已覆盖 service、pet-pack、plugin、example plugin、AI、MCP、release、catalog、主进程 IPC 与 desktop picker smoke evidence 核心路径，当前 Node 验证为 266 个测试；Control Center 已有 9 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
+- CI / 测试已覆盖 service、pet-pack、plugin、example plugin、plugin submission validation、AI、MCP、release、catalog、主进程 IPC 与 desktop picker smoke evidence 核心路径，当前 Node 验证为 269 个测试；Control Center 已有 9 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
 - v1.0.1-rc.1 已完成 OpenPet 改名、GitHub 仓库迁移、旧 userData 路径保留与公开 API 命名兼容。
 
 ### 1.2 仍未产品化的深水区
@@ -596,14 +596,14 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归。Phase 17 将插件包安装从 demo UI 推进到主进程 IPC + 真实 `.openpet-plugin.zip` fixture 覆盖。Phase 18 将真实 Electron 原生 OS 文件选择器缺口推进为 packaged app smoke evidence 工具链，但真实 macOS / Windows picker evidence 和 Windows 安装包验证仍需后续烟测归档。Phase 19 将项目文档设计完善为可执行操作模型，补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。Phase 20 将生态冷启动推进到第一个可运行开发者资产：Focus Timer 示例插件、插件开发指南和真实本地插件 install/run 测试。Phase 21 增加 Weather Status 示例插件，用注入 fetch 覆盖 `network` 权限、HTTPS allowlist、storage 与 pet speech 路径，不依赖真实网络或 API key。Phase 22 增加 RSS Reader 示例插件，用注入 fetch 覆盖公开 RSS/Atom feed 拉取、轻量 XML 解析、storage 缓存与 pet speech 路径。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归。Phase 17 将插件包安装从 demo UI 推进到主进程 IPC + 真实 `.openpet-plugin.zip` fixture 覆盖。Phase 18 将真实 Electron 原生 OS 文件选择器缺口推进为 packaged app smoke evidence 工具链，但真实 macOS / Windows picker evidence 和 Windows 安装包验证仍需后续烟测归档。Phase 19 将项目文档设计完善为可执行操作模型，补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。Phase 20 将生态冷启动推进到第一个可运行开发者资产：Focus Timer 示例插件、插件开发指南和真实本地插件 install/run 测试。Phase 21 增加 Weather Status 示例插件，用注入 fetch 覆盖 `network` 权限、HTTPS allowlist、storage 与 pet speech 路径，不依赖真实网络或 API key。Phase 22 增加 RSS Reader 示例插件，用注入 fetch 覆盖公开 RSS/Atom feed 拉取、轻量 XML 解析、storage 缓存与 pet speech 路径。Phase 23 增加插件提交前校验 CLI，让本地目录或 `.openpet-plugin.zip` 在进入人工 review 前复用应用安装路径的 package review 规则。
 
 ### 完成验证
 
 **所有质量门槛已通过**：
 
 ```bash
-npm test                      # ✅ 266/266 Node tests pass
+npm test                      # ✅ 269/269 Node tests pass
 npm run test:control-center   # ✅ 9/9 Control Center Playwright UI tests pass
 npm run check:syntax          # ✅ all JS syntax pass
 npm run build:control-center  # ✅ Vite build pass
@@ -636,10 +636,11 @@ npm run pack                  # ✅ electron-builder pass
 | 20 | 示例插件开发者资产 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 21 | Weather 示例插件开发者资产 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 22 | RSS 示例插件开发者资产 | `a1fd496` | ✅ | ✅ | 完成 |
+| 23 | 插件提交校验入口 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）
-- 测试覆盖：266/266 Node 测试通过；9/9 Control Center Playwright UI 测试通过
+- 测试覆盖：269/269 Node 测试通过；9/9 Control Center Playwright UI 测试通过
 - 架构质量：⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - 代码质量：⭐⭐⭐⭐⭐（模块化彻底、职责单一）
 - 文档完整性：⭐⭐⭐⭐⭐（双语 README、技术文档、版本记录与发布清单完整）
@@ -659,7 +660,7 @@ RC 重点验证：
 v1.1 版本规划（可选）：
 1. Windows 签名产物验证与冒烟验证
 2. 填写并归档 macOS / Windows packaged app 原生 OS 文件选择器真实烟测证据
-3. 更多真实第三方插件提交/审核流程与教程材料
+3. 真实第三方插件提交/审核演练与教程材料
 4. 插件开发教程视频
 5. 用户反馈收集与迭代
 

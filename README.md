@@ -4,7 +4,7 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-266%20node%20%2B%209%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-269%20node%20%2B%209%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -122,7 +122,7 @@ npm start
 ```bash
 npm start                    # Build Control Center + launch Electron
 npm run dev:control-center   # Control Center hot reload (http://127.0.0.1:5173)
-npm test                     # Run Node tests (266 tests)
+npm test                     # Run Node tests (269 tests)
 npm run test:control-center  # Run Control Center Playwright UI regression tests
 npm run check:syntax         # JS syntax validation
 npm run generate-sprites     # Regenerate sprite sheets from cat_anime/flames/
@@ -176,6 +176,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 20 - Example Plugin Developer Asset](./docs/phases/phase-20-example-plugin-developer-asset.md)
 - [Phase 21 - Weather Example Plugin Developer Asset](./docs/phases/phase-21-weather-example-plugin-developer-asset.md)
 - [Phase 22 - RSS Example Plugin Developer Asset](./docs/phases/phase-22-rss-example-plugin-developer-asset.md)
+- [Phase 23 - Plugin Submission Validation](./docs/phases/phase-23-plugin-submission-validation.md)
 
 ---
 
@@ -259,7 +260,8 @@ const response = await ctx.network.fetch(url, options)
 2. Write `index.js` and optional `config.schema.json`.
 3. Install it through Control Center → Plugins → Install plugin package.
 4. Review permissions, install, then manually enable it.
-5. Run commands to test.
+5. Run `npm run validate:plugin -- <plugin-dir-or-zip>` before submitting.
+6. Run commands to test.
 
 For more details, see [plugin-development.md](./docs/plugin-development.md) and [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evaluation.md).
 
@@ -314,7 +316,7 @@ For more details, see [plugin-development.md](./docs/plugin-development.md) and 
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** for service/release/IPC/example-plugin coverage with **266 tests all passing**, plus a **Playwright Control Center UI regression baseline** with 9 UI tests.
+The project uses **Node native test runner** for service/release/IPC/example-plugin coverage with **269 tests all passing**, plus a **Playwright Control Center UI regression baseline** with 9 UI tests.
 
 ```bash
 npm test                     # Run Node tests
@@ -324,7 +326,8 @@ npm run build:control-center # Control Center build verification
 ```
 
 Test Coverage:
-- ✅ Full service/release/IPC/example coverage (38 test files)
+- ✅ Full service/release/IPC/example coverage (39 test files)
+- ✅ Plugin package submission validation CLI coverage
 - ✅ Control Center shell / tab / Pet / About smoke coverage, Pet / AI / Service saved configuration flows, Catalog install/update flows, Service MCP session management, and manual plugin package install review (9 Playwright tests)
 - ✅ Main-process plugin package IPC smoke coverage with a real `.openpet-plugin.zip` fixture
 - ✅ Focus Timer, Weather Status, and RSS Reader example plugin install/run coverage through the real local plugin services
@@ -361,7 +364,8 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 
 1. Add plugin entry in `catalog/openpet-catalog.json`
 2. Provide plugin source code or download link
-3. Submit PR explaining plugin functionality and permissions
+3. Run `npm run validate:plugin -- <plugin-dir-or-zip>` and include the result
+4. Submit PR explaining plugin functionality and permissions
 
 ---
 
