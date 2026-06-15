@@ -24,6 +24,8 @@
     "create-desktop-picker-smoke-runbook": "node scripts/create-desktop-picker-smoke-runbook.js",
     "update-desktop-picker-smoke-report": "node scripts/update-desktop-picker-smoke-report.js",
     "validate-desktop-picker-smoke-report": "node scripts/validate-desktop-picker-smoke-report.js",
+    "create-rc-upgrade-smoke-report": "node scripts/create-rc-upgrade-smoke-report.js",
+    "validate-rc-upgrade-smoke-report": "node scripts/validate-rc-upgrade-smoke-report.js",
     "validate:plugin": "node scripts/validate-plugin-package.js",
     "create-plugin-submission-report": "node scripts/create-plugin-submission-report.js",
     "create-plugin-submission-pr": "node scripts/create-plugin-submission-pr.js",
