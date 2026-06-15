@@ -1,7 +1,7 @@
 # OpenPet 项目交接文档
 
-> 最后更新：2026-06-15 | 分支：`main`
-> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容；Control Center Playwright UI 回归基线已扩展至 Phase 16；Phase 17 已补主进程插件包 IPC + 真实 zip fixture 烟测；Phase 18 已补 macOS / Windows packaged app 原生文件选择器烟测证据工具链；Phase 19 已把项目文档设计完善为可执行的阶段闭环、生命周期、完成标准和决策记录；Phase 20 已补 Focus Timer 示例插件、插件开发文档与真实本地插件服务测试；Phase 21 已补 Weather Status 示例插件、network allowlist 开发者路径与真实本地插件服务测试；Phase 22 已补 RSS Reader 示例插件、公开 feed 开发者路径与真实本地插件服务测试；Phase 23 已补插件提交前校验 CLI；macOS 分发基线已完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest、packaged native picker smoke evidence 工具基线已落地但尚未 release-ready
+> 最后更新：2026-06-16 | 分支：`main`
+> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容；Control Center Playwright UI 回归基线已扩展至 Phase 16；Phase 17 已补主进程插件包 IPC + 真实 zip fixture 烟测；Phase 18 已补 macOS / Windows packaged app 原生文件选择器烟测证据工具链；Phase 19 已把项目文档设计完善为可执行的阶段闭环、生命周期、完成标准和决策记录；Phase 20 已补 Focus Timer 示例插件、插件开发文档与真实本地插件服务测试；Phase 21 已补 Weather Status 示例插件、network allowlist 开发者路径与真实本地插件服务测试；Phase 22 已补 RSS Reader 示例插件、公开 feed 开发者路径与真实本地插件服务测试；Phase 23 已补插件提交前校验 CLI；Phase 24 已补插件提交审核包生成 CLI；macOS 分发基线已完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest、packaged native picker smoke evidence 工具基线已落地但尚未 release-ready
 > **项目评估：95/100 分，建议发布 v1.0.1 RC 后提升正式版**（详见 [project-status-review.md](./project-status-review.md)）
 
 ---
@@ -20,7 +20,7 @@
 - ✅ Desktop 原生文件选择器烟测证据工具链（packaged macOS / Windows pending report、runbook、更新命令与 readiness validator）
 - ✅ AI 聊天（OpenAI-compatible，API Key 安全存储、持久会话、结构化行为编排）
 - ✅ 权限化插件系统（隔离 runner + SDK + catalog + blocklist）
-- ✅ 示例插件开发者资产（Focus Timer storage 示例 + Weather Status network allowlist 示例 + RSS Reader public feed 示例 + 插件开发文档 + 插件提交前校验 CLI + 真实 install/run service 测试）
+- ✅ 示例插件开发者资产（Focus Timer storage 示例 + Weather Status network allowlist 示例 + RSS Reader public feed 示例 + 插件开发文档 + 插件提交前校验 CLI + 插件提交审核包 CLI + 真实 install/run service 测试）
 - ✅ 本地 HTTP API + MCP transport（loopback only，默认关闭）
 - ✅ macOS 分发/更新检查、生态 catalog 与本地 blocklist 治理
 - 📝 Windows 桌面分发设计已记录在 [`desktop-release-design.md`](./desktop-release-design.md)，当前已补 build config、CI、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest 和报告填写工具，后续需补真实签名产物证据和冒烟验证
@@ -33,9 +33,9 @@
 
 1. [`project-documentation-design.md`](./project-documentation-design.md)：项目目标锚点、文档分层、支持声明规则和阶段治理。
 2. 本文件：当前事实状态、文件地图、待办和开发命令。
-3. [`development-summary.md`](./development-summary.md)：截至 Phase 23 的阶段开发小结、质量基线和下一步建议。
+3. [`development-summary.md`](./development-summary.md)：截至 Phase 24 的阶段开发小结、质量基线和下一步建议。
 4. [`desktop-release-design.md`](./desktop-release-design.md) 与 [`release-checklist.md`](./release-checklist.md)：macOS + Windows 桌面发布边界、签名、冒烟证据和验收门槛。
-5. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-23-plugin-submission-validation.md`](./phases/phase-23-plugin-submission-validation.md) 与 [`phase-23-plugin-submission-validation-review.md`](./reviews/phase-23-plugin-submission-validation-review.md)。
+5. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-24-plugin-submission-review-packet.md`](./phases/phase-24-plugin-submission-review-packet.md) 与 [`phase-24-plugin-submission-review-packet-review.md`](./reviews/phase-24-plugin-submission-review-packet-review.md)。
 
 当前支持口径必须保持为：macOS release baseline complete；Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest and packaged native picker smoke evidence tooling baselines implemented but not release-ready；移动端不在当前范围。
 
@@ -46,7 +46,7 @@
 | 指标 | 结果 | 说明 |
 |------|------|------|
 | **功能完整性** | 95% | 所有承诺功能已实现 |
-| **测试覆盖** | 269 Node + 9 UI ✅ | service / release / 主进程 IPC / 示例插件 / 插件提交校验 / desktop picker smoke evidence 门禁覆盖；Control Center Playwright UI 回归基线 |
+| **测试覆盖** | 275 Node + 9 UI ✅ | service / release / 主进程 IPC / 示例插件 / 插件提交校验与审核包 / desktop picker smoke evidence 门禁覆盖；Control Center Playwright UI 回归基线 |
 | **架构质量** | ⭐⭐⭐⭐⭐ | 分层清晰、安全可靠 |
 | **代码质量** | ⭐⭐⭐⭐⭐ | 模块化彻底、职责单一 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
@@ -57,7 +57,7 @@
 ## 测试与验收
 
 ```bash
-npm test                  # 269 Node tests, all pass
+npm test                  # 275 Node tests, all pass
 npm run test:control-center # 9 Control Center Playwright UI tests, all pass
 npm run build:control-center  # Vite build pass
 npm run generate-sprites  # CLI works
@@ -235,16 +235,20 @@ scripts/create-desktop-picker-smoke-runbook.js # 从 report 生成 packaged nati
 tests/release/desktop-picker-smoke-report.test.js # desktop picker report / signature / artifact 选择测试
 tests/release/desktop-picker-smoke-runbook-update.test.js # desktop picker runbook / update tool 测试
 docs/project-documentation-design.md       # 项目目标、文档生命周期、阶段闭环、完成标准与支持声明规则
-docs/development-summary.md                # 截至 Phase 23 的阶段开发小结、质量基线与下一步建议
+docs/development-summary.md                # 截至 Phase 24 的阶段开发小结、质量基线与下一步建议
 docs/plugin-development.md                 # 插件开发者指南：manifest、config schema、SDK、安装 review 和测试入口
 scripts/validate-plugin-package.js         # 插件包提交前校验 CLI，复用 PluginInstallService package review
 tests/scripts/validate-plugin-package.test.js # 插件提交校验 CLI 成功、严格签名和坏签名测试
+scripts/create-plugin-submission-report.js # 插件提交审核包生成 CLI，输出 reviewer Markdown/JSON
+tests/scripts/create-plugin-submission-report.test.js # 插件提交审核包参数、报告、严格签名和写出测试
 examples/plugins/focus-timer/              # 已纳入测试的 Focus Timer 本地插件示例
 tests/examples/focus-timer-plugin.test.js  # 示例插件 inspect/install/run service 覆盖
 examples/plugins/weather-status/           # 已纳入测试的 Weather Status 本地插件示例，覆盖 network allowlist
 tests/examples/weather-status-plugin.test.js # Weather 示例插件 inspect/install/network/storage/run service 覆盖
 examples/plugins/rss-reader/               # 已纳入测试的 RSS Reader 本地插件示例，覆盖 public feed/network/storage/pet speech
 tests/examples/rss-reader-plugin.test.js   # RSS 示例插件 inspect/install/network/storage/run service 覆盖
+docs/phases/phase-24-plugin-submission-review-packet.md # Phase 24 插件提交审核包记录
+docs/reviews/phase-24-plugin-submission-review-packet-review.md # Phase 24 review 与验证记录
 docs/phases/phase-23-plugin-submission-validation.md # Phase 23 插件提交校验入口记录
 docs/reviews/phase-23-plugin-submission-validation-review.md # Phase 23 review 与验证记录
 docs/phases/phase-22-rss-example-plugin-developer-asset.md # Phase 22 RSS 示例插件开发者资产记录
@@ -283,7 +287,7 @@ docs/reviews/phase-16-control-center-manual-plugin-install-automation-review.md 
 - [ ] **插件后续强化**：
   - 第三方 JS 沙箱强化（当前已有子进程 runner + Node permission model；已新增 `docs/plugin-sandbox-evaluation.md`，后续可评估 SES / Electron utilityProcess）
   - 更完整的插件配置 schema 支持（当前已支持 string/number/boolean/enum/default 动态表单）
-  - Focus Timer 示例插件、Weather Status 示例插件、RSS Reader 示例插件、`docs/plugin-development.md` 与 `npm run validate:plugin` 提交前校验入口已完成；后续可继续补真实社区审核演练和教程材料
+  - Focus Timer 示例插件、Weather Status 示例插件、RSS Reader 示例插件、`docs/plugin-development.md`、`npm run validate:plugin` 提交前校验入口与 `npm run create-plugin-submission-report` 审核包入口已完成；后续可继续补真实社区提交流程、PR 模板和教程材料
   - 插件日志持久化/筛选/导出已完成；后续可继续加更细的时间范围过滤
   - 插件私有存储清理 UI 已完成；基础 `ctx.storage`、key 校验、64KB/插件与 16KB/value 配额已完成
   - `ctx.ai.chat()` 与 `ctx.network.fetch()` 已完成；网络仅允许 manifest `network.allowlist` 中的 HTTPS host
@@ -332,7 +336,7 @@ npm start                    # 构建 Control Center + 启动 Electron
 npm run dev:control-center   # http://127.0.0.1:5173
 
 # 测试
-npm test                     # 269 Node tests
+npm test                     # 275 Node tests
 npm run test:control-center  # 9 Control Center Playwright UI tests
 
 # 精灵图生成

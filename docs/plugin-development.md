@@ -210,6 +210,24 @@ npm run validate:plugin -- path/to/my-plugin.openpet-plugin.zip --require-signat
 
 `--require-signature` only checks the current `signature.json` hash metadata status; it is not a public-key trust chain.
 
+## Submission Report
+
+To prepare a reviewer-facing packet for a third-party plugin submission, generate a report after validation:
+
+```bash
+npm run create-plugin-submission-report -- path/to/my-plugin.openpet-plugin.zip --output plugin-submission-report.md
+```
+
+The report reuses `validate:plugin`, then writes a Markdown or JSON packet with the plugin identity, requested permissions, network allowlist, command list, signature metadata status, package hash, validation warnings/errors, and reviewer checklist.
+
+For strict catalog or release preflight, keep the signature requirement enabled:
+
+```bash
+npm run create-plugin-submission-report -- path/to/my-plugin.openpet-plugin.zip --require-signature --output plugin-submission-report.md
+```
+
+This report is evidence for human review, not an approval. It does not install, enable, or run plugin code; it also does not establish public-key signing trust or replace catalog policy.
+
 ## Packaging
 
 To create a local distributable archive, zip the contents of the plugin directory so `plugin.json` is at the archive root, then name it with `.openpet-plugin.zip`.
@@ -235,6 +253,7 @@ Before submitting a plugin-related change, run:
 
 ```bash
 npm run validate:plugin -- <plugin-dir-or-zip>
+npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md
 npm test
 npm run check:syntax
 ```

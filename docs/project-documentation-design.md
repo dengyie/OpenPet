@@ -277,6 +277,8 @@ Phase 22 is an RSS example plugin developer asset phase. It keeps runtime securi
 
 Phase 23 is a plugin submission validation phase. It keeps runtime security boundaries and release readiness unchanged, adds a local `validate:plugin` CLI that reuses `PluginInstallService` package review without installing or running plugin code, updates plugin development docs with a pre-submission check, and records that real community review flow and signing trust remain future work.
 
+Phase 24 is a plugin submission review packet phase. It keeps runtime security boundaries and release readiness unchanged, adds a local `create-plugin-submission-report` CLI that reuses Phase 23 validation results to produce reviewer Markdown/JSON, checklist, and human-review boundaries, and records that real community submission workflow, PR templates, and signing trust remain future work.
+
 Do not skip the review document. If a phase changes release claims, security boundaries, plugin permissions, or API-key handling, the review must explicitly state whether those boundaries still hold.
 
 ### 9.1 Phase Completion Contract
@@ -612,7 +614,7 @@ Durable documentation decisions should be recorded here when they affect future 
 
 ## 17. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 23:
+The repository now has a coherent phase history through Phase 24:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
@@ -631,6 +633,7 @@ The repository now has a coherent phase history through Phase 23:
 - Phase 21 adds the second tested local example plugin developer asset: Weather Status, network allowlist guidance, and real install/run service coverage with injected fetch.
 - Phase 22 adds the third tested local example plugin developer asset: RSS Reader, public feed guidance, lightweight XML normalization, cached announcements, and real install/run service coverage with injected fetch.
 - Phase 23 adds the plugin submission validation CLI, reusing `PluginInstallService` package review for local directory/zip preflight, signature metadata status, blocklist checks, and human-review warnings.
+- Phase 24 adds the plugin submission review packet CLI, turning validation results into reviewer Markdown/JSON, checklist evidence, and explicit non-approval/signing-trust boundaries.
 - macOS release baseline is complete.
 - Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, evidence summary/archive generation, archive manifest generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence, filled packaged native picker evidence, and real Windows smoke validation remain open release gates.
