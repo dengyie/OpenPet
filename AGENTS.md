@@ -9,7 +9,7 @@ The project has evolved from a single-window pet app into a multi-layer platform
 - **Main process** (`main.js`): assembles and injects all services, manages lifecycle
 - **Service layer** (`src/main/services/`): EventBus → SettingsService → ActionService → PetService → AiService / PluginService / LocalHttpService
 - **PetService is the single source of truth** for pet state — all say/action/event operations go through it
-- **Control Center** (`src/control-center/`): React + Vite web app embedded in Electron BrowserWindow, with Pet / Actions / AI / Plugins / Service / About tabs
+- **Control Center** (`src/control-center/`): React + Vite web app embedded in Electron BrowserWindow, with Pet / Actions / AI / Plugins / Catalog / Service / About tabs
 - **Plugin system** (`src/main/plugins/`): permission-whitelisted SDK, official plugins validated, local third-party plugins run in an isolated Node permission-model runner
 - **Pet pack runtime** (`src/main/pet-pack/`): manifest schema, loader, importer
 - **Local HTTP API** (`src/main/services/local-http-service.js`): loopback only, off by default
@@ -18,7 +18,8 @@ The project has evolved from a single-window pet app into a multi-layer platform
 
 - Use `npm start` to build the Control Center and launch Electron
 - Use `npm run dev:control-center` for Control Center hot-reload at http://127.0.0.1:5173
-- Use `npm test` to run all tests — currently 236 tests using Node native test runner
+- Use `npm test` to run all Node tests — currently 236 tests using Node native test runner
+- Use `npm run test:control-center` to run the Control Center Playwright smoke baseline
 - Use `npm run generate-sprites` to regenerate sprite sheets from `cat_anime/flames/`
 - Use `npm run check:syntax` for JS syntax validation
 - Do not commit `node_modules/`, `dist/`, build output, or temporary OS files
@@ -39,6 +40,7 @@ Each action folder should contain an ordered image sequence with alpha channels,
 - Use Node native test runner: `const { test } = require('node:test')`
 - Use `const assert = require('node:assert')` for assertions
 - Place test files under `tests/` mirroring the source structure
+- Use Playwright specs under `tests/control-center/` for Control Center UI smoke coverage
 - Run `npm test` to verify
 
 ## Key constraints

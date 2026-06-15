@@ -4,7 +4,7 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-236%20passed-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-236%20node%20%2B%202%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -122,7 +122,8 @@ npm start
 ```bash
 npm start                    # Build Control Center + launch Electron
 npm run dev:control-center   # Control Center hot reload (http://127.0.0.1:5173)
-npm test                     # Run all tests (236 tests)
+npm test                     # Run Node tests (236 tests)
+npm run test:control-center  # Run Control Center Playwright smoke tests
 npm run check:syntax         # JS syntax validation
 npm run generate-sprites     # Regenerate sprite sheets from cat_anime/flames/
 npm run pack                 # electron-builder directory package
@@ -162,6 +163,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 8 - Windows Desktop Release](./docs/phases/phase-8-windows-desktop-release.md)
 - [Phase 9 - Project Documentation Governance](./docs/phases/phase-9-project-documentation-governance.md)
 - [Phase 10 - Project Documentation Design Hardening](./docs/phases/phase-10-project-documentation-design-hardening.md)
+- [Phase 11 - Control Center Frontend Automation](./docs/phases/phase-11-control-center-frontend-automation.md)
 
 ---
 
@@ -301,16 +303,18 @@ For more details, see [plugin-sandbox-evaluation.md](./docs/plugin-sandbox-evalu
 
 ## 🧪 Testing
 
-The project uses **Node native test runner** with **236 tests all passing**.
+The project uses **Node native test runner** for service/release coverage with **236 tests all passing**, plus a **Playwright Control Center smoke baseline** with 2 UI tests.
 
 ```bash
-npm test                     # Run all tests
+npm test                     # Run Node tests
+npm run test:control-center  # Run Control Center smoke tests
 npm run check:syntax         # Syntax check
 npm run build:control-center # Control Center build verification
 ```
 
 Test Coverage:
 - ✅ Full service/release coverage (32 test files)
+- ✅ Control Center shell / tab / Pet / About smoke coverage (2 Playwright tests)
 - ✅ Pet pack schema / loader / importer
 - ✅ Plugin manifest / runner / SDK
 - ✅ AI service / behavior orchestrator
@@ -337,7 +341,7 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 - Write tests using Node native test runner
 - Service layer must have unit tests
 - Follow existing code style
-- Run `npm test` and `npm run check:syntax` before committing
+- Run `npm test`, `npm run test:control-center`, and `npm run check:syntax` before committing UI or shared behavior changes
 
 ### Plugin Submissions
 
@@ -355,6 +359,7 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 - ✅ Legacy `appData/ibot` user data compatibility
 - ✅ OpenPet MCP/API/plugin naming with legacy aliases
 - ✅ RC validation and release notes
+- ✅ Control Center Playwright smoke baseline
 
 ### v1.0 ✅
 
@@ -369,7 +374,7 @@ Contributions of code, plugins, pet packs, or documentation are welcome!
 ### v1.1 (Planned)
 
 - ⚡ Windows signed-artifact verification and smoke testing
-- ⚡ Frontend automation testing (Playwright)
+- ⚡ Broader Control Center automation for plugin install review and saved configuration flows
 - ⚡ More example plugins (weather, pomodoro, RSS)
 - ⚡ Plugin development tutorial videos
 - ⚡ User feedback collection & iteration

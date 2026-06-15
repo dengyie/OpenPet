@@ -181,6 +181,8 @@ Phase 9 is a documentation-governance phase. It does not change release readines
 
 Phase 10 is a documentation-design hardening phase. It keeps the same release truth, expands this document into the owner matrix, structure-fitness check, support-claim lifecycle, and drift-audit rules, and records that work with a paired review.
 
+Phase 11 is a Control Center frontend automation phase. It adds a project-owned Playwright smoke baseline for the React + Vite Control Center in demo API mode, updates developer commands and live documentation, and records the remaining UI automation gaps with a paired review.
+
 Do not skip the review document. If a phase changes release claims, security boundaries, plugin permissions, or API-key handling, the review must explicitly state whether those boundaries still hold.
 
 ## 10. Cross-Platform Scope
@@ -240,7 +242,7 @@ Documentation and code changes should preserve these invariants:
 - New configuration is exposed in the Control Center UI.
 - `cat_anime/` remains compatible as the built-in legacy pet material source.
 - Build output, temporary files, and secrets stay out of source control.
-- `npm start`, `npm run check:syntax`, and `npm test` remain the minimum local health checks for ordinary implementation phases.
+- `npm start`, `npm run check:syntax`, and `npm test` remain the minimum local health checks for ordinary implementation phases; run `npm run test:control-center` for Control Center UI changes.
 
 Docs should also preserve these documentation invariants:
 
@@ -367,12 +369,13 @@ Before committing documentation-only work, run at least a link/path sanity check
 
 ## 16. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 10:
+The repository now has a coherent phase history through Phase 11:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
 - Phase 9 documents the project documentation-governance layer itself, including reader paths, support-claim rules, phase completion playbooks, and live-status drift checks.
 - Phase 10 hardens this document into a fuller documentation design, including fact ownership, macOS/Windows structure fitness, support-claim lifecycle, new-document rules, and drift audits.
+- Phase 11 introduces a Playwright Control Center smoke baseline and documents it as a verification layer.
 - macOS release baseline is complete.
 - Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, evidence summary/archive generation, archive manifest generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.
@@ -384,4 +387,4 @@ The next documentation work should follow the implementation track rather than i
 - Add a filled Windows smoke report only after real Windows validation exists.
 - Update release status only after signed artifact evidence and real smoke evidence pass the checklist.
 - Keep mobile out of scope until a separate product decision introduces it.
-- If frontend automation is introduced, document it as a verification layer in README, HANDOFF, the roadmap, and the relevant phase/review pair.
+- Expand Control Center frontend automation beyond the smoke baseline when deeper UI flows change, especially plugin install review, saved configuration flows, Catalog install/update, and AI/MCP session management.

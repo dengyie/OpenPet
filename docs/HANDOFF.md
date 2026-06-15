@@ -1,7 +1,7 @@
 # OpenPet 项目交接文档
 
 > 最后更新：2026-06-14 | 分支：`main`
-> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容；macOS 分发基线已完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地但尚未 release-ready
+> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容；Control Center Playwright 冒烟基线已建立；macOS 分发基线已完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地但尚未 release-ready
 > **项目评估：95/100 分，建议发布 v1.0.1 RC 后提升正式版**（详见 [project-status-review.md](./project-status-review.md)）
 
 ---
@@ -14,7 +14,8 @@
 
 - ✅ 底层 Service 层（19 个 service，EventBus → SettingsService → ActionService → PetService）
 - ✅ Pet pack 运行时契约（schema / loader / importer）
-- ✅ Vite + React Control Center（6 个 Tab：Pet/Actions/AI/Plugins/Catalog/Service/About）
+- ✅ Vite + React Control Center（7 个 Tab：Pet/Actions/AI/Plugins/Catalog/Service/About）
+- ✅ Control Center Playwright 冒烟基线（demo API 模式覆盖 shell、全部 tab、Pet/About 关键交互）
 - ✅ AI 聊天（OpenAI-compatible，API Key 安全存储、持久会话、结构化行为编排）
 - ✅ 权限化插件系统（隔离 runner + SDK + catalog + blocklist）
 - ✅ 本地 HTTP API + MCP transport（loopback only，默认关闭）
@@ -30,7 +31,7 @@
 1. [`project-documentation-design.md`](./project-documentation-design.md)：项目目标锚点、文档分层、支持声明规则和阶段治理。
 2. 本文件：当前事实状态、文件地图、待办和开发命令。
 3. [`desktop-release-design.md`](./desktop-release-design.md) 与 [`release-checklist.md`](./release-checklist.md)：macOS + Windows 桌面发布边界、签名、冒烟证据和验收门槛。
-4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新文档设计阶段为 [`phase-10-project-documentation-design-hardening.md`](./phases/phase-10-project-documentation-design-hardening.md) 与 [`phase-10-project-documentation-design-hardening-review.md`](./reviews/phase-10-project-documentation-design-hardening-review.md)。
+4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-11-control-center-frontend-automation.md`](./phases/phase-11-control-center-frontend-automation.md) 与 [`phase-11-control-center-frontend-automation-review.md`](./reviews/phase-11-control-center-frontend-automation-review.md)。
 
 当前支持口径必须保持为：macOS release baseline complete；Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baseline implemented but not release-ready；移动端不在当前范围。
 
@@ -41,7 +42,7 @@
 | 指标 | 结果 | 说明 |
 |------|------|------|
 | **功能完整性** | 95% | 所有承诺功能已实现 |
-| **测试覆盖** | 236/236 ✅ | service / release 门禁覆盖 |
+| **测试覆盖** | 236 Node + 2 UI ✅ | service / release 门禁覆盖；Control Center Playwright 冒烟基线 |
 | **架构质量** | ⭐⭐⭐⭐⭐ | 分层清晰、安全可靠 |
 | **代码质量** | ⭐⭐⭐⭐⭐ | 模块化彻底、职责单一 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
@@ -52,7 +53,8 @@
 ## 测试与验收
 
 ```bash
-npm test                  # 236 tests, all pass
+npm test                  # 236 Node tests, all pass
+npm run test:control-center # 2 Control Center Playwright smoke tests, all pass
 npm run build:control-center  # Vite build pass
 npm run generate-sprites  # CLI works
 npm run check:syntax      # all JS syntax pass
@@ -140,7 +142,7 @@ src/control-center/
     ├── components/                # 共享 UI 控件
     ├── hooks/                     # 各 pane 数据加载与操作逻辑
     ├── lib/                       # 默认值、格式化、下载 helper
-    ├── panes/                     # Pet / Actions / AI / Plugins / Service / About
+    ├── panes/                     # Pet / Actions / AI / Plugins / Catalog / Service / About
     └── styles.css                 # 所有样式
 ```
 
@@ -302,7 +304,8 @@ npm start                    # 构建 Control Center + 启动 Electron
 npm run dev:control-center   # http://127.0.0.1:5173
 
 # 测试
-npm test                     # 236 tests
+npm test                     # 236 Node tests
+npm run test:control-center  # 2 Control Center Playwright smoke tests
 
 # 精灵图生成
 npm run generate-sprites     # 扫描 cat_anime/flames/ 生成 sprites/

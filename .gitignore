@@ -8,5 +8,7 @@ build/*
 !build/entitlements.mac.plist
 !build/notarize.js
 /release/
+playwright-report/
+test-results/
 .DS_Store
 npm-debug.log*

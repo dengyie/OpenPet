@@ -3,7 +3,7 @@
 > 评估时间：2026-06-14
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9 完成项目文档治理层**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11 建立 Control Center Playwright 冒烟基线**
 
 ---
 
@@ -32,7 +32,7 @@ OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，并完
 src/main/services/        # 19 个 service，职责清晰
 src/main/pet-pack/        # Pet pack 运行时
 src/main/plugins/         # 插件系统
-tests/                    # 32 个测试文件，236 个测试全过
+tests/                    # 32 个 Node 测试文件，236 个测试全过；Control Center Playwright 冒烟 2 个测试全过
 ```
 
 ### v1.0.1-rc.1 增量状态
@@ -41,14 +41,14 @@ tests/                    # 32 个测试文件，236 个测试全过
 - Electron `userData` 保持旧版 `appData/ibot`，避免改名后丢失用户设置、密钥、插件、Pet packs 与本地服务日志。
 - 新公开命名为 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`。
 - 旧 `ibot.*` MCP tools、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` 保留兼容。
-- 当前验证：`npm test` 236/236，`npm run check:syntax` 通过。
+- 当前验证：`npm test` 236/236，`npm run test:control-center` 2/2，`npm run check:syntax` 通过。
 
 ### 2. UI 配置化 ✅ 完全实现
 
 **期望**：用户不需要手动编辑 JSON/配置文件
 
 **实现**：
-- ✅ Control Center（Vite + React）6 个 Tab 全覆盖
+- ✅ Control Center（Vite + React）7 个 Tab 全覆盖，并新增 Playwright 冒烟基线
 - ✅ Pet / Actions / AI / Plugins / Catalog / Service / About
 - ✅ 所有配置通过 UI 操作
 - ✅ 从 1364 行单体组件重构为模块化结构（App.jsx 仅 62 行）
@@ -186,9 +186,10 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 - 最近决策日志
 
 ### 3. 测试覆盖完整
-- **236 个测试全部通过**
-- 32 个测试文件覆盖所有核心 service、发布资产脚本与 Windows 冒烟证据门禁/报告生成/填写/runbook、collector、证据包校验、summary 与 archive-manifest 工具
+- **236 个 Node 测试全部通过，2 个 Control Center Playwright 冒烟测试全部通过**
+- 32 个 Node 测试文件覆盖所有核心 service、发布资产脚本与 Windows 冒烟证据门禁/报告生成/填写/runbook、collector、证据包校验、summary 与 archive-manifest 工具
 - 恶意输入测试（路径穿越、超大 body、非法 schema）
+- Playwright 冒烟测试覆盖 Control Center shell、全部 tab、Pet / About 基础交互
 
 ### 4. Control Center 模块化（Phase 1）
 - 从 1364 行单体 → 62 行 App.jsx
@@ -223,19 +224,19 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 #### 2. 前端自动化测试 ⚡
 
 **现状**：
-- 当前只有构建验证 + 手动验收清单
-- 未引入 Playwright/Cypress
+- 已引入 Playwright Control Center 冒烟基线
+- 当前覆盖 app shell、全部 tab、Pet scale / walk speed 交互、About 更新检查状态
 
 **影响**：
-- UI 回归测试依赖手动验证
-- 重构 UI 时缺少安全网
+- 基础 UI 回归已有自动化入口
+- 插件安装 review、保存配置、Catalog 安装/更新、AI/MCP session 等深层流程仍依赖手动验证
 
 **建议**：
-- 引入 Playwright 覆盖关键路径：
-  - 打开 Control Center
-  - 切换 Tab
+- 扩展 Playwright 覆盖关键路径：
   - 保存配置
   - 插件安装 review
+  - Catalog 安装/更新
+  - AI/MCP session 管理
 
 #### 3. 真实第三方插件生态 ⚡
 
@@ -294,7 +295,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 | 指标 | 结果 |
 |------|------|
-| 测试通过率 | **236/236 (100%)** |
+| 测试通过率 | **236/236 Node + 2/2 UI (100%)** |
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 干净 |
@@ -314,7 +315,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 |--------|--------|--------|
 | Control Center 主文件 | 1364 行 | 62 行 (App.jsx) |
 | 模块化 | 单体组件 | panes / hooks / services 分层 |
-| 测试覆盖 | 部分 | service 层全覆盖 (22 文件) |
+| 测试覆盖 | 部分 | service/release 层覆盖 + Control Center 冒烟基线 |
 | 文档 | 零散 | 系统化 (15 个文档) |
 
 ---
@@ -332,10 +333,13 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Phase 7 | 生态 catalog 运营闭环 | `edd1307` | ✅ | ✅ | 完成 |
 | Phase 8 | Windows 桌面分发基线 | 多阶段提交 | ✅ | ✅ | 基线完成，未 release-ready |
 | Phase 9 | 项目文档治理完善 | 本阶段提交 | ✅ | ✅ | 完成 |
+| Phase 10 | 项目文档设计加固 | `97ac2c4` | ✅ | ✅ | 完成 |
+| Phase 11 | Control Center 前端自动化基线 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **验证命令全部通过**：
 ```bash
-npm test                      # 236 tests pass
+npm test                      # 236 Node tests pass
+npm run test:control-center   # 2 UI smoke tests pass
 npm run check:syntax          # all JS syntax pass
 npm run build:control-center  # Vite build pass
 npm run pack                  # electron-builder pass
@@ -359,7 +363,7 @@ npm run pack                  # electron-builder pass
 
 | 风险 | 影响 | 建议 |
 |------|------|------|
-| 缺少前端自动化测试 | UI 回归依赖手动验证 | 中优先级：引入 Playwright |
+| 前端自动化覆盖仍浅 | 深层 UI 回归仍依赖手动验证 | 中优先级：扩展 Playwright 覆盖插件安装 review 与保存配置 |
 | 生态冷启动 | 缺少真实插件示例 | 中优先级：创建示例插件 |
 | 真实升级样本不足 | 改名版本可能遗漏边界数据 | 高优先级：发布 RC 并扩大 smoke test |
 
@@ -373,7 +377,7 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | **功能完整性** | ⭐⭐⭐⭐⭐ | 所有承诺功能全部实现 |
 | **架构设计** | ⭐⭐⭐⭐⭐ | 分层清晰、可扩展性强 |
-| **代码质量** | ⭐⭐⭐⭐⭐ | 236 tests、模块化、安全考虑周全 |
+| **代码质量** | ⭐⭐⭐⭐⭐ | 236 Node tests + 2 UI smoke tests、模块化、安全考虑周全 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
 | **可维护性** | ⭐⭐⭐⭐⭐ | 重构彻底、职责清晰 |
 | **生态基础** | ⭐⭐⭐⭐☆ | 技术完整，缺少真实案例 |
@@ -384,7 +388,7 @@ npm run pack                  # electron-builder pass
 
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
-3. ✅ **测试覆盖完整**：236 个测试，service / release 门禁覆盖
+3. ✅ **测试覆盖完整**：236 个 Node 测试覆盖 service / release 门禁，2 个 Playwright 测试覆盖 Control Center 冒烟路径
 4. ✅ **文档齐全**：18 个开发/review 文档 + 交接文档 + 文档治理入口
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
@@ -392,7 +396,7 @@ npm run pack                  # electron-builder pass
 ### 改进空间
 
 1. ⚠️ 发布 RC 并验证升级路径（高优先级）
-2. ⚠️ 考虑前端自动化测试（中优先级）
+2. ⚠️ 扩展前端自动化测试覆盖深层流程（中优先级）
 3. ⚠️ 社区生态冷启动（中优先级）
 
 ---
@@ -405,7 +409,7 @@ npm run pack                  # electron-builder pass
 
 **理由**：
 1. 所有核心功能已完成并验证
-2. 测试覆盖完整（236/236 通过）
+2. 测试覆盖完整（236/236 Node 测试通过，2/2 UI 冒烟测试通过）
 3. 架构稳定、代码质量高
 4. macOS 分发流程已就绪；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地但尚未 release-ready
 5. 剩余项为增强项，不阻塞发布
@@ -426,7 +430,7 @@ npm run pack                  # electron-builder pass
 
 ### v1.1 版本规划（可选）
 
-1. 前端自动化测试（Playwright）
+1. 扩展 Control Center 自动化测试（Playwright）
 2. 更多示例插件（天气、番茄钟、RSS）
 3. 插件开发教程
 4. Windows 签名产物验证与真实 Windows 冒烟验证
@@ -440,7 +444,7 @@ npm run pack                  # electron-builder pass
 
 **核心指标**：
 - ✅ 功能完整性：95%（所有承诺功能已实现）
-- ✅ 代码质量：236/236 测试通过
+- ✅ 代码质量：236/236 Node 测试通过，2/2 UI 冒烟测试通过
 - ✅ 架构质量：优秀（分层清晰、安全可靠）
 - ✅ 可维护性：优秀（模块化彻底）
 - ✅ 文档完整性：双语 README、技术文档、版本记录与发布清单完整
