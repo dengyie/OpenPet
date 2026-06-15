@@ -199,4 +199,43 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.catalog-item', { hasText: 'Demo Pomodoro' })).toContainText('Installed 1.1.0')
     await expect(page.locator('.catalog-item', { hasText: 'Demo Pixel Cat' })).toContainText('Installed 1.0.0')
   })
+
+  test('installs manual plugin packages from the Plugins review panel with the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    await expect(page.locator('.plugin-list')).toContainText('暂无插件')
+    await page.getByRole('button', { name: 'Install plugin' }).click()
+
+    const reviewPanel = page.locator('.plugin-review-panel', { hasText: 'Demo Manual Review' })
+    await expect(reviewPanel).toContainText('安装 1.0.0')
+    await expect(reviewPanel).toContainText('新增 pet:say, storage')
+    await expect(reviewPanel).toContainText('Unsigned plugin')
+    await expect(reviewPanel).toContainText('3 files')
+    await expect(reviewPanel).toContainText('命令：hello')
+
+    await reviewPanel.getByRole('button', { name: '取消' }).click()
+    await expect(reviewPanel).toBeHidden()
+    await expect(page.locator('.plugin-list')).toContainText('暂无插件')
+
+    await page.getByRole('button', { name: 'Install plugin' }).click()
+    const nextReviewPanel = page.locator('.plugin-review-panel', { hasText: 'Demo Manual Review' })
+    await nextReviewPanel.getByRole('button', { name: '安装插件' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('插件已安装，默认保持停用')
+    await expect(nextReviewPanel).toBeHidden()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Demo Manual Review' })
+    await expect(pluginRow).toContainText('openpet.demo.manual-review')
+    await expect(pluginRow).toContainText('local')
+    await expect(pluginRow).toContainText('Unsigned plugin')
+    await expect(pluginRow).toContainText('pet:say · storage')
+    await expect(pluginRow.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Plugin installed' })).toContainText('openpet.demo.manual-review')
+
+    await page.reload()
+    await page.getByRole('button', { name: 'Plugins' }).click()
+    await expect(page.locator('.plugin-row', { hasText: 'Demo Manual Review' })).toContainText('openpet.demo.manual-review')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Plugin installed' })).toContainText('openpet.demo.manual-review')
+  })
 })

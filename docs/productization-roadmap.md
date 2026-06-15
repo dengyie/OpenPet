@@ -10,12 +10,12 @@
 
 - `PetService` 是唯一宠物状态源，AI、插件、HTTP、MCP 都通过它触发 `say`、`playAction`、`setEvent`。
 - Pet pack runtime 已有 `schema` / `loader` / `importer`，并已补齐用户可操作的整包检查、导入、启用、删除体验。
-- Control Center 已覆盖 Pet / Actions / AI / Plugins / Catalog / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper；Phase 11 已新增 Playwright 冒烟基线，Phase 12 已覆盖 Pet / AI / Service 保存配置 UI 回归，Phase 13 已覆盖 Catalog 安装/更新 UI 回归，Phase 14 已覆盖 Service MCP session 管理 UI 回归，Phase 15 已把文档设计收口为可执行的目标、结构、阶段和支持声明规则。
+- Control Center 已覆盖 Pet / Actions / AI / Plugins / Catalog / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper；Phase 11 已新增 Playwright 冒烟基线，Phase 12 已覆盖 Pet / AI / Service 保存配置 UI 回归，Phase 13 已覆盖 Catalog 安装/更新 UI 回归，Phase 14 已覆盖 Service MCP session 管理 UI 回归，Phase 15 已把文档设计收口为可执行的目标、结构、阶段和支持声明规则，Phase 16 已覆盖手动插件包安装 review UI 回归。
 - AI 已支持 OpenAI-compatible provider、API Key secret 隔离、请求超时、有界持久会话、轻量语义动作触发。
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
 - `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest 与报告填写工具已落地，但尚未完成真实签名产物验证和 Windows 冒烟。
-- CI / 测试已覆盖 service、pet-pack、plugin、AI、MCP、release、catalog 核心路径，当前 Node 验证为 236 个测试；Control Center 已有 8 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程，以及 Service MCP session 管理。
+- CI / 测试已覆盖 service、pet-pack、plugin、AI、MCP、release、catalog 核心路径，当前 Node 验证为 236 个测试；Control Center 已有 9 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
 - v1.0.1-rc.1 已完成 OpenPet 改名、GitHub 仓库迁移、旧 userData 路径保留与公开 API 命名兼容。
 
 ### 1.2 仍未产品化的深水区
@@ -27,7 +27,7 @@
 | AI 行为编排 | 关键词/label/kind 语义匹配 | 结构化 tool-call、可配置行为规则、调试/回放、规则安全边界 |
 | MCP | JSON-RPC bridge、stream handshake、token/session 管理与 Service 页撤销 sessions 已落地 | 外部客户端兼容矩阵与真实客户端验证继续补齐 |
 | 分发 | macOS release baseline 已完成；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地 | Windows 签名产物验证、安装/卸载冒烟验证、真实 Windows 支持声明 |
-| Control Center | 已完成 Phase 1 模块化，并新增 Playwright UI 回归基线；保存配置流程已覆盖 Pet / AI / Service；Catalog 安装/更新流程与 Service MCP session 管理已覆盖 | 继续扩展手动插件包安装 review 等更深 UI 自动化 |
+| Control Center | 已完成 Phase 1 模块化，并新增 Playwright UI 回归基线；保存配置流程已覆盖 Pet / AI / Service；Catalog 安装/更新流程、Service MCP session 管理与手动插件包安装 review 已覆盖 | 继续补 Electron 宿主下的原生文件选择器和真实插件包校验冒烟验证 |
 
 ## 2. 产品化原则
 
@@ -572,8 +572,8 @@ CSC_KEY_PASSWORD
 
 ### UI 层
 
-- 当前项目已有 Playwright Control Center UI 回归基线，覆盖 app shell、全部 tab、Pet scale / walk speed 交互、About 更新检查状态、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程，以及 Service MCP session 管理。
-- 后续继续扩展关键路径：手动插件包安装 review。
+- 当前项目已有 Playwright Control Center UI 回归基线，覆盖 app shell、全部 tab、Pet scale / walk speed 交互、About 更新检查状态、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
+- 后续继续扩展关键路径：Electron 宿主下的原生文件选择器、真实插件包校验、真实安装包烟测。
 
 ### 打包层
 
@@ -596,7 +596,7 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归，同时明确真实 Electron 文件选择器和真实 zip 校验仍需后续烟测。
 
 ### 完成验证
 
@@ -604,7 +604,7 @@ Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Producti
 
 ```bash
 npm test                      # ✅ 236/236 Node tests pass
-npm run test:control-center   # ✅ 8/8 Control Center Playwright UI tests pass
+npm run test:control-center   # ✅ 9/9 Control Center Playwright UI tests pass
 npm run check:syntax          # ✅ all JS syntax pass
 npm run build:control-center  # ✅ Vite build pass
 npm run pack                  # ✅ electron-builder pass
@@ -629,10 +629,11 @@ npm run pack                  # ✅ electron-builder pass
 | 13 | Control Center Catalog 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 14 | Control Center MCP Session 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 15 | 项目文档设计收口 | 本阶段提交 | ✅ | ✅ | 完成 |
+| 16 | Control Center 手动插件安装自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）
-- 测试覆盖：236/236 Node 测试通过；8/8 Control Center Playwright UI 测试通过
+- 测试覆盖：236/236 Node 测试通过；9/9 Control Center Playwright UI 测试通过
 - 架构质量：⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - 代码质量：⭐⭐⭐⭐⭐（模块化彻底、职责单一）
 - 文档完整性：⭐⭐⭐⭐⭐（双语 README、技术文档、版本记录与发布清单完整）
@@ -651,9 +652,9 @@ RC 重点验证：
 
 v1.1 版本规划（可选）：
 1. Windows 签名产物验证与冒烟验证
-2. 扩展 Control Center 自动化，覆盖手动插件包安装 review
+2. Electron 宿主下的原生文件选择器与真实插件包校验冒烟验证
 3. 更多示例插件（天气、番茄钟、RSS）
 4. 插件开发教程
 5. 用户反馈收集与迭代
 
-剩余可选增强不属于本轮产品化闭环阻塞项：远端 marketplace 后端、真实第三方签名根信任、更深层 Control Center UI 自动化、以及 SES / Electron utilityProcess 等更强插件沙箱候选方案。
+剩余可选增强不属于本轮产品化闭环阻塞项：远端 marketplace 后端、真实第三方签名根信任、Electron 宿主下更深 UI 自动化、以及 SES / Electron utilityProcess 等更强插件沙箱候选方案。

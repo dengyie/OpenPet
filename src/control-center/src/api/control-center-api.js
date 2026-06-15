@@ -139,6 +139,75 @@ const createDemoPetPackReview = (item) => ({
   }
 })
 
+const demoManualPluginReview = {
+  canceled: false,
+  selectionId: 'demo-manual-plugin-selection',
+  sourceType: 'zip',
+  installMode: 'install',
+  existingVersion: '',
+  riskLevel: 'review',
+  plugin: {
+    id: 'openpet.demo.manual-review',
+    name: 'Demo Manual Review',
+    version: '1.0.0',
+    description: 'A local package sample for plugin install review automation.',
+    permissions: ['pet:say', 'storage'],
+    network: { allowlist: [] },
+    commands: [{ id: 'hello', title: 'Say hello' }],
+    main: 'index.js',
+    configSchema: ''
+  },
+  permissionDiff: {
+    permissions: {
+      added: ['pet:say', 'storage'],
+      removed: [],
+      unchanged: []
+    },
+    networkAllowlist: {
+      added: [],
+      removed: [],
+      unchanged: []
+    }
+  },
+  signature: {
+    status: 'unsigned',
+    label: 'Unsigned plugin',
+    signer: '',
+    algorithm: '',
+    verified: false,
+    errors: []
+  },
+  blockStatus: { blocked: false, reasons: [] },
+  packageHash: demoCatalogHash.replace('2', '3'),
+  fileCount: 3,
+  byteSize: 9216,
+  requiresReview: false
+}
+
+const createDemoManualPlugin = () => ({
+  id: demoManualPluginReview.plugin.id,
+  name: demoManualPluginReview.plugin.name,
+  version: demoManualPluginReview.plugin.version,
+  source: 'local',
+  enabled: false,
+  runnable: true,
+  permissions: demoManualPluginReview.plugin.permissions,
+  commands: demoManualPluginReview.plugin.commands,
+  configSchema: { properties: [] },
+  config: {},
+  storage: { keyCount: 0, byteSize: 2, valid: true },
+  signatureStatus: { label: demoManualPluginReview.signature.label }
+})
+
+const createDemoPluginLog = (pluginId, message, commandId = '') => ({
+  id: `${pluginId}-${message}-${Date.now()}`,
+  timestamp: new Date().toISOString(),
+  level: 'info',
+  pluginId,
+  commandId,
+  message
+})
+
 const createDemoServiceStatus = () => cloneServiceStatus({
   ...defaultServiceStatus,
   config: {
@@ -162,7 +231,9 @@ const createDefaultDemoState = () => ({
   settings: cloneSettings(defaultSettings),
   aiConfig: cloneAiConfig(defaultAiConfig),
   serviceStatus: createDemoServiceStatus(),
-  catalog: createDemoCatalog()
+  catalog: createDemoCatalog(),
+  plugins: [],
+  pluginLogs: []
 })
 
 const readDemoState = () => {
@@ -175,7 +246,9 @@ const readDemoState = () => {
       settings: cloneSettings(state.settings),
       aiConfig: cloneAiConfig(state.aiConfig),
       serviceStatus: cloneServiceStatus(state.serviceStatus),
-      catalog: cloneCatalog(state.catalog || createDemoCatalog())
+      catalog: cloneCatalog(state.catalog || createDemoCatalog()),
+      plugins: Array.isArray(state.plugins) ? state.plugins : [],
+      pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : []
     }
   } catch {
     return createDefaultDemoState()
@@ -189,6 +262,27 @@ const writeDemoState = () => {
 
 const demoState = readDemoState()
 const demoCatalogSelections = new Map()
+let demoManualPluginSelection = null
+
+const cloneDemoPlugins = () => demoState.plugins.map((plugin) => ({
+  ...plugin,
+  permissions: Array.isArray(plugin.permissions) ? [...plugin.permissions] : [],
+  commands: Array.isArray(plugin.commands) ? plugin.commands.map((command) => ({ ...command })) : [],
+  configSchema: {
+    ...(plugin.configSchema || {}),
+    properties: Array.isArray(plugin.configSchema?.properties) ? plugin.configSchema.properties : []
+  },
+  config: { ...(plugin.config || {}) },
+  storage: { ...(plugin.storage || {}) },
+  signatureStatus: { ...(plugin.signatureStatus || {}) }
+}))
+
+const cloneDemoPluginLogs = (filters = {}) => demoState.pluginLogs.filter((log) => {
+  if (filters.pluginId && log.pluginId !== filters.pluginId) return false
+  if (filters.level && log.level !== filters.level) return false
+  if (filters.query && !`${log.pluginId} ${log.commandId} ${log.message}`.toLowerCase().includes(String(filters.query).toLowerCase())) return false
+  return true
+}).map((log) => ({ ...log }))
 
 const findDemoCatalogItem = (kind, itemId) => {
   const collection = kind === 'plugin' ? demoState.catalog.plugins : demoState.catalog.petPacks
@@ -251,18 +345,65 @@ const demoApi = {
     return demoState.aiConfig.behavior
   },
   dryRunAiBehavior: async () => ({ matched: false, reason: 'demo' }),
-  getPlugins: async () => [],
-  setPluginEnabled: async (pluginId, enabled) => ({ id: pluginId, enabled }),
+  getPlugins: async () => cloneDemoPlugins(),
+  setPluginEnabled: async (pluginId, enabled) => {
+    demoState.plugins = demoState.plugins.map((plugin) => (
+      plugin.id === pluginId ? { ...plugin, enabled } : plugin
+    ))
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, enabled ? 'Plugin enabled' : 'Plugin disabled'),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { id: pluginId, enabled }
+  },
   savePluginConfig: async (pluginId, config) => ({ id: pluginId, config }),
-  runPluginCommand: async () => ({ ok: true }),
-  inspectPluginPackage: async () => ({ canceled: true }),
-  clearPluginSelection: async () => ({ ok: true }),
-  installPlugin: async () => ({ ok: true, plugins: [] }),
+  runPluginCommand: async (pluginId, commandId) => {
+    demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
+    writeDemoState()
+    return { ok: true }
+  },
+  inspectPluginPackage: async () => {
+    demoManualPluginSelection = demoManualPluginReview.selectionId
+    return {
+      ...demoManualPluginReview,
+      plugin: { ...demoManualPluginReview.plugin, commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })) },
+      permissionDiff: {
+        permissions: { ...demoManualPluginReview.permissionDiff.permissions },
+        networkAllowlist: { ...demoManualPluginReview.permissionDiff.networkAllowlist }
+      },
+      signature: { ...demoManualPluginReview.signature },
+      blockStatus: { ...demoManualPluginReview.blockStatus }
+    }
+  },
+  clearPluginSelection: async (selectionId) => {
+    if (!selectionId || demoManualPluginSelection === selectionId) demoManualPluginSelection = null
+    return { ok: true }
+  },
+  installPlugin: async (selectionId) => {
+    if (selectionId !== demoManualPluginSelection) throw new Error('Selected plugin package is no longer available')
+    const nextPlugin = createDemoManualPlugin()
+    demoState.plugins = [
+      nextPlugin,
+      ...demoState.plugins.filter((plugin) => plugin.id !== nextPlugin.id)
+    ]
+    demoState.pluginLogs = [
+      createDemoPluginLog(nextPlugin.id, 'Plugin installed'),
+      ...demoState.pluginLogs
+    ]
+    demoManualPluginSelection = null
+    writeDemoState()
+    return { ok: true, pluginId: nextPlugin.id, installMode: 'install', disabled: true, plugins: cloneDemoPlugins() }
+  },
   updatePlugin: async () => ({ ok: true, plugins: [] }),
   uninstallPlugin: async () => ({ ok: true, plugins: [] }),
-  getPluginLogs: async () => [],
-  exportPluginLogs: async () => '[]',
-  clearPluginLogs: async () => [],
+  getPluginLogs: async (filters) => cloneDemoPluginLogs(filters),
+  exportPluginLogs: async (filters) => JSON.stringify(cloneDemoPluginLogs(filters), null, 2),
+  clearPluginLogs: async () => {
+    demoState.pluginLogs = []
+    writeDemoState()
+    return []
+  },
   clearPluginStorage: async (pluginId) => ({ id: pluginId, storage: { keyCount: 0, byteSize: 2 } }),
   getServiceStatus: async () => cloneServiceStatus(demoState.serviceStatus),
   saveServiceConfig: async (config) => {

@@ -3,13 +3,13 @@
 > 评估时间：2026-06-15
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-14 建立并扩展 Control Center Playwright UI 回归基线；Phase 15 完成项目文档设计收口**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-16 建立并扩展 Control Center Playwright UI 回归基线；Phase 15 完成项目文档设计收口**
 
 ---
 
 ## 执行摘要
 
-OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-15 补齐 Windows 分发基线、文档治理与 Control Center UI 自动化/文档设计收口。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为发布验证和增强项。
+OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-16 补齐 Windows 分发基线、文档治理与 Control Center UI 自动化/文档设计收口。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为发布验证和增强项。
 
 **建议：发布 v1.0.1 RC 验证 OpenPet 改名升级路径，确认无回归后提升为 v1.0.1 正式版。**
 
@@ -32,7 +32,7 @@ OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心
 src/main/services/        # 19 个 service，职责清晰
 src/main/pet-pack/        # Pet pack 运行时
 src/main/plugins/         # 插件系统
-tests/                    # 32 个 Node 测试文件，236 个测试全过；Control Center Playwright UI 回归 8 个测试全过
+tests/                    # 32 个 Node 测试文件，236 个测试全过；Control Center Playwright UI 回归 9 个测试全过
 ```
 
 ### v1.0.1-rc.1 增量状态
@@ -41,7 +41,7 @@ tests/                    # 32 个 Node 测试文件，236 个测试全过；Con
 - Electron `userData` 保持旧版 `appData/ibot`，避免改名后丢失用户设置、密钥、插件、Pet packs 与本地服务日志。
 - 新公开命名为 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`。
 - 旧 `ibot.*` MCP tools、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` 保留兼容。
-- 当前验证：`npm test` 236/236，`npm run test:control-center` 8/8，`npm run check:syntax` 通过。
+- 当前验证：`npm test` 236/236，`npm run test:control-center` 9/9，`npm run check:syntax` 通过。
 
 ### 2. UI 配置化 ✅ 完全实现
 
@@ -186,10 +186,10 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 - 最近决策日志
 
 ### 3. 测试覆盖完整
-- **236 个 Node 测试全部通过，8 个 Control Center Playwright UI 测试全部通过**
+- **236 个 Node 测试全部通过，9 个 Control Center Playwright UI 测试全部通过**
 - 32 个 Node 测试文件覆盖所有核心 service、发布资产脚本与 Windows 冒烟证据门禁/报告生成/填写/runbook、collector、证据包校验、summary 与 archive-manifest 工具
 - 恶意输入测试（路径穿越、超大 body、非法 schema）
-- Playwright UI 测试覆盖 Control Center shell、全部 tab、Pet / About 基础交互、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程，以及 Service MCP session 管理流程
+- Playwright UI 测试覆盖 Control Center shell、全部 tab、Pet / About 基础交互、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理流程，以及手动插件包安装 review 流程
 
 ### 4. Control Center 模块化（Phase 1）
 - 从 1364 行单体 → 62 行 App.jsx
@@ -225,15 +225,16 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 **现状**：
 - 已引入 Playwright Control Center UI 回归基线
-- 当前覆盖 app shell、全部 tab、Pet scale / walk speed 交互、About 更新检查状态、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程，以及 Service MCP session 管理流程
+- 当前覆盖 app shell、全部 tab、Pet scale / walk speed 交互、About 更新检查状态、Pet / AI / Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理流程，以及手动插件包安装 review 流程
 
 **影响**：
-- 基础 UI 回归与核心保存配置流程已有自动化入口
-- 手动插件包安装 review 深层流程仍依赖手动验证
+- 基础 UI 回归、核心保存配置流程、Catalog 安装/更新、Service MCP session 管理与手动插件包 review 已有自动化入口
+- Electron 宿主下的原生文件选择器与真实 zip 包校验仍需真实烟测
 
 **建议**：
-- 扩展 Playwright 覆盖关键路径：
-  - 手动插件包安装 review
+- 扩展 Electron-hosted smoke 覆盖关键路径：
+  - 原生文件选择器
+  - 真实插件包 zip 校验
 
 #### 3. 真实第三方插件生态 ⚡
 
@@ -292,11 +293,11 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 
 | 指标 | 结果 |
 |------|------|
-| 测试通过率 | **236/236 Node + 8/8 UI (100%)** |
+| 测试通过率 | **236/236 Node + 9/9 UI (100%)** |
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 阶段提交后应保持干净 |
-| 文档完整性 | ✅ 15 个阶段开发文档 + 15 个 review 文档 + 交接文档 |
+| 文档完整性 | ✅ 16 个阶段开发文档 + 16 个 review 文档 + 交接文档 |
 
 ### 架构质量 ✅
 
@@ -313,7 +314,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Control Center 主文件 | 1364 行 | 62 行 (App.jsx) |
 | 模块化 | 单体组件 | panes / hooks / services 分层 |
 | 测试覆盖 | 部分 | service/release 层覆盖 + Control Center UI 回归基线 |
-| 文档 | 零散 | 系统化 (30 个阶段开发/review 文档) |
+| 文档 | 零散 | 系统化 (32 个阶段开发/review 文档) |
 
 ---
 
@@ -336,11 +337,12 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Phase 13 | Control Center Catalog 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | Phase 14 | Control Center MCP Session 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | Phase 15 | 项目文档设计收口 | 本阶段提交 | ✅ | ✅ | 完成 |
+| Phase 16 | Control Center 手动插件安装自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **验证命令全部通过**：
 ```bash
 npm test                      # 236 Node tests pass
-npm run test:control-center   # 8 UI tests pass
+npm run test:control-center   # 9 UI tests pass
 npm run check:syntax          # all JS syntax pass
 npm run build:control-center  # Vite build pass
 npm run pack                  # electron-builder pass
@@ -364,7 +366,7 @@ npm run pack                  # electron-builder pass
 
 | 风险 | 影响 | 建议 |
 |------|------|------|
-| 前端自动化覆盖仍浅 | 手动插件包安装 review 深层 UI 回归仍依赖手动验证 | 中优先级：扩展 Playwright 覆盖手动插件包安装 review |
+| Electron 宿主插件安装烟测不足 | demo API 已覆盖手动插件包 review UI，但原生文件选择器与真实 zip 校验仍需 Electron-hosted 验证 | 中优先级：补 Electron 宿主 smoke 覆盖真实插件包安装路径 |
 | 生态冷启动 | 缺少真实插件示例 | 中优先级：创建示例插件 |
 | 真实升级样本不足 | 改名版本可能遗漏边界数据 | 高优先级：发布 RC 并扩大 smoke test |
 
@@ -378,7 +380,7 @@ npm run pack                  # electron-builder pass
 |------|------|------|
 | **功能完整性** | ⭐⭐⭐⭐⭐ | 所有承诺功能全部实现 |
 | **架构设计** | ⭐⭐⭐⭐⭐ | 分层清晰、可扩展性强 |
-| **代码质量** | ⭐⭐⭐⭐⭐ | 236 Node tests + 8 UI tests、模块化、安全考虑周全 |
+| **代码质量** | ⭐⭐⭐⭐⭐ | 236 Node tests + 9 UI tests、模块化、安全考虑周全 |
 | **文档完整性** | ⭐⭐⭐⭐⭐ | 双语 README、技术文档、版本记录与发布清单完整 |
 | **可维护性** | ⭐⭐⭐⭐⭐ | 重构彻底、职责清晰 |
 | **生态基础** | ⭐⭐⭐⭐☆ | 技术完整，缺少真实案例 |
@@ -389,15 +391,15 @@ npm run pack                  # electron-builder pass
 
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
-3. ✅ **测试覆盖完整**：236 个 Node 测试覆盖 service / release 门禁，8 个 Playwright 测试覆盖 Control Center 冒烟、保存配置路径、Catalog 安装/更新路径与 Service MCP session 管理路径
-4. ✅ **文档齐全**：30 个阶段开发/review 文档 + 交接文档 + 文档治理入口
+3. ✅ **测试覆盖完整**：236 个 Node 测试覆盖 service / release 门禁，9 个 Playwright 测试覆盖 Control Center 冒烟、保存配置路径、Catalog 安装/更新路径、Service MCP session 管理路径与手动插件包 review 路径
+4. ✅ **文档齐全**：32 个阶段开发/review 文档 + 交接文档 + 文档治理入口
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
 
 ### 改进空间
 
 1. ⚠️ 发布 RC 并验证升级路径（高优先级）
-2. ⚠️ 扩展前端自动化测试覆盖深层流程（中优先级）
+2. ⚠️ 补 Electron 宿主真实插件包安装烟测（中优先级）
 3. ⚠️ 社区生态冷启动（中优先级）
 
 ---
@@ -410,7 +412,7 @@ npm run pack                  # electron-builder pass
 
 **理由**：
 1. 所有核心功能已完成并验证
-2. 测试覆盖完整（236/236 Node 测试通过，8/8 UI 测试通过）
+2. 测试覆盖完整（236/236 Node 测试通过，9/9 UI 测试通过）
 3. 架构稳定、代码质量高
 4. macOS 分发流程已就绪；Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地但尚未 release-ready
 5. 剩余项为增强项，不阻塞发布
@@ -431,7 +433,7 @@ npm run pack                  # electron-builder pass
 
 ### v1.1 版本规划（可选）
 
-1. 扩展 Control Center 自动化测试（Playwright 手动插件包安装 review）
+1. Electron 宿主真实插件包安装烟测（原生文件选择器与 zip 校验）
 2. 更多示例插件（天气、番茄钟、RSS）
 3. 插件开发教程
 4. Windows 签名产物验证与真实 Windows 冒烟验证
@@ -441,11 +443,11 @@ npm run pack                  # electron-builder pass
 
 ## 九、结论 🎯
 
-**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化加固 Phase 8-15 均已高质量交付。**
+**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化加固 Phase 8-16 均已高质量交付。**
 
 **核心指标**：
 - ✅ 功能完整性：95%（所有承诺功能已实现）
-- ✅ 代码质量：236/236 Node 测试通过，8/8 UI 测试通过
+- ✅ 代码质量：236/236 Node 测试通过，9/9 UI 测试通过
 - ✅ 架构质量：优秀（分层清晰、安全可靠）
 - ✅ 可维护性：优秀（模块化彻底）
 - ✅ 文档完整性：双语 README、技术文档、版本记录与发布清单完整

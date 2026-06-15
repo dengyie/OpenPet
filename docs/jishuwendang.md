@@ -13,7 +13,7 @@
 | React + Vite | ^19.2 / ^8.0 | Control Center UI |
 | sharp | ^0.34.5 | 精灵图合成（开发时） |
 | Node 原生 test runner | — | Service / release 测试框架（236 个测试） |
-| Playwright | ^1.60 | Control Center UI 回归测试（8 个测试） |
+| Playwright | ^1.60 | Control Center UI 回归测试（9 个测试） |
 | HTML / CSS / JS | — | 宠物窗口渲染层 UI 与动画 |
 
 ### 核心能力总览
@@ -29,7 +29,7 @@
 
 **质量指标**：
 - ✅ 236/236 Node 测试通过（service / release 门禁覆盖）
-- ✅ 8/8 Control Center Playwright UI 测试通过（shell / tab / Pet / About 基础交互，Pet / AI / Service 保存配置流程，Catalog 安装/更新流程，Service MCP session 管理）
+- ✅ 9/9 Control Center Playwright UI 测试通过（shell / tab / Pet / About 基础交互，Pet / AI / Service 保存配置流程，Catalog 安装/更新流程，Service MCP session 管理，手动插件包安装 review）
 - ✅ 32 个测试文件（恶意输入与 release 证据门禁/报告生成/填写/runbook、collector、证据包校验、summary 与 archive-manifest 工具测试完整）
 - ✅ 架构质量：依赖注入 + 事件驱动 + 不可变状态 + 安全默认
 
