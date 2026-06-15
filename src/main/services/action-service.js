@@ -52,11 +52,18 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
   }
 
   const getConfig = () => {
-    const config = getPetPack().manifest || emptyConfig
+    const petPack = getPetPack()
+    const config = petPack.manifest || emptyConfig
+    const spriteRoot = petPack.rootPath || projectRoot
     return {
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
-      actions: Array.isArray(config.actions) ? config.actions : []
+      actions: Array.isArray(config.actions) ? config.actions.map((action) => ({
+        ...action,
+        sprite: action.sprite
+          ? pathToFileURL(path.join(spriteRoot, action.sprite)).toString()
+          : ''
+      })) : []
     }
   }
 
@@ -66,14 +73,11 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
 
   const getPreviewConfig = () => {
     const config = getConfig()
-    const previewRoot = getPetPack().rootPath || projectRoot
     return {
       ...config,
       actions: config.actions.map((action) => ({
         ...action,
-        previewSprite: action.sprite
-          ? pathToFileURL(path.join(previewRoot, action.sprite)).toString()
-          : ''
+        previewSprite: action.sprite || ''
       }))
     }
   }

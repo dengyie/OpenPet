@@ -5,6 +5,7 @@ const { createActionService } = require('../../src/main/services/action-service'
 
 test('action service returns legacy animation config as runtime actions', () => {
   const service = createActionService({
+    projectRoot: '/app/openpet',
     loadLegacyAnimations: () => ({
       defaultAction: 'idle',
       clickAction: 'eat',
@@ -28,7 +29,7 @@ test('action service returns legacy animation config as runtime actions', () => 
         frameMs: 95,
         frameWidth: 191,
         frameHeight: 453,
-        sprite: 'sprites/idle.png'
+        sprite: 'file:///app/openpet/sprites/idle.png'
       },
       {
         id: 'eat',
@@ -39,7 +40,7 @@ test('action service returns legacy animation config as runtime actions', () => 
         frameMs: 85,
         frameWidth: 381,
         frameHeight: 253,
-        sprite: 'sprites/eat.png'
+        sprite: 'file:///app/openpet/sprites/eat.png'
       }
     ]
   })
@@ -49,7 +50,9 @@ test('action service returns legacy animation config as runtime actions', () => 
 
 test('action service can expose the normalized pet pack while preserving animation config shape', () => {
   const service = createActionService({
+    projectRoot: '/app/openpet',
     loadPetPack: () => ({
+      rootPath: '/packs/cat',
       manifest: {
         id: 'cat',
         displayName: 'Cat',
@@ -68,10 +71,40 @@ test('action service can expose the normalized pet pack while preserving animati
     defaultAction: 'idle',
     clickAction: 'eat',
     actions: [
-      { id: 'idle', sprite: 'sprites/idle.png' },
-      { id: 'eat', sprite: 'sprites/eat.png' }
+      { id: 'idle', sprite: 'file:///packs/cat/sprites/idle.png' },
+      { id: 'eat', sprite: 'file:///packs/cat/sprites/eat.png' }
     ]
   })
+})
+
+test('action service resolves active pet pack sprites for the desktop renderer', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadPetPack: () => ({
+      rootPath: '/app/openpet/assets/pet-packs/duodong',
+      manifest: {
+        id: 'duodong',
+        displayName: '多栋',
+        defaultAction: 'idle',
+        clickAction: 'waving',
+        actions: [
+          {
+            id: 'idle',
+            label: 'Idle',
+            sprite: 'spritesheet.webp',
+            frameWidth: 192,
+            frameHeight: 208,
+            atlas: { columns: 8, rows: 9 }
+          }
+        ]
+      }
+    })
+  })
+
+  assert.equal(
+    service.getConfig().actions[0].sprite,
+    'file:///app/openpet/assets/pet-packs/duodong/spritesheet.webp'
+  )
 })
 
 test('action service can expose preview-safe file urls for sprites', () => {
@@ -93,7 +126,7 @@ test('action service can expose preview-safe file urls for sprites', () => {
   })), [
     {
       id: 'idle',
-      sprite: 'cat_anime/sprites/idle.png',
+      sprite: 'file:///app/openpet/cat_anime/sprites/idle.png',
       previewSprite: 'file:///app/openpet/cat_anime/sprites/idle.png'
     }
   ])
