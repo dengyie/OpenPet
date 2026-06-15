@@ -4,7 +4,7 @@
 
 **An extensible, distributable, and operable Electron desktop pet platform**
 
-[![Tests](https://img.shields.io/badge/tests-236%20node%20%2B%202%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-236%20node%20%2B%208%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.1-blue.svg)](./package.json)
@@ -167,6 +167,7 @@ npm run dist                 # Generate current-host installer (macOS validated:
 - [Phase 12 - Control Center Saved Configuration Automation](./docs/phases/phase-12-control-center-saved-configuration-automation.md)
 - [Phase 13 - Control Center Catalog Automation](./docs/phases/phase-13-control-center-catalog-automation.md)
 - [Phase 14 - Control Center MCP Session Automation](./docs/phases/phase-14-control-center-mcp-session-automation.md)
+- [Phase 15 - Project Documentation Design Consolidation](./docs/phases/phase-15-project-documentation-design-consolidation.md)
 
 ---
 

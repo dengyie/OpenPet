@@ -1,6 +1,6 @@
 # OpenPet 产品化补齐开发设计文档
 
-> 最后更新：2026-06-14
+> 最后更新：2026-06-15
 > 基线：`main` 已完成平台骨架、核心服务、Control Center、AI 聊天、插件隔离 runner、本地 HTTP/MCP、electron-builder 打包目录验证、macOS 分发基线、Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线、项目文档治理层，以及 Control Center Playwright UI 回归测试基线。
 > 目标：把 OpenPet 从“可开发、可验证、可推 main”的可扩展桌面宠物平台，补齐为“可分发、可运营、可承载生态”的产品；当前桌面发布范围只覆盖 macOS 与 Windows，移动端不进入本轮设计。
 
@@ -10,7 +10,7 @@
 
 - `PetService` 是唯一宠物状态源，AI、插件、HTTP、MCP 都通过它触发 `say`、`playAction`、`setEvent`。
 - Pet pack runtime 已有 `schema` / `loader` / `importer`，并已补齐用户可操作的整包检查、导入、启用、删除体验。
-- Control Center 已覆盖 Pet / Actions / AI / Plugins / Catalog / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper；Phase 11 已新增 Playwright 冒烟基线，Phase 12 已覆盖 Pet / AI / Service 保存配置 UI 回归，Phase 13 已覆盖 Catalog 安装/更新 UI 回归，Phase 14 已覆盖 Service MCP session 管理 UI 回归。
+- Control Center 已覆盖 Pet / Actions / AI / Plugins / Catalog / Service / About；Phase 1 已拆出 root、App shell、pane、hook、api facade、shared component 与 lib helper；Phase 11 已新增 Playwright 冒烟基线，Phase 12 已覆盖 Pet / AI / Service 保存配置 UI 回归，Phase 13 已覆盖 Catalog 安装/更新 UI 回归，Phase 14 已覆盖 Service MCP session 管理 UI 回归，Phase 15 已把文档设计收口为可执行的目标、结构、阶段和支持声明规则。
 - AI 已支持 OpenAI-compatible provider、API Key secret 隔离、请求超时、有界持久会话、轻量语义动作触发。
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
@@ -596,7 +596,7 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.1 在此基线上完成 OpenPet 改名和升级兼容验证准备。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。
 
 ### 完成验证
 
@@ -628,6 +628,7 @@ npm run pack                  # ✅ electron-builder pass
 | 12 | Control Center 保存配置自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 13 | Control Center Catalog 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | 14 | Control Center MCP Session 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
+| 15 | 项目文档设计收口 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）

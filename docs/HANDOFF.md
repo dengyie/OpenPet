@@ -1,7 +1,7 @@
 # OpenPet 项目交接文档
 
-> 最后更新：2026-06-14 | 分支：`main`
-> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容；Control Center Playwright UI 回归基线已建立；macOS 分发基线已完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地但尚未 release-ready
+> 最后更新：2026-06-15 | 分支：`main`
+> 当前状态：v1.0 产品化基线已完成；v1.0.1-rc.1 完成 OpenPet 改名、GitHub 仓库迁移与升级兼容；Control Center Playwright UI 回归基线已建立；项目文档设计已完成 Phase 15 收口；macOS 分发基线已完成，Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 工具基线已落地但尚未 release-ready
 > **项目评估：95/100 分，建议发布 v1.0.1 RC 后提升正式版**（详见 [project-status-review.md](./project-status-review.md)）
 
 ---
@@ -31,7 +31,7 @@
 1. [`project-documentation-design.md`](./project-documentation-design.md)：项目目标锚点、文档分层、支持声明规则和阶段治理。
 2. 本文件：当前事实状态、文件地图、待办和开发命令。
 3. [`desktop-release-design.md`](./desktop-release-design.md) 与 [`release-checklist.md`](./release-checklist.md)：macOS + Windows 桌面发布边界、签名、冒烟证据和验收门槛。
-4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-14-control-center-mcp-session-automation.md`](./phases/phase-14-control-center-mcp-session-automation.md) 与 [`phase-14-control-center-mcp-session-automation-review.md`](./reviews/phase-14-control-center-mcp-session-automation-review.md)。
+4. 最新的 `docs/phases/phase-*.md` 与 `docs/reviews/phase-*-review.md`：具体阶段的实现记录、review、验证和残留风险。当前最新阶段为 [`phase-15-project-documentation-design-consolidation.md`](./phases/phase-15-project-documentation-design-consolidation.md) 与 [`phase-15-project-documentation-design-consolidation-review.md`](./reviews/phase-15-project-documentation-design-consolidation-review.md)。
 
 当前支持口径必须保持为：macOS release baseline complete；Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baseline implemented but not release-ready；移动端不在当前范围。
 

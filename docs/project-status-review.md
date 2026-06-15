@@ -1,15 +1,15 @@
 # OpenPet 项目全面评估报告
 
-> 评估时间：2026-06-14
+> 评估时间：2026-06-15
 > 分支：`main`
 > 评估人：项目全面审视
-> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-14 建立并扩展 Control Center Playwright UI 回归基线**
+> 状态：**Phase 1-7 产品化完成；v1.0.1-rc.1 完成 OpenPet 改名与升级兼容；Phase 8 已补 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线；Phase 9-10 完成项目文档治理与设计层；Phase 11-14 建立并扩展 Control Center Playwright UI 回归基线；Phase 15 完成项目文档设计收口**
 
 ---
 
 ## 执行摘要
 
-OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-14 补齐 Windows 分发基线、文档治理与 Control Center UI 自动化。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为发布验证和增强项。
+OpenPet 项目已完成从单体桌宠到可扩展平台的完整重构，核心产品化 Phase 1-7 已闭环，并通过 Phase 8-15 补齐 Windows 分发基线、文档治理与 Control Center UI 自动化/文档设计收口。**核心愿景实现度：95%**，所有关键承诺已兑现，剩余 5% 为发布验证和增强项。
 
 **建议：发布 v1.0.1 RC 验证 OpenPet 改名升级路径，确认无回归后提升为 v1.0.1 正式版。**
 
@@ -296,7 +296,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | 语法检查 | ✅ 通过 |
 | Control Center 构建 | ✅ 通过 |
 | Git 工作区状态 | ✅ 阶段提交后应保持干净 |
-| 文档完整性 | ✅ 14 个阶段开发文档 + 14 个 review 文档 + 交接文档 |
+| 文档完整性 | ✅ 15 个阶段开发文档 + 15 个 review 文档 + 交接文档 |
 
 ### 架构质量 ✅
 
@@ -313,7 +313,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Control Center 主文件 | 1364 行 | 62 行 (App.jsx) |
 | 模块化 | 单体组件 | panes / hooks / services 分层 |
 | 测试覆盖 | 部分 | service/release 层覆盖 + Control Center UI 回归基线 |
-| 文档 | 零散 | 系统化 (28 个阶段开发/review 文档) |
+| 文档 | 零散 | 系统化 (30 个阶段开发/review 文档) |
 
 ---
 
@@ -335,6 +335,7 @@ docs/desktop-release-design.md    # macOS + Windows 桌面分发设计
 | Phase 12 | Control Center 保存配置自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | Phase 13 | Control Center Catalog 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
 | Phase 14 | Control Center MCP Session 自动化 | 本阶段提交 | ✅ | ✅ | 完成 |
+| Phase 15 | 项目文档设计收口 | 本阶段提交 | ✅ | ✅ | 完成 |
 
 **验证命令全部通过**：
 ```bash
@@ -389,7 +390,7 @@ npm run pack                  # electron-builder pass
 1. ✅ **架构设计优秀**：分层清晰、依赖注入、事件驱动
 2. ✅ **安全考虑周全**：API Key 隔离、权限模型、沙箱、loopback only
 3. ✅ **测试覆盖完整**：236 个 Node 测试覆盖 service / release 门禁，8 个 Playwright 测试覆盖 Control Center 冒烟、保存配置路径、Catalog 安装/更新路径与 Service MCP session 管理路径
-4. ✅ **文档齐全**：28 个阶段开发/review 文档 + 交接文档 + 文档治理入口
+4. ✅ **文档齐全**：30 个阶段开发/review 文档 + 交接文档 + 文档治理入口
 5. ✅ **增量迁移**：每阶段可运行，风险可控
 6. ✅ **生态基础完整**：catalog + blocklist + 安装流程
 
@@ -440,7 +441,7 @@ npm run pack                  # electron-builder pass
 
 ## 九、结论 🎯
 
-**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化加固 Phase 8-14 均已高质量交付。**
+**OpenPet 项目已成功完成从单体桌宠到可扩展平台的完整转型，核心产品化 Phase 1-7 与后续分发/文档/UI 自动化加固 Phase 8-15 均已高质量交付。**
 
 **核心指标**：
 - ✅ 功能完整性：95%（所有承诺功能已实现）
@@ -457,6 +458,6 @@ npm run pack                  # electron-builder pass
 
 ---
 
-**评估日期**：2026-06-14
+**评估日期**：2026-06-15
 **分支状态**：`main`
 **下一步行动**：发布 v1.0.1-rc.1 → 验证升级路径 → 提升 v1.0.1

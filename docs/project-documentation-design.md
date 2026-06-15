@@ -149,6 +149,29 @@ The current repository structure is fit for the active macOS + Windows Electron 
 
 This structure is not a mobile architecture. There is no mobile runtime shell, no mobile UI navigation model, no native iOS/Android packaging, no mobile asset pipeline, and no documented mobile support claim. If mobile ever becomes a real product decision, it should start as a separate architecture track rather than being implied by the current Electron desktop layout.
 
+### 8.1 Desktop Structure Decision Record
+
+The current answer to "does the project structure satisfy macOS and Windows desktop?" is yes, with release evidence still pending for Windows. Keep this distinction crisp:
+
+| Question | Current Answer | Documentation Consequence |
+|----------|----------------|---------------------------|
+| Can one shared Electron app structure serve macOS and Windows? | Yes. Runtime, service, IPC, Control Center, plugin, pet-pack, and catalog layers are platform-neutral by design. | Architecture docs can describe a shared desktop app structure. |
+| Are platform-specific concerns isolated? | Mostly yes. Packaging, signing, update assets, and smoke evidence live in `package.json`, `.github/workflows/`, `build/`, release scripts, and release docs. | Release docs own the OS-specific truth; feature docs should link instead of restating gates. |
+| Is Windows public release support proven? | No. Tooling exists, but signed artifacts and real Windows smoke validation are still missing. | README and HANDOFF must keep "baseline implemented but not release-ready" wording. |
+| Is mobile supported by this structure? | No. Electron desktop structure does not imply mobile runtime support. | Mobile must remain out of scope unless a new product decision creates a separate architecture track. |
+
+Do not split app logic into `mac/` and `windows/` folders unless a concrete OS behavior cannot be expressed behind an injected service or release script. The preferred structure is shared application code with narrow platform adapters and explicit release evidence.
+
+### 8.2 Desktop Structure Improvement Backlog
+
+These items can improve macOS/Windows confidence without changing the architecture shape:
+
+- Add real Windows smoke reports once signed Windows artifacts exist.
+- Keep release scripts idempotent and evidence-producing instead of relying on manual prose.
+- Expand UI automation in demo API mode for Control Center flows, then separately validate Electron-hosted behavior where native dialogs, file pickers, or OS integration matter.
+- Add platform-specific notes only in release docs or service docs that own the behavior.
+- Keep plugin runner and local file path behavior covered by service tests plus real Windows smoke evidence before making Windows support claims.
+
 ## 9. Phase Governance
 
 Each implementation phase should leave the repository easier to continue from than it found it:
@@ -189,7 +212,48 @@ Phase 13 is a Control Center Catalog automation phase. It expands the Playwright
 
 Phase 14 is a Control Center MCP session automation phase. It expands the Playwright baseline to cover Service tab MCP session display, revoke-all behavior, and token-rotation session invalidation in demo API mode, keeps real HTTP/MCP transport validation out of scope, updates current-state documentation, and records the remaining UI automation gap with a paired review.
 
+Phase 15 is a project documentation design consolidation phase. It keeps the same runtime and release truth, corrects live documentation drift, strengthens this document with desktop structure decision records and phase/update templates, and records the documentation-only work with a paired review.
+
 Do not skip the review document. If a phase changes release claims, security boundaries, plugin permissions, or API-key handling, the review must explicitly state whether those boundaries still hold.
+
+### 9.1 Phase Document Minimum Template
+
+Each new phase document should include these sections unless the phase is explicitly exploratory:
+
+```markdown
+# Phase N 开发文档：<主题>
+
+> 阶段目标：<one sentence>
+> 范围约束：<what this phase will not change>
+
+## 1. 背景
+## 2. 目标
+## 3. 非目标
+## 4. 实现记录
+## 5. 文档更新
+## 6. 验证
+## 7. 残留风险
+```
+
+The phase document should name the exact files changed, the commands run, and the remaining risk in plain language. It should not claim a broader platform, security, or release status than the implementation proves.
+
+### 9.2 Review Document Minimum Template
+
+Each paired review should lead with findings:
+
+```markdown
+# Phase N <主题> Review
+
+## Findings
+
+- No blocking issues found.
+
+## Notes
+## Verification
+## Residual Risk
+```
+
+If there are findings, order them by severity and include file references. If there are no findings, explicitly say so and still record test gaps or release/security residual risk.
 
 ## 10. Cross-Platform Scope
 
@@ -202,6 +266,19 @@ Current product scope is desktop only:
 - Mobile is out of scope for this track.
 
 Project structure is acceptable for macOS + Windows Electron desktop work because platform-specific release concerns live in electron-builder config, release workflow, and release docs, while app logic remains in the shared main/service/control-center layers. It is not designed as a mobile codebase: there is no mobile runtime, no mobile UI shell, no native mobile packaging, and no mobile support claim should appear in current docs.
+
+### 10.1 Scope Change Rules
+
+Changing platform scope requires more than a roadmap bullet:
+
+| Scope Change | Required Before Public Docs Change |
+|--------------|------------------------------------|
+| Windows moves to release-ready | Signed artifact evidence, real Windows smoke report, release checklist pass, and status docs updated together. |
+| Linux becomes active | Product decision, packaging design, release gates, support wording, and at least a build baseline phase. |
+| Mobile becomes active | Separate architecture plan for native/runtime shell, UI model, packaging, asset pipeline, and security model. |
+| A platform is deferred | Roadmap can mention deferral, but README should not present it as supported or planned for the current release. |
+
+Until those prerequisites exist, keep the current scope sentence unchanged.
 
 ## 11. Support Claim Rules
 
@@ -236,6 +313,23 @@ Support claims move through this lifecycle:
 | Public support | Signed artifacts plus smoke validation pass and release owners accept the risk | README/support matrix may use public support wording |
 
 Windows is currently at the evidence-baseline stage. It must not jump to public support wording without signed artifact evidence and runtime smoke validation.
+
+### 11.1 Support Claim Upgrade Checklist
+
+Before changing any live document from "baseline implemented" to a stronger support claim, check all of these:
+
+| Check | macOS | Windows |
+|-------|-------|---------|
+| Build config exists | Complete | Complete |
+| Release workflow exists | Complete | Complete |
+| Platform icon/assets exist | Complete | Complete |
+| Signing policy documented | Complete | Baseline complete |
+| Signed artifact evidence exists | Required per release/tag | Still open |
+| Runtime smoke evidence exists | Required per release/tag | Still open |
+| Release checklist passes | Required per release/tag | Still open |
+| README support wording can change | Only for verified artifact/tag | Not yet |
+
+If any required row is open, preserve conservative wording and link to the release document that owns the gap.
 
 ## 12. Architecture Invariants
 
@@ -307,6 +401,17 @@ Update:
 
 Use actual current totals in live status documents. Do not keep stale badge numbers or command comments because they become the first source of confusion for new contributors.
 
+### Documentation-Only Phase
+
+Update:
+
+- `docs/project-documentation-design.md` for the rule, matrix, reader path, or support wording being changed.
+- README files only if navigation, badges, support scope, or public status changes.
+- `docs/HANDOFF.md`, `docs/project-status-review.md`, and `docs/productization-roadmap.md` when the latest phase pointer or current documentation status changes.
+- A phase doc and paired review when the change establishes durable project governance.
+
+Verification for documentation-only phases should include `git diff --check` and a targeted `rg` drift audit. Run heavier commands only when scripts, package commands, code snippets that must execute, or generated artifacts changed.
+
 ### Windows Evidence Change
 
 Update:
@@ -375,7 +480,7 @@ Before committing documentation-only work, run at least a link/path sanity check
 
 ## 16. Current Documentation Status
 
-The repository now has a coherent phase history through Phase 14:
+The repository now has a coherent phase history through Phase 15:
 
 - Phase 1-7 document the platform productization arc from Control Center modularization through ecosystem operations.
 - Phase 8 documents the macOS + Windows desktop release extension.
@@ -385,6 +490,7 @@ The repository now has a coherent phase history through Phase 14:
 - Phase 12 expands the Control Center Playwright baseline to saved configuration flows for Pet, AI, and Service.
 - Phase 13 expands the Control Center Playwright baseline to Catalog plugin install/update and pet-pack install flows.
 - Phase 14 expands the Control Center Playwright baseline to Service MCP session management flows.
+- Phase 15 consolidates the project documentation design, fixes live documentation drift, and adds durable structure/scope/update templates for future phases.
 - macOS release baseline is complete.
 - Windows package targets, icon generation, CI/release jobs, platform-aware About/update asset filtering, signing policy enforcement, smoke evidence validation, CI pending report, runbook, collector generation, evidence bundle validation, evidence summary/archive generation, archive manifest generation, and report filling tooling are implemented.
 - Signed Windows artifact evidence and real Windows smoke validation remain open release gates.
