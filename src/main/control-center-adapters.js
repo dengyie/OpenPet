@@ -11,8 +11,11 @@
  * @typedef {import('../shared/openpet-contracts').PluginMutationResult} PluginMutationResult
  * @typedef {import('../shared/openpet-contracts').PluginViewState} PluginViewState
  * @typedef {import('../shared/openpet-contracts').ActionsConfigViewState} ActionsConfigViewState
+ * @typedef {import('../shared/openpet-contracts').AboutInfoViewState} AboutInfoViewState
+ * @typedef {import('../shared/openpet-contracts').AboutUpdateInfo} AboutUpdateInfo
  * @typedef {import('../shared/openpet-contracts').PetPackMutationResult} PetPackMutationResult
  * @typedef {import('../shared/openpet-contracts').PetPacksViewState} PetPacksViewState
+ * @typedef {import('../shared/openpet-contracts').UpdateCheckViewState} UpdateCheckViewState
  */
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
@@ -99,11 +102,58 @@ const createPetPackMutationResult = (result, petPacks, animations) => ({
   ...(animations !== undefined ? { animations } : {})
 })
 
+/**
+ * @param {Partial<AboutUpdateInfo> | undefined} update
+ * @returns {AboutUpdateInfo}
+ */
+const createAboutUpdateInfo = (update = {}) => ({
+  configured: Boolean(update.configured),
+  provider: typeof update.provider === 'string' ? update.provider : '',
+  ...(typeof update.owner === 'string' ? { owner: update.owner } : {}),
+  ...(typeof update.repo === 'string' ? { repo: update.repo } : {}),
+  channel: typeof update.channel === 'string' ? update.channel : '',
+  url: typeof update.url === 'string' ? update.url : ''
+})
+
+/**
+ * @param {Partial<AboutInfoViewState> | undefined} info
+ * @returns {AboutInfoViewState}
+ */
+const createAboutInfoView = (info = {}) => ({
+  name: typeof info.name === 'string' && info.name ? info.name : 'openpet',
+  productName: typeof info.productName === 'string' && info.productName ? info.productName : 'OpenPet',
+  version: typeof info.version === 'string' && info.version ? info.version : '0.0.0',
+  packaged: Boolean(info.packaged),
+  platform: typeof info.platform === 'string' ? info.platform : '',
+  arch: typeof info.arch === 'string' ? info.arch : '',
+  update: createAboutUpdateInfo(info.update)
+})
+
+/**
+ * @param {Partial<UpdateCheckViewState> | undefined} result
+ * @returns {UpdateCheckViewState}
+ */
+const createUpdateCheckView = (result = {}) => ({
+  status: typeof result.status === 'string' && result.status ? result.status : 'idle',
+  configured: Boolean(result.configured),
+  currentVersion: typeof result.currentVersion === 'string' ? result.currentVersion : '',
+  latestVersion: typeof result.latestVersion === 'string' ? result.latestVersion : '',
+  updateAvailable: Boolean(result.updateAvailable),
+  prerelease: Boolean(result.prerelease),
+  releaseUrl: typeof result.releaseUrl === 'string' ? result.releaseUrl : '',
+  assets: Array.isArray(result.assets) ? result.assets : [],
+  checkedAt: typeof result.checkedAt === 'string' ? result.checkedAt : '',
+  message: typeof result.message === 'string' ? result.message : ''
+})
+
 module.exports = {
+  createAboutInfoView,
+  createAboutUpdateInfo,
   createCatalogBlocklistResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
   createPluginMutationResult,
-  createServiceStatusView
+  createServiceStatusView,
+  createUpdateCheckView
 }

@@ -2,12 +2,14 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  createAboutInfoView,
   createCatalogBlocklistResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
   createPluginMutationResult,
-  createServiceStatusView
+  createServiceStatusView,
+  createUpdateCheckView
 } = require('../../src/main/control-center-adapters')
 
 test('createServiceStatusView normalizes local HTTP config and runtime for Control Center', () => {
@@ -134,4 +136,54 @@ test('createPetPackMutationResult packages pack metadata with refreshed packs an
   })
 
   assert.deepEqual(createPetPackMutationResult({}, petPacks), { petPacks })
+})
+
+test('about adapters provide stable defaults for partial info and update checks', () => {
+  assert.deepEqual(createAboutInfoView({
+    version: '1.0.1',
+    packaged: true,
+    platform: 'darwin',
+    arch: 'arm64',
+    update: {
+      configured: true,
+      provider: 'github',
+      owner: 'openpet',
+      repo: 'desktop',
+      channel: 'latest',
+      url: 'https://example.test/releases'
+    }
+  }), {
+    name: 'openpet',
+    productName: 'OpenPet',
+    version: '1.0.1',
+    packaged: true,
+    platform: 'darwin',
+    arch: 'arm64',
+    update: {
+      configured: true,
+      provider: 'github',
+      owner: 'openpet',
+      repo: 'desktop',
+      channel: 'latest',
+      url: 'https://example.test/releases'
+    }
+  })
+
+  assert.deepEqual(createUpdateCheckView({
+    status: 'not-configured',
+    currentVersion: '1.0.1',
+    checkedAt: '2026-06-17T00:00:00.000Z',
+    message: 'Update feed is not configured.'
+  }), {
+    status: 'not-configured',
+    configured: false,
+    currentVersion: '1.0.1',
+    latestVersion: '',
+    updateAvailable: false,
+    prerelease: false,
+    releaseUrl: '',
+    assets: [],
+    checkedAt: '2026-06-17T00:00:00.000Z',
+    message: 'Update feed is not configured.'
+  })
 })

@@ -1,7 +1,7 @@
 # OpenPet v1.1 TODO Design
 
 > Date: 2026-06-16
-> Baseline: Phase 51 completed locally
+> Baseline: Phase 52 completed locally
 > Scope: Convert the remaining productization TODO into a phase-ready design for v1.1 work. This document does not upgrade platform support claims. Windows remains not release-ready until signed runtime smoke evidence passes.
 
 ## 1. Goal
@@ -28,7 +28,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Plugin runtime has manifest validation, permission review, isolated runner, storage limits, network allowlist, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
-- TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, and main-process Control Center adapters for service/catalog/plugin/pet pack mutation payloads exist.
+- TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, and main-process Control Center adapters for service/catalog/plugin/pet pack/About/update payloads exist.
 - Windows, desktop picker, packaged runtime, and release evidence tooling exist as validators, reports, runbooks, or archive manifests.
 
 ### Still Open
@@ -506,7 +506,35 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - set-active preserves returned `animations` and pet-window animation notifications.
 - `npm run check:syntax`, `npm run test:control-center`, `npm test`, and `git diff --check` pass.
 
-**Status**: completed in Phase 51. Pet pack import/set-active/remove mutation results now use the main-process `@ts-check` adapter; set-active preserves the animation refresh path; targeted adapter and IPC tests were added; Node baseline is now 403 tests.
+**Status**: completed in Phase 51. Pet pack import/set-active/remove mutation results now use the main-process `@ts-check` adapter; set-active preserves the animation refresh path; targeted adapter and IPC tests were added.
+
+### Phase 52: About Update Control Center Adapter
+
+**Goal**: continue typing production-side Control Center payload assembly by moving About info and update-check result shaping into the main-process adapter module.
+
+**Scope**:
+
+- Add About/update adapters in `src/main/control-center-adapters.js`.
+- Consume `AboutInfoViewState`, `AboutUpdateInfo`, and `UpdateCheckViewState` through JSDoc imports.
+- Move `ABOUT_GET_INFO` and `ABOUT_CHECK_UPDATES` response shaping out of direct IPC service returns.
+- Keep GitHub release fetch, timeout, and platform asset filtering in `aboutService`.
+- Cover the pure adapters and registered IPC handler response shape with Node tests.
+
+**Likely files**:
+
+- `src/main/control-center-adapters.js`
+- `src/main/ipc.js`
+- `tests/main/control-center-adapters.test.js`
+- `tests/main/ipc-plugin-install.test.js`
+
+**Acceptance**:
+
+- `npm run typecheck` covers the adapters against shared contracts.
+- About IPC returns stable `AboutInfoViewState`.
+- Update-check IPC returns stable `UpdateCheckViewState`, including not-configured defaults.
+- `npm run check:syntax`, `npm run test:control-center`, `npm test`, and `git diff --check` pass.
+
+**Status**: completed in Phase 52. About info and update-check payloads now use the main-process `@ts-check` adapter; partial update-check responses are normalized to the shared contract; targeted adapter and IPC tests were added; Node baseline is now 405 tests.
 
 ## 6. Priority Order
 
@@ -522,6 +550,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 49 main-process Control Center adapters | Completed; use `@ts-check` adapters as the current production-side Control Center payload baseline. |
 | P1 | Phase 50 plugin mutation Control Center adapter | Completed; plugin install/update/uninstall result shape now follows the production-side adapter baseline. |
 | P1 | Phase 51 Pet pack mutation Control Center adapter | Completed; Pet pack import/set-active/remove result shape now follows the production-side adapter baseline. |
+| P1 | Phase 52 About/update Control Center adapter | Completed; About info and update-check result shape now follows the production-side adapter baseline. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -540,7 +569,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 10. Phase 48 is complete; Pane props are now checked against hook output.
 11. Phase 49 is complete; first main-process Control Center adapters are checked against shared contracts.
 12. Phase 50 is complete; plugin mutation results now follow the same adapter contract.
-13. Phase 51 is complete; Pet pack mutation results now follow the same adapter contract. Choose the next phase from evidence work, About/update adapters, or a high-drift service boundary.
+13. Phase 51 is complete; Pet pack mutation results now follow the same adapter contract.
+14. Phase 52 is complete; About/update results now follow the same adapter contract. Choose the next phase from evidence work or another high-drift service boundary.
 
 ## 8. Verification Contract
 
@@ -581,5 +611,5 @@ v1.1 productization is complete when:
 - plugin secrets are either safely supported or explicitly rejected.
 - pet packs can be exported, re-imported, version-reviewed, and source-audited.
 - AI behavior can be replayed and explained from Control Center.
-- shared TypeScript contracts, typed Control Center hooks, typed Pane props, and main-process adapters for service/catalog/plugin/pet pack mutation payloads cover the UI/API boundaries most likely to drift.
+- shared TypeScript contracts, typed Control Center hooks, typed Pane props, and main-process adapters for service/catalog/plugin/pet pack/About/update payloads cover the UI/API boundaries most likely to drift.
 - live docs are concise, current, and not contradicted by phase history.

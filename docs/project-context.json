@@ -17,7 +17,7 @@
     "Local HTTP and MCP are loopback-only and disabled by default",
     "Codex pet directory and zip import are supported",
     "Bundled pets include doro, duodong, and chispa",
-    "TypeScript migration baseline covers shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack mutation payloads, and representative product payload fixtures",
+    "TypeScript migration baseline covers shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update payloads, and representative product payload fixtures",
     "Packaged runtime smoke runner has archived real macOS packaged runtime evidence for automated launch, transparency, sprite, speech bubble, action playback, and built-in pack switching checks; desktop picker reports now include invalid-package feedback evidence, and native picker evidence is still pending",
     "Release evidence archive manifest tooling and signed release closure reporting are available; the current archived closure report records official desktop, macOS, and Windows claims as not-ready until real signed evidence is complete",
     "Plugin config is public settings; secret-like plugin config fields are rejected",
@@ -31,7 +31,7 @@
     "The Phase 38+ execution design lives in docs/productization-v1.1-todo-design.md"
   ],
   "validation": {
-    "nodeTests": 403,
+    "nodeTests": 405,
     "uiTests": 10,
     "commands": [
       "npm test",

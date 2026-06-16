@@ -8,7 +8,7 @@
  */
 const { ipcMain, BrowserWindow, app, dialog } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
-const { createCatalogBlocklistResult, createPetPackMutationResult, createPluginMutationResult, createServiceStatusView } = require('./control-center-adapters')
+const { createAboutInfoView, createCatalogBlocklistResult, createPetPackMutationResult, createPluginMutationResult, createServiceStatusView, createUpdateCheckView } = require('./control-center-adapters')
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
 const { createLocalHttpToken } = require('./services/local-http-service')
 
@@ -404,9 +404,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return createServiceStatusView(savedSettings.localHttp, localHttpService.getStatus() || runtime)
   })
 
-  ipcMainService.handle(IPC.ABOUT_GET_INFO, () => aboutService.getInfo())
+  ipcMainService.handle(IPC.ABOUT_GET_INFO, () => createAboutInfoView(aboutService.getInfo()))
 
-  ipcMainService.handle(IPC.ABOUT_CHECK_UPDATES, () => aboutService.checkForUpdates())
+  ipcMainService.handle(IPC.ABOUT_CHECK_UPDATES, async () => createUpdateCheckView(await aboutService.checkForUpdates()))
 
   ipcMainService.handle(IPC.CATALOG_GET, () => catalogService.listCatalog())
 
