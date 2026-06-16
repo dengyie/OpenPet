@@ -1,14 +1,14 @@
 # OpenPet Project Status Review
 
 > Date: 2026-06-17
-> Branch: `main`
+> Branch: `codex/extension-entry-visibility`
 > Release track: `v1.0.1-rc.2`
 
 This document is the current status snapshot. Detailed implementation history belongs in `docs/phases/`; detailed review findings belong in `docs/reviews/`.
 
 ## Executive Summary
 
-OpenPet has reached the intended desktop platform shape: Electron pet runtime, React Control Center, pet packs, AI behavior, local extension documentation with `entries.commands` compatibility runtime support, local HTTP/MCP, release evidence tooling, and a TypeScript boundary baseline.
+OpenPet has reached the intended desktop platform shape: Electron pet runtime, React Control Center, pet packs, AI behavior, local extension documentation with `entries.commands` compatibility runtime support and explicit dashboard opening, local HTTP/MCP, release evidence tooling, and a TypeScript boundary baseline.
 
 The project is strongest on macOS. Windows build and evidence tooling exists, but Windows must stay **not release-ready** until signed artifacts and real Windows smoke reports are archived.
 
@@ -20,7 +20,7 @@ The project is strongest on macOS. Windows build and evidence tooling exists, bu
 | Control Center | React + Vite app with Pet, Actions, AI, Plugins, Catalog, Service, and About tabs | `src/control-center/`, `tests/control-center/` |
 | Pet packs | Legacy cat, OpenPet packs, Codex pet directory/zip import, bundled read-only packs, export/provenance | `src/main/pet-pack/`, `src/main/services/pet-pack-service.js` |
 | AI | OpenAI-compatible chat, main-process secret storage, behavior decisions, replay, redacted diagnostics | `src/main/services/ai-service.js`, `src/main/services/behavior-orchestrator-service.js` |
-| Extensions | Developer-first ecosystem docs, current legacy SDK compatibility, normalized `entries` declarations, `entries.commands` support through the existing JavaScript compatibility runner, validation, submission tooling, logs, catalog install, author rehearsal; service/dashboard/setup/health lifecycle support remains future runtime work | `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, `src/main/plugins/manifest.js`, `src/main/services/plugin-service.js` |
+| Extensions | Developer-first ecosystem docs, current legacy SDK compatibility, normalized `entries` declarations, `entries.commands` support through the existing JavaScript compatibility runner, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, validation, submission tooling, logs, catalog install, author rehearsal; service/setup/health lifecycle support remains future runtime work | `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, `src/main/plugins/manifest.js`, `src/main/services/plugin-service.js` |
 | Local API | Loopback-only HTTP and MCP, token gated, logged, disabled by default | `src/main/services/local-http-service.js` |
 | Release evidence | Packaged runtime evidence tooling, signed release closure gate, Windows smoke/report tooling | `scripts/create-*-smoke-*`, `docs/release-evidence/` |
 | TypeScript | Shared contracts, typed Control Center view defaults, typed API facade, typed Control Center hooks, typed pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, representative payload fixtures | `src/shared/openpet-contracts.ts`, `src/control-center/src/api/control-center-api.ts`, `src/control-center/src/hooks/`, `src/control-center/src/panes/`, `src/main/control-center-adapters.js` |
@@ -30,7 +30,7 @@ The project is strongest on macOS. Windows build and evidence tooling exists, bu
 Current local baseline:
 
 ```bash
-npm test                     # 418/418 Node tests
+npm test                     # 424/424 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
@@ -53,7 +53,7 @@ The active product gaps are evidence and ecosystem maturity, not a rewrite of th
 1. Archive official signed macOS release evidence.
 2. Produce signed Windows artifacts and real Windows smoke reports before changing Windows wording.
 3. Fill native picker smoke evidence from launched or packaged app runs.
-4. Continue third-party extension author and maintainer rehearsal with real submissions, while keeping `entries.commands` compatibility support and service/dashboard limitations explicit.
+4. Continue third-party extension author and maintainer rehearsal with real submissions, while keeping `entries.commands` compatibility, dashboard opening support, and service lifecycle limitations explicit.
 5. Continue TypeScript migration into other high-drift main-process adapter boundaries.
 
 ## Documentation Map

@@ -6,6 +6,7 @@ import type {
   PluginPackageReviewViewState,
   PluginViewState
 } from '../../../shared/openpet-contracts'
+import { PluginEntryDetails } from '../components/PluginEntryDetails'
 import { Toggle } from '../components/Toggle'
 import { formatBytes, formatPluginLogTime } from '../lib/format'
 
@@ -26,6 +27,7 @@ export interface PluginsPaneProps {
   filters: PluginLogFilters
   status: string
   runningCommand: string
+  openingDashboard: string
   savingConfig: string
   clearingStorage: string
   pluginReview: PluginPackageReviewViewState | null
@@ -40,6 +42,7 @@ export interface PluginsPaneProps {
   onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
+  onOpenDashboard: (pluginId: string, dashboardId: string) => void | Promise<void>
   onChangeFilters: (filters: PluginLogFilters) => void
   onExportLogs: (format: ExportFormat) => void | Promise<void>
   onClearLogs: () => void | Promise<void>
@@ -124,11 +127,12 @@ function PluginReviewPanel({
       <div className="permission-line">
         {(plugin.commands || []).length ? `命令：${plugin.commands.map((command) => command.id).join(' · ')}` : '无命令'}
       </div>
+      <PluginEntryDetails source={plugin} />
     </div>
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, openingDashboard, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onOpenDashboard, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -193,6 +197,25 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                         onClick={() => onRun(plugin.id, command.id)}
                       >
                         {runningCommand === commandKey ? '运行中' : command.title}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+              <PluginEntryDetails source={plugin} compact />
+              {plugin.entries?.dashboards?.length ? (
+                <div className="plugin-commands">
+                  {plugin.entries.dashboards.map((dashboard) => {
+                    const dashboardKey = `${plugin.id}:${dashboard.id}`
+                    return (
+                      <button
+                        type="button"
+                        className="ghost"
+                        key={dashboard.id}
+                        disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === dashboardKey}
+                        onClick={() => onOpenDashboard(plugin.id, dashboard.id)}
+                      >
+                        {openingDashboard === dashboardKey ? '打开中' : dashboard.title}
                       </button>
                     )
                   })}

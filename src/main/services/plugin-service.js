@@ -350,7 +350,7 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, openExternal = async () => { throw new Error('Dashboard opener is not available') }, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
 
@@ -693,6 +693,43 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
+  const openDashboard = async (pluginId, dashboardId) => {
+    const commandId = `dashboard:${dashboardId || ''}`
+    try {
+      const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+      if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+      assertPluginAllowed(plugin.manifest)
+      if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+      const dashboard = (plugin.manifest.entries?.dashboards || []).find((entry) => entry.id === dashboardId)
+      if (!dashboard) throw new Error(`Plugin dashboard not found: ${dashboardId}`)
+      let dashboardUrl
+      try {
+        dashboardUrl = new URL(dashboard.url)
+      } catch (_) {
+        throw new Error('Plugin dashboard URL is invalid')
+      }
+      if (!['http:', 'https:'].includes(dashboardUrl.protocol)) {
+        throw new Error('Plugin dashboard URL must use HTTP or HTTPS')
+      }
+      await openExternal(dashboardUrl.toString())
+      appendLog({ pluginId, commandId, level: 'info', message: 'Dashboard opened' })
+      return {
+        ok: true,
+        pluginId,
+        dashboardId,
+        url: dashboardUrl.toString()
+      }
+    } catch (error) {
+      appendLog({
+        pluginId,
+        commandId,
+        level: 'error',
+        message: error.message || 'Dashboard open failed'
+      })
+      throw error
+    }
+  }
+
   const getLogs = (filters = {}) => filterLogs(getLogStore(), filters).map((entry) => ({ ...entry }))
 
   const exportLogEntries = ({ format = 'json', ...filters } = {}) => exportLogs(getLogs(filters), format)
@@ -702,7 +739,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     return getLogs()
   }
 
-  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, getLogs, exportLogs: exportLogEntries, clearLogs }
+  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, openDashboard, getLogs, exportLogs: exportLogEntries, clearLogs }
 }
 
 module.exports = { createPluginService, readLocalPluginManifests }

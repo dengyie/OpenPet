@@ -4,7 +4,7 @@
 
 An Electron desktop pet platform with a visual Control Center, AI chat, plugins, pet packs, and local agent APIs.
 
-[![Tests](https://img.shields.io/badge/tests-418%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-424%20node%20%2B%2010%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
@@ -106,7 +106,7 @@ For normal use, import pet packs from Control Center -> Actions -> Pet Packs.
 
 ## Extension Development
 
-OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner, while service process management and dashboard opening remain future runtime work.
+OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner, and enabled plugins can explicitly open declared HTTP/HTTPS dashboards from Control Center. Service process management, setup, health checks, and shell command execution remain future runtime work.
 
 Current legacy SDK examples are still useful while the host runtime catches up:
 
@@ -153,7 +153,7 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 Current local baseline:
 
 ```bash
-npm test                     # 418/418 Node tests
+npm test                     # 424/424 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

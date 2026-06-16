@@ -147,10 +147,16 @@ const createDemoPluginReview = (item: CatalogPluginEntry): PluginPackageReviewVi
     permissions: item.permissions || [],
     commands: [{ id: 'demo', title: 'Demo command' }],
     entries: {
-      commands: [],
-      services: [],
-      dashboards: []
-    }
+      commands: [{ id: 'weather-report', title: 'Weather Report', command: 'node ./commands/weather-report.js', cwd: '.' }],
+      services: [{ id: 'weather-companion', title: 'Weather Companion', command: 'npm run companion', cwd: '.' }],
+      dashboards: [{ id: 'weather-dashboard', title: 'Weather Dashboard', url: 'http://127.0.0.1:8787' }]
+    },
+    config: 'config.schema.json',
+    configSchema: 'config.schema.json',
+    manifest: {
+      dataLocations: [{ path: 'OPENPET_DATA_DIR', description: 'Demo weather report history.' }]
+    },
+    assets: ['assets/weather-card.html']
   },
   permissionDiff: {
     permissions: {
@@ -203,12 +209,17 @@ const demoManualPluginReview = {
     network: { allowlist: [] },
     commands: [{ id: 'hello', title: 'Say hello' }],
     entries: {
-      commands: [],
-      services: [],
-      dashboards: []
+      commands: [{ id: 'hello', title: 'Say hello', command: 'node ./index.js', cwd: '.' }],
+      services: [{ id: 'manual-companion', title: 'Manual Companion', command: 'npm run companion', cwd: '.' }],
+      dashboards: [{ id: 'manual-dashboard', title: 'Manual Dashboard', url: 'http://127.0.0.1:8787' }]
     },
     main: 'index.js',
-    configSchema: ''
+    config: 'config.schema.json',
+    configSchema: 'config.schema.json',
+    manifest: {
+      dataLocations: [{ path: 'OPENPET_DATA_DIR', description: 'Demo local data disclosure.' }]
+    },
+    assets: ['assets/manual-card.html']
   },
   permissionDiff: {
     permissions: {
@@ -499,6 +510,16 @@ const demoApi: ControlCenterApi = {
     demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
     writeDemoState()
     return { ok: true }
+  },
+  openPluginDashboard: async (pluginId, dashboardId) => {
+    const plugin = demoState.plugins.find((candidate) => candidate.id === pluginId)
+    const dashboard = plugin?.entries?.dashboards?.find((candidate) => candidate.id === dashboardId)
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Dashboard opened', `dashboard:${dashboardId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, dashboardId, url: dashboard?.url || '' }
   },
   inspectPluginPackage: async () => {
     demoManualPluginSelection = demoManualPluginReview.selectionId

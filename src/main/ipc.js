@@ -332,6 +332,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload)
   })
 
+  ipcMainService.handle(IPC.PLUGINS_OPEN_DASHBOARD, (_event, payload) => {
+    return pluginService.openDashboard(payload.pluginId, payload.dashboardId)
+  })
+
   ipcMainService.handle(IPC.PLUGINS_INSPECT_PACKAGE, async () => {
     const selected = await dialogService.showOpenDialog({
       title: '选择插件目录或 OpenPet 插件包',

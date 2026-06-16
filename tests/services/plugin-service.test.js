@@ -109,7 +109,7 @@ const createRunnablePluginDir = ({ manifest = {}, source, configSchema }) => {
   return root
 }
 
-const createDeclarationOnlyPluginDir = () => {
+const createDeclarationOnlyPluginDir = ({ dashboardUrl = 'http://127.0.0.1:8787' } = {}) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-declaration-plugin-'))
   const pluginPath = path.join(root, 'weather-declaration')
   fs.mkdirSync(pluginPath)
@@ -120,7 +120,7 @@ const createDeclarationOnlyPluginDir = () => {
     entries: {
       commands: [{ id: 'announce', title: 'Announce Weather', command: 'node ./commands/announce.js' }],
       services: [{ id: 'companion', title: 'Companion Service', command: 'npm run service:start' }],
-      dashboards: [{ id: 'main', title: 'Dashboard', url: 'http://127.0.0.1:8787' }]
+      dashboards: [{ id: 'main', title: 'Dashboard', url: dashboardUrl }]
     }
   }))
   return root
@@ -181,6 +181,117 @@ test('plugin service lists declaration-only extension entries without making the
     () => service.runCommand('weather-declaration', 'announce'),
     /Plugin is not runnable/
   )
+})
+
+test('plugin service opens enabled declaration dashboard entries through the injected opener', async () => {
+  const openedUrls = []
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    openExternal: async (url) => {
+      openedUrls.push(url)
+      return true
+    }
+  })
+
+  const result = await service.openDashboard('weather-declaration', 'main')
+
+  assert.deepEqual(openedUrls, ['http://127.0.0.1:8787/'])
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    dashboardId: 'main',
+    url: 'http://127.0.0.1:8787/'
+  })
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Dashboard opened')
+})
+
+test('plugin service blocks dashboard opens for disabled plugins', async () => {
+  const openedUrls = []
+  const service = createPluginService({
+    settingsService: createSettingsService(),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    openExternal: async (url) => {
+      openedUrls.push(url)
+    }
+  })
+
+  await assert.rejects(
+    () => service.openDashboard('weather-declaration', 'main'),
+    /Plugin is disabled/
+  )
+  assert.deepEqual(openedUrls, [])
+})
+
+test('plugin service blocks dashboard opens when ecosystem policy denies the plugin', async () => {
+  const openedUrls = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    getPluginBlockStatus: () => ({ blocked: true, reasons: ['blocked for review'] }),
+    openExternal: async (url) => {
+      openedUrls.push(url)
+    }
+  })
+
+  await assert.rejects(
+    () => service.openDashboard('weather-declaration', 'main'),
+    /Plugin is blocked: blocked for review/
+  )
+  assert.deepEqual(openedUrls, [])
+})
+
+test('plugin service rejects unknown dashboard ids before opening external urls', async () => {
+  const openedUrls = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    openExternal: async (url) => {
+      openedUrls.push(url)
+    }
+  })
+
+  await assert.rejects(
+    () => service.openDashboard('weather-declaration', 'missing'),
+    /Plugin dashboard not found: missing/
+  )
+  assert.deepEqual(openedUrls, [])
+})
+
+test('plugin service rejects non-http dashboard urls before opening external urls', async () => {
+  const openedUrls = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({ dashboardUrl: 'file:///tmp/openpet-dashboard.html' })],
+    openExternal: async (url) => {
+      openedUrls.push(url)
+    }
+  })
+
+  await assert.rejects(
+    () => service.openDashboard('weather-declaration', 'main'),
+    /Plugin dashboard URL must use HTTP or HTTPS/
+  )
+  assert.deepEqual(openedUrls, [])
 })
 
 test('plugin service rejects local plugin main symlinks escaping the plugin directory', () => {

@@ -8,6 +8,7 @@ import type {
   CatalogState,
   PermissionDiffState
 } from '../../../shared/openpet-contracts'
+import { PluginEntryDetails } from '../components/PluginEntryDetails'
 import { formatBytes } from '../lib/format'
 
 export interface CatalogPaneProps {
@@ -95,6 +96,7 @@ function CatalogPluginReview({
           {review.signature.errors.map((error) => <span key={error}>{error}</span>)}
         </div>
       ) : null}
+      <PluginEntryDetails source={plugin} />
     </div>
   )
 }

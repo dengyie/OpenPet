@@ -7,7 +7,7 @@
  *
  * 不包含：窗口创建细节、IPC 处理、设置读写、屏幕计算 —— 均在 src/main/ 中。
  */
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, shell } = require('electron')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
@@ -93,6 +93,7 @@ app.whenReady().then(() => {
     aiService,
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
+    openExternal: (url) => shell.openExternal(url),
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
   catalogService = createCatalogService({

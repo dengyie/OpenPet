@@ -328,4 +328,4 @@ Some repository tools and examples still reflect the older plugin SDK implementa
 - `ctx.ai`;
 - short-lived isolated JavaScript command handlers.
 
-These are compatibility surfaces, not the target boundary. Future development should close the gap by adding lifecycle-managed command/service/dashboard entries, language-neutral context passing, setup status, health, dashboard opening, and honest user-facing copy.
+These are compatibility surfaces, not the target boundary. Future development should close the gap by adding lifecycle-managed service entries, richer command execution, language-neutral context passing, setup status, health, and honest user-facing copy. Dashboard entries can already be opened explicitly as external HTTP/HTTPS URLs from Control Center.

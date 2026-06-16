@@ -472,6 +472,7 @@ export interface PluginViewState {
   signatureStatus: {
     label: string
   }
+  blockStatus?: CatalogReviewState
 }
 
 export interface PluginLogEntry {
@@ -496,6 +497,12 @@ export interface PluginMutationResult extends OkResponse {
   disabled?: boolean
   storageRemoved?: boolean
   plugins: PluginViewState[]
+}
+
+export interface PluginDashboardOpenResult extends OkResponse {
+  pluginId: string
+  dashboardId: string
+  url: string
 }
 
 export interface CatalogPluginInstallSelection {
@@ -790,6 +797,7 @@ export interface ControlCenterApi {
   setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<OkResponse>
+  openPluginDashboard: (pluginId: string, dashboardId: string) => Promise<PluginDashboardOpenResult>
   inspectPluginPackage: () => Promise<PluginPackageInspectionResult>
   clearPluginSelection: (selectionId: string) => Promise<OkResponse>
   installPlugin: (selectionId: string) => Promise<PluginMutationResult>

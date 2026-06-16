@@ -499,6 +499,47 @@ test('plugin mutation handlers return plugin mutation result with refreshed plug
   ])
 })
 
+test('plugin dashboard open handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        openDashboard: async (pluginId, dashboardId) => {
+          calls.push([pluginId, dashboardId])
+          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/' }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_OPEN_DASHBOARD)(null, {
+    pluginId: 'weather-declaration',
+    dashboardId: 'main'
+  })
+
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    dashboardId: 'main',
+    url: 'http://127.0.0.1:8787/'
+  })
+  assert.deepEqual(calls, [['weather-declaration', 'main']])
+})
+
 test('pet-packs:inspect-directory opens native folder or zip picker and delegates selected source', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []

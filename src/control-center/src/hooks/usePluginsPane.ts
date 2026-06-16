@@ -20,6 +20,7 @@ export function usePluginsPane() {
   const [filters, setFilters] = useState<PluginLogFilters>({ pluginId: '', level: '', query: '' })
   const [status, setStatus] = useState('')
   const [runningCommand, setRunningCommand] = useState('')
+  const [openingDashboard, setOpeningDashboard] = useState('')
   const [savingConfig, setSavingConfig] = useState('')
   const [clearingStorage, setClearingStorage] = useState('')
   const [pluginReview, setPluginReview] = useState<PluginPackageReviewViewState | null>(null)
@@ -174,6 +175,22 @@ export function usePluginsPane() {
     }
   }
 
+  const onOpenDashboard = async (pluginId: string, dashboardId: string) => {
+    const dashboardKey = `${pluginId}:${dashboardId}`
+    setOpeningDashboard(dashboardKey)
+    setStatus('')
+    try {
+      await api.openPluginDashboard(pluginId, dashboardId)
+      await refreshLogs()
+      setStatus('Dashboard 已打开')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Dashboard 打开失败'))
+      await refreshLogs()
+    } finally {
+      setOpeningDashboard('')
+    }
+  }
+
   const onExportLogs = async (format: ExportFormat) => {
     setStatus('')
     try {
@@ -229,6 +246,7 @@ export function usePluginsPane() {
     filters,
     status,
     runningCommand,
+    openingDashboard,
     savingConfig,
     clearingStorage,
     pluginReview,
@@ -243,6 +261,7 @@ export function usePluginsPane() {
     onChangeConfig,
     onSaveConfig,
     onRun,
+    onOpenDashboard,
     onChangeFilters: setFilters,
     onExportLogs,
     onClearLogs,
