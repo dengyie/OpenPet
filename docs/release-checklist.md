@@ -256,9 +256,10 @@ Then generate the archive manifest:
 ```bash
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive> --require-signed
+npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The first command can archive pending review material. The second command is required before an official desktop release claim and must produce `releaseReady: true`.
+The first command can archive pending review material. The second command is required before an official desktop release claim and must produce `releaseReady: true`. The closure command turns the manifest into explicit release wording and should fail official release CI when any signed evidence remains missing or pending.
 
 Windows smoke checks:
 

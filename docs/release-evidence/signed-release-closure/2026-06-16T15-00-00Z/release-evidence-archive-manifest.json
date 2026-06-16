@@ -1,0 +1,280 @@
+{
+  "generatedAt": "2026-06-16T15:37:18.705Z",
+  "requireSigned": true,
+  "ok": false,
+  "releaseReady": false,
+  "archive": {
+    "archiveDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z",
+    "outputPath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/release-evidence-archive-manifest.json"
+  },
+  "files": [
+    {
+      "role": "windowsSmokeReport",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/windows-smoke-report.template.json",
+      "exists": true,
+      "bytes": 2724,
+      "sha256": "fced6e7a7f2c0ea150db1a17f79a13781b54d4bd24280810caacc9531e7c504e"
+    },
+    {
+      "role": "desktopPickerReport",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/desktop-picker-smoke-report.json",
+      "exists": false,
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "role": "packagedRuntimeReport",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/packaged-runtime-smoke-report.json",
+      "exists": true,
+      "bytes": 5750,
+      "sha256": "47a3cd6551bb7437535b4665a15e6a8caf2b92eeb75a30f05287ec5dd0d7246a"
+    },
+    {
+      "role": "macosCodesignEvidence",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-codesign.txt",
+      "exists": false,
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "role": "macosNotarizationEvidence",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-notarization.txt",
+      "exists": false,
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "role": "macosGatekeeperEvidence",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-gatekeeper.txt",
+      "exists": false,
+      "bytes": 0,
+      "sha256": ""
+    }
+  ],
+  "macos": {
+    "releaseReady": false,
+    "codesign": {
+      "status": "missing",
+      "file": {
+        "role": "macosCodesignEvidence",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-codesign.txt",
+        "exists": false,
+        "bytes": 0,
+        "sha256": ""
+      }
+    },
+    "notarization": {
+      "status": "missing",
+      "file": {
+        "role": "macosNotarizationEvidence",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-notarization.txt",
+        "exists": false,
+        "bytes": 0,
+        "sha256": ""
+      }
+    },
+    "gatekeeper": {
+      "status": "missing",
+      "file": {
+        "role": "macosGatekeeperEvidence",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-gatekeeper.txt",
+        "exists": false,
+        "bytes": 0,
+        "sha256": ""
+      }
+    }
+  },
+  "reports": {
+    "releaseReady": false,
+    "windowsSmoke": {
+      "file": {
+        "role": "windowsSmokeReport",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/windows-smoke-report.template.json",
+        "exists": true,
+        "bytes": 2724,
+        "sha256": "fced6e7a7f2c0ea150db1a17f79a13781b54d4bd24280810caacc9531e7c504e"
+      },
+      "report": {
+        "platform": "win32",
+        "arch": "x64",
+        "generatedAt": "",
+        "artifact": {
+          "version": "",
+          "installer": "OpenPet-<version>-win32-x64.exe",
+          "zip": "OpenPet-<version>-win32-x64.zip",
+          "latestYml": "latest.yml",
+          "signed": false,
+          "authenticodeStatus": "NotSigned",
+          "authenticodeEvidence": ""
+        }
+      },
+      "structuralValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+          "artifact.authenticodeEvidence is required when --require-signed is used"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 13,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "readinessValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.version evidence is required",
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+          "artifact.authenticodeEvidence is required when --require-signed is used",
+          "install must pass before Windows release readiness can be claimed",
+          "launch must pass before Windows release readiness can be claimed",
+          "transparent-window must pass before Windows release readiness can be claimed",
+          "drag-bounds must pass before Windows release readiness can be claimed",
+          "control-center-tabs must pass before Windows release readiness can be claimed",
+          "pet-actions must pass before Windows release readiness can be claimed",
+          "pet-pack-import must pass before Windows release readiness can be claimed",
+          "plugin-runner must pass before Windows release readiness can be claimed",
+          "local-http-default-off must pass before Windows release readiness can be claimed",
+          "local-http-token-gated must pass before Windows release readiness can be claimed",
+          "api-key-isolation must pass before Windows release readiness can be claimed",
+          "about-update-assets must pass before Windows release readiness can be claimed",
+          "uninstall must pass before Windows release readiness can be claimed"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 13,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "releaseReady": false,
+      "errors": [
+        "windowsSmokeReport: artifact.signed must be true when --require-signed is used",
+        "windowsSmokeReport: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+        "windowsSmokeReport: artifact.authenticodeEvidence is required when --require-signed is used"
+      ],
+      "warnings": [
+        "windowsSmokeReport is archived but not release-ready"
+      ]
+    },
+    "desktopPicker": {
+      "file": {
+        "role": "desktopPickerReport",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/desktop-picker-smoke-report.json",
+        "exists": false,
+        "bytes": 0,
+        "sha256": ""
+      },
+      "report": null,
+      "structuralValidation": null,
+      "readinessValidation": null,
+      "releaseReady": false,
+      "errors": [
+        "missing desktopPickerReport: /Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/desktop-picker-smoke-report.json"
+      ],
+      "warnings": []
+    },
+    "packagedRuntime": {
+      "file": {
+        "role": "packagedRuntimeReport",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/packaged-runtime-smoke-report.json",
+        "exists": true,
+        "bytes": 5750,
+        "sha256": "47a3cd6551bb7437535b4665a15e6a8caf2b92eeb75a30f05287ec5dd0d7246a"
+      },
+      "report": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "generatedAt": "2026-06-16T14:52:13.073Z",
+        "artifact": {
+          "version": "1.0.1-rc.2",
+          "releaseDir": "/Users/mango/project/codex/OpenPet/release",
+          "appPath": "mac-arm64/OpenPet.app",
+          "installer": "OpenPet-1.0.1-rc.2-mac-arm64.dmg",
+          "zip": "OpenPet-1.0.1-rc.2-mac-arm64.zip",
+          "latestYml": "latest-mac.yml",
+          "files": [
+            {
+              "name": "mac-arm64/OpenPet.app",
+              "size": 96
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.2-mac-arm64.dmg",
+              "size": 134799501
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.2-mac-arm64.zip",
+              "size": 134273505
+            },
+            {
+              "name": "latest-mac.yml",
+              "size": 529
+            }
+          ],
+          "signed": false,
+          "signatureStatus": "Unknown",
+          "signatureEvidence": "/Users/mango/project/codex/OpenPet/release/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present"
+        }
+      },
+      "structuralValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 11,
+          "total": 14,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "readinessValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness",
+          "plugin-picker-evidence-linked must pass before packaged runtime smoke readiness can be claimed",
+          "pet-picker-evidence-linked must pass before packaged runtime smoke readiness can be claimed",
+          "invalid-package-feedback must pass before packaged runtime smoke readiness can be claimed"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 11,
+          "total": 14,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "releaseReady": false,
+      "errors": [
+        "packagedRuntimeReport: artifact.signed must be true when --require-signed is used",
+        "packagedRuntimeReport: artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness"
+      ],
+      "warnings": [
+        "packagedRuntimeReport is archived but not release-ready"
+      ]
+    }
+  },
+  "errors": [
+    "windowsSmokeReport: artifact.signed must be true when --require-signed is used",
+    "windowsSmokeReport: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+    "windowsSmokeReport: artifact.authenticodeEvidence is required when --require-signed is used",
+    "missing desktopPickerReport: /Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/desktop-picker-smoke-report.json",
+    "packagedRuntimeReport: artifact.signed must be true when --require-signed is used",
+    "packagedRuntimeReport: artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness",
+    "missing macosCodesignEvidence: /Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-codesign.txt",
+    "missing macosNotarizationEvidence: /Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-notarization.txt",
+    "missing macosGatekeeperEvidence: /Users/mango/project/codex/OpenPet/docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/macos-gatekeeper.txt"
+  ],
+  "warnings": [
+    "windowsSmokeReport is archived but not release-ready",
+    "packagedRuntimeReport is archived but not release-ready"
+  ]
+}

@@ -30,6 +30,7 @@
     "update-packaged-runtime-smoke-report": "node scripts/update-packaged-runtime-smoke-report.js",
     "validate-packaged-runtime-smoke-report": "node scripts/validate-packaged-runtime-smoke-report.js",
     "create-release-evidence-archive-manifest": "node scripts/create-release-evidence-archive-manifest.js",
+    "create-signed-release-closure-report": "node scripts/create-signed-release-closure-report.js",
     "create-rc-upgrade-smoke-report": "node scripts/create-rc-upgrade-smoke-report.js",
     "validate-rc-upgrade-smoke-report": "node scripts/validate-rc-upgrade-smoke-report.js",
     "validate:plugin": "node scripts/validate-plugin-package.js",

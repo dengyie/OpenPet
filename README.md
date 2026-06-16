@@ -4,7 +4,7 @@
 
 An Electron desktop pet platform with a visual Control Center, AI chat, plugins, pet packs, and local agent APIs.
 
-[![Tests](https://img.shields.io/badge/tests-382%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-390%20node%20%2B%2010%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
@@ -148,7 +148,7 @@ Plugin authors should also read [plugin-ecosystem-rules.md](./docs/plugin-ecosys
 Current local baseline:
 
 ```bash
-npm test                     # 382/382 Node tests
+npm test                     # 390/390 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

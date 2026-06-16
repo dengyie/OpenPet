@@ -269,6 +269,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Windows remains explicitly not release-ready if any signed Windows smoke evidence is missing or failing.
 - If Windows passes, docs are updated in one controlled phase with evidence links and support wording review.
 
+**Status**: completed as a signed release claim gate. The archived closure report under `docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/` records the current truth as `releaseReady: false` for official desktop, macOS, and Windows claims. Real signed macOS evidence, Windows Authenticode smoke, native picker evidence, and Windows packaged runtime evidence are still required before any official release-ready wording can be used.
+
 ### Phase 44: Plugin Author Experience Rehearsal
 
 **Goal**: turn plugin authoring from "tools exist" into a documented, repeatable third-party-style workflow.

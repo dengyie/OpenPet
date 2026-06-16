@@ -110,9 +110,10 @@ Release evidence archives are tracked with one manifest that points at the alrea
 ```bash
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive> --require-signed
+npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The signed command is required before an official desktop release claim. It expects successful macOS codesign, notarization, and Gatekeeper evidence files plus signed-ready Windows smoke, desktop picker, and packaged runtime reports.
+The signed manifest command is required before an official desktop release claim. The closure command converts the evidence into explicit macOS, Windows, and official desktop release wording, and must remain `not-ready` until successful macOS codesign, notarization, and Gatekeeper evidence files plus signed-ready Windows smoke, desktop picker, and packaged runtime reports are present.
 
 ## 6. Desktop Verification Matrix
 

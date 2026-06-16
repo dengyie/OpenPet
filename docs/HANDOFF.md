@@ -52,6 +52,7 @@ npm run create-packaged-runtime-smoke-runbook
 npm run run-packaged-runtime-smoke
 npm run validate-packaged-runtime-smoke-report
 npm run create-release-evidence-archive-manifest
+npm run create-signed-release-closure-report
 ```
 
 ## Where To Look For Detail
@@ -66,7 +67,7 @@ npm run create-release-evidence-archive-manifest
 - `docs/desktop-release-design.md` for desktop release evidence.
 - `docs/plugin-sandbox-evaluation.md` for current plugin runner guarantees, limits, and v1.1 recommendation.
 - `scripts/run-packaged-runtime-smoke.js`, `scripts/create-packaged-runtime-smoke-report.js`, and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
-- `scripts/create-release-evidence-archive-manifest.js` for release-level evidence archive validation.
+- `scripts/create-release-evidence-archive-manifest.js` and `scripts/create-signed-release-closure-report.js` for release-level evidence archive validation and release-claim closure.
 - `docs/plugin-submission-workflow-playbook.md` for plugin onboarding.
 - `scripts/create-openpet-plugin.js` for plugin starter templates.
 
@@ -74,4 +75,5 @@ npm run create-release-evidence-archive-manifest
 
 1. Use `docs/project-review-todo-design.md` as the current whole-project TODO design, `docs/productization-next-steps-design.md` as the near-term productization design, and `docs/productization-v1.1-todo-design.md` as the phase execution entry.
 2. Use Phase 41 AI behavior replay/decision viewer as the current diagnostics baseline.
-3. Use the archived Phase 42 packaged runtime evidence as the automated macOS runtime baseline; fill native picker and signed archive evidence before claiming full runtime or release readiness.
+3. Use the archived Phase 42 packaged runtime evidence as the automated macOS runtime baseline.
+4. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
