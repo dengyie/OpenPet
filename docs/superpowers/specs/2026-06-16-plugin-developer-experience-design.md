@@ -1,213 +1,381 @@
 # Plugin Developer Experience Design
 
-**Goal:** Make OpenPet's plugin ecosystem feel welcoming and creator-friendly while keeping the current safety model intact, so third-party authors can start from approachable examples and grow toward shareable plugins with clear guidance.
+**Goal:** Make OpenPet's plugin ecosystem welcoming, capable, and creator-friendly by expanding the practical power available to third-party developers while preserving a safe reviewable core.
 
-**Architecture:** Keep the existing plugin runtime model intact: manifest-driven packages, command-style activation, permission-gated SDK calls, install/update review, and disabled-by-default enablement. Improve developer experience by defining a friendlier layered contract: an example-driven author guide, a clear path from local experiment to shareable plugin, a maintainer appendix for ecosystem evolution, and a stable submission/testing path that reuses the existing `PluginInstallService`, `PluginService`, example plugins, and review tooling.
+**Architecture:** Keep one shared plugin platform core for packaging, install/update review, signatures, storage, network, logs, and settings integration. On top of that core, expose two plugin capability layers under one ecosystem model: a `runtime` layer for plugins that affect pet behavior and conversation, and a `creator-tools` layer for plugins that help build, edit, validate, and generate pet/action assets. The same manifest and lifecycle remain shared, but capability profiles and review expectations differ by layer.
 
-**Primary audience:** Third-party plugin authors first, with an explicit maintainer appendix for repository contributors and ecosystem operators.
+**Primary audience:** Third-party plugin authors first, with a maintainer appendix for ecosystem evolution and platform governance.
 
 ## 1. Problem Statement
 
-OpenPet's plugin runtime is already more mature than its developer-facing story.
+OpenPet already has a serious plugin foundation:
 
-The current repository proves that plugins can be:
+- manifest-based packages
+- install/update inspection
+- isolated execution
+- permission-gated SDK access
+- submission and review tooling
 
-- packaged and inspected safely
-- installed and updated through review
-- executed in an isolated short-lived runner
-- limited by manifest permissions and network allowlists
-- validated through submission tooling
+But the ecosystem still feels narrower than the product vision.
 
-What is still fragmented is the developer experience surface:
+Today, a third-party author can build simple helpers, but many natural plugin ideas still feel underpowered or awkward:
 
-- Author guidance is split across README, plugin-development docs, phase records, tests, and example plugins.
-- The difference between "locally acceptable", "catalog-ready", and "future-platform feature" is easy to misunderstand.
-- Third-party authors can follow the happy path, but they do not yet get one clear design contract that explains the host model, adaptation rules, and compatibility expectations in one place.
-- Repository maintainers have strong implicit rules in tests and service code, but the evolution contract for future plugin capabilities is not yet explicit enough.
+- weather and status announcers should be richer than plain speech
+- plugins should be able to steer pet actions and behavior more intentionally
+- conversation plugins should be able to shape tone, persona, and response style
+- creators should be able to edit action configuration and pet behavior assets with plugin help
+- asset-oriented plugins should be able to support action generation and pack authoring workflows
 
-The goal of this design is to make plugin development feel guided and welcoming rather than guarded or opaque, without making the platform more permissive than it already is.
+The current developer experience problem is not only that the rules are scattered. It is also that the available capability surface is too small for the kind of ecosystem OpenPet wants.
+
+The design challenge is therefore twofold:
+
+1. make the ecosystem feel more welcoming to third-party developers
+2. expand useful capability without collapsing the safety model into unrestricted local code execution
 
 ## 2. Scope
 
 This design covers:
 
-- developer-facing plugin contract clarity
-- author guidance for adaptation to the current SDK
-- testing and submission flow expectations
-- maintainer rules for evolving plugin capabilities
-- documentation layering for plugin ecosystem guidance
+- a more welcoming third-party author story
+- expanded plugin capability for both runtime and creator-tool use cases
+- one shared plugin core with layered capability profiles
+- SDK and permission expansion strategy
+- documentation and example strategy for the broader ecosystem
+- maintainer rules for evolving this capability safely
 
 This design does not cover:
 
-- changing the runtime sandbox implementation
-- adding new permissions immediately
-- adding plugin secrets support in this phase
-- adding background jobs, schedulers, or long-lived plugin processes
-- adding a remote marketplace backend
+- replacing the sandbox implementation in this phase
+- granting unrestricted filesystem or Electron access
+- allowing arbitrary secret access in plugins
+- adding remote marketplace backend infrastructure
+- adding fully autonomous long-lived background processes
 
 ## 3. Design Principles
 
-The plugin developer experience should follow these principles:
+The expanded plugin ecosystem should follow these principles:
 
-1. **Contract before convenience**
-   Developer ergonomics must not bypass manifest review, permission gating, or install safety checks.
+1. **Welcome experimentation**
+   A third-party author should be able to start from examples, build something locally useful, and only later worry about shareability and review polish.
 
-2. **One obvious path**
-   Third-party authors should have one clear path for package shape, command shape, testing, validation, and submission.
+2. **One core, multiple profiles**
+   OpenPet should not split into unrelated plugin systems. The ecosystem should share one platform core and differentiate capability through layered profiles.
 
-3. **Stable public surface, private implementation freedom**
-   Plugin authors should code against `plugin.json`, `activate(ctx)`, and the SDK only. Maintainers should be free to evolve internals as long as that contract holds.
+3. **Power should map to product value**
+   New powers should be added because they unlock meaningful pet or creator experiences, not because “plugins should be able to do anything.”
 
-4. **Minimal host assumptions**
-   Plugins should assume short-lived execution, explicit commands, JSON-serializable state, and no ambient privileges.
+4. **Capabilities before loopholes**
+   If authors keep wanting the same kind of workaround, the platform should expose a supported capability rather than forcing hacks.
 
-5. **Examples are executable policy**
-   Official example plugins should remain the most trustworthy source of runtime behavior, not decorative samples.
+5. **Reviewable by design**
+   New capability should remain legible in manifest permissions, Control Center review, tests, and submission artifacts.
 
-6. **Growth path over gatekeeping tone**
-   A plugin may start as a local experiment, then become shareable, then become catalog-ready. The docs must make that path obvious without framing every new author as a review problem.
+6. **Examples are the real onboarding**
+   The examples should define what the ecosystem feels capable of.
 
-## 4. Target Experience
+7. **Separation of runtime impact and authoring impact**
+   A plugin that changes live pet behavior and a plugin that edits pet/action assets are both valuable, but they should not be documented or reviewed as if they were the same kind of risk.
+
+## 4. Target Ecosystem Experience
 
 ### 4.1 Third-Party Author Experience
 
 A third-party author should be able to:
 
-1. read one author-facing guide
-2. choose a tested example plugin close to their use case
-3. start from a small, working template instead of a blank package
-4. implement commands using the current SDK contract
-5. validate the package locally
-6. understand how to turn a personal experiment into a shareable plugin
-7. generate reviewer artifacts only when they decide to share more broadly
+1. pick a clear starting example
+2. decide whether they are building a runtime plugin, a creator-tool plugin, or both
+3. build a local experiment quickly
+4. use supported APIs for weather, action control, dialogue shaping, personality injection, config editing, and asset workflows
+5. grow the plugin into something shareable with explicit validation and review tooling
 
-They should not need to:
+They should not feel:
 
-- read service internals to know what is supported
-- infer policy from tests alone
-- guess whether plugin config may contain secrets
-- guess whether update review will disable the plugin
-- feel like they must understand ecosystem operations before building their first useful plugin
+- blocked at the idea stage because the host is too restrictive
+- forced to read service internals to know what is possible
+- forced into unsafe workarounds to do common pet-platform tasks
+- treated as a security problem before they even build their first plugin
 
-### 4.2 Repository Maintainer Experience
+### 4.2 Maintainer Experience
 
 A maintainer should be able to:
 
-1. review whether a proposed plugin feature fits the current platform
-2. reject feature requests that require unsupported runtime assumptions
-3. extend docs, examples, and submission tooling together when the contract changes
-4. preserve compatibility intentionally rather than accidentally
-5. keep the public plugin story welcoming even when the underlying runtime policy stays strict
+1. reason about plugin power through explicit capability layers
+2. decide whether a proposed new permission belongs to runtime behavior, creator tooling, or neither
+3. keep install/review UX understandable even as plugin power grows
+4. preserve one ecosystem identity instead of managing multiple incompatible plugin systems
 
-## 5. Proposed Documentation Model
+## 5. Core Design: One Platform, Layered Capability Profiles
 
-The plugin ecosystem guidance should be intentionally layered.
+This design recommends `same core, layered profiles`.
 
-### Layer A: Authoritative Rulebook
+### 5.1 Shared Core
 
-Purpose:
+All plugins continue to share:
 
-- define hard boundaries
-- define compatibility rules
-- define review expectations
+- `plugin.json`
+- install/update inspection
+- package hash/signature metadata flow
+- settings-backed config
+- scoped storage
+- allowlisted network access
+- logs
+- disabled-by-default install/update lifecycle
+- submission validation and review artifacts
 
-Primary document:
+This keeps the ecosystem coherent.
 
-- `docs/plugin-ecosystem-rules.md`
+### 5.2 Capability Profiles
 
-This document should answer:
+On top of the shared core, the host should expose two first-class plugin profiles:
 
-- what a plugin is allowed to do
-- what a plugin must never assume
-- what makes a plugin review-risky
-- what makes a plugin a poor fit for the current platform
-- how a local experiment grows into a broadly shareable plugin
+- `runtime`
+- `creator-tools`
 
-### Layer B: Build Guide
+These are not separate packaging systems. They are different ways a plugin can participate in the same ecosystem.
 
-Purpose:
+### 5.3 Runtime Profile
 
-- teach plugin authors how to build within the rules
-- show the shortest path from idea to first working plugin
+The runtime profile is for plugins that affect live pet behavior, conversation, or status expression.
 
-Primary document:
+Example use cases:
 
-- `docs/plugin-development.md`
+- weather announcers
+- action orchestration plugins
+- mood or personality injectors
+- richer AI-assisted pet dialogue behaviors
+- live event/status plugins
 
-This document should answer:
+### 5.4 Creator-Tools Profile
 
-- package layout
-- manifest shape
-- `activate(ctx)` entry model
-- configuration schema support
-- SDK usage patterns
-- validation and submission commands
-- beginner-friendly starting points
+The creator-tools profile is for plugins that help authors build or modify pet assets, action configs, and pack content.
 
-### Layer C: Executable Examples
+Example use cases:
 
-Purpose:
+- action list editors
+- config manipulators
+- frame-folder inspectors
+- action metadata generators
+- sprite or prompt-assisted image generation workflows
+- pet-pack authoring helpers
 
-- show real plugin packages that pass current review and runtime expectations
+### 5.5 Hybrid Plugins
 
-Primary examples:
+Some plugins may legitimately span both profiles.
 
-- `examples/plugins/focus-timer`
-- `examples/plugins/weather-status`
-- `examples/plugins/rss-reader`
+Example:
 
-Each example should represent a distinct capability pattern:
+- a tool that helps an author generate a new action, install it into a pack, then trigger it live on the pet for preview
 
-- local state and pet speech
-- public network fetch plus storage
-- public feed parsing plus caching
+Hybrid plugins should be supported, but their manifest and review should make the breadth of power obvious.
 
-### Layer D: Maintainer Evolution Notes
+## 6. Expanded Public Plugin Contract
 
-Purpose:
-
-- explain what maintainers may evolve and what they must preserve
-
-This may live as a section inside the rules doc at first, rather than a separate top-level document, to avoid splitting truth too early.
-
-## 6. Current Public Plugin Contract
-
-The current plugin contract should be documented as stable at this level.
+The public contract should stay simple to understand, but it needs to become more capable.
 
 ### 6.1 Package Contract
 
-Plugins are local JavaScript packages with:
+Plugins remain manifest-driven JavaScript packages with:
 
-- `plugin.json` at package root
-- `index.js` or other declared `main`
-- optional `config.schema.json`
-- optional `signature.json`
+- root `plugin.json`
+- declared `main`
+- optional config schema
+- optional signature metadata
 
-Accepted package sources:
+Accepted package forms remain:
 
-- plugin directory
+- directory
 - `.openpet-plugin.zip`
 - legacy `.ibot-plugin.zip` for compatibility only
 
-### 6.2 Runtime Contract
+### 6.2 Runtime Model
 
-Plugins are command-driven and short-lived.
+Plugins remain command-driven and short-lived by default.
 
-That means:
+That stays the right base model because it is:
 
-- the host invokes a command explicitly
-- the plugin activates through `activate(ctx)`
-- the handler runs in isolation
-- results must be JSON-serializable
-- durable state must live in `ctx.storage`
+- easy to explain
+- easy to test
+- easy to review
+- aligned with Control Center command execution
 
-This is an intentional design choice, not an implementation detail.
+But the command surface should become richer so a plugin can do more meaningful work per invocation.
 
-It should be framed to authors as a lightweight creator model: do one clear thing, store a little state, and let the pet express it.
+### 6.3 Profile Declaration
 
-### 6.3 Permission Contract
+The manifest should conceptually distinguish profile intent, even if initial implementation begins as documentation and validation conventions.
 
-Only these permissions are public:
+Recommended model:
+
+- `profile: "runtime"`
+- `profile: "creator-tools"`
+- `profile: "hybrid"`
+
+This helps:
+
+- documentation routing
+- Control Center presentation
+- review expectations
+- future capability auditing
+
+## 7. Capability Expansion for Runtime Plugins
+
+The runtime layer should expand beyond basic speech and generic command execution.
+
+### 7.1 Richer Pet Control
+
+Runtime plugins should be able to:
+
+- trigger pet speech
+- trigger pet actions explicitly
+- queue or recommend actions with clearer semantics
+- set richer pet events/status
+- contribute lightweight behavior hints or mood signals
+
+This supports:
+
+- weather broadcast with matching action
+- “happy when user finishes a focus session”
+- “sleepy on late-night greeting”
+- contextual pet reactions
+
+### 7.2 Conversation And Personality Shaping
+
+Runtime plugins should be able to influence pet dialogue more intentionally.
+
+Supported direction should include:
+
+- injecting personality presets
+- contributing response style hints
+- adding contextual memory-like summaries
+- shaping response tone for specific commands or modes
+
+Examples:
+
+- “sarcastic assistant cat”
+- “gentle study companion”
+- “energetic coach”
+- “quiet nighttime mode”
+
+This should not mean unrestricted rewriting of the AI system. It should mean bounded hooks that let plugins shape pet expression in supported ways.
+
+### 7.3 Runtime Data Adapters
+
+Plugins like weather, feed, and status plugins should be able to do more than speak raw text.
+
+The runtime layer should support:
+
+- turning structured external data into pet-friendly summaries
+- mapping data conditions to actions
+- mapping data conditions to mood/personality variations
+- persisting last-known snapshots for repeated use
+
+This turns “weather plugin” from a toy command into a real behavior extension.
+
+## 8. Capability Expansion for Creator-Tool Plugins
+
+This is the biggest missing area today.
+
+OpenPet should explicitly welcome plugins that help people create pets and actions, not only consume them.
+
+### 8.1 Action Configuration Editing
+
+Creator-tool plugins should be able to work with action configuration in a supported way.
+
+Target capabilities:
+
+- read action lists
+- propose new actions
+- edit action metadata
+- update default/click action mappings
+- validate action naming and completeness
+
+This should happen through host-mediated APIs, not arbitrary direct file editing.
+
+### 8.2 Frame And Sprite Workflow Support
+
+Creator-tool plugins should be able to help with:
+
+- frame-folder inspection
+- frame consistency validation
+- action preview generation
+- metadata generation for imported actions
+- asset preparation workflows
+
+Example plugin ideas:
+
+- “frame sequence inspector”
+- “idle action validator”
+- “sprite pack normalizer”
+
+### 8.3 Asset Generation Support
+
+The ecosystem should make room for creator plugins that assist with generating new visual assets.
+
+Examples:
+
+- prompt-driven action image generation
+- style-consistent frame suggestions
+- expression sheet generation helpers
+- action thumbnail generation
+
+This does not require immediate unrestricted image tooling inside plugins. But the platform should recognize this as a first-class creator need and design supported hooks for it.
+
+### 8.4 Pack Authoring Helpers
+
+Creator-tool plugins should also be able to support pet-pack authoring flows such as:
+
+- manifest scaffolding
+- pack validation
+- atlas guidance
+- action checklist generation
+- migration from loose assets to pack structure
+
+## 9. SDK Expansion Strategy
+
+The SDK should grow by exposing higher-level pet-platform capabilities, not lower-level system escape hatches.
+
+### 9.1 Runtime-Focused SDK Direction
+
+Potential supported runtime-facing families:
+
+- `ctx.pet.*` expanded for richer action/event semantics
+- `ctx.dialogue.*` for personality/tone/context shaping
+- `ctx.behavior.*` for bounded behavior hints or orchestration
+- `ctx.pack.*` read-only access to active pack/action metadata when needed
+
+### 9.2 Creator-Tools SDK Direction
+
+Potential supported creator-tool families:
+
+- `ctx.actions.*` for host-mediated action config reads/writes
+- `ctx.assets.*` for inspection/validation/generation requests
+- `ctx.petPack.*` for pack authoring helpers and validation flows
+- `ctx.preview.*` for preview/render-oriented helper requests
+
+### 9.3 Host-Mediated Writes
+
+Important design rule:
+
+Creator-tool plugins should not get raw unrestricted write access to project files or user data trees.
+
+Instead, writable operations should be:
+
+- host-mediated
+- typed
+- narrow
+- reviewable
+- reversible where practical
+
+This is how OpenPet can support real creator tooling without turning plugins into unrestricted filesystem scripts.
+
+## 10. Permission Model Direction
+
+The permission surface needs to expand, but in a structured way.
+
+### 10.1 Keep Existing Baseline
+
+Current permissions remain valid:
 
 - `pet:say`
 - `pet:action`
@@ -217,331 +385,203 @@ Only these permissions are public:
 - `network`
 - `commands`
 
-No plugin should rely on undeclared or future permissions.
+### 10.2 Add New Powers As Product Permissions
 
-### 6.4 Network Contract
+Future powers should be introduced as explicit product-level permissions such as:
 
-The public network model is:
+- `dialogue:persona`
+- `behavior:hint`
+- `actions:read`
+- `actions:write`
+- `assets:inspect`
+- `assets:generate`
+- `pet-pack:read`
+- `pet-pack:write`
+- `preview:render`
 
-- HTTPS only
-- host allowlist only
-- public DNS hosts only
-- `GET` and `POST` only
-- no sensitive credential headers
-- bounded request and response sizes
+These names are directional, not final.
 
-### 6.5 Enablement Contract
+What matters is the model:
 
-Install and update do not equal trust.
+- permissions should describe product intent
+- permissions should map to reviewable capabilities
+- permissions should avoid vague “superuser” buckets
 
-The host contract is:
+### 10.3 Profile-Sensitive Review
 
-- install may succeed while still being risky or unsigned
-- update may require review
-- install/update leave the plugin disabled by default
-- user or operator enablement is explicit
+Runtime and creator-tool powers should be reviewed differently.
 
-That behavior should be treated as part of the public lifecycle contract.
+Examples:
 
-## 7. Author-Facing Adaptation Rules
+- a `dialogue:persona` plugin is mostly a behavioral/reputational concern
+- an `actions:write` or `assets:generate` plugin is more of a creator integrity concern
 
-This design proposes that the author-facing guide should frame adaptation around plugin shape rather than host internals.
+The review UX should surface those differences clearly.
 
-The author journey should be presented in two stages:
+## 11. Documentation Model For the Expanded Ecosystem
 
-1. **Local experiment**
-   Start from an example, make something fun or useful for yourself, keep the scope small, and confirm it works.
+The plugin documentation model should reflect this broader platform story.
 
-2. **Shareable plugin**
-   Clean up naming, permissions, config defaults, and validation artifacts so someone else can inspect, install, and understand it.
+### Layer A: Welcome Path
 
-### 7.1 Command Design
+Primary purpose:
 
-Plugin commands should be:
+- invite creators in
+- help them choose a plugin shape
+- show what kinds of plugins are now possible
 
-- small
-- user-meaningful
-- repeatable
-- explicit in payload shape
+### Layer B: Build Guide
 
-Recommended pattern:
+Primary purpose:
 
-- one command equals one user-recognizable action
-- one plugin equals one cohesive capability area
-- one example equals one obvious starting shape for new authors
+- teach the package and SDK model
+- explain runtime vs creator-tool profiles
+- route authors to the right examples
 
-Authors should avoid:
+### Layer C: Rulebook
 
-- vague command names
-- mixing unrelated features in one plugin
-- requiring hidden setup steps outside Control Center
+Primary purpose:
 
-### 7.2 State Design
+- define hard boundaries
+- define review expectations
+- define unsupported assumptions
 
-Authors should treat `ctx.storage` as a small normalized cache, not as a database.
+### Layer D: Maintainer Contract
 
-Recommended storage shape:
+Primary purpose:
 
-- counters
-- last successful snapshot
-- lightweight settings-derived state
-- migration-friendly objects
+- preserve coherence as capability expands
 
-Discouraged patterns:
+The tone should be:
 
-- large historical archives
-- raw upstream payload hoarding
-- secret material
-- long AI transcript storage
+- welcoming in the first layers
+- strict in the rulebook layer
+- architectural in the maintainer layer
 
-For new authors, the easiest successful plugins are usually the ones that remember one small fact and make the pet do one visible thing.
+## 12. Example Strategy For the Broader Ecosystem
 
-### 7.3 Network Design
+The examples should expand with the platform.
 
-Authors should design network plugins around narrow public endpoints.
+### Current Examples
 
-Recommended pattern:
+- `focus-timer`: local runtime helper
+- `weather-status`: public data runtime helper
+- `rss-reader`: public content runtime helper
 
-- one allowlisted upstream host
-- one or two predictable routes
-- normalized response storage
-- graceful behavior when the fetch fails
+### Recommended New Example Categories
 
-This keeps network plugins approachable: a small utility with one dependency is easier to build, test, explain, and share.
+- personality-injection runtime plugin
+- action-preview runtime plugin
+- creator-tool action-config editor
+- frame inspection/validation tool plugin
+- asset-generation assistant plugin
 
-Discouraged patterns:
+Each new example should justify a real supported capability pattern, not just pad the repo.
 
-- broad multi-host dependencies
-- hidden redirect chains
-- opaque relay services used only to dodge allowlist clarity
-- plugins that cannot function without private credentials
+The example set should still remain curated and readable in one sitting.
 
-### 7.4 AI Design
+## 13. Lifecycle: From Experiment to Shareable Plugin
 
-Authors should use `ai:chat` only when model reasoning is core to the plugin's user value.
+The ecosystem should clearly describe a growth path:
 
-Good fits:
+### Stage 1: Local Experiment
 
-- summarization
-- rewriting
-- encouragement or lightweight assistant behaviors
+The author:
 
-AI plugins should feel like helpers with personality, not like attempts to embed a second standalone AI product inside OpenPet.
+- starts from an example
+- builds something useful for themselves
+- keeps permissions narrow
+- confirms it works locally
 
-Poor fits:
+### Stage 2: Shareable Plugin
 
-- reproducing a full standalone chatbot
-- building secret-bearing AI workflows
-- persisting large conversation logs in plugin storage
+The author:
 
-### 7.5 Config Design
+- cleans up naming and config defaults
+- removes accidental extra permissions
+- validates install/update review behavior
+- generates reviewer artifacts
 
-Authors should treat plugin config as ordinary UI-managed settings, not as secure storage.
+### Stage 3: Ecosystem-Ready Plugin
 
-Therefore:
+The author and maintainer:
 
-- defaults should enable immediate use
-- enums should constrain ambiguity
-- booleans should be preferred over text flags where possible
-- secret-bearing config should be treated as unsupported by current platform design
+- confirm the plugin fits the platform contract
+- confirm the permission story is understandable
+- confirm the plugin is documented and testable enough for broader sharing
 
-## 8. Example Plugin Strategy
+This growth path should feel like support, not bureaucracy.
 
-The example plugin set should become the reference taxonomy for supported plugin shapes.
+## 14. Maintainer Evolution Contract
 
-Examples are the main welcome mat for new authors. They should invite experimentation first, then teach the path to a cleaner, shareable package.
+### 14.1 What Must Stay Stable
 
-### Focus Timer
+Maintainers should preserve:
 
-Represents:
-
-- `storage`
-- `pet:say`
-- local-only command execution
-
-Recommended as the first plugin for authors who want the fastest route to "something working".
-
-### Weather Status
-
-Represents:
-
-- `network`
-- `storage`
-- `pet:say`
-- public JSON fetch pattern
-
-Recommended as the first network plugin template.
-
-### RSS Reader
-
-Represents:
-
-- `network`
-- `storage`
-- `pet:say`
-- public XML/content normalization pattern
-
-Recommended for authors who want to adapt public content into pet-friendly summaries.
-
-Future examples should only be added when they introduce a new supported pattern, such as:
-
-- `ai:chat` with bounded usage
-- `pet:action` plus graceful fallback behavior
-- update review behavior or migration handling
-
-Examples should not be added just to increase plugin count.
-The example set should stay small enough that a new author can read it in one sitting and immediately choose a direction.
-
-## 9. Submission And Review Experience
-
-The plugin developer experience should clearly separate four stages:
-
-1. **Authoring**
-   Write the plugin package to the current contract.
-
-2. **Local validation**
-   Use `validate:plugin` to prove package safety and review surface.
-
-3. **Reviewer artifact generation**
-   Generate report, PR packet, and submission bundle.
-
-4. **Human review and catalog readiness**
-   Decide whether the plugin is acceptable for broader distribution.
-
-These stages should be described as a growth path, not a gatekeeping ladder.
-
-The docs should explicitly state:
-
-- `validate:plugin` does not approve publication
-- unsigned packages may still be structurally valid
-- signature metadata currently proves hash coverage, not signer trust
-- catalog metadata does not bypass install review
-
-## 10. Maintainer Evolution Contract
-
-This section is for repository maintainers, not ordinary third-party authors.
-
-### 10.1 What Must Stay Stable
-
-Maintainers should preserve these public assumptions unless intentionally versioning the plugin contract:
-
-- root `plugin.json`
-- command-driven `activate(ctx)` model
-- manifest-declared permissions
+- one shared plugin ecosystem core
+- manifest-declared capabilities
 - disabled-by-default install/update lifecycle
-- config through Control Center-managed schema values
-- `ctx.storage` as the durable state mechanism
-- network allowlist review model
+- host-mediated reviewable power
+- submission tooling as part of the ecosystem contract
 
-### 10.2 What May Evolve Internally
+### 14.2 What May Evolve
 
 Maintainers may change:
 
 - sandbox implementation details
-- child process mechanics
-- internal validation structure
-- Control Center presentation details
-- submission artifact formatting
+- internal SDK plumbing
+- Control Center presentation
+- validation/report formatting
 
-As long as the public contract and review semantics remain intact.
+As long as the public plugin story remains coherent.
 
-### 10.3 What Requires Explicit Design Before Shipping
+### 14.3 What Requires Explicit Design
 
-These ideas should not be introduced casually:
+These still require dedicated design before shipping:
 
-- plugin secrets support
-- background scheduling
-- broader network methods
-- multi-host or wildcard allowlists
-- filesystem access
-- Electron or OS automation APIs
+- unrestricted file access
+- unrestricted system automation
+- arbitrary secret injection
+- fully autonomous background plugin execution
 - remote code loading
 
-Each of these would change the trust model and would require a new ecosystem design phase.
+Those are trust-model changes, not simple DX upgrades.
 
-## 11. Testing Contract
+## 15. Risks And Trade-Offs
 
-The plugin developer experience should present testing as part of the contract, not as optional polish.
-
-### 11.1 Third-Party Author Minimum
-
-Recommended minimum:
-
-- `node --check` on plugin entry files
-- `npm run validate:plugin -- <plugin>`
-
-This minimum should stay lightweight so authors can get to a working local plugin quickly before investing in packaging and review assets.
-
-### 11.2 Repository Or Official Plugin Minimum
-
-Required for first-party or repository-shipped examples:
-
-- inspect/install test through `PluginInstallService`
-- disabled-by-default lifecycle assertion
-- runtime command test through `PluginService`
-- storage assertions for persistent state
-- fake fetch-based tests for network plugins
-- emitted pet payload assertions where pet behavior is user-visible
-
-### 11.3 Maintainer Rule
-
-When a new plugin capability pattern is officially endorsed, docs, example coverage, and tests should land together.
-
-No capability should become "official by folklore".
-
-## 12. UX Improvements This Design Enables
-
-Without changing runtime permissions, this design improves developer experience by making these truths obvious:
-
-- what a plugin can build today
-- what is unsupported by design
-- how to structure commands and state
-- how to start from a tested example instead of a blank page
-- how to move from a personal experiment to something others can install
-- how to validate before asking for review
-- how maintainers decide whether a plugin belongs in the ecosystem
-
-The immediate outcome is lower author confusion and lower maintainer review overhead.
-
-## 13. Risks And Trade-Offs
-
-### Risk: Too much policy scares off authors
+### Risk: Capability expansion makes review harder
 
 Trade-off:
 
-OpenPet is a constrained plugin platform, not a general local automation environment. Clear boundaries are more valuable than permissive but ambiguous guidance.
+That is why one shared core and explicit profile/permission layers matter. The answer is clearer capability modeling, not keeping the ecosystem artificially weak.
 
-### Risk: Docs become stricter than code
-
-Trade-off:
-
-That is acceptable temporarily if the docs are expressing intended policy already supported by review and maintainer judgment. Over time, code should catch up to policy where possible.
-
-### Risk: Maintainers add features that invalidate the doc
+### Risk: Creator-tool plugins push toward filesystem power
 
 Trade-off:
 
-That is precisely why the maintainer evolution contract must exist. New plugin powers should trigger explicit doc and example updates.
+That pressure is real, but the right answer is host-mediated typed operations, not raw unrestricted file writes.
 
-## 14. Success Criteria
+### Risk: Runtime personality and behavior hooks make the pet feel inconsistent
+
+Trade-off:
+
+That is acceptable if the host provides bounded hooks and reviewable semantics rather than unstructured system takeover.
+
+## 16. Success Criteria
 
 This design is successful when:
 
-- a third-party author can build a simple plugin without reading service internals
-- maintainers can point to one rulebook for plugin fit and review boundaries
-- the examples read like supported capability patterns rather than ad hoc demos
-- submission tooling is understood as a review pipeline, not a publication shortcut
-- future plugin capability proposals have a clear baseline to compare against
+- third-party authors can point to multiple meaningful plugin ideas that are clearly supported
+- the ecosystem supports both runtime extensions and creator tools
+- authors can build weather, action, dialogue, personality, and asset-helper plugins without hacks
+- maintainers can still explain plugin power through one coherent manifest/review model
+- new capability is added through explicit product permissions instead of hidden loopholes
 
-## 15. Recommended Next Step
+## 17. Recommended Next Step
 
-The next implementation phase should operationalize this design by tightening the plugin documentation set around two living entry points:
+The next implementation/design phase should translate this spec into:
 
-- `docs/plugin-ecosystem-rules.md` as the rulebook
-- `docs/plugin-development.md` as the build guide
-
-If future developer pain remains high after that, the next design iteration should focus on one of these, in order:
-
-1. first-party AI plugin example and bounded `ai:chat` guidance
-2. plugin compatibility/version signaling for future SDK evolution
-3. plugin secret-handling design, only if the platform is ready to support it safely
+1. a revised public plugin rulebook with a welcoming opening and layered capability story
+2. a revised plugin development guide organized by `runtime` and `creator-tools` paths
+3. a concrete permission and SDK proposal for the first wave of capability expansion
+4. at least one new runtime example and one new creator-tool example
