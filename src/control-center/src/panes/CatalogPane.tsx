@@ -1,9 +1,34 @@
-import React from 'react'
-import { formatBytes } from '../lib/format.js'
+import type {
+  CatalogBlocklistEntry,
+  CatalogInstallSelection,
+  CatalogItemKind,
+  CatalogPetPackEntry,
+  CatalogPluginEntry,
+  CatalogReviewState,
+  CatalogState,
+  PermissionDiffState
+} from '../../../shared/openpet-contracts'
+import { formatBytes } from '../lib/format'
 
-const formatBlockStatus = (status = {}) => status.blocked ? `Blocked · ${status.reasons.join(', ')}` : 'Allowed'
+export interface CatalogPaneProps {
+  catalog: CatalogState
+  status: string
+  preparing: string
+  installing: boolean
+  selection: CatalogInstallSelection | null
+  blocklistDraft: CatalogBlocklistEntry
+  onPrepareInstall: (kind: CatalogItemKind, itemId: string) => void | Promise<void>
+  onClearSelection: () => void | Promise<void>
+  onInstallSelection: () => void | Promise<void>
+  onChangeBlocklistDraft: (draft: CatalogBlocklistEntry) => void
+  onAddBlocklistEntry: () => void | Promise<void>
+  onRemoveBlocklistEntry: (type: CatalogBlocklistEntry['type'], value: string) => void | Promise<void>
+  onRefreshCatalog: () => CatalogState | Promise<CatalogState>
+}
 
-const formatInstallState = (item) => {
+const formatBlockStatus = (status?: CatalogReviewState) => status?.blocked ? `Blocked · ${status.reasons.join(', ')}` : 'Allowed'
+
+const formatInstallState = (item: CatalogPluginEntry | CatalogPetPackEntry) => {
   if (item.blockStatus?.blocked) return 'Blocked'
   if (!item.downloadable) return item.installed ? 'Bundled' : 'Metadata only'
   if (item.updateAvailable) return `Update ${item.installedVersion} → ${item.version}`
@@ -11,14 +36,24 @@ const formatInstallState = (item) => {
   return 'Available'
 }
 
-const formatDiff = (diff = {}) => {
-  const added = diff.added?.length ? `新增 ${diff.added.join(', ')}` : ''
-  const removed = diff.removed?.length ? `移除 ${diff.removed.join(', ')}` : ''
-  const unchanged = diff.unchanged?.length ? `保留 ${diff.unchanged.join(', ')}` : ''
+const formatDiff = (diff?: PermissionDiffState) => {
+  const added = diff?.added?.length ? `新增 ${diff.added.join(', ')}` : ''
+  const removed = diff?.removed?.length ? `移除 ${diff.removed.join(', ')}` : ''
+  const unchanged = diff?.unchanged?.length ? `保留 ${diff.unchanged.join(', ')}` : ''
   return [added, removed, unchanged].filter(Boolean).join(' · ') || '无变化'
 }
 
-function CatalogPluginReview({ selection, installing, onInstallSelection, onClearSelection }) {
+function CatalogPluginReview({
+  selection,
+  installing,
+  onInstallSelection,
+  onClearSelection
+}: {
+  selection: Extract<CatalogInstallSelection, { kind: 'plugin' }> | null
+  installing: boolean
+  onInstallSelection: () => void | Promise<void>
+  onClearSelection: () => void | Promise<void>
+}) {
   const review = selection?.pluginReview
   if (!review) return null
   const plugin = review.plugin || {}
@@ -31,7 +66,7 @@ function CatalogPluginReview({ selection, installing, onInstallSelection, onClea
         </div>
         <div className="plugin-log-actions">
           <button type="button" className="ghost" disabled={installing} onClick={onClearSelection}>取消</button>
-          <button type="button" className="primary" disabled={installing || review.signature?.errors?.length || review.blockStatus?.blocked} onClick={onInstallSelection}>
+          <button type="button" className="primary" disabled={installing || Boolean(review.signature?.errors?.length) || Boolean(review.blockStatus?.blocked)} onClick={onInstallSelection}>
             {installing ? '处理中' : '确认安装'}
           </button>
         </div>
@@ -64,7 +99,17 @@ function CatalogPluginReview({ selection, installing, onInstallSelection, onClea
   )
 }
 
-function CatalogPetPackReview({ selection, installing, onInstallSelection, onClearSelection }) {
+function CatalogPetPackReview({
+  selection,
+  installing,
+  onInstallSelection,
+  onClearSelection
+}: {
+  selection: Extract<CatalogInstallSelection, { kind: 'pet-pack' }> | null
+  installing: boolean
+  onInstallSelection: () => void | Promise<void>
+  onClearSelection: () => void | Promise<void>
+}) {
   const review = selection?.petPackReview
   if (!review?.pack) return null
   const pack = review.pack
@@ -104,15 +149,25 @@ function CatalogPetPackReview({ selection, installing, onInstallSelection, onCle
   )
 }
 
-function CatalogItem({ item, kind, preparing, onPrepareInstall }) {
+function CatalogItem({
+  item,
+  kind,
+  preparing,
+  onPrepareInstall
+}: {
+  item: CatalogPluginEntry | CatalogPetPackEntry
+  kind: CatalogItemKind
+  preparing: string
+  onPrepareInstall: (kind: CatalogItemKind, itemId: string) => void | Promise<void>
+}) {
   const key = `${kind}:${item.id}`
-  const title = kind === 'plugin' ? item.name : item.displayName
+  const title = kind === 'plugin' ? (item as CatalogPluginEntry).name : (item as CatalogPetPackEntry).displayName
   const meta = kind === 'plugin'
-    ? [item.id, item.version, item.author, item.openpetApiVersion || item.ibotApiVersion].filter(Boolean).join(' · ')
-    : [item.id, item.version, item.author, `${item.actionCount || 0} actions`].filter(Boolean).join(' · ')
+    ? [item.id, item.version, item.author, (item as CatalogPluginEntry).openpetApiVersion].filter(Boolean).join(' · ')
+    : [item.id, item.version, item.author, `${(item as CatalogPetPackEntry).actionCount || 0} actions`].filter(Boolean).join(' · ')
   return (
     <div className={item.blockStatus?.blocked ? 'catalog-item blocked' : 'catalog-item'}>
-      {kind === 'pet-pack' && item.previewImage ? <img className="catalog-preview" src={item.previewImage} alt="" /> : null}
+      {kind === 'pet-pack' && (item as CatalogPetPackEntry).previewImage ? <img className="catalog-preview" src={(item as CatalogPetPackEntry).previewImage} alt="" /> : null}
       <div className="catalog-item-main">
         <div className="plugin-title">
           <strong>{title}</strong>
@@ -124,7 +179,7 @@ function CatalogItem({ item, kind, preparing, onPrepareInstall }) {
           {item.sha256 ? <span>{item.sha256.slice(0, 16)}</span> : null}
         </div>
         {item.description ? <div className="permission-line">{item.description}</div> : null}
-        {kind === 'plugin' && item.permissions?.length ? <div className="permission-line">权限：{item.permissions.join(' · ')}</div> : null}
+        {kind === 'plugin' && (item as CatalogPluginEntry).permissions?.length ? <div className="permission-line">权限：{(item as CatalogPluginEntry).permissions?.join(' · ')}</div> : null}
         {item.reportUrl ? <div className="permission-line">Report：{item.reportUrl}</div> : null}
       </div>
       <button
@@ -139,7 +194,17 @@ function CatalogItem({ item, kind, preparing, onPrepareInstall }) {
   )
 }
 
-function BlocklistList({ title, type, values, onRemoveBlocklistEntry }) {
+function BlocklistList({
+  title,
+  type,
+  values,
+  onRemoveBlocklistEntry
+}: {
+  title: string
+  type: CatalogBlocklistEntry['type']
+  values: string[]
+  onRemoveBlocklistEntry: (type: CatalogBlocklistEntry['type'], value: string) => void | Promise<void>
+}) {
   return (
     <div className="blocklist-column">
       <strong>{title}</strong>
@@ -152,7 +217,7 @@ function BlocklistList({ title, type, values, onRemoveBlocklistEntry }) {
   )
 }
 
-export function CatalogPane({ catalog, status, preparing, installing, selection, blocklistDraft, onPrepareInstall, onClearSelection, onInstallSelection, onChangeBlocklistDraft, onAddBlocklistEntry, onRemoveBlocklistEntry, onRefreshCatalog }) {
+export function CatalogPane({ catalog, status, preparing, installing, selection, blocklistDraft, onPrepareInstall, onClearSelection, onInstallSelection, onChangeBlocklistDraft, onAddBlocklistEntry, onRemoveBlocklistEntry, onRefreshCatalog }: CatalogPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -214,7 +279,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
           </div>
         </div>
         <div className="blocklist-add-row">
-          <select className="text-input" value={blocklistDraft.type} onChange={(event) => onChangeBlocklistDraft({ ...blocklistDraft, type: event.target.value })}>
+          <select className="text-input" value={blocklistDraft.type} onChange={(event) => onChangeBlocklistDraft({ ...blocklistDraft, type: event.target.value as CatalogBlocklistEntry['type'] })}>
             <option value="pluginId">Plugin ID</option>
             <option value="packId">Pack ID</option>
             <option value="sha256">SHA256</option>

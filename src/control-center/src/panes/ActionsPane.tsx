@@ -1,15 +1,55 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import type {
+  ActionEntry,
+  ActionsConfigViewState,
+  CompletedActionFrameInspectionResult,
+  PetPackInspectionResult,
+  PetPackPreviewAction,
+  PetPacksViewState
+} from '../../../shared/openpet-contracts'
 
-function ActionPreview({ action }) {
+export interface ActionImportDraft {
+  actionId: string
+  label: string
+}
+
+export interface ActionsPaneProps {
+  actionsConfig: ActionsConfigViewState
+  petPacks: PetPacksViewState
+  selectedActionId: string
+  importDraft: ActionImportDraft
+  importInspection: CompletedActionFrameInspectionResult | null
+  petPackInspection: PetPackInspectionResult | null
+  status: string
+  working: boolean
+  onSelectAction: (actionId: string) => void
+  onChangeImportDraft: (partial: Partial<ActionImportDraft>, clearInspection?: boolean) => void
+  onChangeConfig: (partial: Partial<ActionsConfigViewState>) => void
+  onSaveConfig: () => void | Promise<void>
+  onInspect: () => void | Promise<void>
+  onReinspect: () => void | Promise<void>
+  onClearInspection: () => void | Promise<void>
+  onImport: () => void | Promise<void>
+  onDelete: (actionId: string) => void | Promise<void>
+  onInspectPetPack: () => void | Promise<void>
+  onClearPetPackInspection: () => void | Promise<void>
+  onImportPetPack: () => void | Promise<void>
+  onExportPetPack: (packId: string) => void | Promise<void>
+  onSetActivePetPack: (packId: string) => void | Promise<void>
+  onRemovePetPack: (packId: string) => void | Promise<void>
+}
+
+function ActionPreview({ action }: { action?: ActionEntry }) {
   const [frameIndex, setFrameIndex] = useState(0)
 
   useEffect(() => {
     setFrameIndex(0)
-    if (!action || action.frameCount <= 1) return undefined
+    const frameCount = Number(action?.frameCount || 0)
+    if (!action || frameCount <= 1) return undefined
     let timeoutId = 0
     const tick = () => {
       setFrameIndex((current) => {
-        const next = (current + 1) % action.frameCount
+        const next = (current + 1) % frameCount
         const durations = Array.isArray(action.frameDurations) ? action.frameDurations : []
         timeoutId = window.setTimeout(tick, durations[next] || action.frameMs || 100)
         return next
@@ -62,7 +102,15 @@ function ActionPreview({ action }) {
   )
 }
 
-function SpriteFrame({ sprite, action, className = 'sprite-frame' }) {
+function SpriteFrame({
+  sprite,
+  action,
+  className = 'sprite-frame'
+}: {
+  sprite?: string
+  action?: ActionEntry | PetPackPreviewAction | null
+  className?: string
+}) {
   if (!sprite || !action) return <div className="pet-pack-thumb" />
   const frameWidth = Number(action.frameWidth || 0)
   const frameHeight = Number(action.frameHeight || 0)
@@ -86,7 +134,7 @@ function SpriteFrame({ sprite, action, className = 'sprite-frame' }) {
   )
 }
 
-function FrameInspectionReport({ report }) {
+function FrameInspectionReport({ report }: { report: CompletedActionFrameInspectionResult | null }) {
   if (!report) return null
   const inspection = report.inspection || {}
   const frames = Array.isArray(inspection.frames) ? inspection.frames : []
@@ -130,17 +178,17 @@ function FrameInspectionReport({ report }) {
   )
 }
 
-function PetPackInspectionReport({ report }) {
+function PetPackInspectionReport({ report }: { report: PetPackInspectionResult | null }) {
   if (!report) return null
   const errors = Array.isArray(report.errors) ? report.errors : []
   const pack = report.pack
   const provenance = pack?.provenance || {}
-  const conflict = pack?.conflict || {}
+  const conflict = pack?.conflict
 
   return (
     <div className={report.valid ? 'inspection-report' : 'inspection-report invalid'}>
       <div className="inspection-summary">
-        <strong>{report.folderName}</strong>
+        <strong>{report.folderName || 'Pet pack'}</strong>
         <span>{pack ? `${pack.actionCount} 动作 · ${pack.version}` : '未读取到 manifest'}</span>
       </div>
       {pack?.previewSprite ? (
@@ -154,7 +202,7 @@ function PetPackInspectionReport({ report }) {
             {provenance.assetAuthor ? <span>作者 {provenance.assetAuthor}</span> : null}
             {provenance.license ? <span>许可 {provenance.license}</span> : null}
             {provenance.originalFormat ? <span>格式 {provenance.originalFormat}</span> : null}
-            {conflict.decision ? <span>冲突 {conflict.decision} · {conflict.installedVersion || 'none'} {'->'} {conflict.incomingVersion || 'none'}</span> : null}
+            {conflict?.decision ? <span>冲突 {conflict.decision} · {conflict.installedVersion || 'none'} {'->'} {conflict.incomingVersion || 'none'}</span> : null}
           </div>
         </div>
       ) : null}
@@ -192,7 +240,7 @@ export function ActionsPane({
   onExportPetPack,
   onSetActivePetPack,
   onRemovePetPack
-}) {
+}: ActionsPaneProps) {
   const selectedAction = actionsConfig.actions.find((action) => action.id === selectedActionId)
     || actionsConfig.actions.find((action) => action.id === actionsConfig.defaultAction)
     || actionsConfig.actions[0]
@@ -263,7 +311,7 @@ export function ActionsPane({
             onChange={(event) => onChangeConfig({ defaultAction: event.target.value })}
           >
             {actionsConfig.actions.map((action) => (
-              <option value={action.id} key={action.id}>{action.label}</option>
+              <option value={action.id || ''} key={action.id || action.label}>{action.label || action.id}</option>
             ))}
           </select>
         </div>
@@ -276,7 +324,7 @@ export function ActionsPane({
             onChange={(event) => onChangeConfig({ clickAction: event.target.value })}
           >
             {actionsConfig.actions.map((action) => (
-              <option value={action.id} key={action.id}>{action.label}</option>
+              <option value={action.id || ''} key={action.id || action.label}>{action.label || action.id}</option>
             ))}
           </select>
         </div>
@@ -287,19 +335,21 @@ export function ActionsPane({
         <div className="action-list">
           {actionsConfig.actions.length === 0 ? (
             <div className="empty-chat">暂无动作</div>
-          ) : actionsConfig.actions.map((action) => (
+          ) : actionsConfig.actions.map((action) => {
+            const actionId = action.id || ''
+            return (
             <div
               className={selectedAction?.id === action.id ? 'action-row selected' : 'action-row'}
-              key={action.id}
+              key={action.id || action.label}
               role="button"
               tabIndex={0}
-              onClick={() => onSelectAction(action.id)}
+              onClick={() => actionId && onSelectAction(actionId)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') onSelectAction(action.id)
+                if ((event.key === 'Enter' || event.key === ' ') && actionId) onSelectAction(actionId)
               }}
             >
               <div>
-                <strong>{action.label}</strong>
+                <strong>{action.label || action.id}</strong>
                 <span>{action.id}</span>
               </div>
               <div className="action-meta">
@@ -309,17 +359,18 @@ export function ActionsPane({
                 <button
                   type="button"
                   className="danger-text"
-                  disabled={working || actionsConfig.actions.length <= 1}
+                  disabled={working || actionsConfig.actions.length <= 1 || !actionId}
                   onClick={(event) => {
                     event.stopPropagation()
-                    onDelete(action.id)
+                    if (actionId) onDelete(actionId)
                   }}
                 >
                   删除
                 </button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

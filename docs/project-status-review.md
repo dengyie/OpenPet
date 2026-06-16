@@ -23,7 +23,7 @@ The project is strongest on macOS. Windows build and evidence tooling exists, bu
 | Plugins | Permission review, isolated runner, SDK, storage, network allowlist, logs, catalog install, author tooling | `src/main/services/plugin-service.js`, `scripts/create-openpet-plugin.js` |
 | Local API | Loopback-only HTTP and MCP, token gated, logged, disabled by default | `src/main/services/local-http-service.js` |
 | Release evidence | Packaged runtime evidence tooling, signed release closure gate, Windows smoke/report tooling | `scripts/create-*-smoke-*`, `docs/release-evidence/` |
-| TypeScript | Shared contracts, typed Control Center view defaults, typed API facade, typed Control Center hooks, representative payload fixtures | `src/shared/openpet-contracts.ts`, `src/control-center/src/api/control-center-api.ts`, `src/control-center/src/hooks/` |
+| TypeScript | Shared contracts, typed Control Center view defaults, typed API facade, typed Control Center hooks, typed pane prop surfaces, representative payload fixtures | `src/shared/openpet-contracts.ts`, `src/control-center/src/api/control-center-api.ts`, `src/control-center/src/hooks/`, `src/control-center/src/panes/` |
 
 ## Validation Baseline
 
@@ -54,7 +54,7 @@ The active product gaps are evidence and ecosystem maturity, not a rewrite of th
 2. Produce signed Windows artifacts and real Windows smoke reports before changing Windows wording.
 3. Fill native picker smoke evidence from launched or packaged app runs.
 4. Continue third-party plugin author and maintainer rehearsal with real submissions.
-5. Continue TypeScript migration into pane prop surfaces, main-process JSDoc adapters, and high-drift service adapter boundaries.
+5. Continue TypeScript migration into main-process JSDoc adapters and high-drift service adapter boundaries.
 
 ## Documentation Map
 

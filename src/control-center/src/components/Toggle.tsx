@@ -1,6 +1,9 @@
-import React from 'react'
+interface ToggleProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
 
-export function Toggle({ checked, onChange }) {
+export function Toggle({ checked, onChange }: ToggleProps) {
   return (
     <button
       type="button"

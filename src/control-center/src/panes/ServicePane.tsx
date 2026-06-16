@@ -1,14 +1,34 @@
-import React from 'react'
-import { Toggle } from '../components/Toggle.jsx'
+import type {
+  LocalHttpConfigViewState,
+  ServiceLogEntry,
+  ServiceStatusViewState
+} from '../../../shared/openpet-contracts'
+import { Toggle } from '../components/Toggle'
 
-const formatLogTime = (timestamp) => {
+type LogExportFormat = 'json' | 'csv'
+
+export interface ServicePaneProps {
+  serviceStatus: ServiceStatusViewState
+  logs: ServiceLogEntry[]
+  status: string
+  saving: boolean
+  onChange: (partial: Partial<LocalHttpConfigViewState>) => void
+  onSave: () => void | Promise<void>
+  onRotateToken: () => void | Promise<void>
+  onRevokeMcpSessions: () => void | Promise<void>
+  onRefreshLogs: () => void | Promise<void>
+  onExportLogs: (format: LogExportFormat) => void | Promise<void>
+  onClearLogs: () => void | Promise<void>
+}
+
+const formatLogTime = (timestamp: string) => {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-export function ServicePane({ serviceStatus, logs, status, saving, onChange, onSave, onRotateToken, onRevokeMcpSessions, onRefreshLogs, onExportLogs, onClearLogs }) {
+export function ServicePane({ serviceStatus, logs, status, saving, onChange, onSave, onRotateToken, onRevokeMcpSessions, onRefreshLogs, onExportLogs, onClearLogs }: ServicePaneProps) {
   const config = serviceStatus.config
   const runtime = serviceStatus.runtime
   const endpoint = runtime.enabled && runtime.port

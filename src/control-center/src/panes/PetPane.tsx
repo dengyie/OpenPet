@@ -1,9 +1,19 @@
-import React from 'react'
-import { SegmentedControl } from '../components/SegmentedControl.jsx'
-import { Toggle } from '../components/Toggle.jsx'
-import { bubbleDurationOptions, speedOptions, walkDurationOptions } from '../constants.js'
+import type { ControlCenterSettings } from '../../../shared/openpet-contracts'
+import { SegmentedControl } from '../components/SegmentedControl'
+import { Toggle } from '../components/Toggle'
+import { bubbleDurationOptions, speedOptions, walkDurationOptions } from '../constants'
 
-export function PetPane({ settings, originalSettings, status, onChange, onSave, onReset, saving }) {
+export interface PetPaneProps {
+  settings: ControlCenterSettings
+  originalSettings: ControlCenterSettings
+  status: string
+  saving: boolean
+  onChange: (partial: Partial<ControlCenterSettings>, previewScale?: boolean) => void
+  onSave: () => void | Promise<void>
+  onReset: () => void
+}
+
+export function PetPane({ settings, originalSettings, status, onChange, onSave, onReset, saving }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
 
   return (

@@ -1,13 +1,21 @@
-import React from 'react'
+import type { AboutInfoViewState, UpdateCheckViewState } from '../../../shared/openpet-contracts'
 
-const formatCheckedAt = (timestamp) => {
+export interface AboutPaneProps {
+  aboutInfo: AboutInfoViewState
+  updateCheck: UpdateCheckViewState
+  status: string
+  checking: boolean
+  onCheckUpdates: () => void | Promise<void>
+}
+
+const formatCheckedAt = (timestamp: string) => {
   if (!timestamp) return '尚未检查'
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return timestamp
   return date.toLocaleString()
 }
 
-export function AboutPane({ aboutInfo, updateCheck, status, checking, onCheckUpdates }) {
+export function AboutPane({ aboutInfo, updateCheck, status, checking, onCheckUpdates }: AboutPaneProps) {
   const update = aboutInfo.update || {}
   const rows = [
     { label: '应用名称', value: aboutInfo.productName || aboutInfo.name },

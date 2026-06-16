@@ -1,15 +1,86 @@
-import React from 'react'
-import { Toggle } from '../components/Toggle.jsx'
-import { formatBytes, formatPluginLogTime } from '../lib/format.js'
+import type {
+  JsonValue,
+  PermissionDiffState,
+  PluginLogEntry,
+  PluginLogFilters,
+  PluginPackageReviewViewState,
+  PluginViewState
+} from '../../../shared/openpet-contracts'
+import { Toggle } from '../components/Toggle'
+import { formatBytes, formatPluginLogTime } from '../lib/format'
 
-const formatDiff = (diff = {}) => {
-  const added = diff.added?.length ? `新增 ${diff.added.join(', ')}` : ''
-  const removed = diff.removed?.length ? `移除 ${diff.removed.join(', ')}` : ''
-  const unchanged = diff.unchanged?.length ? `保留 ${diff.unchanged.join(', ')}` : ''
+type ExportFormat = 'json' | 'csv'
+
+interface PluginConfigField {
+  key: string
+  title?: string
+  description?: string
+  type?: 'string' | 'number' | 'boolean'
+  enum?: JsonValue[]
+  required?: boolean
+}
+
+export interface PluginsPaneProps {
+  plugins: PluginViewState[]
+  logs: PluginLogEntry[]
+  filters: PluginLogFilters
+  status: string
+  runningCommand: string
+  savingConfig: string
+  clearingStorage: string
+  pluginReview: PluginPackageReviewViewState | null
+  inspectingPlugin: boolean
+  installingPlugin: boolean
+  uninstallingPlugin: string
+  onToggle: (pluginId: string, enabled: boolean) => void | Promise<void>
+  onInspectPluginPackage: () => void | Promise<void>
+  onClearPluginReview: () => void | Promise<void>
+  onInstallReviewedPlugin: () => void | Promise<void>
+  onUninstallPlugin: (pluginId: string) => void | Promise<void>
+  onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
+  onSaveConfig: (pluginId: string) => void | Promise<void>
+  onRun: (pluginId: string, commandId: string) => void | Promise<void>
+  onChangeFilters: (filters: PluginLogFilters) => void
+  onExportLogs: (format: ExportFormat) => void | Promise<void>
+  onClearLogs: () => void | Promise<void>
+  onClearStorage: (pluginId: string) => void | Promise<void>
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+)
+
+const isPluginConfigField = (field: unknown): field is PluginConfigField => {
+  if (!isRecord(field) || typeof field.key !== 'string') return false
+  if (field.type != null && !['string', 'number', 'boolean'].includes(String(field.type))) return false
+  if (field.enum != null && !Array.isArray(field.enum)) return false
+  return true
+}
+
+const toConfigFields = (plugin: PluginViewState) => (
+  Array.isArray(plugin.configSchema?.properties)
+    ? plugin.configSchema.properties.filter(isPluginConfigField)
+    : []
+)
+
+const formatDiff = (diff?: PermissionDiffState) => {
+  const added = diff?.added?.length ? `新增 ${diff.added.join(', ')}` : ''
+  const removed = diff?.removed?.length ? `移除 ${diff.removed.join(', ')}` : ''
+  const unchanged = diff?.unchanged?.length ? `保留 ${diff.unchanged.join(', ')}` : ''
   return [added, removed, unchanged].filter(Boolean).join(' · ') || '无变化'
 }
 
-function PluginReviewPanel({ review, installingPlugin, onInstallReviewedPlugin, onClearPluginReview }) {
+function PluginReviewPanel({
+  review,
+  installingPlugin,
+  onInstallReviewedPlugin,
+  onClearPluginReview
+}: {
+  review: PluginPackageReviewViewState | null
+  installingPlugin: boolean
+  onInstallReviewedPlugin: () => void | Promise<void>
+  onClearPluginReview: () => void | Promise<void>
+}) {
   if (!review) return null
   const plugin = review.plugin || {}
   const actionLabel = review.installMode === 'update' ? '确认更新' : '安装插件'
@@ -22,7 +93,7 @@ function PluginReviewPanel({ review, installingPlugin, onInstallReviewedPlugin, 
         </div>
         <div className="plugin-log-actions">
           <button type="button" className="ghost" disabled={installingPlugin} onClick={onClearPluginReview}>取消</button>
-          <button type="button" className="primary" disabled={installingPlugin || review.signature?.errors?.length} onClick={onInstallReviewedPlugin}>
+          <button type="button" className="primary" disabled={installingPlugin || Boolean(review.signature?.errors?.length)} onClick={onInstallReviewedPlugin}>
             {installingPlugin ? '处理中' : actionLabel}
           </button>
         </div>
@@ -57,7 +128,7 @@ function PluginReviewPanel({ review, installingPlugin, onInstallReviewedPlugin, 
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -139,7 +210,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                   </button>
                 </div>
               ) : null}
-              {plugin.configSchema?.properties?.length ? (
+              {toConfigFields(plugin).length ? (
                 <div className="plugin-config-panel">
                   <div className="plugin-config-header">
                     <strong>{plugin.configSchema.title || '配置'}</strong>
@@ -156,9 +227,10 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                     <div className="field-note">{plugin.configSchema.description}</div>
                   ) : null}
                   <div className="plugin-config-grid">
-                    {plugin.configSchema.properties.map((field) => {
+                    {toConfigFields(plugin).map((field) => {
                       const value = plugin.config?.[field.key]
-                      const selectedEnumIndex = field.enum?.findIndex((option) => option === value)
+                      const selectedEnumIndex = field.enum?.findIndex((option) => option === value) ?? -1
+                      const inputValue = typeof value === 'string' || typeof value === 'number' ? value : ''
                       return (
                         <label className="plugin-config-field" key={field.key}>
                           <span>
@@ -169,7 +241,12 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                             <select
                               className="text-input"
                               value={selectedEnumIndex >= 0 ? selectedEnumIndex : ''}
-                              onChange={(event) => onChangeConfig(plugin.id, field.key, field.enum[Number(event.target.value)])}
+                              onChange={(event) => {
+                                const index = Number(event.target.value)
+                                if (field.enum && Number.isInteger(index) && index >= 0 && index < field.enum.length) {
+                                  onChangeConfig(plugin.id, field.key, field.enum[index])
+                                }
+                              }}
                             >
                               {field.enum.map((option, index) => (
                                 <option value={index} key={String(option)}>{String(option)}</option>
@@ -181,7 +258,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                             <input
                               className="text-input"
                               type={field.type === 'number' ? 'number' : 'text'}
-                              value={value ?? ''}
+                              value={inputValue}
                               onChange={(event) => onChangeConfig(plugin.id, field.key, event.target.value)}
                             />
                           )}

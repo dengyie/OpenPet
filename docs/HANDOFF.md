@@ -14,7 +14,7 @@ OpenPet is a desktop pet platform with:
 - AI behavior decisions with Control Center replay and redacted diagnostics,
 - permission-limited plugins,
 - loopback-only local HTTP / MCP,
-- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, and representative payload fixtures.
+- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, and representative payload fixtures.
 
 ## Read First
 
@@ -71,5 +71,5 @@ npm run create-signed-release-closure-report
 
 1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
 2. Use the archived Phase 44 plugin author rehearsal as the current plugin onboarding baseline; the generated bundle is ready for human review but still not signing trust or catalog approval.
-3. Use Phase 47 Control Center hook typing as the current TypeScript migration baseline.
-4. After Phase 47, start the next concrete phase from a fresh review or from real evidence work: signed release evidence, Windows smoke evidence, native picker evidence, community plugin rehearsal, pane prop typing, or the next high-drift TypeScript boundary.
+3. Use Phase 48 Control Center pane prop typing as the current TypeScript migration baseline.
+4. After Phase 48, start the next concrete phase from a fresh review or from real evidence work: signed release evidence, Windows smoke evidence, native picker evidence, community plugin rehearsal, main-process JSDoc adapters, or the next high-drift service boundary.

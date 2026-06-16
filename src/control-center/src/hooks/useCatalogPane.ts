@@ -8,6 +8,7 @@ import type {
   CatalogItemKind,
   CatalogState
 } from '../../../shared/openpet-contracts'
+import type { CatalogPaneProps } from '../panes/CatalogPane'
 
 export function useCatalogPane() {
   const [loading, setLoading] = useState(true)
@@ -102,22 +103,21 @@ export function useCatalogPane() {
     }
   }
 
-  return {
-    loading,
-    paneProps: {
-      catalog,
-      status,
-      preparing,
-      installing,
-      selection,
-      blocklistDraft,
-      onPrepareInstall,
-      onClearSelection,
-      onInstallSelection,
-      onChangeBlocklistDraft: setBlocklistDraft,
-      onAddBlocklistEntry,
-      onRemoveBlocklistEntry,
-      onRefreshCatalog: refreshCatalog
-    }
-  }
+  const paneProps = {
+    catalog,
+    status,
+    preparing,
+    installing,
+    selection,
+    blocklistDraft,
+    onPrepareInstall,
+    onClearSelection,
+    onInstallSelection,
+    onChangeBlocklistDraft: setBlocklistDraft,
+    onAddBlocklistEntry,
+    onRemoveBlocklistEntry,
+    onRefreshCatalog: refreshCatalog
+  } satisfies CatalogPaneProps
+
+  return { loading, paneProps }
 }

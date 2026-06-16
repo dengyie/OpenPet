@@ -8,6 +8,7 @@ import type {
   ServiceLogEntry,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts'
+import type { ServicePaneProps } from '../panes/ServicePane'
 
 type LogExportFormat = 'json' | 'csv'
 
@@ -110,25 +111,24 @@ export function useServicePane() {
     }
   }
 
-  return {
-    loading,
-    paneProps: {
-      serviceStatus,
-      logs,
-      status,
-      saving,
-      onChange: (partial: Partial<LocalHttpConfigViewState>) => {
-        setServiceStatus({
-          ...serviceStatus,
-          config: { ...serviceStatus.config, ...partial }
-        })
-      },
-      onSave,
-      onRotateToken,
-      onRevokeMcpSessions,
-      onRefreshLogs,
-      onExportLogs,
-      onClearLogs
-    }
-  }
+  const paneProps = {
+    serviceStatus,
+    logs,
+    status,
+    saving,
+    onChange: (partial: Partial<LocalHttpConfigViewState>) => {
+      setServiceStatus({
+        ...serviceStatus,
+        config: { ...serviceStatus.config, ...partial }
+      })
+    },
+    onSave,
+    onRotateToken,
+    onRevokeMcpSessions,
+    onRefreshLogs,
+    onExportLogs,
+    onClearLogs
+  } satisfies ServicePaneProps
+
+  return { loading, paneProps }
 }

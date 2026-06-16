@@ -3,16 +3,12 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
-  ActionFrameInspectionResult,
   ActionsConfigViewState,
+  CompletedActionFrameInspectionResult,
   PetPackInspectionResult,
   PetPacksViewState
 } from '../../../shared/openpet-contracts'
-
-interface ActionImportDraft {
-  actionId: string
-  label: string
-}
+import type { ActionImportDraft, ActionsPaneProps } from '../panes/ActionsPane'
 
 export function useActionsPane() {
   const [loading, setLoading] = useState(true)
@@ -21,7 +17,7 @@ export function useActionsPane() {
   const [petPackInspection, setPetPackInspection] = useState<PetPackInspectionResult | null>(null)
   const [selectedActionId, setSelectedActionId] = useState('')
   const [importDraft, setImportDraft] = useState<ActionImportDraft>({ actionId: '', label: '' })
-  const [importInspection, setImportInspection] = useState<ActionFrameInspectionResult | null>(null)
+  const [importInspection, setImportInspection] = useState<CompletedActionFrameInspectionResult | null>(null)
   const [status, setStatus] = useState('')
   const [working, setWorking] = useState(false)
 
@@ -137,7 +133,7 @@ export function useActionsPane() {
         label: importDraft.label
       })
       if (response.ok === false) {
-        setImportInspection(response.inspectionResult || null)
+        setImportInspection(response.inspectionResult && !response.inspectionResult.canceled ? response.inspectionResult : null)
         setStatus('帧文件夹需要修正')
       } else if (response.canceled) {
         setStatus('已取消导入')
@@ -263,32 +259,31 @@ export function useActionsPane() {
     }
   }
 
-  return {
-    loading,
-    paneProps: {
-      actionsConfig,
-      petPacks,
-      selectedActionId,
-      importDraft,
-      importInspection,
-      petPackInspection,
-      status,
-      working,
-      onSelectAction: setSelectedActionId,
-      onChangeImportDraft,
-      onChangeConfig: (partial: Partial<ActionsConfigViewState>) => setActionsConfig({ ...actionsConfig, ...partial }),
-      onSaveConfig,
-      onInspect,
-      onReinspect,
-      onClearInspection,
-      onImport,
-      onDelete,
-      onInspectPetPack,
-      onClearPetPackInspection,
-      onImportPetPack,
-      onExportPetPack,
-      onSetActivePetPack,
-      onRemovePetPack
-    }
-  }
+  const paneProps = {
+    actionsConfig,
+    petPacks,
+    selectedActionId,
+    importDraft,
+    importInspection,
+    petPackInspection,
+    status,
+    working,
+    onSelectAction: setSelectedActionId,
+    onChangeImportDraft,
+    onChangeConfig: (partial: Partial<ActionsConfigViewState>) => setActionsConfig({ ...actionsConfig, ...partial }),
+    onSaveConfig,
+    onInspect,
+    onReinspect,
+    onClearInspection,
+    onImport,
+    onDelete,
+    onInspectPetPack,
+    onClearPetPackInspection,
+    onImportPetPack,
+    onExportPetPack,
+    onSetActivePetPack,
+    onRemovePetPack
+  } satisfies ActionsPaneProps
+
+  return { loading, paneProps }
 }

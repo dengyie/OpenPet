@@ -10,6 +10,7 @@ import type {
   AiConfigViewState,
   ChatMessage
 } from '../../../shared/openpet-contracts'
+import type { AiPaneProps } from '../panes/AiPane'
 
 const parseBehaviorRules = (rulesText: string): AiBehaviorRule[] => {
   const parsed: unknown = JSON.parse(rulesText || '[]')
@@ -203,38 +204,37 @@ export function useAiPane() {
     }
   }
 
-  return {
-    loading,
-    paneProps: {
-      config,
-      saving,
-      status,
-      apiKeyDraft,
-      setApiKeyDraft,
-      chatDraft,
-      setChatDraft,
-      chatMessages,
-      chatting,
-      behavior,
-      behaviorRulesText,
-      dryRunText,
-      dryRunResult,
-      replayDraft,
-      replayResult,
-      setDryRunText,
-      setReplayDraft,
-      setBehaviorRulesText,
-      onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => setBehavior({ ...behavior, ...partial }),
-      onChange: (partial: Partial<AiConfigViewState>) => setConfig({ ...config, ...partial }),
-      onSave,
-      onSaveBehavior,
-      onSaveApiKey,
-      onTest,
-      onDryRunBehavior,
-      onReplayBehaviorDecision,
-      onExportBehaviorDiagnostics,
-      onClearBehaviorDecisions,
-      onSendChat
-    }
-  }
+  const paneProps = {
+    config,
+    saving,
+    status,
+    apiKeyDraft,
+    setApiKeyDraft,
+    chatDraft,
+    setChatDraft,
+    chatMessages,
+    chatting,
+    behavior,
+    behaviorRulesText,
+    dryRunText,
+    dryRunResult,
+    replayDraft,
+    replayResult,
+    setDryRunText,
+    setReplayDraft,
+    setBehaviorRulesText,
+    onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => setBehavior({ ...behavior, ...partial }),
+    onChange: (partial: Partial<AiConfigViewState>) => setConfig({ ...config, ...partial }),
+    onSave,
+    onSaveBehavior,
+    onSaveApiKey,
+    onTest,
+    onDryRunBehavior,
+    onReplayBehaviorDecision,
+    onExportBehaviorDiagnostics,
+    onClearBehaviorDecisions,
+    onSendChat
+  } satisfies AiPaneProps
+
+  return { loading, paneProps }
 }

@@ -9,6 +9,7 @@ import type {
   PluginPackageReviewViewState,
   PluginViewState
 } from '../../../shared/openpet-contracts'
+import type { PluginsPaneProps } from '../panes/PluginsPane'
 
 type ExportFormat = 'json' | 'csv'
 
@@ -222,32 +223,31 @@ export function usePluginsPane() {
     )))
   }
 
-  return {
-    loading,
-    paneProps: {
-      plugins,
-      logs,
-      filters,
-      status,
-      runningCommand,
-      savingConfig,
-      clearingStorage,
-      pluginReview,
-      inspectingPlugin,
-      installingPlugin,
-      uninstallingPlugin,
-      onToggle,
-      onInspectPluginPackage,
-      onClearPluginReview,
-      onInstallReviewedPlugin,
-      onUninstallPlugin,
-      onChangeConfig,
-      onSaveConfig,
-      onRun,
-      onChangeFilters: setFilters,
-      onExportLogs,
-      onClearLogs,
-      onClearStorage
-    }
-  }
+  const paneProps = {
+    plugins,
+    logs,
+    filters,
+    status,
+    runningCommand,
+    savingConfig,
+    clearingStorage,
+    pluginReview,
+    inspectingPlugin,
+    installingPlugin,
+    uninstallingPlugin,
+    onToggle,
+    onInspectPluginPackage,
+    onClearPluginReview,
+    onInstallReviewedPlugin,
+    onUninstallPlugin,
+    onChangeConfig,
+    onSaveConfig,
+    onRun,
+    onChangeFilters: setFilters,
+    onExportLogs,
+    onClearLogs,
+    onClearStorage
+  } satisfies PluginsPaneProps
+
+  return { loading, paneProps }
 }

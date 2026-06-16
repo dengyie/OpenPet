@@ -1,7 +1,7 @@
 # OpenPet v1.1 TODO Design
 
 > Date: 2026-06-16
-> Baseline: Phase 47 completed locally
+> Baseline: Phase 48 completed locally
 > Scope: Convert the remaining productization TODO into a phase-ready design for v1.1 work. This document does not upgrade platform support claims. Windows remains not release-ready until signed runtime smoke evidence passes.
 
 ## 1. Goal
@@ -28,7 +28,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Plugin runtime has manifest validation, permission review, isolated runner, storage limits, network allowlist, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
-- TypeScript scaffold, Control Center view contracts, API facade, and hook state boundaries exist.
+- TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, and pane prop surfaces exist.
 - Windows, desktop picker, packaged runtime, and release evidence tooling exist as validators, reports, runbooks, or archive manifests.
 
 ### Still Open
@@ -395,6 +395,35 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 47. The seven Control Center hooks, download helper, and renderer error helper are typed; React type dependencies are installed; initialization failure paths now surface status messages; review caught and fixed a Pet status-line regression.
 
+### Phase 48: Control Center Pane Prop Surfaces
+
+**Goal**: close the renderer UI TypeScript loop by checking the props each Control Center Pane consumes.
+
+**Scope**:
+
+- Rename Control Center Pane components from `.jsx` to `.tsx`.
+- Export a props interface from each Pane.
+- Make each hook return `paneProps satisfies XxxPaneProps`.
+- Type small renderer support components and constants used by typed Panes.
+- Keep plugin schema validation in the main process and use renderer guards only for displayable config fields.
+
+**Likely files**:
+
+- `src/control-center/src/panes/`
+- `src/control-center/src/hooks/`
+- `src/control-center/src/components/`
+- `src/control-center/src/constants.ts`
+- `src/shared/openpet-contracts.ts`
+
+**Acceptance**:
+
+- `npm run typecheck` covers Pane props and hook `paneProps` contracts.
+- `npm run check:syntax`, `npm run test:control-center`, `npm test`, and `git diff --check` pass.
+- Shared contract additions match existing runtime payloads.
+- Renderer changes do not expose API keys or widen plugin privileges.
+
+**Status**: completed in Phase 48. The seven Control Center Panes, shared support components, and constants are typed; each hook now satisfies its Pane props contract; shared contracts were aligned with existing action, pet pack, catalog, plugin schema, and update payloads.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -405,6 +434,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 44 plugin author experience rehearsal | Completed; use the archived rehearsal as the plugin author baseline. |
 | P1 | Phase 45 TypeScript boundary expansion | Completed; preserve shared contracts as the migration gate for future UI and IPC work. |
 | P1 | Phase 47 TypeScript hook boundary migration | Completed; use typed Control Center hooks as the next UI boundary baseline. |
+| P1 | Phase 48 Control Center pane prop surfaces | Completed; use Pane props plus hook `satisfies` checks as the current renderer UI contract baseline. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -419,7 +449,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 6. Phase 44 is complete; keep the archived author rehearsal as the plugin onboarding baseline.
 7. Phase 45 is complete; use the shared contracts and Control Center API facade as the API boundary baseline.
 8. Phase 46 is complete; keep future live-doc updates fact-only and link-oriented.
-9. Phase 47 is complete; use the typed Control Center hooks as the UI state boundary baseline, then choose the next phase from evidence work or a high-drift TypeScript boundary.
+9. Phase 47 is complete; typed Control Center hooks are the UI state boundary baseline.
+10. Phase 48 is complete; Pane props are now checked against hook output. Choose the next phase from evidence work, main-process JSDoc adapters, or a high-drift service boundary.
 
 ## 8. Verification Contract
 
@@ -460,5 +491,5 @@ v1.1 productization is complete when:
 - plugin secrets are either safely supported or explicitly rejected.
 - pet packs can be exported, re-imported, version-reviewed, and source-audited.
 - AI behavior can be replayed and explained from Control Center.
-- shared TypeScript contracts and typed Control Center hooks cover the UI/API boundaries most likely to drift.
+- shared TypeScript contracts, typed Control Center hooks, and typed Pane props cover the UI/API boundaries most likely to drift.
 - live docs are concise, current, and not contradicted by phase history.

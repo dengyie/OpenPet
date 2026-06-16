@@ -3,6 +3,7 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type { ControlCenterSettings } from '../../../shared/openpet-contracts'
+import type { PetPaneProps } from '../panes/PetPane'
 
 export function usePetSettingsPane() {
   const [loading, setLoading] = useState(true)
@@ -64,16 +65,15 @@ export function usePetSettingsPane() {
     api.previewScale(restoredSettings.scale)
   }
 
-  return {
-    loading,
-    paneProps: {
-      settings,
-      originalSettings,
-      status,
-      saving,
-      onChange,
-      onSave,
-      onReset
-    }
-  }
+  const paneProps = {
+    settings,
+    originalSettings,
+    status,
+    saving,
+    onChange,
+    onSave,
+    onReset
+  } satisfies PetPaneProps
+
+  return { loading, paneProps }
 }

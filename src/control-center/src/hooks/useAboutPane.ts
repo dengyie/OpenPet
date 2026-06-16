@@ -3,6 +3,7 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneAboutInfo, cloneUpdateCheck, defaultAboutInfo, defaultUpdateCheck } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type { AboutInfoViewState, UpdateCheckViewState } from '../../../shared/openpet-contracts'
+import type { AboutPaneProps } from '../panes/AboutPane'
 
 export function useAboutPane() {
   const [loading, setLoading] = useState(true)
@@ -43,14 +44,13 @@ export function useAboutPane() {
     }
   }
 
-  return {
-    loading,
-    paneProps: {
-      aboutInfo,
-      updateCheck,
-      status,
-      checking,
-      onCheckUpdates
-    }
-  }
+  const paneProps = {
+    aboutInfo,
+    updateCheck,
+    status,
+    checking,
+    onCheckUpdates
+  } satisfies AboutPaneProps
+
+  return { loading, paneProps }
 }

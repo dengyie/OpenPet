@@ -109,8 +109,10 @@ export interface ActionEntry {
   frameMs?: number
   frameRow?: number
   frameColumn?: number
-  atlas?: string
+  atlas?: SpriteAtlas
   frameDurations?: number[]
+  loop?: boolean
+  previewSprite?: string
   [key: string]: unknown
 }
 
@@ -213,8 +215,16 @@ export interface PetPackPreviewAction {
   frameMs?: number
   frameRow?: number
   frameColumn?: number
-  atlas?: string
+  atlas?: SpriteAtlas
   frameDurations?: number[]
+  loop?: boolean
+}
+
+export interface SpriteAtlas {
+  columns?: number
+  rows?: number
+  width?: number
+  height?: number
 }
 
 export interface PetPackProvenance {
@@ -265,6 +275,7 @@ export interface PetPacksViewState {
 export interface PetPackInspectionResult {
   canceled?: boolean
   selectionId?: string
+  folderName?: string
   valid?: boolean
   errors?: string[]
   warnings?: string[]
@@ -319,12 +330,14 @@ export interface CatalogPetPackEntry {
   version: string
   author?: string
   description?: string
+  previewImage?: string
   actionCount?: number
   downloadable?: boolean
   installed?: boolean
   installedVersion?: string
   updateAvailable?: boolean
   sha256?: string
+  reportUrl?: string
   blockStatus?: CatalogReviewState
 }
 
@@ -413,6 +426,8 @@ export interface PluginViewState {
   permissions: string[]
   commands: PluginCommandViewState[]
   configSchema: {
+    title?: string
+    description?: string
     properties: unknown[]
   }
   config: JsonObject
@@ -501,6 +516,8 @@ export interface CatalogBlocklistResult {
 export interface AboutUpdateInfo {
   configured: boolean
   provider: string
+  owner?: string
+  repo?: string
   channel: string
   url: string
 }
@@ -516,6 +533,7 @@ export interface AboutInfoViewState {
 }
 
 export interface UpdateAssetViewState {
+  name?: string
   [key: string]: unknown
 }
 

@@ -1,6 +1,16 @@
-import React from 'react'
+interface SegmentedOption {
+  label: string
+  value: number
+}
 
-export function SegmentedControl({ label, value, options, onChange }) {
+interface SegmentedControlProps {
+  label: string
+  value: number
+  options: SegmentedOption[]
+  onChange: (value: number) => void
+}
+
+export function SegmentedControl({ label, value, options, onChange }: SegmentedControlProps) {
   return (
     <div className="field-row">
       <div className="field-label">{label}</div>

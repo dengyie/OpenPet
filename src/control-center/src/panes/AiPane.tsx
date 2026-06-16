@@ -1,5 +1,42 @@
-import React from 'react'
-import { Toggle } from '../components/Toggle.jsx'
+import type {
+  AiBehaviorConfig,
+  AiBehaviorResult,
+  AiConfigViewState,
+  ChatMessage
+} from '../../../shared/openpet-contracts'
+import { Toggle } from '../components/Toggle'
+
+export interface AiPaneProps {
+  config: AiConfigViewState
+  onChange: (partial: Partial<AiConfigViewState>) => void
+  onSave: () => void | Promise<void>
+  onSaveApiKey: () => void | Promise<void>
+  onTest: () => void | Promise<void>
+  onSendChat: () => void | Promise<void>
+  saving: boolean
+  status: string
+  apiKeyDraft: string
+  setApiKeyDraft: (value: string) => void
+  chatDraft: string
+  setChatDraft: (value: string) => void
+  chatMessages: ChatMessage[]
+  chatting: boolean
+  behavior: AiBehaviorConfig
+  behaviorRulesText: string
+  setBehaviorRulesText: (value: string) => void
+  onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => void
+  onSaveBehavior: () => void | Promise<void>
+  dryRunText: string
+  setDryRunText: (value: string) => void
+  dryRunResult: AiBehaviorResult | null
+  onDryRunBehavior: () => void | Promise<void>
+  replayDraft: string
+  setReplayDraft: (value: string) => void
+  replayResult: AiBehaviorResult | null
+  onReplayBehaviorDecision: () => void | Promise<void>
+  onExportBehaviorDiagnostics: () => void | Promise<void>
+  onClearBehaviorDecisions: () => void | Promise<void>
+}
 
 export function AiPane({
   config,
@@ -31,7 +68,7 @@ export function AiPane({
   onReplayBehaviorDecision,
   onExportBehaviorDiagnostics,
   onClearBehaviorDecisions
-}) {
+}: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
 
   return (
