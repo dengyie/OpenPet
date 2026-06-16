@@ -5,6 +5,7 @@ const {
   createCatalogBlocklistResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
+  createPetPackMutationResult,
   createPluginMutationResult,
   createServiceStatusView
 } = require('../../src/main/control-center-adapters')
@@ -104,4 +105,33 @@ test('createPluginMutationResult packages mutation metadata with refreshed plugi
     storageRemoved: false,
     plugins
   })
+})
+
+test('createPetPackMutationResult packages pack metadata with refreshed packs and optional animations', () => {
+  const pack = {
+    id: 'doro',
+    displayName: 'Doro',
+    version: '1.0.0',
+    source: 'bundled',
+    rootPath: '/assets/pet-packs/doro',
+    active: true
+  }
+  const petPacks = { activePackId: 'doro', packs: [pack] }
+  const animations = {
+    defaultAction: 'idle',
+    clickAction: 'happy',
+    actions: [{ id: 'idle', label: 'Idle', sprite: 'idle.png', frames: 4, fps: 8, loop: true }]
+  }
+
+  assert.deepEqual(createPetPackMutationResult({
+    pack,
+    activePackId: 'doro'
+  }, petPacks, animations), {
+    pack,
+    activePackId: 'doro',
+    petPacks,
+    animations
+  })
+
+  assert.deepEqual(createPetPackMutationResult({}, petPacks), { petPacks })
 })

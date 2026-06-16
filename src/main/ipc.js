@@ -8,7 +8,7 @@
  */
 const { ipcMain, BrowserWindow, app, dialog } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
-const { createCatalogBlocklistResult, createPluginMutationResult, createServiceStatusView } = require('./control-center-adapters')
+const { createCatalogBlocklistResult, createPetPackMutationResult, createPluginMutationResult, createServiceStatusView } = require('./control-center-adapters')
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
 const { createLocalHttpToken } = require('./services/local-http-service')
 
@@ -224,7 +224,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.PET_PACKS_IMPORT, (_event, payload) => {
     const result = petPackService.importPack(payload.selectionId)
-    return { ...result, petPacks: petPackService.listPacks() }
+    return createPetPackMutationResult(result, petPackService.listPacks())
   })
 
   ipcMainService.handle(IPC.PET_PACKS_EXPORT, async (_event, payload) => {
@@ -239,12 +239,14 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (_event, payload) => {
     const result = petPackService.setActivePack(payload.packId)
     reloadAndSendAnimations(getPetWindow, petService)
-    return { ...result, animations: petService.getPreviewAnimations(), petPacks: petPackService.listPacks() }
+    const animations = petService.getPreviewAnimations()
+    const petPacks = petPackService.listPacks()
+    return createPetPackMutationResult(result, petPacks, animations)
   })
 
   ipcMainService.handle(IPC.PET_PACKS_REMOVE, (_event, payload) => {
     const result = petPackService.removePack(payload.packId)
-    return { ...result, petPacks: petPackService.listPacks() }
+    return createPetPackMutationResult(result, petPackService.listPacks())
   })
 
   // 设置面板点击"保存"：持久化并通知宠物窗口应用变更

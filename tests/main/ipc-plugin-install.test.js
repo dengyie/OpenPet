@@ -370,6 +370,79 @@ test('pet-packs:inspect-directory opens native folder or zip picker and delegate
   assert.deepEqual(dialogCalls[0].filters[0], { name: 'Pet Pack Package', extensions: ['zip'] })
 })
 
+test('pet pack mutation handlers return refreshed pet pack views and active animations', async () => {
+  const ipcMain = createIpcMainStub()
+  const pack = { id: 'doro', displayName: 'Doro', version: '1.0.0', source: 'bundled', rootPath: '/packs/doro' }
+  const activePack = { ...pack, active: true }
+  const petPacks = { activePackId: 'doro', packs: [activePack] }
+  const animations = { defaultAction: 'idle', clickAction: 'happy', actions: [{ id: 'idle', label: 'Idle' }] }
+  const calls = []
+  const petWindowMessages = []
+  const services = createRequiredServices({
+    pluginInstallService: {
+      inspectPluginPackage: () => ({}),
+      clearPendingSelection: () => ({ ok: true }),
+      installPlugin: () => ({ ok: true }),
+      updatePlugin: () => ({ ok: true }),
+      uninstallPlugin: () => ({ ok: true })
+    },
+    pluginService: { listPlugins: () => [] },
+    dialogService: {
+      showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+    }
+  })
+
+  registerIpcHandlers({
+    ...services,
+    petService: {
+      ...services.petService,
+      getAnimations: () => animations,
+      getPreviewAnimations: () => animations
+    },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      webContents: {
+        send: (...args) => petWindowMessages.push(args)
+      }
+    }),
+    petPackService: {
+      listPacks: () => petPacks,
+      inspectPackDirectory: () => ({}),
+      inspectPackSource: () => ({}),
+      clearPendingSelection: () => ({ ok: true }),
+      importPack: (selectionId) => {
+        calls.push(['import', selectionId])
+        return { pack }
+      },
+      exportPack: () => ({}),
+      setActivePack: (packId) => {
+        calls.push(['set-active', packId])
+        return { activePackId: packId, pack: activePack }
+      },
+      removePack: (packId) => {
+        calls.push(['remove', packId])
+        return {}
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const importResult = await ipcMain.handlers.get(IPC.PET_PACKS_IMPORT)(null, { selectionId: 'selection-doro' })
+  const activeResult = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)(null, { packId: 'doro' })
+  const removeResult = await ipcMain.handlers.get(IPC.PET_PACKS_REMOVE)(null, { packId: 'doro' })
+
+  assert.deepEqual(importResult, { pack, petPacks })
+  assert.deepEqual(activeResult, { activePackId: 'doro', pack: activePack, petPacks, animations })
+  assert.deepEqual(removeResult, { petPacks })
+  assert.deepEqual(calls, [
+    ['import', 'selection-doro'],
+    ['set-active', 'doro'],
+    ['remove', 'doro']
+  ])
+  assert.equal(petWindowMessages.length, 1)
+  assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
+})
+
 test('pet-packs:export opens native output folder picker and delegates selected pack id', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []

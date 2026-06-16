@@ -14,7 +14,7 @@ OpenPet is a desktop pet platform with:
 - AI behavior decisions with Control Center replay and redacted diagnostics,
 - permission-limited plugins,
 - loopback-only local HTTP / MCP,
-- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin mutation payloads, and representative payload fixtures.
+- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack mutation payloads, and representative payload fixtures.
 
 ## Read First
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 401/401 Node tests
+npm test                     # 403/403 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -71,5 +71,5 @@ npm run create-signed-release-closure-report
 
 1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
 2. Use the archived Phase 44 plugin author rehearsal as the current plugin onboarding baseline; the generated bundle is ready for human review but still not signing trust or catalog approval.
-3. Use Phase 50 plugin mutation Control Center adapter work as the current TypeScript migration baseline.
-4. After Phase 50, start the next concrete phase from a fresh review or from real evidence work: signed release evidence, Windows smoke evidence, native picker evidence, community plugin rehearsal, pet pack/About adapters, or the next high-drift service boundary.
+3. Use Phase 51 Pet pack mutation Control Center adapter work as the current TypeScript migration baseline.
+4. After Phase 51, start the next concrete phase from a fresh review or from real evidence work: signed release evidence, Windows smoke evidence, native picker evidence, community plugin rehearsal, About/update adapters, or the next high-drift service boundary.

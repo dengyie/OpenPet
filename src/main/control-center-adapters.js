@@ -10,6 +10,9 @@
  * @typedef {import('../shared/openpet-contracts').ServiceStatusViewState} ServiceStatusViewState
  * @typedef {import('../shared/openpet-contracts').PluginMutationResult} PluginMutationResult
  * @typedef {import('../shared/openpet-contracts').PluginViewState} PluginViewState
+ * @typedef {import('../shared/openpet-contracts').ActionsConfigViewState} ActionsConfigViewState
+ * @typedef {import('../shared/openpet-contracts').PetPackMutationResult} PetPackMutationResult
+ * @typedef {import('../shared/openpet-contracts').PetPacksViewState} PetPacksViewState
  */
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
@@ -83,10 +86,24 @@ const createPluginMutationResult = (result, plugins) => ({
   plugins
 })
 
+/**
+ * @param {Partial<PetPackMutationResult>} result
+ * @param {PetPacksViewState} petPacks
+ * @param {ActionsConfigViewState | undefined} [animations]
+ * @returns {PetPackMutationResult}
+ */
+const createPetPackMutationResult = (result, petPacks, animations) => ({
+  ...(result.pack !== undefined ? { pack: result.pack } : {}),
+  ...(result.activePackId !== undefined ? { activePackId: result.activePackId } : {}),
+  petPacks,
+  ...(animations !== undefined ? { animations } : {})
+})
+
 module.exports = {
   createCatalogBlocklistResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
+  createPetPackMutationResult,
   createPluginMutationResult,
   createServiceStatusView
 }
