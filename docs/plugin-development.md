@@ -152,7 +152,7 @@ Services are long-running local process entries managed by OpenPet.
 }
 ```
 
-OpenPet can show setup entries with read-only `not-run` status, explicitly start and stop services from Control Center, capture stdout/stderr snippets, show runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and attempt best-effort process-group cleanup when stopping services. Services never auto-start, setup entries are not executed, health checks do not run in the background, and the host spawns service commands without shell expansion. Setup execution, bridge injection, and hard process-tree cleanup guarantees are still future runtime work. The service model should not require a specific language, a self-contained package, or a full process sandbox.
+OpenPet can explicitly run setup entries from Control Center, capture setup stdout/stderr snippets, show setup runtime state, explicitly start and stop services, show service runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and attempt best-effort process-group cleanup when stopping services. Setup does not run during install or enable, services never auto-start, health checks do not run in the background, and the host spawns setup and service commands without shell expansion. Bridge injection, generic shell command execution, and hard process-tree cleanup guarantees are still future runtime work. The service model should not require a specific language, a self-contained package, or a full process sandbox.
 
 ### Dashboards
 
@@ -316,7 +316,7 @@ Setup behavior:
 
 - install only extracts and inspects;
 - the extension remains disabled by default;
-- setup runs only when the user explicitly runs it or confirms it during enable/start;
+- setup runs only when the user explicitly presses the setup action in Control Center;
 - OpenPet records setup status and logs;
 - setup may be rerun.
 
@@ -373,7 +373,7 @@ npm run create-plugin-submission-bundle -- <extension-dir-or-zip> --output-dir p
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
 ```
 
-These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports visible setup status, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup on service stop, but generic shell command execution, setup execution, bridge flows, and hard process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
+These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup on service stop, but generic shell command execution, bridge flows, and hard process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
 
 For a local author rehearsal:
 

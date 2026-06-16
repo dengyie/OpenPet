@@ -106,7 +106,7 @@ For normal use, import pet packs from Control Center -> Actions -> Pet Packs.
 
 ## Extension Development
 
-OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.setup`, `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner. Enabled plugins can explicitly open declared HTTP/HTTPS dashboards, start or stop declared service entries, and manually check declared loopback service health endpoints from Control Center. Setup entries are visible with `not-run` status but are not executed. Services do not auto-start, commands are spawned without shell expansion, service stops attempt best-effort process-group cleanup, health checks do not run in the background, and setup execution, bridge flows, general shell command execution, and hard process-tree guarantees remain future runtime work.
+OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.setup`, `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner. Enabled plugins can explicitly run declared setup entries, open declared HTTP/HTTPS dashboards, start or stop declared service entries, and manually check declared loopback service health endpoints from Control Center. Setup and service commands are spawned without shell expansion, services do not auto-start, setup does not run during install or enable, service stops attempt best-effort process-group cleanup, health checks do not run in the background, and bridge flows, general shell command execution, and hard process-tree guarantees remain future runtime work.
 
 Current legacy SDK examples are still useful while the host runtime catches up:
 
@@ -153,7 +153,7 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 Current local baseline:
 
 ```bash
-npm test                     # 446/446 Node tests
+npm test                     # 454/454 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

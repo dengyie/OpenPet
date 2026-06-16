@@ -1,12 +1,12 @@
 # OpenPet v1.1 TODO Design
 
 > Date: 2026-06-16
-> Baseline: Phase 60 completed locally
+> Baseline: Phase 61 completed locally
 > Scope: Convert the remaining productization TODO into a phase-ready design for v1.1 work. This document does not upgrade platform support claims. Windows remains not release-ready until signed runtime smoke evidence passes.
 
 ## 1. Goal
 
-OpenPet has reached the intended platform shape: Electron desktop pet runtime, Control Center, pet packs, Codex pet import, bundled pets, a local extension ecosystem with `entries.commands` compatibility runtime support, explicit dashboard opening, explicit service start/stop controls, and manual loopback service health checks, AI behavior orchestration, local HTTP/MCP, desktop release tooling, and release evidence validators.
+OpenPet has reached the intended platform shape: Electron desktop pet runtime, Control Center, pet packs, Codex pet import, bundled pets, a local extension ecosystem with explicit `entries.setup` execution, `entries.commands` compatibility runtime support, explicit dashboard opening, explicit service start/stop controls, and manual loopback service health checks, AI behavior orchestration, local HTTP/MCP, desktop release tooling, and release evidence validators.
 
 The v1.1 TODO is no longer about proving the platform can exist. It is about making the platform trustworthy for real users and maintainable for third-party contributors:
 
@@ -25,7 +25,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - PetService remains the single source of truth for `say`, `action`, and event state.
 - Pet pack runtime supports legacy cat assets, OpenPet packs, Codex pet directory import, Codex pet zip import, and bundled packs.
 - Bundled pet assets are integrated without replacing the legacy `cat_anime/` structure.
-- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, `entries.commands` support through the existing JavaScript runner, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
+- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
 - TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin entry/dashboard/service contracts, and full release evidence archive / signed closure report contracts exist.
@@ -36,7 +36,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - macOS signed/notarized release evidence still needs real artifact capture and archive.
 - Windows signed installer/zip smoke evidence still needs real Windows execution.
 - Packaged runtime smoke reports still need real app evidence for pet window visibility, transparent rendering, bundled pack switching, and native picker flows.
-- Extension runtime support for visible setup status, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup now exists. Generic shell command execution, setup execution, optional bridge flows, background health polling, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
+- Extension runtime support for explicit setup execution, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup now exists. Generic shell command execution, optional bridge flows, background health polling, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
 - Legacy SDK plugin secrets policy remains conservative; target extension docs require honest disclosure for extension-managed secrets and data.
 - Plugin sandbox strategy has been evaluated against SES and Electron `utilityProcess`; current recommendation is to keep the existing runner for v1.1 while documenting limits.
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
@@ -740,6 +740,31 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 60. Setup entries are visible with read-only `not-run` status, and service stop now attempts best-effort process-group cleanup before falling back to the previous child kill path when group signalling is unsupported or fails.
 
+### Phase 61: Plugin setup execution
+
+**Goal**: let enabled, policy-allowed local plugins run declared setup entries from an explicit user action without turning install or enable into code execution.
+
+**Scope**:
+
+- Add `PluginService.runSetup(pluginId, setupId)` for declared setup entries.
+- Require the plugin to be enabled and allowed by ecosystem policy before spawning setup.
+- Resolve setup cwd inside the plugin directory and reject escaping paths or symlinks.
+- Spawn setup commands without shell expansion and with the same minimal host environment used for service processes.
+- Record setup runtime status, exit code, errors, stdout/stderr snippets, and lifecycle logs.
+- Expose `plugins:run-setup` through IPC, preload, shared contracts, the typed Control Center API facade, and demo API.
+- Render Run Setup buttons in Control Center that are disabled for disabled, blocked, or already-running setup entries.
+- Keep setup strictly user-triggered. Do not run setup during install, update, enable, service start, or health check.
+
+**Acceptance**:
+
+- Plugin service tests cover success, failure exit codes, disabled plugins, policy blocks, unknown setup ids, cwd symlink escapes, duplicate running setup, no shell expansion, and runtime/log updates.
+- IPC tests cover `plugins:run-setup`.
+- TypeScript contracts include setup run result shape and the Control Center API method.
+- Control Center smoke tests cover disabled setup buttons, enabled setup execution, succeeded status, and setup logs.
+- Docs state the new capability without claiming install-time setup, generic shell execution, bridge token injection, background automation, or hard process-tree cleanup.
+
+**Status**: completed in Phase 61. Setup entries can be run only by explicit Control Center action for enabled, policy-allowed local plugins. Setup is spawned without shell expansion, records runtime/log state, and remains separated from install and enable.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -763,6 +788,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 58 Plugin service lifecycle | Completed; service entries can be explicitly started/stopped with runtime state and logs while auto-start, shell expansion, setup, health, and bridge remain out of scope. |
 | P1 | Phase 59 Plugin service health checks | Completed; service entries can be manually health-checked against declared loopback endpoints while background polling, setup, bridge, and process-tree cleanup remain out of scope. |
 | P1 | Phase 60 Plugin setup status and service cleanup | Completed; setup entries are visible but not executed, and service stops attempt best-effort process-group cleanup while setup execution, bridge, generic shell execution, background health polling, and hard cleanup guarantees remain out of scope. |
+| P1 | Phase 61 Plugin setup execution | Completed; setup entries can be run by explicit Control Center action for enabled policy-allowed local plugins, without install/enable auto-run or shell expansion. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -790,7 +816,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 19. Phase 57 is complete; dashboard entries can be opened explicitly as external HTTP/HTTPS URLs.
 20. Phase 58 is complete; service entries can be explicitly started/stopped with runtime state and logs, without auto-start or shell expansion.
 21. Phase 59 is complete; service health checks are manual, loopback-only, timeout-protected, and visible in Control Center.
-22. Phase 60 is complete; setup entries are visible with read-only `not-run` status, and service stops attempt best-effort process-group cleanup with child-kill fallback. Choose the next phase from setup execution, bridge integration, real evidence work, community extension rehearsal, hard cleanup guarantees, or another high-drift service/report boundary.
+22. Phase 60 is complete; setup entries are visible with read-only `not-run` status, and service stops attempt best-effort process-group cleanup with child-kill fallback.
+23. Phase 61 is complete; setup entries can be explicitly run from Control Center for enabled policy-allowed local plugins, with runtime status and logs. Choose the next phase from bridge integration, richer language-neutral command execution, real evidence work, community extension rehearsal, hard cleanup guarantees, or another high-drift service/report boundary.
 
 ## 8. Verification Contract
 

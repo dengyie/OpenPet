@@ -20,6 +20,7 @@ export function usePluginsPane() {
   const [filters, setFilters] = useState<PluginLogFilters>({ pluginId: '', level: '', query: '' })
   const [status, setStatus] = useState('')
   const [runningCommand, setRunningCommand] = useState('')
+  const [runningSetup, setRunningSetup] = useState('')
   const [openingDashboard, setOpeningDashboard] = useState('')
   const [changingService, setChangingService] = useState('')
   const [checkingServiceHealth, setCheckingServiceHealth] = useState('')
@@ -177,6 +178,36 @@ export function usePluginsPane() {
     }
   }
 
+  const onRunSetup = async (pluginId: string, setupId: string) => {
+    const setupKey = `${pluginId}:${setupId}`
+    setRunningSetup(setupKey)
+    setStatus('')
+    try {
+      const result = await api.runPluginSetup(pluginId, setupId)
+      setPlugins((currentPlugins) => currentPlugins.map((plugin) => (
+        plugin.id === pluginId
+          ? {
+              ...plugin,
+              entries: {
+                ...plugin.entries,
+                setup: (plugin.entries?.setup || []).map((setup) => (
+                  setup.id === setupId ? { ...setup, runtime: result.runtime } : setup
+                ))
+              }
+            }
+          : plugin
+      )))
+      await refreshLogs()
+      setStatus(result.runtime?.status === 'failed' ? 'Setup failed' : 'Setup completed')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Setup failed'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setRunningSetup('')
+    }
+  }
+
   const onOpenDashboard = async (pluginId: string, dashboardId: string) => {
     const dashboardKey = `${pluginId}:${dashboardId}`
     setOpeningDashboard(dashboardKey)
@@ -302,6 +333,7 @@ export function usePluginsPane() {
     filters,
     status,
     runningCommand,
+    runningSetup,
     openingDashboard,
     changingService,
     checkingServiceHealth,
@@ -319,6 +351,7 @@ export function usePluginsPane() {
     onChangeConfig,
     onSaveConfig,
     onRun,
+    onRunSetup,
     onOpenDashboard,
     onStartService,
     onStopService,

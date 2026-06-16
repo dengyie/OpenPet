@@ -19,6 +19,7 @@ import type {
   PluginPackageReviewViewState,
   PluginServiceHealthViewState,
   PluginServiceRuntimeViewState,
+  PluginSetupRuntimeViewState,
   PluginViewState,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts'
@@ -443,6 +444,32 @@ const updateDemoPluginServiceHealth = (pluginId: string, serviceId: string, heal
   return { health: runtime.health || health, runtime }
 }
 
+const updateDemoPluginSetupRuntime = (pluginId: string, setupId: string, runtime: PluginSetupRuntimeViewState) => {
+  let found = false
+  demoState.plugins = demoState.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin
+    return {
+      ...plugin,
+      entries: {
+        ...plugin.entries,
+        setup: (plugin.entries?.setup || []).map((setup) => (
+          setup.id === setupId
+            ? (found = true, {
+                ...setup,
+                runtime: {
+                  ...setup.runtime,
+                  ...runtime
+                }
+              })
+            : setup
+        ))
+      }
+    }
+  })
+  if (!found) throw new Error(`Plugin setup entry not found: ${setupId}`)
+  return { ...runtime }
+}
+
 const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin) => ({
   ...plugin,
   permissions: Array.isArray(plugin.permissions) ? [...plugin.permissions] : [],
@@ -607,6 +634,20 @@ const demoApi: ControlCenterApi = {
     demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
     writeDemoState()
     return { ok: true }
+  },
+  runPluginSetup: async (pluginId, setupId) => {
+    const runtime = updateDemoPluginSetupRuntime(pluginId, setupId, {
+      status: 'succeeded',
+      lastRunAt: new Date().toISOString(),
+      exitCode: 0,
+      error: ''
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Setup completed', `setup:${setupId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, setupId, runtime }
   },
   openPluginDashboard: async (pluginId, dashboardId) => {
     const plugin = demoState.plugins.find((candidate) => candidate.id === pluginId)

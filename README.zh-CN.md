@@ -106,7 +106,7 @@ npm run generate-sprites
 
 ## 扩展开发
 
-OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.setup`、`entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`。已启用插件可以从 Control Center 显式打开声明的 HTTP/HTTPS dashboard、启动或停止声明的 service entry，并手动检查声明的 loopback service health endpoint。Setup entry 会以 `not-run` 状态展示，但不会执行。Service 不会自动启动，命令启动不经过 shell 展开，停止 service 时会尽力清理进程组，health check 不会后台轮询；setup execution、bridge flow、通用 shell command execution 和硬性的完整进程树清理保证仍属于后续 runtime 工作。
+OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.setup`、`entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`。已启用插件可以从 Control Center 显式运行声明的 setup entry、打开声明的 HTTP/HTTPS dashboard、启动或停止声明的 service entry，并手动检查声明的 loopback service health endpoint。Setup 和 service 命令启动不经过 shell 展开，service 不会自动启动，setup 不会在 install 或 enable 时自动执行，停止 service 时会尽力清理进程组，health check 不会后台轮询；bridge flow、通用 shell command execution 和硬性的完整进程树清理保证仍属于后续 runtime 工作。
 
 当前 legacy SDK 示例在宿主运行时追上新模型前仍然有参考价值：
 
@@ -152,7 +152,7 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 当前本地基线：
 
 ```bash
-npm test                     # 446/446 Node tests
+npm test                     # 454/454 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

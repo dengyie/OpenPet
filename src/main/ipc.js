@@ -332,6 +332,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload)
   })
 
+  ipcMainService.handle(IPC.PLUGINS_RUN_SETUP, (_event, payload) => {
+    return pluginService.runSetup(payload.pluginId, payload.setupId)
+  })
+
   ipcMainService.handle(IPC.PLUGINS_OPEN_DASHBOARD, (_event, payload) => {
     return pluginService.openDashboard(payload.pluginId, payload.dashboardId)
   })

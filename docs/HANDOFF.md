@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-17 | Branch: `codex/plugin-setup-status`
+> Last updated: 2026-06-17 | Branch: `codex/plugin-setup-execution`
 
 ## Current Snapshot
 
@@ -12,7 +12,7 @@ OpenPet is a desktop pet platform with:
 - bundled built-in packs `doro`, `duodong`, and `chispa`,
 - AI chat with secret storage in the main process,
 - AI behavior decisions with Control Center replay and redacted diagnostics,
-- developer-first local extension docs with visible `entries.setup` status, `entries.commands` compatibility runtime support, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, and best-effort service process-group cleanup,
+- developer-first local extension docs with explicit `entries.setup` execution, `entries.commands` compatibility runtime support, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, and best-effort service process-group cleanup,
 - loopback-only local HTTP / MCP,
 - and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
 
@@ -29,7 +29,7 @@ OpenPet is a desktop pet platform with:
 - `PetService` remains the single source of truth for pet state.
 - New user-facing configuration belongs in Control Center.
 - API keys must stay out of the renderer.
-- Extension docs must be honest: OpenPet now parses declarations, shows `entries.setup` with read-only `not-run` status, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, and attempts best-effort process-group cleanup when stopping service entries. Services do not auto-start, service commands are spawned without shell expansion, health checks do not run in the background, setup commands are not executed, bridge token injection, generic shell command execution, and hard process-tree cleanup guarantees are not implemented yet, and OpenPet does not claim complete sandboxing for arbitrary local processes.
+- Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, and attempts best-effort process-group cleanup when stopping service entries. Setup and service commands are spawned without shell expansion. Services do not auto-start, setup commands do not run during install or enable, health checks do not run in the background, bridge token injection, generic shell command execution, and hard process-tree cleanup guarantees are not implemented yet, and OpenPet does not claim complete sandboxing for arbitrary local processes.
 - `cat_anime/` structure is unchanged.
 - Windows is not release-ready yet.
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 446/446 Node tests
+npm test                     # 454/454 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -70,6 +70,6 @@ npm run create-signed-release-closure-report
 ## Next Steps
 
 1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
-2. Use Phase 60 plugin setup/status and service cleanup as the current runtime boundary: setup entries are visible with read-only `not-run` status, `entries.commands` can run only through the existing JavaScript compatibility path, dashboard entries can be opened explicitly as external HTTP/HTTPS URLs, service entries can be explicitly started/stopped with runtime state and logs, health checks are explicit loopback-only actions, and service stops attempt best-effort process-group cleanup.
-3. Use Phase 54 Release Evidence Contracts plus Phase 59 plugin entry/dashboard/service health contracts as the current TypeScript migration baseline.
-4. After Phase 60, start the next concrete phase from service setup, bridge integration, real evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.
+2. Use Phase 61 plugin setup execution as the current runtime boundary: setup entries run only from an explicit Control Center action on enabled policy-allowed local plugins, return final runtime status and logs, use plugin-local cwd symlink guards, and are spawned without shell expansion.
+3. Use Phase 54 Release Evidence Contracts plus Phase 61 plugin entry/setup/dashboard/service contracts as the current TypeScript migration baseline.
+4. After Phase 61, start the next concrete phase from bridge integration, real evidence work, community extension rehearsal, hard process-tree guarantees, richer command execution, or another high-drift service/report boundary.

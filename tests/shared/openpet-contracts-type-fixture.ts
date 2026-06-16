@@ -1,6 +1,7 @@
 import type {
   CatalogInstallSelection,
   PluginPackageReviewViewState,
+  PluginSetupRunResultViewState,
   ReleaseEvidenceArchiveManifest,
   ReleaseEvidenceArchiveSummary,
   SignedReleaseClosureReport,
@@ -57,6 +58,18 @@ const catalogSelectionFixture = {
   sourcePackageHash: pluginReviewFixture.packageHash,
   pluginReview: pluginReviewFixture
 } satisfies CatalogInstallSelection
+
+const pluginSetupRunFixture = {
+  ok: true,
+  pluginId: 'openpet.fixture.plugin',
+  setupId: 'install-deps',
+  runtime: {
+    status: 'succeeded',
+    lastRunAt: '2026-06-17T00:00:00.000Z',
+    exitCode: 0,
+    error: ''
+  }
+} satisfies PluginSetupRunResultViewState
 
 const releaseArchiveFixture = {
   generatedAt: '2026-06-17T00:00:00.000Z',
@@ -251,6 +264,7 @@ const signedReleaseClaimFixture = {
 export {
   catalogSelectionFixture,
   pluginReviewFixture,
+  pluginSetupRunFixture,
   releaseArchiveManifestFixture,
   releaseArchiveFixture,
   signedReleaseClosureReportFixture,

@@ -86,7 +86,7 @@ OpenPet should manage extension lifecycle:
 - uninstall;
 - optionally run explicit cleanup commands.
 
-OpenPet should not run extension code during install. Install should extract, inspect, and record metadata only.
+OpenPet should not run extension code during install. Install should extract, inspect, and record metadata only. Declared setup can run later only when the user explicitly chooses the setup action for an enabled, policy-allowed extension.
 
 Extensions should remain disabled by default after install or update until the user intentionally enables them.
 
@@ -106,7 +106,7 @@ Commands should be allowed to use any suitable runtime. Do not require JavaScrip
 
 Services are long-running local process entries managed by OpenPet.
 
-OpenPet shows setup entries with read-only `not-run` status, selects platform overrides, starts and stops declared service processes only after explicit Control Center action, captures stdout/stderr snippets, shows runtime state, manually checks declared loopback health endpoints, and stops running services on disable/app quit with best-effort process-group cleanup. Setup entries are not executed, services do not auto-start, health checks do not run in the background, and service commands are spawned without shell expansion. Setup execution, bridge injection, and hard process-tree cleanup guarantees remain future runtime work.
+OpenPet can run setup entries only after explicit Control Center action, record setup status/logs, start and stop declared service processes only after explicit Control Center action, apply service platform overrides, capture stdout/stderr snippets, show runtime state, manually check declared loopback health endpoints, and stop running services on disable/app quit with best-effort process-group cleanup. Setup does not run during install or enable, services do not auto-start, health checks do not run in the background, and setup/service commands are spawned without shell expansion. Bridge injection, generic shell command execution, and hard process-tree cleanup guarantees remain future runtime work.
 
 Services may power real local experiences: dashboards, background companions, schedulers, local model servers, voice processors, or integrations with external APIs.
 
@@ -186,7 +186,7 @@ Rules:
 - setup is explicit and user-visible;
 - setup may be rerun;
 - setup status and logs are recorded;
-- setup does not run during package install;
+- setup does not run during package install or enable;
 - self-contained packages are recommended for production, but not required.
 
 Uninstall should:
@@ -328,4 +328,4 @@ Some repository tools and examples still reflect the older plugin SDK implementa
 - `ctx.ai`;
 - short-lived isolated JavaScript command handlers.
 
-These are compatibility surfaces, not the target boundary. The host now supports visible setup status, explicit lifecycle-managed service start/stop with runtime state, logs, manual loopback health checks, and best-effort process-group cleanup, and dashboard entries can already be opened explicitly as external HTTP/HTTPS URLs from Control Center. Future development should close the remaining gap by adding richer command execution, language-neutral context passing, setup execution, bridge flows, hard cleanup guarantees where possible, and honest user-facing copy.
+These are compatibility surfaces, not the target boundary. The host now supports explicit setup execution with runtime state and logs, explicit lifecycle-managed service start/stop, manual loopback health checks, best-effort process-group cleanup, and dashboard entries opened explicitly as external HTTP/HTTPS URLs from Control Center. Future development should close the remaining gap by adding richer command execution, language-neutral context passing, bridge flows, hard cleanup guarantees where possible, and honest user-facing copy.

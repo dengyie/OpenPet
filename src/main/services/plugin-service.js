@@ -18,6 +18,7 @@ const LOCAL_PLUGIN_RUNNER_PATH = path.join(__dirname, '../plugins/local-plugin-r
 const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
 
 const ACTIVE_SERVICE_STATUSES = new Set(['running', 'stopping'])
+const ACTIVE_SETUP_STATUSES = new Set(['running'])
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -426,10 +427,11 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, killServiceProcess = process.kill, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, killServiceProcess = process.kill, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const serviceRuntimes = new Map()
+  const setupRuntimes = new Map()
 
   const getLogStore = () => {
     const logs = settingsService.get().plugins?.logs
@@ -629,7 +631,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     ...manifest.entries,
     setup: (manifest.entries?.setup || []).map((setupEntry) => ({
       ...setupEntry,
-      runtime: createSetupRuntimeView()
+      runtime: createSetupRuntimeView(setupRuntimes.get(createPluginServiceKey(manifest.id, setupEntry.id)))
     })),
     services: (manifest.entries?.services || []).map((serviceEntry) => ({
       ...serviceEntry,
@@ -655,6 +657,12 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     return serviceEntry
   }
 
+  const getSetupEntry = (plugin, setupId) => {
+    const setupEntry = (plugin.manifest.entries?.setup || []).find((entry) => entry.id === setupId)
+    if (!setupEntry) throw new Error(`Plugin setup entry not found: ${setupId}`)
+    return setupEntry
+  }
+
   const resolveServiceRuntimeDeclaration = (serviceEntry) => {
     const override = serviceEntry.platforms?.[process.platform] || {}
     return {
@@ -663,21 +671,25 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
-  const resolveServiceCwd = (manifest, cwd) => {
+  const resolvePluginEntryCwd = (manifest, cwd, label) => {
     if (!manifest.basePath) throw new Error('Plugin services require a local plugin directory')
     const basePath = path.resolve(manifest.basePath)
     const targetPath = path.resolve(basePath, cwd || '.')
     if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
-      throw new Error('Plugin service cwd must stay inside the plugin directory')
+      throw new Error(`Plugin ${label} cwd must stay inside the plugin directory`)
     }
-    if (!fs.existsSync(targetPath)) throw new Error('Plugin service cwd does not exist')
+    if (!fs.existsSync(targetPath)) throw new Error(`Plugin ${label} cwd does not exist`)
     const realTargetPath = fs.realpathSync(targetPath)
     const realBasePath = fs.realpathSync(basePath)
     if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
-      throw new Error('Plugin service cwd must stay inside the plugin directory')
+      throw new Error(`Plugin ${label} cwd must stay inside the plugin directory`)
     }
     return realTargetPath
   }
+
+  const resolveServiceCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'service')
+
+  const resolveSetupCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'setup')
 
   const normalizeServiceHealthUrl = (serviceEntry) => {
     const health = serviceEntry.health || {}
@@ -709,8 +721,15 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
 
   const getPluginServiceRuntime = (pluginId, serviceId) => serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
 
+  const getPluginSetupRuntime = (pluginId, setupId) => setupRuntimes.get(createPluginServiceKey(pluginId, setupId))
+
   const setServiceRuntime = (pluginId, serviceId, runtime) => {
     serviceRuntimes.set(createPluginServiceKey(pluginId, serviceId), runtime)
+    return runtime
+  }
+
+  const setSetupRuntime = (pluginId, setupId, runtime) => {
+    setupRuntimes.set(createPluginServiceKey(pluginId, setupId), runtime)
     return runtime
   }
 
@@ -767,9 +786,35 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
+  const stopPluginSetupRuntime = (pluginId, setupId, runtime, { log = true } = {}) => {
+    if (!runtime || runtime.status !== 'running') return runtime
+    runtime.status = 'failed'
+    runtime.error = 'Setup stopped'
+    runtime.exitCode = null
+    runtime.lastRunAt = new Date().toISOString()
+    try {
+      runtime.child?.kill?.('SIGTERM')
+    } catch (error) {
+      runtime.error = error.message || 'Plugin setup stop failed'
+    }
+    if (log) appendLog({ pluginId, commandId: `setup:${setupId}`, level: 'error', message: 'Setup stopped' })
+    return runtime
+  }
+
+  const stopPluginSetups = (pluginId, options = {}) => {
+    for (const [key, runtime] of setupRuntimes.entries()) {
+      if (key.startsWith(`${pluginId}:`)) {
+        stopPluginSetupRuntime(pluginId, runtime.setupId, runtime, options)
+      }
+    }
+  }
+
   const setEnabled = (pluginId, enabled) => {
     if (enabled) assertPluginAllowed(pluginId)
-    if (!enabled) stopPluginServices(pluginId)
+    if (!enabled) {
+      stopPluginServices(pluginId)
+      stopPluginSetups(pluginId)
+    }
     const settings = settingsService.get()
     const nextSettings = {
       ...settings,
@@ -926,6 +971,89 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         level: 'error',
         message: error.message || 'Command failed'
       })
+      throw error
+    }
+  }
+
+  const runSetup = (pluginId, setupId) => {
+    const commandId = `setup:${setupId || ''}`
+    try {
+      const plugin = findPluginForService(pluginId)
+      const setupEntry = getSetupEntry(plugin, setupId)
+      const existingRuntime = getPluginSetupRuntime(pluginId, setupId)
+      if (ACTIVE_SETUP_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin setup is already running')
+      const { file, args } = parseServiceCommand(setupEntry.command)
+      const cwd = resolveSetupCwd(plugin.manifest, setupEntry.cwd)
+      const child = spawnSetupProcess(file, args, {
+        cwd,
+        detached: false,
+        env: createServiceProcessEnv(),
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      })
+      const runtime = setSetupRuntime(pluginId, setupId, {
+        pluginId,
+        setupId,
+        status: 'running',
+        lastRunAt: new Date().toISOString(),
+        exitCode: null,
+        error: '',
+        child
+      })
+
+      appendLog({ pluginId, commandId, level: 'info', message: 'Setup started' })
+
+      return new Promise((resolve, reject) => {
+        let settled = false
+        const settle = (callback) => {
+          if (settled) return
+          settled = true
+          callback()
+        }
+
+        child.stdout?.on?.('data', (chunk) => {
+          const message = String(chunk || '').trim()
+          if (message) appendLog({ pluginId, commandId, level: 'info', message: `Setup stdout: ${message}`.slice(0, 500) })
+        })
+        child.stderr?.on?.('data', (chunk) => {
+          const message = String(chunk || '').trim()
+          if (message) appendLog({ pluginId, commandId, level: 'error', message: `Setup stderr: ${message}`.slice(0, 500) })
+        })
+        child.on?.('error', (error) => {
+          settle(() => {
+            runtime.status = 'failed'
+            runtime.error = error.message || 'Plugin setup failed'
+            runtime.exitCode = null
+            runtime.lastRunAt = new Date().toISOString()
+            appendLog({ pluginId, commandId, level: 'error', message: 'Setup failed' })
+            reject(error)
+          })
+        })
+        child.on?.('exit', (code, signal) => {
+          settle(() => {
+            const exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+            runtime.status = exitCode === 0 && !signal ? 'succeeded' : 'failed'
+            runtime.exitCode = exitCode
+            runtime.error = runtime.status === 'failed' ? (signal ? `Setup exited with signal ${signal}` : `Setup exited with code ${exitCode ?? 'unknown'}`) : ''
+            runtime.lastRunAt = new Date().toISOString()
+            appendLog({
+              pluginId,
+              commandId,
+              level: runtime.status === 'failed' ? 'error' : 'info',
+              message: runtime.status === 'failed' ? 'Setup failed' : 'Setup completed'
+            })
+            resolve({
+              ok: true,
+              pluginId,
+              setupId,
+              runtime: createSetupRuntimeView(runtime)
+            })
+          })
+        })
+      })
+    } catch (error) {
+      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Setup failed' })
       throw error
     }
   }
@@ -1144,10 +1272,13 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     for (const runtime of serviceRuntimes.values()) {
       stopPluginServiceRuntime(runtime.pluginId, runtime.serviceId, runtime, { log: false })
     }
+    for (const runtime of setupRuntimes.values()) {
+      stopPluginSetupRuntime(runtime.pluginId, runtime.setupId, runtime, { log: false })
+    }
     return { ok: true }
   }
 
-  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
+  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, runSetup, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
 }
 
 module.exports = { createPluginService, readLocalPluginManifests }

@@ -242,6 +242,248 @@ test('plugin service lists setup entries with not-run runtime status', () => {
   assert.equal(plugin.commands.some((command) => command.id === 'install-deps'), false)
 })
 
+test('plugin service runs enabled setup entries without shell expansion', async () => {
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{
+        id: 'install-deps',
+        title: 'Install Dependencies',
+        command: 'npm install',
+        cwd: '.'
+      }]
+    })],
+    spawnSetupProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const setupRun = service.runSetup('weather-declaration', 'install-deps')
+
+  assert.equal(service.listPlugins()[0].entries.setup[0].runtime.status, 'running')
+  assert.equal(spawned[0].file, 'npm')
+  assert.deepEqual(spawned[0].args, ['install'])
+  assert.equal(path.basename(spawned[0].options.cwd), 'weather-declaration')
+  assert.equal(spawned[0].options.shell, false)
+  assert.equal(spawned[0].options.detached, false)
+  assert.deepEqual(Object.keys(spawned[0].options.env).sort(), ['PATH'].filter((key) => process.env[key]).sort())
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Setup started')
+
+  child.stdout.write('ready\n')
+  child.stderr.write('warn\n')
+  child.emit('exit', 0, '')
+
+  const result = await setupRun
+
+  assert.equal(result.ok, true)
+  assert.equal(result.runtime.status, 'succeeded')
+  assert.equal(result.runtime.exitCode, 0)
+  assert.equal(service.listPlugins()[0].entries.setup[0].runtime.status, 'succeeded')
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Setup completed')
+  assert.equal(settingsService.get().plugins.logs[1].message, 'Setup stderr: warn')
+  assert.equal(settingsService.get().plugins.logs[2].message, 'Setup stdout: ready')
+})
+
+test('plugin service marks non-zero setup exits as failed', async () => {
+  const child = createSlowStoppingServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: () => child
+  })
+
+  const setupRun = service.runSetup('weather-declaration', 'install-deps')
+  child.emit('exit', 1, '')
+  const result = await setupRun
+
+  assert.equal(result.runtime.status, 'failed')
+  assert.equal(result.runtime.exitCode, 1)
+  const runtime = service.listPlugins()[0].entries.setup[0].runtime
+  assert.equal(runtime.status, 'failed')
+  assert.equal(runtime.exitCode, 1)
+  assert.equal(settingsService.get().plugins.logs[0].level, 'error')
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Setup failed')
+})
+
+test('plugin service rejects setup runs for disabled plugins', () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService(),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: (...args) => {
+      spawned.push(args)
+      return createFakeServiceProcess()
+    }
+  })
+
+  assert.throws(
+    () => service.runSetup('weather-declaration', 'install-deps'),
+    /Plugin is disabled/
+  )
+  assert.deepEqual(spawned, [])
+})
+
+test('plugin service blocks setup runs when ecosystem policy denies the plugin', () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    getPluginBlockStatus: () => ({ blocked: true, reasons: ['blocked for review'] }),
+    spawnSetupProcess: (...args) => {
+      spawned.push(args)
+      return createFakeServiceProcess()
+    }
+  })
+
+  assert.throws(
+    () => service.runSetup('weather-declaration', 'install-deps'),
+    /Plugin is blocked: blocked for review/
+  )
+  assert.deepEqual(spawned, [])
+})
+
+test('plugin service rejects unknown setup ids before spawning processes', () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: (...args) => {
+      spawned.push(args)
+      return createFakeServiceProcess()
+    }
+  })
+
+  assert.throws(
+    () => service.runSetup('weather-declaration', 'missing'),
+    /Plugin setup entry not found: missing/
+  )
+  assert.deepEqual(spawned, [])
+})
+
+test('plugin service rejects setup cwd symlinks escaping the plugin directory', () => {
+  const root = createDeclarationOnlyPluginDir({
+    setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: 'setup-link' }]
+  })
+  const outsidePath = path.join(root, 'outside-setup')
+  fs.mkdirSync(outsidePath)
+  fs.symlinkSync(outsidePath, path.join(root, 'weather-declaration', 'setup-link'))
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnSetupProcess: () => createFakeServiceProcess()
+  })
+
+  assert.throws(
+    () => service.runSetup('weather-declaration', 'install-deps'),
+    /Plugin setup cwd must stay inside the plugin directory/
+  )
+})
+
+test('plugin service rejects duplicate setup runs while one is running', () => {
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: () => createSlowStoppingServiceProcess()
+  })
+
+  service.runSetup('weather-declaration', 'install-deps')
+
+  assert.throws(
+    () => service.runSetup('weather-declaration', 'install-deps'),
+    /Plugin setup is already running/
+  )
+})
+
+test('plugin service stops running setup when a plugin is disabled', () => {
+  const child = createSlowStoppingServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: () => child
+  })
+
+  service.runSetup('weather-declaration', 'install-deps')
+  service.setEnabled('weather-declaration', false)
+
+  const runtime = service.listPlugins()[0].entries.setup[0].runtime
+  assert.deepEqual(child.killCalls, ['SIGTERM'])
+  assert.equal(runtime.status, 'failed')
+  assert.equal(runtime.error, 'Setup stopped')
+  assert.equal(settingsService.get().plugins.logs[1].message, 'Setup stopped')
+})
+
+test('plugin service stops running setup during app shutdown cleanup', () => {
+  const child = createSlowStoppingServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: () => child
+  })
+
+  service.runSetup('weather-declaration', 'install-deps')
+  const result = service.stopAllServices()
+
+  const runtime = service.listPlugins()[0].entries.setup[0].runtime
+  assert.deepEqual(result, { ok: true })
+  assert.deepEqual(child.killCalls, ['SIGTERM'])
+  assert.equal(runtime.status, 'failed')
+  assert.equal(runtime.error, 'Setup stopped')
+})
+
 test('plugin service opens enabled declaration dashboard entries through the injected opener', async () => {
   const openedUrls = []
   const settingsService = createSettingsService({

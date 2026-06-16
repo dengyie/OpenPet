@@ -598,6 +598,47 @@ test('plugin service lifecycle handlers delegate to plugin service', async () =>
   ])
 })
 
+test('plugin setup handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        runSetup: (pluginId, setupId) => {
+          calls.push({ pluginId, setupId })
+          return { ok: true, pluginId, setupId, runtime: { status: 'succeeded' } }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_RUN_SETUP)(null, {
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps'
+  })
+
+  assert.deepEqual(calls, [{ pluginId: 'weather-declaration', setupId: 'install-deps' }])
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: { status: 'succeeded' }
+  })
+})
+
 test('plugin service health handler delegates to plugin service', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []

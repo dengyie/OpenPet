@@ -27,6 +27,7 @@ export interface PluginsPaneProps {
   filters: PluginLogFilters
   status: string
   runningCommand: string
+  runningSetup: string
   openingDashboard: string
   changingService: string
   checkingServiceHealth: string
@@ -44,6 +45,7 @@ export interface PluginsPaneProps {
   onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
+  onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>
   onOpenDashboard: (pluginId: string, dashboardId: string) => void | Promise<void>
   onStartService: (pluginId: string, serviceId: string) => void | Promise<void>
   onStopService: (pluginId: string, serviceId: string) => void | Promise<void>
@@ -137,7 +139,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, openingDashboard, changingService, checkingServiceHealth, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -208,6 +210,29 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, op
                 </div>
               ) : null}
               <PluginEntryDetails source={plugin} compact />
+              {plugin.entries?.setup?.length ? (
+                <div className="plugin-commands">
+                  {plugin.entries.setup.map((setup) => {
+                    const setupKey = `${plugin.id}:${setup.id}`
+                    const setupStatus = setup.runtime?.status || 'not-run'
+                    const running = setupStatus === 'running' || runningSetup === setupKey
+                    const title = setup.title || setup.id
+                    return (
+                      <div className="plugin-service-control" key={setup.id}>
+                        <span>Setup status: {setupStatus}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || running}
+                          onClick={() => onRunSetup(plugin.id, setup.id)}
+                        >
+                          {running ? '运行中' : `Run ${title} Setup`}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
               {plugin.entries?.services?.length ? (
                 <div className="plugin-commands">
                   {plugin.entries.services.map((service) => {

@@ -390,6 +390,13 @@ export interface PluginSetupEntryViewState {
   runtime?: PluginSetupRuntimeViewState
 }
 
+export interface PluginSetupRunResultViewState {
+  ok: boolean
+  pluginId: string
+  setupId: string
+  runtime: PluginSetupRuntimeViewState
+}
+
 export interface PluginServiceEntryViewState {
   id: string
   title: string
@@ -854,6 +861,7 @@ export interface ControlCenterApi {
   setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<OkResponse>
+  runPluginSetup: (pluginId: string, setupId: string) => Promise<PluginSetupRunResultViewState>
   openPluginDashboard: (pluginId: string, dashboardId: string) => Promise<PluginDashboardOpenResult>
   startPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
   stopPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
