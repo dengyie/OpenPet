@@ -195,6 +195,38 @@ test('createReleaseEvidenceArchiveManifest archives pending evidence without rea
   assert.match(manifest.warnings.join('\n'), /macosCodesignEvidence does not prove codesign success/)
 })
 
+test('createReleaseEvidenceArchiveManifest returns the shared release evidence manifest contract shape', () => {
+  const archiveDir = createArchive({ signed: false, status: 'pending' })
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+
+  assert.equal(manifest.generatedAt, fixedNow().toISOString())
+  assert.equal(manifest.requireSigned, true)
+  assert.equal(typeof manifest.ok, 'boolean')
+  assert.equal(typeof manifest.releaseReady, 'boolean')
+  assert.equal(manifest.archive.archiveDir, archiveDir)
+  assert.match(manifest.archive.outputPath, /release-evidence-archive-manifest\.json$/)
+  assert.deepEqual(
+    manifest.files.map((file) => [file.role, typeof file.path, typeof file.exists, typeof file.bytes, typeof file.sha256]),
+    [
+      ['windowsSmokeReport', 'string', 'boolean', 'number', 'string'],
+      ['desktopPickerReport', 'string', 'boolean', 'number', 'string'],
+      ['packagedRuntimeReport', 'string', 'boolean', 'number', 'string'],
+      ['macosCodesignEvidence', 'string', 'boolean', 'number', 'string'],
+      ['macosNotarizationEvidence', 'string', 'boolean', 'number', 'string'],
+      ['macosGatekeeperEvidence', 'string', 'boolean', 'number', 'string']
+    ]
+  )
+  assert.deepEqual(Object.keys(manifest.macos), ['releaseReady', 'codesign', 'notarization', 'gatekeeper'])
+  assert.ok(['missing', 'pending', 'pass'].includes(manifest.macos.codesign.status))
+  assert.equal(manifest.reports.windowsSmoke.file.role, 'windowsSmokeReport')
+  assert.equal(manifest.reports.windowsSmoke.report.platform, 'win32')
+  assert.equal(typeof manifest.reports.windowsSmoke.structuralValidation.ok, 'boolean')
+  assert.equal(typeof manifest.reports.windowsSmoke.readinessValidation.ok, 'boolean')
+  assert.ok(Array.isArray(manifest.errors))
+  assert.ok(Array.isArray(manifest.warnings))
+})
+
 test('createReleaseEvidenceArchiveManifest requires macOS evidence when signed readiness is requested', () => {
   const archiveDir = createArchive({ signed: true, status: 'pass', includeMacosEvidence: false })
 

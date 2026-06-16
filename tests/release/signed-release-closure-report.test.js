@@ -181,6 +181,36 @@ test('closure report keeps unsigned pending archives not release-ready', () => {
   assert.match(report.smartScreen.claim, /observed result only/)
 })
 
+test('closure report returns the shared signed release closure contract shape', () => {
+  const archiveDir = createArchive({ signed: false, status: 'pending', runtimePlatform: 'darwin' })
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+  const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
+
+  assert.equal(report.schemaVersion, 1)
+  assert.equal(report.generatedAt, fixedNow().toISOString())
+  assert.equal(typeof report.releaseReady, 'boolean')
+  assert.deepEqual(report.manifest, {
+    ok: manifest.ok,
+    releaseReady: manifest.releaseReady,
+    requireSigned: manifest.requireSigned,
+    archiveDir: manifest.archive.archiveDir,
+    outputPath: manifest.archive.outputPath
+  })
+  for (const claim of [
+    report.claims.officialDesktopRelease,
+    report.claims.macos,
+    report.claims.windows
+  ]) {
+    assert.equal(typeof claim.key, 'string')
+    assert.ok(['ready', 'not-ready'].includes(claim.status))
+    assert.equal(typeof claim.claim, 'string')
+    assert.ok(Array.isArray(claim.blockers))
+  }
+  assert.ok(['document-observed-result', 'not-proven'].includes(report.smartScreen.status))
+  assert.equal(typeof report.smartScreen.claim, 'string')
+  assert.ok(Array.isArray(report.nextActions))
+})
+
 test('closure report requires Windows-specific picker and runtime evidence', () => {
   const archiveDir = createArchive({
     signed: true,

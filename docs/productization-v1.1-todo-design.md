@@ -1,7 +1,7 @@
 # OpenPet v1.1 TODO Design
 
 > Date: 2026-06-16
-> Baseline: Phase 53 completed locally
+> Baseline: Phase 54 completed locally
 > Scope: Convert the remaining productization TODO into a phase-ready design for v1.1 work. This document does not upgrade platform support claims. Windows remains not release-ready until signed runtime smoke evidence passes.
 
 ## 1. Goal
@@ -28,7 +28,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Plugin runtime has manifest validation, permission review, isolated runner, storage limits, network allowlist, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
-- TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, and main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads exist.
+- TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, and full release evidence archive / signed closure report contracts exist.
 - Windows, desktop picker, packaged runtime, and release evidence tooling exist as validators, reports, runbooks, or archive manifests.
 
 ### Still Open
@@ -562,7 +562,38 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Action save/delete IPC returns `ActionsMutationResult` without leaking internal service fields.
 - `npm run check:syntax`, `npm run test:control-center`, `npm test`, and `git diff --check` pass.
 
-**Status**: completed in Phase 53. Action import/save/delete payloads now use the main-process `@ts-check` adapter; action service internal fields no longer cross the renderer boundary; targeted adapter and IPC tests were added; Node baseline is now 407 tests.
+**Status**: completed in Phase 53. Action import/save/delete payloads now use the main-process `@ts-check` adapter; action service internal fields no longer cross the renderer boundary; targeted adapter and IPC tests were added.
+
+### Phase 54: Release Evidence Contracts
+
+**Goal**: continue TypeScript boundary expansion into release evidence and release-claim payloads, where report drift can directly affect support wording.
+
+**Scope**:
+
+- Add full shared contracts for release evidence archive manifests.
+- Add full shared contracts for signed release closure reports.
+- Preserve existing lightweight summary contracts for current fixtures and summaries.
+- Extend type fixtures so `npm run typecheck` covers the complete report payloads.
+- Add generator tests that prove `createReleaseEvidenceArchiveManifest()` and `createSignedReleaseClosureReport()` return the shared contract shape.
+- Do not generate or imply new signed evidence.
+- Do not change `releaseReady` semantics or platform support wording.
+
+**Likely files**:
+
+- `src/shared/openpet-contracts.ts`
+- `tests/shared/openpet-contracts-type-fixture.ts`
+- `tests/release/release-evidence-archive-manifest.test.js`
+- `tests/release/signed-release-closure-report.test.js`
+
+**Acceptance**:
+
+- `npm run typecheck` covers full release evidence archive and signed closure payload fixtures.
+- Release archive generator tests cover `files`, `macos`, `reports`, `errors`, and `warnings`.
+- Signed closure generator tests cover `manifest`, `claims`, `smartScreen`, and `nextActions`.
+- Release readiness remains evidence-based and conservative.
+- `npm run check:syntax`, `npm run test:control-center`, `npm test`, and `git diff --check` pass.
+
+**Status**: completed in Phase 54. Release evidence archive manifest and signed release closure report payloads now have complete shared contracts; type fixtures and generator tests were added; Node baseline is now 409 tests.
 
 ## 6. Priority Order
 
@@ -580,6 +611,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 51 Pet pack mutation Control Center adapter | Completed; Pet pack import/set-active/remove result shape now follows the production-side adapter baseline. |
 | P1 | Phase 52 About/update Control Center adapter | Completed; About info and update-check result shape now follows the production-side adapter baseline. |
 | P1 | Phase 53 Actions Control Center adapter | Completed; action import/save/delete result shape now follows the production-side adapter baseline. |
+| P1 | Phase 54 Release Evidence contracts | Completed; release archive manifest and signed closure report shapes now follow shared TypeScript contracts. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -600,7 +632,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 12. Phase 50 is complete; plugin mutation results now follow the same adapter contract.
 13. Phase 51 is complete; Pet pack mutation results now follow the same adapter contract.
 14. Phase 52 is complete; About/update results now follow the same adapter contract.
-15. Phase 53 is complete; action mutation results now follow the same adapter contract. Choose the next phase from evidence work or another high-drift service boundary.
+15. Phase 53 is complete; action mutation results now follow the same adapter contract.
+16. Phase 54 is complete; release evidence archive and signed closure report payloads now have full shared contracts. Choose the next phase from real evidence work, community plugin rehearsal, or another high-drift service/report boundary.
 
 ## 8. Verification Contract
 
@@ -641,5 +674,5 @@ v1.1 productization is complete when:
 - plugin secrets are either safely supported or explicitly rejected.
 - pet packs can be exported, re-imported, version-reviewed, and source-audited.
 - AI behavior can be replayed and explained from Control Center.
-- shared TypeScript contracts, typed Control Center hooks, typed Pane props, and main-process adapters for service/catalog/plugin/pet pack/About/update/actions payloads cover the UI/API boundaries most likely to drift.
+- shared TypeScript contracts, typed Control Center hooks, typed Pane props, main-process adapters for service/catalog/plugin/pet pack/About/update/actions payloads, and full release evidence archive / signed closure report contracts cover the UI/API/report boundaries most likely to drift.
 - live docs are concise, current, and not contradicted by phase history.

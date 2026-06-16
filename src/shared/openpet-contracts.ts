@@ -605,12 +605,110 @@ export interface ReleaseEvidenceFileSummary {
   byteSize: number
 }
 
+export interface ReleaseEvidenceArchiveFile {
+  role: string
+  path: string
+  exists: boolean
+  bytes: number
+  sha256: string
+  error?: string
+}
+
+export interface ReleaseEvidenceReportSnapshot {
+  platform: string
+  arch: string
+  generatedAt: string
+  artifact: JsonObject
+}
+
+export interface ReleaseEvidenceReportValidation {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  summary?: JsonObject
+}
+
+export interface ReleaseEvidenceReportSection {
+  file: ReleaseEvidenceArchiveFile
+  report: ReleaseEvidenceReportSnapshot | null
+  structuralValidation: ReleaseEvidenceReportValidation | null
+  readinessValidation: ReleaseEvidenceReportValidation | null
+  releaseReady: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export type MacosReleaseEvidenceStatus = 'missing' | 'pending' | 'pass'
+
+export interface MacosReleaseEvidenceFileStatus {
+  status: MacosReleaseEvidenceStatus
+  file: ReleaseEvidenceArchiveFile
+}
+
+export interface ReleaseEvidenceArchiveManifest {
+  generatedAt: string
+  requireSigned: boolean
+  ok: boolean
+  releaseReady: boolean
+  archive: {
+    archiveDir: string
+    outputPath: string
+  }
+  files: ReleaseEvidenceArchiveFile[]
+  macos: {
+    releaseReady: boolean
+    codesign: MacosReleaseEvidenceFileStatus
+    notarization: MacosReleaseEvidenceFileStatus
+    gatekeeper: MacosReleaseEvidenceFileStatus
+  }
+  reports: {
+    releaseReady: boolean
+    windowsSmoke: ReleaseEvidenceReportSection
+    desktopPicker: ReleaseEvidenceReportSection
+    packagedRuntime: ReleaseEvidenceReportSection
+  }
+  errors: string[]
+  warnings: string[]
+}
+
 export interface ReleaseEvidenceArchiveSummary {
   generatedAt: string
   archiveDir: string
   releaseReady: boolean
   files: ReleaseEvidenceFileSummary[]
   blockers: string[]
+}
+
+export type SignedReleaseClaimStatus = 'ready' | 'not-ready'
+
+export interface SignedReleaseClaim {
+  key: string
+  status: SignedReleaseClaimStatus
+  claim: string
+  blockers: string[]
+}
+
+export interface SignedReleaseClosureReport {
+  schemaVersion: number
+  generatedAt: string
+  releaseReady: boolean
+  manifest: {
+    ok: boolean
+    releaseReady: boolean
+    requireSigned: boolean
+    archiveDir: string
+    outputPath: string
+  }
+  claims: {
+    officialDesktopRelease: SignedReleaseClaim
+    macos: SignedReleaseClaim
+    windows: SignedReleaseClaim
+  }
+  smartScreen: {
+    status: 'document-observed-result' | 'not-proven'
+    claim: string
+  }
+  nextActions: string[]
 }
 
 export interface SignedReleaseClaimSummary {
