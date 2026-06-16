@@ -31,7 +31,7 @@
     "The Phase 38+ execution design lives in docs/productization-v1.1-todo-design.md"
   ],
   "validation": {
-    "nodeTests": 454,
+    "nodeTests": 456,
     "uiTests": 10,
     "commands": [
       "npm test",
