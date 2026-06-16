@@ -257,6 +257,68 @@ test('catalog blocklist handlers return catalog plus updated blocklist view resu
   assert.deepEqual(calls, [['add', payload], ['remove', payload]])
 })
 
+test('plugin mutation handlers return plugin mutation result with refreshed plugin list', async () => {
+  const ipcMain = createIpcMainStub()
+  const plugins = [{ id: 'focus-timer', enabled: false }]
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: (selectionId) => {
+          calls.push(['install', selectionId])
+          return { ok: true, pluginId: 'focus-timer', installMode: 'install', disabled: true }
+        },
+        updatePlugin: (selectionId) => {
+          calls.push(['update', selectionId])
+          return { ok: true, pluginId: 'focus-timer', installMode: 'update', disabled: true }
+        },
+        uninstallPlugin: (pluginId, options) => {
+          calls.push(['uninstall', pluginId, options])
+          return { ok: true, pluginId, storageRemoved: Boolean(options.removeStorage) }
+        }
+      },
+      pluginService: { listPlugins: () => plugins },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const installResult = await ipcMain.handlers.get(IPC.PLUGINS_INSTALL)(null, { selectionId: 'selection-install' })
+  const updateResult = await ipcMain.handlers.get(IPC.PLUGINS_UPDATE)(null, { selectionId: 'selection-update' })
+  const uninstallResult = await ipcMain.handlers.get(IPC.PLUGINS_UNINSTALL)(null, { pluginId: 'focus-timer', removeStorage: true })
+
+  assert.deepEqual(installResult, {
+    ok: true,
+    pluginId: 'focus-timer',
+    installMode: 'install',
+    disabled: true,
+    plugins
+  })
+  assert.deepEqual(updateResult, {
+    ok: true,
+    pluginId: 'focus-timer',
+    installMode: 'update',
+    disabled: true,
+    plugins
+  })
+  assert.deepEqual(uninstallResult, {
+    ok: true,
+    pluginId: 'focus-timer',
+    storageRemoved: true,
+    plugins
+  })
+  assert.deepEqual(calls, [
+    ['install', 'selection-install'],
+    ['update', 'selection-update'],
+    ['uninstall', 'focus-timer', { removeStorage: true }]
+  ])
+})
+
 test('pet-packs:inspect-directory opens native folder or zip picker and delegates selected source', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []

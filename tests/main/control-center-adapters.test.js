@@ -5,6 +5,7 @@ const {
   createCatalogBlocklistResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
+  createPluginMutationResult,
   createServiceStatusView
 } = require('../../src/main/control-center-adapters')
 
@@ -71,4 +72,36 @@ test('createCatalogBlocklistResult preserves catalog and blocklist payload ident
   const blocklist = { pluginIds: ['openpet.demo'], packIds: [], sha256: [] }
 
   assert.deepEqual(createCatalogBlocklistResult(catalog, blocklist), { catalog, blocklist })
+})
+
+test('createPluginMutationResult packages mutation metadata with refreshed plugins', () => {
+  const plugins = [{
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    source: 'local',
+    enabled: false,
+    runnable: true,
+    permissions: ['pet:say'],
+    commands: [],
+    configSchema: { properties: [] },
+    config: {},
+    storage: { keyCount: 0, byteSize: 0 },
+    signatureStatus: { label: 'Unsigned' }
+  }]
+
+  assert.deepEqual(createPluginMutationResult({
+    ok: true,
+    pluginId: 'openpet.demo',
+    installMode: 'update',
+    disabled: true,
+    storageRemoved: false
+  }, plugins), {
+    ok: true,
+    pluginId: 'openpet.demo',
+    installMode: 'update',
+    disabled: true,
+    storageRemoved: false,
+    plugins
+  })
 })

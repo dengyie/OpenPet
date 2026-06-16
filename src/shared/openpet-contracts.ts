@@ -457,6 +457,7 @@ export interface PluginMutationResult extends OkResponse {
   pluginId?: string
   installMode?: string
   disabled?: boolean
+  storageRemoved?: boolean
   plugins: PluginViewState[]
 }
 

@@ -15,7 +15,7 @@
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
 - `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest、报告填写工具、desktop picker/runtime smoke evidence 工具链和 release evidence archive manifest 工具链已落地，但尚未完成真实签名产物验证、真实 packaged picker evidence 和 Windows 冒烟。
-- CI / 测试已覆盖 service、pet-pack、Codex pet import、Codex pet zip import、bundled Codex pets、TypeScript migration gate、plugin、example plugin、plugin submission validation、plugin submission report、plugin submission PR packet、plugin submission workflow bundle、plugin submission bundle validation、plugin sandbox evaluation、RC upgrade smoke evidence、AI、MCP、release、catalog、主进程 IPC、desktop picker smoke evidence、packaged runtime smoke evidence、release evidence archive manifest 核心路径，当前 Node 验证为 394 个测试；Control Center 已有 10 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
+- CI / 测试已覆盖 service、pet-pack、Codex pet import、Codex pet zip import、bundled Codex pets、TypeScript migration gate、plugin、example plugin、plugin submission validation、plugin submission report、plugin submission PR packet、plugin submission workflow bundle、plugin submission bundle validation、plugin sandbox evaluation、RC upgrade smoke evidence、AI、MCP、release、catalog、主进程 IPC、desktop picker smoke evidence、packaged runtime smoke evidence、release evidence archive manifest 核心路径，当前 Node 验证为 401 个测试；Control Center 已有 10 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
 - v1.0.1-rc.2 发布轨道包含 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架；TypeScript baseline 已覆盖 shared IPC 和 Control Center view contracts。
 
 ### 1.2 仍未产品化的深水区
@@ -596,14 +596,14 @@ CSC_KEY_PASSWORD
 
 ## 14. 当前收尾状态
 
-Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.2 在此基线上完成 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归。Phase 17 将插件包安装从 demo UI 推进到主进程 IPC + 真实 `.openpet-plugin.zip` fixture 覆盖。Phase 18 将真实 Electron 原生 OS 文件选择器缺口推进为 packaged app smoke evidence 工具链，但真实 macOS / Windows picker evidence 和 Windows 安装包验证仍需后续烟测归档。Phase 19 将项目文档设计完善为可执行操作模型，补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。Phase 20-29 完成示例插件、插件提交工作流与 RC 升级 smoke 证据工具。Phase 30-39 完成 Codex pet import、Codex pet zip import、内置 Codex pets、TypeScript 迁移框架、产品化 TODO 落地设计、Control Center view contract 迁移、packaged runtime smoke evidence 工具链、release evidence archive manifest 工具链、插件 secrets 决策/脚手架与插件沙箱评估。Phase 40-43 完成 pet pack export/provenance、AI behavior decision viewer、真实 macOS packaged runtime evidence，以及 signed release closure claim gate；当前 closure evidence 明确 official desktop、macOS 与 Windows release readiness 仍为 not-ready。
+Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Production Code Quality Review 文档；Phase 7 完成后，项目已具备 Control Center 模块化、Pet pack 管理、插件安装/权限 review、AI 行为编排、MCP transport、macOS 分发流水线、生态 catalog 与本地 blocklist 治理闭环。v1.0.1-rc.2 在此基线上完成 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架。Phase 8 已完成 Windows 打包/CI/签名策略/冒烟证据、报告、runbook 与 collector/证据包校验/summary/archive-manifest 基线，但尚未进入“已发布就绪”状态。Phase 9-10 已补齐项目文档治理与文档设计层。Phase 11 新增 Control Center Playwright 冒烟基线，Phase 12 将 Pet / AI / Service 保存配置流程纳入 UI 回归，Phase 13 将 Catalog 安装/更新流程纳入 UI 回归，Phase 14 将 Service MCP session 管理纳入 UI 回归，继续把 UI 验收从纯手动清单推进到项目自带自动化。Phase 15 将项目文档设计进一步收口：修正入口测试徽章漂移，补齐 macOS/Windows 桌面结构决策记录、scope 变更规则、support claim 升级清单和 phase/review 模板。Phase 16 将手动插件包安装 review 纳入 demo API Playwright 回归。Phase 17 将插件包安装从 demo UI 推进到主进程 IPC + 真实 `.openpet-plugin.zip` fixture 覆盖。Phase 18 将真实 Electron 原生 OS 文件选择器缺口推进为 packaged app smoke evidence 工具链，但真实 macOS / Windows picker evidence 和 Windows 安装包验证仍需后续烟测归档。Phase 19 将项目文档设计完善为可执行操作模型，补齐文档生命周期、阶段完成契约、完成标准、反模式和决策记录。Phase 20-29 完成示例插件、插件提交工作流与 RC 升级 smoke 证据工具。Phase 30-39 完成 Codex pet import、Codex pet zip import、内置 Codex pets、TypeScript 迁移框架、产品化 TODO 落地设计、Control Center view contract 迁移、packaged runtime smoke evidence 工具链、release evidence archive manifest 工具链、插件 secrets 决策/脚手架与插件沙箱评估。Phase 40-43 完成 pet pack export/provenance、AI behavior decision viewer、真实 macOS packaged runtime evidence，以及 signed release closure claim gate；Phase 44-50 完成插件作者体验演练、TypeScript boundary 扩展、文档收敛、Control Center hook/Pane props 迁移，以及 service/catalog/plugin mutation main-process adapter 基线；当前 closure evidence 明确 official desktop、macOS 与 Windows release readiness 仍为 not-ready。
 
 ### 完成验证
 
 **所有质量门槛已通过**：
 
 ```bash
-npm test                      # ✅ 399/399 Node tests pass
+npm test                      # ✅ 401/401 Node tests pass
 npm run test:control-center   # ✅ 10/10 Control Center Playwright UI tests pass
 npm run check:syntax          # ✅ all JS syntax pass
 npm run build:control-center  # ✅ Vite build pass
@@ -656,7 +656,7 @@ npm run pack                  # ✅ electron-builder pass
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）
-- 测试覆盖：399/399 Node 测试通过；10/10 Control Center Playwright UI 测试通过
+- 测试覆盖：401/401 Node 测试通过；10/10 Control Center Playwright UI 测试通过
 - 架构质量：⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - 代码质量：⭐⭐⭐⭐⭐（模块化彻底、职责单一）
 - 文档完整性：⭐⭐⭐⭐⭐（双语 README、技术文档、版本记录与发布清单完整）

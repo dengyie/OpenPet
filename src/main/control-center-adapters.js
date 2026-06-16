@@ -8,6 +8,8 @@
  * @typedef {import('../shared/openpet-contracts').LocalHttpRuntimeViewState} LocalHttpRuntimeViewState
  * @typedef {import('../shared/openpet-contracts').ServiceLogEntry} ServiceLogEntry
  * @typedef {import('../shared/openpet-contracts').ServiceStatusViewState} ServiceStatusViewState
+ * @typedef {import('../shared/openpet-contracts').PluginMutationResult} PluginMutationResult
+ * @typedef {import('../shared/openpet-contracts').PluginViewState} PluginViewState
  */
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
@@ -67,9 +69,24 @@ const createCatalogBlocklistResult = (catalog, blocklist) => ({
   blocklist
 })
 
+/**
+ * @param {Partial<PluginMutationResult>} result
+ * @param {PluginViewState[]} plugins
+ * @returns {PluginMutationResult}
+ */
+const createPluginMutationResult = (result, plugins) => ({
+  ok: Boolean(result.ok),
+  ...(result.pluginId !== undefined ? { pluginId: result.pluginId } : {}),
+  ...(result.installMode !== undefined ? { installMode: result.installMode } : {}),
+  ...(result.disabled !== undefined ? { disabled: result.disabled } : {}),
+  ...(result.storageRemoved !== undefined ? { storageRemoved: result.storageRemoved } : {}),
+  plugins
+})
+
 module.exports = {
   createCatalogBlocklistResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
+  createPluginMutationResult,
   createServiceStatusView
 }
