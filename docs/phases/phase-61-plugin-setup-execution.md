@@ -17,6 +17,7 @@
 - Parse setup command strings into executable plus args and spawn with `shell: false`.
 - Record `running`, `succeeded`, and `failed` setup runtime states with `lastRunAt`, `exitCode`, and `error`.
 - Capture setup stdout/stderr snippets in plugin logs under `setup:<setupId>`.
+- Stop active setup processes when the plugin is disabled or when app shutdown cleanup runs.
 - Add `plugins:run-setup` IPC, preload, shared TypeScript contract, Control Center API, hook state, and Plugins pane action.
 - Disable setup run buttons while a setup entry is already running.
 
@@ -47,6 +48,8 @@ spawnSetupProcess(file, args, {
 
 The setup call returns after the child reaches `exit`, so IPC and Control Center receive the final setup runtime status. During the run, `listPlugins()` can still show `running` state.
 
+If a plugin is disabled or the app is quitting while setup is still running, `PluginService` sends `SIGTERM` to the setup child process and marks setup runtime as failed with `Setup stopped`. This is direct child cleanup, not a hard process-tree guarantee.
+
 Control Center now renders a setup action next to setup declarations. The button is available only when the plugin is enabled, not blocked, and that setup entry is not already running.
 
 ## Tests
@@ -55,7 +58,7 @@ Targeted verification during implementation:
 
 ```bash
 node --test tests/services/plugin-service.test.js
-# 68/68 pass
+# 70/70 pass
 
 node --test tests/main/ipc-plugin-install.test.js
 # 15/15 pass
@@ -92,6 +95,7 @@ node -e "JSON.parse(require('node:fs').readFileSync('docs/project-context.json',
 - setup runtime is visible as `running` during execution and final after process exit;
 - non-zero setup exit records failed runtime and error logs;
 - disabled plugins, blocked plugins, unknown setup ids, escaping setup cwd symlinks, and duplicate running setup are rejected before unsafe execution;
+- active setup processes are stopped on plugin disable and app shutdown cleanup;
 - IPC delegates `plugins:run-setup` to `PluginService`;
 - shared contracts cover setup run results;
 - Control Center smoke covers disabled setup button, enabled setup action, final status, and setup logs.
