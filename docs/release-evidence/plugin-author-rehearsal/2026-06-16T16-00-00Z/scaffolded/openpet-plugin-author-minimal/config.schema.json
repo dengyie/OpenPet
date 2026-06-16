@@ -1,0 +1,13 @@
+{
+  "title": "Author Minimal Settings",
+  "description": "Public message settings. Do not store API keys, tokens, passwords, or private credentials here.",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "title": "Message",
+      "description": "Message the pet will say.",
+      "default": "Hello from OpenPet!"
+    }
+  }
+}

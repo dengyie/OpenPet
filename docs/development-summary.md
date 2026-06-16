@@ -38,7 +38,7 @@ OpenPet is now a desktop pet platform with:
 ## Validation Baseline
 
 ```bash
-npm test                     # 390/390 Node tests
+npm test                     # 394/394 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
@@ -49,8 +49,9 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 - Windows is still not release-ready until real signed installer evidence and smoke reports are archived.
 - Packaged native picker and signed release archive evidence still need real archived runs; automated macOS packaged runtime evidence is archived under `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/`.
 - Signed release closure evidence is archived under `docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/` and currently records official desktop, macOS, and Windows claims as `not-ready`.
-- The plugin ecosystem has submission tooling, examples, scaffolding, and a documented sandbox decision; wider community onboarding is still future work.
-- The next prioritized work is filling native picker evidence, signed release evidence, plugin author rehearsals, and continuing TypeScript contract migration.
+- Plugin author rehearsal evidence is archived under `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/` with minimal, network, storage, and AI-assisted scaffolds plus a validated submission bundle.
+- The plugin ecosystem has submission tooling, examples, scaffolding, an author rehearsal, and a documented sandbox decision; wider community onboarding is still future work.
+- The next prioritized work is filling native picker evidence, signed release evidence, and continuing TypeScript contract migration.
 
 ## Next Migration Steps
 

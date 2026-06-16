@@ -1,0 +1,17 @@
+{
+  "id": "openpet.plugin.author-minimal",
+  "name": "Author Minimal",
+  "version": "0.1.0",
+  "description": "Author Minimal OpenPet plugin.",
+  "main": "index.js",
+  "configSchema": "config.schema.json",
+  "permissions": [
+    "pet:say"
+  ],
+  "commands": [
+    {
+      "id": "run",
+      "title": "Run"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "title": "Author Ai Settings",
+  "description": "Public AI prompt settings. Do not store API keys, tokens, passwords, or private credentials here.",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "title": "Prompt",
+      "description": "Public prompt sent through the app-owned AI provider configuration.",
+      "default": "Suggest one cozy action for my desktop pet."
+    },
+    "conversationId": {
+      "type": "string",
+      "title": "Conversation ID",
+      "description": "Public conversation label used to keep plugin AI history separate.",
+      "default": "default"
+    },
+    "announce": {
+      "type": "boolean",
+      "title": "Announce response",
+      "description": "Ask the pet to announce that the AI response is ready.",
+      "default": true
+    }
+  }
+}

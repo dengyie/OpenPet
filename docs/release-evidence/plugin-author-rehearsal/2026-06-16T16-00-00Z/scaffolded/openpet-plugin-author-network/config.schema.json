@@ -1,0 +1,19 @@
+{
+  "title": "Author Network Settings",
+  "description": "Public request settings. Do not store API keys, tokens, passwords, or private credentials here.",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "title": "Request path",
+      "description": "Public path requested from the allowlisted host.",
+      "default": "/status"
+    },
+    "announce": {
+      "type": "boolean",
+      "title": "Announce result",
+      "description": "Ask the pet to announce that the request completed.",
+      "default": true
+    }
+  }
+}

@@ -10,9 +10,18 @@ For a new local package, start with the scaffold command:
 npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
 npm run create-openpet-plugin -- "Weather Badge" --template network --output-dir scratch/plugins
 npm run create-openpet-plugin -- "Counter Buddy" --template storage --output-dir scratch/plugins
+npm run create-openpet-plugin -- "AI Buddy" --template ai --output-dir scratch/plugins
 ```
 
 For complete tested packages, read [`examples/plugins/focus-timer`](../examples/plugins/focus-timer/) for storage and pet speech, [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for JSON network allowlist usage, or [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) for public feed fetching and cached announcements.
+
+To rehearse the full third-party author path, generate the scaffolded templates, validate them, package the AI-assisted template, and create a submission bundle in one command:
+
+```bash
+npm run create-plugin-author-rehearsal -- --output-dir docs/release-evidence/plugin-author-rehearsal/<session> --submission-template ai
+```
+
+The rehearsal writes an author README, command list, submission checklist, package zip, and validated submission bundle. It is review evidence, not catalog approval or signing trust.
 
 ## Package Layout
 
@@ -295,6 +304,8 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 The validator checks the required bundle files, summary JSON, ready/decision state, package hash, and consistency between the summary and Markdown artifacts. `--require-ready` fails if the bundle is only a blocked preflight artifact. Validation still does not approve publication, establish signing trust, install the plugin, enable the plugin, or run plugin code.
 
 For an end-to-end rehearsal path, see [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md).
+
+For a generated rehearsal artifact with minimal, network, storage, and AI-assisted templates, see `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/`.
 
 ## Packaging
 

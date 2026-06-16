@@ -1,0 +1,18 @@
+{
+  "id": "openpet.plugin.author-storage",
+  "name": "Author Storage",
+  "version": "0.1.0",
+  "description": "Author Storage OpenPet plugin.",
+  "main": "index.js",
+  "configSchema": "config.schema.json",
+  "permissions": [
+    "pet:say",
+    "storage"
+  ],
+  "commands": [
+    {
+      "id": "increment",
+      "title": "Increment counter"
+    }
+  ]
+}

@@ -47,6 +47,7 @@ npm run test:control-center
 npm run typecheck
 npm run check:syntax
 npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
+npm run create-plugin-author-rehearsal
 npm run create-packaged-runtime-smoke-report
 npm run create-packaged-runtime-smoke-runbook
 npm run run-packaged-runtime-smoke
@@ -69,7 +70,7 @@ npm run create-signed-release-closure-report
 - `scripts/run-packaged-runtime-smoke.js`, `scripts/create-packaged-runtime-smoke-report.js`, and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
 - `scripts/create-release-evidence-archive-manifest.js` and `scripts/create-signed-release-closure-report.js` for release-level evidence archive validation and release-claim closure.
 - `docs/plugin-submission-workflow-playbook.md` for plugin onboarding.
-- `scripts/create-openpet-plugin.js` for plugin starter templates.
+- `scripts/create-openpet-plugin.js` and `scripts/create-plugin-author-rehearsal.js` for plugin starter templates and author-path rehearsal.
 
 ## Next Steps
 
@@ -77,3 +78,4 @@ npm run create-signed-release-closure-report
 2. Use Phase 41 AI behavior replay/decision viewer as the current diagnostics baseline.
 3. Use the archived Phase 42 packaged runtime evidence as the automated macOS runtime baseline.
 4. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
+5. Use the archived Phase 44 plugin author rehearsal as the current plugin onboarding baseline; the generated bundle is ready for human review but still not signing trust or catalog approval.

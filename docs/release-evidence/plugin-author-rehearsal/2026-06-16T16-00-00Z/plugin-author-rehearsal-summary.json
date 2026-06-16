@@ -1,0 +1,242 @@
+{
+  "generatedAt": "2026-06-16T15:58:50.418Z",
+  "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z",
+  "templates": [
+    {
+      "template": "minimal",
+      "pluginDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded/openpet-plugin-author-minimal",
+      "plugin": {
+        "id": "openpet.plugin.author-minimal",
+        "name": "Author Minimal",
+        "version": "0.1.0",
+        "description": "Author Minimal OpenPet plugin.",
+        "main": "index.js",
+        "configSchema": "config.schema.json",
+        "permissions": [
+          "pet:say"
+        ],
+        "commands": [
+          {
+            "id": "run",
+            "title": "Run"
+          }
+        ]
+      },
+      "validation": {
+        "ok": true,
+        "warnings": [
+          "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+          "Package requires human review before distribution"
+        ],
+        "errors": [],
+        "riskLevel": "review"
+      }
+    },
+    {
+      "template": "network",
+      "pluginDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded/openpet-plugin-author-network",
+      "plugin": {
+        "id": "openpet.plugin.author-network",
+        "name": "Author Network",
+        "version": "0.1.0",
+        "description": "Author Network OpenPet plugin.",
+        "main": "index.js",
+        "configSchema": "config.schema.json",
+        "permissions": [
+          "pet:say",
+          "network"
+        ],
+        "network": {
+          "allowlist": [
+            "api.example.com"
+          ]
+        },
+        "commands": [
+          {
+            "id": "run",
+            "title": "Run"
+          }
+        ]
+      },
+      "validation": {
+        "ok": true,
+        "warnings": [
+          "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+          "Package requires human review before distribution"
+        ],
+        "errors": [],
+        "riskLevel": "review"
+      }
+    },
+    {
+      "template": "storage",
+      "pluginDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded/openpet-plugin-author-storage",
+      "plugin": {
+        "id": "openpet.plugin.author-storage",
+        "name": "Author Storage",
+        "version": "0.1.0",
+        "description": "Author Storage OpenPet plugin.",
+        "main": "index.js",
+        "configSchema": "config.schema.json",
+        "permissions": [
+          "pet:say",
+          "storage"
+        ],
+        "commands": [
+          {
+            "id": "increment",
+            "title": "Increment counter"
+          }
+        ]
+      },
+      "validation": {
+        "ok": true,
+        "warnings": [
+          "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+          "Package requires human review before distribution"
+        ],
+        "errors": [],
+        "riskLevel": "review"
+      }
+    },
+    {
+      "template": "ai",
+      "pluginDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded/openpet-plugin-author-ai",
+      "plugin": {
+        "id": "openpet.plugin.author-ai",
+        "name": "Author Ai",
+        "version": "0.1.0",
+        "description": "Author Ai OpenPet plugin.",
+        "main": "index.js",
+        "configSchema": "config.schema.json",
+        "permissions": [
+          "pet:say",
+          "ai:chat"
+        ],
+        "commands": [
+          {
+            "id": "ask",
+            "title": "Ask AI"
+          }
+        ]
+      },
+      "validation": {
+        "ok": true,
+        "warnings": [
+          "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+          "Package requires human review before distribution"
+        ],
+        "errors": [],
+        "riskLevel": "review"
+      }
+    }
+  ],
+  "submission": {
+    "template": "ai",
+    "plugin": {
+      "id": "openpet.plugin.author-ai",
+      "name": "Author Ai",
+      "version": "0.1.0",
+      "description": "Author Ai OpenPet plugin.",
+      "main": "index.js",
+      "configSchema": "config.schema.json",
+      "permissions": [
+        "pet:say",
+        "ai:chat"
+      ],
+      "commands": [
+        {
+          "id": "ask",
+          "title": "Ask AI"
+        }
+      ]
+    },
+    "packagePath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip",
+    "packageValidation": {
+      "ok": true,
+      "warnings": [
+        "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+        "Package requires human review before distribution"
+      ],
+      "errors": [],
+      "riskLevel": "review",
+      "sha256": "489815a1cb34a96644d5ac8eb93d361668cb6f7016037fd5993e9e783c9feb81"
+    },
+    "bundleDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle",
+    "bundle": {
+      "generatedAt": "2026-06-16T15:58:50.418Z",
+      "sourcePath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip",
+      "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle",
+      "readyForHumanReview": true,
+      "decision": "ready-for-human-review",
+      "plugin": {
+        "id": "openpet.plugin.author-ai",
+        "name": "Author Ai",
+        "version": "0.1.0",
+        "description": "Author Ai OpenPet plugin.",
+        "permissions": [
+          "pet:say",
+          "ai:chat"
+        ],
+        "networkAllowlist": [],
+        "commands": [
+          {
+            "id": "ask",
+            "title": "Ask AI"
+          }
+        ]
+      },
+      "package": {
+        "sourceType": "zip",
+        "installMode": "install",
+        "sha256": "489815a1cb34a96644d5ac8eb93d361668cb6f7016037fd5993e9e783c9feb81",
+        "fileCount": 4,
+        "byteSize": 2308,
+        "riskLevel": "review",
+        "requiresReview": false
+      },
+      "signature": {
+        "status": "unsigned",
+        "label": "Unsigned plugin",
+        "signer": ""
+      },
+      "validation": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+          "Package requires human review before distribution"
+        ]
+      },
+      "files": {
+        "report": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle/plugin-submission-report.md",
+        "pr": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle/plugin-submission-pr.md",
+        "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle/plugin-submission-summary.json"
+      },
+      "nextSteps": [
+        "Attach or paste plugin-submission-report.md in the plugin PR.",
+        "Use plugin-submission-pr.md as the PR body with the plugin submission template.",
+        "Record manual reviewer approval before merge.",
+        "Do not treat this bundle as signing trust, catalog approval, or runtime smoke evidence."
+      ]
+    },
+    "bundleValidation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "summary": {
+        "filesPresent": 3,
+        "filesTotal": 3,
+        "readyForHumanReview": true,
+        "decision": "ready-for-human-review",
+        "requireReady": true
+      }
+    }
+  },
+  "files": {
+    "readme": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/README.md",
+    "checklist": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-checklist.md",
+    "commands": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/commands.json",
+    "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/plugin-author-rehearsal-summary.json"
+  }
+}

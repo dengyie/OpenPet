@@ -1,0 +1,18 @@
+{
+  "id": "openpet.plugin.author-ai",
+  "name": "Author Ai",
+  "version": "0.1.0",
+  "description": "Author Ai OpenPet plugin.",
+  "main": "index.js",
+  "configSchema": "config.schema.json",
+  "permissions": [
+    "pet:say",
+    "ai:chat"
+  ],
+  "commands": [
+    {
+      "id": "ask",
+      "title": "Ask AI"
+    }
+  ]
+}

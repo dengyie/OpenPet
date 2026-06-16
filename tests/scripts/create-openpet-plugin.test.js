@@ -39,10 +39,10 @@ test('defaultPluginId creates a safe OpenPet plugin id', () => {
   assert.equal(defaultPluginId('___'), 'openpet.plugin.my-plugin')
 })
 
-test('createOpenPetPlugin scaffolds minimal, network, and storage templates that validate', () => {
+test('createOpenPetPlugin scaffolds minimal, network, storage, and ai templates that validate', () => {
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-scaffold-'))
 
-  for (const template of ['minimal', 'network', 'storage']) {
+  for (const template of ['minimal', 'network', 'storage', 'ai']) {
     const result = createOpenPetPlugin({
       name: `${template} demo`,
       template,
@@ -58,6 +58,11 @@ test('createOpenPetPlugin scaffolds minimal, network, and storage templates that
     const validation = validatePluginPackage(result.pluginDir)
     assert.equal(validation.ok, true)
     assert.equal(validation.review.plugin.id, result.plugin.id)
+    assert.match(fs.readFileSync(path.join(result.pluginDir, 'README.md'), 'utf-8'), /create-plugin-submission-bundle/)
+    if (template === 'ai') {
+      assert.deepEqual(validation.review.plugin.permissions, ['pet:say', 'ai:chat'])
+      assert.equal(validation.review.plugin.commands[0].id, 'ask')
+    }
   }
 })
 

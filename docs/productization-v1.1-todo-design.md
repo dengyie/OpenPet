@@ -300,6 +300,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Submission rehearsal produces reviewable Markdown and JSON artifacts.
 - No user-facing docs claim unrestricted plugin safety.
 
+**Status**: completed as an author rehearsal. `create-openpet-plugin` now covers minimal, network, storage, and AI-assisted templates; `create-plugin-author-rehearsal` generates and validates the full author path, including an AI plugin zip and a ready-for-human-review submission bundle. The archived rehearsal lives under `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/`.
+
 ### Phase 45: TypeScript Boundary Expansion
 
 **Goal**: continue TypeScript migration where it gives the highest defect-reduction value.

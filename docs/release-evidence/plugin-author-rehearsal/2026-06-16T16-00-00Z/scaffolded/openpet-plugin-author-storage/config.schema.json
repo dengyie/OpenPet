@@ -1,0 +1,24 @@
+{
+  "title": "Author Storage Settings",
+  "description": "Public counter settings. Plugin storage is for non-secret state only.",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "title": "Counter label",
+      "description": "Label included in the pet announcement.",
+      "default": "Counter"
+    },
+    "step": {
+      "type": "number",
+      "title": "Step",
+      "description": "Amount added to the stored counter.",
+      "default": 1,
+      "enum": [
+        1,
+        2,
+        5
+      ]
+    }
+  }
+}

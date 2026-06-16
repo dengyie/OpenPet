@@ -1,0 +1,13 @@
+{
+  "commands": [
+    "npm run create-openpet-plugin -- \"Author Minimal\" --template minimal --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded'",
+    "npm run create-openpet-plugin -- \"Author Network\" --template network --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded'",
+    "npm run create-openpet-plugin -- \"Author Storage\" --template storage --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded'",
+    "npm run create-openpet-plugin -- \"Author Ai\" --template ai --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded'",
+    "npm run validate:plugin -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded/openpet-plugin-author-ai'",
+    "cd '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/scaffolded/openpet-plugin-author-ai' && zip -qr '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip' .",
+    "npm run validate:plugin -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip'",
+    "npm run create-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip' --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle'",
+    "npm run validate-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle' --require-ready"
+  ]
+}

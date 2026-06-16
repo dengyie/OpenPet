@@ -15,7 +15,7 @@
 - 插件已有 manifest 权限白名单、本地插件短生命周期子进程 runner、Node permission model、VM 隔离、受限 SDK、AI/network/storage 能力、插件日志与私有存储 UI。
 - 本地服务已有 token-gated HTTP API、访问日志、`POST /mcp` JSON-RPC bridge、MCP session。
 - `npm run pack` 已通过目录打包验证，`electron-builder` macOS 基础配置可用；Windows `nsis` / `zip` 打包配置、release workflow、平台化更新资产、签名策略护栏、冒烟证据门禁、pending 报告/runbook/collector 产物、证据包校验、summary/archive-manifest、报告填写工具、desktop picker/runtime smoke evidence 工具链和 release evidence archive manifest 工具链已落地，但尚未完成真实签名产物验证、真实 packaged picker evidence 和 Windows 冒烟。
-- CI / 测试已覆盖 service、pet-pack、Codex pet import、Codex pet zip import、bundled Codex pets、TypeScript migration gate、plugin、example plugin、plugin submission validation、plugin submission report、plugin submission PR packet、plugin submission workflow bundle、plugin submission bundle validation、plugin sandbox evaluation、RC upgrade smoke evidence、AI、MCP、release、catalog、主进程 IPC、desktop picker smoke evidence、packaged runtime smoke evidence、release evidence archive manifest 核心路径，当前 Node 验证为 390 个测试；Control Center 已有 10 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
+- CI / 测试已覆盖 service、pet-pack、Codex pet import、Codex pet zip import、bundled Codex pets、TypeScript migration gate、plugin、example plugin、plugin submission validation、plugin submission report、plugin submission PR packet、plugin submission workflow bundle、plugin submission bundle validation、plugin sandbox evaluation、RC upgrade smoke evidence、AI、MCP、release、catalog、主进程 IPC、desktop picker smoke evidence、packaged runtime smoke evidence、release evidence archive manifest 核心路径，当前 Node 验证为 394 个测试；Control Center 已有 10 个 Playwright UI 测试覆盖 shell、tab、Pet/About 基础交互、Pet/AI/Service 保存配置流程、Catalog 安装/更新流程、Service MCP session 管理，以及手动插件包安装 review。
 - v1.0.1-rc.2 发布轨道包含 OpenPet 改名兼容、Codex pet 导入/zip 导入、内置 pet packs、透明模型修复与 TypeScript 迁移框架；TypeScript baseline 已覆盖 shared IPC 和 Control Center view contracts。
 
 ### 1.2 仍未产品化的深水区
@@ -603,7 +603,7 @@ Phase 1-7 已完成并合入 `main`。每个阶段均有开发文档与 Producti
 **所有质量门槛已通过**：
 
 ```bash
-npm test                      # ✅ 390/390 Node tests pass
+npm test                      # ✅ 394/394 Node tests pass
 npm run test:control-center   # ✅ 10/10 Control Center Playwright UI tests pass
 npm run check:syntax          # ✅ all JS syntax pass
 npm run build:control-center  # ✅ Vite build pass
@@ -656,7 +656,7 @@ npm run pack                  # ✅ electron-builder pass
 
 **项目评估结果**：
 - 功能完整性：95%（所有承诺功能已实现）
-- 测试覆盖：390/390 Node 测试通过；10/10 Control Center Playwright UI 测试通过
+- 测试覆盖：394/394 Node 测试通过；10/10 Control Center Playwright UI 测试通过
 - 架构质量：⭐⭐⭐⭐⭐（分层清晰、安全可靠）
 - 代码质量：⭐⭐⭐⭐⭐（模块化彻底、职责单一）
 - 文档完整性：⭐⭐⭐⭐⭐（双语 README、技术文档、版本记录与发布清单完整）

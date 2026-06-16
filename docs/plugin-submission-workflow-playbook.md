@@ -21,7 +21,19 @@ It does not:
 - approve publication
 - replace manual reviewer judgment
 
-## 2. Recommended Rehearsal Order
+## 2. One-Command Author Rehearsal
+
+For the complete Phase 44 author path, run:
+
+```bash
+npm run create-plugin-author-rehearsal -- --output-dir docs/release-evidence/plugin-author-rehearsal/<session> --submission-template ai
+```
+
+This creates minimal, network, storage, and AI-assisted scaffolds; validates every scaffold; packages the selected plugin as `.openpet-plugin.zip`; creates a submission bundle; validates the bundle with `--require-ready`; and writes an author README, command list, checklist, and machine-readable summary.
+
+The generated bundle is still a review packet. It does not install, enable, run, approve, sign, or publish the plugin.
+
+## 3. Manual Rehearsal Order
 
 Start from a generated local plugin or a tested example plugin such as `examples/plugins/focus-timer`.
 
@@ -39,7 +51,7 @@ If the bundle is blocked before human review, fix the package or signature issue
 
 Plugin config is not a secret store. If validation rejects fields such as `apiKey`, `accessToken`, `password`, `credential`, `format: "password"`, or `writeOnly: true`, remove the private credential flow instead of renaming it.
 
-## 3. What Each Artifact Means
+## 4. What Each Artifact Means
 
 - `plugin-submission-report.md`: reviewer-facing validation report
 - `plugin-submission-pr.md`: PR body template with checklist and review notes
@@ -54,7 +66,7 @@ The summary should confirm:
 - the package hash
 - the signature state
 
-## 4. Reviewer Handoff
+## 5. Reviewer Handoff
 
 When the rehearsal succeeds:
 
@@ -63,12 +75,12 @@ When the rehearsal succeeds:
 3. Include the bundle directory if the reviewer wants the machine-readable summary.
 4. Record the reviewer approval separately.
 
-## 5. Common Failure Patterns
+## 6. Common Failure Patterns
 
 - `validate:plugin` fails: fix manifest, signature metadata, blocklist, or package safety issues first.
 - `create-plugin-submission-bundle` exits non-zero: the package is not ready for human review yet.
 - `validate-plugin-submission-bundle --require-ready` fails: check the bundle summary decision and repair the underlying package or signature issue.
 
-## 6. Why This Exists
+## 7. Why This Exists
 
 The project already had command-level documentation for validation, report generation, PR packets, bundle generation, and bundle validation. This playbook gives third-party authors a single rehearsal path they can follow without stitching the steps together themselves.

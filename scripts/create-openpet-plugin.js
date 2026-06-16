@@ -1,14 +1,14 @@
 const fs = require('fs')
 const path = require('path')
 
-const TEMPLATES = new Set(['minimal', 'network', 'storage'])
+const TEMPLATES = new Set(['minimal', 'network', 'storage', 'ai'])
 const DEFAULT_OUTPUT_DIR = 'openpet-plugin'
 
 const usage = () => [
   'Usage: node scripts/create-openpet-plugin.js <name> [options]',
   '',
   'Options:',
-  '  --template <minimal|network|storage>  Template to generate. Defaults to minimal.',
+  '  --template <minimal|network|storage|ai>  Template to generate. Defaults to minimal.',
   '  --output-dir <dir>                    Parent directory for the generated plugin. Defaults to openpet-plugin.',
   '  --id <pluginId>                       Plugin id. Defaults to openpet.plugin.<safe-name>.',
   '  --force                              Overwrite an existing generated plugin directory.',
@@ -84,6 +84,7 @@ const createManifest = ({ name, id, template }) => {
   const permissions = ['pet:say']
   if (template === 'network') permissions.push('network')
   if (template === 'storage') permissions.push('storage')
+  if (template === 'ai') permissions.push('ai:chat')
   return {
     id,
     name: titleCaseName(name),
@@ -95,8 +96,8 @@ const createManifest = ({ name, id, template }) => {
     ...(template === 'network' ? { network: { allowlist: ['api.example.com'] } } : {}),
     commands: [
       {
-        id: template === 'storage' ? 'increment' : 'run',
-        title: template === 'storage' ? 'Increment counter' : 'Run'
+        id: template === 'storage' ? 'increment' : (template === 'ai' ? 'ask' : 'run'),
+        title: template === 'storage' ? 'Increment counter' : (template === 'ai' ? 'Ask AI' : 'Run')
       }
     ]
   }
@@ -143,6 +144,34 @@ const createConfigSchema = ({ name, template }) => {
           description: 'Amount added to the stored counter.',
           default: 1,
           enum: [1, 2, 5]
+        }
+      }
+    }
+  }
+
+  if (template === 'ai') {
+    return {
+      title: `${titleCaseName(name)} Settings`,
+      description: 'Public AI prompt settings. Do not store API keys, tokens, passwords, or private credentials here.',
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          title: 'Prompt',
+          description: 'Public prompt sent through the app-owned AI provider configuration.',
+          default: 'Suggest one cozy action for my desktop pet.'
+        },
+        conversationId: {
+          type: 'string',
+          title: 'Conversation ID',
+          description: 'Public conversation label used to keep plugin AI history separate.',
+          default: 'default'
+        },
+        announce: {
+          type: 'boolean',
+          title: 'Announce response',
+          description: 'Ask the pet to announce that the AI response is ready.',
+          default: true
         }
       }
     }
@@ -204,6 +233,25 @@ const createIndexJs = ({ template }) => {
     ].join('\n')
   }
 
+  if (template === 'ai') {
+    return [
+      'module.exports = function activate(ctx) {',
+      '  return {',
+      '    ask: async () => {',
+      "      const prompt = ctx.config.get('prompt') || 'Suggest one cozy action for my desktop pet.'",
+      "      const conversationId = ctx.config.get('conversationId') || 'default'",
+      '      const response = await ctx.ai.chat({ message: prompt, conversationId })',
+      "      if (ctx.config.get('announce')) {",
+      "        await ctx.pet.say('AI response is ready.')",
+      '      }',
+      '      return { ok: true, response }',
+      '    }',
+      '  }',
+      '}',
+      ''
+    ].join('\n')
+  }
+
   return [
     'module.exports = function activate(ctx) {',
     '  return {',
@@ -230,6 +278,20 @@ const createReadme = ({ name, id, template }) => [
   '',
   '```bash',
   'npm run validate:plugin -- path/to/this-plugin',
+  '```',
+  '',
+  '## Package',
+  '',
+  '```bash',
+  'cd path/to/this-plugin',
+  `zip -qr ../${safeNameSlug(id)}.openpet-plugin.zip .`,
+  '```',
+  '',
+  '## Submission Rehearsal',
+  '',
+  '```bash',
+  'npm run create-plugin-submission-bundle -- path/to/this-plugin --output-dir plugin-submission-bundle',
+  'npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready',
   '```',
   ''
 ].join('\n')

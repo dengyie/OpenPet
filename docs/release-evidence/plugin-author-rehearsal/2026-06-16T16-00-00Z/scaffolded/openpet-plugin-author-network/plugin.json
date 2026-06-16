@@ -1,0 +1,23 @@
+{
+  "id": "openpet.plugin.author-network",
+  "name": "Author Network",
+  "version": "0.1.0",
+  "description": "Author Network OpenPet plugin.",
+  "main": "index.js",
+  "configSchema": "config.schema.json",
+  "permissions": [
+    "pet:say",
+    "network"
+  ],
+  "network": {
+    "allowlist": [
+      "api.example.com"
+    ]
+  },
+  "commands": [
+    {
+      "id": "run",
+      "title": "Run"
+    }
+  ]
+}
