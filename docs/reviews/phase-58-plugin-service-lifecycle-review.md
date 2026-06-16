@@ -56,6 +56,14 @@ Missing scenario that matters most:
 - Runtime state is not persisted as durable truth; it is reconstructed from the current main-process ownership map.
 - The docs avoid claiming auto-start, setup, health, bridge, shell expansion, or complete sandboxing.
 
+## Verification
+
+- `npm run check:syntax`: pass
+- `npm run test:control-center`: 10/10 pass
+- `npm test`: 434/434 pass
+- `git diff --check`: pass
+- `node -e "JSON.parse(require('node:fs').readFileSync('docs/project-context.json','utf8')); console.log('project-context ok')"`: project-context ok
+
 ## Final Recommendation
 
-Safe to merge after the full verification suite passes.
+Safe to merge with follow-ups for service health checks, setup flow, bridge integration, and stronger process-tree cleanup.
