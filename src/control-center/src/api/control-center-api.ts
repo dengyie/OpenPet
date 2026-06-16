@@ -17,6 +17,7 @@ import type {
   JsonObject,
   PluginLogFilters,
   PluginPackageReviewViewState,
+  PluginServiceRuntimeViewState,
   PluginViewState,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts'
@@ -356,11 +357,32 @@ const clonePluginEntries = (entries: PluginViewState['entries']): PluginViewStat
         platforms: service.platforms
           ? Object.fromEntries(Object.entries(service.platforms).map(([platform, override]) => [platform, { ...override }]))
           : undefined,
-        health: service.health ? { ...service.health } : service.health
+        health: service.health ? { ...service.health } : service.health,
+        runtime: service.runtime ? { ...service.runtime } : service.runtime
       }))
     : [],
   dashboards: Array.isArray(entries?.dashboards) ? entries.dashboards.map((dashboard) => ({ ...dashboard })) : []
 })
+
+const updateDemoPluginServiceRuntime = (pluginId: string, serviceId: string, runtime: PluginServiceRuntimeViewState) => {
+  let found = false
+  demoState.plugins = demoState.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin
+    return {
+      ...plugin,
+      entries: {
+        ...plugin.entries,
+        services: (plugin.entries?.services || []).map((service) => (
+          service.id === serviceId
+            ? (found = true, { ...service, runtime: { ...runtime } })
+            : service
+        ))
+      }
+    }
+  })
+  if (!found) throw new Error(`Plugin service not found: ${serviceId}`)
+  return { ...runtime }
+}
 
 const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin) => ({
   ...plugin,
@@ -496,7 +518,23 @@ const demoApi: ControlCenterApi = {
   getPlugins: async () => cloneDemoPlugins(),
   setPluginEnabled: async (pluginId, enabled) => {
     demoState.plugins = demoState.plugins.map((plugin) => (
-      plugin.id === pluginId ? { ...plugin, enabled } : plugin
+      plugin.id === pluginId
+        ? {
+            ...plugin,
+            enabled,
+            entries: {
+              ...plugin.entries,
+              services: enabled
+                ? plugin.entries.services
+                : plugin.entries.services.map((service) => ({
+                    ...service,
+                    runtime: service.runtime?.status === 'running'
+                      ? { ...service.runtime, status: 'stopped', stoppedAt: new Date().toISOString() }
+                      : service.runtime
+                  }))
+            }
+          }
+        : plugin
     ))
     demoState.pluginLogs = [
       createDemoPluginLog(pluginId, enabled ? 'Plugin enabled' : 'Plugin disabled'),
@@ -520,6 +558,31 @@ const demoApi: ControlCenterApi = {
     ]
     writeDemoState()
     return { ok: true, pluginId, dashboardId, url: dashboard?.url || '' }
+  },
+  startPluginService: async (pluginId, serviceId) => {
+    const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
+      status: 'running',
+      pid: 4321,
+      startedAt: new Date().toISOString()
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Service started', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, serviceId, runtime }
+  },
+  stopPluginService: async (pluginId, serviceId) => {
+    const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
+      status: 'stopped',
+      stoppedAt: new Date().toISOString()
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Service stopped', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, serviceId, runtime }
   },
   inspectPluginPackage: async () => {
     demoManualPluginSelection = demoManualPluginReview.selectionId

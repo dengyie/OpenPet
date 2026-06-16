@@ -104,9 +104,9 @@ Commands should be allowed to use any suitable runtime. Do not require JavaScrip
 
 ### Services
 
-Services are long-running shell entries managed by OpenPet.
+Services are long-running local process entries managed by OpenPet.
 
-OpenPet should select platform overrides, start/stop the process, capture logs, show running/stopped/failed state, run health checks, and stop services on disable/uninstall.
+OpenPet selects platform overrides, starts and stops declared service processes only after explicit Control Center action, captures stdout/stderr snippets, shows runtime state, and stops running services on disable/app quit. Services do not auto-start, and service commands are spawned without shell expansion. Health checks, setup coupling, bridge injection, and full process-tree cleanup remain future runtime work.
 
 Services may power real local experiences: dashboards, background companions, schedulers, local model servers, voice processors, or integrations with external APIs.
 
@@ -328,4 +328,4 @@ Some repository tools and examples still reflect the older plugin SDK implementa
 - `ctx.ai`;
 - short-lived isolated JavaScript command handlers.
 
-These are compatibility surfaces, not the target boundary. Future development should close the gap by adding lifecycle-managed service entries, richer command execution, language-neutral context passing, setup status, health, and honest user-facing copy. Dashboard entries can already be opened explicitly as external HTTP/HTTPS URLs from Control Center.
+These are compatibility surfaces, not the target boundary. The host now supports explicit lifecycle-managed service start/stop with runtime state and logs, and dashboard entries can already be opened explicitly as external HTTP/HTTPS URLs from Control Center. Future development should close the remaining gap by adding richer command execution, language-neutral context passing, setup status, health, bridge flows, stronger process-tree cleanup, and honest user-facing copy.

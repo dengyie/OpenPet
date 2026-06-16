@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-17 | Branch: `codex/extension-entry-visibility`
+> Last updated: 2026-06-17 | Branch: `codex/extension-service-lifecycle`
 
 ## Current Snapshot
 
@@ -12,7 +12,7 @@ OpenPet is a desktop pet platform with:
 - bundled built-in packs `doro`, `duodong`, and `chispa`,
 - AI chat with secret storage in the main process,
 - AI behavior decisions with Control Center replay and redacted diagnostics,
-- developer-first local extension docs with `entries.commands` compatibility runtime support and explicit dashboard opening,
+- developer-first local extension docs with `entries.commands` compatibility runtime support, explicit dashboard opening, and explicit service start/stop controls,
 - loopback-only local HTTP / MCP,
 - and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
 
@@ -29,7 +29,7 @@ OpenPet is a desktop pet platform with:
 - `PetService` remains the single source of truth for pet state.
 - New user-facing configuration belongs in Control Center.
 - API keys must stay out of the renderer.
-- Extension docs must be honest: OpenPet now parses declarations, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, and can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, but service/setup/health lifecycle support is not implemented yet and OpenPet does not claim complete sandboxing for arbitrary local processes.
+- Extension docs must be honest: OpenPet now parses declarations, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, and can explicitly start/stop declared local service entries for enabled plugins. Services do not auto-start, service commands are spawned without shell expansion, setup commands, health checks, bridge token injection, generic shell command execution, and full process-tree cleanup are not implemented yet, and OpenPet does not claim complete sandboxing for arbitrary local processes.
 - `cat_anime/` structure is unchanged.
 - Windows is not release-ready yet.
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 424/424 Node tests
+npm test                     # 434/434 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -70,6 +70,6 @@ npm run create-signed-release-closure-report
 ## Next Steps
 
 1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
-2. Use Phase 57 plugin dashboard opening as the current runtime boundary: `entries.commands` can run only through the existing JavaScript compatibility path, and dashboard entries can be opened explicitly as external HTTP/HTTPS URLs.
-3. Use Phase 54 Release Evidence Contracts plus Phase 57 plugin entry/dashboard contracts as the current TypeScript migration baseline.
-4. After Phase 57, start the next concrete phase from service lifecycle implementation, real evidence work, community extension rehearsal, or another high-drift service/report boundary.
+2. Use Phase 58 plugin service lifecycle as the current runtime boundary: `entries.commands` can run only through the existing JavaScript compatibility path, dashboard entries can be opened explicitly as external HTTP/HTTPS URLs, and service entries can be explicitly started/stopped with runtime state and logs, without auto-start or shell expansion.
+3. Use Phase 54 Release Evidence Contracts plus Phase 58 plugin entry/dashboard/service contracts as the current TypeScript migration baseline.
+4. After Phase 58, start the next concrete phase from service health/setup, process-tree cleanup, bridge integration, real evidence work, community extension rehearsal, or another high-drift service/report boundary.

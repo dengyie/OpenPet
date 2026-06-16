@@ -4,7 +4,7 @@
 
 一个带 Control Center、AI 聊天、插件、宠物包和本地 Agent API 的 Electron 桌面宠物平台。
 
-[![Tests](https://img.shields.io/badge/tests-424%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-434%20node%20%2B%2010%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
@@ -24,7 +24,7 @@ OpenPet 会把一只小宠物放在你的桌面上。它能走动、说话、播
 - Pet pack runtime，兼容 legacy cat、动作帧文件夹、`.codex-pet.zip`，以及 `pet.json` + `spritesheet.webp` 的 Codex pet atlas。
 - 内置 `doro`、`duodong`、`chispa` 三个只读宠物包。
 - OpenAI 兼容聊天，API Key 只保存在主进程 secret store。
-- 面向开发者的本地扩展模型，当前兼容 legacy SDK command-style 包、校验、日志、catalog 安装和卸载流程。
+- 面向开发者的本地扩展模型，当前兼容 legacy SDK，并支持显式 command、dashboard、service 控制、校验、日志、catalog 安装和卸载流程。
 - 可选的本地 HTTP / MCP API，仅 loopback，默认关闭。
 - 渐进式 TypeScript 迁移基线，已覆盖共享 contracts 和 Control Center API facade。
 
@@ -106,7 +106,7 @@ npm run generate-sprites
 
 ## 扩展开发
 
-OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`，已启用插件也可以从 Control Center 显式打开声明的 HTTP/HTTPS dashboard。长期 service 管理、setup、health check 和 shell command execution 仍属于后续 runtime 工作。
+OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`。已启用插件可以从 Control Center 显式打开声明的 HTTP/HTTPS dashboard，也可以显式启动或停止声明的 service entry。Service 不会自动启动，命令启动不经过 shell 展开；setup、health check、bridge flow 和通用 shell command execution 仍属于后续 runtime 工作。
 
 当前 legacy SDK 示例在宿主运行时追上新模型前仍然有参考价值：
 
@@ -152,7 +152,7 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 当前本地基线：
 
 ```bash
-npm test                     # 424/424 Node tests
+npm test                     # 434/434 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

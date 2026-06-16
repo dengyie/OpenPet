@@ -96,6 +96,9 @@ app.whenReady().then(() => {
     openExternal: (url) => shell.openExternal(url),
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
+  app.on('before-quit', () => {
+    pluginService.stopAllServices?.()
+  })
   catalogService = createCatalogService({
     settingsService,
     pluginInstallService,

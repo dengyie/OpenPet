@@ -21,6 +21,7 @@ export function usePluginsPane() {
   const [status, setStatus] = useState('')
   const [runningCommand, setRunningCommand] = useState('')
   const [openingDashboard, setOpeningDashboard] = useState('')
+  const [changingService, setChangingService] = useState('')
   const [savingConfig, setSavingConfig] = useState('')
   const [clearingStorage, setClearingStorage] = useState('')
   const [pluginReview, setPluginReview] = useState<PluginPackageReviewViewState | null>(null)
@@ -191,6 +192,42 @@ export function usePluginsPane() {
     }
   }
 
+  const onStartService = async (pluginId: string, serviceId: string) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setChangingService(serviceKey)
+    setStatus('')
+    try {
+      await api.startPluginService(pluginId, serviceId)
+      await refreshPlugins()
+      await refreshLogs()
+      setStatus('Service 已启动')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Service 启动失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setChangingService('')
+    }
+  }
+
+  const onStopService = async (pluginId: string, serviceId: string) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setChangingService(serviceKey)
+    setStatus('')
+    try {
+      await api.stopPluginService(pluginId, serviceId)
+      await refreshPlugins()
+      await refreshLogs()
+      setStatus('Service 已停止')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Service 停止失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setChangingService('')
+    }
+  }
+
   const onExportLogs = async (format: ExportFormat) => {
     setStatus('')
     try {
@@ -247,6 +284,7 @@ export function usePluginsPane() {
     status,
     runningCommand,
     openingDashboard,
+    changingService,
     savingConfig,
     clearingStorage,
     pluginReview,
@@ -262,6 +300,8 @@ export function usePluginsPane() {
     onSaveConfig,
     onRun,
     onOpenDashboard,
+    onStartService,
+    onStopService,
     onChangeFilters: setFilters,
     onExportLogs,
     onClearLogs,

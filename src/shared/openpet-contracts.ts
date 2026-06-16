@@ -386,6 +386,7 @@ export interface PluginServiceEntryViewState {
     type: string
     url?: string
   } | null
+  runtime?: PluginServiceRuntimeViewState
 }
 
 export interface PluginDashboardEntryViewState {
@@ -503,6 +504,26 @@ export interface PluginDashboardOpenResult extends OkResponse {
   pluginId: string
   dashboardId: string
   url: string
+}
+
+export type PluginServiceRuntimeStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'exited' | 'failed'
+
+export interface PluginServiceRuntimeViewState {
+  status: PluginServiceRuntimeStatus
+  pid?: number
+  startedAt?: string
+  stoppedAt?: string
+  command?: string
+  cwd?: string
+  exitCode?: number | null
+  signal?: string
+  error?: string
+}
+
+export interface PluginServiceControlResult extends OkResponse {
+  pluginId: string
+  serviceId: string
+  runtime: PluginServiceRuntimeViewState
 }
 
 export interface CatalogPluginInstallSelection {
@@ -798,6 +819,8 @@ export interface ControlCenterApi {
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<OkResponse>
   openPluginDashboard: (pluginId: string, dashboardId: string) => Promise<PluginDashboardOpenResult>
+  startPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
+  stopPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
   inspectPluginPackage: () => Promise<PluginPackageInspectionResult>
   clearPluginSelection: (selectionId: string) => Promise<OkResponse>
   installPlugin: (selectionId: string) => Promise<PluginMutationResult>

@@ -540,6 +540,64 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
   assert.deepEqual(calls, [['weather-declaration', 'main']])
 })
 
+test('plugin service lifecycle handlers delegate to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        startService: (pluginId, serviceId) => {
+          calls.push(['start', pluginId, serviceId])
+          return { ok: true, pluginId, serviceId, runtime: { status: 'running', pid: 4321 } }
+        },
+        stopService: (pluginId, serviceId) => {
+          calls.push(['stop', pluginId, serviceId])
+          return { ok: true, pluginId, serviceId, runtime: { status: 'stopped' } }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const startResult = await ipcMain.handlers.get(IPC.PLUGINS_START_SERVICE)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion'
+  })
+  const stopResult = await ipcMain.handlers.get(IPC.PLUGINS_STOP_SERVICE)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion'
+  })
+
+  assert.deepEqual(startResult, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: { status: 'running', pid: 4321 }
+  })
+  assert.deepEqual(stopResult, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: { status: 'stopped' }
+  })
+  assert.deepEqual(calls, [
+    ['start', 'weather-declaration', 'companion'],
+    ['stop', 'weather-declaration', 'companion']
+  ])
+})
+
 test('pet-packs:inspect-directory opens native folder or zip picker and delegates selected source', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []

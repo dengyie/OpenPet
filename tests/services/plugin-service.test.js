@@ -3,6 +3,8 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const { EventEmitter } = require('events')
+const { PassThrough } = require('stream')
 
 const { createPluginService } = require('../../src/main/services/plugin-service')
 
@@ -109,7 +111,7 @@ const createRunnablePluginDir = ({ manifest = {}, source, configSchema }) => {
   return root
 }
 
-const createDeclarationOnlyPluginDir = ({ dashboardUrl = 'http://127.0.0.1:8787' } = {}) => {
+const createDeclarationOnlyPluginDir = ({ dashboardUrl = 'http://127.0.0.1:8787', serviceCommand = 'npm run service:start', serviceCwd = '.' } = {}) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-declaration-plugin-'))
   const pluginPath = path.join(root, 'weather-declaration')
   fs.mkdirSync(pluginPath)
@@ -119,11 +121,34 @@ const createDeclarationOnlyPluginDir = ({ dashboardUrl = 'http://127.0.0.1:8787'
     version: '1.0.0',
     entries: {
       commands: [{ id: 'announce', title: 'Announce Weather', command: 'node ./commands/announce.js' }],
-      services: [{ id: 'companion', title: 'Companion Service', command: 'npm run service:start' }],
+      services: [{ id: 'companion', title: 'Companion Service', command: serviceCommand, cwd: serviceCwd }],
       dashboards: [{ id: 'main', title: 'Dashboard', url: dashboardUrl }]
     }
   }))
   return root
+}
+
+const createFakeServiceProcess = ({ pid = 4321 } = {}) => {
+  const child = new EventEmitter()
+  child.pid = pid
+  child.stdout = new PassThrough()
+  child.stderr = new PassThrough()
+  child.killCalls = []
+  child.kill = (signal) => {
+    child.killCalls.push(signal || 'SIGTERM')
+    child.emit('exit', 0, signal || 'SIGTERM')
+    return true
+  }
+  return child
+}
+
+const createSlowStoppingServiceProcess = ({ pid = 4321 } = {}) => {
+  const child = createFakeServiceProcess({ pid })
+  child.kill = (signal) => {
+    child.killCalls.push(signal || 'SIGTERM')
+    return true
+  }
+  return child
 }
 
 test('plugin service discovers official plugins and local manifests', () => {
@@ -292,6 +317,221 @@ test('plugin service rejects non-http dashboard urls before opening external url
     /Plugin dashboard URL must use HTTP or HTTPS/
   )
   assert.deepEqual(openedUrls, [])
+})
+
+test('plugin service starts and stops enabled declaration service entries', () => {
+  const spawned = []
+  const children = []
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: (file, args, options) => {
+      const child = createFakeServiceProcess()
+      spawned.push({ file, args, options, child })
+      children.push(child)
+      return child
+    }
+  })
+
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
+
+  const started = service.startService('weather-declaration', 'companion')
+
+  assert.equal(started.ok, true)
+  assert.equal(started.runtime.status, 'running')
+  assert.equal(started.runtime.pid, 4321)
+  assert.equal(started.runtime.command, 'npm run service:start')
+  assert.equal(spawned[0].file, 'npm')
+  assert.deepEqual(spawned[0].args, ['run', 'service:start'])
+  assert.equal(path.basename(spawned[0].options.cwd), 'weather-declaration')
+  assert.equal(spawned[0].options.shell, false)
+  assert.deepEqual(Object.keys(spawned[0].options.env).sort(), ['PATH'].filter((key) => process.env[key]).sort())
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'running')
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Service started')
+
+  const stopped = service.stopService('weather-declaration', 'companion')
+
+  assert.equal(stopped.runtime.status, 'stopped')
+  assert.deepEqual(children[0].killCalls, ['SIGTERM'])
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Service stopped')
+})
+
+test('plugin service rejects service starts for disabled plugins', () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService(),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: (...args) => {
+      spawned.push(args)
+      return createFakeServiceProcess()
+    }
+  })
+
+  assert.throws(
+    () => service.startService('weather-declaration', 'companion'),
+    /Plugin is disabled/
+  )
+  assert.deepEqual(spawned, [])
+})
+
+test('plugin service blocks service starts when ecosystem policy denies the plugin', () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    getPluginBlockStatus: () => ({ blocked: true, reasons: ['blocked for review'] }),
+    spawnServiceProcess: (...args) => {
+      spawned.push(args)
+      return createFakeServiceProcess()
+    }
+  })
+
+  assert.throws(
+    () => service.startService('weather-declaration', 'companion'),
+    /Plugin is blocked: blocked for review/
+  )
+  assert.deepEqual(spawned, [])
+})
+
+test('plugin service rejects unknown service ids before spawning processes', () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: (...args) => {
+      spawned.push(args)
+      return createFakeServiceProcess()
+    }
+  })
+
+  assert.throws(
+    () => service.startService('weather-declaration', 'missing'),
+    /Plugin service not found: missing/
+  )
+  assert.deepEqual(spawned, [])
+})
+
+test('plugin service rejects duplicate service starts', () => {
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: () => createFakeServiceProcess()
+  })
+
+  service.startService('weather-declaration', 'companion')
+
+  assert.throws(
+    () => service.startService('weather-declaration', 'companion'),
+    /Plugin service is already running/
+  )
+})
+
+test('plugin service marks non-zero service exits as failed', () => {
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: () => child
+  })
+
+  service.startService('weather-declaration', 'companion')
+  child.emit('exit', 1, '')
+
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'failed')
+  assert.equal(service.getLogs()[0].level, 'error')
+  assert.equal(service.getLogs()[0].message, 'Service exited')
+})
+
+test('plugin service rejects service cwd symlinks escaping the plugin directory', () => {
+  const root = createDeclarationOnlyPluginDir({ serviceCwd: 'service-link' })
+  const outsidePath = path.join(root, 'outside-service')
+  fs.mkdirSync(outsidePath)
+  fs.symlinkSync(outsidePath, path.join(root, 'weather-declaration', 'service-link'))
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnServiceProcess: () => createFakeServiceProcess()
+  })
+
+  assert.throws(
+    () => service.startService('weather-declaration', 'companion'),
+    /Plugin service cwd must stay inside the plugin directory/
+  )
+})
+
+test('plugin service stops running services when a plugin is disabled', () => {
+  const child = createFakeServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: () => child
+  })
+
+  service.startService('weather-declaration', 'companion')
+  service.setEnabled('weather-declaration', false)
+
+  assert.deepEqual(child.killCalls, ['SIGTERM'])
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
+})
+
+test('plugin service keeps services in stopping state until the child exits', () => {
+  const child = createSlowStoppingServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: () => child
+  })
+
+  service.startService('weather-declaration', 'companion')
+  const stopping = service.stopService('weather-declaration', 'companion')
+
+  assert.equal(stopping.runtime.status, 'stopping')
+  assert.deepEqual(child.killCalls, ['SIGTERM'])
+  assert.throws(
+    () => service.startService('weather-declaration', 'companion'),
+    /Plugin service is already running/
+  )
+
+  child.emit('exit', 0, 'SIGTERM')
+
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
 })
 
 test('plugin service rejects local plugin main symlinks escaping the plugin directory', () => {

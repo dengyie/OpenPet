@@ -28,6 +28,7 @@ export interface PluginsPaneProps {
   status: string
   runningCommand: string
   openingDashboard: string
+  changingService: string
   savingConfig: string
   clearingStorage: string
   pluginReview: PluginPackageReviewViewState | null
@@ -43,6 +44,8 @@ export interface PluginsPaneProps {
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
   onOpenDashboard: (pluginId: string, dashboardId: string) => void | Promise<void>
+  onStartService: (pluginId: string, serviceId: string) => void | Promise<void>
+  onStopService: (pluginId: string, serviceId: string) => void | Promise<void>
   onChangeFilters: (filters: PluginLogFilters) => void
   onExportLogs: (format: ExportFormat) => void | Promise<void>
   onClearLogs: () => void | Promise<void>
@@ -132,7 +135,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, openingDashboard, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onOpenDashboard, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, openingDashboard, changingService, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onOpenDashboard, onStartService, onStopService, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -203,6 +206,33 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, op
                 </div>
               ) : null}
               <PluginEntryDetails source={plugin} compact />
+              {plugin.entries?.services?.length ? (
+                <div className="plugin-commands">
+                  {plugin.entries.services.map((service) => {
+                    const serviceKey = `${plugin.id}:${service.id}`
+                    const runtimeStatus = service.runtime?.status || 'stopped'
+                    const running = runtimeStatus === 'running'
+                    const title = service.title || service.id
+                    return (
+                      <div className="plugin-service-control" key={service.id}>
+                        <span>Service status: {runtimeStatus}{service.runtime?.pid ? ` · pid ${service.runtime.pid}` : ''}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || changingService === serviceKey}
+                          onClick={() => running ? onStopService(plugin.id, service.id) : onStartService(plugin.id, service.id)}
+                        >
+                          {changingService === serviceKey
+                            ? '处理中'
+                            : running
+                              ? `Stop ${title}`
+                              : `Start ${title}`}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
               {plugin.entries?.dashboards?.length ? (
                 <div className="plugin-commands">
                   {plugin.entries.dashboards.map((dashboard) => {

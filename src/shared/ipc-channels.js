@@ -51,6 +51,8 @@ const IPC = Object.freeze({
   PLUGINS_SAVE_CONFIG: 'plugins:save-config',
   PLUGINS_RUN_COMMAND: 'plugins:run-command',
   PLUGINS_OPEN_DASHBOARD: 'plugins:open-dashboard',
+  PLUGINS_START_SERVICE: 'plugins:start-service',
+  PLUGINS_STOP_SERVICE: 'plugins:stop-service',
   PLUGINS_INSPECT_PACKAGE: 'plugins:inspect-package',
   PLUGINS_CLEAR_SELECTION: 'plugins:clear-selection',
   PLUGINS_INSTALL: 'plugins:install',

@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const { fork } = require('child_process')
+const { fork, spawn } = require('child_process')
 const { normalizePluginManifest } = require('../plugins/manifest')
 const { coerceConfigValue, normalizeConfigSchema } = require('../plugins/config-schema')
 
@@ -13,6 +13,65 @@ const MAX_PLUGIN_LOG_ENTRIES = 200
 const MAX_PLUGIN_NETWORK_REQUEST_BYTES = 64 * 1024
 const MAX_PLUGIN_NETWORK_RESPONSE_BYTES = 128 * 1024
 const LOCAL_PLUGIN_RUNNER_PATH = path.join(__dirname, '../plugins/local-plugin-runner.js')
+
+const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
+
+const ACTIVE_SERVICE_STATUSES = new Set(['running', 'stopping'])
+
+const parseServiceCommand = (command) => {
+  const input = String(command || '').trim()
+  if (!input) throw new Error('Plugin service command is required')
+  const parts = []
+  let current = ''
+  let quote = ''
+  let escaping = false
+
+  for (const char of input) {
+    if (escaping) {
+      current += char
+      escaping = false
+      continue
+    }
+    if (char === '\\') {
+      escaping = true
+      continue
+    }
+    if (quote) {
+      if (char === quote) quote = ''
+      else current += char
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        parts.push(current)
+        current = ''
+      }
+      continue
+    }
+    current += char
+  }
+
+  if (escaping) current += '\\'
+  if (quote) throw new Error('Plugin service command has an unterminated quote')
+  if (current) parts.push(current)
+  if (!parts.length) throw new Error('Plugin service command is required')
+  const [file, ...args] = parts
+  return { file, args }
+}
+
+const createServiceProcessEnv = () => {
+  const env = {}
+  if (process.env.PATH) env.PATH = process.env.PATH
+  if (process.platform === 'win32') {
+    if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot
+    if (process.env.WINDIR) env.WINDIR = process.env.WINDIR
+  }
+  return env
+}
 
 const getSignatureStatus = (manifest) => {
   if (manifest.source === 'official') {
@@ -350,9 +409,10 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, openExternal = async () => { throw new Error('Dashboard opener is not available') }, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
+  const serviceRuntimes = new Map()
 
   const getLogStore = () => {
     const logs = settingsService.get().plugins?.logs
@@ -520,8 +580,32 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
 
+  const createRuntimeView = (runtime) => {
+    if (!runtime) return { status: 'stopped' }
+    return {
+      status: runtime.status || 'stopped',
+      pid: runtime.pid || 0,
+      startedAt: runtime.startedAt || '',
+      stoppedAt: runtime.stoppedAt || '',
+      command: runtime.command || '',
+      cwd: runtime.cwd || '',
+      exitCode: Number.isFinite(runtime.exitCode) ? runtime.exitCode : null,
+      signal: runtime.signal || '',
+      error: runtime.error || ''
+    }
+  }
+
+  const decorateEntriesWithRuntime = (manifest) => ({
+    ...manifest.entries,
+    services: (manifest.entries?.services || []).map((serviceEntry) => ({
+      ...serviceEntry,
+      runtime: createRuntimeView(serviceRuntimes.get(createPluginServiceKey(manifest.id, serviceEntry.id)))
+    }))
+  })
+
   const listPlugins = () => getPlugins().map((plugin) => ({
     ...plugin.manifest,
+    entries: decorateEntriesWithRuntime(plugin.manifest),
     enabled: Boolean(getEnabledMap()[plugin.manifest.id]),
     runnable: typeof plugin.activate === 'function' || Boolean(plugin.mainPath),
     signatureStatus: getPluginSignatureStatus(plugin.manifest),
@@ -531,8 +615,76 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     storage: getPluginStorageStats(plugin.manifest.id)
   }))
 
+  const getServiceEntry = (plugin, serviceId) => {
+    const serviceEntry = (plugin.manifest.entries?.services || []).find((entry) => entry.id === serviceId)
+    if (!serviceEntry) throw new Error(`Plugin service not found: ${serviceId}`)
+    return serviceEntry
+  }
+
+  const resolveServiceRuntimeDeclaration = (serviceEntry) => {
+    const override = serviceEntry.platforms?.[process.platform] || {}
+    return {
+      command: override.command || serviceEntry.command,
+      cwd: override.cwd || serviceEntry.cwd || '.'
+    }
+  }
+
+  const resolveServiceCwd = (manifest, cwd) => {
+    if (!manifest.basePath) throw new Error('Plugin services require a local plugin directory')
+    const basePath = path.resolve(manifest.basePath)
+    const targetPath = path.resolve(basePath, cwd || '.')
+    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
+      throw new Error('Plugin service cwd must stay inside the plugin directory')
+    }
+    if (!fs.existsSync(targetPath)) throw new Error('Plugin service cwd does not exist')
+    const realTargetPath = fs.realpathSync(targetPath)
+    const realBasePath = fs.realpathSync(basePath)
+    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
+      throw new Error('Plugin service cwd must stay inside the plugin directory')
+    }
+    return realTargetPath
+  }
+
+  const findPluginForService = (pluginId, { requireEnabled = true } = {}) => {
+    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    assertPluginAllowed(plugin.manifest)
+    if (requireEnabled && !getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+    return plugin
+  }
+
+  const getPluginServiceRuntime = (pluginId, serviceId) => serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
+
+  const setServiceRuntime = (pluginId, serviceId, runtime) => {
+    serviceRuntimes.set(createPluginServiceKey(pluginId, serviceId), runtime)
+    return runtime
+  }
+
+  const stopPluginServiceRuntime = (pluginId, serviceId, runtime, { log = true } = {}) => {
+    if (!runtime || runtime.status !== 'running') return runtime
+    runtime.status = 'stopping'
+    runtime.stoppedAt = new Date().toISOString()
+    try {
+      runtime.child?.kill?.('SIGTERM')
+    } catch (error) {
+      runtime.error = error.message || 'Plugin service stop failed'
+      runtime.status = 'failed'
+    }
+    if (log) appendLog({ pluginId, commandId: `service:${serviceId}`, level: 'info', message: 'Service stopped' })
+    return runtime
+  }
+
+  const stopPluginServices = (pluginId, options = {}) => {
+    for (const [key, runtime] of serviceRuntimes.entries()) {
+      if (key.startsWith(`${pluginId}:`)) {
+        stopPluginServiceRuntime(pluginId, runtime.serviceId, runtime, options)
+      }
+    }
+  }
+
   const setEnabled = (pluginId, enabled) => {
     if (enabled) assertPluginAllowed(pluginId)
+    if (!enabled) stopPluginServices(pluginId)
     const settings = settingsService.get()
     const nextSettings = {
       ...settings,
@@ -730,6 +882,92 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
+  const startService = (pluginId, serviceId) => {
+    const commandId = `service:${serviceId || ''}`
+    try {
+      const plugin = findPluginForService(pluginId)
+      const serviceEntry = getServiceEntry(plugin, serviceId)
+      const existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
+      if (ACTIVE_SERVICE_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin service is already running')
+      const declaration = resolveServiceRuntimeDeclaration(serviceEntry)
+      const { file, args } = parseServiceCommand(declaration.command)
+      const cwd = resolveServiceCwd(plugin.manifest, declaration.cwd)
+      const child = spawnServiceProcess(file, args, {
+        cwd,
+        env: createServiceProcessEnv(),
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      })
+      const runtime = setServiceRuntime(pluginId, serviceId, {
+        pluginId,
+        serviceId,
+        status: 'running',
+        pid: Number(child.pid) || 0,
+        startedAt: new Date().toISOString(),
+        stoppedAt: '',
+        command: declaration.command,
+        cwd,
+        exitCode: null,
+        signal: '',
+        error: '',
+        child
+      })
+
+      child.stdout?.on?.('data', (chunk) => {
+        const message = String(chunk || '').trim()
+        if (message) appendLog({ pluginId, commandId, level: 'info', message: `Service stdout: ${message}`.slice(0, 500) })
+      })
+      child.stderr?.on?.('data', (chunk) => {
+        const message = String(chunk || '').trim()
+        if (message) appendLog({ pluginId, commandId, level: 'error', message: `Service stderr: ${message}`.slice(0, 500) })
+      })
+      child.on?.('error', (error) => {
+        runtime.status = 'failed'
+        runtime.error = error.message || 'Plugin service failed'
+        runtime.stoppedAt = new Date().toISOString()
+        appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
+      })
+      child.on?.('exit', (code, signal) => {
+        if (runtime.status === 'stopping') {
+          runtime.status = 'stopped'
+        } else if (runtime.status === 'running') {
+          runtime.status = code === 0 && !signal ? 'exited' : 'failed'
+          appendLog({ pluginId, commandId, level: runtime.status === 'failed' ? 'error' : 'info', message: 'Service exited' })
+        }
+        runtime.exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+        runtime.signal = signal || ''
+        runtime.stoppedAt = runtime.stoppedAt || new Date().toISOString()
+      })
+
+      appendLog({ pluginId, commandId, level: 'info', message: 'Service started' })
+      return {
+        ok: true,
+        pluginId,
+        serviceId,
+        runtime: createRuntimeView(runtime)
+      }
+    } catch (error) {
+      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service start failed' })
+      throw error
+    }
+  }
+
+  const stopService = (pluginId, serviceId) => {
+    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    getServiceEntry(plugin, serviceId)
+    const runtime = getPluginServiceRuntime(pluginId, serviceId)
+    if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')
+    stopPluginServiceRuntime(pluginId, serviceId, runtime)
+    return {
+      ok: true,
+      pluginId,
+      serviceId,
+      runtime: createRuntimeView(runtime)
+    }
+  }
+
   const getLogs = (filters = {}) => filterLogs(getLogStore(), filters).map((entry) => ({ ...entry }))
 
   const exportLogEntries = ({ format = 'json', ...filters } = {}) => exportLogs(getLogs(filters), format)
@@ -739,7 +977,14 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     return getLogs()
   }
 
-  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, openDashboard, getLogs, exportLogs: exportLogEntries, clearLogs }
+  const stopAllServices = () => {
+    for (const runtime of serviceRuntimes.values()) {
+      stopPluginServiceRuntime(runtime.pluginId, runtime.serviceId, runtime, { log: false })
+    }
+    return { ok: true }
+  }
+
+  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, openDashboard, startService, stopService, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
 }
 
 module.exports = { createPluginService, readLocalPluginManifests }

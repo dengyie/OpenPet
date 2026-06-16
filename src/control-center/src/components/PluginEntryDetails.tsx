@@ -76,7 +76,7 @@ export function PluginEntryDetails({ source, compact = false }: { source?: Plugi
           <pre>{manifestText}</pre>
         </div>
       ) : null}
-      <small>These declarations are shown for review. Services are not started; dashboards open only through an explicit Control Center action.</small>
+      <small>These declarations are shown for review. Services start only through explicit Control Center actions; dashboards open only through explicit Control Center actions.</small>
     </div>
   )
 }
