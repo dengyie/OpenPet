@@ -85,6 +85,8 @@ OpenPet should manage extension lifecycle:
 - show manifest declarations;
 - uninstall;
 - optionally run explicit cleanup commands.
+- generate and validate submission review artifacts;
+- preserve a separate maintainer approval record when human review completes.
 
 OpenPet should not run extension code during install. Install should extract, inspect, and record metadata only. Declared setup can run later only when the user explicitly chooses the setup action for an enabled, policy-allowed extension.
 
@@ -144,6 +146,12 @@ Reserved future environment variables may still add:
 Commands currently receive JSON on stdin with `pluginId`, command id, payload, config, and OpenPet-provided paths.
 
 Command results currently use the final stdout JSON line when present.
+
+Submission review artifacts also stay explicit:
+
+- author-side validation and submission bundles are local handoff material;
+- maintainer approval records are separate Markdown/JSON artifacts;
+- approval does not imply signing trust, publication, or runtime safety.
 
 The current local bridge stays intentionally small:
 
@@ -247,6 +255,8 @@ Local installation review should focus on structural safety and transparency:
 - source label.
 
 Catalog or community publication may add reviewer expectations, but review should not be framed as a promise that OpenPet has proven the extension safe. It is a transparency and quality process.
+
+OpenPet now also supports a structured maintainer approval rehearsal record beside a submission bundle. That record is human review traceability only. It does not prove signing trust, catalog publication, runtime safety, or release readiness.
 
 Reviewer questions should be practical:
 

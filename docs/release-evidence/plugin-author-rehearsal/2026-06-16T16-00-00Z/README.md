@@ -19,6 +19,7 @@ This rehearsal follows the third-party author path without installing, enabling,
 - Package: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip
 - Bundle: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle
 - Bundle decision: ready-for-human-review
+- Maintainer approval remains a separate human review step recorded after the submission bundle is prepared.
 
 ## Commands
 
@@ -32,6 +33,8 @@ cd '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehea
 npm run validate:plugin -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip'
 npm run create-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/packages/openpet.plugin.author-ai.openpet-plugin.zip' --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle'
 npm run validate-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle' --require-ready
+npm run create-plugin-maintainer-approval -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle' --reviewer 'OpenPet Maintainer' --decision approved --notes 'Manifest, permissions, package hash, and submission artifacts reviewed.'
+npm run validate-plugin-maintainer-approval -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle' --require-approved
 ```
 
 ## Security Notes

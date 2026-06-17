@@ -296,11 +296,12 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 **Acceptance**:
 
 - A new plugin author can scaffold, run, validate, package, and create a submission bundle from documented commands.
+- A maintainer can record and validate a separate approval artifact on top of a ready-for-review bundle.
 - Example coverage spans the main permission classes without exposing secrets.
 - Submission rehearsal produces reviewable Markdown and JSON artifacts.
 - No user-facing docs claim unrestricted plugin safety.
 
-**Status**: completed as an author rehearsal. `create-openpet-plugin` now covers minimal, network, storage, and AI-assisted templates; `create-plugin-author-rehearsal` generates and validates the full author path, including an AI plugin zip and a ready-for-human-review submission bundle. The archived rehearsal lives under `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/`.
+**Status**: completed as an author-plus-maintainer rehearsal. `create-openpet-plugin` now covers minimal, network, storage, and AI-assisted templates; `create-plugin-author-rehearsal` generates and validates the full author path, including an AI plugin zip and a ready-for-human-review submission bundle; `create-plugin-maintainer-approval` and `validate-plugin-maintainer-approval` now add the maintainer-side approval record. The archived rehearsal lives under `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/`.
 
 ### Phase 45: TypeScript Boundary Expansion
 
@@ -977,6 +978,28 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 73. Setup and declaration-only command cleanup now try host-owned process-tree signalling before direct child kill fallback, while services still keep the strongest explicit local-process cleanup contract.
 
+### Phase 74: Plugin maintainer approval rehearsal
+
+**Goal**: add a structured maintainer approval rehearsal record on top of the existing plugin submission bundle workflow.
+
+**Scope**:
+
+- add `create-plugin-maintainer-approval` to write Markdown and JSON approval artifacts beside a validated submission bundle;
+- add `validate-plugin-maintainer-approval` to verify approval artifacts and optional `--require-approved` policy;
+- keep maintainer approval as an explicit human review decision with reviewer identity and review notes;
+- update author rehearsal guidance to point at the maintainer approval step without collapsing author and maintainer roles;
+- archive one maintainer approval example under the existing author rehearsal evidence.
+
+**Acceptance**:
+
+- ready-for-review submission bundles can receive a separate structured maintainer approval record;
+- approval validation catches missing, malformed, or mismatched approval artifacts;
+- `approved` and `changes-requested` decisions are both covered by tests;
+- archived rehearsal evidence includes one maintainer approval example;
+- docs describe approval as traceability, not signing trust, catalog publication, runtime safety, or release readiness proof.
+
+**Status**: completed in Phase 74. Submission bundles can now receive a separate maintainer approval Markdown/JSON artifact, and author rehearsal now points explicitly to that maintainer-side follow-up.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -985,6 +1008,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P0 | Phase 43 signed release evidence closure | Controls release/support claims and user trust. |
 | P1 | Phase 40 pet pack export and provenance | Completed; keep provenance and conflict review as constraints for future catalog work. |
 | P1 | Phase 44 plugin author experience rehearsal | Completed; use the archived rehearsal as the plugin author baseline. |
+| P1 | Phase 74 Plugin maintainer approval rehearsal | Completed; submission bundles can now receive separate maintainer approval artifacts and author rehearsal now points at that human review step explicitly. |
 | P1 | Phase 45 TypeScript boundary expansion | Completed; preserve shared contracts as the migration gate for future UI and IPC work. |
 | P1 | Phase 47 TypeScript hook boundary migration | Completed; use typed Control Center hooks as the next UI boundary baseline. |
 | P1 | Phase 48 Control Center pane prop surfaces | Completed; use Pane props plus hook `satisfies` checks as the current renderer UI contract baseline. |
@@ -1010,6 +1034,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 71 Plugin service periodic health policy | Completed; running declared services can now receive opt-in host-managed periodic health checks from Control Center, while services still do not auto-start and plugin manifests still do not own scheduler policy. |
 | P1 | Phase 72 Plugin service process-tree hardening | Completed; declared service entries now use a host-owned process-tree fallback before direct child kill when process-group signalling fails. |
 | P1 | Phase 73 Plugin setup and command process-tree hardening | Completed; setup and declaration-only command cleanup now also try host-owned process-tree signalling before direct child kill fallback, while services remain the only runtime shape with process-group plus bounded force-stop cleanup. |
+| P1 | Phase 74 Plugin maintainer approval rehearsal | Completed; submission bundles can now receive separate maintainer approval artifacts and author rehearsal now points at that human review step explicitly. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -1021,7 +1046,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 3. Phase 38 and Phase 39 are complete; keep their plugin secrets and sandbox boundaries as constraints for future plugin work.
 4. Phase 40 is complete; preserve pet pack export/provenance behavior while catalog work evolves.
 5. Phase 41 is complete; use AI behavior replay and diagnostics as the baseline for future behavior tooling.
-6. Phase 44 is complete; keep the archived author rehearsal as the plugin onboarding baseline.
+6. Phase 44 and Phase 74 are complete; keep the archived author-plus-maintainer rehearsal as the plugin submission baseline.
 7. Phase 45 is complete; use the shared contracts and Control Center API facade as the API boundary baseline.
 8. Phase 46 is complete; keep future live-doc updates fact-only and link-oriented.
 9. Phase 47 is complete; typed Control Center hooks are the UI state boundary baseline.
@@ -1048,6 +1073,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 30. Phase 71 is complete; running declared services can now receive opt-in host-managed periodic health checks from Control Center, while services still do not auto-start and plugin manifests still do not own scheduler policy.
 31. Phase 72 is complete; declared service entries now use host-owned process-tree fallback before direct child kill when process-group signalling fails.
 32. Phase 73 is complete; setup and declaration-only command cleanup now use host-owned process-tree fallback before direct child kill while keeping their Phase 70 exit-confirmed stop semantics.
+33. Phase 74 is complete; ready-for-review submission bundles can now receive a separate maintainer approval record, and author rehearsal now documents that approval remains a human maintainer step.
 
 ## 8. Verification Contract
 

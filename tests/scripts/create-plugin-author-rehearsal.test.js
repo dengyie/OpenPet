@@ -63,14 +63,17 @@ test('createPluginAuthorRehearsal scaffolds all templates and validates an AI su
   assert.match(readme, /Template \| Plugin ID \| Permissions/)
   assert.match(readme, /ai/)
   assert.match(readme, /Plugin config is public settings/)
+  assert.match(readme, /create-plugin-maintainer-approval/)
 
   const checklist = fs.readFileSync(summary.files.checklist, 'utf-8')
   assert.match(checklist, /Scaffolded AI-assisted template/)
   assert.match(checklist, /Created and validated submission bundle/)
+  assert.match(checklist, /Maintainer approval record is archived separately/)
 
   const commands = JSON.parse(fs.readFileSync(summary.files.commands, 'utf-8')).commands
   assert.equal(commands.some((command) => command.includes('--template ai')), true)
   assert.equal(commands.some((command) => command.includes('validate-plugin-submission-bundle')), true)
+  assert.equal(commands.some((command) => command.includes('create-plugin-maintainer-approval')), true)
   assert.equal(commands.some((command) => command.includes(`'${summary.outputDir}`)), true)
 })
 

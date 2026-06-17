@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-17 | Branch: `codex/plugin-setup-command-process-tree-hardening-phase73`
+> Last updated: 2026-06-17 | Branch: `codex/plugin-maintainer-approval-rehearsal-phase74`
 
 ## Current Snapshot
 
@@ -12,7 +12,7 @@ OpenPet is a desktop pet platform with:
 - bundled built-in packs `doro`, `duodong`, and `chispa`,
 - AI chat with secret storage in the main process,
 - AI behavior decisions with Control Center replay and redacted diagnostics,
-- developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, and host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths,
+- developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths, plugin submission bundles, author rehearsal, and structured maintainer approval rehearsal records,
 - loopback-only local HTTP / MCP,
 - and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
 
@@ -29,7 +29,7 @@ OpenPet is a desktop pet platform with:
 - `PetService` remains the single source of truth for pet state.
 - New user-facing configuration belongs in Control Center.
 - API keys must stay out of the renderer.
-- Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can inject short-lived bridge URL/token env vars for those declaration-only command runs, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, can host-manage periodic health checks for running services through Control Center, attempts best-effort process-group cleanup when stopping service entries, only reports setup/command/service stop completion after child exit confirmation, will attempt one bounded host-side force stop if the service ignores the grace-period stop request, and now tries a host-owned process-tree fallback before direct child kill across service/setup/declaration-command stop paths. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, background checks stay opt-in and runtime-bound, universal process-tree cleanup guarantees are not implemented, and OpenPet does not claim complete sandboxing for arbitrary local processes.
+- Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can inject short-lived bridge URL/token env vars for those declaration-only command runs, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, can host-manage periodic health checks for running services through Control Center, attempts best-effort process-group cleanup when stopping service entries, only reports setup/command/service stop completion after child exit confirmation, will attempt one bounded host-side force stop if the service ignores the grace-period stop request, and now tries a host-owned process-tree fallback before direct child kill across service/setup/declaration-command stop paths. Submission bundles can now also receive a separate structured maintainer approval record. Approval remains a human review decision and not signing trust, catalog publication, runtime safety, or release readiness proof. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, background checks stay opt-in and runtime-bound, universal process-tree cleanup guarantees are not implemented, and OpenPet does not claim complete sandboxing for arbitrary local processes.
 - `cat_anime/` structure is unchanged.
 - Windows is not release-ready yet.
 
@@ -38,12 +38,14 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 521/521 Node tests
+npm test                     # 532/532 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
 npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
 npm run create-plugin-author-rehearsal
+npm run create-plugin-maintainer-approval -- <submission-bundle-dir> --reviewer "OpenPet Maintainer" --decision approved --notes "..."
+npm run validate-plugin-maintainer-approval -- <submission-bundle-dir> --require-approved
 npm run create-packaged-runtime-smoke-report
 npm run create-packaged-runtime-smoke-runbook
 npm run run-packaged-runtime-smoke
@@ -67,8 +69,8 @@ npm run create-signed-release-closure-report
 - `scripts/run-packaged-runtime-smoke.js`, `scripts/create-packaged-runtime-smoke-report.js`, and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
 - `scripts/create-desktop-picker-evidence-summary.js` and `scripts/create-desktop-picker-archive-manifest.js` for reviewed native picker evidence archive summaries and manifests.
 - `scripts/create-release-evidence-archive-manifest.js` and `scripts/create-signed-release-closure-report.js` for release-level evidence archive validation and release-claim closure.
-- `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, and `docs/plugin-submission-workflow-playbook.md` for extension onboarding and legacy SDK compatibility.
-- `scripts/create-openpet-plugin.js` and `scripts/create-plugin-author-rehearsal.js` for current compatibility starter templates and author-path rehearsal.
+- `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, and `docs/plugin-submission-workflow-playbook.md` for extension onboarding, maintainer approval rehearsal, and legacy SDK compatibility.
+- `scripts/create-openpet-plugin.js`, `scripts/create-plugin-author-rehearsal.js`, `scripts/create-plugin-maintainer-approval.js`, and `scripts/validate-plugin-maintainer-approval.js` for current compatibility starter templates and reviewer-path rehearsal.
 
 ## Next Steps
 
@@ -78,5 +80,6 @@ npm run create-signed-release-closure-report
 4. Use Phase 66 desktop picker evidence archive tooling when a packaged native picker run is collected: generate the summary, create the archive manifest, and only claim readiness when the filled report and archive both pass.
 5. Use Phase 67 release picker archive link closure as the current release-claim boundary: release-level archive manifests and signed closure wording now explicitly require the reviewed desktop picker archive manifest to match the archived picker report.
 6. Use Phase 73 cleanup hardening plus Phase 72 service process-tree fallback, Phase 71 periodic health policy, Phase 70 setup/command cleanup parity, and Phase 69 plugin service force stop as the current extension cleanup/health boundary: setup, declaration-only command, and service stop requests now keep stop intent visible until child exit confirmation, setup and declaration-only commands now try host-owned process-tree cleanup before direct child kill fallback, only service entries add the bounded host-side force-stop path, and only running services can receive opt-in periodic health checks.
-7. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
-8. After Phase 73, continue from real signed evidence work, third-party extension rehearsal, stronger cleanup evidence on real hosts, or another high-drift service/report boundary.
+7. Use Phase 74 maintainer approval rehearsal as the current extension review-handoff boundary: author rehearsal stops at a ready-for-human-review submission bundle, maintainer approval is recorded as a separate Markdown/JSON artifact, and approval remains explicit human judgment rather than automated trust or publication.
+8. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
+9. After Phase 74, continue from real signed evidence work, broader real-world extension rehearsal, stronger cleanup evidence on real hosts, or another high-drift service/report boundary.

@@ -403,9 +403,11 @@ Current repository commands still use the historical "plugin" name:
 npm run validate:plugin -- <extension-dir-or-zip>
 npm run create-plugin-submission-bundle -- <extension-dir-or-zip> --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
+npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer "OpenPet Maintainer" --decision approved --notes "Manifest, permissions, package hash, and submission artifacts reviewed."
+npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
 
-These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, and a service-only process-tree cleanup fallback when process-group signalling fails. Broader bridge flows and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
+These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, a broader process-tree cleanup fallback for explicit stop paths, and a separate maintainer approval artifact layered on top of a ready-for-review submission bundle. Approval remains human-authored and does not prove signing trust, catalog publication, runtime safety, or release readiness. Broader bridge flows and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
 
 For a local author rehearsal:
 
@@ -413,7 +415,14 @@ For a local author rehearsal:
 npm run create-plugin-author-rehearsal -- --output-dir docs/release-evidence/plugin-author-rehearsal/<session> --submission-template ai
 ```
 
-The rehearsal writes an author README, command list, submission checklist, package zip, and validated submission bundle. It is review evidence, not catalog approval or signing trust.
+The rehearsal writes an author README, command list, submission checklist, package zip, and validated submission bundle. The next maintainer step is now:
+
+```bash
+npm run create-plugin-maintainer-approval -- <submission-bundle-dir> --reviewer "OpenPet Maintainer" --decision approved --notes "..."
+npm run validate-plugin-maintainer-approval -- <submission-bundle-dir> --require-approved
+```
+
+This is still review evidence, not catalog approval or signing trust.
 
 ## Legacy JavaScript SDK Compatibility
 

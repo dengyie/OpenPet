@@ -43,6 +43,8 @@
     "create-plugin-submission-pr": "node scripts/create-plugin-submission-pr.js",
     "create-plugin-submission-bundle": "node scripts/create-plugin-submission-bundle.js",
     "validate-plugin-submission-bundle": "node scripts/validate-plugin-submission-bundle.js",
+    "create-plugin-maintainer-approval": "node scripts/create-plugin-maintainer-approval.js",
+    "validate-plugin-maintainer-approval": "node scripts/validate-plugin-maintainer-approval.js",
     "generate-sprites": "node scripts/generate-sprites.js",
     "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests examples -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
     "typecheck": "tsc --noEmit",

@@ -13,6 +13,7 @@ It covers:
 - generation of the PR packet
 - generation of the full submission bundle
 - validation of the generated bundle before review
+- recording and validating a separate maintainer approval artifact after review
 
 It does not:
 
@@ -31,7 +32,7 @@ npm run create-plugin-author-rehearsal -- --output-dir docs/release-evidence/plu
 
 This creates minimal, network, storage, and AI-assisted legacy scaffolds; validates every scaffold; packages the selected extension as `.openpet-plugin.zip`; creates a submission bundle; validates the bundle with `--require-ready`; and writes an author README, command list, checklist, and machine-readable summary.
 
-The generated bundle is still a review packet. It does not install, enable, run, approve, sign, or publish the extension.
+The generated bundle is still an author-to-reviewer handoff packet. It does not install, enable, run, approve, sign, or publish the extension.
 
 ## 3. Manual Rehearsal Order
 
@@ -45,9 +46,12 @@ npm run create-plugin-submission-report -- examples/plugins/focus-timer --output
 npm run create-plugin-submission-pr -- examples/plugins/focus-timer --output plugin-submission-pr.md
 npm run create-plugin-submission-bundle -- examples/plugins/focus-timer --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
+npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer "OpenPet Maintainer" --decision approved --notes "Manifest, permissions, package hash, and submission artifacts reviewed."
+npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
 
 If the bundle is blocked before human review, fix the package or signature issue first, then rerun the bundle and validator commands.
+If the maintainer decision is `changes-requested`, keep the approval files as review evidence but do not treat the bundle as maintainer-approved.
 
 Current validation may still reject legacy SDK config fields that look like secrets, such as `apiKey`, `accessToken`, `password`, `credential`, `format: "password"`, or `writeOnly: true`. Under the extension boundary, treat that as a current tooling limitation for OpenPet-managed config: disclose extension-owned secrets in `manifest`, keep them in extension-managed files or setup flows, and avoid implying that OpenPet controls every credential.
 
@@ -56,6 +60,8 @@ Current validation may still reject legacy SDK config fields that look like secr
 - `plugin-submission-report.md`: reviewer-facing validation report
 - `plugin-submission-pr.md`: PR body template with checklist and review notes
 - `plugin-submission-summary.json`: machine-readable bundle summary
+- `plugin-maintainer-approval.md`: human-readable maintainer approval record
+- `plugin-maintainer-approval.json`: machine-readable maintainer approval record
 
 The summary should confirm:
 
@@ -68,18 +74,27 @@ The summary should confirm:
 
 ## 5. Reviewer Handoff
 
-When the rehearsal succeeds:
+When the author rehearsal succeeds:
 
 1. Attach or paste `plugin-submission-report.md` into the extension PR.
 2. Use `plugin-submission-pr.md` as the PR body or starting point.
 3. Include the bundle directory if the reviewer wants the machine-readable summary.
-4. Record the reviewer approval separately.
+4. Record the maintainer approval separately:
+
+```bash
+npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer "OpenPet Maintainer" --decision approved --notes "Manifest, permissions, package hash, and submission artifacts reviewed."
+npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
+```
+
+The approval record is a human review artifact. It does not establish signing trust, catalog publication, runtime safety, or release readiness.
 
 ## 6. Common Failure Patterns
 
 - `validate:plugin` fails: fix manifest, signature metadata, blocklist, current compatibility checks, or package safety issues first.
 - `create-plugin-submission-bundle` exits non-zero: the package is not ready for human review yet.
 - `validate-plugin-submission-bundle --require-ready` fails: check the bundle summary decision and repair the underlying package or signature issue.
+- `create-plugin-maintainer-approval` exits non-zero: the submission bundle is malformed, the maintainer metadata is incomplete, or the generated record is not approval-ready.
+- `validate-plugin-maintainer-approval --require-approved` fails: the approval artifact is missing, mismatched, malformed, or the submission bundle was not ready for human review.
 
 ## 7. Why This Exists
 
