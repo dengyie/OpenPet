@@ -71,7 +71,7 @@ export function PetPane({ settings, originalSettings, status, onChange, onSave, 
 
         <div className="field-row">
           <div className="field-label">开机自启</div>
-          <Toggle checked={settings.autoStart} onChange={(autoStart) => onChange({ autoStart })} />
+          <Toggle ariaLabel="Enable auto start" checked={settings.autoStart} onChange={(autoStart) => onChange({ autoStart })} />
         </div>
       </div>
 

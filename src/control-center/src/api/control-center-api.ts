@@ -18,6 +18,7 @@ import type {
   PluginCommandRunResultViewState,
   PluginLogFilters,
   PluginPackageReviewViewState,
+  PluginServiceHealthPolicyViewState,
   PluginServiceHealthViewState,
   PluginServiceRuntimeViewState,
   PluginSetupRuntimeViewState,
@@ -383,6 +384,7 @@ const clonePluginEntries = (entries: PluginViewState['entries']): PluginViewStat
   services: Array.isArray(entries?.services)
     ? entries.services.map((service) => ({
         ...service,
+        healthPolicy: service.healthPolicy ? { ...service.healthPolicy } : service.healthPolicy,
         platforms: service.platforms
           ? Object.fromEntries(Object.entries(service.platforms).map(([platform, override]) => [platform, { ...override }]))
           : undefined,
@@ -443,6 +445,32 @@ const updateDemoPluginServiceHealth = (pluginId: string, serviceId: string, heal
     health
   })
   return { health: runtime.health || health, runtime }
+}
+
+const updateDemoPluginServiceHealthPolicy = (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => {
+  let found = false
+  const nextPolicy = {
+    enabled: Boolean(policy.enabled),
+    intervalMs: Number.isFinite(Number(policy.intervalMs))
+      ? Math.min(300000, Math.max(15000, Number(policy.intervalMs)))
+      : 30000
+  }
+  demoState.plugins = demoState.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin
+    return {
+      ...plugin,
+      entries: {
+        ...plugin.entries,
+        services: (plugin.entries?.services || []).map((service) => (
+          service.id === serviceId
+            ? (found = true, { ...service, healthPolicy: nextPolicy })
+            : service
+        ))
+      }
+    }
+  })
+  if (!found) throw new Error(`Plugin service not found: ${serviceId}`)
+  return nextPolicy
 }
 
 const updateDemoPluginSetupRuntime = (pluginId: string, setupId: string, runtime: PluginSetupRuntimeViewState) => {
@@ -709,6 +737,17 @@ const demoApi: ControlCenterApi = {
     ]
     writeDemoState()
     return { ok: true, pluginId, serviceId, health, runtime }
+  },
+  savePluginServiceHealthPolicy: async (pluginId, serviceId, policy) => {
+    const nextPolicy = updateDemoPluginServiceHealthPolicy(pluginId, serviceId, policy)
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, nextPolicy.enabled ? 'Service health policy saved' : 'Service health policy cleared', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    const plugin = cloneDemoPlugins().find((candidate) => candidate.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return plugin
   },
   inspectPluginPackage: async () => {
     demoManualPluginSelection = demoManualPluginReview.selectionId

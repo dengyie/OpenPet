@@ -61,7 +61,7 @@ export function ServicePane({ serviceStatus, logs, status, saving, onChange, onS
             <div className="field-label">HTTP API</div>
             <div className="field-note">{runtime.enabled ? '运行中' : '未启动'}</div>
           </div>
-          <Toggle checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
+          <Toggle ariaLabel="Enable HTTP API" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
         </div>
 
         <div className="field-row">

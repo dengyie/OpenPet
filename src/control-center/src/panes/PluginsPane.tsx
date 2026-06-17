@@ -40,6 +40,7 @@ export interface PluginsPaneProps {
   openingDashboard: string
   changingService: string
   checkingServiceHealth: string
+  savingServiceHealthPolicy: string
   savingConfig: string
   clearingStorage: string
   pluginReview: PluginPackageReviewViewState | null
@@ -59,6 +60,7 @@ export interface PluginsPaneProps {
   onStartService: (pluginId: string, serviceId: string) => void | Promise<void>
   onStopService: (pluginId: string, serviceId: string) => void | Promise<void>
   onCheckServiceHealth: (pluginId: string, serviceId: string) => void | Promise<void>
+  onSaveServiceHealthPolicy: (pluginId: string, serviceId: string, enabled: boolean, intervalMs: number) => void | Promise<void>
   onChangeFilters: (filters: PluginLogFilters) => void
   onExportLogs: (format: ExportFormat) => void | Promise<void>
   onClearLogs: () => void | Promise<void>
@@ -148,7 +150,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, lastCommandResult, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, lastCommandResult, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -258,7 +260,11 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                     const serviceKey = `${plugin.id}:${service.id}`
                     const runtimeStatus = service.runtime?.status || 'stopped'
                     const healthStatus = service.runtime?.health?.status || (service.health?.url ? 'unknown' : 'not-configured')
+                    const policy = service.healthPolicy || { enabled: false, intervalMs: 30000 }
+                    const policyEnabled = Boolean(policy.enabled)
                     const running = runtimeStatus === 'running'
+                    const policySaving = savingServiceHealthPolicy === serviceKey
+                    const policyDisabled = !plugin.enabled || Boolean(plugin.blockStatus?.blocked) || policySaving
                     const title = service.title || service.id
                     return (
                       <div className="plugin-service-control" key={service.id}>
@@ -284,6 +290,41 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                         >
                           {checkingServiceHealth === serviceKey ? '检查中' : `Check ${title} Health`}
                         </button>
+                        {service.health?.url ? (
+                          <div className="plugin-health-policy">
+                            <label className="plugin-health-policy-toggle">
+                              <span>Periodic health</span>
+                              <Toggle
+                                ariaLabel={`Periodic health for ${title}`}
+                                checked={policyEnabled}
+                                disabled={policyDisabled}
+                                onChange={(nextEnabled) => onSaveServiceHealthPolicy(plugin.id, service.id, nextEnabled, policy.intervalMs)}
+                              />
+                            </label>
+                            <label className="plugin-health-policy-interval">
+                              <span>Interval</span>
+                              <select
+                                className="text-input"
+                                value={policy.intervalMs}
+                                disabled={policyDisabled || !policyEnabled}
+                                onChange={(event) => onSaveServiceHealthPolicy(plugin.id, service.id, policyEnabled, Number(event.target.value))}
+                              >
+                                <option value={15000}>15s</option>
+                                <option value={30000}>30s</option>
+                                <option value={60000}>60s</option>
+                                <option value={300000}>5m</option>
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="ghost"
+                              disabled={policyDisabled}
+                              onClick={() => onSaveServiceHealthPolicy(plugin.id, service.id, policyEnabled, policy.intervalMs)}
+                            >
+                              {policySaving ? '保存中' : 'Save policy'}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     )
                   })}
@@ -362,7 +403,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                               ))}
                             </select>
                           ) : field.type === 'boolean' ? (
-                            <Toggle checked={Boolean(value)} onChange={(nextValue) => onChangeConfig(plugin.id, field.key, nextValue)} />
+                            <Toggle ariaLabel={field.title || field.key} checked={Boolean(value)} onChange={(nextValue) => onChangeConfig(plugin.id, field.key, nextValue)} />
                           ) : (
                             <input
                               className="text-input"
@@ -379,7 +420,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                 </div>
               ) : null}
             </div>
-            <Toggle checked={plugin.enabled} onChange={(enabled) => onToggle(plugin.id, enabled)} />
+            <Toggle ariaLabel={`Enable ${plugin.name}`} checked={plugin.enabled} onChange={(enabled) => onToggle(plugin.id, enabled)} />
           </div>
         ))}
       </div>

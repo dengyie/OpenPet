@@ -160,6 +160,8 @@ const createSlowStoppingServiceProcess = ({ pid = 4321 } = {}) => {
   return child
 }
 
+const createRunningServiceProcess = ({ pid = 4321 } = {}) => createSlowStoppingServiceProcess({ pid })
+
 const createStubbornServiceProcess = ({ pid = 4321 } = {}) => {
   const child = createFakeServiceProcess({ pid })
   child.kill = (signal) => {
@@ -1635,6 +1637,210 @@ test('plugin service app shutdown cleanup force stops stubborn services after th
 
   await waitFor(() => processSignals.length === 2)
   assert.deepEqual(processSignals.map((entry) => entry.signal), ['SIGTERM', 'SIGKILL'])
+})
+
+test('plugin service exposes persisted periodic health policy on service entries', () => {
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: {
+        enabled: { 'weather-declaration': true },
+        serviceHealthPolicies: {
+          'weather-declaration': {
+            companion: { enabled: true, intervalMs: 30000 }
+          }
+        }
+      }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      serviceHealth: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+    })]
+  })
+
+  const policy = service.listPlugins()[0].entries.services[0].healthPolicy
+  assert.deepEqual(policy, { enabled: true, intervalMs: 30000 })
+})
+
+test('plugin service sanitizes malformed persisted periodic health policy', () => {
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: {
+        enabled: { 'weather-declaration': true },
+        serviceHealthPolicies: {
+          'weather-declaration': {
+            companion: { enabled: 'false', intervalMs: 'soon' }
+          }
+        }
+      }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      serviceHealth: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+    })]
+  })
+
+  const policy = service.listPlugins()[0].entries.services[0].healthPolicy
+  assert.deepEqual(policy, { enabled: false, intervalMs: 30000 })
+})
+
+test('plugin service schedules periodic health checks for running services when policy is enabled', async () => {
+  const timers = []
+  const settingsService = createSettingsService({
+    plugins: {
+      enabled: { 'weather-declaration': true },
+      serviceHealthPolicies: {
+        'weather-declaration': {
+          companion: { enabled: true, intervalMs: 15000 }
+        }
+      }
+    }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      serviceHealth: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+    })],
+    fetchImpl: async () => ({ ok: true, status: 204 }),
+    spawnServiceProcess: () => createRunningServiceProcess(),
+    setServiceHealthTimer: (callback, delay) => {
+      timers.push({ callback, delay })
+      return { unref() {} }
+    },
+    clearServiceHealthTimer: () => {}
+  })
+
+  service.startService('weather-declaration', 'companion')
+
+  assert.equal(timers.length, 1)
+  assert.equal(timers[0].delay, 15000)
+
+  await timers[0].callback()
+
+  assert.equal(service.listPlugins()[0].entries.services[0].runtime.health.status, 'healthy')
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Service health healthy')
+})
+
+test('plugin service clears periodic health timers when a running service stops', () => {
+  const cleared = []
+  const timerRef = { unref() {} }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: {
+        enabled: { 'weather-declaration': true },
+        serviceHealthPolicies: {
+          'weather-declaration': {
+            companion: { enabled: true, intervalMs: 15000 }
+          }
+        }
+      }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      serviceHealth: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+    })],
+    spawnServiceProcess: () => createSlowStoppingServiceProcess({ pid: 4321 }),
+    setServiceHealthTimer: () => timerRef,
+    clearServiceHealthTimer: (timer) => {
+      cleared.push(timer)
+    }
+  })
+
+  service.startService('weather-declaration', 'companion')
+  service.stopService('weather-declaration', 'companion')
+
+  assert.deepEqual(cleared, [timerRef])
+})
+
+test('plugin service saves and clamps periodic health policy in settings', () => {
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      serviceHealth: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+    })]
+  })
+
+  const plugin = service.saveServiceHealthPolicy('weather-declaration', 'companion', {
+    enabled: true,
+    intervalMs: 5
+  })
+
+  assert.deepEqual(settingsService.get().plugins.serviceHealthPolicies['weather-declaration'].companion, {
+    enabled: true,
+    intervalMs: 15000
+  })
+  assert.deepEqual(plugin.entries.services[0].healthPolicy, {
+    enabled: true,
+    intervalMs: 15000
+  })
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Service health policy saved')
+})
+
+test('plugin service reschedules periodic health checks when policy changes while running', () => {
+  const timers = []
+  const cleared = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      serviceHealth: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+    })],
+    spawnServiceProcess: () => createRunningServiceProcess(),
+    setServiceHealthTimer: (callback, delay) => {
+      const timer = { callback, delay, unref() {} }
+      timers.push(timer)
+      return timer
+    },
+    clearServiceHealthTimer: (timer) => {
+      cleared.push(timer)
+    }
+  })
+
+  service.startService('weather-declaration', 'companion')
+  assert.equal(timers.length, 0)
+
+  service.saveServiceHealthPolicy('weather-declaration', 'companion', {
+    enabled: true,
+    intervalMs: 60000
+  })
+
+  assert.equal(timers.length, 1)
+  assert.equal(timers[0].delay, 60000)
+
+  service.saveServiceHealthPolicy('weather-declaration', 'companion', {
+    enabled: false,
+    intervalMs: 60000
+  })
+
+  assert.deepEqual(cleared, [timers[0]])
+})
+
+test('plugin service rejects periodic health policy for services without health declarations', () => {
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()]
+  })
+
+  assert.throws(
+    () => service.saveServiceHealthPolicy('weather-declaration', 'companion', { enabled: true, intervalMs: 30000 }),
+    /Plugin service health check is not configured/
+  )
 })
 
 test('plugin service checks configured service health endpoints', async () => {

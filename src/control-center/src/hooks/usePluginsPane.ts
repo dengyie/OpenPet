@@ -28,6 +28,7 @@ export function usePluginsPane() {
   const [openingDashboard, setOpeningDashboard] = useState('')
   const [changingService, setChangingService] = useState('')
   const [checkingServiceHealth, setCheckingServiceHealth] = useState('')
+  const [savingServiceHealthPolicy, setSavingServiceHealthPolicy] = useState('')
   const [savingConfig, setSavingConfig] = useState('')
   const [clearingStorage, setClearingStorage] = useState('')
   const [pluginReview, setPluginReview] = useState<PluginPackageReviewViewState | null>(null)
@@ -285,6 +286,26 @@ export function usePluginsPane() {
     }
   }
 
+  const onSaveServiceHealthPolicy = async (pluginId: string, serviceId: string, enabled: boolean, intervalMs: number) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setSavingServiceHealthPolicy(serviceKey)
+    setStatus('')
+    try {
+      const updatedPlugin = await api.savePluginServiceHealthPolicy(pluginId, serviceId, { enabled, intervalMs })
+      setPlugins((currentPlugins) => currentPlugins.map((plugin) => (
+        plugin.id === pluginId ? { ...plugin, ...updatedPlugin } : plugin
+      )))
+      await refreshLogs()
+      setStatus(enabled ? 'Periodic health 已启用' : 'Periodic health 已关闭')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Periodic health 保存失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setSavingServiceHealthPolicy('')
+    }
+  }
+
   const onExportLogs = async (format: ExportFormat) => {
     setStatus('')
     try {
@@ -345,6 +366,7 @@ export function usePluginsPane() {
     openingDashboard,
     changingService,
     checkingServiceHealth,
+    savingServiceHealthPolicy,
     savingConfig,
     clearingStorage,
     pluginReview,
@@ -364,6 +386,7 @@ export function usePluginsPane() {
     onStartService,
     onStopService,
     onCheckServiceHealth,
+    onSaveServiceHealthPolicy,
     onChangeFilters: setFilters,
     onExportLogs,
     onClearLogs,

@@ -6,7 +6,7 @@
 
 ## 1. Goal
 
-OpenPet has reached the intended platform shape: Electron desktop pet runtime, Control Center, pet packs, Codex pet import, bundled pets, a local extension ecosystem with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit dashboard opening, explicit service start/stop controls, and manual loopback service health checks, AI behavior orchestration, local HTTP/MCP, desktop release tooling, and release evidence validators.
+OpenPet has reached the intended platform shape: Electron desktop pet runtime, Control Center, pet packs, Codex pet import, bundled pets, a local extension ecosystem with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit dashboard opening, explicit service start/stop controls, manual loopback service health checks, and opt-in periodic health checks for running services, AI behavior orchestration, local HTTP/MCP, desktop release tooling, and release evidence validators.
 
 The v1.1 TODO is no longer about proving the platform can exist. It is about making the platform trustworthy for real users and maintainable for third-party contributors:
 
@@ -36,7 +36,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - macOS signed/notarized release evidence still needs real artifact capture and archive.
 - Windows signed installer/zip smoke evidence still needs real Windows execution.
 - Packaged runtime smoke reports still need real app evidence for pet window visibility, transparent rendering, bundled pack switching, and native picker flows.
-- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup now exists. Background health polling, richer bridge surfaces for authoring workflows, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
+- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, explicit service start/stop, manual loopback service health checks, opt-in periodic health checks for running services, and best-effort process-group cleanup now exists. Richer bridge surfaces for authoring workflows, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
 - Legacy SDK plugin secrets policy remains conservative; target extension docs require honest disclosure for extension-managed secrets and data.
 - Plugin sandbox strategy has been evaluated against SES and Electron `utilityProcess`; current recommendation is to keep the existing runner for v1.1 while documenting limits.
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
@@ -906,6 +906,31 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 70. Explicit setup runs and declaration-only command runs now keep stop intent visible until child exit confirmation, while both paths remain on direct-child best effort without service-style force-stop escalation.
 
+### Phase 71: Plugin service periodic health policy
+
+**Goal**: add a host-managed periodic health policy for declared service entries without widening plugin manifest authority or auto-start behavior.
+
+**Scope**:
+
+- Keep Phase 59 manual loopback health checks unchanged as the base health path.
+- Persist host-owned per-service periodic health policy in OpenPet settings.
+- Expose policy state through shared contracts, IPC, preload, demo API, and Control Center.
+- Schedule recurring checks only while the declared service runtime is `running`.
+- Reuse the existing loopback-only health check logic and timeout behavior.
+- Clear timers on stop, exit, error, disable cleanup, shutdown cleanup, and policy changes.
+- Do not add service auto-start, plugin manifest-owned scheduler hints, retries, notifications, or remote health checks.
+
+**Acceptance**:
+
+- Control Center can enable/disable periodic health checks and choose a bounded interval for services with declared health URLs.
+- Periodic checks never auto-start stopped services.
+- Periodic checks stop when the service stops or the policy is disabled.
+- Malformed persisted policy values sanitize safely instead of accidentally enabling polling.
+- Tests cover persistence, sanitization, scheduling, cleanup, IPC, and the Control Center flow.
+- Docs describe the capability as host-managed loopback polling for running services, not plugin-owned background execution.
+
+**Status**: completed in Phase 71. Running declared services can now receive opt-in host-managed periodic health checks from Control Center, while services still do not auto-start and plugin manifests still do not own scheduler policy.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -936,6 +961,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 68 Plugin service exit-confirmed stop | Completed; declared service entries now remain `stopping` until child exit confirmation, and logs distinguish stop request from confirmed stop completion while hard cleanup guarantees remain out of scope. |
 | P1 | Phase 69 Plugin service force stop | Completed; stubborn declared service entries now trigger one bounded host-side force-stop attempt after a grace period, while final forced-stop outcomes remain on the existing `failed` contract. |
 | P1 | Phase 70 Plugin setup and command cleanup parity | Completed; setup and declaration-only command cleanup now keep stop intent visible until child exit confirmation, while staying on direct-child best effort rather than service-style force-stop escalation. |
+| P1 | Phase 71 Plugin service periodic health policy | Completed; running declared services can now receive opt-in host-managed periodic health checks from Control Center, while services still do not auto-start and plugin manifests still do not own scheduler policy. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -968,9 +994,10 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 24. Phase 62 is complete; declaration-only local command entries can be explicitly run from Control Center for enabled policy-allowed local plugins, with stdin JSON context, timeout handling, logs, and no shell expansion.
 25. Phase 63 is complete; the Plugins pane now shows the latest command result summary on the matching plugin card, with result message, exit code, JSON preview, and bounded stdout/stderr snippets.
 26. Phase 64 is complete; declaration-only commands now receive a short-lived bridge URL/token and can use it for pet-aware mutations and bounded context reads.
-27. Phase 68 is complete; declaration-only service entries now remain `stopping` until child exit confirmation and only log final stop completion after that confirmation. Choose the next phase from real evidence work, community extension rehearsal, hard cleanup guarantees, or another high-drift service/report boundary.
+27. Phase 68 is complete; declaration-only service entries now remain `stopping` until child exit confirmation and only log final stop completion after that confirmation.
 28. Phase 69 is complete; declaration-only service entries now use a bounded grace period plus one host-side force-stop attempt for stubborn shutdowns, while setup and command cleanup remain on their previous paths.
 29. Phase 70 is complete; setup and declaration-only command cleanup now share the stop-intent/exit-confirmation boundary while still keeping their direct-child best-effort cleanup model.
+30. Phase 71 is complete; running declared services can now receive opt-in host-managed periodic health checks from Control Center, while services still do not auto-start and plugin manifests still do not own scheduler policy.
 
 ## 8. Verification Contract
 

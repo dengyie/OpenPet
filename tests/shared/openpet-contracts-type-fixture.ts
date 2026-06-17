@@ -22,7 +22,14 @@ const pluginReviewFixture = {
     entries: {
       setup: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.', runtime: { status: 'not-run' } }],
       commands: [{ id: 'run', title: 'Run', command: 'node ./index.js', cwd: '.' }],
-      services: [{ id: 'svc', title: 'Service', command: 'npm run service:start', cwd: '.' }],
+      services: [{
+        id: 'svc',
+        title: 'Service',
+        command: 'npm run service:start',
+        cwd: '.',
+        health: { type: 'http', url: 'http://127.0.0.1:8787/health' },
+        healthPolicy: { enabled: true, intervalMs: 30000 }
+      }],
       dashboards: [{ id: 'main', title: 'Dashboard', url: 'http://127.0.0.1:8787' }]
     }
   },

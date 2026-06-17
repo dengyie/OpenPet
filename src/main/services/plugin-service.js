@@ -18,6 +18,9 @@ const MAX_PLUGIN_COMMAND_OUTPUT_BYTES = 64 * 1024
 const MAX_PLUGIN_BRIDGE_BODY_BYTES = 1024 * 1024
 const PLUGIN_SERVICE_HEALTH_TIMEOUT_MS = 3000
 const PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS = 1500
+const MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 15000
+const DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 30000
+const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
 const LOCAL_PLUGIN_RUNNER_PATH = path.join(__dirname, '../plugins/local-plugin-runner.js')
 const PLUGIN_BRIDGE_HOST = '127.0.0.1'
 
@@ -511,7 +514,7 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const serviceRuntimes = new Map()
@@ -722,6 +725,22 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
 
   const getInstalledMap = () => settingsService.get().plugins?.installed || {}
 
+  const normalizeServiceHealthPolicy = (policy = {}) => {
+    const intervalMs = Number(policy.intervalMs)
+    return {
+      enabled: policy.enabled === true,
+      intervalMs: Number.isFinite(intervalMs)
+        ? Math.min(MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS, Math.max(MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS, intervalMs))
+        : DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS
+    }
+  }
+
+  const getServiceHealthPolicyMap = () => settingsService.get().plugins?.serviceHealthPolicies || {}
+
+  const getPluginServiceHealthPolicy = (pluginId, serviceId) => normalizeServiceHealthPolicy(
+    getServiceHealthPolicyMap()?.[pluginId]?.[serviceId]
+  )
+
   const getPluginPolicyStatus = (manifestOrId) => {
     const pluginId = typeof manifestOrId === 'string' ? manifestOrId : manifestOrId?.id
     const installed = getInstalledMap()[pluginId] || {}
@@ -874,6 +893,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     })),
     services: (manifest.entries?.services || []).map((serviceEntry) => ({
       ...serviceEntry,
+      healthPolicy: getPluginServiceHealthPolicy(manifest.id, serviceEntry.id),
       runtime: createRuntimeView(serviceRuntimes.get(createPluginServiceKey(manifest.id, serviceEntry.id)), serviceEntry)
     }))
   })
@@ -997,9 +1017,43 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       error: '',
       child: null,
       stopTimer: null,
+      healthTimer: null,
+      healthChecking: false,
       stopGracePeriodMs: Number.isFinite(Number(serviceStopGracePeriodMs)) ? Math.max(0, Number(serviceStopGracePeriodMs)) : PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS,
       health: createServiceHealthView({}, serviceEntry)
     })
+  }
+
+  const clearServiceHealthSchedule = (runtime) => {
+    if (!runtime?.healthTimer) return
+    clearServiceHealthTimer(runtime.healthTimer)
+    runtime.healthTimer = null
+  }
+
+  const scheduleServiceHealthCheck = (pluginId, serviceId, runtime, serviceEntry) => {
+    clearServiceHealthSchedule(runtime)
+    if (!runtime || runtime.status !== 'running') return
+    if (!serviceEntry?.health?.url) return
+    const policy = getPluginServiceHealthPolicy(pluginId, serviceId)
+    if (!policy.enabled) return
+    runtime.healthTimer = setServiceHealthTimer(async () => {
+      runtime.healthTimer = null
+      if (runtime.status !== 'running') return
+      if (runtime.healthChecking || runtime.health?.status === 'checking') {
+        scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+        return
+      }
+      runtime.healthChecking = true
+      try {
+        await checkServiceHealth(pluginId, serviceId, { reschedule: false })
+      } catch (_) {
+        // checkServiceHealth already records a bounded runtime health result or log.
+      } finally {
+        runtime.healthChecking = false
+        scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+      }
+    }, policy.intervalMs)
+    runtime.healthTimer?.unref?.()
   }
 
   const stopServiceProcess = (runtime, signal = 'SIGTERM') => {
@@ -1044,6 +1098,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       runtime.status = 'failed'
     }
     clearServiceStopTimer(runtime)
+    clearServiceHealthSchedule(runtime)
     if (runtime.status === 'stopping') {
       const gracePeriodMs = Number.isFinite(Number(runtime.stopGracePeriodMs))
         ? Math.max(0, Number(runtime.stopGracePeriodMs))
@@ -1192,6 +1247,40 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       }
     })
     appendLog({ pluginId, level: 'info', message: 'Plugin config saved' })
+    return listPlugins().find((candidate) => candidate.id === pluginId)
+  }
+
+  const saveServiceHealthPolicy = (pluginId, serviceId, policy = {}) => {
+    const plugin = findPluginForService(pluginId)
+    const serviceEntry = getServiceEntry(plugin, serviceId)
+    if (!serviceEntry.health?.url) throw new Error('Plugin service health check is not configured')
+    const normalizedPolicy = normalizeServiceHealthPolicy(policy)
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        serviceHealthPolicies: {
+          ...(settings.plugins?.serviceHealthPolicies || {}),
+          [pluginId]: {
+            ...(settings.plugins?.serviceHealthPolicies?.[pluginId] || {}),
+            [serviceId]: normalizedPolicy
+          }
+        }
+      }
+    })
+
+    const runtime = serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
+    if (runtime) {
+      clearServiceHealthSchedule(runtime)
+      scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+    }
+    appendLog({
+      pluginId,
+      commandId: `service:${serviceId}`,
+      level: 'info',
+      message: normalizedPolicy.enabled ? 'Service health policy saved' : 'Service health policy cleared'
+    })
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
 
@@ -1641,6 +1730,8 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         error: '',
         child,
         stopTimer: null,
+        healthTimer: null,
+        healthChecking: false,
         stopGracePeriodMs: Number.isFinite(Number(serviceStopGracePeriodMs)) ? Math.max(0, Number(serviceStopGracePeriodMs)) : PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS,
         health: existingRuntime?.health || createServiceHealthView({}, serviceEntry)
       })
@@ -1654,6 +1745,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         if (message) appendLog({ pluginId, commandId, level: 'error', message: `Service stderr: ${message}`.slice(0, 500) })
       })
       child.on?.('error', (error) => {
+        clearServiceHealthSchedule(runtime)
         runtime.status = 'failed'
         runtime.error = error.message || 'Plugin service failed'
         runtime.stoppedAt = new Date().toISOString()
@@ -1661,6 +1753,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       })
       child.on?.('exit', (code, signal) => {
         clearServiceStopTimer(runtime)
+        clearServiceHealthSchedule(runtime)
         const stoppedByRequest = runtime.status === 'stopping'
         if (runtime.status === 'stopping') {
           const forcedStop = /force kill/i.test(String(runtime.error || ''))
@@ -1694,6 +1787,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       })
 
       appendLog({ pluginId, commandId, level: 'info', message: 'Service started' })
+      scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
       return {
         ok: true,
         pluginId,
@@ -1721,7 +1815,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
-  const checkServiceHealth = async (pluginId, serviceId) => {
+  const checkServiceHealth = async (pluginId, serviceId, { reschedule = true } = {}) => {
     const commandId = `service:${serviceId || ''}`
     try {
       const plugin = findPluginForService(pluginId)
@@ -1784,6 +1878,8 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         message: runtime.health.status === 'healthy' ? 'Service health healthy' : 'Service health unhealthy'
       })
 
+      if (reschedule) scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+
       return {
         ok: true,
         pluginId,
@@ -1825,7 +1921,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     return { ok: true }
   }
 
-  return { listPlugins, setEnabled, saveConfig, clearStorage, runCommand, runSetup, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
+  return { listPlugins, setEnabled, saveConfig, saveServiceHealthPolicy, clearStorage, runCommand, runSetup, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
 }
 
 module.exports = { createPluginService, readLocalPluginManifests }

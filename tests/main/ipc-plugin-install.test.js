@@ -687,6 +687,57 @@ test('plugin service health handler delegates to plugin service', async () => {
   assert.deepEqual(calls, [['weather-declaration', 'companion']])
 })
 
+test('plugin service health policy handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        saveServiceHealthPolicy: (pluginId, serviceId, policy) => {
+          calls.push({ pluginId, serviceId, policy })
+          return {
+            id: pluginId,
+            entries: {
+              services: [{ id: serviceId, healthPolicy: policy }]
+            }
+          }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    policy: { enabled: true, intervalMs: 30000 }
+  })
+
+  assert.deepEqual(calls, [{
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    policy: { enabled: true, intervalMs: 30000 }
+  }])
+  assert.deepEqual(result, {
+    id: 'weather-declaration',
+    entries: {
+      services: [{ id: 'companion', healthPolicy: { enabled: true, intervalMs: 30000 } }]
+    }
+  })
+})
+
 test('pet-packs:inspect-directory opens native folder or zip picker and delegates selected source', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []

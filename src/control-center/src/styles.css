@@ -778,6 +778,29 @@ button {
   font-size: 12px;
 }
 
+.plugin-health-policy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding-top: 2px;
+}
+
+.plugin-health-policy-toggle,
+.plugin-health-policy-interval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plugin-health-policy-interval .text-input {
+  min-width: 88px;
+}
+
 .plugin-entry-details {
   display: grid;
   gap: 10px;

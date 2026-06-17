@@ -410,6 +410,7 @@ export interface PluginServiceEntryViewState {
     type: string
     url?: string
   } | null
+  healthPolicy?: PluginServiceHealthPolicyViewState
   runtime?: PluginServiceRuntimeViewState
 }
 
@@ -550,6 +551,11 @@ export interface PluginServiceHealthViewState {
   url?: string
   statusCode?: number | null
   message?: string
+}
+
+export interface PluginServiceHealthPolicyViewState {
+  enabled: boolean
+  intervalMs: number
 }
 
 export interface PluginServiceRuntimeViewState {
@@ -896,6 +902,7 @@ export interface ControlCenterApi {
   getPlugins: () => Promise<PluginViewState[]>
   setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
+  savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
   runPluginSetup: (pluginId: string, setupId: string) => Promise<PluginSetupRunResultViewState>
   openPluginDashboard: (pluginId: string, dashboardId: string) => Promise<PluginDashboardOpenResult>
