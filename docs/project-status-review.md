@@ -1,14 +1,14 @@
 # OpenPet Project Status Review
 
 > Date: 2026-06-18
-> Branch: `codex/plugin-repository-provenance-rehearsal-phase76`
+> Branch: `codex/macos-release-evidence-capture-phase77`
 > Release track: `v1.0.1-rc.2`
 
 This document is the current status snapshot. Detailed implementation history belongs in `docs/phases/`; detailed review findings belong in `docs/reviews/`.
 
 ## Executive Summary
 
-OpenPet has reached the intended desktop platform shape: Electron pet runtime, React Control Center, pet packs, AI behavior, local extension documentation with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, opt-in host-managed periodic health checks for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup for explicit local-process stop paths, structured maintainer approval rehearsal for extension submission bundles, existing-plugin real-world submission rehearsal evidence, repository-provenance submission rehearsal evidence, local HTTP/MCP, release evidence tooling, and a TypeScript boundary baseline.
+OpenPet has reached the intended desktop platform shape: Electron pet runtime, React Control Center, pet packs, AI behavior, local extension documentation with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, opt-in host-managed periodic health checks for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup for explicit local-process stop paths, structured maintainer approval rehearsal for extension submission bundles, existing-plugin real-world submission rehearsal evidence, remote-source submission rehearsal evidence, local HTTP/MCP, release evidence tooling including macOS evidence capture, and a TypeScript boundary baseline.
 
 The project is strongest on macOS. Windows build and evidence tooling exists, but Windows must stay **not release-ready** until signed artifacts and real Windows smoke reports are archived.
 
@@ -22,9 +22,9 @@ The extension ecosystem has also crossed an important platform threshold: declar
 | Control Center | React + Vite app with Pet, Actions, AI, Plugins, Catalog, Service, and About tabs | `src/control-center/`, `tests/control-center/` |
 | Pet packs | Legacy cat, OpenPet packs, Codex pet directory/zip import, bundled read-only packs, export/provenance | `src/main/pet-pack/`, `src/main/services/pet-pack-service.js` |
 | AI | OpenAI-compatible chat, main-process secret storage, behavior decisions, replay, redacted diagnostics | `src/main/services/ai-service.js`, `src/main/services/behavior-orchestrator-service.js` |
-| Extensions | Developer-first ecosystem docs, current legacy SDK compatibility, normalized `entries` declarations including explicit setup execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived bridge access for declaration-only commands, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime state and logs, manual loopback-only service health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, validation, submission tooling, catalog install, scaffold author rehearsal, existing-plugin real-world submission rehearsal, repository-provenance submission rehearsal, and maintainer approval rehearsal; command/setup/service spawns do not use shell expansion, setup and commands never run during install/enable, services do not auto-start, maintainer approval remains a human review artifact, and universal process-tree guarantees remain out of scope | `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, `docs/plugin-submission-workflow-playbook.md`, `src/main/plugins/manifest.js`, `src/main/services/plugin-service.js`, `src/main/services/service-process-tree.js` |
+| Extensions | Developer-first ecosystem docs, current legacy SDK compatibility, normalized `entries` declarations including explicit setup execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived bridge access for declaration-only commands, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime state and logs, manual loopback-only service health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, validation, submission tooling, catalog install, scaffold author rehearsal, existing-plugin real-world submission rehearsal, remote-source submission rehearsal, and maintainer approval rehearsal; command/setup/service spawns do not use shell expansion, setup and commands never run during install/enable, services do not auto-start, maintainer approval remains a human review artifact, and universal process-tree guarantees remain out of scope | `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, `docs/plugin-submission-workflow-playbook.md`, `src/main/plugins/manifest.js`, `src/main/services/plugin-service.js`, `src/main/services/service-process-tree.js` |
 | Local API | Loopback-only HTTP and MCP, token gated, logged, disabled by default | `src/main/services/local-http-service.js` |
-| Release evidence | Packaged runtime evidence tooling, runtime/picker evidence-link gate, desktop picker evidence summary/archive manifests, release archive picker-archive gate, signed release closure gate, Windows smoke/report tooling | `scripts/create-*-smoke-*`, `docs/release-evidence/` |
+| Release evidence | Packaged runtime evidence tooling, runtime/picker evidence-link gate, desktop picker evidence summary/archive manifests, macOS codesign/notarization/Gatekeeper evidence capture, release archive picker-archive gate, signed release closure gate, Windows smoke/report tooling | `scripts/create-*-smoke-*`, `scripts/create-macos-release-evidence.js`, `docs/release-evidence/` |
 | TypeScript | Shared contracts, typed Control Center view defaults, typed API facade, typed Control Center hooks, typed pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, representative payload fixtures | `src/shared/openpet-contracts.ts`, `src/control-center/src/api/control-center-api.ts`, `src/control-center/src/hooks/`, `src/control-center/src/panes/`, `src/main/control-center-adapters.js` |
 
 ## Validation Baseline
@@ -32,7 +32,7 @@ The extension ecosystem has also crossed an important platform threshold: declar
 Current local baseline:
 
 ```bash
-npm test                     # 541/541 Node tests
+npm test                     # 549/549 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
@@ -43,7 +43,7 @@ npm run pack                 # electron-builder directory package
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
-| macOS | Validated local baseline and packaged runtime evidence exist; signed/notarized release evidence still needs official archive completion | macOS-first release track |
+| macOS | Validated local baseline and packaged runtime evidence exist; canonical signed/notarized/Gatekeeper evidence capture is scripted, but real official evidence still needs archive completion | macOS-first release track |
 | Windows | Build, signing policy, smoke report, collector, evidence summary, and archive tooling exist; signed artifact evidence and real smoke reports are missing | Do not claim release-ready |
 | Linux | Deferred | No support claim |
 | Mobile | Out of scope | No support claim |
@@ -52,10 +52,10 @@ npm run pack                 # electron-builder directory package
 
 The active product gaps are evidence and ecosystem maturity, not a rewrite of the platform:
 
-1. Archive official signed macOS release evidence.
+1. Run `npm run create-macos-release-evidence` against the official signed macOS artifact and archive passing codesign, notarization, and Gatekeeper evidence.
 2. Produce signed Windows artifacts and real Windows smoke reports before changing Windows wording.
 3. Fill native picker smoke evidence from launched or packaged app runs, archive it with the desktop picker summary and archive manifest, and keep the release archive / signed closure flow pointed at that reviewed picker archive.
-4. Continue toward live independent third-party extension submissions beyond the current `weather-status` local rehearsal and repository-provenance rehearsal, while keeping setup execution, language-neutral command execution, command bridge scope, dashboard opening support, service start/stop support, manual and opt-in periodic loopback health checks, exit-confirmed stop semantics, bounded host-side force stop, host-owned process-tree fallback limits, maintainer approval role boundaries, and best-effort cleanup limits explicit.
+4. Continue toward live independent third-party extension submissions beyond the current `weather-status` local rehearsal and official-repository remote-source rehearsal, while keeping setup execution, language-neutral command execution, command bridge scope, dashboard opening support, service start/stop support, manual and opt-in periodic loopback health checks, exit-confirmed stop semantics, bounded host-side force stop, host-owned process-tree fallback limits, maintainer approval role boundaries, and best-effort cleanup limits explicit.
 5. Continue TypeScript migration into other high-drift main-process adapter boundaries.
 
 ## Documentation Map

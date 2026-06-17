@@ -2,11 +2,11 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates that now require the reviewed picker archive manifest. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has a validated release baseline and repeatable codesign/notarization/Gatekeeper evidence capture; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates that now require the reviewed picker archive manifest. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
-| macOS | Baseline implemented | Release candidate path exists; official artifacts should be signed/notarized |
+| macOS | Baseline implemented with evidence capture tooling | Release candidate path exists; official artifacts should be signed/notarized and archived with passing evidence |
 | Windows | Packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest and desktop picker/runtime smoke evidence tooling baselines implemented | Do not publish as supported until the Windows checklist passes |
 | Linux | Deferred | Out of current release scope |
 | Mobile | Out of scope | Not part of this desktop release track |
@@ -51,6 +51,7 @@ npm run update-windows-smoke-report -- --list-checks
 - Confirm the release evidence archive manifest tool can parse its options:
 
 ```bash
+npm run create-macos-release-evidence -- --help
 npm run create-release-evidence-archive-manifest -- --help
 ```
 
@@ -104,6 +105,14 @@ Run these checks on the signed app or mounted DMG output:
 codesign --verify --deep --strict --verbose=2 "release/mac/OpenPet.app"
 spctl --assess --type execute --verbose=4 "release/mac/OpenPet.app"
 ```
+
+Capture canonical macOS release evidence before building the release archive:
+
+```bash
+npm run create-macos-release-evidence -- --app "release/mac/OpenPet.app" --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/<release-archive>
+```
+
+The command writes `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, `macos-release-evidence-summary.md`, and `macos-release-evidence-summary.json`. It is allowed to archive failing or pending output for review, but official readiness still requires the summary and release archive manifest to report passing signed evidence.
 
 After all macOS packaged native picker checks are filled with concrete evidence, validate readiness:
 
@@ -278,6 +287,7 @@ For a release-level archive, assemble a reviewed directory with:
 Then generate the archive manifest:
 
 ```bash
+npm run create-macos-release-evidence -- --app release/mac/OpenPet.app --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive> --require-signed
 npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready

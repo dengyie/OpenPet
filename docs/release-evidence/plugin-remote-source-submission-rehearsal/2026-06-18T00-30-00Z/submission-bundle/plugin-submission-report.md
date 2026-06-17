@@ -1,7 +1,7 @@
 # OpenPet Plugin Submission Report
 
-Generated at: 2026-06-17T16:30:00.000Z
-Source path: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip
+Generated at: 2026-06-17T17:33:39.420Z
+Source path: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip
 Decision: ready-for-human-review
 Ready for human review: yes
 Require verified signature metadata: no

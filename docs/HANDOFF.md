@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-18 | Branch: `codex/plugin-repository-provenance-rehearsal-phase76`
+> Last updated: 2026-06-18 | Branch: `codex/macos-release-evidence-capture-phase77`
 
 ## Current Snapshot
 
@@ -12,7 +12,7 @@ OpenPet is a desktop pet platform with:
 - bundled built-in packs `doro`, `duodong`, and `chispa`,
 - AI chat with secret storage in the main process,
 - AI behavior decisions with Control Center replay and redacted diagnostics,
-- developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths, plugin submission bundles, scaffold author rehearsal, maintainer approval rehearsal records, existing-plugin real-world submission rehearsal evidence, and repository-provenance submission rehearsal evidence,
+- developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths, plugin submission bundles, scaffold author rehearsal, maintainer approval rehearsal records, existing-plugin real-world submission rehearsal evidence, and remote-source submission rehearsal evidence,
 - loopback-only local HTTP / MCP,
 - and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
 
@@ -38,14 +38,14 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 541/541 Node tests
+npm test                     # 549/549 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
 npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
 npm run create-plugin-author-rehearsal
 npm run create-plugin-real-world-submission-rehearsal -- --source examples/plugins/weather-status --output-dir docs/release-evidence/plugin-real-world-submission-rehearsal/<session>
-npm run create-plugin-repository-provenance-rehearsal -- --git-source examples/community-plugin-sources/weather-status-community.bundle --ref refs/heads/main --plugin-subdir plugin --output-dir docs/release-evidence/plugin-repository-provenance-rehearsal/<session>
+npm run create-plugin-remote-source-submission-rehearsal -- --archive-url https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main --plugin-path examples/plugins/weather-status --output-dir docs/release-evidence/plugin-remote-source-submission-rehearsal/<session>
 npm run create-plugin-maintainer-approval -- <submission-bundle-dir> --reviewer "OpenPet Maintainer" --decision approved --notes "..."
 npm run validate-plugin-maintainer-approval -- <submission-bundle-dir> --require-approved
 npm run create-packaged-runtime-smoke-report
@@ -56,6 +56,7 @@ npm run create-desktop-picker-evidence-summary
 npm run create-desktop-picker-archive-manifest
 npm run create-release-evidence-archive-manifest
 npm run create-signed-release-closure-report
+npm run create-macos-release-evidence -- --app release/mac/OpenPet.app --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/macos-release-evidence/<session>
 ```
 
 ## Where To Look For Detail
@@ -71,8 +72,9 @@ npm run create-signed-release-closure-report
 - `scripts/run-packaged-runtime-smoke.js`, `scripts/create-packaged-runtime-smoke-report.js`, and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
 - `scripts/create-desktop-picker-evidence-summary.js` and `scripts/create-desktop-picker-archive-manifest.js` for reviewed native picker evidence archive summaries and manifests.
 - `scripts/create-release-evidence-archive-manifest.js` and `scripts/create-signed-release-closure-report.js` for release-level evidence archive validation and release-claim closure.
-- `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, and `docs/plugin-submission-workflow-playbook.md` for extension onboarding, maintainer approval rehearsal, repository-provenance rehearsal, and legacy SDK compatibility.
-- `scripts/create-openpet-plugin.js`, `scripts/create-plugin-author-rehearsal.js`, `scripts/create-plugin-real-world-submission-rehearsal.js`, `scripts/create-plugin-repository-provenance-rehearsal.js`, `scripts/create-plugin-maintainer-approval.js`, and `scripts/validate-plugin-maintainer-approval.js` for current compatibility starter templates, existing-plugin rehearsal, repository-provenance rehearsal, and reviewer-path rehearsal.
+- `scripts/create-macos-release-evidence.js` for canonical macOS codesign/notarization/Gatekeeper evidence capture before release-level archive aggregation.
+- `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, and `docs/plugin-submission-workflow-playbook.md` for extension onboarding, maintainer approval rehearsal, remote-source rehearsal, and legacy SDK compatibility.
+- `scripts/create-openpet-plugin.js`, `scripts/create-plugin-author-rehearsal.js`, `scripts/create-plugin-real-world-submission-rehearsal.js`, `scripts/create-plugin-remote-source-submission-rehearsal.js`, `scripts/create-plugin-maintainer-approval.js`, and `scripts/validate-plugin-maintainer-approval.js` for current compatibility starter templates, existing-plugin rehearsal, remote-source rehearsal, and reviewer-path rehearsal.
 
 ## Next Steps
 
@@ -85,5 +87,6 @@ npm run create-signed-release-closure-report
 7. Use Phase 74 maintainer approval rehearsal as the current extension review-handoff boundary: author rehearsal stops at a ready-for-human-review submission bundle, maintainer approval is recorded as a separate Markdown/JSON artifact, and approval remains explicit human judgment rather than automated trust or publication.
 8. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
 9. Use Phase 75 real-world submission rehearsal as the current existing-plugin submission baseline: `examples/plugins/weather-status` now has an archived local package -> submission bundle -> maintainer approval evidence chain, but that archive still does not prove external community provenance, signing trust, catalog publication, runtime safety, or release readiness.
-10. Use Phase 76 repository-provenance rehearsal as the current source-review baseline: `examples/community-plugin-sources/weather-status-community.bundle` now has an archived repository-provenance -> extracted plugin -> submission bundle -> maintainer approval evidence chain that records clone source, ref, commit, and plugin subdirectory, but it still does not prove independent public community ownership, signing trust, catalog publication, runtime safety, or release readiness.
-11. After Phase 76, continue from real signed evidence work, live external community submission evidence, stronger cleanup evidence on real hosts, or another high-drift service/report boundary.
+10. Use Phase 76 remote-source rehearsal as the current source-review baseline: `https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main` now has an archived HTTPS archive -> extracted plugin -> submission bundle -> maintainer approval evidence chain that records archive URL, final URL, archive SHA-256, archive size, selected plugin path, and extracted file hashes, but it still does not prove independent public community ownership, signing trust, catalog publication, runtime safety, or release readiness.
+11. Use Phase 77 macOS release evidence capture as the current signed-evidence collection path: the helper can archive `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, and Markdown/JSON summaries, but official readiness remains false until real signed, notarized, Gatekeeper-accepted evidence is present.
+12. After Phase 77, continue from real signed evidence collection, live external community submission evidence, stronger cleanup evidence on real hosts, or another high-drift service/report boundary.

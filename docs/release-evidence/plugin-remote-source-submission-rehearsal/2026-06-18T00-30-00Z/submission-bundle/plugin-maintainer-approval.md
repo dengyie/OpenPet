@@ -1,7 +1,7 @@
 # OpenPet Plugin Maintainer Approval
 
-Generated at: 2026-06-17T16:30:00.000Z
-Source bundle: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/submission-bundle
+Generated at: 2026-06-17T17:33:39.420Z
+Source bundle: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle
 Reviewer: OpenPet Maintainer
 Decision: approved
 Approval ready: yes
@@ -19,7 +19,7 @@ Approval ready: yes
 
 ## Notes
 
-Repository provenance, manifest, package hash, and submission artifacts reviewed.
+Remote source archive, manifest, package hash, and submission artifacts reviewed.
 
 ## Review Boundary
 

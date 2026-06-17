@@ -1,0 +1,13 @@
+{
+  "commands": [
+    "curl -L --fail --output <archive.zip> 'https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main'",
+    "unzip -qq <archive.zip> -d <extract-dir>",
+    "npm run validate:plugin -- '<extract-dir>/OpenPet-main/examples/plugins/weather-status'",
+    "cd '<extract-dir>/OpenPet-main/examples/plugins/weather-status' && zip -qr '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip' .",
+    "npm run validate:plugin -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip'",
+    "npm run create-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip' --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle'",
+    "npm run validate-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle' --require-ready",
+    "npm run create-plugin-maintainer-approval -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle' --reviewer 'OpenPet Maintainer' --decision approved --notes 'Remote source archive, manifest, package hash, and submission artifacts reviewed.'",
+    "npm run validate-plugin-maintainer-approval -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle' --require-approved"
+  ]
+}

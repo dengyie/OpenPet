@@ -1,8 +1,0 @@
-{
-  "kind": "git",
-  "cloneSource": "/Users/mango/project/codex/OpenPet/examples/community-plugin-sources/weather-status-community.bundle",
-  "requestedRef": "refs/heads/main",
-  "resolvedCommit": "08d4301d363e4a0aff3f5a1404b12cb2194fa809",
-  "pluginSubdir": "plugin",
-  "checkedOutAt": "2026-06-17T16:30:00.000Z"
-}

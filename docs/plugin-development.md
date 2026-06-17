@@ -404,7 +404,7 @@ npm run validate:plugin -- <extension-dir-or-zip>
 npm run create-plugin-submission-bundle -- <extension-dir-or-zip> --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
 npm run create-plugin-real-world-submission-rehearsal -- --source examples/plugins/weather-status --output-dir docs/release-evidence/plugin-real-world-submission-rehearsal/<session>
-npm run create-plugin-repository-provenance-rehearsal -- --git-source examples/community-plugin-sources/weather-status-community.bundle --ref refs/heads/main --plugin-subdir plugin --output-dir docs/release-evidence/plugin-repository-provenance-rehearsal/<session>
+npm run create-plugin-remote-source-submission-rehearsal -- --archive-url https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main --plugin-path examples/plugins/weather-status --output-dir docs/release-evidence/plugin-remote-source-submission-rehearsal/<session>
 npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer "OpenPet Maintainer" --decision approved --notes "Manifest, permissions, package hash, and submission artifacts reviewed."
 npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
@@ -428,7 +428,7 @@ This is still review evidence, not catalog approval or signing trust.
 
 For an existing-plugin rehearsal, use `create-plugin-real-world-submission-rehearsal`. The current archived example uses `examples/plugins/weather-status` to exercise package validation, network allowlist review, submission bundle generation, and maintainer approval in one local evidence chain. It is workflow evidence, not proof of external community provenance.
 
-For a repository-provenance rehearsal, use `create-plugin-repository-provenance-rehearsal`. The current archived example uses `examples/community-plugin-sources/weather-status-community.bundle` to exercise clone source capture, ref selection, commit recording, plugin-subdirectory selection, package validation, submission bundle generation, and maintainer approval in one local evidence chain. It is repository-style workflow evidence, not proof of independent public ecosystem trust.
+For a remote-source rehearsal, use `create-plugin-remote-source-submission-rehearsal`. The current archived example uses `https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main` to exercise archive URL capture, final URL capture, archive SHA-256 recording, archive size recording, plugin-path selection, extracted file hashing, package validation, submission bundle generation, and maintainer approval in one local evidence chain. It is remote-source workflow evidence, not proof of independent public ecosystem trust.
 
 ## Legacy JavaScript SDK Compatibility
 

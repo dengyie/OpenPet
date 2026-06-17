@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-06-17T16:30:00.000Z",
-  "sourcePath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip",
-  "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/submission-bundle",
+  "generatedAt": "2026-06-17T17:33:39.420Z",
+  "sourcePath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip",
+  "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle",
   "readyForHumanReview": true,
   "decision": "ready-for-human-review",
   "plugin": {
@@ -51,9 +51,9 @@
     ]
   },
   "files": {
-    "report": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/submission-bundle/plugin-submission-report.md",
-    "pr": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/submission-bundle/plugin-submission-pr.md",
-    "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/submission-bundle/plugin-submission-summary.json"
+    "report": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-submission-report.md",
+    "pr": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-submission-pr.md",
+    "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-submission-summary.json"
   },
   "nextSteps": [
     "Attach or paste plugin-submission-report.md in the plugin PR.",

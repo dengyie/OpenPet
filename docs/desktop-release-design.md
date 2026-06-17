@@ -17,6 +17,7 @@ OpenPet is already an Electron desktop pet runtime platform with a macOS release
 - `npm run create-windows-smoke-report` creates a pending Windows smoke report from release artifacts on the Windows runner, `npm run create-windows-smoke-runbook` generates the matching operator runbook, `npm run create-windows-smoke-collector` generates a PowerShell evidence collector, `npm run validate-windows-smoke-evidence-bundle` checks collector output, `npm run create-windows-smoke-evidence-summary` archives reviewed collector/report metadata, `npm run create-windows-smoke-archive-manifest` hashes and validates a reviewed smoke archive, `npm run update-windows-smoke-report` fills evidence during real validation, and `npm run validate-windows-smoke-report` validates structured Windows smoke evidence reports.
 - `npm run create-desktop-picker-smoke-report` creates a pending packaged macOS or Windows native picker smoke report, `npm run create-desktop-picker-smoke-runbook` generates the matching operator guide, `npm run update-desktop-picker-smoke-report` fills picker evidence, `npm run validate-desktop-picker-smoke-report` validates smoke readiness or signed official readiness, `npm run create-desktop-picker-evidence-summary` records reviewed evidence hashes, and `npm run create-desktop-picker-archive-manifest` hashes and validates the reviewed picker archive.
 - `npm run create-packaged-runtime-smoke-report` creates a pending packaged runtime smoke report, `npm run create-packaged-runtime-smoke-runbook` generates the matching operator guide, `npm run run-packaged-runtime-smoke` launches a packaged app and fills automated runtime evidence, `npm run update-packaged-runtime-smoke-report` fills remaining manual evidence, and `npm run validate-packaged-runtime-smoke-report` validates smoke readiness or signed official readiness.
+- `npm run create-macos-release-evidence` captures or imports canonical macOS codesign, notarization, and Gatekeeper evidence files before release-level aggregation.
 - `npm run create-release-evidence-archive-manifest` hashes and validates a release-level archive containing macOS signing/notarization/Gatekeeper evidence plus Windows smoke, desktop picker, and packaged runtime reports. The manifest separates archive validity from `releaseReady`.
 - The pending template lives at `docs/release-evidence/windows-smoke-report.template.json`.
 - `docs/release-checklist.md` documents macOS signing, notarization, update checks, and upgrade compatibility.
@@ -46,6 +47,7 @@ Public docs should describe OpenPet as a desktop platform. When platform specifi
 ```bash
 codesign --verify --deep --strict --verbose=2 "release/mac/OpenPet.app"
 spctl --assess --type execute --verbose=4 "release/mac/OpenPet.app"
+npm run create-macos-release-evidence -- --app "release/mac/OpenPet.app" --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/macos-release-evidence/<session>
 ```
 
 ### Windows
@@ -120,12 +122,13 @@ When the archive is ready for release-level aggregation, include `desktop-picker
 Release evidence archives are tracked with one manifest that points at the already reviewed evidence files. A pending or unsigned archive can be valid for review while still reporting `releaseReady: false`:
 
 ```bash
+npm run create-macos-release-evidence -- --app release/mac/OpenPet.app --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive> --require-signed
 npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The signed manifest command is required before an official desktop release claim. The closure command converts the evidence into explicit macOS, Windows, and official desktop release wording, and must remain `not-ready` until successful macOS codesign, notarization, and Gatekeeper evidence files plus signed-ready Windows smoke, desktop picker, and packaged runtime reports are present.
+The macOS evidence command writes `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, and summary files. It records evidence only; the signed manifest command is still required before an official desktop release claim. The closure command converts the evidence into explicit macOS, Windows, and official desktop release wording, and must remain `not-ready` until successful macOS codesign, notarization, and Gatekeeper evidence files plus signed-ready Windows smoke, desktop picker, and packaged runtime reports are present.
 
 ## 6. Desktop Verification Matrix
 
@@ -174,4 +177,4 @@ Windows desktop support can be called release-ready only after all of these are 
 - About/update behavior distinguishes macOS and Windows release assets.
 - `npm start`, `npm test`, `npm run check:syntax`, and macOS packaging remain functional after the Windows changes.
 
-Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker smoke evidence tooling, desktop picker evidence archive tooling, and release-level archive picker-archive gating are implemented; signed artifact evidence, filled packaged picker evidence, and real Windows smoke validation remain open. Until those remaining gates pass, the correct project status is: macOS release baseline complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest, packaged native picker smoke evidence/archive tooling, and release-level picker-archive gating are implemented but not release-ready.
+Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker smoke evidence tooling, desktop picker evidence archive tooling, macOS release evidence capture, and release-level archive picker-archive gating are implemented; signed artifact evidence, filled packaged picker evidence, and real Windows smoke validation remain open. Until those remaining gates pass, the correct project status is: macOS release baseline complete with repeatable evidence capture but without official signed readiness; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest, packaged native picker smoke evidence/archive tooling, and release-level picker-archive gating are implemented but not release-ready.

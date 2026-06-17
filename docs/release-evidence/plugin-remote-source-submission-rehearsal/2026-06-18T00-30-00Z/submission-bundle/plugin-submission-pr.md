@@ -37,4 +37,4 @@ Package validation passed and the submission packet is ready for human review.
 ## Source
 
 - Submission packet: plugin-submission-report.md
-- Source path: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-repository-provenance-rehearsal/2026-06-17T16-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip
+- Source path: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip

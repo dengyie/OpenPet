@@ -1,0 +1,17 @@
+{
+  "kind": "https-archive",
+  "archiveUrl": "https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main",
+  "finalUrl": "https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main",
+  "archiveSha256": "607bcf3f6791f228a2ccde8eb72d381d037b6d89205026536530d573748d16c6",
+  "archiveByteSize": 18022439,
+  "pluginPath": "examples/plugins/weather-status",
+  "archivePluginPath": "OpenPet-main/examples/plugins/weather-status",
+  "archiveRootPrefix": "OpenPet-main",
+  "extractedFileHashes": {
+    "README.md": "fb27bfdeb2666eb41af6ab962ccd103fb9cb9e814d455f285684a905257f83bb",
+    "config.schema.json": "26a811621e79717fbc5424507be7e8b94d41071119bd86e0b29d25583fb91320",
+    "index.js": "7b6f7ace639645dc174cbd5b1cc8c412f811bcc03df970d48a3094f877e1642b",
+    "plugin.json": "851c7b9d8c9487da7e79225d5572efc13307afc1bc1a44301533d11af876efff"
+  },
+  "downloadedAt": "2026-06-17T17:33:39.420Z"
+}
