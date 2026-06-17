@@ -1466,6 +1466,11 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       appendLog({ pluginId, commandId, level: 'info', message: 'Command completed' })
       return result
     } catch (error) {
+      const alreadyLoggedStop = (
+        commandRuntimes.get(createPluginServiceKey(pluginId, commandId))?.status === 'stopping' &&
+        (error.message || 'Command failed') === 'Command stopped'
+      )
+      if (alreadyLoggedStop) throw error
       appendLog({
         pluginId,
         commandId,
