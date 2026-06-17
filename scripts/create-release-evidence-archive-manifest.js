@@ -140,6 +140,13 @@ const describeFile = ({ role, filePath, fsImpl = fs }) => {
 
 const loadJsonFile = (filePath, fsImpl = fs) => JSON.parse(fsImpl.readFileSync(filePath, 'utf-8'))
 
+const normalizeLinkedReportPath = (linkedPath, archiveDir) => {
+  if (!linkedPath || typeof linkedPath !== 'string') return ''
+  const trimmed = linkedPath.trim()
+  if (!trimmed) return ''
+  return path.resolve(archiveDir, trimmed)
+}
+
 const validateReportFile = ({ role, filePath, validateReport, requireSigned, fsImpl = fs }) => {
   const file = describeFile({ role, filePath, fsImpl })
   const errors = []
@@ -162,7 +169,8 @@ const validateReportFile = ({ role, filePath, validateReport, requireSigned, fsI
         platform: report.platform || '',
         arch: report.arch || '',
         generatedAt: report.generatedAt || '',
-        artifact: report.artifact || {}
+        artifact: report.artifact || {},
+        linkedEvidence: report.linkedEvidence || {}
       },
       structuralValidation,
       readinessValidation,
@@ -294,9 +302,21 @@ const createReleaseEvidenceArchiveManifest = ({
     warnings.push(...section.warnings)
   }
 
+  if (reports.packagedRuntime.report && reports.desktopPicker.file.exists) {
+    const linkedPickerPath = normalizeLinkedReportPath(
+      reports.packagedRuntime.report.artifact?.linkedEvidence?.desktopPickerSmokeReport
+        || reports.packagedRuntime.report.linkedEvidence?.desktopPickerSmokeReport,
+      paths.archiveDir
+    )
+    const expectedPickerPath = path.resolve(paths.desktopPickerReportPath)
+    if (linkedPickerPath && linkedPickerPath !== expectedPickerPath) {
+      errors.push(`packagedRuntimeReport links a different desktop picker report: ${linkedPickerPath}`)
+    }
+  }
+
   const macosReady = Object.values(macos).every((section) => section.releaseReady)
   const reportsReady = Object.values(reports).every((section) => section.releaseReady)
-  const releaseReady = requireSigned && macosReady && reportsReady
+  const releaseReady = requireSigned && errors.length === 0 && macosReady && reportsReady
 
   const manifest = {
     generatedAt: now().toISOString(),

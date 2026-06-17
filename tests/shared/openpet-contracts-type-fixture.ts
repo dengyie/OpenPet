@@ -113,6 +113,12 @@ const releaseArchiveReportSectionFixture = {
     generatedAt: releaseArchiveFixture.generatedAt,
     artifact: {
       installer: 'OpenPet Setup.exe'
+    },
+    linkedEvidence: {
+      desktopPickerSmokeReport: '/tmp/openpet-release-evidence/desktop-picker-smoke-report.json',
+      desktopPickerSmokeRunbook: '/tmp/openpet-release-evidence/desktop-picker-smoke-runbook.md',
+      screenshots: ['/tmp/openpet-release-evidence/screenshots/runtime.png'],
+      recordings: []
     }
   },
   structuralValidation: {

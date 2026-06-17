@@ -20,6 +20,11 @@ const REQUIRED_CHECKS = [
 const REQUIRED_CHECK_IDS = new Set(REQUIRED_CHECKS.map((check) => check.id))
 const VALID_PLATFORMS = new Set(['darwin', 'win32'])
 const VALID_STATUSES = new Set(['pass', 'fail', 'pending', 'blocked'])
+const LINKED_PICKER_CHECK_IDS = new Set([
+  'plugin-picker-evidence-linked',
+  'pet-picker-evidence-linked',
+  'invalid-package-feedback'
+])
 
 const usage = () => [
   'Usage: node scripts/validate-packaged-runtime-smoke-report.js <report.json> [--allow-pending] [--require-signed]',
@@ -161,6 +166,18 @@ const validateReport = (report, options = {}) => {
     }
     if (!allowPending && check.status !== 'pass') {
       errors.push(`${required.id} must pass before packaged runtime smoke readiness can be claimed`)
+    }
+  }
+
+  if (isObject(report.linkedEvidence)) {
+    const linkedPickerPath = report.linkedEvidence.desktopPickerSmokeReport
+    const hasReadyLinkedPickerChecks = [...checksById.values()].some((check) => (
+      LINKED_PICKER_CHECK_IDS.has(check.id) && check.status === 'pass'
+    ))
+    if (hasReadyLinkedPickerChecks && !hasEvidence(linkedPickerPath)) {
+      errors.push('linkedEvidence.desktopPickerSmokeReport is required when packaged runtime smoke links ready picker evidence')
+    } else if (!allowPending && !hasEvidence(linkedPickerPath)) {
+      errors.push('linkedEvidence.desktopPickerSmokeReport is required for packaged runtime smoke readiness')
     }
   }
 

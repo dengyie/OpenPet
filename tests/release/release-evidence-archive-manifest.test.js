@@ -253,6 +253,34 @@ test('createReleaseEvidenceArchiveManifest marks signed all-pass archives as rel
   assert.equal(manifest.reports.packagedRuntime.readinessValidation.summary.officialReady, true)
 })
 
+test('createReleaseEvidenceArchiveManifest rejects runtime evidence that does not link a ready desktop picker report', () => {
+  const archiveDir = createArchive({ signed: true, status: 'pass' })
+  const runtimePath = path.join(archiveDir, 'packaged-runtime-smoke-report.json')
+  const runtimeReport = JSON.parse(fs.readFileSync(runtimePath, 'utf-8'))
+  runtimeReport.linkedEvidence.desktopPickerSmokeReport = ''
+  fs.writeFileSync(runtimePath, `${JSON.stringify(runtimeReport, null, 2)}\n`)
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+
+  assert.equal(manifest.ok, false)
+  assert.equal(manifest.releaseReady, false)
+  assert.match(manifest.errors.join('\n'), /packagedRuntimeReport: linkedEvidence\.desktopPickerSmokeReport is required/)
+})
+
+test('createReleaseEvidenceArchiveManifest rejects runtime evidence linked to a different desktop picker report path', () => {
+  const archiveDir = createArchive({ signed: true, status: 'pass' })
+  const runtimePath = path.join(archiveDir, 'packaged-runtime-smoke-report.json')
+  const runtimeReport = JSON.parse(fs.readFileSync(runtimePath, 'utf-8'))
+  runtimeReport.linkedEvidence.desktopPickerSmokeReport = 'other-desktop-picker-smoke-report.json'
+  fs.writeFileSync(runtimePath, `${JSON.stringify(runtimeReport, null, 2)}\n`)
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+
+  assert.equal(manifest.ok, false)
+  assert.equal(manifest.releaseReady, false)
+  assert.match(manifest.errors.join('\n'), /packagedRuntimeReport links a different desktop picker report/)
+})
+
 test('createReleaseEvidenceArchiveManifest does not mark release ready without requireSigned', () => {
   const archiveDir = createArchive({ signed: true, status: 'pass' })
 

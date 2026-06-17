@@ -736,6 +736,14 @@ export interface ReleaseEvidenceReportSnapshot {
   arch: string
   generatedAt: string
   artifact: JsonObject
+  linkedEvidence?: JsonObject
+}
+
+export interface PackagedRuntimeLinkedEvidence {
+  desktopPickerSmokeReport: string
+  desktopPickerSmokeRunbook: string
+  screenshots: string[]
+  recordings: string[]
 }
 
 export interface ReleaseEvidenceReportValidation {

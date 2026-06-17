@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-17 | Branch: `codex/plugin-bridge-phase64`
+> Last updated: 2026-06-17 | Branch: `codex/release-evidence-phase65`
 
 ## Current Snapshot
 
@@ -29,7 +29,7 @@ OpenPet is a desktop pet platform with:
 - `PetService` remains the single source of truth for pet state.
 - New user-facing configuration belongs in Control Center.
 - API keys must stay out of the renderer.
-- Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, and attempts best-effort process-group cleanup when stopping service entries. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, health checks do not run in the background, bridge token injection and hard process-tree cleanup guarantees are not implemented yet, and OpenPet does not claim complete sandboxing for arbitrary local processes.
+- Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can inject short-lived bridge URL/token env vars for those declaration-only command runs, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, and attempts best-effort process-group cleanup when stopping service entries. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, health checks do not run in the background, hard process-tree cleanup guarantees are not implemented yet, and OpenPet does not claim complete sandboxing for arbitrary local processes.
 - `cat_anime/` structure is unchanged.
 - Windows is not release-ready yet.
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 472/472 Node tests
+npm test                     # 475/475 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -71,5 +71,6 @@ npm run create-signed-release-closure-report
 
 1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
 2. Use Phase 64 plugin command bridge as the current plugin-command boundary: command entries still run only from an explicit Control Center action on enabled policy-allowed local plugins, and declaration-only command runs now get a short-lived bridge URL/token for `pet.say`, `pet.action`, `pet.event`, and read-only context.
-3. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
-4. After Phase 64, start the next concrete phase from real evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.
+3. Use Phase 65 release evidence link closure as the current runtime/picker evidence boundary: packaged runtime reports must link the paired desktop picker report before they can claim readiness, and archive release readiness now fails when that link is missing or mismatched.
+4. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
+5. After Phase 65, start the next concrete phase from real signed evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.

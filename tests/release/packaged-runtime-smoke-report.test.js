@@ -121,8 +121,14 @@ test('validateReport requires every runtime check to pass before readiness', () 
   }
 
   const ready = validateReport(report)
-  assert.equal(ready.ok, true)
-  assert.equal(ready.summary.smokeReady, true)
+  assert.equal(ready.ok, false)
+  assert.match(ready.errors.join('\n'), /linkedEvidence\.desktopPickerSmokeReport is required/)
+
+  report.linkedEvidence.desktopPickerSmokeReport = 'desktop-picker-smoke-report.json'
+
+  const linkedReady = validateReport(report)
+  assert.equal(linkedReady.ok, true)
+  assert.equal(linkedReady.summary.smokeReady, true)
 
   const signedReady = validateReport(report, { requireSigned: true })
   assert.equal(signedReady.ok, false)
@@ -141,6 +147,7 @@ test('validateReport accepts a signed all-pass Windows runtime smoke report', ()
   report.artifact.authenticodeStatus = 'Valid'
   report.artifact.authenticodeEvidence = 'Status                 : Valid'
   report.artifact.signatureEvidence = report.artifact.authenticodeEvidence
+  report.linkedEvidence.desktopPickerSmokeReport = 'desktop-picker-smoke-report.json'
   for (const check of report.checks) {
     check.status = 'pass'
     check.evidence = `Windows evidence for ${check.id}`
@@ -149,6 +156,29 @@ test('validateReport accepts a signed all-pass Windows runtime smoke report', ()
   const result = validateReport(report, { requireSigned: true })
   assert.equal(result.ok, true)
   assert.equal(result.summary.officialReady, true)
+})
+
+test('validateReport rejects ready runtime reports without a linked desktop picker report', () => {
+  const report = createPackagedRuntimeSmokeReport({
+    releaseDir: createReleaseDir(),
+    platform: 'darwin',
+    arch: 'arm64',
+    allowAnyPlatform: true,
+    execFile: () => 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement',
+    now: () => new Date('2026-06-16T00:00:00.000Z')
+  })
+
+  report.artifact.signed = true
+  report.artifact.signatureStatus = 'Valid'
+  report.artifact.signatureEvidence = 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement'
+  for (const check of report.checks) {
+    check.status = 'pass'
+    check.evidence = `Evidence for ${check.id}`
+  }
+
+  const result = validateReport(report, { requireSigned: true })
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /linkedEvidence\.desktopPickerSmokeReport is required/)
 })
 
 test('createPackagedRuntimeSmokeReport rejects unsupported platforms', () => {
