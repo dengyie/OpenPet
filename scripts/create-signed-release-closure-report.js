@@ -16,6 +16,7 @@ const usage = () => [
   '  --manifest-output <manifest.json>   Write the generated archive manifest',
   '  --windows-smoke-report <report.json>',
   '  --desktop-picker-report <report.json>',
+  '  --desktop-picker-archive-manifest <manifest.json>',
   '  --packaged-runtime-report <report.json>',
   '  --macos-codesign <evidence.txt>',
   '  --macos-notarization <evidence.txt>',
@@ -43,6 +44,7 @@ const parseArgs = (argv) => {
     manifestOutput: '',
     windowsSmokeReportPath: null,
     desktopPickerReportPath: null,
+    desktopPickerArchiveManifestPath: null,
     packagedRuntimeReportPath: null,
     macosCodesignPath: null,
     macosNotarizationPath: null,
@@ -72,6 +74,9 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--desktop-picker-report') {
       options.desktopPickerReportPath = readValue(argv, index, arg)
+      index += 1
+    } else if (arg === '--desktop-picker-archive-manifest') {
+      options.desktopPickerArchiveManifestPath = readValue(argv, index, arg)
       index += 1
     } else if (arg === '--packaged-runtime-report') {
       options.packagedRuntimeReportPath = readValue(argv, index, arg)
@@ -131,6 +136,25 @@ const reportBlockers = ({ label, section, requiredPlatform }) => {
   return blockers
 }
 
+const archiveBlockers = ({ label, section }) => {
+  const blockers = []
+  if (!section?.file?.exists) {
+    blockers.push(`${label} is missing`)
+    return blockers
+  }
+  if (section.matchesDesktopPickerReport !== true) {
+    const errors = (section.errors || []).filter(hasText)
+    if (errors.length) blockers.push(...errors.map((error) => `${label}: ${error}`))
+    else blockers.push(`${label} does not match the archived desktop picker report`)
+  }
+  if (section.releaseReady !== true) {
+    const errors = (section.errors || []).filter(hasText)
+    if (errors.length) blockers.push(...errors.map((error) => `${label}: ${error}`))
+    else blockers.push(`${label} is archived but not signed release-ready`)
+  }
+  return blockers
+}
+
 const macosBlockers = (manifest) => {
   const blockers = []
   const macos = manifest.macos || {}
@@ -158,6 +182,7 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
   const packagedRuntime = manifest.reports?.packagedRuntime
   const desktopPicker = manifest.reports?.desktopPicker
   const windowsSmoke = manifest.reports?.windowsSmoke
+  const desktopPickerArchive = manifest.archives?.desktopPicker
 
   const macosClaimBlockers = unique([
     ...macosBlockers(manifest),
@@ -177,6 +202,10 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
       label: 'Windows desktop picker evidence',
       section: desktopPicker,
       requiredPlatform: 'win32'
+    }),
+    ...archiveBlockers({
+      label: 'Windows desktop picker archive evidence',
+      section: desktopPickerArchive
     }),
     ...reportBlockers({
       label: 'Windows packaged runtime evidence',
@@ -303,6 +332,7 @@ const loadManifest = ({ options, fsImpl = fs, now = () => new Date() }) => {
     archiveDir: options.archiveDir,
     windowsSmokeReportPath: options.windowsSmokeReportPath,
     desktopPickerReportPath: options.desktopPickerReportPath,
+    desktopPickerArchiveManifestPath: options.desktopPickerArchiveManifestPath,
     packagedRuntimeReportPath: options.packagedRuntimeReportPath,
     macosCodesignPath: options.macosCodesignPath,
     macosNotarizationPath: options.macosNotarizationPath,

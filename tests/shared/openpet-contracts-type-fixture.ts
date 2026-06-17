@@ -229,6 +229,29 @@ const releaseArchiveManifestFixture = {
       }
     }
   },
+  archives: {
+    releaseReady: false,
+    desktopPicker: {
+      file: {
+        role: 'desktopPickerArchiveManifest',
+        path: '/tmp/openpet-release-evidence/desktop-picker-archive-manifest.json',
+        exists: true,
+        bytes: 1024,
+        sha256: '2'.repeat(64)
+      },
+      path: '/tmp/openpet-release-evidence/desktop-picker-archive-manifest.json',
+      archiveDir: '/tmp/openpet-release-evidence',
+      outputPath: '/tmp/openpet-release-evidence/desktop-picker-archive-manifest.json',
+      ok: true,
+      releaseReady: false,
+      reportPath: '/tmp/openpet-release-evidence/desktop-picker-smoke-report.json',
+      reportSha256: 'f'.repeat(64),
+      summaryPath: '/tmp/openpet-release-evidence/desktop-picker-evidence-summary.md',
+      matchesDesktopPickerReport: true,
+      errors: [],
+      warnings: ['desktopPickerArchiveManifest is archived but not release-ready']
+    }
+  },
   errors: ['missing macOS codesign evidence'],
   warnings: ['packagedRuntimeReport is archived but not release-ready']
 } satisfies ReleaseEvidenceArchiveManifest

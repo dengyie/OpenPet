@@ -763,6 +763,21 @@ export interface ReleaseEvidenceReportSection {
   warnings: string[]
 }
 
+export interface ReleaseEvidenceLinkedArchiveSection {
+  file: ReleaseEvidenceArchiveFile
+  path: string
+  archiveDir: string
+  outputPath: string
+  ok: boolean
+  releaseReady: boolean
+  reportPath: string
+  reportSha256: string
+  summaryPath: string
+  matchesDesktopPickerReport: boolean
+  errors: string[]
+  warnings: string[]
+}
+
 export type MacosReleaseEvidenceStatus = 'missing' | 'pending' | 'pass'
 
 export interface MacosReleaseEvidenceFileStatus {
@@ -791,6 +806,10 @@ export interface ReleaseEvidenceArchiveManifest {
     windowsSmoke: ReleaseEvidenceReportSection
     desktopPicker: ReleaseEvidenceReportSection
     packagedRuntime: ReleaseEvidenceReportSection
+  }
+  archives: {
+    releaseReady: boolean
+    desktopPicker: ReleaseEvidenceLinkedArchiveSection
   }
   errors: string[]
   warnings: string[]

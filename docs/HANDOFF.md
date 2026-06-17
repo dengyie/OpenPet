@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-17 | Branch: `codex/desktop-picker-archive-phase66`
+> Last updated: 2026-06-17 | Branch: `codex/release-picker-archive-link-phase67`
 
 ## Current Snapshot
 
@@ -76,5 +76,6 @@ npm run create-signed-release-closure-report
 2. Use Phase 64 plugin command bridge as the current plugin-command boundary: command entries still run only from an explicit Control Center action on enabled policy-allowed local plugins, and declaration-only command runs now get a short-lived bridge URL/token for `pet.say`, `pet.action`, `pet.event`, and read-only context.
 3. Use Phase 65 release evidence link closure as the current runtime/picker evidence boundary: packaged runtime reports must link the paired desktop picker report before they can claim readiness, and archive release readiness now fails when that link is missing or mismatched.
 4. Use Phase 66 desktop picker evidence archive tooling when a packaged native picker run is collected: generate the summary, create the archive manifest, and only claim readiness when the filled report and archive both pass.
-5. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
-6. After Phase 66, start the next concrete phase from real signed evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.
+5. Use Phase 67 release picker archive link closure as the current release-claim boundary: release-level archive manifests and signed closure wording now explicitly require the reviewed desktop picker archive manifest to match the archived picker report.
+6. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
+7. After Phase 67, start the next concrete phase from real signed evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.

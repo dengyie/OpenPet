@@ -115,6 +115,8 @@ npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-a
 
 The archive manifest verifies completeness and summary hash consistency. It still reports `releaseReady: false` unless the paired picker report itself passes readiness validation.
 
+When the archive is ready for release-level aggregation, include `desktop-picker-archive-manifest.json` in the release evidence archive and keep the closure report pointed at the same archive directory.
+
 Release evidence archives are tracked with one manifest that points at the already reviewed evidence files. A pending or unsigned archive can be valid for review while still reporting `releaseReady: false`:
 
 ```bash
@@ -166,9 +168,10 @@ Windows desktop support can be called release-ready only after all of these are 
 - Windows signing policy is documented and enforced by the release workflow, even if early prereleases remain unsigned.
 - Windows smoke evidence reports have a checked-in template, validator, CI pending-report/runbook/collector artifact, collector-output bundle validator, evidence summary/archive-manifest tools, command-driven filling tool, and readiness validator.
 - Desktop native picker smoke evidence reports can be generated, filled, validated, summarized, and archive-manifested for packaged macOS and Windows artifacts.
+- Desktop native picker smoke archive manifests can be generated and consumed by the release-level archive and closure report.
 - Signed Windows release artifacts have been produced and verified with `Get-AuthenticodeSignature`.
 - The desktop verification matrix passes on a clean Windows machine or CI-backed manual test environment.
 - About/update behavior distinguishes macOS and Windows release assets.
 - `npm start`, `npm test`, `npm run check:syntax`, and macOS packaging remain functional after the Windows changes.
 
-Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker smoke evidence tooling, and desktop picker evidence archive tooling are implemented; signed artifact evidence, filled packaged picker evidence, and real Windows smoke validation remain open. Until those remaining gates pass, the correct project status is: macOS release baseline complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest and packaged native picker smoke evidence/archive tooling baselines implemented but not release-ready.
+Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker smoke evidence tooling, desktop picker evidence archive tooling, and release-level archive picker-archive gating are implemented; signed artifact evidence, filled packaged picker evidence, and real Windows smoke validation remain open. Until those remaining gates pass, the correct project status is: macOS release baseline complete; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest, packaged native picker smoke evidence/archive tooling, and release-level picker-archive gating are implemented but not release-ready.

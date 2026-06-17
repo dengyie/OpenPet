@@ -9,6 +9,7 @@ const { validateReport: validatePackagedRuntimeSmokeReport } = require('./valida
 const DEFAULT_ARCHIVE_DIR = 'release-evidence-archive'
 const DEFAULT_WINDOWS_SMOKE_REPORT = 'windows-smoke-report.json'
 const DEFAULT_DESKTOP_PICKER_REPORT = 'desktop-picker-smoke-report.json'
+const DEFAULT_DESKTOP_PICKER_ARCHIVE_MANIFEST = 'desktop-picker-archive-manifest.json'
 const DEFAULT_PACKAGED_RUNTIME_REPORT = 'packaged-runtime-smoke-report.json'
 const DEFAULT_MACOS_CODESIGN_EVIDENCE = 'macos-codesign.txt'
 const DEFAULT_MACOS_NOTARIZATION_EVIDENCE = 'macos-notarization.txt'
@@ -21,6 +22,7 @@ const usage = () => [
   'Options:',
   '  --windows-smoke-report <report.json>',
   '  --desktop-picker-report <report.json>',
+  '  --desktop-picker-archive-manifest <manifest.json>',
   '  --packaged-runtime-report <report.json>',
   '  --macos-codesign <evidence.txt>',
   '  --macos-notarization <evidence.txt>',
@@ -37,6 +39,7 @@ const parseArgs = (argv) => {
     archiveDir: DEFAULT_ARCHIVE_DIR,
     windowsSmokeReportPath: null,
     desktopPickerReportPath: null,
+    desktopPickerArchiveManifestPath: null,
     packagedRuntimeReportPath: null,
     macosCodesignPath: null,
     macosNotarizationPath: null,
@@ -65,6 +68,9 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--desktop-picker-report') {
       options.desktopPickerReportPath = readValue(index, arg)
+      index += 1
+    } else if (arg === '--desktop-picker-archive-manifest') {
+      options.desktopPickerArchiveManifestPath = readValue(index, arg)
       index += 1
     } else if (arg === '--packaged-runtime-report') {
       options.packagedRuntimeReportPath = readValue(index, arg)
@@ -98,6 +104,7 @@ const resolveArchivePaths = ({
   archiveDir = DEFAULT_ARCHIVE_DIR,
   windowsSmokeReportPath = null,
   desktopPickerReportPath = null,
+  desktopPickerArchiveManifestPath = null,
   packagedRuntimeReportPath = null,
   macosCodesignPath = null,
   macosNotarizationPath = null,
@@ -110,6 +117,7 @@ const resolveArchivePaths = ({
     archiveDir: absoluteArchiveDir,
     windowsSmokeReportPath: windowsSmokeReportPath ? path.resolve(windowsSmokeReportPath) : insideArchive(DEFAULT_WINDOWS_SMOKE_REPORT),
     desktopPickerReportPath: desktopPickerReportPath ? path.resolve(desktopPickerReportPath) : insideArchive(DEFAULT_DESKTOP_PICKER_REPORT),
+    desktopPickerArchiveManifestPath: desktopPickerArchiveManifestPath ? path.resolve(desktopPickerArchiveManifestPath) : insideArchive(DEFAULT_DESKTOP_PICKER_ARCHIVE_MANIFEST),
     packagedRuntimeReportPath: packagedRuntimeReportPath ? path.resolve(packagedRuntimeReportPath) : insideArchive(DEFAULT_PACKAGED_RUNTIME_REPORT),
     macosCodesignPath: macosCodesignPath ? path.resolve(macosCodesignPath) : insideArchive(DEFAULT_MACOS_CODESIGN_EVIDENCE),
     macosNotarizationPath: macosNotarizationPath ? path.resolve(macosNotarizationPath) : insideArchive(DEFAULT_MACOS_NOTARIZATION_EVIDENCE),
@@ -184,6 +192,77 @@ const validateReportFile = ({ role, filePath, validateReport, requireSigned, fsI
   }
 }
 
+const findFileByRole = (files, role) => Array.isArray(files)
+  ? files.find((file) => file && file.role === role)
+  : null
+
+const validateDesktopPickerArchiveManifestFile = ({
+  filePath,
+  desktopPickerReportFile,
+  requireSigned,
+  fsImpl = fs
+}) => {
+  const role = 'desktopPickerArchiveManifest'
+  const file = describeFile({ role, filePath, fsImpl })
+  const errors = []
+  const warnings = []
+  const details = {
+    path: '',
+    archiveDir: '',
+    outputPath: '',
+    ok: false,
+    releaseReady: false,
+    reportPath: '',
+    reportSha256: '',
+    summaryPath: '',
+    matchesDesktopPickerReport: false
+  }
+
+  if (!file.exists) {
+    errors.push(`missing ${role}: ${filePath}`)
+    return { file, ...details, errors, warnings }
+  }
+
+  try {
+    const manifest = loadJsonFile(filePath, fsImpl)
+    const reportFile = findFileByRole(manifest.files, 'report')
+    const reportedPath = manifest.report?.path || reportFile?.path || ''
+    const reportedSha256 = reportFile?.sha256 || ''
+    const expectedPath = path.resolve(desktopPickerReportFile.path)
+    const actualPath = reportedPath ? path.resolve(reportedPath) : ''
+    const pathMatches = actualPath === expectedPath
+    const hashMatches = reportedSha256 && desktopPickerReportFile.sha256 && reportedSha256 === desktopPickerReportFile.sha256
+
+    details.path = path.resolve(filePath)
+    details.archiveDir = manifest.archive?.archiveDir || ''
+    details.outputPath = manifest.archive?.outputPath || ''
+    details.ok = manifest.ok === true
+    details.releaseReady = manifest.releaseReady === true
+    details.reportPath = reportedPath
+    details.reportSha256 = reportedSha256
+    details.summaryPath = manifest.summary?.path || ''
+    details.matchesDesktopPickerReport = Boolean(pathMatches && hashMatches)
+
+    if (!details.ok) errors.push(`${role} is not valid`)
+    if (!reportedPath) errors.push(`${role} does not record a desktop picker report path`)
+    if (!reportedSha256) errors.push(`${role} does not record the desktop picker report hash`)
+    if (reportedPath && !pathMatches) {
+      errors.push(`${role} references a different desktop picker report: ${reportedPath}`)
+    }
+    if (reportedSha256 && !hashMatches) {
+      errors.push(`${role} records a stale desktop picker report hash`)
+    }
+    if (!details.releaseReady) warnings.push(`${role} is archived but not release-ready`)
+    if (requireSigned && details.ok && !details.releaseReady) {
+      warnings.push(`${role} does not prove signed picker archive readiness`)
+    }
+  } catch (err) {
+    errors.push(`${role} could not be parsed: ${err.message || err}`)
+  }
+
+  return { file, ...details, errors, warnings }
+}
+
 const macosEvidenceStatus = ({ content, kind }) => {
   const text = String(content || '')
   if (kind === 'codesign') {
@@ -227,6 +306,7 @@ const createReleaseEvidenceArchiveManifest = ({
   archiveDir = DEFAULT_ARCHIVE_DIR,
   windowsSmokeReportPath = null,
   desktopPickerReportPath = null,
+  desktopPickerArchiveManifestPath = null,
   packagedRuntimeReportPath = null,
   macosCodesignPath = null,
   macosNotarizationPath = null,
@@ -240,6 +320,7 @@ const createReleaseEvidenceArchiveManifest = ({
     archiveDir,
     windowsSmokeReportPath,
     desktopPickerReportPath,
+    desktopPickerArchiveManifestPath,
     packagedRuntimeReportPath,
     macosCodesignPath,
     macosNotarizationPath,
@@ -297,7 +378,16 @@ const createReleaseEvidenceArchiveManifest = ({
     })
   }
 
-  for (const section of [...Object.values(reports), ...Object.values(macos)]) {
+  const archives = {
+    desktopPicker: validateDesktopPickerArchiveManifestFile({
+      filePath: paths.desktopPickerArchiveManifestPath,
+      desktopPickerReportFile: reports.desktopPicker.file,
+      requireSigned,
+      fsImpl
+    })
+  }
+
+  for (const section of [...Object.values(reports), ...Object.values(macos), ...Object.values(archives)]) {
     errors.push(...section.errors)
     warnings.push(...section.warnings)
   }
@@ -316,7 +406,8 @@ const createReleaseEvidenceArchiveManifest = ({
 
   const macosReady = Object.values(macos).every((section) => section.releaseReady)
   const reportsReady = Object.values(reports).every((section) => section.releaseReady)
-  const releaseReady = requireSigned && errors.length === 0 && macosReady && reportsReady
+  const archivesReady = Object.values(archives).every((section) => section.releaseReady)
+  const releaseReady = requireSigned && errors.length === 0 && macosReady && reportsReady && archivesReady
 
   const manifest = {
     generatedAt: now().toISOString(),
@@ -330,6 +421,7 @@ const createReleaseEvidenceArchiveManifest = ({
     files: [
       reports.windowsSmoke.file,
       reports.desktopPicker.file,
+      archives.desktopPicker.file,
       reports.packagedRuntime.file,
       macos.codesign.file,
       macos.notarization.file,
@@ -346,6 +438,10 @@ const createReleaseEvidenceArchiveManifest = ({
       windowsSmoke: reports.windowsSmoke,
       desktopPicker: reports.desktopPicker,
       packagedRuntime: reports.packagedRuntime
+    },
+    archives: {
+      releaseReady: archivesReady,
+      desktopPicker: archives.desktopPicker
     },
     errors,
     warnings
