@@ -2,7 +2,7 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, and release-level evidence archives have a manifest gate. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has a validated release baseline; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
@@ -29,6 +29,8 @@ npm run create-desktop-picker-smoke-report -- --platform darwin --release-dir re
 npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --allow-pending
 npm run create-desktop-picker-smoke-runbook -- release/desktop-picker-smoke-report.json --output release/desktop-picker-smoke-runbook.md
 npm run update-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --list-checks
+npm run create-desktop-picker-evidence-summary -- --help
+npm run create-desktop-picker-archive-manifest -- --help
 ```
 
 - For Windows release jobs, confirm the generated pending report remains structurally valid before uploading artifacts:
@@ -112,6 +114,16 @@ npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-rep
 
 The signed readiness command requires valid signing evidence. Do not use a generated pending picker report as proof of picker success.
 
+After the filled picker report is reviewed, assemble `desktop-picker-archive/` with `desktop-picker-smoke-report.json`, `desktop-picker-smoke-runbook.md`, `desktop-picker-evidence/`, and a summary, then create the archive manifest:
+
+```bash
+npm run create-desktop-picker-evidence-summary -- desktop-picker-archive/desktop-picker-evidence --report desktop-picker-archive/desktop-picker-smoke-report.json --output desktop-picker-archive/desktop-picker-evidence-summary.md
+npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive
+npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive --require-signed
+```
+
+The unsigned manifest can archive reviewed material. The signed command is required before an official signed release claim and still depends on the report passing signed readiness.
+
 For packaged runtime validation, launch the packaged app through the smoke runner. Use `--allow-pending-picker` only when native picker evidence is intentionally linked later; that mode is archiveable but not full runtime readiness:
 
 ```bash
@@ -167,6 +179,7 @@ Windows release support requires these gates before public release claims:
 - [x] Add a Windows smoke evidence summary/archive tool for reviewed collector output.
 - [x] Add a Windows smoke archive manifest tool for reviewed archive hashing and consistency checks.
 - [x] Add packaged desktop native picker smoke report, runbook, update, and validation tooling.
+- [x] Add packaged desktop native picker evidence summary/archive manifest tooling.
 - [ ] Verify install, launch, update check, and uninstall on a clean Windows machine.
 - [ ] Fill and archive packaged native picker smoke evidence for the signed or release-candidate Windows artifact.
 
@@ -241,6 +254,16 @@ npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-rep
 ```
 
 The pending report and runbook are operator aids only. The report proves picker smoke success only after all required checks pass with evidence; the signed command is required before an official Windows support claim.
+
+After reviewing the picker evidence, archive it with a summary and manifest:
+
+```bash
+npm run create-desktop-picker-evidence-summary -- desktop-picker-archive/desktop-picker-evidence --report desktop-picker-archive/desktop-picker-smoke-report.json --output desktop-picker-archive/desktop-picker-evidence-summary.md
+npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive
+npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive --require-signed
+```
+
+The desktop picker archive manifest expects `desktop-picker-smoke-report.json`, `desktop-picker-smoke-runbook.md`, `desktop-picker-evidence/`, and `desktop-picker-evidence-summary.md` or `.json`. It verifies archive completeness and summary hash consistency, but it does not create picker evidence by itself.
 
 For a release-level archive, assemble a reviewed directory with:
 

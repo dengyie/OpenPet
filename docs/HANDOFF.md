@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-17 | Branch: `codex/release-evidence-phase65`
+> Last updated: 2026-06-17 | Branch: `codex/desktop-picker-archive-phase66`
 
 ## Current Snapshot
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 475/475 Node tests
+npm test                     # 493/493 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -48,6 +48,8 @@ npm run create-packaged-runtime-smoke-report
 npm run create-packaged-runtime-smoke-runbook
 npm run run-packaged-runtime-smoke
 npm run validate-packaged-runtime-smoke-report
+npm run create-desktop-picker-evidence-summary
+npm run create-desktop-picker-archive-manifest
 npm run create-release-evidence-archive-manifest
 npm run create-signed-release-closure-report
 ```
@@ -63,6 +65,7 @@ npm run create-signed-release-closure-report
 - `docs/desktop-release-design.md` for desktop release evidence.
 - `docs/plugin-sandbox-evaluation.md` for current plugin runner guarantees, limits, and v1.1 recommendation.
 - `scripts/run-packaged-runtime-smoke.js`, `scripts/create-packaged-runtime-smoke-report.js`, and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
+- `scripts/create-desktop-picker-evidence-summary.js` and `scripts/create-desktop-picker-archive-manifest.js` for reviewed native picker evidence archive summaries and manifests.
 - `scripts/create-release-evidence-archive-manifest.js` and `scripts/create-signed-release-closure-report.js` for release-level evidence archive validation and release-claim closure.
 - `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, and `docs/plugin-submission-workflow-playbook.md` for extension onboarding and legacy SDK compatibility.
 - `scripts/create-openpet-plugin.js` and `scripts/create-plugin-author-rehearsal.js` for current compatibility starter templates and author-path rehearsal.
@@ -72,5 +75,6 @@ npm run create-signed-release-closure-report
 1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
 2. Use Phase 64 plugin command bridge as the current plugin-command boundary: command entries still run only from an explicit Control Center action on enabled policy-allowed local plugins, and declaration-only command runs now get a short-lived bridge URL/token for `pet.say`, `pet.action`, `pet.event`, and read-only context.
 3. Use Phase 65 release evidence link closure as the current runtime/picker evidence boundary: packaged runtime reports must link the paired desktop picker report before they can claim readiness, and archive release readiness now fails when that link is missing or mismatched.
-4. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
-5. After Phase 65, start the next concrete phase from real signed evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.
+4. Use Phase 66 desktop picker evidence archive tooling when a packaged native picker run is collected: generate the summary, create the archive manifest, and only claim readiness when the filled report and archive both pass.
+5. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
+6. After Phase 66, start the next concrete phase from real signed evidence work, community extension rehearsal, hard process-tree guarantees, or another high-drift service/report boundary.

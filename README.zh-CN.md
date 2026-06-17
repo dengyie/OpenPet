@@ -4,7 +4,7 @@
 
 一个带 Control Center、AI 聊天、插件、宠物包和本地 Agent API 的 Electron 桌面宠物平台。
 
-[![Tests](https://img.shields.io/badge/tests-475%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-493%20node%20%2B%2010%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
@@ -152,7 +152,7 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 当前本地基线：
 
 ```bash
-npm test                     # 475/475 Node tests
+npm test                     # 493/493 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

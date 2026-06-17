@@ -2,7 +2,7 @@
   "project": "OpenPet",
   "release": "1.0.1-rc.2",
   "updated": "2026-06-17",
-  "branch": "codex/release-evidence-phase65",
+  "branch": "codex/desktop-picker-archive-phase66",
   "scope": {
     "platform": ["macOS", "Windows"],
     "mobile": false,
@@ -18,7 +18,7 @@
     "Codex pet directory and zip import are supported",
     "Bundled pets include doro, duodong, and chispa",
     "TypeScript migration baseline covers shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative product payload fixtures",
-    "Packaged runtime smoke runner has archived real macOS packaged runtime evidence for automated launch, transparency, sprite, speech bubble, action playback, and built-in pack switching checks; desktop picker reports now include invalid-package feedback evidence, native picker evidence is still pending, and Phase 65 now requires packaged runtime readiness plus archive readiness to link the paired desktop picker smoke report",
+    "Packaged runtime smoke runner has archived real macOS packaged runtime evidence for automated launch, transparency, sprite, speech bubble, action playback, and built-in pack switching checks; desktop picker reports now include invalid-package feedback evidence, native picker evidence is still pending, Phase 65 requires packaged runtime readiness plus archive readiness to link the paired desktop picker smoke report, and Phase 66 adds desktop picker evidence summary/archive manifest tooling for reviewed picker archives",
     "Release evidence archive manifest tooling and signed release closure reporting are available; the current archived closure report records official desktop, macOS, and Windows claims as not-ready until real signed evidence is complete",
     "Current legacy plugin config is public settings; secret-like plugin config fields are rejected by the compatibility validator",
     "Legacy SDK scaffolding is available through npm run create-openpet-plugin, including minimal, network, storage, and AI-assisted templates",
@@ -31,7 +31,7 @@
     "The Phase 38+ execution design lives in docs/productization-v1.1-todo-design.md"
   ],
   "validation": {
-    "nodeTests": 475,
+    "nodeTests": 493,
     "uiTests": 10,
     "commands": [
       "npm test",
@@ -42,6 +42,8 @@
       "npm run create-plugin-author-rehearsal",
       "npm run create-plugin-sandbox-evaluation",
       "npm run validate-packaged-runtime-smoke-report",
+      "npm run create-desktop-picker-evidence-summary",
+      "npm run create-desktop-picker-archive-manifest",
       "npm run create-release-evidence-archive-manifest",
       "npm run create-signed-release-closure-report"
     ]

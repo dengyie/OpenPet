@@ -22,6 +22,8 @@
     "validate-windows-smoke-evidence-bundle": "node scripts/validate-windows-smoke-evidence-bundle.js",
     "create-desktop-picker-smoke-report": "node scripts/create-desktop-picker-smoke-report.js",
     "create-desktop-picker-smoke-runbook": "node scripts/create-desktop-picker-smoke-runbook.js",
+    "create-desktop-picker-evidence-summary": "node scripts/create-desktop-picker-evidence-summary.js",
+    "create-desktop-picker-archive-manifest": "node scripts/create-desktop-picker-archive-manifest.js",
     "update-desktop-picker-smoke-report": "node scripts/update-desktop-picker-smoke-report.js",
     "validate-desktop-picker-smoke-report": "node scripts/validate-desktop-picker-smoke-report.js",
     "create-packaged-runtime-smoke-report": "node scripts/create-packaged-runtime-smoke-report.js",
