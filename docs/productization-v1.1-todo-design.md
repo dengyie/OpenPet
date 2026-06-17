@@ -29,7 +29,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
 - TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin entry/dashboard/service contracts, and full release evidence archive / signed closure report contracts exist.
-- Windows, desktop picker, packaged runtime, and release evidence tooling exist as validators, reports, runbooks, or archive manifests.
+- Windows, desktop picker, packaged runtime, and release evidence tooling exist as validators, reports, runbooks, summaries, archive manifests, and release-level reviewed-archive gates.
 
 ### Still Open
 
@@ -1125,6 +1125,27 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 80. Declaration-only creator-tools command runs now receive host-owned data/cache/log directories plus bridge-backed action reads, validation, and bounded writes while raw file writes and broader asset generation remain out of scope.
 
+### Phase 81: Windows smoke archive release gate
+
+**Goal**: require reviewed Windows smoke archive manifests in the release-level archive and signed closure flow.
+
+**Scope**:
+
+- add `windows-smoke-archive-manifest.json` as a first-class release archive input;
+- validate that the reviewed Windows archive manifest matches the archived Windows smoke report path and SHA-256 hash;
+- require the Windows archive manifest to be release-ready when `--require-signed` is used;
+- block Windows and official desktop closure claims when Windows archive evidence is missing, stale, invalid, or not release-ready;
+- update shared release evidence contracts and representative fixtures.
+
+**Acceptance**:
+
+- release archive tests cover default/explicit Windows archive manifest paths, missing manifests, stale report linkage, pending archives, and signed-ready success;
+- signed closure tests cover missing and mismatched Windows archive evidence blockers;
+- `archives.windowsSmoke` is present in the shared release evidence contract;
+- docs keep Windows public status conservative and do not claim real Windows validation.
+
+**Status**: completed in Phase 81. Release-level archive manifests and signed closure reports now require reviewed Windows smoke archive evidence to match the archived Windows smoke report before Windows or official desktop readiness can pass.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -1134,6 +1155,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P0 | Phase 77 macOS release evidence capture | Completed; official macOS signing evidence now has a repeatable capture path, while readiness still depends on real passing evidence. |
 | P0 | Phase 78 macOS release evidence artifact | Completed; macOS release workflow uploads evidence as a maintainer artifact without mixing it into public release downloads. |
 | P0 | Phase 79 macOS release evidence archive | Completed; downloaded workflow evidence artifacts can be preserved permanently with provenance and hashes before signed closure. |
+| P0 | Phase 81 Windows smoke archive release gate | Completed; release archive and signed closure reports now require reviewed Windows smoke archive evidence to match the archived report. |
 | P1 | Phase 80 Plugin creator-tools action bridge | Completed; declaration-only creator-tools commands can read, validate, and apply bounded action configuration updates through the host bridge. |
 | P1 | Phase 40 pet pack export and provenance | Completed; keep provenance and conflict review as constraints for future catalog work. |
 | P1 | Phase 44 plugin author experience rehearsal | Completed; use the archived rehearsal as the plugin author baseline. |
@@ -1211,6 +1233,11 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 38. Phase 74 is complete; ready-for-review submission bundles can now receive a separate maintainer approval record, and author rehearsal now documents that approval remains a human maintainer step.
 38. Phase 75 is complete; an existing example plugin can now run through a local package, submission bundle, and maintainer approval rehearsal without claiming external provenance.
 39. Phase 76 is complete; a public HTTPS archive example can now run through remote-source provenance, package, submission bundle, and maintainer approval rehearsal without claiming independent public ecosystem trust.
+40. Phase 77 is complete; macOS release evidence capture now has a repeatable command for codesign, notarization, Gatekeeper, and summary files.
+41. Phase 78 is complete; macOS release jobs now upload evidence as a maintainer artifact without mixing it into public release assets.
+42. Phase 79 is complete; downloaded macOS workflow evidence can be copied into permanent archives with provenance and hashes.
+43. Phase 80 is complete; declaration-only creator-tools commands can use host-owned data/cache/log directories and bridge-backed bounded action reads/writes.
+44. Phase 81 is complete; release archive and signed closure reports now require reviewed Windows smoke archive manifests to match the archived Windows smoke report.
 
 ## 8. Verification Contract
 

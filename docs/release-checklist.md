@@ -2,7 +2,7 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline, repeatable codesign/notarization/Gatekeeper evidence capture, and release workflow evidence artifact upload; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates that now require the reviewed picker archive manifest. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has a validated release baseline, repeatable codesign/notarization/Gatekeeper evidence capture, and release workflow evidence artifact upload; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates that require reviewed Windows smoke and desktop picker archive manifests. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
@@ -52,6 +52,7 @@ npm run update-windows-smoke-report -- --list-checks
 
 ```bash
 npm run create-macos-release-evidence -- --help
+npm run create-windows-smoke-archive-manifest -- --help
 npm run create-release-evidence-archive-manifest -- --help
 ```
 
@@ -192,6 +193,7 @@ Windows release support requires these gates before public release claims:
 - [x] Add a Windows smoke evidence bundle validator for collector output.
 - [x] Add a Windows smoke evidence summary/archive tool for reviewed collector output.
 - [x] Add a Windows smoke archive manifest tool for reviewed archive hashing and consistency checks.
+- [x] Require the reviewed Windows smoke archive manifest in the release-level archive and signed closure report.
 - [x] Add packaged desktop native picker smoke report, runbook, update, and validation tooling.
 - [x] Add packaged desktop native picker evidence summary/archive manifest tooling.
 - [ ] Verify install, launch, update check, and uninstall on a clean Windows machine.
@@ -282,6 +284,7 @@ The desktop picker archive manifest expects `desktop-picker-smoke-report.json`, 
 For a release-level archive, assemble a reviewed directory with:
 
 - `windows-smoke-report.json`
+- `windows-smoke-archive-manifest.json`
 - `desktop-picker-smoke-report.json`
 - `desktop-picker-archive-manifest.json`
 - `packaged-runtime-smoke-report.json`
@@ -298,7 +301,7 @@ npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-e
 npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The first command can archive pending review material. The second command is required before an official desktop release claim and must produce `releaseReady: true`. The closure command turns the manifest into explicit release wording and should fail official release CI when any signed evidence remains missing or pending.
+The first manifest command can archive pending review material. The signed manifest command is required before an official desktop release claim and must produce `releaseReady: true`. It verifies that the reviewed Windows smoke archive manifest matches the archived Windows smoke report, and that the reviewed desktop picker archive manifest matches the archived desktop picker report. The closure command turns the manifest into explicit release wording and should fail official release CI when any signed evidence remains missing, pending, or mismatched.
 
 Windows smoke checks:
 

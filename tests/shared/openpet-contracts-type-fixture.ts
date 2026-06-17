@@ -277,6 +277,26 @@ const releaseArchiveManifestFixture = {
   },
   archives: {
     releaseReady: false,
+    windowsSmoke: {
+      file: {
+        role: 'windowsSmokeArchiveManifest',
+        path: '/tmp/openpet-release-evidence/windows-smoke-archive-manifest.json',
+        exists: true,
+        bytes: 1024,
+        sha256: '3'.repeat(64)
+      },
+      path: '/tmp/openpet-release-evidence/windows-smoke-archive-manifest.json',
+      archiveDir: '/tmp/openpet-release-evidence',
+      outputPath: '/tmp/openpet-release-evidence/windows-smoke-archive-manifest.json',
+      ok: true,
+      releaseReady: false,
+      reportPath: '/tmp/openpet-release-evidence/windows-smoke-report.json',
+      reportSha256: releaseArchiveReportSectionFixture.file.sha256,
+      summaryPath: '/tmp/openpet-release-evidence/windows-smoke-evidence-summary.md',
+      matchesReport: true,
+      errors: [],
+      warnings: ['windowsSmokeArchiveManifest is archived but not release-ready']
+    },
     desktopPicker: {
       file: {
         role: 'desktopPickerArchiveManifest',
@@ -293,7 +313,7 @@ const releaseArchiveManifestFixture = {
       reportPath: '/tmp/openpet-release-evidence/desktop-picker-smoke-report.json',
       reportSha256: 'f'.repeat(64),
       summaryPath: '/tmp/openpet-release-evidence/desktop-picker-evidence-summary.md',
-      matchesDesktopPickerReport: true,
+      matchesReport: true,
       errors: [],
       warnings: ['desktopPickerArchiveManifest is archived but not release-ready']
     }

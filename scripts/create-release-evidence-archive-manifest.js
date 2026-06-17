@@ -8,6 +8,7 @@ const { validateReport: validatePackagedRuntimeSmokeReport } = require('./valida
 
 const DEFAULT_ARCHIVE_DIR = 'release-evidence-archive'
 const DEFAULT_WINDOWS_SMOKE_REPORT = 'windows-smoke-report.json'
+const DEFAULT_WINDOWS_SMOKE_ARCHIVE_MANIFEST = 'windows-smoke-archive-manifest.json'
 const DEFAULT_DESKTOP_PICKER_REPORT = 'desktop-picker-smoke-report.json'
 const DEFAULT_DESKTOP_PICKER_ARCHIVE_MANIFEST = 'desktop-picker-archive-manifest.json'
 const DEFAULT_PACKAGED_RUNTIME_REPORT = 'packaged-runtime-smoke-report.json'
@@ -21,6 +22,7 @@ const usage = () => [
   '',
   'Options:',
   '  --windows-smoke-report <report.json>',
+  '  --windows-smoke-archive-manifest <manifest.json>',
   '  --desktop-picker-report <report.json>',
   '  --desktop-picker-archive-manifest <manifest.json>',
   '  --packaged-runtime-report <report.json>',
@@ -38,6 +40,7 @@ const parseArgs = (argv) => {
   const options = {
     archiveDir: DEFAULT_ARCHIVE_DIR,
     windowsSmokeReportPath: null,
+    windowsSmokeArchiveManifestPath: null,
     desktopPickerReportPath: null,
     desktopPickerArchiveManifestPath: null,
     packagedRuntimeReportPath: null,
@@ -65,6 +68,9 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--windows-smoke-report') {
       options.windowsSmokeReportPath = readValue(index, arg)
+      index += 1
+    } else if (arg === '--windows-smoke-archive-manifest') {
+      options.windowsSmokeArchiveManifestPath = readValue(index, arg)
       index += 1
     } else if (arg === '--desktop-picker-report') {
       options.desktopPickerReportPath = readValue(index, arg)
@@ -103,6 +109,7 @@ const parseArgs = (argv) => {
 const resolveArchivePaths = ({
   archiveDir = DEFAULT_ARCHIVE_DIR,
   windowsSmokeReportPath = null,
+  windowsSmokeArchiveManifestPath = null,
   desktopPickerReportPath = null,
   desktopPickerArchiveManifestPath = null,
   packagedRuntimeReportPath = null,
@@ -116,6 +123,7 @@ const resolveArchivePaths = ({
   return {
     archiveDir: absoluteArchiveDir,
     windowsSmokeReportPath: windowsSmokeReportPath ? path.resolve(windowsSmokeReportPath) : insideArchive(DEFAULT_WINDOWS_SMOKE_REPORT),
+    windowsSmokeArchiveManifestPath: windowsSmokeArchiveManifestPath ? path.resolve(windowsSmokeArchiveManifestPath) : insideArchive(DEFAULT_WINDOWS_SMOKE_ARCHIVE_MANIFEST),
     desktopPickerReportPath: desktopPickerReportPath ? path.resolve(desktopPickerReportPath) : insideArchive(DEFAULT_DESKTOP_PICKER_REPORT),
     desktopPickerArchiveManifestPath: desktopPickerArchiveManifestPath ? path.resolve(desktopPickerArchiveManifestPath) : insideArchive(DEFAULT_DESKTOP_PICKER_ARCHIVE_MANIFEST),
     packagedRuntimeReportPath: packagedRuntimeReportPath ? path.resolve(packagedRuntimeReportPath) : insideArchive(DEFAULT_PACKAGED_RUNTIME_REPORT),
@@ -196,13 +204,14 @@ const findFileByRole = (files, role) => Array.isArray(files)
   ? files.find((file) => file && file.role === role)
   : null
 
-const validateDesktopPickerArchiveManifestFile = ({
+const validateLinkedArchiveManifestFile = ({
+  role,
   filePath,
-  desktopPickerReportFile,
+  reportFile: expectedReportFile,
+  reportRoleLabel,
   requireSigned,
   fsImpl = fs
 }) => {
-  const role = 'desktopPickerArchiveManifest'
   const file = describeFile({ role, filePath, fsImpl })
   const errors = []
   const warnings = []
@@ -215,6 +224,7 @@ const validateDesktopPickerArchiveManifestFile = ({
     reportPath: '',
     reportSha256: '',
     summaryPath: '',
+    matchesReport: false,
     matchesDesktopPickerReport: false
   }
 
@@ -225,36 +235,38 @@ const validateDesktopPickerArchiveManifestFile = ({
 
   try {
     const manifest = loadJsonFile(filePath, fsImpl)
-    const reportFile = findFileByRole(manifest.files, 'report')
-    const reportedPath = manifest.report?.path || reportFile?.path || ''
-    const reportedSha256 = reportFile?.sha256 || ''
-    const expectedPath = path.resolve(desktopPickerReportFile.path)
+    const archiveReportFile = findFileByRole(manifest.files, 'report')
+    const reportedPath = manifest.report?.path || archiveReportFile?.path || ''
+    const reportedSha256 = archiveReportFile?.sha256 || ''
+    const expectedPath = expectedReportFile?.path ? path.resolve(expectedReportFile.path) : ''
     const actualPath = reportedPath ? path.resolve(reportedPath) : ''
-    const pathMatches = actualPath === expectedPath
-    const hashMatches = reportedSha256 && desktopPickerReportFile.sha256 && reportedSha256 === desktopPickerReportFile.sha256
+    const pathMatches = Boolean(actualPath && expectedPath && actualPath === expectedPath)
+    const hashMatches = Boolean(reportedSha256 && expectedReportFile?.sha256 && reportedSha256 === expectedReportFile.sha256)
+    const matchesReport = Boolean(pathMatches && hashMatches)
 
     details.path = path.resolve(filePath)
     details.archiveDir = manifest.archive?.archiveDir || ''
     details.outputPath = manifest.archive?.outputPath || ''
-    details.ok = manifest.ok === true
-    details.releaseReady = manifest.releaseReady === true
     details.reportPath = reportedPath
     details.reportSha256 = reportedSha256
     details.summaryPath = manifest.summary?.path || ''
-    details.matchesDesktopPickerReport = Boolean(pathMatches && hashMatches)
+    details.matchesReport = matchesReport
+    details.matchesDesktopPickerReport = matchesReport
+    details.ok = manifest.ok === true && matchesReport
+    details.releaseReady = details.ok && manifest.releaseReady === true
 
-    if (!details.ok) errors.push(`${role} is not valid`)
-    if (!reportedPath) errors.push(`${role} does not record a desktop picker report path`)
-    if (!reportedSha256) errors.push(`${role} does not record the desktop picker report hash`)
+    if (manifest.ok !== true) errors.push(`${role} is not valid`)
+    if (!reportedPath) errors.push(`${role} does not record a ${reportRoleLabel} path`)
+    if (!reportedSha256) errors.push(`${role} does not record the ${reportRoleLabel} hash`)
     if (reportedPath && !pathMatches) {
-      errors.push(`${role} references a different desktop picker report: ${reportedPath}`)
+      errors.push(`${role} references a different ${reportRoleLabel}: ${reportedPath}`)
     }
     if (reportedSha256 && !hashMatches) {
-      errors.push(`${role} records a stale desktop picker report hash`)
+      errors.push(`${role} records a stale ${reportRoleLabel} hash`)
     }
     if (!details.releaseReady) warnings.push(`${role} is archived but not release-ready`)
-    if (requireSigned && details.ok && !details.releaseReady) {
-      warnings.push(`${role} does not prove signed picker archive readiness`)
+    if (requireSigned && manifest.ok === true && !details.releaseReady) {
+      warnings.push(`${role} does not prove signed ${reportRoleLabel} archive readiness`)
     }
   } catch (err) {
     errors.push(`${role} could not be parsed: ${err.message || err}`)
@@ -305,6 +317,7 @@ const validateMacosEvidenceFile = ({ role, filePath, kind, requireSigned, fsImpl
 const createReleaseEvidenceArchiveManifest = ({
   archiveDir = DEFAULT_ARCHIVE_DIR,
   windowsSmokeReportPath = null,
+  windowsSmokeArchiveManifestPath = null,
   desktopPickerReportPath = null,
   desktopPickerArchiveManifestPath = null,
   packagedRuntimeReportPath = null,
@@ -319,6 +332,7 @@ const createReleaseEvidenceArchiveManifest = ({
   const paths = resolveArchivePaths({
     archiveDir,
     windowsSmokeReportPath,
+    windowsSmokeArchiveManifestPath,
     desktopPickerReportPath,
     desktopPickerArchiveManifestPath,
     packagedRuntimeReportPath,
@@ -379,9 +393,19 @@ const createReleaseEvidenceArchiveManifest = ({
   }
 
   const archives = {
-    desktopPicker: validateDesktopPickerArchiveManifestFile({
+    windowsSmoke: validateLinkedArchiveManifestFile({
+      role: 'windowsSmokeArchiveManifest',
+      filePath: paths.windowsSmokeArchiveManifestPath,
+      reportFile: reports.windowsSmoke.file,
+      reportRoleLabel: 'Windows smoke report',
+      requireSigned,
+      fsImpl
+    }),
+    desktopPicker: validateLinkedArchiveManifestFile({
+      role: 'desktopPickerArchiveManifest',
       filePath: paths.desktopPickerArchiveManifestPath,
-      desktopPickerReportFile: reports.desktopPicker.file,
+      reportFile: reports.desktopPicker.file,
+      reportRoleLabel: 'desktop picker report',
       requireSigned,
       fsImpl
     })
@@ -420,6 +444,7 @@ const createReleaseEvidenceArchiveManifest = ({
     },
     files: [
       reports.windowsSmoke.file,
+      archives.windowsSmoke.file,
       reports.desktopPicker.file,
       archives.desktopPicker.file,
       reports.packagedRuntime.file,
@@ -441,6 +466,7 @@ const createReleaseEvidenceArchiveManifest = ({
     },
     archives: {
       releaseReady: archivesReady,
+      windowsSmoke: archives.windowsSmoke,
       desktopPicker: archives.desktopPicker
     },
     errors,

@@ -15,6 +15,7 @@ const usage = () => [
   '  --manifest <manifest.json>          Read an existing release evidence archive manifest',
   '  --manifest-output <manifest.json>   Write the generated archive manifest',
   '  --windows-smoke-report <report.json>',
+  '  --windows-smoke-archive-manifest <manifest.json>',
   '  --desktop-picker-report <report.json>',
   '  --desktop-picker-archive-manifest <manifest.json>',
   '  --packaged-runtime-report <report.json>',
@@ -43,6 +44,7 @@ const parseArgs = (argv) => {
     manifestPath: '',
     manifestOutput: '',
     windowsSmokeReportPath: null,
+    windowsSmokeArchiveManifestPath: null,
     desktopPickerReportPath: null,
     desktopPickerArchiveManifestPath: null,
     packagedRuntimeReportPath: null,
@@ -71,6 +73,9 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--windows-smoke-report') {
       options.windowsSmokeReportPath = readValue(argv, index, arg)
+      index += 1
+    } else if (arg === '--windows-smoke-archive-manifest') {
+      options.windowsSmokeArchiveManifestPath = readValue(argv, index, arg)
       index += 1
     } else if (arg === '--desktop-picker-report') {
       options.desktopPickerReportPath = readValue(argv, index, arg)
@@ -136,16 +141,17 @@ const reportBlockers = ({ label, section, requiredPlatform }) => {
   return blockers
 }
 
-const archiveBlockers = ({ label, section }) => {
+const archiveBlockers = ({ label, section, matchLabel = 'archived report' }) => {
   const blockers = []
   if (!section?.file?.exists) {
     blockers.push(`${label} is missing`)
     return blockers
   }
-  if (section.matchesDesktopPickerReport !== true) {
+  const matchesReport = section.matchesReport ?? section.matchesDesktopPickerReport
+  if (matchesReport !== true) {
     const errors = (section.errors || []).filter(hasText)
     if (errors.length) blockers.push(...errors.map((error) => `${label}: ${error}`))
-    else blockers.push(`${label} does not match the archived desktop picker report`)
+    else blockers.push(`${label} does not match the ${matchLabel}`)
   }
   if (section.releaseReady !== true) {
     const errors = (section.errors || []).filter(hasText)
@@ -182,6 +188,7 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
   const packagedRuntime = manifest.reports?.packagedRuntime
   const desktopPicker = manifest.reports?.desktopPicker
   const windowsSmoke = manifest.reports?.windowsSmoke
+  const windowsSmokeArchive = manifest.archives?.windowsSmoke
   const desktopPickerArchive = manifest.archives?.desktopPicker
 
   const macosClaimBlockers = unique([
@@ -198,6 +205,11 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
       section: windowsSmoke,
       requiredPlatform: 'win32'
     }),
+    ...archiveBlockers({
+      label: 'Windows smoke archive evidence',
+      section: windowsSmokeArchive,
+      matchLabel: 'archived Windows smoke report'
+    }),
     ...reportBlockers({
       label: 'Windows desktop picker evidence',
       section: desktopPicker,
@@ -205,7 +217,8 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
     }),
     ...archiveBlockers({
       label: 'Windows desktop picker archive evidence',
-      section: desktopPickerArchive
+      section: desktopPickerArchive,
+      matchLabel: 'archived desktop picker report'
     }),
     ...reportBlockers({
       label: 'Windows packaged runtime evidence',
@@ -331,6 +344,7 @@ const loadManifest = ({ options, fsImpl = fs, now = () => new Date() }) => {
   return createReleaseEvidenceArchiveManifest({
     archiveDir: options.archiveDir,
     windowsSmokeReportPath: options.windowsSmokeReportPath,
+    windowsSmokeArchiveManifestPath: options.windowsSmokeArchiveManifestPath,
     desktopPickerReportPath: options.desktopPickerReportPath,
     desktopPickerArchiveManifestPath: options.desktopPickerArchiveManifestPath,
     packagedRuntimeReportPath: options.packagedRuntimeReportPath,

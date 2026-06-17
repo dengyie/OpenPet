@@ -797,7 +797,8 @@ export interface ReleaseEvidenceLinkedArchiveSection {
   reportPath: string
   reportSha256: string
   summaryPath: string
-  matchesDesktopPickerReport: boolean
+  matchesReport: boolean
+  matchesDesktopPickerReport?: boolean
   errors: string[]
   warnings: string[]
 }
@@ -833,6 +834,7 @@ export interface ReleaseEvidenceArchiveManifest {
   }
   archives: {
     releaseReady: boolean
+    windowsSmoke: ReleaseEvidenceLinkedArchiveSection
     desktopPicker: ReleaseEvidenceLinkedArchiveSection
   }
   errors: string[]

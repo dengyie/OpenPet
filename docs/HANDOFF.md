@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-18 | Branch: `codex/plugin-creator-tools-phase80`
+> Last updated: 2026-06-18 | Branch: `codex/windows-smoke-archive-gate-phase81`
 
 ## Current Snapshot
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 567/567 Node tests
+npm test                     # 573/573 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -52,6 +52,7 @@ npm run create-packaged-runtime-smoke-report
 npm run create-packaged-runtime-smoke-runbook
 npm run run-packaged-runtime-smoke
 npm run validate-packaged-runtime-smoke-report
+npm run create-windows-smoke-archive-manifest
 npm run create-desktop-picker-evidence-summary
 npm run create-desktop-picker-archive-manifest
 npm run create-release-evidence-archive-manifest
@@ -83,7 +84,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 2. Use Phase 64 plugin command bridge as the current plugin-command boundary: command entries still run only from an explicit Control Center action on enabled policy-allowed local plugins, and declaration-only command runs now get a short-lived bridge URL/token for `pet.say`, `pet.action`, `pet.event`, and read-only context.
 3. Use Phase 65 release evidence link closure as the current runtime/picker evidence boundary: packaged runtime reports must link the paired desktop picker report before they can claim readiness, and archive release readiness now fails when that link is missing or mismatched.
 4. Use Phase 66 desktop picker evidence archive tooling when a packaged native picker run is collected: generate the summary, create the archive manifest, and only claim readiness when the filled report and archive both pass.
-5. Use Phase 67 release picker archive link closure as the current release-claim boundary: release-level archive manifests and signed closure wording now explicitly require the reviewed desktop picker archive manifest to match the archived picker report.
+5. Use Phase 67 release picker archive link closure as the desktop picker archive boundary: release-level archive manifests and signed closure wording explicitly require the reviewed desktop picker archive manifest to match the archived picker report.
 6. Use Phase 73 cleanup hardening plus Phase 72 service process-tree fallback, Phase 71 periodic health policy, Phase 70 setup/command cleanup parity, and Phase 69 plugin service force stop as the current extension cleanup/health boundary: setup, declaration-only command, and service stop requests now keep stop intent visible until child exit confirmation, setup and declaration-only commands now try host-owned process-tree cleanup before direct child kill fallback, only service entries add the bounded host-side force-stop path, and only running services can receive opt-in periodic health checks.
 7. Use Phase 74 maintainer approval rehearsal as the current extension review-handoff boundary: author rehearsal stops at a ready-for-human-review submission bundle, maintainer approval is recorded as a separate Markdown/JSON artifact, and approval remains explicit human judgment rather than automated trust or publication.
 8. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
@@ -93,4 +94,5 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 12. Use Phase 78 macOS release evidence artifact upload as the current release-workflow evidence boundary: macOS release jobs upload `openpet-macos-release-evidence-<tag>` as a maintainer artifact, while public GitHub Release assets stay limited to install/update files.
 13. Use Phase 79 macOS release evidence archive tooling as the current long-term artifact retention boundary: downloaded workflow evidence can be copied into a permanent archive with provenance and hashes, but it still does not prove official release readiness by itself.
 14. Use Phase 80 creator-tools bridge as the current authoring boundary: declaration-only creator-tools commands can now declare `runtime` / `creator-tools` / `hybrid` profiles, receive host-owned data/cache/log directories, and read / validate / apply bounded action configuration updates through the short-lived bridge, but raw file writes, sprite generation, and broader pack-authoring APIs remain future work.
-15. After Phase 80, continue from collecting real signed workflow artifacts, live external community submission evidence, broader creator-tools APIs, stronger cleanup evidence on real hosts, or another high-drift service/report boundary.
+15. Use Phase 81 Windows smoke archive gate as the current release-evidence integrity boundary: release-level archive manifests and signed closure reports now require `windows-smoke-archive-manifest.json` to exist, validate, and match the archived Windows smoke report path and SHA-256 hash.
+16. After Phase 81, continue from collecting real signed workflow artifacts, live external community submission evidence, broader creator-tools APIs, stronger cleanup evidence on real hosts, or another high-drift service/report boundary.

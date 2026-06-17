@@ -1,7 +1,7 @@
 # OpenPet Development Summary
 
 > Last updated: 2026-06-18
-> Branch: `codex/plugin-creator-tools-phase80`
+> Branch: `codex/windows-smoke-archive-gate-phase81`
 > Current release track: `v1.0.1-rc.2`
 
 This is the short engineering summary for the current repository state. For long phase history, read `docs/phases/` and `docs/reviews/`. For support claims and documentation rules, read `docs/project-documentation-design.md`.
@@ -24,13 +24,13 @@ OpenPet is now a desktop pet platform with:
 - Pet packs: Codex pet directory/zip import, bundled `doro`, `duodong`, `chispa`, export, provenance, and version-conflict review.
 - AI: OpenAI-compatible chat, main-process secret storage, behavior decisions, replay, redacted diagnostics export, and clear-history controls.
 - Extensions: current legacy SDK examples, validation, submission bundles, scaffold author rehearsal, existing-plugin real-world submission rehearsal, remote-source submission rehearsal, maintainer approval rehearsal, developer-first local extension docs, normalized `entries` declarations including explicit `entries.setup` execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived command bridge access for `pet.say` / `pet.action` / `pet.event` / read-only context, host-owned `OPENPET_DATA_DIR` / `OPENPET_CACHE_DIR` / `OPENPET_LOG_DIR` injection for declaration-only command runs, creator-tools action reads / validation / bounded writes through the same short-lived bridge, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime status and logs, manual loopback-only health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup on service stop, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, and separate maintainer approval artifacts beside ready-for-review submission bundles. Command, setup, and service processes are spawned without shell expansion; setup and command entries never run during install or enable, services do not auto-start, approval remains a human review decision, and universal process-tree guarantees remain future runtime work.
-- Release evidence: packaged runtime smoke runner, stricter runtime/picker evidence-link validation, desktop picker evidence summary/archive manifest tooling, macOS codesign/notarization/Gatekeeper evidence capture with GitHub Actions artifact upload and permanent artifact archive handoff, release archive manifest tooling that now requires the picker archive manifest, and signed release closure reporting without unsupported readiness claims.
+- Release evidence: packaged runtime smoke runner, stricter runtime/picker evidence-link validation, desktop picker evidence summary/archive manifest tooling, Windows smoke evidence summary/archive manifest tooling, macOS codesign/notarization/Gatekeeper evidence capture with GitHub Actions artifact upload and permanent artifact archive handoff, release archive manifest tooling that now requires reviewed Windows smoke and desktop picker archive manifests, and signed release closure reporting without unsupported readiness claims.
 - TypeScript: shared IPC/view contracts, typed Control Center API facade, typed Control Center hook state boundaries, typed Control Center pane prop surfaces, `@ts-check` main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures in `npm run typecheck`.
 
 ## Validation Baseline
 
 ```bash
-npm test                     # 567/567 Node tests
+npm test                     # 573/573 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
@@ -39,7 +39,7 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 ## Open Work
 
 - Windows is still not release-ready until real signed installer evidence and smoke reports are archived.
-- Packaged native picker and signed release archive evidence still need real archived runs; automated macOS packaged runtime evidence is archived under `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/`, Phase 65 requires packaged runtime readiness to link the paired desktop picker report before archive readiness can be claimed, Phase 66 adds desktop picker evidence summary/archive manifest tooling for the reviewed picker archive, Phase 67 requires the release archive and signed closure flow to consume that picker archive manifest, Phase 77 adds a repeatable macOS evidence capture command for the canonical codesign/notarization/Gatekeeper files, Phase 78 uploads those macOS evidence files as a dedicated release workflow artifact, and Phase 79 copies downloaded workflow evidence into a permanent archive with provenance and hashes.
+- Packaged native picker and signed release archive evidence still need real archived runs; automated macOS packaged runtime evidence is archived under `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/`, Phase 65 requires packaged runtime readiness to link the paired desktop picker report before archive readiness can be claimed, Phase 66 adds desktop picker evidence summary/archive manifest tooling for the reviewed picker archive, Phase 67 requires the release archive and signed closure flow to consume that picker archive manifest, Phase 77 adds a repeatable macOS evidence capture command for the canonical codesign/notarization/Gatekeeper files, Phase 78 uploads those macOS evidence files as a dedicated release workflow artifact, Phase 79 copies downloaded workflow evidence into a permanent archive with provenance and hashes, and Phase 81 requires the reviewed Windows smoke archive manifest in the release archive and signed closure gate.
 - Signed release closure evidence is archived under `docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/` and currently records official desktop, macOS, and Windows claims as `not-ready`.
 - Extension author rehearsal evidence is archived under `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/` with minimal, network, storage, and AI-assisted legacy SDK scaffolds, a validated submission bundle, and a separate maintainer approval rehearsal record.
 - Existing-plugin real-world submission rehearsal evidence is archived under `docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/` using `examples/plugins/weather-status` with package, submission bundle, and maintainer approval artifacts.
@@ -51,11 +51,12 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 - Phase 78 is now complete: macOS release workflow runs upload a separate `openpet-macos-release-evidence-<tag>` artifact while keeping those evidence files out of public release downloads.
 - Phase 79 is now complete: downloaded macOS workflow evidence artifacts can be archived permanently with `npm run create-macos-release-evidence-archive`, while official release readiness remains gated by release archive and signed closure reports.
 - Phase 80 is now complete: declaration-only creator-tools commands can declare `runtime` / `creator-tools` / `hybrid` profile vocabulary, receive host-owned data/cache/log directories, and read / validate / apply bounded action configuration updates through the short-lived bridge without raw filesystem writes.
+- Phase 81 is now complete: release-level archive manifests and signed closure reports now require a reviewed `windows-smoke-archive-manifest.json` that matches the archived Windows smoke report path and SHA-256 hash.
 
 ## Next Engineering Steps
 
 1. Use `npm run create-macos-release-evidence-archive` to copy the next signed macOS workflow's `openpet-macos-release-evidence-<tag>` artifact into a permanent release archive, then produce real signed release and Windows smoke evidence before changing platform wording.
-2. Fill native picker evidence from launched or packaged app runs, archive it with `npm run create-desktop-picker-evidence-summary` and `npm run create-desktop-picker-archive-manifest`, then feed that archive into the release-level manifest and closure report.
+2. Fill Windows smoke and native picker evidence from real launched or packaged app runs, archive them with their evidence summary/archive manifest commands, then feed both reviewed archive manifests into the release-level manifest and closure report.
 3. Continue signed evidence/report hardening or gather live external community submission evidence beyond the current official-repository remote-source rehearsal.
 4. Extend creator-tools beyond Phase 80 only through new host-mediated APIs such as asset inspection, sprite generation, or pack-manifest workflows rather than raw plugin file writes.
 5. Keep `npm start` functional and keep user-facing configuration in Control Center.
