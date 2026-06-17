@@ -1,7 +1,7 @@
 # OpenPet v1.1 TODO Design
 
 > Date: 2026-06-16
-> Baseline: Phase 65 completed locally
+> Baseline: Phase 66 completed locally
 > Scope: Convert the remaining productization TODO into a phase-ready design for v1.1 work. This document does not upgrade platform support claims. Windows remains not release-ready until signed runtime smoke evidence passes.
 
 ## 1. Goal
@@ -25,7 +25,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - PetService remains the single source of truth for `say`, `action`, and event state.
 - Pet pack runtime supports legacy cat assets, OpenPet packs, Codex pet directory import, Codex pet zip import, and bundled packs.
 - Bundled pet assets are integrated without replacing the legacy `cat_anime/` structure.
-- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner and explicit short-lived process execution for declaration-only local extensions, a short-lived command bridge for `pet.say` / `pet.action` / `pet.event` / read-only context, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
+- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner and explicit short-lived process execution for declaration-only local extensions, a short-lived command/service bridge for `pet.say` / `pet.action` / `pet.event` / read-only context, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
 - TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin entry/dashboard/service contracts, and full release evidence archive / signed closure report contracts exist.
@@ -36,7 +36,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - macOS signed/notarized release evidence still needs real artifact capture and archive.
 - Windows signed installer/zip smoke evidence still needs real Windows execution.
 - Packaged runtime smoke reports still need real app evidence for pet window visibility, transparent rendering, bundled pack switching, and native picker flows.
-- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, explicit service start/stop, manual loopback service health checks, and exit-confirmed best-effort process-group cleanup now exists. Background health polling, richer bridge surfaces for authoring workflows, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
+- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command/service bridge access, explicit service start/stop, manual loopback service health checks, and exit-confirmed best-effort process-group cleanup now exists. Background health polling, richer bridge surfaces for authoring workflows, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
 - Legacy SDK plugin secrets policy remains conservative; target extension docs require honest disclosure for extension-managed secrets and data.
 - Plugin sandbox strategy has been evaluated against SES and Electron `utilityProcess`; current recommendation is to keep the existing runner for v1.1 while documenting limits.
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
@@ -858,6 +858,29 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 65. Declared service runtime now stays `stopping` until child exit confirmation after a stop request, while process-group cleanup remains best-effort and setup/command behavior stays unchanged.
 
+### Phase 66: Plugin service bridge
+
+**Goal**: let explicitly started declaration-only local service entries use the same narrow pet-aware bridge already available to declaration-only command runs.
+
+**Scope**:
+
+- Keep the Phase 64 bridge surface intentionally small.
+- Keep the Phase 65 service lifecycle and stop semantics unchanged.
+- Inject a short-lived bridge URL and token into explicit declaration-only service runs.
+- Support bounded read-only context plus `pet.say`, `pet.action`, and `pet.event`.
+- Expire bridge authorization immediately when service stop is requested, and fully release it on exit or spawn failure.
+- Do not add setup bridge access, service auto-start, renderer bridge access, background automation, or complete process-tree cleanup guarantees.
+
+**Acceptance**:
+
+- Explicit service runs receive bridge env vars.
+- Bridge-backed service calls mutate pet state only through `PetService`.
+- Invalid token, missing permission, and expired bridge requests are rejected for services too.
+- Concurrent service starts safely share the loopback bridge server without hanging or duplicating capability.
+- Docs keep the bridge honest as a narrow per-entry-run convenience surface, not a general sandbox or privileged host SDK.
+
+**Status**: completed in Phase 66. Explicit declaration-only services now receive the same short-lived bridge URL/token pair as commands, can use it for bounded pet-aware mutations and context reads during the active service run, and lose access as soon as stop is requested or the process exits.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -886,6 +909,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 63 Plugin command result UX | Completed; Plugins pane now shows the latest command result summary, JSON preview, and bounded stdout/stderr snippets for successful runs. |
 | P1 | Phase 64 Plugin command bridge | Completed; declaration-only commands can receive a short-lived bridge URL/token and use it for bounded pet-aware mutations and context reads. |
 | P1 | Phase 65 Plugin service hard cleanup | Completed; declared services now remain `stopping` until exit confirmation after explicit stop, disable cleanup, or app shutdown cleanup. |
+| P1 | Phase 66 Plugin service bridge | Completed; explicit declaration-only service runs now receive the same narrow bridge URL/token and lose access immediately on stop request or exit. |
 | P2 | Phase 41 AI behavior replay | Completed; preserve redacted diagnostics and replay semantics while future AI tooling evolves. |
 | P2 | Phase 39 plugin sandbox evaluation | Completed; keep current runner for v1.1 and revisit on high-risk plugin capability changes. |
 | P2 | Phase 46 documentation consolidation | Completed; keep future live-doc updates fact-only and link-oriented. |
@@ -918,7 +942,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 24. Phase 62 is complete; declaration-only local command entries can be explicitly run from Control Center for enabled policy-allowed local plugins, with stdin JSON context, timeout handling, logs, and no shell expansion.
 25. Phase 63 is complete; the Plugins pane now shows the latest command result summary on the matching plugin card, with result message, exit code, JSON preview, and bounded stdout/stderr snippets.
 26. Phase 64 is complete; declaration-only commands now receive a short-lived bridge URL/token and can use it for pet-aware mutations and bounded context reads.
-27. Phase 65 is complete; declared services now stay `stopping` until exit confirmation after explicit stop, disable cleanup, or app shutdown cleanup. Choose the next phase from real evidence work, community extension rehearsal, harder descendant-process guarantees, or another high-drift service/report boundary.
+27. Phase 65 is complete; declared services now stay `stopping` until exit confirmation after explicit stop, disable cleanup, or app shutdown cleanup.
+28. Phase 66 is complete; explicit declaration-only services now receive the same short-lived bridge URL/token as commands and can use it for pet-aware mutations and bounded context reads during the active run. Choose the next phase from real evidence work, community extension rehearsal, harder descendant-process guarantees, richer but still narrow authoring bridges, or another high-drift service/report boundary.
 
 ## 8. Verification Contract
 

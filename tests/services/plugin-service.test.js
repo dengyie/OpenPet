@@ -1169,7 +1169,7 @@ test('plugin service rejects non-http dashboard urls before opening external url
   assert.deepEqual(openedUrls, [])
 })
 
-test('plugin service starts and stops enabled declaration service entries', () => {
+test('plugin service starts and stops enabled declaration service entries', async () => {
   const spawned = []
   const children = []
   const settingsService = createSettingsService({
@@ -1190,7 +1190,7 @@ test('plugin service starts and stops enabled declaration service entries', () =
 
   assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
 
-  const started = service.startService('weather-declaration', 'companion')
+  const started = await service.startService('weather-declaration', 'companion')
 
   assert.equal(started.ok, true)
   assert.equal(started.runtime.status, 'running')
@@ -1201,7 +1201,10 @@ test('plugin service starts and stops enabled declaration service entries', () =
   assert.equal(path.basename(spawned[0].options.cwd), 'weather-declaration')
   assert.equal(spawned[0].options.detached, true)
   assert.equal(spawned[0].options.shell, false)
-  assert.deepEqual(Object.keys(spawned[0].options.env).sort(), ['PATH'].filter((key) => process.env[key]).sort())
+  assert.deepEqual(
+    Object.keys(spawned[0].options.env).filter((key) => key !== 'OPENPET_BRIDGE_TOKEN' && key !== 'OPENPET_BRIDGE_URL').sort(),
+    ['PATH'].filter((key) => process.env[key]).sort()
+  )
   assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'running')
   assert.equal(settingsService.get().plugins.logs[0].message, 'Service started')
 
@@ -1221,7 +1224,240 @@ test('plugin service starts and stops enabled declaration service entries', () =
   )
 })
 
-test('plugin service stops service process groups before falling back to child kill', () => {
+test('plugin service entries receive bridge env vars when started explicitly', async () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: (file, args, options) => {
+      const child = createSlowStoppingServiceProcess()
+      spawned.push({ file, args, options, child })
+      return child
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+
+  assert.match(spawned[0].options.env.OPENPET_BRIDGE_URL, /^http:\/\/127\.0\.0\.1:\d+\/plugins\/bridge\/weather-declaration\/service:companion\/[A-Za-z0-9_-]+$/)
+  assert.match(spawned[0].options.env.OPENPET_BRIDGE_TOKEN, /^[A-Za-z0-9_-]{20,}$/)
+})
+
+test('plugin service bridge server is shared safely across concurrent service starts', async () => {
+  const spawned = []
+  const children = []
+  const root = createDeclarationOnlyPluginDir()
+  fs.writeFileSync(path.join(root, 'weather-declaration', 'plugin.json'), JSON.stringify({
+    id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    entries: {
+      services: [
+        { id: 'companion', title: 'Companion Service', command: 'npm run service:start', cwd: '.' },
+        { id: 'reporter', title: 'Reporter Service', command: 'npm run service:reporter', cwd: '.' }
+      ]
+    }
+  }))
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnServiceProcess: (file, args, options) => {
+      const child = createSlowStoppingServiceProcess()
+      children.push(child)
+      spawned.push({ file, args, options, child })
+      return child
+    }
+  })
+  const timeout = new Promise((_, reject) => {
+    const id = setTimeout(() => reject(new Error('Timed out waiting for concurrent service starts')), 500)
+    id.unref?.()
+  })
+
+  const started = await Promise.race([
+    Promise.all([
+      service.startService('weather-declaration', 'companion'),
+      service.startService('weather-declaration', 'reporter')
+    ]),
+    timeout
+  ])
+
+  assert.deepEqual(started.map((result) => result.serviceId), ['companion', 'reporter'])
+  assert.equal(spawned.length, 2)
+  assert.match(spawned[0].options.env.OPENPET_BRIDGE_URL, /\/service:companion\//)
+  assert.match(spawned[1].options.env.OPENPET_BRIDGE_URL, /\/service:reporter\//)
+
+  service.stopAllServices()
+  for (const child of children) child.emit('exit', 0, 'SIGTERM')
+})
+
+test('plugin service bridge forwards pet mutations and bounded context through PetService', async () => {
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const petService = createBridgeAwarePetService()
+  const root = createDeclarationOnlyPluginDir()
+  fs.writeFileSync(path.join(root, 'weather-declaration', 'plugin.json'), JSON.stringify({
+    id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    permissions: ['pet:say', 'pet:action', 'pet:event'],
+    entries: {
+      services: [{ id: 'companion', title: 'Companion Service', command: 'npm run service:start', cwd: '.' }]
+    }
+  }))
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService,
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options, child })
+      return child
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  const contextResponse = await requestBridge(`${baseUrl}/context`, { token })
+  const sayResult = await requestBridge(`${baseUrl}/pet/say`, {
+    method: 'POST',
+    token,
+    body: { text: 'Rain starts soon', ttlMs: 1200 }
+  })
+  const actionResult = await requestBridge(`${baseUrl}/pet/action`, {
+    method: 'POST',
+    token,
+    body: { actionId: 'wave' }
+  })
+  const eventResult = await requestBridge(`${baseUrl}/pet/event`, {
+    method: 'POST',
+    token,
+    body: { type: 'weather', message: 'Rain soon', ttlMs: 3000 }
+  })
+
+  child.emit('exit', 0, null)
+  const expired = await requestBridge(`${baseUrl}/context`, { token })
+
+  assert.deepEqual(contextResponse.body.context, {
+    petName: 'Bridge Pet',
+    selectedPetId: 'legacy-cat',
+    currentActionId: 'idle',
+    personality: {
+      tone: 'friendly',
+      tags: ['companion', 'playful']
+    }
+  })
+  assert.equal(sayResult.status, 200)
+  assert.equal(actionResult.status, 200)
+  assert.equal(eventResult.status, 200)
+  assert.equal(expired.status, 401)
+  assert.deepEqual(petService.calls, [
+    ['say', { text: 'Rain starts soon', ttlMs: 1200, source: 'plugin:weather-declaration:bridge' }],
+    ['action', { actionId: 'wave', source: 'plugin:weather-declaration:bridge' }],
+    ['event', { type: 'weather', message: 'Rain soon', ttlMs: 3000, source: 'plugin:weather-declaration:bridge' }]
+  ])
+})
+
+test('plugin service bridge rejects invalid tokens and missing permissions', async () => {
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const root = createDeclarationOnlyPluginDir()
+  fs.writeFileSync(path.join(root, 'weather-declaration', 'plugin.json'), JSON.stringify({
+    id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    permissions: ['pet:say'],
+    entries: {
+      services: [{ id: 'companion', title: 'Companion Service', command: 'npm run service:start', cwd: '.' }]
+    }
+  }))
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options, child })
+      return child
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  const wrongToken = await requestBridge(`${baseUrl}/pet/say`, {
+    method: 'POST',
+    token: 'wrong-token',
+    body: { text: 'nope' }
+  })
+  const missingPermission = await requestBridge(`${baseUrl}/pet/event`, {
+    method: 'POST',
+    token,
+    body: { type: 'weather', message: 'nope' }
+  })
+
+  child.emit('exit', 0, null)
+
+  assert.equal(wrongToken.status, 401)
+  assert.equal(missingPermission.status, 403)
+})
+
+test('plugin service bridge expires when service stop is requested', async () => {
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const root = createDeclarationOnlyPluginDir()
+  fs.writeFileSync(path.join(root, 'weather-declaration', 'plugin.json'), JSON.stringify({
+    id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    permissions: ['pet:say'],
+    entries: {
+      services: [{ id: 'companion', title: 'Companion Service', command: 'npm run service:start', cwd: '.' }]
+    }
+  }))
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options, child })
+      return child
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  service.stopService('weather-declaration', 'companion')
+  const stopped = await requestBridge(`${baseUrl}/pet/say`, {
+    method: 'POST',
+    token,
+    body: { text: 'too late' }
+  })
+
+  child.emit('exit', 0, 'SIGTERM')
+
+  assert.equal(stopped.status, 401)
+})
+
+test('plugin service stops service process groups before falling back to child kill', async () => {
   const child = createSlowStoppingServiceProcess({ pid: 4321 })
   const killedProcesses = []
   const service = createPluginService({
@@ -1238,14 +1474,14 @@ test('plugin service stops service process groups before falling back to child k
     }
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
   service.stopService('weather-declaration', 'companion')
 
   assert.deepEqual(killedProcesses, [{ pid: -4321, signal: 'SIGTERM' }])
   assert.deepEqual(child.killCalls, [])
 })
 
-test('plugin service falls back to child kill when process group stop fails', () => {
+test('plugin service falls back to child kill when process group stop fails', async () => {
   const child = createSlowStoppingServiceProcess({ pid: 4321 })
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -1260,13 +1496,13 @@ test('plugin service falls back to child kill when process group stop fails', ()
     }
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
   service.stopService('weather-declaration', 'companion')
 
   assert.deepEqual(child.killCalls, ['SIGTERM'])
 })
 
-test('plugin service rejects service starts for disabled plugins', () => {
+test('plugin service rejects service starts for disabled plugins', async () => {
   const spawned = []
   const service = createPluginService({
     settingsService: createSettingsService(),
@@ -1279,14 +1515,14 @@ test('plugin service rejects service starts for disabled plugins', () => {
     }
   })
 
-  assert.throws(
+  await assert.rejects(
     () => service.startService('weather-declaration', 'companion'),
     /Plugin is disabled/
   )
   assert.deepEqual(spawned, [])
 })
 
-test('plugin service blocks service starts when ecosystem policy denies the plugin', () => {
+test('plugin service blocks service starts when ecosystem policy denies the plugin', async () => {
   const spawned = []
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -1302,14 +1538,14 @@ test('plugin service blocks service starts when ecosystem policy denies the plug
     }
   })
 
-  assert.throws(
+  await assert.rejects(
     () => service.startService('weather-declaration', 'companion'),
     /Plugin is blocked: blocked for review/
   )
   assert.deepEqual(spawned, [])
 })
 
-test('plugin service rejects unknown service ids before spawning processes', () => {
+test('plugin service rejects unknown service ids before spawning processes', async () => {
   const spawned = []
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -1324,14 +1560,14 @@ test('plugin service rejects unknown service ids before spawning processes', () 
     }
   })
 
-  assert.throws(
+  await assert.rejects(
     () => service.startService('weather-declaration', 'missing'),
     /Plugin service not found: missing/
   )
   assert.deepEqual(spawned, [])
 })
 
-test('plugin service rejects duplicate service starts', () => {
+test('plugin service rejects duplicate service starts', async () => {
   const service = createPluginService({
     settingsService: createSettingsService({
       plugins: { enabled: { 'weather-declaration': true } }
@@ -1342,15 +1578,15 @@ test('plugin service rejects duplicate service starts', () => {
     spawnServiceProcess: () => createFakeServiceProcess()
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
 
-  assert.throws(
+  await assert.rejects(
     () => service.startService('weather-declaration', 'companion'),
     /Plugin service is already running/
   )
 })
 
-test('plugin service marks non-zero service exits as failed', () => {
+test('plugin service marks non-zero service exits as failed', async () => {
   const child = createFakeServiceProcess()
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -1362,7 +1598,7 @@ test('plugin service marks non-zero service exits as failed', () => {
     spawnServiceProcess: () => child
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
   child.emit('exit', 1, '')
 
   assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'failed')
@@ -1370,7 +1606,7 @@ test('plugin service marks non-zero service exits as failed', () => {
   assert.equal(service.getLogs()[0].message, 'Service exited')
 })
 
-test('plugin service rejects service cwd symlinks escaping the plugin directory', () => {
+test('plugin service rejects service cwd symlinks escaping the plugin directory', async () => {
   const root = createDeclarationOnlyPluginDir({ serviceCwd: 'service-link' })
   const outsidePath = path.join(root, 'outside-service')
   fs.mkdirSync(outsidePath)
@@ -1385,13 +1621,13 @@ test('plugin service rejects service cwd symlinks escaping the plugin directory'
     spawnServiceProcess: () => createFakeServiceProcess()
   })
 
-  assert.throws(
+  await assert.rejects(
     () => service.startService('weather-declaration', 'companion'),
     /Plugin service cwd must stay inside the plugin directory/
   )
 })
 
-test('plugin service stops running services when a plugin is disabled', () => {
+test('plugin service stops running services when a plugin is disabled', async () => {
   const child = createSlowStoppingServiceProcess()
   const settingsService = createSettingsService({
     plugins: { enabled: { 'weather-declaration': true } }
@@ -1404,7 +1640,7 @@ test('plugin service stops running services when a plugin is disabled', () => {
     spawnServiceProcess: () => child
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
   service.setEnabled('weather-declaration', false)
 
   assert.deepEqual(child.killCalls, ['SIGTERM'])
@@ -1415,7 +1651,7 @@ test('plugin service stops running services when a plugin is disabled', () => {
   assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
 })
 
-test('plugin service keeps services in stopping state until the child exits', () => {
+test('plugin service keeps services in stopping state until the child exits', async () => {
   const child = createSlowStoppingServiceProcess()
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -1427,12 +1663,12 @@ test('plugin service keeps services in stopping state until the child exits', ()
     spawnServiceProcess: () => child
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
   const stopping = service.stopService('weather-declaration', 'companion')
 
   assert.equal(stopping.runtime.status, 'stopping')
   assert.deepEqual(child.killCalls, ['SIGTERM'])
-  assert.throws(
+  await assert.rejects(
     () => service.startService('weather-declaration', 'companion'),
     /Plugin service is already running/
   )
@@ -1442,7 +1678,7 @@ test('plugin service keeps services in stopping state until the child exits', ()
   assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'stopped')
 })
 
-test('plugin service stops running services during app shutdown cleanup after exit confirmation', () => {
+test('plugin service stops running services during app shutdown cleanup after exit confirmation', async () => {
   const child = createSlowStoppingServiceProcess()
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -1454,7 +1690,7 @@ test('plugin service stops running services during app shutdown cleanup after ex
     spawnServiceProcess: () => child
   })
 
-  service.startService('weather-declaration', 'companion')
+  await service.startService('weather-declaration', 'companion')
   const result = service.stopAllServices()
 
   assert.deepEqual(result, { ok: true })

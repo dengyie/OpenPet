@@ -152,7 +152,7 @@ Services are long-running local process entries managed by OpenPet.
 }
 ```
 
-OpenPet can explicitly run command and setup entries from Control Center, capture stdout/stderr snippets, show setup runtime state, explicitly start and stop services, show service runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and attempt best-effort process-group cleanup when stopping services. Declaration-only command runs also receive a short-lived bridge URL/token so they can call `pet.say`, `pet.action`, `pet.event`, and fetch a bounded read-only context during the active run. Command, setup, and service processes do not run during install or enable; services never auto-start; health checks do not run in the background; and the host spawns command, setup, and service processes without shell expansion. Hard process-tree cleanup guarantees are still future runtime work. The service model should not require a specific language, a self-contained package, or a full process sandbox.
+OpenPet can explicitly run command and setup entries from Control Center, capture stdout/stderr snippets, show setup runtime state, explicitly start and stop services, show service runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and attempt best-effort process-group cleanup when stopping services. Declaration-only command runs and explicitly started services receive a short-lived bridge URL/token so they can call `pet.say`, `pet.action`, `pet.event`, and fetch a bounded read-only context during the active entry run. This lets extensions build practical long-running experiences such as weather companions, personality injectors, action announcers, and pet-aware dashboards without forcing everything through the legacy JavaScript SDK. Command, setup, and service processes do not run during install or enable; services never auto-start; health checks do not run in the background; and the host spawns command, setup, and service processes without shell expansion. Hard process-tree cleanup guarantees are still future runtime work. The service model should not require a specific language, a self-contained package, or a full process sandbox.
 
 ### Dashboards
 
@@ -172,14 +172,14 @@ First-version behavior should stay simple: OpenPet shows an "Open Dashboard" act
 
 OpenPet should use language-neutral context passing.
 
-Current command entries receive context on stdin and run with a minimal host environment. Declaration-only command runs now also receive a short-lived bridge URL/token pair. OpenPet does not currently inject data/cache/log paths, generated config files, or result-file paths into command processes.
+Current command entries receive context on stdin and run with a minimal host environment. Declaration-only command runs and explicitly started service entries now also receive a short-lived bridge URL/token pair. OpenPet does not currently inject data/cache/log paths, generated config files, or result-file paths into command or service processes.
 
 Current standard environment variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `OPENPET_BRIDGE_URL` | Short-lived local bridge endpoint for the active declaration-only command run. |
-| `OPENPET_BRIDGE_TOKEN` | Bearer token for the active declaration-only command bridge. |
+| `OPENPET_BRIDGE_URL` | Short-lived local bridge endpoint for the active declaration-only command or explicitly started service entry. |
+| `OPENPET_BRIDGE_TOKEN` | Bearer token for the active entry bridge. |
 
 Reserved future variables:
 
@@ -218,7 +218,7 @@ Current bridge routes:
 - `POST /pet/action`
 - `POST /pet/event`
 
-The bridge is loopback-only, token-gated, and valid only while the command run is active.
+The bridge is loopback-only, token-gated, permission-checked, and valid only while the command or service entry run is active.
 
 OpenPet may interpret common result keys:
 
@@ -234,7 +234,7 @@ OpenPet may interpret common result keys:
 
 ## Optional Bridge
 
-For deeper pet integration, OpenPet now provides a minimal optional local bridge for explicit declaration-only command runs. The bridge is not a heavy SDK and should not become a full permission broker in the first version.
+For deeper pet integration, OpenPet now provides a minimal optional local bridge for explicit declaration-only command runs and explicitly started service entries. The bridge is not a heavy SDK and should not become a full permission broker in the first version.
 
 Injected values:
 
@@ -250,12 +250,12 @@ Current endpoint set:
 
 Bridge rules:
 
-- the bridge exists only during an explicit declaration-only command run;
-- the command must belong to an enabled, policy-allowed local extension;
+- the bridge exists only during an explicit declaration-only command run or an explicitly started service entry;
+- the entry must belong to an enabled, policy-allowed local extension;
 - requests must use `Authorization: Bearer <OPENPET_BRIDGE_TOKEN>`;
 - `pet:say`, `pet:action`, and `pet:event` permissions are enforced per route;
 - all pet mutations still flow through `PetService`;
-- setup entries, services, install, enable, and background health paths do not receive bridge access.
+- setup entries, install, enable, and background health paths do not receive bridge access.
 
 Example bridge requests:
 
@@ -277,6 +277,14 @@ Example command behavior:
 2. Fetch weather using the extension's own network stack.
 3. Optionally call bridge routes such as `POST /pet/say`, `POST /pet/action`, or `POST /pet/event`.
 4. Write final result JSON to stdout.
+
+Example service behavior:
+
+1. Start only after the user presses the service start action in Control Center.
+2. Read `OPENPET_BRIDGE_URL` and `OPENPET_BRIDGE_TOKEN` from the process environment.
+3. Run the extension's own scheduler, API client, dashboard server, model workflow, or asset generator.
+4. Call bridge routes when the pet should speak, switch action, emit an event, or read bounded context.
+5. Stop using the bridge as soon as OpenPet requests service stop or the process exits.
 
 ## Configuration
 
@@ -405,7 +413,7 @@ npm run create-plugin-submission-bundle -- <extension-dir-or-zip> --output-dir p
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
 ```
 
-These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup on service stop, but bridge flows and hard process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
+These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, bridge access for explicit command and service entries, explicit service start/stop, manual loopback service health checks, and best-effort process-group cleanup on service stop. Hard process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
 
 For a local author rehearsal:
 

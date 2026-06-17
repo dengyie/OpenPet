@@ -28,7 +28,7 @@ const ACTIVE_COMMAND_STATUSES = new Set(['running'])
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
-const createPluginBridgeKey = (pluginId, commandId, runId) => `${pluginId}:${commandId}:${runId}`
+const createPluginBridgeKey = (pluginId, entryId, runId) => `${pluginId}:${entryId}:${runId}`
 
 const createPluginBridgeToken = () => crypto.randomBytes(24).toString('base64url')
 
@@ -516,9 +516,10 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
   const serviceRuntimes = new Map()
   const setupRuntimes = new Map()
   const commandRuntimes = new Map()
-  const commandBridgeRuntimes = new Map()
-  let commandBridgeServer = null
-  let commandBridgePort = 0
+  const pluginBridgeRuntimes = new Map()
+  let pluginBridgeServer = null
+  let pluginBridgePort = 0
+  let pluginBridgeServerStarting = null
 
   const getLogStore = () => {
     const logs = settingsService.get().plugins?.logs
@@ -567,14 +568,14 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
-  const createPluginBridgeHandlers = (plugin, commandId) => ({
+  const createPluginBridgeHandlers = (plugin, entryId) => ({
     context: async () => {
-      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge context requested' })
+      appendLog({ pluginId: plugin.manifest.id, commandId: entryId, level: 'info', message: 'Bridge context requested' })
       return { ok: true, context: createPluginBridgeContext() }
     },
     petSay: async (payload = {}) => {
       assertPermission(plugin.manifest, 'pet:say')
-      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge pet.say invoked' })
+      appendLog({ pluginId: plugin.manifest.id, commandId: entryId, level: 'info', message: 'Bridge pet.say invoked' })
       return {
         ok: true,
         result: petService.say({
@@ -589,7 +590,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       const actionId = String(payload.actionId || '')
       appendLog({
         pluginId: plugin.manifest.id,
-        commandId,
+        commandId: entryId,
         level: 'info',
         message: `Bridge pet.action invoked: ${actionId}`.slice(0, 240)
       })
@@ -606,7 +607,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       const eventType = String(payload.type || '')
       appendLog({
         pluginId: plugin.manifest.id,
-        commandId,
+        commandId: entryId,
         level: 'info',
         message: `Bridge pet.event invoked: ${eventType}`.slice(0, 240)
       })
@@ -622,15 +623,16 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   })
 
-  const ensureCommandBridgeServer = async () => {
-    if (commandBridgeServer?.listening) return commandBridgePort
-    if (commandBridgeServer && !commandBridgeServer.listening) {
-      commandBridgeServer.removeAllListeners()
-      commandBridgeServer = null
-      commandBridgePort = 0
+  const ensurePluginBridgeServer = async () => {
+    if (pluginBridgeServer?.listening) return pluginBridgePort
+    if (pluginBridgeServerStarting) return pluginBridgeServerStarting
+    if (pluginBridgeServer && !pluginBridgeServer.listening) {
+      pluginBridgeServer.removeAllListeners()
+      pluginBridgeServer = null
+      pluginBridgePort = 0
     }
 
-    commandBridgeServer = http.createServer(async (request, response) => {
+    pluginBridgeServer = http.createServer(async (request, response) => {
       try {
         const url = new URL(request.url, `http://${PLUGIN_BRIDGE_HOST}`)
         const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event)$/)
@@ -638,9 +640,9 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
           sendJson(response, 404, { ok: false, error: 'Not found' })
           return
         }
-        const [, pluginId, commandId, runId, route] = match
-        const runtimeKey = createPluginBridgeKey(pluginId, commandId, runId)
-        const runtime = commandBridgeRuntimes.get(runtimeKey)
+        const [, pluginId, entryId, runId, route] = match
+        const runtimeKey = createPluginBridgeKey(pluginId, entryId, runId)
+        const runtime = pluginBridgeRuntimes.get(runtimeKey)
         if (!runtime || runtime.status !== 'running') {
           sendJson(response, 401, { ok: false, error: 'Bridge token expired' })
           return
@@ -648,7 +650,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
 
         const token = extractBearerToken(request.headers.authorization)
         if (!safeTokenEquals(token, runtime.token)) {
-          appendLog({ pluginId, commandId, level: 'error', message: 'Bridge request rejected: unauthorized token' })
+          appendLog({ pluginId, commandId: entryId, level: 'error', message: 'Bridge request rejected: unauthorized token' })
           sendJson(response, 401, { ok: false, error: 'Unauthorized' })
           return
         }
@@ -683,24 +685,63 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       }
     })
 
-    await new Promise((resolve, reject) => {
+    pluginBridgeServerStarting = new Promise((resolve, reject) => {
       const onError = (error) => {
-        commandBridgeServer?.off?.('listening', onListening)
+        pluginBridgeServer?.off?.('listening', onListening)
+        pluginBridgeServer?.removeAllListeners()
+        pluginBridgeServer = null
+        pluginBridgePort = 0
+        pluginBridgeServerStarting = null
         reject(error)
       }
       const onListening = () => {
-        commandBridgeServer?.off?.('error', onError)
-        const address = commandBridgeServer.address()
-        commandBridgePort = typeof address === 'object' && address ? Number(address.port) || 0 : 0
-        commandBridgeServer?.unref?.()
-        resolve()
+        pluginBridgeServer?.off?.('error', onError)
+        const address = pluginBridgeServer.address()
+        pluginBridgePort = typeof address === 'object' && address ? Number(address.port) || 0 : 0
+        pluginBridgeServer?.unref?.()
+        pluginBridgeServerStarting = null
+        resolve(pluginBridgePort)
       }
-      commandBridgeServer.once('error', onError)
-      commandBridgeServer.once('listening', onListening)
-      commandBridgeServer.listen(0, PLUGIN_BRIDGE_HOST)
+      pluginBridgeServer.once('error', onError)
+      pluginBridgeServer.once('listening', onListening)
+      pluginBridgeServer.listen(0, PLUGIN_BRIDGE_HOST)
     })
 
-    return commandBridgePort
+    return pluginBridgeServerStarting
+  }
+
+  const createPluginEntryBridgeRuntime = async (plugin, entryId) => {
+    const bridgePort = await ensurePluginBridgeServer()
+    const bridgeRunId = createPluginBridgeRunId()
+    const bridgeToken = createPluginBridgeToken()
+    const bridgeRuntimeKey = createPluginBridgeKey(plugin.manifest.id, entryId, bridgeRunId)
+    const bridgeBaseUrl = `http://${PLUGIN_BRIDGE_HOST}:${bridgePort}/plugins/bridge/${plugin.manifest.id}/${entryId}/${bridgeRunId}`
+    pluginBridgeRuntimes.set(bridgeRuntimeKey, {
+      pluginId: plugin.manifest.id,
+      entryId,
+      runId: bridgeRunId,
+      token: bridgeToken,
+      status: 'running',
+      handlers: createPluginBridgeHandlers(plugin, entryId)
+    })
+    return {
+      key: bridgeRuntimeKey,
+      url: bridgeBaseUrl,
+      token: bridgeToken
+    }
+  }
+
+  const stopPluginEntryBridgeRuntime = (bridgeRuntimeKey) => {
+    const bridgeRuntime = pluginBridgeRuntimes.get(bridgeRuntimeKey)
+    if (bridgeRuntime) bridgeRuntime.status = 'stopping'
+  }
+
+  const releasePluginEntryBridgeRuntime = (bridgeRuntimeKey) => {
+    if (!bridgeRuntimeKey) return
+    pluginBridgeRuntimes.delete(bridgeRuntimeKey)
+    if (pluginBridgeServer && pluginBridgeRuntimes.size === 0) {
+      pluginBridgeServer.unref?.()
+    }
   }
 
   const getPlugins = () => [
@@ -1014,6 +1055,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     if (!runtime || runtime.status !== 'running') return runtime
     runtime.status = 'stopping'
     runtime.stoppedAt = new Date().toISOString()
+    stopPluginEntryBridgeRuntime(runtime.bridgeRuntimeKey)
     try {
       stopServiceProcess(runtime, 'SIGTERM')
     } catch (error) {
@@ -1205,11 +1247,6 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     if (ACTIVE_COMMAND_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin command is already running')
     const { file, args } = parseServiceCommand(commandEntry.command)
     const cwd = resolveCommandCwd(plugin.manifest, commandEntry.cwd)
-    const bridgePort = await ensureCommandBridgeServer()
-    const bridgeRunId = createPluginBridgeRunId()
-    const bridgeToken = createPluginBridgeToken()
-    const bridgeRuntimeKey = createPluginBridgeKey(pluginId, commandId, bridgeRunId)
-    const bridgeBaseUrl = `http://${PLUGIN_BRIDGE_HOST}:${bridgePort}/plugins/bridge/${pluginId}/${commandId}/${bridgeRunId}`
     const commandContext = {
       pluginId,
       commandId,
@@ -1219,18 +1256,25 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         extensionDir: cwd
       }
     }
-    const child = spawnCommandProcess(file, args, {
-      cwd,
-      detached: false,
-      env: {
-        ...createServiceProcessEnv(),
-        OPENPET_BRIDGE_URL: bridgeBaseUrl,
-        OPENPET_BRIDGE_TOKEN: bridgeToken
-      },
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true
-    })
+    const bridgeRuntime = await createPluginEntryBridgeRuntime(plugin, commandId)
+    let child
+    try {
+      child = spawnCommandProcess(file, args, {
+        cwd,
+        detached: false,
+        env: {
+          ...createServiceProcessEnv(),
+          OPENPET_BRIDGE_URL: bridgeRuntime.url,
+          OPENPET_BRIDGE_TOKEN: bridgeRuntime.token
+        },
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true
+      })
+    } catch (error) {
+      releasePluginEntryBridgeRuntime(bridgeRuntime.key)
+      throw error
+    }
     const runtime = {
       pluginId,
       commandId,
@@ -1239,14 +1283,6 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       child,
       stop: null
     }
-    commandBridgeRuntimes.set(bridgeRuntimeKey, {
-      pluginId,
-      commandId,
-      runId: bridgeRunId,
-      token: bridgeToken,
-      status: 'running',
-      handlers: createPluginBridgeHandlers(plugin, commandId)
-    })
     commandRuntimes.set(runtimeKey, runtime)
     let stdoutText = ''
     let stderrText = ''
@@ -1263,10 +1299,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         settled = true
         if (timeoutId) clearTimeout(timeoutId)
         commandRuntimes.delete(runtimeKey)
-        commandBridgeRuntimes.delete(bridgeRuntimeKey)
-        if (commandBridgeServer && commandBridgeRuntimes.size === 0) {
-          commandBridgeServer.unref?.()
-        }
+        releasePluginEntryBridgeRuntime(bridgeRuntime.key)
         callback()
       }
       runtime.stop = () => {
@@ -1509,8 +1542,9 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     }
   }
 
-  const startService = (pluginId, serviceId) => {
+  const startService = async (pluginId, serviceId) => {
     const commandId = `service:${serviceId || ''}`
+    let bridgeRuntime = null
     try {
       const plugin = findPluginForService(pluginId)
       const serviceEntry = getServiceEntry(plugin, serviceId)
@@ -1519,10 +1553,15 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
       const declaration = resolveServiceRuntimeDeclaration(serviceEntry)
       const { file, args } = parseServiceCommand(declaration.command)
       const cwd = resolveServiceCwd(plugin.manifest, declaration.cwd)
+      bridgeRuntime = await createPluginEntryBridgeRuntime(plugin, commandId)
       const child = spawnServiceProcess(file, args, {
         cwd,
         detached: true,
-        env: createServiceProcessEnv(),
+        env: {
+          ...createServiceProcessEnv(),
+          OPENPET_BRIDGE_URL: bridgeRuntime.url,
+          OPENPET_BRIDGE_TOKEN: bridgeRuntime.token
+        },
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
@@ -1540,6 +1579,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         signal: '',
         error: '',
         child,
+        bridgeRuntimeKey: bridgeRuntime.key,
         health: existingRuntime?.health || createServiceHealthView({}, serviceEntry)
       })
 
@@ -1555,6 +1595,8 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         runtime.status = 'failed'
         runtime.error = error.message || 'Plugin service failed'
         runtime.stoppedAt = new Date().toISOString()
+        releasePluginEntryBridgeRuntime(runtime.bridgeRuntimeKey)
+        runtime.bridgeRuntimeKey = ''
         appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
       })
       child.on?.('exit', (code, signal) => {
@@ -1568,6 +1610,8 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         runtime.exitCode = Number.isFinite(Number(code)) ? Number(code) : null
         runtime.signal = signal || ''
         runtime.stoppedAt = runtime.stoppedAt || new Date().toISOString()
+        releasePluginEntryBridgeRuntime(runtime.bridgeRuntimeKey)
+        runtime.bridgeRuntimeKey = ''
       })
 
       appendLog({ pluginId, commandId, level: 'info', message: 'Service started' })
@@ -1578,6 +1622,7 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
         runtime: createRuntimeView(runtime, serviceEntry)
       }
     } catch (error) {
+      releasePluginEntryBridgeRuntime(bridgeRuntime?.key)
       appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service start failed' })
       throw error
     }
@@ -1693,11 +1738,12 @@ const createPluginService = ({ settingsService, petService, aiService, fetchImpl
     for (const runtime of commandRuntimes.values()) {
       stopPluginCommandRuntime(runtime.pluginId, runtime.commandId, runtime, { log: false })
     }
-    commandBridgeRuntimes.clear()
-    if (commandBridgeServer) {
-      commandBridgeServer.close?.()
-      commandBridgeServer = null
-      commandBridgePort = 0
+    pluginBridgeRuntimes.clear()
+    if (pluginBridgeServer) {
+      pluginBridgeServer.close?.()
+      pluginBridgeServer = null
+      pluginBridgePort = 0
+      pluginBridgeServerStarting = null
     }
     return { ok: true }
   }

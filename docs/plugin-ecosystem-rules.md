@@ -106,7 +106,7 @@ Commands should be allowed to use any suitable runtime. Do not require JavaScrip
 
 Services are long-running local process entries managed by OpenPet.
 
-OpenPet can run command and setup entries only after explicit Control Center action, record setup status/logs, start and stop declared service processes only after explicit Control Center action, apply service platform overrides, capture stdout/stderr snippets, show runtime state, manually check declared loopback health endpoints, and stop running services on disable/app quit with best-effort process-group cleanup. Declaration-only command runs also receive a short-lived bridge URL/token pair for bounded pet-aware actions and context reads. Commands and setup do not run during install or enable, services do not auto-start, health checks do not run in the background, and command/setup/service processes are spawned without shell expansion. Hard process-tree cleanup guarantees remain future runtime work.
+OpenPet can run command and setup entries only after explicit Control Center action, record setup status/logs, start and stop declared service processes only after explicit Control Center action, apply service platform overrides, capture stdout/stderr snippets, show runtime state, manually check declared loopback health endpoints, and stop running services on disable/app quit with best-effort process-group cleanup. Declaration-only command runs and explicitly started services receive a short-lived bridge URL/token pair for bounded pet-aware actions and context reads. Commands and setup do not run during install or enable, services do not auto-start, health checks do not run in the background, and command/setup/service processes are spawned without shell expansion. Hard process-tree cleanup guarantees remain future runtime work.
 
 Services may power real local experiences: dashboards, background companions, schedulers, local model servers, voice processors, or integrations with external APIs.
 
@@ -128,6 +128,8 @@ Current declaration-only command runs receive stdin JSON context plus:
 
 - `OPENPET_BRIDGE_URL`
 - `OPENPET_BRIDGE_TOKEN`
+
+Explicitly started service entries receive the same bridge environment variables for the lifetime of that service run. Services do not receive stdin command context; they should use their own package files, config, declared data locations, dashboards, or local APIs for richer state.
 
 Reserved future environment variables may still add:
 
@@ -153,6 +155,8 @@ The current local bridge stays intentionally small:
 - `GET /context`
 
 The bridge is for integration convenience. It is not a complete SDK, not a full security broker, and not a reason to block extensions from using their own local capabilities.
+
+Bridge access is loopback-only, bearer-token gated, per-entry-run scoped, and permission-checked for `pet:say`, `pet:action`, and `pet:event`. It is meant to make welcome third-party experiences possible, such as weather pets that speak and change action, pet action design tools, or personality companion services, without granting unrestricted Electron, main-process, filesystem, secret, or renderer access.
 
 ## 7. Data And Secret Ownership
 
@@ -332,4 +336,4 @@ Some repository tools and examples still reflect the older plugin SDK implementa
 - `ctx.ai`;
 - short-lived isolated JavaScript command handlers.
 
-These are compatibility surfaces, not the target boundary. The host now supports explicit setup execution with runtime state and logs, explicit language-neutral command process execution with stdin JSON context, explicit lifecycle-managed service start/stop, manual loopback health checks, best-effort process-group cleanup, and dashboard entries opened explicitly as external HTTP/HTTPS URLs from Control Center. Future development should close the remaining gap by adding bridge flows, richer command result UX, hard cleanup guarantees where possible, and honest user-facing copy.
+These are compatibility surfaces, not the target boundary. The host now supports explicit setup execution with runtime state and logs, explicit language-neutral command process execution with stdin JSON context, bridge access for explicit declaration-only commands and explicitly started services, explicit lifecycle-managed service start/stop, manual loopback health checks, best-effort process-group cleanup, and dashboard entries opened explicitly as external HTTP/HTTPS URLs from Control Center. Future development should close the remaining gap by adding richer bridge surfaces where they remain narrow and useful, stronger hard cleanup guarantees where possible, and honest user-facing copy.
