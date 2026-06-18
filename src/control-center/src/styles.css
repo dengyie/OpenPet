@@ -766,6 +766,83 @@ button {
   margin-top: 4px;
 }
 
+.plugin-service-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plugin-service-control > span {
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.plugin-health-policy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding-top: 2px;
+}
+
+.plugin-health-policy-toggle,
+.plugin-health-policy-interval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plugin-health-policy-interval .text-input {
+  min-width: 88px;
+}
+
+.plugin-entry-details {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #dde2e8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.plugin-entry-details.compact {
+  padding: 10px;
+}
+
+.plugin-entry-details > strong {
+  color: #374151;
+  font-size: 13px;
+}
+
+.plugin-entry-section {
+  display: grid;
+  gap: 6px;
+}
+
+.plugin-entry-section > span,
+.plugin-entry-details small {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.plugin-entry-section code,
+.plugin-entry-section pre {
+  margin: 0;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border-radius: 6px;
+  background: #eef2f7;
+  color: #1f2937;
+  font-size: 11px;
+}
+
 .plugin-config-panel {
   display: grid;
   gap: 10px;
@@ -872,6 +949,37 @@ button {
 .plugin-log-list {
   display: grid;
   gap: 8px;
+}
+
+.plugin-command-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dde2e8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.plugin-command-result strong {
+  color: #111827;
+  font-size: 12px;
+}
+
+.plugin-command-result span,
+.plugin-command-result p,
+.plugin-command-result code {
+  margin: 0;
+  color: #4b5563;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plugin-command-result code {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #eef2f7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .plugin-log-row {

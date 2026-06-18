@@ -1,0 +1,3 @@
+OpenPet plugin cleanup evidence collected in: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected
+Review manual-checks.md and collected transcripts before marking any cleanup check as pass.
+This collector does not prove cleanup readiness.

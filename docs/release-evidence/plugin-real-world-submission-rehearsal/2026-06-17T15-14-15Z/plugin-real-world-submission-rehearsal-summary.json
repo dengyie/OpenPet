@@ -1,0 +1,156 @@
+{
+  "generatedAt": "2026-06-17T15:14:15.000Z",
+  "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z",
+  "sourcePath": "/Users/mango/project/codex/OpenPet/examples/plugins/weather-status",
+  "sourcePlugin": {
+    "id": "openpet.example.weather-status",
+    "name": "Weather Status",
+    "version": "1.0.0",
+    "permissions": [
+      "network",
+      "pet:say",
+      "storage"
+    ],
+    "networkAllowlist": [
+      "api.weather.example.com"
+    ]
+  },
+  "sourceValidation": {
+    "ok": true,
+    "warnings": [
+      "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+      "Package requires human review before distribution"
+    ],
+    "errors": [],
+    "riskLevel": "review"
+  },
+  "packagePath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/packages/openpet.example.weather-status.openpet-plugin.zip",
+  "packageValidation": {
+    "ok": true,
+    "warnings": [
+      "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+      "Package requires human review before distribution"
+    ],
+    "errors": [],
+    "riskLevel": "review",
+    "sha256": "9d90fc03bf24fa70b79fe8f4fbc6fffd62212df9c91d1abf384df0a571790567"
+  },
+  "submission": {
+    "bundleDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle",
+    "bundle": {
+      "generatedAt": "2026-06-17T15:14:15.000Z",
+      "sourcePath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/packages/openpet.example.weather-status.openpet-plugin.zip",
+      "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle",
+      "readyForHumanReview": true,
+      "decision": "ready-for-human-review",
+      "plugin": {
+        "id": "openpet.example.weather-status",
+        "name": "Weather Status",
+        "version": "1.0.0",
+        "description": "Example local plugin that fetches allowlisted weather JSON and asks the pet to summarize it.",
+        "permissions": [
+          "network",
+          "pet:say",
+          "storage"
+        ],
+        "networkAllowlist": [
+          "api.weather.example.com"
+        ],
+        "commands": [
+          {
+            "id": "refresh",
+            "title": "Refresh weather"
+          },
+          {
+            "id": "last",
+            "title": "Show last weather"
+          }
+        ]
+      },
+      "package": {
+        "sourceType": "zip",
+        "installMode": "install",
+        "sha256": "9d90fc03bf24fa70b79fe8f4fbc6fffd62212df9c91d1abf384df0a571790567",
+        "fileCount": 4,
+        "byteSize": 5457,
+        "riskLevel": "review",
+        "requiresReview": false
+      },
+      "signature": {
+        "status": "unsigned",
+        "label": "Unsigned plugin",
+        "signer": ""
+      },
+      "validation": {
+        "ok": true,
+        "errors": [],
+        "warnings": [
+          "Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence",
+          "Package requires human review before distribution"
+        ]
+      },
+      "files": {
+        "report": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle/plugin-submission-report.md",
+        "pr": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle/plugin-submission-pr.md",
+        "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle/plugin-submission-summary.json"
+      },
+      "nextSteps": [
+        "Attach or paste plugin-submission-report.md in the plugin PR.",
+        "Use plugin-submission-pr.md as the PR body with the plugin submission template.",
+        "Record manual reviewer approval before merge.",
+        "Do not treat this bundle as signing trust, catalog approval, or runtime smoke evidence."
+      ]
+    },
+    "bundleValidation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "summary": {
+        "filesPresent": 3,
+        "filesTotal": 3,
+        "readyForHumanReview": true,
+        "decision": "ready-for-human-review",
+        "requireReady": true
+      }
+    }
+  },
+  "approval": {
+    "record": {
+      "generatedAt": "2026-06-17T15:14:15.000Z",
+      "reviewer": "OpenPet Maintainer",
+      "decision": "approved",
+      "notes": "Manifest, permissions, package hash, network hosts, and submission artifacts reviewed.",
+      "sourceBundleDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle",
+      "plugin": {
+        "id": "openpet.example.weather-status",
+        "name": "Weather Status",
+        "version": "1.0.0"
+      },
+      "package": {
+        "sha256": "9d90fc03bf24fa70b79fe8f4fbc6fffd62212df9c91d1abf384df0a571790567"
+      },
+      "submissionDecision": "ready-for-human-review",
+      "approvalReady": true,
+      "files": {
+        "markdown": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle/plugin-maintainer-approval.md",
+        "json": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle/plugin-maintainer-approval.json"
+      }
+    },
+    "validation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "summary": {
+        "approved": true,
+        "approvalReady": true,
+        "requireApproved": true
+      }
+    }
+  },
+  "files": {
+    "readme": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/README.md",
+    "checklist": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-checklist.md",
+    "commands": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/commands.json",
+    "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/plugin-real-world-submission-rehearsal-summary.json"
+  }
+}

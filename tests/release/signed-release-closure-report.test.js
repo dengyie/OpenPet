@@ -8,6 +8,24 @@ const path = require('path')
 const { REQUIRED_CHECKS: WINDOWS_CHECKS } = require('../../scripts/validate-windows-smoke-report')
 const { REQUIRED_CHECKS: PICKER_CHECKS } = require('../../scripts/validate-desktop-picker-smoke-report')
 const { REQUIRED_CHECKS: RUNTIME_CHECKS, BUILT_IN_PACKS } = require('../../scripts/validate-packaged-runtime-smoke-report')
+const { createRunbook: createDesktopPickerRunbook } = require('../../scripts/create-desktop-picker-smoke-runbook')
+const { createRunbook: createWindowsSmokeRunbook } = require('../../scripts/create-windows-smoke-runbook')
+const {
+  createDesktopPickerEvidenceSummary,
+  writeSummary: writeDesktopPickerEvidenceSummary
+} = require('../../scripts/create-desktop-picker-evidence-summary')
+const {
+  createWindowsSmokeEvidenceSummary,
+  writeSummary: writeWindowsSmokeEvidenceSummary
+} = require('../../scripts/create-windows-smoke-evidence-summary')
+const {
+  createDesktopPickerArchiveManifest,
+  writeManifest: writeDesktopPickerArchiveManifest
+} = require('../../scripts/create-desktop-picker-archive-manifest')
+const {
+  createWindowsSmokeArchiveManifest,
+  writeManifest: writeWindowsSmokeArchiveManifest
+} = require('../../scripts/create-windows-smoke-archive-manifest')
 const {
   createSignedReleaseClosureReport,
   parseArgs,
@@ -112,17 +130,120 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+const createDesktopPickerArchive = ({ archiveDir, report, reportPath, signed, tamperReportPath = false }) => {
+  const runbookPath = path.join(archiveDir, 'desktop-picker-smoke-runbook.md')
+  fs.writeFileSync(runbookPath, `${createDesktopPickerRunbook({ report, reportPath, generatedAt: fixedNow() })}\n`)
+
+  const evidenceDir = path.join(archiveDir, 'desktop-picker-evidence')
+  fs.mkdirSync(evidenceDir)
+  fs.writeFileSync(path.join(evidenceDir, 'environment.txt'), 'Desktop picker host evidence\n')
+  fs.writeFileSync(path.join(evidenceDir, 'manual-checks.md'), 'Manual picker checks reviewed\n')
+  fs.writeFileSync(path.join(evidenceDir, 'notes.txt'), 'Picker evidence notes\n')
+  fs.writeFileSync(path.join(evidenceDir, 'signature.txt'), signed ? 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n' : 'code object is not signed at all\n')
+
+  const summary = createDesktopPickerEvidenceSummary({
+    evidenceDir,
+    reportPath,
+    requireSigned: signed,
+    now: fixedNow
+  })
+  const summaryPath = path.join(archiveDir, 'desktop-picker-evidence-summary.md')
+  writeDesktopPickerEvidenceSummary({ summary, outputPath: summaryPath })
+
+  const manifest = createDesktopPickerArchiveManifest({
+    archiveDir,
+    reportPath: tamperReportPath ? path.join(archiveDir, 'other-desktop-picker-smoke-report.json') : reportPath,
+    evidenceDir,
+    runbookPath,
+    summaryPath,
+    requireSigned: signed,
+    now: fixedNow
+  })
+  writeDesktopPickerArchiveManifest({
+    manifest,
+    outputPath: path.join(archiveDir, 'desktop-picker-archive-manifest.json')
+  })
+}
+
+const createWindowsSmokeArchive = ({ archiveDir, report, reportPath, signed, tamperReportPath = false }) => {
+  const runbookPath = path.join(archiveDir, 'windows-smoke-runbook.md')
+  fs.writeFileSync(runbookPath, `${createWindowsSmokeRunbook({ report, reportPath, generatedAt: fixedNow() })}\n`)
+
+  const evidenceDir = path.join(archiveDir, 'windows-smoke-evidence')
+  fs.mkdirSync(evidenceDir)
+  fs.writeFileSync(path.join(evidenceDir, 'environment.txt'), 'Windows smoke host evidence\n')
+  fs.writeFileSync(path.join(evidenceDir, 'process.txt'), 'OpenPet.exe running\n')
+  fs.writeFileSync(path.join(evidenceDir, 'install-registry.txt'), 'OpenPet uninstall key present\n')
+  fs.writeFileSync(
+    path.join(evidenceDir, 'manual-checks.md'),
+    `# Manual Checks\n\n${WINDOWS_CHECKS.map((check) => `- \`${check.id}\`: reviewed`).join('\n')}\n`
+  )
+  fs.writeFileSync(path.join(evidenceDir, 'update-report-commands.md'), 'Use update-windows-smoke-report with reviewed evidence snippets only.\n')
+  fs.writeFileSync(path.join(evidenceDir, 'authenticode.txt'), signed ? 'SignerCertificate : OpenPet\nStatus : Valid\n' : 'Status : NotSigned\n')
+
+  const summaryPath = path.join(archiveDir, 'windows-smoke-evidence-summary.md')
+  const summary = createWindowsSmokeEvidenceSummary({
+    evidenceDir,
+    reportPath,
+    requireSigned: signed,
+    now: fixedNow
+  })
+  writeWindowsSmokeEvidenceSummary({ summary, outputPath: summaryPath })
+
+  const manifest = createWindowsSmokeArchiveManifest({
+    archiveDir,
+    reportPath: tamperReportPath ? path.join(archiveDir, 'other-windows-smoke-report.json') : reportPath,
+    evidenceDir,
+    runbookPath,
+    collectorPath: path.join(archiveDir, 'windows-smoke-collector.ps1'),
+    summaryPath,
+    requireSigned: signed,
+    now: fixedNow
+  })
+  writeWindowsSmokeArchiveManifest({
+    manifest,
+    outputPath: path.join(archiveDir, 'windows-smoke-archive-manifest.json')
+  })
+}
+
 const createArchive = ({
   signed = false,
   status = 'pending',
   pickerPlatform = 'win32',
   runtimePlatform = 'win32',
-  includeMacosEvidence = true
+  includeMacosEvidence = true,
+  includeDesktopPickerArchiveManifest = true,
+  includeWindowsSmokeArchiveManifest = true,
+  tamperPickerArchiveReportPath = false,
+  tamperWindowsArchiveReportPath = false
 } = {}) => {
   const archiveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-signed-release-closure-'))
-  writeJson(path.join(archiveDir, 'windows-smoke-report.json'), createWindowsSmokeReport({ signed, status }))
-  writeJson(path.join(archiveDir, 'desktop-picker-smoke-report.json'), createPickerReport({ platform: pickerPlatform, signed, status }))
+  const windowsSmokeReport = createWindowsSmokeReport({ signed, status })
+  const windowsSmokeReportPath = path.join(archiveDir, 'windows-smoke-report.json')
+  writeJson(windowsSmokeReportPath, windowsSmokeReport)
+  const pickerReport = createPickerReport({ platform: pickerPlatform, signed, status })
+  const pickerReportPath = path.join(archiveDir, 'desktop-picker-smoke-report.json')
+  writeJson(pickerReportPath, pickerReport)
   writeJson(path.join(archiveDir, 'packaged-runtime-smoke-report.json'), createRuntimeReport({ platform: runtimePlatform, signed, status }))
+  fs.writeFileSync(path.join(archiveDir, 'windows-smoke-collector.ps1'), 'Write-Output "collector"\n')
+  if (includeWindowsSmokeArchiveManifest) {
+    createWindowsSmokeArchive({
+      archiveDir,
+      report: windowsSmokeReport,
+      reportPath: windowsSmokeReportPath,
+      signed,
+      tamperReportPath: tamperWindowsArchiveReportPath
+    })
+  }
+  if (includeDesktopPickerArchiveManifest) {
+    createDesktopPickerArchive({
+      archiveDir,
+      report: pickerReport,
+      reportPath: pickerReportPath,
+      signed,
+      tamperReportPath: tamperPickerArchiveReportPath
+    })
+  }
   if (includeMacosEvidence) {
     fs.writeFileSync(path.join(archiveDir, 'macos-codesign.txt'), signed ? 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n' : 'code object is not signed at all\n')
     fs.writeFileSync(path.join(archiveDir, 'macos-notarization.txt'), signed ? 'status: Accepted\nid: notary\n' : 'status: NotSubmitted\n')
@@ -137,7 +258,9 @@ test('parseArgs accepts closure report inputs and outputs', () => {
     '--manifest', 'archive/manifest.json',
     '--manifest-output', 'archive/generated-manifest.json',
     '--windows-smoke-report', 'archive/windows.json',
+    '--windows-smoke-archive-manifest', 'archive/windows-archive.json',
     '--desktop-picker-report', 'archive/picker.json',
+    '--desktop-picker-archive-manifest', 'archive/picker-archive.json',
     '--packaged-runtime-report', 'archive/runtime.json',
     '--macos-codesign', 'archive/codesign.txt',
     '--macos-notarization', 'archive/notary.txt',
@@ -152,7 +275,9 @@ test('parseArgs accepts closure report inputs and outputs', () => {
   assert.equal(options.manifestPath, 'archive/manifest.json')
   assert.equal(options.manifestOutput, 'archive/generated-manifest.json')
   assert.equal(options.windowsSmokeReportPath, 'archive/windows.json')
+  assert.equal(options.windowsSmokeArchiveManifestPath, 'archive/windows-archive.json')
   assert.equal(options.desktopPickerReportPath, 'archive/picker.json')
+  assert.equal(options.desktopPickerArchiveManifestPath, 'archive/picker-archive.json')
   assert.equal(options.packagedRuntimeReportPath, 'archive/runtime.json')
   assert.equal(options.macosCodesignPath, 'archive/codesign.txt')
   assert.equal(options.macosNotarizationPath, 'archive/notary.txt')
@@ -227,6 +352,55 @@ test('closure report requires Windows-specific picker and runtime evidence', () 
   assert.equal(report.releaseReady, false)
 })
 
+test('closure report requires the desktop picker archive manifest evidence chain', () => {
+  const archiveDir = createArchive({
+    signed: true,
+    status: 'pass',
+    pickerPlatform: 'win32',
+    runtimePlatform: 'win32',
+    tamperPickerArchiveReportPath: true
+  })
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+  const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
+
+  assert.equal(report.claims.windows.status, 'not-ready')
+  assert.match(report.claims.windows.blockers.join('\n'), /desktopPickerArchiveManifest references a different desktop picker report/)
+  assert.equal(report.releaseReady, false)
+})
+
+test('closure report requires the Windows smoke archive manifest evidence chain', () => {
+  const archiveDir = createArchive({
+    signed: true,
+    status: 'pass',
+    pickerPlatform: 'win32',
+    runtimePlatform: 'win32',
+    tamperWindowsArchiveReportPath: true
+  })
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+  const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
+
+  assert.equal(report.claims.windows.status, 'not-ready')
+  assert.match(report.claims.windows.blockers.join('\n'), /windowsSmokeArchiveManifest references a different Windows smoke report/)
+  assert.equal(report.releaseReady, false)
+})
+
+test('closure report keeps official desktop not-ready when Windows archive evidence is missing', () => {
+  const archiveDir = createArchive({
+    signed: true,
+    status: 'pass',
+    pickerPlatform: 'win32',
+    runtimePlatform: 'win32',
+    includeWindowsSmokeArchiveManifest: false
+  })
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+  const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
+
+  assert.equal(report.claims.windows.status, 'not-ready')
+  assert.match(report.claims.windows.blockers.join('\n'), /Windows smoke archive evidence is missing/)
+  assert.equal(report.claims.officialDesktopRelease.status, 'not-ready')
+  assert.equal(report.releaseReady, false)
+})
+
 test('closure report keeps official desktop not-ready when a signed archive only proves Windows runtime', () => {
   const archiveDir = createArchive({ signed: true, status: 'pass', pickerPlatform: 'win32', runtimePlatform: 'win32' })
   const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
@@ -265,7 +439,9 @@ test('runSignedReleaseClosureReport writes markdown and json without failing pen
       manifestPath: '',
       manifestOutput,
       windowsSmokeReportPath: null,
+      windowsSmokeArchiveManifestPath: null,
       desktopPickerReportPath: null,
+      desktopPickerArchiveManifestPath: null,
       packagedRuntimeReportPath: null,
       macosCodesignPath: null,
       macosNotarizationPath: null,

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "openpet-plugin-cleanup-evidence/v1",
+  "generatedAt": "2026-06-18T06:43:44.713Z",
+  "source": "scripts/create-plugin-cleanup-evidence-report.js",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.0.0",
+    "machine": "mangodeMacBook-Air.local",
+    "runner": "",
+    "evidence": ""
+  },
+  "scenario": {
+    "pluginId": "openpet.cleanup-fixture",
+    "hostApp": "OpenPet packaged cleanup evidence rehearsal",
+    "notes": "Phase 90 local execution rehearsal"
+  },
+  "checks": [
+    {
+      "id": "service-exit-confirmed-stop",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Service stop remains visible until child exit confirmation. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "service-process-group-cleanup",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Service stop attempts process-group cleanup. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "service-tree-fallback-cleanup",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Service stop falls back to host-owned process-tree cleanup when process-group signalling fails. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "service-force-stop",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Stubborn service receives one bounded host-side force-stop attempt. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "setup-exit-confirmed-stop",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Setup stop remains visible until child exit confirmation. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "setup-tree-fallback-cleanup",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Setup cleanup tries host-owned process-tree cleanup before direct child kill. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "command-exit-confirmed-stop",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Declaration command stop remains visible until child exit confirmation. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    },
+    {
+      "id": "command-tree-fallback-cleanup",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Declaration command cleanup tries host-owned process-tree cleanup before direct child kill. Fill with logs, process listings, screenshots, or terminal transcripts from a real host cleanup validation run."
+    }
+  ]
+}

@@ -7,7 +7,8 @@
  *
  * 不包含：窗口创建细节、IPC 处理、设置读写、屏幕计算 —— 均在 src/main/ 中。
  */
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, dialog, shell } = require('electron')
+const fs = require('fs')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
@@ -29,6 +30,7 @@ const { createActionImportService } = require('./src/main/services/action-import
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
+const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
 const packageJson = require('./package.json')
 
@@ -68,7 +70,14 @@ app.whenReady().then(() => {
     projectRoot: __dirname,
     getPetPackBlockStatus: (candidate) => catalogService?.getPetPackBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
-  const actionService = createActionService({ petPackService })
+  const actionService = createActionService({
+    petPackService,
+    saveLegacyAnimations: (config) => {
+      const configPath = path.join(__dirname, 'cat_anime', 'animations.json')
+      fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`)
+      return config
+    }
+  })
   const petService = createPetService({ eventBus, settingsService, actionService })
   const secretService = createSecretService()
   const aiService = createAiService({ settingsService, secretService })
@@ -89,11 +98,25 @@ app.whenReady().then(() => {
   const pluginService = createPluginService({
     settingsService,
     petService,
+    actionService,
+    actionImportService,
     petPackService,
     aiService,
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
+    openExternal: (url) => shell.openExternal(url),
+    selectCreatorAssetFrameFolder: async () => {
+      const selected = await dialog.showOpenDialog({
+        title: '选择动作帧文件夹',
+        properties: ['openDirectory']
+      })
+      if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
+      return { canceled: false, sourceDir: selected.filePaths[0] }
+    },
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
+  })
+  app.on('before-quit', () => {
+    pluginService.stopAllServices?.()
   })
   catalogService = createCatalogService({
     settingsService,
@@ -144,6 +167,7 @@ app.whenReady().then(() => {
     applyWindowScale(petWindow, settings.scale)
     petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(settings))
     maybeRunPackagedRuntimeSmoke({ app, petWindow, petService, petPackService })
+    maybeRunPackagedPluginCleanupEvidence({ app, pluginInstallService, pluginService })
   })
   loadPetWindow(petWindow)
 

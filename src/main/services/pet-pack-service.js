@@ -5,11 +5,14 @@ const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 const { pathToFileURL } = require('url')
 const { getLegacyPetAnimations, loadLegacyPetPack, loadPetPackFromDirectory } = require('../pet-pack/loader')
+const { normalizePetPackManifest } = require('../pet-pack/schema')
 
 const BUILT_IN_PACK_ID = 'legacy-cat'
 const DEFAULT_BUNDLED_PACKS_DIR = path.join(__dirname, '..', '..', '..', 'assets', 'pet-packs')
 const PET_PACK_SELECTION_TTL_MS = 10 * 60 * 1000
 const SAFE_ZIP_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
+const CREATOR_PACK_MANIFEST_FIELDS = new Set(['displayName', 'version', 'provenance'])
+const CREATOR_PACK_MANIFEST_PROVENANCE_FIELDS = new Set(['sourceUrl', 'assetAuthor', 'license', 'licenseUrl'])
 
 const isSafePackId = (packId) => /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(packId || '')
 
@@ -617,6 +620,162 @@ const createPetPackService = ({
     }
   }
 
+  const updateActivePetPackManifest = (nextManifest = {}) => {
+    const current = getSettings()
+    const activePackId = current.activePackId
+    if (!activePackId) throw new Error('No active pet pack is selected')
+    if (activePackId === BUILT_IN_PACK_ID) {
+      throw new Error('The built-in pet pack cannot be modified through pet-pack persistence')
+    }
+    const metadata = current.installed[activePackId]
+    if (!metadata) throw new Error(`Pet pack is not installed: ${activePackId}`)
+    const targetDir = path.join(userPacksDir, activePackId)
+    if (!fs.existsSync(path.join(targetDir, 'pet.json'))) {
+      throw new Error(`Pet pack manifest is missing: ${activePackId}`)
+    }
+    const currentManifest = loadPetPackFromDirectory(targetDir).manifest
+    const nextActions = Array.isArray(nextManifest.actions) ? nextManifest.actions : currentManifest.actions
+    const manifest = {
+      ...readJsonFile(path.join(targetDir, 'pet.json')),
+      defaultAction: nextManifest.defaultAction ?? currentManifest.defaultAction,
+      clickAction: nextManifest.clickAction ?? currentManifest.clickAction,
+      actions: nextActions
+    }
+    writeJsonFile(path.join(targetDir, 'pet.json'), manifest)
+    return loadPetPackFromDirectory(targetDir).manifest
+  }
+
+  const cloneCreatorPackManifestView = (pack) => ({
+    id: pack.manifest.id,
+    displayName: pack.manifest.displayName,
+    version: pack.manifest.version,
+    source: pack.source?.type || 'directory',
+    provenance: {
+      sourceUrl: pack.manifest.provenance?.sourceUrl || '',
+      assetAuthor: pack.manifest.provenance?.assetAuthor || '',
+      license: pack.manifest.provenance?.license || '',
+      licenseUrl: pack.manifest.provenance?.licenseUrl || ''
+    }
+  })
+
+  const assertCreatorEditableActivePack = () => {
+    const pack = getActivePetPack()
+    if (pack.source?.type !== 'user-installed') {
+      throw new Error('Creator pack manifest workflows require an active installed pet pack')
+    }
+    return pack
+  }
+
+  const collectUnsupportedCreatorManifestErrors = (mutation = {}) => {
+    const errors = []
+    for (const field of Object.keys(mutation || {})) {
+      if (!CREATOR_PACK_MANIFEST_FIELDS.has(field)) {
+        errors.push(`Unsupported creator pack manifest field: ${field}`)
+      }
+    }
+    if (mutation.provenance && typeof mutation.provenance === 'object' && !Array.isArray(mutation.provenance)) {
+      for (const field of Object.keys(mutation.provenance)) {
+        if (!CREATOR_PACK_MANIFEST_PROVENANCE_FIELDS.has(field)) {
+          errors.push(`Unsupported creator pack manifest provenance field: ${field}`)
+        }
+      }
+    }
+    return errors
+  }
+
+  const getActiveCreatorPackManifest = () => cloneCreatorPackManifestView(assertCreatorEditableActivePack())
+
+  const validateActiveCreatorPackManifestMutation = (mutation = {}) => {
+    const errors = []
+    let pack = null
+    try {
+      pack = assertCreatorEditableActivePack()
+    } catch (error) {
+      return { ok: false, errors: [error.message], warnings: [], manifest: null }
+    }
+
+    if (!mutation || typeof mutation !== 'object' || Array.isArray(mutation)) {
+      return {
+        ok: false,
+        errors: ['Creator pack manifest mutation must be an object'],
+        warnings: [],
+        manifest: cloneCreatorPackManifestView(pack)
+      }
+    }
+
+    errors.push(...collectUnsupportedCreatorManifestErrors(mutation))
+
+    const nextDisplayName = mutation.displayName == null ? pack.manifest.displayName : String(mutation.displayName).trim()
+    const nextVersion = mutation.version == null ? pack.manifest.version : String(mutation.version).trim()
+    if (!nextDisplayName) errors.push('Creator pack manifest displayName is required')
+    if (!nextVersion) errors.push('Creator pack manifest version is required')
+    if (mutation.provenance != null && (!mutation.provenance || typeof mutation.provenance !== 'object' || Array.isArray(mutation.provenance))) {
+      errors.push('Creator pack manifest provenance must be an object')
+    }
+
+    const creatorProvenance = mutation.provenance && typeof mutation.provenance === 'object' && !Array.isArray(mutation.provenance)
+      ? Object.fromEntries(Object.entries(mutation.provenance).map(([key, value]) => [key, String(value ?? '').trim()]))
+      : {}
+    const nextProvenance = {
+      ...(pack.manifest.provenance || {}),
+      ...creatorProvenance
+    }
+    const mergedManifest = {
+      ...pack.manifest,
+      displayName: nextDisplayName,
+      version: nextVersion,
+      provenance: {
+        ...(pack.manifest.provenance || {}),
+        sourceUrl: nextProvenance.sourceUrl || '',
+        assetAuthor: nextProvenance.assetAuthor || '',
+        license: nextProvenance.license || '',
+        licenseUrl: nextProvenance.licenseUrl || '',
+        importedAt: pack.manifest.provenance?.importedAt || '',
+        originalFormat: pack.manifest.provenance?.originalFormat || ''
+      }
+    }
+
+    if (errors.length === 0) normalizePetPackManifest(mergedManifest)
+
+    return {
+      ok: errors.length === 0,
+      errors,
+      warnings: [],
+      manifest: cloneCreatorPackManifestView({ manifest: mergedManifest, source: pack.source })
+    }
+  }
+
+  const applyActiveCreatorPackManifestMutation = (mutation = {}) => {
+    const validation = validateActiveCreatorPackManifestMutation(mutation)
+    if (!validation.ok) {
+      throw new Error(`Creator pack manifest mutation is invalid: ${validation.errors.join('; ')}`)
+    }
+    const current = getSettings()
+    const activePackId = current.activePackId
+    const targetDir = path.join(userPacksDir, activePackId)
+    const manifestPath = path.join(targetDir, 'pet.json')
+    const rawManifest = readJsonFile(manifestPath)
+    const nextManifest = {
+      ...rawManifest,
+      displayName: validation.manifest.displayName,
+      version: validation.manifest.version,
+      sourceUrl: validation.manifest.provenance.sourceUrl,
+      assetAuthor: validation.manifest.provenance.assetAuthor,
+      license: validation.manifest.provenance.license,
+      licenseUrl: validation.manifest.provenance.licenseUrl,
+      provenance: {
+        ...(rawManifest.provenance || {}),
+        sourceUrl: validation.manifest.provenance.sourceUrl,
+        assetAuthor: validation.manifest.provenance.assetAuthor,
+        license: validation.manifest.provenance.license,
+        licenseUrl: validation.manifest.provenance.licenseUrl
+      }
+    }
+    normalizePetPackManifest(nextManifest)
+    writeJsonFile(manifestPath, nextManifest)
+    return cloneCreatorPackManifestView(loadInstalledPack(activePackId))
+  }
+
   const setActivePack = (packId) => {
     if (!isSafePackId(packId)) throw new Error('Pet pack id is invalid')
     const metadata = getSettings().installed[packId]
@@ -649,6 +808,10 @@ const createPetPackService = ({
     clearPendingSelection,
     importPack,
     exportPack,
+    updateActivePetPackManifest,
+    getActiveCreatorPackManifest,
+    validateActiveCreatorPackManifestMutation,
+    applyActiveCreatorPackManifestMutation,
     setActivePack,
     removePack
   }

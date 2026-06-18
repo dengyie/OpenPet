@@ -4,7 +4,7 @@
 
 An Electron desktop pet platform with a visual Control Center, AI chat, plugins, pet packs, and local agent APIs.
 
-[![Tests](https://img.shields.io/badge/tests-394%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-614%20node%20%2B%2010%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
@@ -13,7 +13,7 @@ An Electron desktop pet platform with a visual Control Center, AI chat, plugins,
 
 </div>
 
-OpenPet puts a small animated pet on your desktop and gives it a real platform behind the scenes. The pet can walk, speak, play actions, switch character packs, react to AI replies, and be extended through a permission-limited plugin system.
+OpenPet puts a small animated pet on your desktop and gives it a real platform behind the scenes. The pet can walk, speak, play actions, switch character packs, react to AI replies, and grow through a developer-first local extension ecosystem.
 
 The current release track is macOS-first. Windows build and validation tooling exists, but Windows is not advertised as release-ready until signed installer evidence and real smoke reports are archived.
 
@@ -24,7 +24,7 @@ The current release track is macOS-first. Windows build and validation tooling e
 - Pet pack runtime with legacy cat support, folder import, `.codex-pet.zip` import, and native `pet.json` + `spritesheet.webp` Codex pet atlases.
 - Three bundled built-in pets: `doro`, `duodong`, and `chispa`.
 - OpenAI-compatible chat with API keys kept in the main process secret store.
-- Plugin SDK with permission review, isolated execution, private storage, network allowlists, catalog install, and blocklist checks.
+- Developer-first local extension model with current legacy SDK compatibility, explicit command/dashboard/service controls, creator-tools action, pack-manifest, package-local asset, user-approved picker asset bridges, cleanup evidence tooling, validation, logs, catalog install, and uninstall flow.
 - Optional loopback-only HTTP and MCP endpoints for local tools and agents.
 - Gradual TypeScript migration baseline covering shared contracts and the Control Center API facade.
 
@@ -81,8 +81,8 @@ Important project rules:
 
 - `PetService` is the single source of truth for pet state.
 - User-facing configuration belongs in Control Center, not manual JSON edits.
-- API keys never go to the renderer or ordinary plugins.
-- Third-party plugins do not get unrestricted Node or Electron access.
+- API keys never go to the renderer.
+- Third-party extensions are local software: OpenPet should show what they declare and manage lifecycle/logs/uninstall, without claiming a complete sandbox for arbitrary local processes.
 - The existing `cat_anime/` material structure is kept intact.
 
 ## Pet Packs
@@ -104,24 +104,29 @@ npm run generate-sprites
 
 For normal use, import pet packs from Control Center -> Actions -> Pet Packs.
 
-## Plugin Development
+## Extension Development
 
-Start with the tested examples:
+OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.setup`, `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner, and declaration-only local extensions can run short-lived `entries.commands` as explicit user actions with JSON stdin context and a short-lived bridge for `pet.say`, `pet.action`, `pet.event`, bounded context reads, creator-tools action reads/writes, active installed pack manifest metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import. Enabled plugins can explicitly run declared setup entries, open declared HTTP/HTTPS dashboards, start or stop declared service entries, and manually check declared loopback service health endpoints from Control Center. Command, setup, and service processes are spawned without shell expansion, services do not auto-start, setup and commands do not run during install or enable, service stops attempt best-effort process-group cleanup, and health checks do not run in the background. Arbitrary shell consoles, arbitrary file writes, raw filesystem grants, general pet-pack writes, and hard process-tree guarantees remain future runtime work.
+
+Current legacy SDK examples are still useful while the host runtime catches up:
 
 - [Focus Timer](./examples/plugins/focus-timer/) for storage and pet speech.
-- [Weather Status](./examples/plugins/weather-status/) for network allowlists.
+- [Weather Status](./examples/plugins/weather-status/) for legacy network allowlists.
 - [RSS Reader](./examples/plugins/rss-reader/) for public feed fetching and cached announcements.
 
-Minimal plugin shape:
+Target extension shape:
 
 ```text
-my-plugin/
+my-extension/
   plugin.json
   config.schema.json   # optional
-  index.js
+  commands/
+  service/
+  web/
+  assets/
 ```
 
-Before submitting a plugin:
+Current validation and submission tooling still uses the historical "plugin" command name:
 
 ```bash
 npm run validate:plugin -- <plugin-dir-or-zip>
@@ -130,14 +135,14 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 ```
 
 Read [plugin-development.md](./docs/plugin-development.md) and [plugin-submission-workflow-playbook.md](./docs/plugin-submission-workflow-playbook.md) for the full path.
-Plugin authors should also read [plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) for the hard compatibility and review rules.
+Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) for lifecycle, transparency, compatibility, and honest safety boundaries.
 
 ## Documentation
 
 - [CHANGELOG.md](./CHANGELOG.md) - release notes.
 - [docs/development-summary.md](./docs/development-summary.md) - current engineering summary.
 - [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff.
-- [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - plugin author contract, compatibility rules, and review guardrails.
+- [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - extension ecosystem boundary, lifecycle rules, and third-party author guidance.
 - [docs/project-context.json](./docs/project-context.json) - compact machine-readable project context.
 - [docs/project-documentation-design.md](./docs/project-documentation-design.md) - documentation rules and support-claim policy.
 - [docs/desktop-release-design.md](./docs/desktop-release-design.md) and [docs/release-checklist.md](./docs/release-checklist.md) - desktop release evidence gates.
@@ -148,7 +153,7 @@ Plugin authors should also read [plugin-ecosystem-rules.md](./docs/plugin-ecosys
 Current local baseline:
 
 ```bash
-npm test                     # 409/409 Node tests
+npm test                     # 652/652 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

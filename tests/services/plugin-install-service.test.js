@@ -59,6 +59,79 @@ const createPluginPackage = ({ root, id = 'focus-timer', version = '1.0.0', perm
   return pluginPath
 }
 
+const createExtensionDeclarationPackage = ({
+  root,
+  id = 'weather-morning-report',
+  assetPath = 'assets/email-template.html',
+  profile = 'runtime',
+  permissions = []
+} = {}) => {
+  const pluginPath = path.join(root || fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-extension-src-')), id)
+  fs.mkdirSync(path.join(pluginPath, 'commands'), { recursive: true })
+  fs.mkdirSync(path.join(pluginPath, 'assets'), { recursive: true })
+  fs.writeFileSync(path.join(pluginPath, 'commands', 'announce.js'), 'console.log(JSON.stringify({ ok: true }))\n')
+  fs.writeFileSync(path.join(pluginPath, 'assets', 'email-template.html'), '<p>Hello</p>\n')
+  fs.writeFileSync(path.join(pluginPath, 'config.schema.json'), JSON.stringify({
+    title: 'Weather Settings',
+    type: 'object',
+    properties: {
+      city: {
+        type: 'string',
+        title: 'City',
+        default: 'Shanghai'
+      }
+    }
+  }, null, 2))
+  fs.writeFileSync(path.join(pluginPath, 'plugin.json'), JSON.stringify({
+    id,
+    name: 'Weather Morning Report',
+    version: '1.0.0',
+    profile,
+    description: 'Weather reports with a dashboard and pet announcements.',
+    permissions,
+    config: 'config.schema.json',
+    entries: {
+      commands: [
+        {
+          id: 'announce',
+          title: 'Announce Weather',
+          command: 'node ./commands/announce.js',
+          cwd: '.'
+        }
+      ],
+      services: [
+        {
+          id: 'companion',
+          name: 'Weather Companion',
+          command: 'npm run service:start',
+          cwd: '.',
+          health: {
+            type: 'http',
+            url: 'http://127.0.0.1:8787/health'
+          }
+        }
+      ],
+      dashboards: [
+        {
+          id: 'main',
+          title: 'Dashboard',
+          url: 'http://127.0.0.1:8787'
+        }
+      ]
+    },
+    manifest: {
+      dataLocations: [
+        {
+          path: 'OPENPET_DATA_DIR',
+          description: 'Report history.'
+        }
+      ]
+    },
+    assets: [assetPath]
+  }, null, 2))
+  return pluginPath
+}
+
 test('plugin install service inspects and installs an unsigned plugin disabled by default', () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
@@ -84,6 +157,56 @@ test('plugin install service inspects and installs an unsigned plugin disabled b
   assert.equal(fs.existsSync(path.join(pluginDir, 'focus-timer', 'plugin.json')), true)
   assert.equal(settingsService.get().plugins.enabled['focus-timer'], false)
   assert.equal(settingsService.get().plugins.installed['focus-timer'].signatureStatus, 'unsigned')
+})
+
+test('plugin install service inspects extension declaration packages without legacy main files', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-extensions-'))
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+
+  const review = service.inspectPluginPackage(createExtensionDeclarationPackage())
+
+  assert.equal(review.plugin.id, 'weather-morning-report')
+  assert.equal(review.plugin.profile, 'runtime')
+  assert.equal(review.plugin.main, '')
+  assert.equal(review.plugin.config, 'config.schema.json')
+  assert.equal(review.plugin.configSchema, 'config.schema.json')
+  assert.deepEqual(review.plugin.permissions, [])
+  assert.deepEqual(review.plugin.commands, [{ id: 'announce', title: 'Announce Weather' }])
+  assert.deepEqual(review.plugin.entries.commands.map((command) => command.id), ['announce'])
+  assert.deepEqual(review.plugin.entries.services.map((serviceEntry) => serviceEntry.id), ['companion'])
+  assert.deepEqual(review.plugin.entries.dashboards.map((dashboard) => dashboard.id), ['main'])
+  assert.deepEqual(review.plugin.manifest.dataLocations, [
+    {
+      path: 'OPENPET_DATA_DIR',
+      description: 'Report history.'
+    }
+  ])
+  assert.deepEqual(review.plugin.assets, ['assets/email-template.html'])
+})
+
+test('plugin install service surfaces creator-tools profile and action permissions in review data', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-creator-extensions-'))
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+
+  const review = service.inspectPluginPackage(createExtensionDeclarationPackage({
+    id: 'action-author',
+    profile: 'creator-tools',
+    permissions: ['actions:read', 'actions:write']
+  }))
+
+  assert.equal(review.plugin.profile, 'creator-tools')
+  assert.deepEqual(review.plugin.permissions, ['actions:read', 'actions:write'])
+  assert.deepEqual(review.permissionDiff.permissions.added, ['actions:read', 'actions:write'])
+})
+
+test('plugin install service rejects extension declarations that reference missing assets', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-extensions-'))
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+
+  assert.throws(
+    () => service.inspectPluginPackage(createExtensionDeclarationPackage({ assetPath: 'assets/missing.html' })),
+    /Plugin asset file does not exist/
+  )
 })
 
 test('plugin install service verifies local signature hash metadata', () => {

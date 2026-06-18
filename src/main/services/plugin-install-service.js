@@ -123,6 +123,11 @@ const readInstalledManifest = (pluginDir, pluginId) => {
 const resolvePluginFile = (manifest, fieldName) => {
   const relativePath = manifest[fieldName]
   if (!relativePath) return ''
+  return resolvePluginReference(manifest, relativePath, fieldName)
+}
+
+const resolvePluginReference = (manifest, relativePath, fieldName) => {
+  if (!relativePath) return ''
   const targetPath = path.resolve(manifest.basePath, relativePath)
   const basePath = path.resolve(manifest.basePath)
   if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
@@ -132,6 +137,12 @@ const resolvePluginFile = (manifest, fieldName) => {
   assertInsideDirectory(basePath, targetPath, fieldName)
   return targetPath
 }
+
+const hasExtensionEntries = (manifest) => Boolean(
+  manifest.entries?.commands?.length ||
+  manifest.entries?.services?.length ||
+  manifest.entries?.dashboards?.length
+)
 
 const getSignatureReview = (rootPath, manifest, fileHashes) => {
   const signaturePath = path.join(rootPath, 'signature.json')
@@ -232,10 +243,15 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
     const manifestPath = path.join(rootPath, 'plugin.json')
     if (!fs.existsSync(manifestPath)) throw new Error('Plugin package must contain plugin.json')
     const manifest = normalizePluginManifest(readJsonFile(manifestPath, 'Plugin manifest'), { source: 'local', basePath: rootPath })
-    if (!manifest.main) throw new Error('Plugin package must declare a main JavaScript file')
-    resolvePluginFile(manifest, 'main')
+    if (!manifest.main && !hasExtensionEntries(manifest)) {
+      throw new Error('Plugin package must declare a main JavaScript file or extension entries')
+    }
+    if (manifest.main) resolvePluginFile(manifest, 'main')
     const configSchemaPath = resolvePluginFile(manifest, 'configSchema')
     if (configSchemaPath) normalizeConfigSchema(readJsonFile(configSchemaPath, 'Plugin config schema'))
+    for (const asset of manifest.assets || []) {
+      resolvePluginReference(manifest, asset, 'asset')
+    }
 
     const fileHashes = getFileHashes(rootPath)
     const fileEntries = Object.keys(fileHashes)
@@ -255,12 +271,17 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
         id: manifest.id,
         name: manifest.name,
         version: manifest.version,
+        profile: manifest.profile,
         description: manifest.description,
         permissions: manifest.permissions,
         network: manifest.network,
         commands: manifest.commands,
         main: manifest.main,
-        configSchema: manifest.configSchema
+        config: manifest.config || '',
+        configSchema: manifest.configSchema,
+        entries: manifest.entries || { commands: [], services: [], dashboards: [] },
+        manifest: manifest.manifest || {},
+        assets: manifest.assets || []
       },
       signature,
       permissionDiff,

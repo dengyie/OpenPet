@@ -15,8 +15,13 @@ import type {
   ControlCenterApi,
   ControlCenterSettings,
   JsonObject,
+  PluginCommandRunResultViewState,
   PluginLogFilters,
   PluginPackageReviewViewState,
+  PluginServiceHealthPolicyViewState,
+  PluginServiceHealthViewState,
+  PluginServiceRuntimeViewState,
+  PluginSetupRuntimeViewState,
   PluginViewState,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts'
@@ -145,7 +150,25 @@ const createDemoPluginReview = (item: CatalogPluginEntry): PluginPackageReviewVi
     name: item.name,
     version: item.version,
     permissions: item.permissions || [],
-    commands: [{ id: 'demo', title: 'Demo command' }]
+    commands: [{ id: 'demo', title: 'Demo command' }],
+    entries: {
+      setup: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }],
+      commands: [{ id: 'weather-report', title: 'Weather Report', command: 'node ./commands/weather-report.js', cwd: '.' }],
+      services: [{
+        id: 'weather-companion',
+        title: 'Weather Companion',
+        command: 'npm run companion',
+        cwd: '.',
+        health: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+      }],
+      dashboards: [{ id: 'weather-dashboard', title: 'Weather Dashboard', url: 'http://127.0.0.1:8787' }]
+    },
+    config: 'config.schema.json',
+    configSchema: 'config.schema.json',
+    manifest: {
+      dataLocations: [{ path: 'OPENPET_DATA_DIR', description: 'Demo weather report history.' }]
+    },
+    assets: ['assets/weather-card.html']
   },
   permissionDiff: {
     permissions: {
@@ -197,8 +220,25 @@ const demoManualPluginReview = {
     permissions: ['pet:say', 'storage'],
     network: { allowlist: [] },
     commands: [{ id: 'hello', title: 'Say hello' }],
+    entries: {
+      setup: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }],
+      commands: [{ id: 'hello', title: 'Say hello', command: 'node ./index.js', cwd: '.' }],
+      services: [{
+        id: 'manual-companion',
+        title: 'Manual Companion',
+        command: 'npm run companion',
+        cwd: '.',
+        health: { type: 'http', url: 'http://127.0.0.1:8787/health' }
+      }],
+      dashboards: [{ id: 'manual-dashboard', title: 'Manual Dashboard', url: 'http://127.0.0.1:8787' }]
+    },
     main: 'index.js',
-    configSchema: ''
+    config: 'config.schema.json',
+    configSchema: 'config.schema.json',
+    manifest: {
+      dataLocations: [{ path: 'OPENPET_DATA_DIR', description: 'Demo local data disclosure.' }]
+    },
+    assets: ['assets/manual-card.html']
   },
   permissionDiff: {
     permissions: {
@@ -236,6 +276,13 @@ const createDemoManualPlugin = (): PluginViewState => ({
   runnable: true,
   permissions: demoManualPluginReview.plugin.permissions,
   commands: demoManualPluginReview.plugin.commands,
+  entries: {
+    ...demoManualPluginReview.plugin.entries,
+    setup: demoManualPluginReview.plugin.entries.setup.map((setup) => ({
+      ...setup,
+      runtime: { status: 'not-run' }
+    }))
+  },
   configSchema: { properties: [] },
   config: {},
   storage: { keyCount: 0, byteSize: 2, valid: true },
@@ -326,10 +373,137 @@ const demoState = readDemoState()
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
 
+const clonePluginEntries = (entries: PluginViewState['entries']): PluginViewState['entries'] => ({
+  setup: Array.isArray(entries?.setup)
+    ? entries.setup.map((setup) => ({
+        ...setup,
+        runtime: setup.runtime ? { ...setup.runtime } : setup.runtime
+      }))
+    : [],
+  commands: Array.isArray(entries?.commands) ? entries.commands.map((command) => ({ ...command })) : [],
+  services: Array.isArray(entries?.services)
+    ? entries.services.map((service) => ({
+        ...service,
+        healthPolicy: service.healthPolicy ? { ...service.healthPolicy } : service.healthPolicy,
+        platforms: service.platforms
+          ? Object.fromEntries(Object.entries(service.platforms).map(([platform, override]) => [platform, { ...override }]))
+          : undefined,
+        health: service.health ? { ...service.health } : service.health,
+        runtime: service.runtime
+          ? {
+              ...service.runtime,
+              health: service.runtime.health ? { ...service.runtime.health } : service.runtime.health
+            }
+          : service.runtime
+      }))
+    : [],
+  dashboards: Array.isArray(entries?.dashboards) ? entries.dashboards.map((dashboard) => ({ ...dashboard })) : []
+})
+
+const updateDemoPluginServiceRuntime = (pluginId: string, serviceId: string, runtime: PluginServiceRuntimeViewState) => {
+  let found = false
+  demoState.plugins = demoState.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin
+    return {
+      ...plugin,
+      entries: {
+        ...plugin.entries,
+        services: (plugin.entries?.services || []).map((service) => (
+          service.id === serviceId
+            ? (found = true, {
+                ...service,
+                runtime: {
+                  ...service.runtime,
+                  ...runtime,
+                  health: runtime.health
+                    ? { ...runtime.health }
+                    : service.runtime?.health
+                      ? { ...service.runtime.health }
+                      : service.health?.url
+                        ? { status: 'unknown', url: service.health.url }
+                        : { status: 'not-configured' }
+                }
+              })
+            : service
+        ))
+      }
+    }
+  })
+  if (!found) throw new Error(`Plugin service not found: ${serviceId}`)
+  return { ...runtime }
+}
+
+const findDemoPluginServiceRuntimeStatus = (pluginId: string, serviceId: string): PluginServiceRuntimeViewState['status'] => {
+  const plugin = demoState.plugins.find((candidate) => candidate.id === pluginId)
+  const service = plugin?.entries?.services?.find((candidate) => candidate.id === serviceId)
+  return service?.runtime?.status || 'stopped'
+}
+
+const updateDemoPluginServiceHealth = (pluginId: string, serviceId: string, health: PluginServiceHealthViewState) => {
+  const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
+    status: findDemoPluginServiceRuntimeStatus(pluginId, serviceId),
+    health
+  })
+  return { health: runtime.health || health, runtime }
+}
+
+const updateDemoPluginServiceHealthPolicy = (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => {
+  let found = false
+  const nextPolicy = {
+    enabled: Boolean(policy.enabled),
+    intervalMs: Number.isFinite(Number(policy.intervalMs))
+      ? Math.min(300000, Math.max(15000, Number(policy.intervalMs)))
+      : 30000
+  }
+  demoState.plugins = demoState.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin
+    return {
+      ...plugin,
+      entries: {
+        ...plugin.entries,
+        services: (plugin.entries?.services || []).map((service) => (
+          service.id === serviceId
+            ? (found = true, { ...service, healthPolicy: nextPolicy })
+            : service
+        ))
+      }
+    }
+  })
+  if (!found) throw new Error(`Plugin service not found: ${serviceId}`)
+  return nextPolicy
+}
+
+const updateDemoPluginSetupRuntime = (pluginId: string, setupId: string, runtime: PluginSetupRuntimeViewState) => {
+  let found = false
+  demoState.plugins = demoState.plugins.map((plugin) => {
+    if (plugin.id !== pluginId) return plugin
+    return {
+      ...plugin,
+      entries: {
+        ...plugin.entries,
+        setup: (plugin.entries?.setup || []).map((setup) => (
+          setup.id === setupId
+            ? (found = true, {
+                ...setup,
+                runtime: {
+                  ...setup.runtime,
+                  ...runtime
+                }
+              })
+            : setup
+        ))
+      }
+    }
+  })
+  if (!found) throw new Error(`Plugin setup entry not found: ${setupId}`)
+  return { ...runtime }
+}
+
 const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin) => ({
   ...plugin,
   permissions: Array.isArray(plugin.permissions) ? [...plugin.permissions] : [],
   commands: Array.isArray(plugin.commands) ? plugin.commands.map((command) => ({ ...command })) : [],
+  entries: clonePluginEntries(plugin.entries),
   configSchema: {
     ...(plugin.configSchema || {}),
     properties: Array.isArray(plugin.configSchema?.properties) ? plugin.configSchema.properties : []
@@ -459,7 +633,23 @@ const demoApi: ControlCenterApi = {
   getPlugins: async () => cloneDemoPlugins(),
   setPluginEnabled: async (pluginId, enabled) => {
     demoState.plugins = demoState.plugins.map((plugin) => (
-      plugin.id === pluginId ? { ...plugin, enabled } : plugin
+      plugin.id === pluginId
+        ? {
+            ...plugin,
+            enabled,
+            entries: {
+              ...plugin.entries,
+              services: enabled
+                ? plugin.entries.services
+                : plugin.entries.services.map((service) => ({
+                    ...service,
+                    runtime: service.runtime?.status === 'running'
+                      ? { ...service.runtime, status: 'stopped', stoppedAt: new Date().toISOString() }
+                      : service.runtime
+                  }))
+            }
+          }
+        : plugin
     ))
     demoState.pluginLogs = [
       createDemoPluginLog(pluginId, enabled ? 'Plugin enabled' : 'Plugin disabled'),
@@ -472,13 +662,102 @@ const demoApi: ControlCenterApi = {
   runPluginCommand: async (pluginId, commandId) => {
     demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
     writeDemoState()
-    return { ok: true }
+    return {
+      ok: true,
+      pluginId,
+      commandId,
+      exitCode: 0,
+      result: {
+        ok: true,
+        message: 'Demo command completed',
+        petSay: 'hello'
+      }
+    } satisfies PluginCommandRunResultViewState
+  },
+  runPluginSetup: async (pluginId, setupId) => {
+    const runtime = updateDemoPluginSetupRuntime(pluginId, setupId, {
+      status: 'succeeded',
+      lastRunAt: new Date().toISOString(),
+      exitCode: 0,
+      error: ''
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Setup completed', `setup:${setupId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, setupId, runtime }
+  },
+  openPluginDashboard: async (pluginId, dashboardId) => {
+    const plugin = demoState.plugins.find((candidate) => candidate.id === pluginId)
+    const dashboard = plugin?.entries?.dashboards?.find((candidate) => candidate.id === dashboardId)
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Dashboard opened', `dashboard:${dashboardId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, dashboardId, url: dashboard?.url || '' }
+  },
+  startPluginService: async (pluginId, serviceId) => {
+    const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
+      status: 'running',
+      pid: 4321,
+      startedAt: new Date().toISOString()
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Service started', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, serviceId, runtime }
+  },
+  stopPluginService: async (pluginId, serviceId) => {
+    const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
+      status: 'stopped',
+      stoppedAt: new Date().toISOString()
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Service stopped', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, serviceId, runtime }
+  },
+  checkPluginServiceHealth: async (pluginId, serviceId) => {
+    const { health, runtime } = updateDemoPluginServiceHealth(pluginId, serviceId, {
+      status: 'healthy',
+      checkedAt: new Date().toISOString(),
+      url: 'http://127.0.0.1:8787/health',
+      statusCode: 200,
+      message: 'OK'
+    })
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Service health healthy', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { ok: true, pluginId, serviceId, health, runtime }
+  },
+  savePluginServiceHealthPolicy: async (pluginId, serviceId, policy) => {
+    const nextPolicy = updateDemoPluginServiceHealthPolicy(pluginId, serviceId, policy)
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, nextPolicy.enabled ? 'Service health policy saved' : 'Service health policy cleared', `service:${serviceId}`),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    const plugin = cloneDemoPlugins().find((candidate) => candidate.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return plugin
   },
   inspectPluginPackage: async () => {
     demoManualPluginSelection = demoManualPluginReview.selectionId
     return {
       ...demoManualPluginReview,
-      plugin: { ...demoManualPluginReview.plugin, commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })) },
+      plugin: {
+        ...demoManualPluginReview.plugin,
+        commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })),
+        entries: clonePluginEntries(demoManualPluginReview.plugin.entries)
+      },
       permissionDiff: {
         permissions: { ...demoManualPluginReview.permissionDiff.permissions },
         networkAllowlist: { ...demoManualPluginReview.permissionDiff.networkAllowlist }

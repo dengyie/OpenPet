@@ -1,0 +1,182 @@
+{
+  "generatedAt": "2026-06-18T06:43:45.178Z",
+  "ok": true,
+  "cleanupReady": false,
+  "archive": {
+    "archiveDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64",
+    "outputPath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-archive-manifest.json"
+  },
+  "files": [
+    {
+      "role": "report",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-report.json",
+      "exists": true,
+      "bytes": 2973,
+      "sha256": "89eda7547a2e86d3e916133a1e983ed112983eb2a28a1d31b2bbef40da46381b"
+    },
+    {
+      "role": "collector",
+      "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collector.sh",
+      "exists": true,
+      "bytes": 4877,
+      "sha256": "2483e63db1e6554784c0a4a08e0d7d6fe911f0efe4fb36f93b5ed23b95298532"
+    }
+  ],
+  "collector": {
+    "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collector.sh",
+    "conservativeWording": true,
+    "avoidsPassShortcut": true
+  },
+  "evidence": {
+    "evidenceDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected",
+    "requiredFiles": [
+      "environment.txt",
+      "report-structure-validation.txt",
+      "cleanup-controlled-fixture-output.json",
+      "cleanup-controlled-fixture-stderr.txt",
+      "cleanup-controlled-fixture-status.txt",
+      "manual-checks.md",
+      "update-report-commands.md"
+    ],
+    "requiredFilesPresent": true,
+    "files": [
+      {
+        "role": "evidence",
+        "file": "cleanup-controlled-fixture/plugin-cleanup-evidence.json",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/cleanup-controlled-fixture/plugin-cleanup-evidence.json",
+        "bytes": 1202,
+        "sha256": "7e8695774205f93422a61b51fa7e3bd12de3d98676cf8d48d9a6695817b0116f"
+      },
+      {
+        "role": "evidence",
+        "file": "cleanup-controlled-fixture/plugin-cleanup-evidence.md",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/cleanup-controlled-fixture/plugin-cleanup-evidence.md",
+        "bytes": 654,
+        "sha256": "56a0bf51991d0b7d48ab7cd1cba0ada23ca7b1da52cb2d89d8ff51a634e182b5"
+      },
+      {
+        "role": "evidence",
+        "file": "cleanup-controlled-fixture-output.json",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/cleanup-controlled-fixture-output.json",
+        "bytes": 1501,
+        "sha256": "b9ce0b76df365d0ca7395b86c2e8fce6c3a7d6cb0ce03de37f356e12bb581ac1"
+      },
+      {
+        "role": "evidence",
+        "file": "cleanup-controlled-fixture-status.txt",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/cleanup-controlled-fixture-status.txt",
+        "bytes": 219,
+        "sha256": "5fc8bb39846a076637d556925eee8eb22a1bb0fa94657beec05b152d10221717"
+      },
+      {
+        "role": "evidence",
+        "file": "cleanup-controlled-fixture-stderr.txt",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/cleanup-controlled-fixture-stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "role": "evidence",
+        "file": "collector-run.json",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/collector-run.json",
+        "bytes": 1129,
+        "sha256": "2fb2dbcefc1c833d8bbb4ae94203c78056c6a6fc41b0bc89d3ec035e00dd61ae"
+      },
+      {
+        "role": "evidence",
+        "file": "collector-stderr.txt",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/collector-stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "role": "evidence",
+        "file": "collector-stdout.txt",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/collector-stdout.txt",
+        "bytes": 336,
+        "sha256": "6ef31ef86cbc0793ee8bc1f75308ac4f5911136a112f30888f25b07071d8d715"
+      },
+      {
+        "role": "evidence",
+        "file": "environment.txt",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/environment.txt",
+        "bytes": 577,
+        "sha256": "0285f8ac13e96e34a8201f6dc05d4d5753675c09a0aae87006acedaebaeefda8"
+      },
+      {
+        "role": "evidence",
+        "file": "manual-checks.md",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/manual-checks.md",
+        "bytes": 1962,
+        "sha256": "a89cc6098634ff1049c4c43dc7367f0aa48a8d3e8738028c158c40b67a46e446"
+      },
+      {
+        "role": "evidence",
+        "file": "report-structure-validation.txt",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/report-structure-validation.txt",
+        "bytes": 517,
+        "sha256": "8233f735069517e3421505895be60a59d737469ab4c7cfe1296d28075d37d1be"
+      },
+      {
+        "role": "evidence",
+        "file": "update-report-commands.md",
+        "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/update-report-commands.md",
+        "bytes": 880,
+        "sha256": "4b7dc206f12291f65038017b02f53cfb7fd57cd751a2d8a731370ad428c99907"
+      }
+    ]
+  },
+  "report": {
+    "path": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-report.json",
+    "schemaVersion": "openpet-plugin-cleanup-evidence/v1",
+    "generatedAt": "2026-06-18T06:43:44.713Z",
+    "source": "scripts/create-plugin-cleanup-evidence-report.js",
+    "environment": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "node": "v26.0.0",
+      "machine": "mangodeMacBook-Air.local",
+      "runner": "",
+      "evidence": ""
+    },
+    "scenario": {
+      "pluginId": "openpet.cleanup-fixture",
+      "hostApp": "OpenPet packaged cleanup evidence rehearsal",
+      "notes": "Phase 90 local execution rehearsal"
+    },
+    "structuralValidation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 8,
+        "cleanupReady": false
+      }
+    },
+    "readinessValidation": {
+      "ok": false,
+      "errors": [
+        "environment.evidence is required",
+        "service-exit-confirmed-stop must pass before plugin cleanup readiness can be claimed",
+        "service-process-group-cleanup must pass before plugin cleanup readiness can be claimed",
+        "service-tree-fallback-cleanup must pass before plugin cleanup readiness can be claimed",
+        "service-force-stop must pass before plugin cleanup readiness can be claimed",
+        "setup-exit-confirmed-stop must pass before plugin cleanup readiness can be claimed",
+        "setup-tree-fallback-cleanup must pass before plugin cleanup readiness can be claimed",
+        "command-exit-confirmed-stop must pass before plugin cleanup readiness can be claimed",
+        "command-tree-fallback-cleanup must pass before plugin cleanup readiness can be claimed"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 8,
+        "cleanupReady": false
+      }
+    }
+  },
+  "errors": [],
+  "warnings": [
+    "archive is valid but does not prove plugin cleanup readiness until every required check passes with evidence"
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "generatedAt": "2026-06-18T11:16:58.163Z",
+  "outputDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-community-source-discovery-report/2026-06-18T23-55-00Z-compatible-source-search",
+  "status": "compatible-source-not-found",
+  "nextAction": "find-or-invite-compatible-plugin-json-package",
+  "searchResults": [
+    {
+      "query": "GitHub repository search: openpet desktop plugin",
+      "tool": "gh search repos",
+      "resultCount": 0,
+      "notes": "2026-06-18 rerun returned no direct repository-search hits from the current authenticated gh query."
+    },
+    {
+      "query": "GitHub code search: \"openpet.example.weather-status\"",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No public external copy of the current OpenPet example plugin id found."
+    },
+    {
+      "query": "GitHub code search: \"OpenPet\" \"plugin.json\" \"permissions\"",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No current OpenPet plugin.json manifest model hit found."
+    },
+    {
+      "query": "GitHub code search: \"openpet-plugin\" \"plugin.json\"",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No packaged OpenPet plugin manifest hit found."
+    },
+    {
+      "query": "Repository tree inspection: alvinunreal/openpets",
+      "tool": "gh api repos/alvinunreal/openpets/git/trees/main?recursive=1",
+      "resultCount": 9,
+      "notes": "Tree contains official plugin directories with openpets.plugin.json, not current OpenPet plugin.json package roots."
+    },
+    {
+      "query": "Repository tree inspection: Yarrow-Cai/hookcats",
+      "tool": "gh api repos/Yarrow-Cai/hookcats/git/trees/master?recursive=1",
+      "resultCount": 0,
+      "notes": "No plugin.json or openpets.plugin.json manifest candidates discovered."
+    }
+  ],
+  "candidates": [
+    {
+      "sourceUrl": "https://github.com/alvinunreal/openpets",
+      "archiveUrl": "https://codeload.github.com/alvinunreal/openpets/zip/refs/heads/main",
+      "submitter": "alvinunreal/openpets",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "docs/release-evidence/plugin-community-source-intake-report/2026-06-18T23-30-00Z-openpets-official/",
+      "phase99Evidence": "",
+      "notes": "Phase 102 archived this adjacent ecosystem source; selected path contains openpets.plugin.json files, not current OpenPet plugin.json package roots."
+    },
+    {
+      "sourceUrl": "https://github.com/Yarrow-Cai/hookcats",
+      "archiveUrl": "https://codeload.github.com/Yarrow-Cai/hookcats/zip/refs/heads/master",
+      "submitter": "Yarrow-Cai/hookcats",
+      "status": "not-found",
+      "reasonCode": "plugin-json-not-discovered",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Repository description is OpenPet-adjacent, but tree inspection found no plugin.json or openpets.plugin.json candidate path."
+    },
+    {
+      "sourceUrl": "https://github.com/alvinunreal/opencode-pets",
+      "archiveUrl": "https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master",
+      "submitter": "alvinunreal/opencode-pets",
+      "status": "not-inspected",
+      "reasonCode": "opencode-installer-adjacent",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Repository targets OpenCode plugin installation for OpenPets status updates rather than a current OpenPet plugin.json package; reserve for future intake only if a candidate path is identified."
+    }
+  ],
+  "candidateCounts": {
+    "total": 3,
+    "not-inspected": 1,
+    "ready-for-community-evidence": 0,
+    "incompatible-package-model": 1,
+    "not-found": 1
+  },
+  "notes": "Phase 104 reran lightweight public search and archived known adjacent candidates. No compatible external OpenPet plugin.json package is claimed by this report.",
+  "boundaries": [
+    "Discovery records search and candidate source observations only.",
+    "Discovery does not prove OpenPet plugin compatibility.",
+    "Discovery does not prove signing trust, catalog publication, runtime safety, or release readiness.",
+    "Only compatible plugin.json package candidates should continue into Phase 100, Phase 103, and Phase 99."
+  ],
+  "files": {
+    "summary": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-community-source-discovery-report/2026-06-18T23-55-00Z-compatible-source-search/plugin-community-source-discovery-summary.json",
+    "readme": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-community-source-discovery-report/2026-06-18T23-55-00Z-compatible-source-search/README-community-source-discovery.md"
+  }
+}

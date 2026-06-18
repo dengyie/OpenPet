@@ -467,6 +467,191 @@ test('action service loads the active installed pet pack and uses its root for p
   assert.match(actionService.getPreviewConfig().actions[0].previewSprite, /file:\/\/.*active-cat\/sprites\/idle\.png$/)
 })
 
+test('pet pack service updates the active installed pack manifest action fields', () => {
+  const sourceDir = createTempDir('pet-pack-update-active')
+  createPetPackDirectory(sourceDir, { id: 'editable-cat', displayName: 'Editable Cat' })
+  const settingsService = createSettingsService()
+  const petPackService = createService(settingsService)
+
+  const inspection = petPackService.inspectPackDirectory(sourceDir)
+  petPackService.importPack(inspection.selectionId)
+  petPackService.setActivePack('editable-cat')
+
+  const updated = petPackService.updateActivePetPackManifest({
+    defaultAction: 'wave',
+    clickAction: 'wave',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
+      { id: 'wave', label: 'Wave Updated', kind: 'greeting', sprite: 'sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 }
+    ]
+  })
+
+  const installedManifestPath = path.join(petPackService.listPacks().packs.find((pack) => pack.id === 'editable-cat').rootPath, 'pet.json')
+  const persisted = JSON.parse(fs.readFileSync(installedManifestPath, 'utf-8'))
+
+  assert.equal(updated.defaultAction, 'wave')
+  assert.equal(persisted.clickAction, 'wave')
+  assert.equal(persisted.actions.find((action) => action.id === 'wave').label, 'Wave Updated')
+})
+
+test('pet pack service reads validates and applies creator pack manifest metadata for the active installed pack', () => {
+  const sourceDir = createTempDir('pet-pack-creator-view')
+  createPetPackDirectory(sourceDir, {
+    id: 'creator-cat',
+    displayName: 'Creator Cat',
+    version: '1.2.3',
+    sourceUrl: 'https://example.com/creator-cat',
+    assetAuthor: 'OpenPet Creator',
+    license: 'CC-BY-4.0',
+    licenseUrl: 'https://example.com/license'
+  })
+  const settingsService = createSettingsService()
+  const petPackService = createService(settingsService)
+
+  const inspection = petPackService.inspectPackDirectory(sourceDir)
+  petPackService.importPack(inspection.selectionId)
+  petPackService.setActivePack('creator-cat')
+
+  const view = petPackService.getActiveCreatorPackManifest()
+  const validation = petPackService.validateActiveCreatorPackManifestMutation({
+    displayName: 'Creator Cat v2',
+    version: '2.0.0',
+    provenance: {
+      sourceUrl: 'https://example.com/creator-cat-v2',
+      assetAuthor: 'Creator Team',
+      license: 'MIT',
+      licenseUrl: 'https://example.com/mit'
+    }
+  })
+  const applied = petPackService.applyActiveCreatorPackManifestMutation({
+    displayName: 'Creator Cat v2',
+    version: '2.0.0',
+    provenance: {
+      sourceUrl: 'https://example.com/creator-cat-v2',
+      assetAuthor: 'Creator Team',
+      license: 'MIT',
+      licenseUrl: 'https://example.com/mit'
+    }
+  })
+
+  assert.equal(view.id, 'creator-cat')
+  assert.equal(view.displayName, 'Creator Cat')
+  assert.equal(validation.ok, true)
+  assert.deepEqual(validation.errors, [])
+  assert.equal(validation.manifest.displayName, 'Creator Cat v2')
+  assert.equal(validation.manifest.version, '2.0.0')
+  assert.equal(validation.manifest.provenance.assetAuthor, 'Creator Team')
+  assert.equal(applied.displayName, 'Creator Cat v2')
+  assert.equal(applied.provenance.sourceUrl, 'https://example.com/creator-cat-v2')
+})
+
+test('pet pack service rejects creator manifest mutation for built-in packs', () => {
+  const petPackService = createService()
+
+  assert.throws(
+    () => petPackService.getActiveCreatorPackManifest(),
+    /active installed pet pack/
+  )
+  const validation = petPackService.validateActiveCreatorPackManifestMutation({ displayName: 'Nope' })
+
+  assert.equal(validation.ok, false)
+  assert.match(validation.errors.join('\n'), /active installed pet pack/)
+  assert.throws(
+    () => petPackService.applyActiveCreatorPackManifestMutation({ displayName: 'Nope' }),
+    /active installed pet pack/
+  )
+})
+
+test('pet pack service rejects unsupported creator manifest keys', () => {
+  const sourceDir = createTempDir('pet-pack-creator-immutable')
+  createPetPackDirectory(sourceDir, { id: 'creator-immutable-cat' })
+  const settingsService = createSettingsService()
+  const petPackService = createService(settingsService)
+
+  const inspection = petPackService.inspectPackDirectory(sourceDir)
+  petPackService.importPack(inspection.selectionId)
+  petPackService.setActivePack('creator-immutable-cat')
+
+  const validation = petPackService.validateActiveCreatorPackManifestMutation({
+    id: 'other-cat',
+    defaultAction: 'wave',
+    actions: [],
+    provenance: {
+      importedAt: '2026-06-18T00:00:00.000Z',
+      originalFormat: 'manual'
+    }
+  })
+
+  assert.equal(validation.ok, false)
+  assert.match(validation.errors.join('\n'), /Unsupported creator pack manifest field: id/)
+  assert.match(validation.errors.join('\n'), /Unsupported creator pack manifest field: defaultAction/)
+  assert.match(validation.errors.join('\n'), /Unsupported creator pack manifest field: actions/)
+  assert.match(validation.errors.join('\n'), /Unsupported creator pack manifest provenance field: importedAt/)
+  assert.match(validation.errors.join('\n'), /Unsupported creator pack manifest provenance field: originalFormat/)
+})
+
+test('pet pack service rejects non-object creator manifest mutations', () => {
+  const sourceDir = createTempDir('pet-pack-creator-invalid-payload')
+  createPetPackDirectory(sourceDir, { id: 'creator-invalid-payload-cat' })
+  const settingsService = createSettingsService()
+  const petPackService = createService(settingsService)
+
+  const inspection = petPackService.inspectPackDirectory(sourceDir)
+  petPackService.importPack(inspection.selectionId)
+  petPackService.setActivePack('creator-invalid-payload-cat')
+
+  for (const payload of [null, [], 'display name']) {
+    const validation = petPackService.validateActiveCreatorPackManifestMutation(payload)
+
+    assert.equal(validation.ok, false)
+    assert.match(validation.errors.join('\n'), /Creator pack manifest mutation must be an object/)
+    assert.throws(
+      () => petPackService.applyActiveCreatorPackManifestMutation(payload),
+      /Creator pack manifest mutation must be an object/
+    )
+  }
+})
+
+test('pet pack service preserves host-owned and action fields during creator manifest apply', () => {
+  const sourceDir = createTempDir('pet-pack-creator-apply')
+  createPetPackDirectory(sourceDir, { id: 'creator-apply-cat', displayName: 'Creator Apply Cat' })
+  const settingsService = createSettingsService()
+  const petPackService = createService(settingsService)
+
+  const inspection = petPackService.inspectPackDirectory(sourceDir)
+  petPackService.importPack(inspection.selectionId)
+  petPackService.setActivePack('creator-apply-cat')
+
+  const installedManifestPath = path.join(
+    petPackService.listPacks().packs.find((pack) => pack.id === 'creator-apply-cat').rootPath,
+    'pet.json'
+  )
+  const original = JSON.parse(fs.readFileSync(installedManifestPath, 'utf-8'))
+  const applied = petPackService.applyActiveCreatorPackManifestMutation({
+    displayName: 'Creator Apply Cat Updated',
+    version: '1.1.0',
+    provenance: {
+      assetAuthor: 'Creator Apply Team',
+      sourceUrl: 'https://example.com/creator-apply-cat'
+    }
+  })
+  const persisted = JSON.parse(fs.readFileSync(installedManifestPath, 'utf-8'))
+
+  assert.equal(applied.id, 'creator-apply-cat')
+  assert.equal(applied.displayName, 'Creator Apply Cat Updated')
+  assert.equal(applied.version, '1.1.0')
+  assert.equal(applied.provenance.assetAuthor, 'Creator Apply Team')
+  assert.equal(persisted.id, original.id)
+  assert.equal(persisted.defaultAction, original.defaultAction)
+  assert.equal(persisted.clickAction, original.clickAction)
+  assert.deepEqual(persisted.actions, original.actions)
+  assert.equal(persisted.displayName, 'Creator Apply Cat Updated')
+  assert.equal(persisted.version, '1.1.0')
+  assert.equal(persisted.sourceUrl, 'https://example.com/creator-apply-cat')
+  assert.equal(persisted.assetAuthor, 'Creator Apply Team')
+  assert.equal(persisted.provenance.sourceUrl, 'https://example.com/creator-apply-cat')
+})
+
 test('pet pack service rejects invalid packs before import', () => {
   const sourceDir = createTempDir('pet-pack-invalid')
   fs.mkdirSync(path.join(sourceDir, 'sprites'), { recursive: true })

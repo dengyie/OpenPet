@@ -8,6 +8,7 @@
 - [x] Packaged selected plugin as .openpet-plugin.zip and validated the package.
 - [x] Created and validated submission bundle.
 - [ ] Human reviewer approves the report and PR packet.
+- [ ] Maintainer approval record is archived separately.
 - [ ] Maintainer verifies signature/trust policy before catalog distribution.
 
 Review reminder: unsigned plugins may be acceptable for local manual review, but they are not trusted catalog artifacts.

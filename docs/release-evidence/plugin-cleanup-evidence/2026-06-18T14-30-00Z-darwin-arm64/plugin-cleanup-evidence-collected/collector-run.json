@@ -1,0 +1,18 @@
+{
+  "startedAt": "2026-06-18T06:43:44.714Z",
+  "finishedAt": "2026-06-18T06:43:45.176Z",
+  "ok": true,
+  "command": [
+    "bash",
+    "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collector.sh"
+  ],
+  "cwd": "/Users/mango/project/codex/OpenPet",
+  "timeoutMs": 300000,
+  "reportPath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-report.json",
+  "evidenceDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected",
+  "exitCode": 0,
+  "signal": "",
+  "error": "",
+  "stdoutPath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/collector-stdout.txt",
+  "stderrPath": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/collector-stderr.txt"
+}

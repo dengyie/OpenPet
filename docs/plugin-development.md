@@ -1,342 +1,574 @@
-# OpenPet Plugin Development
+# OpenPet Extension Development
 
-OpenPet plugins are local JavaScript packages installed through the Control Center. They run in a short-lived isolated Node runner and can only reach the app through a permission-gated SDK.
+OpenPet is moving toward a developer-first local extension platform. An extension can be a small pet command, a long-running companion service, a local dashboard, a writing assistant, a weather announcer, a pet animation tool, or a package that orchestrates local models and generated assets.
 
-Before starting a new plugin, read [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md). It is the authoritative rulebook for package safety, permission budgeting, compatibility targets, config limits, review expectations, and submission discipline.
+This document follows the extension ecosystem boundary design. It is the target author guide for new development. Existing JavaScript SDK plugins remain a compatibility path while the host runtime catches up to the broader extension model.
 
-For a new local package, start with the scaffold command:
+For lifecycle, safety, and review language, read [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md) together with this guide.
 
-```bash
-npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
-npm run create-openpet-plugin -- "Weather Badge" --template network --output-dir scratch/plugins
-npm run create-openpet-plugin -- "Counter Buddy" --template storage --output-dir scratch/plugins
-npm run create-openpet-plugin -- "AI Buddy" --template ai --output-dir scratch/plugins
+## Author Capability Promise
+
+OpenPet should feel like a welcoming local extension platform, not a closed list of first-party feature slots.
+
+Third-party authors are encouraged to build practical pet experiences such as:
+
+- a weather announcer where the pet speaks the forecast, plays a matching action, and opens a dashboard;
+- a pet dialogue pack that adds configurable phrases, tone, timing, and fallback lines;
+- a personality injector that changes how a pet responds without modifying OpenPet core code;
+- an action studio that inspects frame folders, validates action metadata, imports new actions, and regenerates sprites through host-mediated creator tools;
+- a local model or image workflow that generates pet action art into package/data locations and asks the host to import the approved result;
+- a service-backed companion that watches RSS, calendar, build status, local files, or third-party APIs and turns them into pet speech/actions.
+
+The current host intentionally gives declaration-only command entries a bounded but useful bridge instead of forcing every author into a JavaScript SDK. Authors can combine their own runtime, local files, external APIs, dashboards, services, and setup flows with OpenPet-owned bridge calls for pet speech, pet actions, pet events, read-only context, action configuration, pack manifest metadata, and action frame import.
+
+This is a permissioned collaboration model:
+
+- authors may choose JavaScript, Python, shell scripts, compiled binaries, or other local runtimes;
+- OpenPet mediates pet mutations and creator-tool writes through explicit bridge permissions;
+- OpenPet should reject unsafe package structure and hidden install-time execution;
+- OpenPet should not reject useful third-party ideas merely because they are not first-party features yet.
+
+## Core Model
+
+OpenPet uses one package model: an extension.
+
+The package root still contains:
+
+```text
+plugin.json
 ```
 
-For complete tested packages, read [`examples/plugins/focus-timer`](../examples/plugins/focus-timer/) for storage and pet speech, [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for JSON network allowlist usage, or [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) for public feed fetching and cached announcements.
+`plugin.json` is the unified manifest for all extension shapes. The word "plugin" remains in file names and some commands for compatibility, but new product and developer language should use "extension" when describing the ecosystem.
 
-To rehearse the full third-party author path, generate the scaffolded templates, validate them, package the AI-assisted template, and create a submission bundle in one command:
-
-```bash
-npm run create-plugin-author-rehearsal -- --output-dir docs/release-evidence/plugin-author-rehearsal/<session> --submission-template ai
-```
-
-The rehearsal writes an author README, command list, submission checklist, package zip, and validated submission bundle. It is review evidence, not catalog approval or signing trust.
+OpenPet should treat the manifest as a declaration and operational contract, not as a complete sandbox. It can validate package structure, show the user what the extension declares, start/stop entries, capture logs, and uninstall OpenPet-owned files. It should not claim to fully control everything a local process can do.
 
 ## Package Layout
 
+An extension may be tiny:
+
 ```text
-my-plugin/
+my-extension/
 ├── plugin.json
 ├── config.schema.json
-└── index.js
+└── commands/
+    └── announce.js
 ```
 
-`plugin.json` must be at the root of the plugin directory or zip archive. Optional files must stay inside the package; absolute paths, path traversal, unsafe zip entries, and symlinks are rejected before install.
+It may also be a fuller local app:
 
-## Manifest
+```text
+my-extension/
+├── plugin.json
+├── config.schema.json
+├── commands/
+├── service/
+├── web/
+├── templates/
+├── static/
+├── assets/
+├── bin/
+├── models/
+└── README.md
+```
+
+OpenPet should preserve structural safety:
+
+- `plugin.json` must be at package root.
+- Entry paths and package-relative files must stay inside the installed package.
+- Absolute paths, path traversal, unsafe zip entries, and escaping symlinks are rejected.
+- Installation must not overwrite OpenPet application files.
+- Install only extracts and inspects; extension code should not run during install.
+
+## Manifest Shape
+
+Use this first-version shape for new extension design:
 
 ```json
 {
-  "id": "com.example.my-plugin",
-  "name": "My Plugin",
+  "id": "weather-morning-report",
+  "name": "Weather Morning Report",
   "version": "1.0.0",
-  "description": "A sample plugin",
-  "main": "index.js",
-  "configSchema": "config.schema.json",
-  "permissions": ["pet:say", "storage"],
-  "network": {
-    "allowlist": []
+  "description": "Weather reports, Web dashboard, and Email delivery for OpenPet.",
+  "entries": {
+    "commands": [],
+    "services": [],
+    "dashboards": []
   },
-  "commands": [
-    {
-      "id": "greet",
-      "title": "Greet"
-    }
-  ]
+  "manifest": {},
+  "config": "config.schema.json",
+  "assets": []
 }
 ```
 
 Important fields:
 
-- `id`: safe id using letters, numbers, `_`, `.`, or `-`.
-- `main`: safe relative path to a JavaScript file.
-- `configSchema`: optional safe relative path to an object JSON schema.
-- `permissions`: explicit capabilities requested from the SDK.
-- `network.allowlist`: HTTPS public DNS hosts, optionally with an explicit port, such as `api.example.com` or `api.example.com:8443`. Do not include paths, query strings, credentials, or schemes.
-- `commands`: command ids and titles shown in Control Center.
+- `id`: stable extension id.
+- `name`: user-facing name.
+- `version`: extension version.
+- `description`: short user-facing purpose.
+- `entries`: commands, services, and dashboards OpenPet can run, manage, or open.
+- `manifest`: structured declaration area shown to users.
+- `config`: optional package-relative configuration schema.
+- `assets`: meaningful package assets such as templates, static files, model assets, generated pet art, docs, or examples.
 
-Allowed permissions are `pet:say`, `pet:action`, `pet:event`, `ai:chat`, `storage`, `network`, and `commands`.
+Recommended id pattern:
 
-## Ecosystem Guardrails
+```text
+<namespace>.<extension-name>
+```
 
-Plugin authors should design to the current OpenPet contract, not internal implementation details.
+Examples:
 
-- Plugins are command-driven, short-lived, and must tolerate isolated execution.
-- Use `ctx.storage` for durable state; do not rely on in-memory globals between commands.
-- Do not require user secrets in plugin config. There is no dedicated plugin secret store yet, and secret-like config fields are rejected during package validation and runtime loading.
-- Keep permissions and `network.allowlist` minimal. New permissions or hosts on update will trigger review and disable the plugin until re-enabled.
-- Treat `.openpet-plugin.zip` as the preferred package format. Legacy `.ibot-plugin.zip` is compatibility-only.
+- `community.weather-morning-report`
+- `com.yourname.pet-action-studio`
+- `openpet.example.focus-timer`
 
-See [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md) for the full policy and reviewer checklist.
+## Entries
 
-## Entry Point
+Entries describe what OpenPet can start, run, or open. They do not create separate package types.
 
-The main file must export an `activate(ctx)` function. It can return command handlers or register them through `ctx.commands.register()`.
+### Commands
 
-```js
-module.exports = function activate(ctx) {
-  return {
-    greet: async () => {
-      const message = ctx.config.get('message') || 'Hello!'
-      await ctx.pet.say(message)
-      return { ok: true }
-    }
+Commands are explicit short-lived process entries. They are triggered from OpenPet UI or another explicit host action, not during install or enable.
+
+```json
+{
+  "id": "announce-weather",
+  "title": "Announce Weather",
+  "command": "node ./commands/announce-weather.js",
+  "cwd": "."
+}
+```
+
+OpenPet currently:
+
+- runs the command in the installed extension directory;
+- rejects cwd paths or symlinks that escape the extension directory;
+- spawns the process without shell expansion;
+- passes command context as stdin JSON with `pluginId`, `commandId`, `payload`, `config`, and `paths.extensionDir`;
+- captures stdout and stderr snippets into plugin logs;
+- parses the final stdout JSON line as the command result when possible;
+- times out stalled command processes.
+
+Commands may be written in JavaScript, Python, shell scripts, compiled binaries, or any runtime the user has installed. JavaScript is supported as one ordinary process option, not as the only extension runtime.
+
+### Services
+
+Services are long-running local process entries managed by OpenPet.
+
+```json
+{
+  "id": "companion",
+  "name": "Weather Companion Service",
+  "command": "npm run service:start",
+  "cwd": ".",
+  "platforms": {
+    "darwin": { "command": "npm run service:start" },
+    "win32": { "command": "npm run service:start:win" },
+    "linux": { "command": "npm run service:start" }
+  },
+  "health": {
+    "type": "http",
+    "url": "http://127.0.0.1:8787/health"
   }
 }
 ```
 
-ES module style `export default function activate(ctx) {}` is also accepted by the local runner.
+OpenPet can explicitly run command and setup entries from Control Center, capture stdout/stderr snippets, show setup runtime state, explicitly start and stop services, show service runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and optionally schedule host-managed periodic checks for running services from Control Center. It can attempt best-effort process-group cleanup when stopping services, wait for confirmed child exit before reporting a clean stop, escalate once to a host-side force stop if a service ignores the grace-period shutdown request, and try a host-owned process-tree cleanup path before falling back to direct child kill. Services remain the strongest cleanup shape because they alone combine process-group signalling, process-tree fallback, and bounded force-stop escalation. Declaration-only command runs also receive a short-lived bridge URL/token so they can call `pet.say`, `pet.action`, `pet.event`, and fetch a bounded read-only context during the active run. Command and setup cleanup keep stop intent visible until child exit confirmation and now also try the same host-owned tree cleanup before direct child kill fallback, but they still do not add service-style process groups or force-stop escalation. Command, setup, and service processes do not run during install or enable; services never auto-start; periodic health checks only run for already running services when the user enables the host policy; and the host spawns command, setup, and service processes without shell expansion. OpenPet still does not claim universal process-tree cleanup guarantees across every host/runtime combination. The service model should not require a specific language, a self-contained package, or a full process sandbox.
 
-## Configuration Schema
+### Dashboards
 
-OpenPet supports object schemas with `string`, `number`, and `boolean` properties. `enum`, `default`, `title`, `description`, and `required` are supported.
-
-Plugin config is ordinary app settings, not secret storage. Fields that look like `apiKey`, `accessToken`, `authToken`, `password`, `credential`, `privateKey`, or password-style metadata such as `format: "password"` / `writeOnly: true` are rejected. Network plugins must use public allowlisted hosts and public request settings only.
+Dashboards are user-facing URLs or local service pages.
 
 ```json
 {
-  "title": "My Plugin Settings",
+  "id": "main",
+  "title": "Weather Dashboard",
+  "url": "http://127.0.0.1:8787"
+}
+```
+
+First-version behavior should stay simple: OpenPet shows an "Open Dashboard" action and opens the URL externally or in a separate app window. OpenPet does not need to host, iframe, theme, or inspect the dashboard.
+
+## Context Passing
+
+OpenPet should use language-neutral context passing.
+
+Current command entries receive context on stdin and run with a minimal host environment. Declaration-only command runs now also receive a short-lived bridge URL/token pair plus host-owned `OPENPET_DATA_DIR`, `OPENPET_CACHE_DIR`, and `OPENPET_LOG_DIR` paths. OpenPet still does not inject generated config files or result-file paths into command processes.
+
+Current standard environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENPET_BRIDGE_URL` | Short-lived local bridge endpoint for the active declaration-only command run. |
+| `OPENPET_BRIDGE_TOKEN` | Bearer token for the active declaration-only command bridge. |
+| `OPENPET_DATA_DIR` | Host-owned persistent data directory for the active declaration-only command run. |
+| `OPENPET_CACHE_DIR` | Host-owned cache directory for the active declaration-only command run. |
+| `OPENPET_LOG_DIR` | Host-owned log directory for the active declaration-only command run. |
+
+Reserved future variables only:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENPET_EXTENSION_ID` | Current extension id. |
+| `OPENPET_EXTENSION_DIR` | Installed package directory. |
+| `OPENPET_CONFIG_PATH` | Optional generated config JSON path. |
+| `OPENPET_RESULT_PATH` | Command result JSON output path. |
+
+Commands receive JSON on stdin:
+
+```json
+{
+  "pluginId": "weather-morning-report",
+  "commandId": "announce-weather",
+  "payload": {},
+  "config": {},
+  "paths": {
+    "extensionDir": "..."
+  }
+}
+```
+
+Current command result:
+
+- write JSON as the final stdout line.
+
+Current bridge routes:
+
+- `GET /context`
+- `POST /pet/say`
+- `POST /pet/action`
+- `POST /pet/event`
+- `GET /creator/actions`
+- `POST /creator/actions/validate`
+- `POST /creator/actions/apply`
+- `GET /creator/pack-manifest`
+- `POST /creator/pack-manifest/validate`
+- `POST /creator/pack-manifest/apply`
+- `POST /creator/assets/inspect-frames`
+- `POST /creator/assets/import-frames`
+- `POST /creator/assets/pick-frames/inspect`
+- `POST /creator/assets/pick-frames/import`
+
+The bridge is loopback-only, token-gated, and valid only while the command run is active.
+
+OpenPet may interpret common result keys:
+
+```json
+{
+  "ok": true,
+  "message": "Report sent.",
+  "petSay": "今天有雨，邮件已发送。",
+  "petAction": "umbrella",
+  "dashboardUrl": "http://127.0.0.1:8787/reports/latest"
+}
+```
+
+## Optional Bridge
+
+For deeper pet integration, OpenPet now provides a minimal optional local bridge for explicit declaration-only command runs. The bridge is not a heavy SDK and should not become a full permission broker in the first version.
+
+Injected values:
+
+- `OPENPET_BRIDGE_URL`
+- `OPENPET_BRIDGE_TOKEN`
+- `OPENPET_DATA_DIR`
+- `OPENPET_CACHE_DIR`
+- `OPENPET_LOG_DIR`
+
+Current endpoint set:
+
+- `GET /context`
+- `POST /pet/say`
+- `POST /pet/action`
+- `POST /pet/event`
+- `GET /creator/actions`
+- `POST /creator/actions/validate`
+- `POST /creator/actions/apply`
+- `GET /creator/pack-manifest`
+- `POST /creator/pack-manifest/validate`
+- `POST /creator/pack-manifest/apply`
+- `POST /creator/assets/inspect-frames`
+- `POST /creator/assets/import-frames`
+- `POST /creator/assets/pick-frames/inspect`
+- `POST /creator/assets/pick-frames/import`
+
+Bridge rules:
+
+- the bridge exists only during an explicit declaration-only command run;
+- the command must belong to an enabled, policy-allowed local extension;
+- requests must use `Authorization: Bearer <OPENPET_BRIDGE_TOKEN>`;
+- `pet:say`, `pet:action`, `pet:event`, `actions:read`, `actions:write`, `pack-manifest:read`, `pack-manifest:write`, `assets:inspect`, and `assets:generate` permissions are enforced per route;
+- all pet mutations still flow through `PetService`;
+- creator-tools action reads and writes flow through the host action service boundary, while pack manifest metadata reads and writes flow through the host pet-pack service boundary;
+- `pack-manifest:read` / `pack-manifest:write` only expose the current active installed user pack metadata workflow and do not permit arbitrary pet-pack writes, arbitrary pack targeting, or raw filesystem access;
+- creator-tools frame inspection is read-only, package-local, and confined to the extension directory;
+- creator-tools frame import/sprite generation is host-mediated, package-local, resource-limited, and does not grant raw filesystem writes or plugin-selected output paths;
+- creator-tools picker frame inspection/import is host-mediated and user-approved: the command can request a native folder picker, but selected absolute paths stay in the main process and are not returned to the bridge caller;
+- setup entries, services, install, enable, and background health paths do not receive bridge access.
+
+Example bridge requests:
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/pet/say" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"今天上海有雨，带伞。","ttlMs":6000}'
+```
+
+```bash
+curl "$OPENPET_BRIDGE_URL/context" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN"
+```
+
+```bash
+curl "$OPENPET_BRIDGE_URL/creator/actions" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN"
+```
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/inspect-frames" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"relativePath":"assets/actions/wave","actionId":"wave"}'
+```
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/import-frames" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"relativePath":"assets/actions/wave","actionId":"wave","label":"Wave Hello"}'
+```
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/pick-frames/inspect" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"picked-wave"}'
+```
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/pick-frames/import" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"picked-wave","label":"Picked Wave"}'
+```
+
+Example command behavior:
+
+1. Read command context from stdin.
+2. Fetch weather using the extension's own network stack.
+3. Optionally call bridge routes such as `POST /pet/say`, `POST /pet/action`, or `POST /pet/event`.
+4. Write final result JSON to stdout.
+
+## Configuration
+
+`config` points to an optional package-relative schema that can power Control Center forms.
+
+```json
+{
+  "title": "Weather Morning Report Settings",
   "type": "object",
   "properties": {
-    "message": {
+    "city": {
       "type": "string",
-      "title": "Message",
-      "default": "Hello!"
+      "title": "City",
+      "default": "Shanghai"
     },
-    "rounds": {
-      "type": "number",
-      "title": "Rounds",
-      "default": 1,
-      "enum": [1, 3, 5]
-    },
-    "enabled": {
+    "sendEmail": {
       "type": "boolean",
-      "title": "Enabled",
-      "default": true
+      "title": "Send Email",
+      "default": false
     }
-  }
+  },
+  "required": ["city"]
 }
 ```
 
-Plugins can read normalized values with `ctx.config.get()` or `ctx.config.get(key)`. Configuration is saved by the app, not by plugin code.
+OpenPet-managed config is useful for friendly setup, but it is not the only place an extension may keep settings. Extensions may also maintain their own files, databases, dashboards, `.env` files, external accounts, or local model caches. If an extension manages secrets outside OpenPet, disclose that clearly in `manifest`.
 
-## SDK
+## Manifest Declarations
 
-```js
-const config = ctx.config.get()
-const message = ctx.config.get('message')
-
-await ctx.pet.say('Hello')
-await ctx.pet.playAction('working')
-await ctx.pet.setEvent({ type: 'status', message: 'Busy' })
-
-const count = await ctx.storage.get('count', 0)
-await ctx.storage.set('count', count + 1)
-await ctx.storage.remove('count')
-await ctx.storage.clear()
-
-const ai = await ctx.ai.chat({ message: 'Encourage me', conversationId: 'focus' })
-const response = await ctx.network.fetch('https://api.example.com/status')
-
-ctx.commands.register({
-  id: 'start',
-  handler: async () => ({ ok: true })
-})
-```
-
-SDK calls are permission checked in the main process:
-
-- `ctx.pet.say()` requires `pet:say`.
-- `ctx.pet.playAction()` requires `pet:action`.
-- `ctx.pet.setEvent()` requires `pet:event`.
-- `ctx.storage.*` requires `storage` and is limited to 64KB per plugin and 16KB per value.
-- `ctx.ai.chat()` requires `ai:chat`; API keys never enter the plugin runner.
-- `ctx.network.fetch()` requires `network`; requests are limited to HTTPS hosts in `network.allowlist` and sensitive headers are rejected.
-
-### Network Example
-
-Use `network.allowlist` for public HTTPS hosts, optionally with explicit ports, then keep requests narrow and free of credentials:
+Use `manifest` to disclose facts OpenPet should show to the user.
 
 ```json
 {
-  "permissions": ["network", "pet:say", "storage"],
   "network": {
-    "allowlist": ["api.weather.example.com"]
-  }
+    "declaredHosts": ["api.weather.example.com", "smtp.example.com"]
+  },
+  "dataLocations": [
+    {
+      "path": "OPENPET_DATA_DIR",
+      "description": "Report history, scheduler state, and generated summaries."
+    },
+    {
+      "path": "~/.weather-morning-report",
+      "description": "Optional developer-managed local configuration."
+    }
+  ],
+  "externalAccounts": ["Weather API provider", "SMTP provider"],
+  "setupNotes": "Run the setup command before starting the companion service.",
+  "cleanupNotes": "Cleanup can remove the local report database but cannot revoke external accounts."
 }
 ```
 
-```js
-const response = await ctx.network.fetch('https://api.weather.example.com/v1/current?location=Tokyo', {
-  headers: {
-    accept: 'application/json'
-  }
-})
-```
+OpenPet should display these declarations honestly. It should not treat them as proof that every runtime behavior is enforced.
 
-The runtime rejects non-HTTPS URLs, hosts outside the allowlist, allowlist entries with paths or query strings, unsupported methods, sensitive headers such as `authorization` or `cookie`, oversized request bodies, oversized responses, and redirects to non-allowlisted hosts. See [`examples/plugins/weather-status`](../examples/plugins/weather-status/) for a complete package.
+## Permissioned Pet And Creator Capabilities
 
-### RSS/Feed Example
+Use manifest permissions to request host-mediated capabilities only when the extension needs them. Keep the request small and explain the user value in `description`, `manifest`, or `README.md`.
 
-For public XML feeds, keep the host fixed in `network.allowlist`, request only feed content, and cache normalized items in private storage:
+Current bridge-backed capabilities:
+
+| Capability | Typical author use | Boundary |
+| --- | --- | --- |
+| `pet:say` | Weather reports, reminders, dialogue packs, personality text | Goes through `PetService`; no renderer or raw window access. |
+| `pet:action` | Play an existing action after a forecast, event, or local workflow | Action id must be meaningful to the installed pet/action set. |
+| `pet:event` | Emit bounded pet events for host-visible integration | Event payload stays command-run scoped. |
+| `actions:read` | Action studio reads current action configuration | Read through host action service. |
+| `actions:write` | Add or update bounded action configuration | Validated and applied by the host; no raw config-file write. |
+| `pack-manifest:read` | Read active installed user pack metadata | Active installed user pack only. |
+| `pack-manifest:write` | Update bounded user pack metadata | No built-in pack edits or arbitrary pack targeting. |
+| `assets:inspect` | Inspect package-local or user-approved action frame folders | No raw filesystem grant; paths stay host-confined. |
+| `assets:generate` | Import frames and regenerate sprites/action metadata | Host-mediated, resource-limited, no plugin-selected output path. |
+
+Example permission shape:
 
 ```json
 {
-  "permissions": ["network", "pet:say", "storage"],
-  "network": {
-    "allowlist": ["feeds.example.com"]
-  }
+  "permissions": [
+    "pet:say",
+    "pet:action",
+    "actions:read",
+    "assets:inspect",
+    "assets:generate"
+  ]
 }
 ```
 
-```js
-const response = await ctx.network.fetch('https://feeds.example.com/openpet.xml', {
-  headers: {
-    accept: 'application/rss+xml, application/xml, text/xml'
-  }
-})
+Recommended mapping:
+
+- Weather announcer: `pet:say`, optionally `pet:action`, plus any extension-owned network/API disclosure in `manifest`.
+- Pet dialogue/personality pack: `pet:say`, optionally `pet:event`, with config schema for tone, verbosity, and quiet hours.
+- Pet action studio: `actions:read`, `actions:write`, `assets:inspect`, `assets:generate`.
+- Pack metadata helper: `pack-manifest:read`, optionally `pack-manifest:write`.
+- Dashboard-only extension: no pet/creator permission unless it actually calls the bridge.
+
+If a desired capability is not available yet, authors should still be able to submit the package as a local/community extension with the gap clearly disclosed. Maintainers should classify the missing capability as backlog instead of rejecting the idea outright when the package is structurally safe and honest about its limits.
+
+## Setup And Dependencies
+
+Extensions may declare explicit setup commands:
+
+```json
+{
+  "id": "setup",
+  "title": "Install Dependencies",
+  "command": "npm install",
+  "cwd": "."
+}
 ```
 
-See [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) for a complete package that fetches RSS/Atom XML, stores the latest feed snapshot, and announces the newest item without live network dependency in tests.
+Setup behavior:
 
-## Install And Review Flow
+- install only extracts and inspects;
+- the extension remains disabled by default;
+- setup runs only when the user explicitly presses the setup action in Control Center;
+- OpenPet records setup status and logs;
+- setup may be rerun.
 
-Third-party plugins should be installed through Control Center -> Plugins -> Install plugin package.
+Production packages should prefer self-contained dependencies when practical, but the ecosystem should not require every package to be self-contained.
 
-The app inspects the package before install:
+## Data And Secrets
 
-- Validates `plugin.json`, `main`, optional `configSchema`, permissions, network allowlist, paths, and symlinks.
-- Computes file hashes and package hash.
-- Reviews optional `signature.json` hash metadata.
-- Shows permission and network allowlist diffs for updates.
-- Installs or updates the plugin disabled by default.
+OpenPet manages:
 
-Users must manually enable installed plugins before commands can run.
+- extension installation metadata;
+- enabled state;
+- service process state;
+- setup state;
+- OpenPet-created data/cache/log directories;
+- health and log summaries;
+- configuration the user enters through OpenPet UI.
 
-## Submission Validation
+Third-party extensions may manage:
 
-Before sharing a plugin package or opening a catalog PR, run the same package review logic used by the app:
+- their own databases;
+- SMTP credentials;
+- API tokens;
+- `.env` files;
+- external accounts;
+- model caches;
+- generated files;
+- user content.
 
-```bash
-npm run validate:plugin -- examples/plugins/focus-timer
-npm run validate:plugin -- path/to/my-plugin.openpet-plugin.zip
-```
+Do not imply that OpenPet can enumerate, audit, or delete every third-party secret or data file. Instead, disclose likely locations, provide cleanup commands when useful, and make local behavior understandable.
 
-The command validates the package through `PluginInstallService` without installing or running plugin code. It prints the plugin id, version, permissions, network allowlist, signature status, package hash, file count, and review risk.
+## Pet Integration Ideas
 
-Unsigned local plugins can pass structural validation with warnings. For stricter catalog or release preflight, require verified hash metadata:
+Extensions should be able to build practical pet experiences, not just text commands.
 
-```bash
-npm run validate:plugin -- path/to/my-plugin.openpet-plugin.zip --require-signature
-```
+Good extension shapes include:
 
-`--require-signature` only checks the current `signature.json` hash metadata status; it is not a public-key trust chain.
+- weather morning reports where the pet speaks, changes action, and opens a dashboard;
+- pet action packs that add or regenerate animation frame lists;
+- pet personality injectors that alter speaking style through local config;
+- writing assistants where the pet summarizes progress;
+- local model workflows that generate pet sprites or dialogue variants;
+- scheduled companions that announce calendar, RSS, build, or system status;
+- dashboards for configuring extension-specific workflows.
 
-## Submission Report
+Pet action tooling should prefer package-local assets and generated outputs under `OPENPET_DATA_DIR` or a declared asset directory. Creator-tools commands should use the host bridge for bounded action reads/writes, active installed pack metadata edits, package-local frame inspection/import, or user-approved native picker frame inspection/import. Do not modify `cat_anime/` directly unless the user is intentionally working on core app assets.
 
-To prepare a reviewer-facing packet for a third-party plugin submission, generate a report after validation:
+## Packaging And Submission
 
-```bash
-npm run create-plugin-submission-report -- path/to/my-plugin.openpet-plugin.zip --output plugin-submission-report.md
-```
-
-The report reuses `validate:plugin`, then writes a Markdown or JSON packet with the plugin identity, requested permissions, network allowlist, command list, signature metadata status, package hash, validation warnings/errors, and reviewer checklist.
-
-For strict catalog or release preflight, keep the signature requirement enabled:
-
-```bash
-npm run create-plugin-submission-report -- path/to/my-plugin.openpet-plugin.zip --require-signature --output plugin-submission-report.md
-```
-
-This report is evidence for human review, not an approval. It does not install, enable, or run plugin code; it also does not establish public-key signing trust or replace catalog policy.
-
-## Pull Request Packet
-
-When opening a plugin submission PR, use the plugin-specific GitHub template or generate a prefilled PR body:
+Current repository commands still use the historical "plugin" name:
 
 ```bash
-npm run create-plugin-submission-pr -- path/to/my-plugin.openpet-plugin.zip --output plugin-submission-pr.md
-```
-
-The PR packet reuses the submission report, then summarizes plugin identity, permissions, network allowlist, commands, package hash, signature status, validation decision, and reviewer checklist. It is designed to pair with [`.github/PULL_REQUEST_TEMPLATE/plugin-submission.md`](../.github/PULL_REQUEST_TEMPLATE/plugin-submission.md).
-
-For stricter catalog or release preflight:
-
-```bash
-npm run create-plugin-submission-pr -- path/to/my-plugin.openpet-plugin.zip --require-signature --output plugin-submission-pr.md
-```
-
-The PR packet does not approve publication, establish signing trust, or replace manual review.
-
-## Submission Workflow Bundle
-
-For a complete local submission packet, generate all review artifacts in one directory:
-
-```bash
-npm run create-plugin-submission-bundle -- path/to/my-plugin.openpet-plugin.zip --output-dir plugin-submission-bundle
-```
-
-The bundle writes:
-
-- `plugin-submission-report.md`
-- `plugin-submission-pr.md`
-- `plugin-submission-summary.json`
-
-Use the bundle summary to confirm whether the package is ready for human review, then paste or attach the Markdown files in the plugin submission PR. The bundle still does not approve publication, establish signing trust, install the plugin, enable the plugin, or run plugin code.
-
-Validate the bundle before review:
-
-```bash
+npm run validate:plugin -- <extension-dir-or-zip>
+npm run create-plugin-submission-bundle -- <extension-dir-or-zip> --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
+npm run create-plugin-real-world-submission-rehearsal -- --source examples/plugins/weather-status --output-dir docs/release-evidence/plugin-real-world-submission-rehearsal/<session>
+npm run create-plugin-remote-source-submission-rehearsal -- --archive-url https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main --plugin-path examples/plugins/weather-status --output-dir docs/release-evidence/plugin-remote-source-submission-rehearsal/<session>
+npm run create-plugin-community-source-intake-report -- --archive-url <https-archive> --plugin-path <path-inside-archive> --community-source-url <public-source-url> --submitter "<submitter>" --output-dir docs/release-evidence/plugin-community-source-intake-report/<session>
+npm run create-plugin-community-source-submission-evidence -- --archive-url <https-archive> --plugin-path <path-inside-archive> --community-source-url <public-source-url> --submitter "<submitter>" --source-relation independent-third-party --independence-notes "..." --output-dir docs/release-evidence/plugin-community-source-submission-evidence/<session>
+npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer "OpenPet Maintainer" --decision approved --notes "Manifest, permissions, package hash, and submission artifacts reviewed."
+npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
 
-The validator checks the required bundle files, summary JSON, ready/decision state, package hash, and consistency between the summary and Markdown artifacts. `--require-ready` fails if the bundle is only a blocked preflight artifact. Validation still does not approve publication, establish signing trust, install the plugin, enable the plugin, or run plugin code.
+These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, a broader process-tree cleanup fallback for explicit stop paths, creator-tools action reads and bounded writes through the short-lived bridge, active installed pack metadata reads / validation / bounded writes through `pack-manifest:read` and `pack-manifest:write`, package-local creator frame inspection through `assets:inspect`, package-local frame import/sprite generation through `assets:generate`, user-approved native picker frame inspection/import through the host, and a separate maintainer approval artifact layered on top of a ready-for-review submission bundle. Approval remains human-authored and does not prove signing trust, catalog publication, runtime safety, or release readiness. Arbitrary raw filesystem grants, arbitrary pet-pack writes, broader bridge flows, and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
 
-For an end-to-end rehearsal path, see [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md).
-
-For a generated rehearsal artifact with minimal, network, storage, and AI-assisted templates, see `docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/`.
-
-## Packaging
-
-To create a local distributable archive, zip the contents of the plugin directory so `plugin.json` is at the archive root, then name it with `.openpet-plugin.zip`.
+For a local author rehearsal:
 
 ```bash
-cd examples/plugins/focus-timer
-zip -qr focus-timer.openpet-plugin.zip .
+npm run create-plugin-author-rehearsal -- --output-dir docs/release-evidence/plugin-author-rehearsal/<session> --submission-template ai
 ```
 
-Do not zip the parent directory unless `plugin.json` still lands at the archive root.
-
-## Testing
-
-Use the service tests as the source of truth for current runtime behavior:
-
-- `tests/examples/focus-timer-plugin.test.js` covers the storage-oriented example plugin install and run path.
-- `tests/examples/weather-status-plugin.test.js` covers the network allowlist example plugin install and run path with an injected fake fetch implementation.
-- `tests/examples/rss-reader-plugin.test.js` covers the public feed example plugin install and run path with an injected fake fetch implementation.
-- `tests/services/plugin-install-service.test.js` covers package review, install, update, uninstall, signatures, zip safety, and symlink rejection.
-- `tests/services/plugin-service.test.js` covers runner isolation, SDK permissions, config, storage, AI, network, and logs.
-
-Before submitting a plugin-related change, run:
+The rehearsal writes an author README, command list, submission checklist, package zip, and validated submission bundle. The next maintainer step is now:
 
 ```bash
-npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
-npm run validate:plugin -- <plugin-dir-or-zip>
-npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle
-npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
-npm run create-plugin-submission-report -- <plugin-dir-or-zip> --output plugin-submission-report.md
-npm run create-plugin-submission-pr -- <plugin-dir-or-zip> --output plugin-submission-pr.md
-npm test
-npm run check:syntax
+npm run create-plugin-maintainer-approval -- <submission-bundle-dir> --reviewer "OpenPet Maintainer" --decision approved --notes "..."
+npm run validate-plugin-maintainer-approval -- <submission-bundle-dir> --require-approved
 ```
+
+This is still review evidence, not catalog approval or signing trust.
+
+For an existing-plugin rehearsal, use `create-plugin-real-world-submission-rehearsal`. The current archived example uses `examples/plugins/weather-status` to exercise package validation, network allowlist review, submission bundle generation, and maintainer approval in one local evidence chain. It is workflow evidence, not proof of external community provenance.
+
+For a remote-source rehearsal, use `create-plugin-remote-source-submission-rehearsal`. The current archived example uses `https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main` to exercise archive URL capture, final URL capture, archive SHA-256 recording, archive size recording, plugin-path selection, extracted file hashing, package validation, submission bundle generation, and maintainer approval in one local evidence chain. It is remote-source workflow evidence, not proof of independent public ecosystem trust.
+
+For a public candidate source that may or may not already match the current OpenPet package model, use `create-plugin-community-source-intake-report` first. It records the public source URL, submitter label, archive provenance, candidate plugin path, extracted file hashes, and a compatibility verdict before the source enters the stricter community-evidence flow. Compatible candidates are marked `ready-for-community-evidence`; neighboring repositories that do not contain a valid root `plugin.json` package are archived as `incompatible-package-model` instead of being overstated as OpenPet plugin submissions.
+
+For a stricter community-source evidence archive, use `create-plugin-community-source-submission-evidence` after the intake step for public sources. It wraps the remote-source rehearsal with a public community source URL, submitter label, source-relationship classification, and required maintainer independence notes. The command can archive provenance even when relationship is still unknown, but it only marks `communityEvidenceReady` when the maintainer classifies the source as `independent-third-party` or `external-community`. This is still provenance and review traceability, not signing trust, catalog publication, runtime safety, or release readiness.
+
+## Legacy JavaScript SDK Compatibility
+
+Existing examples remain useful for the current implementation:
+
+- [`examples/plugins/focus-timer`](../examples/plugins/focus-timer/) shows storage and pet speech.
+- [`examples/plugins/weather-status`](../examples/plugins/weather-status/) shows JSON network allowlist usage.
+- [`examples/plugins/rss-reader`](../examples/plugins/rss-reader/) shows public feed fetching and cached announcements.
+
+Legacy packages use fields such as `main`, `permissions`, `network.allowlist`, and `commands`, then export `activate(ctx)` with APIs such as `ctx.pet`, `ctx.storage`, `ctx.network`, and `ctx.ai`.
+
+That path is still valid for compatibility, but it should not define the future ceiling of the ecosystem. New platform work should adapt the host toward the unified extension model described above.

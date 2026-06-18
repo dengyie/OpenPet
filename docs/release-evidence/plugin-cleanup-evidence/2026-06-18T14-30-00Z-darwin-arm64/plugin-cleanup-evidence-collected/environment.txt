@@ -1,0 +1,7 @@
+CollectedAt: 2026-06-18T06:43:44Z
+Hostname: mangodeMacBook-Air.local
+Kernel: Darwin mangodeMacBook-Air.local 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:39:29 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T8142 arm64
+Node: v26.0.0
+Npm: 11.12.1
+ReportPath: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-report.json
+EvidenceDir: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected

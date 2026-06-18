@@ -1,0 +1,7 @@
+
+> openpet@1.0.1-rc.2 validate-plugin-cleanup-evidence-report
+> node scripts/validate-plugin-cleanup-evidence-report.js /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-report.json --allow-pending
+
+Plugin cleanup evidence report: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-report.json
+Checks: 0/8 passed
+Report structure is valid.

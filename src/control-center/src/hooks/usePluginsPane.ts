@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
 import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
+import { toCommandResultPreview } from '../lib/plugin-command-result.mjs'
 import type {
   JsonValue,
   PluginLogEntry,
@@ -13,6 +14,8 @@ import type { PluginsPaneProps } from '../panes/PluginsPane'
 
 type ExportFormat = 'json' | 'csv'
 
+type PluginCommandResultPreview = ReturnType<typeof toCommandResultPreview>
+
 export function usePluginsPane() {
   const [loading, setLoading] = useState(true)
   const [plugins, setPlugins] = useState<PluginViewState[]>([])
@@ -20,6 +23,12 @@ export function usePluginsPane() {
   const [filters, setFilters] = useState<PluginLogFilters>({ pluginId: '', level: '', query: '' })
   const [status, setStatus] = useState('')
   const [runningCommand, setRunningCommand] = useState('')
+  const [lastCommandResult, setLastCommandResult] = useState<PluginCommandResultPreview | null>(null)
+  const [runningSetup, setRunningSetup] = useState('')
+  const [openingDashboard, setOpeningDashboard] = useState('')
+  const [changingService, setChangingService] = useState('')
+  const [checkingServiceHealth, setCheckingServiceHealth] = useState('')
+  const [savingServiceHealthPolicy, setSavingServiceHealthPolicy] = useState('')
   const [savingConfig, setSavingConfig] = useState('')
   const [clearingStorage, setClearingStorage] = useState('')
   const [pluginReview, setPluginReview] = useState<PluginPackageReviewViewState | null>(null)
@@ -163,14 +172,137 @@ export function usePluginsPane() {
     setRunningCommand(commandKey)
     setStatus('')
     try {
-      await api.runPluginCommand(pluginId, commandId)
+      const result = await api.runPluginCommand(pluginId, commandId)
+      const preview = toCommandResultPreview(result)
+      setLastCommandResult(preview)
       await refreshLogs()
-      setStatus('命令已运行')
+      setStatus(preview.message || '命令执行成功')
     } catch (error) {
+      setLastCommandResult(null)
       setStatus(messageFromError(error, '命令运行失败'))
       await refreshLogs()
     } finally {
       setRunningCommand('')
+    }
+  }
+
+  const onRunSetup = async (pluginId: string, setupId: string) => {
+    const setupKey = `${pluginId}:${setupId}`
+    setRunningSetup(setupKey)
+    setStatus('')
+    try {
+      const result = await api.runPluginSetup(pluginId, setupId)
+      setPlugins((currentPlugins) => currentPlugins.map((plugin) => (
+        plugin.id === pluginId
+          ? {
+              ...plugin,
+              entries: {
+                ...plugin.entries,
+                setup: (plugin.entries?.setup || []).map((setup) => (
+                  setup.id === setupId ? { ...setup, runtime: result.runtime } : setup
+                ))
+              }
+            }
+          : plugin
+      )))
+      await refreshLogs()
+      setStatus(result.runtime?.status === 'failed' ? 'Setup failed' : 'Setup completed')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Setup failed'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setRunningSetup('')
+    }
+  }
+
+  const onOpenDashboard = async (pluginId: string, dashboardId: string) => {
+    const dashboardKey = `${pluginId}:${dashboardId}`
+    setOpeningDashboard(dashboardKey)
+    setStatus('')
+    try {
+      await api.openPluginDashboard(pluginId, dashboardId)
+      await refreshLogs()
+      setStatus('Dashboard 已打开')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Dashboard 打开失败'))
+      await refreshLogs()
+    } finally {
+      setOpeningDashboard('')
+    }
+  }
+
+  const onStartService = async (pluginId: string, serviceId: string) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setChangingService(serviceKey)
+    setStatus('')
+    try {
+      await api.startPluginService(pluginId, serviceId)
+      await refreshPlugins()
+      await refreshLogs()
+      setStatus('Service 已启动')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Service 启动失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setChangingService('')
+    }
+  }
+
+  const onStopService = async (pluginId: string, serviceId: string) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setChangingService(serviceKey)
+    setStatus('')
+    try {
+      await api.stopPluginService(pluginId, serviceId)
+      await refreshPlugins()
+      await refreshLogs()
+      setStatus('Service 已停止')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Service 停止失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setChangingService('')
+    }
+  }
+
+  const onCheckServiceHealth = async (pluginId: string, serviceId: string) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setCheckingServiceHealth(serviceKey)
+    setStatus('')
+    try {
+      const result = await api.checkPluginServiceHealth(pluginId, serviceId)
+      await refreshPlugins()
+      await refreshLogs()
+      setStatus(result.health?.status === 'healthy' ? 'Service health healthy' : 'Service health unhealthy')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Service health check failed'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setCheckingServiceHealth('')
+    }
+  }
+
+  const onSaveServiceHealthPolicy = async (pluginId: string, serviceId: string, enabled: boolean, intervalMs: number) => {
+    const serviceKey = `${pluginId}:${serviceId}`
+    setSavingServiceHealthPolicy(serviceKey)
+    setStatus('')
+    try {
+      const updatedPlugin = await api.savePluginServiceHealthPolicy(pluginId, serviceId, { enabled, intervalMs })
+      setPlugins((currentPlugins) => currentPlugins.map((plugin) => (
+        plugin.id === pluginId ? { ...plugin, ...updatedPlugin } : plugin
+      )))
+      await refreshLogs()
+      setStatus(enabled ? 'Periodic health 已启用' : 'Periodic health 已关闭')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Periodic health 保存失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    } finally {
+      setSavingServiceHealthPolicy('')
     }
   }
 
@@ -229,6 +361,12 @@ export function usePluginsPane() {
     filters,
     status,
     runningCommand,
+    lastCommandResult,
+    runningSetup,
+    openingDashboard,
+    changingService,
+    checkingServiceHealth,
+    savingServiceHealthPolicy,
     savingConfig,
     clearingStorage,
     pluginReview,
@@ -243,6 +381,12 @@ export function usePluginsPane() {
     onChangeConfig,
     onSaveConfig,
     onRun,
+    onRunSetup,
+    onOpenDashboard,
+    onStartService,
+    onStopService,
+    onCheckServiceHealth,
+    onSaveServiceHealthPolicy,
     onChangeFilters: setFilters,
     onExportLogs,
     onClearLogs,

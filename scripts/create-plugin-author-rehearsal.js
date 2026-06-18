@@ -122,7 +122,9 @@ const commandList = ({ outputDir, selectedPluginDir, zipPath, bundleDir }) => [
   `cd ${shellQuote(selectedPluginDir)} && zip -qr ${shellQuote(zipPath)} .`,
   `npm run validate:plugin -- ${shellQuote(zipPath)}`,
   `npm run create-plugin-submission-bundle -- ${shellQuote(zipPath)} --output-dir ${shellQuote(bundleDir)}`,
-  `npm run validate-plugin-submission-bundle -- ${shellQuote(bundleDir)} --require-ready`
+  `npm run validate-plugin-submission-bundle -- ${shellQuote(bundleDir)} --require-ready`,
+  `npm run create-plugin-maintainer-approval -- ${shellQuote(bundleDir)} --reviewer 'OpenPet Maintainer' --decision approved --notes 'Manifest, permissions, package hash, and submission artifacts reviewed.'`,
+  `npm run validate-plugin-maintainer-approval -- ${shellQuote(bundleDir)} --require-approved`
 ]
 
 const renderAuthorReadme = ({ generatedAt, templates, submission, commands }) => [
@@ -144,6 +146,7 @@ const renderAuthorReadme = ({ generatedAt, templates, submission, commands }) =>
   `- Package: ${submission.packagePath}`,
   `- Bundle: ${submission.bundleDir}`,
   `- Bundle decision: ${submission.bundleValidation.summary.decision}`,
+  '- Maintainer approval remains a separate human review step recorded after the submission bundle is prepared.',
   '',
   '## Commands',
   '',
@@ -170,6 +173,7 @@ const renderChecklist = ({ templates, submission }) => [
   `- [${submission.packageValidation.ok ? 'x' : ' '}] Packaged selected plugin as .openpet-plugin.zip and validated the package.`,
   `- [${submission.bundleValidation.ok ? 'x' : ' '}] Created and validated submission bundle.`,
   '- [ ] Human reviewer approves the report and PR packet.',
+  '- [ ] Maintainer approval record is archived separately.',
   '- [ ] Maintainer verifies signature/trust policy before catalog distribution.',
   '',
   'Review reminder: unsigned plugins may be acceptable for local manual review, but they are not trusted catalog artifacts.',

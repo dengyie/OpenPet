@@ -1,0 +1,32 @@
+{
+  "id": "openpet.cleanup-evidence-fixture",
+  "name": "Cleanup Evidence Fixture",
+  "version": "1.0.0",
+  "description": "Deterministic local fixture for packaged plugin cleanup evidence runs.",
+  "entries": {
+    "setup": [
+      {
+        "id": "prepare",
+        "title": "Prepare Fixture",
+        "command": "node ./bin/setup.js",
+        "cwd": "."
+      }
+    ],
+    "commands": [
+      {
+        "id": "announce",
+        "title": "Announce Fixture",
+        "command": "node ./bin/command.js",
+        "cwd": "."
+      }
+    ],
+    "services": [
+      {
+        "id": "companion",
+        "title": "Companion Fixture Service",
+        "command": "node ./bin/service.js",
+        "cwd": "."
+      }
+    ]
+  }
+}

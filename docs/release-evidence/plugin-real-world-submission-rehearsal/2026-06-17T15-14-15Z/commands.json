@@ -1,0 +1,11 @@
+{
+  "commands": [
+    "npm run validate:plugin -- '/Users/mango/project/codex/OpenPet/examples/plugins/weather-status'",
+    "cd '/Users/mango/project/codex/OpenPet/examples/plugins/weather-status' && zip -qr '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/packages/openpet.example.weather-status.openpet-plugin.zip' .",
+    "npm run validate:plugin -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/packages/openpet.example.weather-status.openpet-plugin.zip'",
+    "npm run create-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/packages/openpet.example.weather-status.openpet-plugin.zip' --output-dir '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle'",
+    "npm run validate-plugin-submission-bundle -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle' --require-ready",
+    "npm run create-plugin-maintainer-approval -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle' --reviewer 'OpenPet Maintainer' --decision approved --notes 'Manifest, permissions, package hash, network hosts, and submission artifacts reviewed.'",
+    "npm run validate-plugin-maintainer-approval -- '/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle' --require-approved"
+  ]
+}

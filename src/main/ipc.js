@@ -332,6 +332,30 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload)
   })
 
+  ipcMainService.handle(IPC.PLUGINS_RUN_SETUP, (_event, payload) => {
+    return pluginService.runSetup(payload.pluginId, payload.setupId)
+  })
+
+  ipcMainService.handle(IPC.PLUGINS_OPEN_DASHBOARD, (_event, payload) => {
+    return pluginService.openDashboard(payload.pluginId, payload.dashboardId)
+  })
+
+  ipcMainService.handle(IPC.PLUGINS_START_SERVICE, (_event, payload) => {
+    return pluginService.startService(payload.pluginId, payload.serviceId)
+  })
+
+  ipcMainService.handle(IPC.PLUGINS_STOP_SERVICE, (_event, payload) => {
+    return pluginService.stopService(payload.pluginId, payload.serviceId)
+  })
+
+  ipcMainService.handle(IPC.PLUGINS_CHECK_SERVICE_HEALTH, (_event, payload) => {
+    return pluginService.checkServiceHealth(payload.pluginId, payload.serviceId)
+  })
+
+  ipcMainService.handle(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY, (_event, payload) => {
+    return pluginService.saveServiceHealthPolicy(payload.pluginId, payload.serviceId, payload.policy)
+  })
+
   ipcMainService.handle(IPC.PLUGINS_INSPECT_PACKAGE, async () => {
     const selected = await dialogService.showOpenDialog({
       title: '选择插件目录或 OpenPet 插件包',

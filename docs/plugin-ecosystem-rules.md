@@ -1,385 +1,390 @@
-# OpenPet Plugin Ecosystem Rules
+# OpenPet Extension Ecosystem Rules
 
-This document defines the hard rules for third-party OpenPet plugins, the compatibility contract the host app currently supports, and the adaptation guidance plugin authors should follow before packaging or submitting a plugin.
+This document defines the product and development rules for OpenPet's third-party extension ecosystem. It follows the extension ecosystem boundary design and supersedes the older restrictive plugin-only framing.
 
-Use this together with [`plugin-development.md`](./plugin-development.md) and [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md).
+Use this with [`plugin-development.md`](./plugin-development.md) and [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md).
 
-## 1. Ecosystem Goals
+## 1. Ecosystem Goal
 
-OpenPet plugins are intentionally constrained.
+OpenPet should be a developer-first local extension platform.
 
-The platform is optimizing for:
+The ecosystem should welcome practical third-party work such as:
 
-- safe local extensibility
-- predictable review and update flows
-- compatibility with Control Center install and management UX
-- plugin behavior that stays inside the pet platform instead of turning into general-purpose desktop code
+- pet weather announcers and morning reports;
+- Web dashboards;
+- Email and SMTP delivery;
+- voice conversation;
+- long-running local services;
+- writing assistants;
+- pet action editors and generated sprite workflows;
+- pet dialogue and personality packs;
+- local model or binary workflows;
+- scheduled jobs;
+- third-party API integrations;
+- local automation that makes the desktop pet feel useful and alive.
 
-The platform is not offering:
+OpenPet should not require every new idea to become a first-party hardcoded feature before authors can experiment.
 
-- unrestricted Node.js or Electron access
-- background daemons or long-lived resident processes
-- direct filesystem access
-- direct renderer integration
-- privileged access to user secrets or app internals
+The default posture for third-party authors is welcome-first:
 
-If a plugin needs one of those, it is outside the current plugin contract and should be designed as a future platform capability, not worked around inside a plugin package.
+- accept local/community experiments when the package is structurally safe and honest about what it does;
+- prefer clear disclosure, least-necessary permissions, and user-controlled lifecycle over broad rejection;
+- treat missing host APIs as backlog when the author idea is valid but the runtime does not support it yet;
+- reserve hard rejection for unsafe package structure, hidden install/enable execution, misleading declarations, credential leakage, destructive behavior, or review artifacts that cannot be trusted.
 
-## 2. Allowed Plugin Shape
+## 2. One Extension Model
 
-Supported package layout:
+OpenPet has one conceptual third-party package model: extension.
+
+Allowed descriptive words:
+
+- command;
+- service;
+- dashboard;
+- companion;
+- widget;
+- worker;
+- tool.
+
+Those words describe entries or behavior. They must not create separate package models with separate mental rules.
+
+The package root remains:
 
 ```text
-my-plugin/
-├── plugin.json
-├── index.js
-├── config.schema.json   # optional
-└── signature.json       # optional
+plugin.json
 ```
 
-Supported package transports:
+`plugin.json` is the unified manifest. The historical file name stays for compatibility, but new documentation should describe the ecosystem as extensions.
 
-- plugin directory
-- `.openpet-plugin.zip`
-- legacy `.ibot-plugin.zip` for compatibility only
+## 3. Manifest Is Declaration, Not Sandbox
 
-Current preferred public format:
+The manifest is a user-visible declaration and operational contract.
 
-- package suffix: `.openpet-plugin.zip`
-- catalog compatibility field: `openpetApiVersion`
-- user-facing naming: `OpenPet`
+OpenPet should hard-check structural safety:
 
-Legacy `ibot` naming is accepted only so existing packages and upgrade paths do not break.
+- required identity fields exist;
+- JSON shape is valid;
+- `plugin.json` is at the package root;
+- entry paths stay inside the installed package;
+- package extraction cannot escape the install directory;
+- symlinks and path traversal are rejected;
+- platform-specific entry definitions are syntactically valid;
+- referenced config/assets paths are package-relative;
+- package installation cannot overwrite OpenPet application files.
 
-## 3. Non-Negotiable Safety Rules
+OpenPet should not claim that the manifest fully constrains runtime behavior. A local command or service may use its own runtime, filesystem access, network stack, secrets, databases, binaries, and external accounts.
 
-These are hard blockers. A plugin package must not attempt to bypass them.
+The right product promise is transparency and lifecycle control, not complete local-process policing.
 
-- `plugin.json` must live at the package root.
-- `main` and `configSchema` must be safe relative paths inside the plugin directory.
-- Absolute paths, `..`, NUL bytes, unsafe zip entries, and escaping symlinks are rejected.
-- Plugin folders and extracted plugin packages must not contain symlinks.
-- Only declared manifest permissions are available at runtime.
-- Plugins must never depend on `require`, `process`, Electron globals, shell access, or arbitrary filesystem access.
-- Plugins must treat all SDK payloads and command results as JSON-serializable data.
-- Plugins must not require API keys, bearer tokens, cookies, or private credentials through network headers.
-- Plugins must not attempt to contact `localhost`, private IPs, raw IPv4/IPv6 hosts, or non-HTTPS endpoints.
-- Plugins must not assume they will be auto-enabled after install or update.
+This means review should not turn the manifest into a narrow allowlist of allowed ideas. The manifest declares what OpenPet can inspect, operate, and present to users; it should also help authors disclose extension-owned behavior that exists outside OpenPet's direct control.
 
-## 4. Runtime Contract
+## 4. Lifecycle Management
 
-OpenPet currently supports command-style plugins only.
+OpenPet should manage extension lifecycle:
 
-That means:
+- install;
+- enable/disable;
+- setup step status;
+- start/stop service entries;
+- run command entries;
+- collect stdout/stderr;
+- store recent logs;
+- run health checks;
+- open dashboards;
+- show manifest declarations;
+- uninstall;
+- optionally run explicit cleanup commands.
+- generate and validate submission review artifacts;
+- preserve a separate maintainer approval record when human review completes.
 
-- The main entry must export `activate(ctx)`.
-- A plugin runs only when the user or host triggers a declared command.
-- Execution happens in a short-lived isolated runner.
-- Each command must finish quickly and return a JSON-serializable result.
-- Plugins must not rely on in-memory state surviving between command invocations.
+OpenPet should not run extension code during install. Install should extract, inspect, and record metadata only. Declared setup can run later only when the user explicitly chooses the setup action for an enabled, policy-allowed extension.
 
-Author guidance:
+Extensions should remain disabled by default after install or update until the user intentionally enables them.
 
-- Persist durable state in `ctx.storage`, not module-level globals.
-- Recompute transient state per command.
-- Keep commands small, deterministic, and retry-safe where possible.
-- Treat timeouts as a normal operating constraint, not an exceptional edge case.
+## 5. Entry Rules
 
-## 5. Manifest Rules
+Entries are the runtime surfaces OpenPet can operate.
 
-`plugin.json` is the compatibility contract. Keep it conservative and explicit.
+### Commands
 
-Required fields:
+Commands are explicit short-lived process entries triggered by the user or OpenPet UI.
 
-- `id`
-- `name`
-- `version`
-- `main`
-- `permissions`
-- `commands`
+OpenPet runs them in the extension directory, rejects cwd escapes, spawns without shell expansion, sends stdin JSON with command context, captures stdout/stderr logs, parses the final stdout JSON line when present, and times out stalled processes.
+
+Commands should be allowed to use any suitable runtime. Do not require JavaScript, a particular bundler, or a special host SDK when a local process command is enough.
+
+### Services
+
+Services are long-running local process entries managed by OpenPet.
+
+OpenPet can run command and setup entries only after explicit Control Center action, record setup status/logs, start and stop declared service processes only after explicit Control Center action, apply service platform overrides, capture stdout/stderr snippets, show runtime state, manually check declared loopback health endpoints, optionally schedule host-managed periodic health checks for already running services, stop running services on disable/app quit with best-effort process-group cleanup, wait for confirmed child exit before reporting a clean stop, attempt one bounded host-side force stop if a service ignores the grace-period shutdown request, and try a host-owned process-tree cleanup path before falling back to direct child kill when process-group signalling fails. Declaration-only command runs also receive a short-lived bridge URL/token pair for bounded pet-aware actions and context reads. Explicit setup and declaration-only command cleanup now also keeps stop intent visible until child exit confirmation, but those paths remain direct-child best effort. Commands and setup do not run during install or enable, services do not auto-start, periodic health checks are opt-in and runtime-bound, and command/setup/service processes are spawned without shell expansion. Universal process-tree cleanup guarantees still remain out of scope.
+Declaration-only command runs for creator-tools also receive host-owned `OPENPET_DATA_DIR`, `OPENPET_CACHE_DIR`, and `OPENPET_LOG_DIR`, plus bridge routes for bounded action reads/writes, active installed user pack metadata reads / validation / bounded writes through `pack-manifest:read` and `pack-manifest:write`, read-only package-local frame inspection through `assets:inspect`, host-mediated package-local frame import/sprite generation through `assets:generate`, and host-owned native picker frame inspection/import after explicit user approval. This does not grant raw filesystem access, raw file writes, plugin-selected output paths, arbitrary pet-pack writes, built-in pack edits, persistent folder grants, or arbitrary pack targeting.
+
+Services may power real local experiences: dashboards, background companions, schedulers, local model servers, voice processors, or integrations with external APIs.
+
+### Dashboards
+
+Dashboards are user-facing URLs or local service pages.
+
+First-version rules should stay simple:
+
+- OpenPet shows an "Open Dashboard" action.
+- OpenPet opens the URL externally or in a separate app window.
+- OpenPet does not need to host, iframe, theme, inspect, or rewrite dashboard content.
+
+## 6. Context And Bridge Rules
+
+OpenPet should use language-neutral context passing.
+
+Current declaration-only command runs receive stdin JSON context plus:
+
+- `OPENPET_BRIDGE_URL`
+- `OPENPET_BRIDGE_TOKEN`
+- `OPENPET_DATA_DIR`
+- `OPENPET_CACHE_DIR`
+- `OPENPET_LOG_DIR`
+
+Reserved future environment variables may still add:
+
+- `OPENPET_EXTENSION_ID`
+- `OPENPET_EXTENSION_DIR`
+- `OPENPET_CONFIG_PATH`
+- `OPENPET_RESULT_PATH`
+- `OPENPET_BRIDGE_URL`
+- `OPENPET_BRIDGE_TOKEN`
+
+Commands currently receive JSON on stdin with `pluginId`, command id, payload, config, and OpenPet-provided paths.
+
+Command results currently use the final stdout JSON line when present.
+
+Submission review artifacts also stay explicit:
+
+- author-side validation and submission bundles are local handoff material;
+- maintainer approval records are separate Markdown/JSON artifacts;
+- approval does not imply signing trust, publication, or runtime safety.
+
+The current local bridge stays intentionally small:
+
+- `GET /context`
+- `POST /pet/say`
+- `POST /pet/action`
+- `POST /pet/event`
+- `GET /creator/actions`
+- `POST /creator/actions/validate`
+- `POST /creator/actions/apply`
+- `GET /creator/pack-manifest`
+- `POST /creator/pack-manifest/validate`
+- `POST /creator/pack-manifest/apply`
+
+The bridge is for integration convenience. It is not a complete SDK, not a full security broker, and not a reason to block extensions from using their own local capabilities.
+
+### Welcomed Pet And Creator Use Cases
+
+The following capabilities are intentionally available to ordinary third-party authors through explicit declaration-only command runs and route permissions:
+
+- pet speech and status updates through `pet:say`;
+- pet action playback through `pet:action`;
+- bounded pet event emission through `pet:event`;
+- action configuration reads/writes through `actions:read` and `actions:write`;
+- active installed user pack metadata reads/writes through `pack-manifest:read` and `pack-manifest:write`;
+- package-local or user-approved frame inspection through `assets:inspect`;
+- package-local or user-approved frame import and sprite/action metadata generation through `assets:generate`.
+
+These are not official-only powers. A community weather announcer, pet dialogue pack, pet personality helper, action editor, sprite generator, or local model workflow may request them when the package explains the user value and accepts the host boundary.
+
+The boundary remains:
+
+- pet mutations go through `PetService`;
+- creator writes go through host validation/apply paths;
+- built-in pack edits, arbitrary pack targeting, raw filesystem writes, plugin-selected output paths, persistent folder grants, and universal process cleanup guarantees remain out of scope;
+- reviewers should ask authors to reduce or explain permissions, not remove useful pet-facing behavior by default.
+
+## 7. Data And Secret Ownership
+
+OpenPet manages:
+
+- extension installation metadata;
+- enabled state;
+- service process state;
+- setup state;
+- OpenPet-created data/cache/log directories;
+- health and log summaries;
+- configuration entered through OpenPet UI.
+
+Third-party extensions may manage:
+
+- their own databases;
+- SMTP credentials;
+- API tokens;
+- `.env` files;
+- external accounts;
+- model caches;
+- generated files;
+- user content.
+
+OpenPet should not claim it can enumerate, audit, revoke, or delete every third-party secret or data file. Authors should disclose likely data locations and external dependencies in `manifest`, and OpenPet should show those declarations plainly.
+
+This is intentionally more welcoming than the older "no secrets in ordinary plugin config" posture. The new boundary is: OpenPet-owned config should be clear about whether it stores secrets, and extension-owned secrets must be disclosed and managed by the extension/user, not silently implied to be protected by OpenPet.
+
+## 8. Setup, Dependencies, And Cleanup
+
+Extensions may declare setup commands such as dependency installation, model download, local database preparation, or account login helpers.
 
 Rules:
 
-- `id` and `commands[].id` must use safe ids: letters, numbers, `_`, `.`, `-`.
-- `version` should be SemVer-style even though current validation only requires a non-empty string.
-- `description` should clearly explain the user-visible job of the plugin.
-- `permissions` must be the minimum required set.
-- `network.allowlist` must contain public DNS hosts, optionally with an explicit port, never full URLs.
-- `commands` should expose stable user-facing actions, not internal helper names.
+- setup is explicit and user-visible;
+- setup may be rerun;
+- setup status and logs are recorded;
+- setup does not run during package install or enable;
+- self-contained packages are recommended for production, but not required.
 
-Recommended `id` pattern:
+Uninstall should:
 
-```text
-<namespace>.<plugin-name>
-```
+- stop services;
+- disable the extension;
+- remove the installed package;
+- remove OpenPet-owned metadata;
+- optionally remove OpenPet-created data/cache/log directories when the user chooses.
 
-Examples:
+Uninstall should not automatically:
 
-- `openpet.example.focus-timer`
-- `com.yourname.weather-status`
+- delete third-party-declared external data locations;
+- revoke external accounts;
+- delete cloud data;
+- assume extension-managed secrets are known.
 
-Do not:
+Cleanup commands are allowed, but running cleanup must be explicit.
 
-- overload one plugin with unrelated capabilities
-- request permissions “just in case”
-- hide behavior behind vague command ids like `run`, `main`, or `doit`
+## 9. Source Labels
 
-## 6. Permission Rules
+OpenPet should preserve source labels:
 
-OpenPet currently supports only these permissions:
+- `official`;
+- `community`;
+- `local`.
 
-- `pet:say`
-- `pet:action`
-- `pet:event`
-- `ai:chat`
-- `storage`
-- `network`
-- `commands`
+Source labels affect display and trust messaging only. They should not change runtime capability in the first version.
 
-Permission budgeting rules:
+Suggested display posture:
 
-- Ask only for the permissions your commands use today.
-- If a new version needs more permissions or new network hosts, expect update review and re-enable by the user.
-- Prefer `pet:say` over `pet:event` unless structured event semantics are actually needed.
-- Prefer `storage` over trying to rebuild state from repeated network calls.
-- Do not request `ai:chat` unless the plugin meaningfully delegates reasoning to the app AI layer.
+- `official`: maintained or bundled by OpenPet maintainers.
+- `community`: shared by a third party with package metadata intended for other users.
+- `local`: installed from a local folder or archive for personal use, testing, or development.
 
-Suggested review posture by permission level:
+These labels should help users understand provenance without turning local experimentation into a gatekept approval process.
 
-- Low-risk: `pet:say`, `pet:action`, `pet:event`
-- Medium-risk: `storage`
-- Higher-risk: `network`, `ai:chat`
+## 10. Package Review And Catalog Review
 
-`commands` is a manifest declaration for command exposure. It is not a privilege escalation path.
+Local installation review should focus on structural safety and transparency:
 
-## 7. SDK Adaptation Rules
+- identity;
+- version;
+- package size;
+- file count;
+- executable-looking entries;
+- declared commands;
+- declared services;
+- declared dashboards;
+- setup and cleanup commands;
+- declared data locations;
+- declared external accounts;
+- package hash;
+- source label.
 
-### `ctx.pet`
+Catalog or community publication may add reviewer expectations, but review should not be framed as a promise that OpenPet has proven the extension safe. It is a transparency and quality process.
 
-Use pet APIs only for visible pet behavior.
+OpenPet now also supports a structured maintainer approval rehearsal record beside a submission bundle. That record is human review traceability only. It does not prove signing trust, catalog publication, runtime safety, or release readiness.
 
-- `ctx.pet.say()` should produce user-meaningful output, not debug noise.
-- `ctx.pet.playAction()` should reference stable action ids that exist on the active pet.
-- `ctx.pet.setEvent()` should be used when the host needs structured state/event semantics.
+Reviewer questions should be practical:
 
-Do not:
+- Does the package do what its description says?
+- Are entries understandable to a user?
+- Are setup and cleanup steps visible?
+- Are dashboards and services named clearly?
+- Are likely data, secret, account, and network dependencies disclosed?
+- Does uninstall behavior explain what OpenPet can and cannot remove?
+- Are logs and health checks sufficient for troubleshooting?
+- Are requested pet/creator permissions proportional to the feature?
+- If the author needs an unsupported capability, is the package still useful with that gap disclosed?
 
-- spam repeated speech on every refresh loop
-- treat pet speech as logging
-- assume every pet pack supports a custom action
+## 11. Compatibility Rules
 
-### `ctx.storage`
+Historical OpenPet plugins use a short-lived JavaScript runner with `activate(ctx)`, SDK permissions, private storage, and network allowlists. That compatibility path can continue while the host migrates.
 
-Storage is the only supported durable plugin state.
+New extension development should target:
 
-Hard limits already enforced by the host:
+- `entries.commands`;
+- `entries.services`;
+- `entries.dashboards`;
+- language-neutral stdin/env/result passing;
+- optional bridge integration;
+- manifest declarations for data, accounts, setup, cleanup, and runtime expectations.
 
-- 64KB total per plugin
-- 16KB per value
-- key pattern: letters, numbers, `_`, `.`, `:`, `-`
+When updating docs, examples, UI copy, or architecture plans, avoid presenting the legacy SDK permission model as the future ecosystem ceiling.
 
-Author rules:
+When updating runtime implementation, preserve compatibility for existing examples where practical, but adapt new infrastructure toward the unified extension model.
 
-- store small normalized state, not raw archives or large documents
-- cache derived summaries instead of full upstream payloads
-- version your storage shape if later plugin versions may migrate data
-- clear or replace stale cached values instead of accumulating history forever
+## 12. Product Language
 
-Good fits:
+Use honest language:
 
-- counters
-- last successful fetch result
-- user-visible cache snapshots
-- lightweight plugin state flags
+- "OpenPet runs local extensions and shows their manifest declarations."
+- "OpenPet manages lifecycle, logs, health, and uninstall flow."
+- "Extensions may run local commands and manage their own data."
+- "OpenPet does not fully sandbox arbitrary local processes."
+- "Source labels explain provenance; they do not guarantee safety."
 
-Bad fits:
+Avoid misleading language:
 
-- binary data
-- large AI transcripts
-- full RSS archives
-- secret tokens
+- "fully safe";
+- "complete sandbox";
+- "all secrets are controlled by OpenPet";
+- "OpenPet blocks every undeclared action";
+- "reviewed means risk-free";
+- "community extensions are less capable than official extensions."
 
-### `ctx.network`
+## 13. Author Guidance
 
-Network access is intentionally narrow.
+Authors should feel welcome to experiment.
 
-Current enforced rules:
+Good author habits:
 
-- permission `network` is required
-- only HTTPS
-- only hosts in `network.allowlist`, including the port when one is declared
-- only `GET` and `POST`
-- sensitive headers like `authorization` and `cookie` are rejected
-- request and response size limits are enforced
-- redirect targets must stay on allowlisted HTTPS hosts
+- make the extension purpose obvious;
+- keep entry names human-readable;
+- disclose local files, external accounts, and setup needs;
+- write logs that help users recover from failure;
+- provide a dashboard when configuration is richer than a simple form;
+- prefer explicit setup over surprising background work;
+- provide cleanup commands when the extension creates durable external state;
+- degrade gracefully when a pet action, local binary, model, or external service is unavailable.
 
-Author rules:
+Good OpenPet pet integration habits:
 
-- keep allowlists tight and stable
-- prefer one upstream host per plugin when possible
-- include an explicit port only when the upstream service requires it
-- make idempotent read-style requests unless there is a strong reason to POST
-- send only public, non-secret headers such as `accept`
-- normalize and trim upstream responses before storing them
+- use pet speech for user-meaningful updates, not noisy debug logs;
+- check whether an action exists before assuming it can play;
+- allow users to configure personality, timing, and verbosity;
+- keep generated pet actions and art in declared package/data locations;
+- treat `cat_anime/` as core app material unless the user is intentionally developing the app itself.
 
-Do not:
+The ecosystem should be broad enough for authors to build things like "a pet that announces weather with custom actions and personality" without waiting for OpenPet core to add every individual capability first.
 
-- ask users to paste private API keys into plugin config and then forward them as headers
-- proxy through your own opaque endpoint just to hide a broader dependency surface
-- depend on undocumented redirects or multi-host redirect chains
+Maintainers should distinguish between:
 
-### `ctx.ai`
+- **blockers**: unsafe archives, path escapes, install-time execution, deceptive manifests, leaked credentials, destructive defaults, or unverifiable review evidence;
+- **changes requested**: unclear entry names, excessive permissions without explanation, missing setup/cleanup disclosure, or weak user recovery logs;
+- **allowed backlog gaps**: a good extension idea that needs a future host API but is otherwise transparent and safe to install/review locally.
 
-`ctx.ai.chat()` is for bounded AI assistance through the host.
+## 14. Current Implementation Gap
 
-Author rules:
+Some repository tools and examples still reflect the older plugin SDK implementation:
 
-- use it when the plugin truly needs model reasoning, summarization, or rewriting
-- keep prompts focused and short
-- persist only the minimum follow-up context you need
-- assume the host may namespace conversation ids
+- `main` entry files;
+- `permissions`;
+- `network.allowlist`;
+- `ctx.pet`;
+- `ctx.storage`;
+- `ctx.network`;
+- `ctx.ai`;
+- short-lived isolated JavaScript command handlers.
 
-Do not:
-
-- expect raw provider credentials
-- build your own long-lived chat client inside plugin state
-- store large prompt/response transcripts in plugin storage
-
-### `ctx.commands`
-
-Commands are the stable invocation surface.
-
-Rules:
-
-- every manifest command should map to a real handler
-- command handlers should return structured results
-- payloads should be small, explicit, and optional where possible
-- command ids are part of the plugin compatibility contract and should not churn casually
-
-## 8. Configuration Rules
-
-Current supported schema field types:
-
-- `string`
-- `number`
-- `boolean`
-
-Current supported schema features:
-
-- `title`
-- `description`
-- `default`
-- `enum`
-- `required`
-
-Author rules:
-
-- keep configuration human-editable in Control Center
-- use defaults aggressively so the plugin works immediately after enablement
-- use `enum` when values are intentionally limited
-- avoid config that contains private secrets because plugin config is ordinary app settings, not secret storage
-
-Until the platform has a dedicated plugin secret capability:
-
-- do not design plugins that require private API keys
-- do not instruct users to store tokens in plugin config
-- do not claim a plugin is secure if it depends on user-pasted secrets in ordinary settings
-- expect package validation and runtime loading to reject secret-like config fields such as API keys, access tokens, passwords, credentials, private keys, `format: "password"`, or `writeOnly: true`
-
-## 9. Compatibility And Upgrade Rules
-
-Plugin authors must target the current OpenPet contract, not internal implementation details.
-
-Required compatibility mindset:
-
-- treat the SDK as the only supported host surface
-- treat `plugin.json` as the only supported package contract
-- assume install/update always goes through review
-- assume updates with new permissions or new hosts will disable the plugin until the user re-enables it
-
-Practical adaptation guidance:
-
-- Prefer additive plugin upgrades over breaking command renames.
-- Keep command ids stable across versions.
-- When storage shape changes, migrate lazily and safely inside a command.
-- If a plugin was formerly branded for `ibot`, repackage it as `OpenPet` and prefer `.openpet-plugin.zip`.
-- If publishing to catalog metadata, populate `openpetApiVersion` rather than `ibotApiVersion`.
-
-## 10. Catalog And Submission Rules
-
-Catalog publication requires more discipline than local experimentation.
-
-Before reviewer handoff:
-
-```bash
-npm run validate:plugin -- path/to/my-plugin
-npm run create-plugin-submission-report -- path/to/my-plugin --output plugin-submission-report.md
-npm run create-plugin-submission-pr -- path/to/my-plugin --output plugin-submission-pr.md
-npm run create-plugin-submission-bundle -- path/to/my-plugin --output-dir plugin-submission-bundle
-npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
-```
-
-Submission rules:
-
-- unsigned plugins may be acceptable for local/manual use, but they should be treated as review-risk packages
-- signature metadata currently proves hash coverage only, not signer trust
-- catalog entries are metadata only; they do not bypass install review
-- package hashes must stay stable between submission artifacts and shipped bytes
-- reviewer materials must match the actual package being distributed
-
-## 11. Testing Rules For Plugin Authors
-
-Every plugin should have both package-level and behavior-level validation.
-
-Minimum recommended checks:
-
-```bash
-node --check index.js
-npm run validate:plugin -- path/to/my-plugin
-```
-
-If the plugin is intended for this repository or official examples, also add service-level tests that mirror the existing examples:
-
-- install inspection test
-- disabled-by-default install assertion
-- runtime command test through `PluginService`
-- fake `fetch` injection for network plugins
-- storage assertions for persistent state
-
-Testing guidance:
-
-- do not depend on live network access in tests
-- do not test by invoking internal runner details directly when `PluginService` covers the integration path
-- assert actual emitted pet payloads, not just return values
-
-## 12. Reviewer Checklist
-
-Reviewers should reject or bounce a plugin when any of these are true:
-
-- permissions are broader than the user-visible feature needs
-- network allowlist is broader than the declared feature needs
-- plugin config asks for secrets
-- commands are vague, unstable, or inconsistent with manifest declarations
-- plugin stores more data than needed for its job
-- plugin behavior depends on undeclared host internals
-- update introduces new permissions or hosts without a clear explanation
-- submission artifacts do not match the reviewed package hash
-
-## 13. Design Guidance For New Plugins
-
-Good first-party ecosystem shapes under the current platform:
-
-- pet productivity helpers with small persistent counters
-- public-data announcers using one allowlisted host
-- lightweight AI-assisted pet messaging with bounded prompts
-- pet-pack-aware utility plugins that degrade gracefully when an action is unavailable
-
-Poor fits under the current platform:
-
-- plugins that need background scheduling outside command triggers
-- plugins that need local file indexing
-- plugins that need desktop automation
-- plugins that need private API credentials
-- plugins that need multi-tenant account systems
-
-If a plugin idea keeps pushing against these limits, treat that as a signal to evolve the platform contract first.
+These are compatibility surfaces, not the target boundary. The host now supports explicit setup execution with runtime state and logs, explicit language-neutral command process execution with stdin JSON context, explicit short-lived command bridge access for bounded pet and creator-tool capabilities, explicit lifecycle-managed service start/stop, manual and opt-in periodic loopback health checks, best-effort process-group cleanup plus host-owned process-tree fallback cleanup for explicit local-process stop paths, command result UX, and dashboard entries opened explicitly as external HTTP/HTTPS URLs from Control Center. Services still keep the strongest cleanup contract because they alone add process-group signalling and bounded force-stop escalation. Future development should close remaining gaps with broader bridge flows only where they preserve user control and honest safety language.

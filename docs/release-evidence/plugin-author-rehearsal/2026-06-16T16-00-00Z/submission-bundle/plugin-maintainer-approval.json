@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-06-17T15:07:42.569Z",
+  "reviewer": "OpenPet Maintainer",
+  "decision": "approved",
+  "notes": "Manifest, permissions, package hash, and submission artifacts reviewed.",
+  "sourceBundleDir": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle",
+  "plugin": {
+    "id": "openpet.plugin.author-ai",
+    "name": "Author Ai",
+    "version": "0.1.0"
+  },
+  "package": {
+    "sha256": "489815a1cb34a96644d5ac8eb93d361668cb6f7016037fd5993e9e783c9feb81"
+  },
+  "submissionDecision": "ready-for-human-review",
+  "approvalReady": true,
+  "files": {
+    "markdown": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle/plugin-maintainer-approval.md",
+    "json": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-author-rehearsal/2026-06-16T16-00-00Z/submission-bundle/plugin-maintainer-approval.json"
+  }
+}

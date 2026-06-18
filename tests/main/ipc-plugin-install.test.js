@@ -499,6 +499,245 @@ test('plugin mutation handlers return plugin mutation result with refreshed plug
   ])
 })
 
+test('plugin dashboard open handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        openDashboard: async (pluginId, dashboardId) => {
+          calls.push([pluginId, dashboardId])
+          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/' }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_OPEN_DASHBOARD)(null, {
+    pluginId: 'weather-declaration',
+    dashboardId: 'main'
+  })
+
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    dashboardId: 'main',
+    url: 'http://127.0.0.1:8787/'
+  })
+  assert.deepEqual(calls, [['weather-declaration', 'main']])
+})
+
+test('plugin service lifecycle handlers delegate to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        startService: (pluginId, serviceId) => {
+          calls.push(['start', pluginId, serviceId])
+          return { ok: true, pluginId, serviceId, runtime: { status: 'running', pid: 4321 } }
+        },
+        stopService: (pluginId, serviceId) => {
+          calls.push(['stop', pluginId, serviceId])
+          return { ok: true, pluginId, serviceId, runtime: { status: 'stopped' } }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const startResult = await ipcMain.handlers.get(IPC.PLUGINS_START_SERVICE)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion'
+  })
+  const stopResult = await ipcMain.handlers.get(IPC.PLUGINS_STOP_SERVICE)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion'
+  })
+
+  assert.deepEqual(startResult, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: { status: 'running', pid: 4321 }
+  })
+  assert.deepEqual(stopResult, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: { status: 'stopped' }
+  })
+  assert.deepEqual(calls, [
+    ['start', 'weather-declaration', 'companion'],
+    ['stop', 'weather-declaration', 'companion']
+  ])
+})
+
+test('plugin setup handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        runSetup: (pluginId, setupId) => {
+          calls.push({ pluginId, setupId })
+          return { ok: true, pluginId, setupId, runtime: { status: 'succeeded' } }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_RUN_SETUP)(null, {
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps'
+  })
+
+  assert.deepEqual(calls, [{ pluginId: 'weather-declaration', setupId: 'install-deps' }])
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: { status: 'succeeded' }
+  })
+})
+
+test('plugin service health handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        checkServiceHealth: (pluginId, serviceId) => {
+          calls.push([pluginId, serviceId])
+          return {
+            ok: true,
+            pluginId,
+            serviceId,
+            health: { status: 'healthy', url: 'http://127.0.0.1:8787/health', statusCode: 200 },
+            runtime: { status: 'running', health: { status: 'healthy' } }
+          }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_CHECK_SERVICE_HEALTH)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion'
+  })
+
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: { status: 'healthy', url: 'http://127.0.0.1:8787/health', statusCode: 200 },
+    runtime: { status: 'running', health: { status: 'healthy' } }
+  })
+  assert.deepEqual(calls, [['weather-declaration', 'companion']])
+})
+
+test('plugin service health policy handler delegates to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        saveServiceHealthPolicy: (pluginId, serviceId, policy) => {
+          calls.push({ pluginId, serviceId, policy })
+          return {
+            id: pluginId,
+            entries: {
+              services: [{ id: serviceId, healthPolicy: policy }]
+            }
+          }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    policy: { enabled: true, intervalMs: 30000 }
+  })
+
+  assert.deepEqual(calls, [{
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    policy: { enabled: true, intervalMs: 30000 }
+  }])
+  assert.deepEqual(result, {
+    id: 'weather-declaration',
+    entries: {
+      services: [{ id: 'companion', healthPolicy: { enabled: true, intervalMs: 30000 } }]
+    }
+  })
+})
+
 test('pet-packs:inspect-directory opens native folder or zip picker and delegates selected source', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []
@@ -750,6 +989,54 @@ test('plugins:inspect-package opens native package picker options and returns ca
   assert.equal(dialogCalls[0].title, '选择插件目录或 OpenPet 插件包')
   assert.deepEqual(dialogCalls[0].properties, ['openFile', 'openDirectory'])
   assert.deepEqual(dialogCalls[0].filters[0], { name: 'OpenPet Plugin Package', extensions: ['zip'] })
+})
+
+test('plugins:run-command delegates payloads to plugin service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const commandResult = {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: 0,
+    result: { ok: true }
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        runCommand: (pluginId, commandId, payload) => {
+          calls.push({ pluginId, commandId, payload })
+          return commandResult
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_RUN_COMMAND)(null, {
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    payload: { city: 'Shanghai' }
+  })
+
+  assert.deepEqual(result, commandResult)
+  assert.deepEqual(calls, [{
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    payload: { city: 'Shanghai' }
+  }])
 })
 
 test('plugins:inspect-package and plugins:install handle a selected .openpet-plugin.zip through main-process IPC', async () => {

@@ -6,6 +6,7 @@ import type {
   PluginPackageReviewViewState,
   PluginViewState
 } from '../../../shared/openpet-contracts'
+import { PluginEntryDetails } from '../components/PluginEntryDetails'
 import { Toggle } from '../components/Toggle'
 import { formatBytes, formatPluginLogTime } from '../lib/format'
 
@@ -26,6 +27,20 @@ export interface PluginsPaneProps {
   filters: PluginLogFilters
   status: string
   runningCommand: string
+  lastCommandResult: {
+    pluginId: string
+    commandId: string
+    exitCode: number | null
+    message: string
+    stdout: string
+    stderr: string
+    resultText: string
+  } | null
+  runningSetup: string
+  openingDashboard: string
+  changingService: string
+  checkingServiceHealth: string
+  savingServiceHealthPolicy: string
   savingConfig: string
   clearingStorage: string
   pluginReview: PluginPackageReviewViewState | null
@@ -40,6 +55,12 @@ export interface PluginsPaneProps {
   onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
+  onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>
+  onOpenDashboard: (pluginId: string, dashboardId: string) => void | Promise<void>
+  onStartService: (pluginId: string, serviceId: string) => void | Promise<void>
+  onStopService: (pluginId: string, serviceId: string) => void | Promise<void>
+  onCheckServiceHealth: (pluginId: string, serviceId: string) => void | Promise<void>
+  onSaveServiceHealthPolicy: (pluginId: string, serviceId: string, enabled: boolean, intervalMs: number) => void | Promise<void>
   onChangeFilters: (filters: PluginLogFilters) => void
   onExportLogs: (format: ExportFormat) => void | Promise<void>
   onClearLogs: () => void | Promise<void>
@@ -124,11 +145,12 @@ function PluginReviewPanel({
       <div className="permission-line">
         {(plugin.commands || []).length ? `命令：${plugin.commands.map((command) => command.id).join(' · ')}` : '无命令'}
       </div>
+      <PluginEntryDetails source={plugin} />
     </div>
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, lastCommandResult, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -189,10 +211,138 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                         type="button"
                         className="ghost"
                         key={command.id}
-                        disabled={!plugin.enabled || !plugin.runnable || runningCommand === commandKey}
+                        disabled={!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked || runningCommand === commandKey}
                         onClick={() => onRun(plugin.id, command.id)}
                       >
                         {runningCommand === commandKey ? '运行中' : command.title}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {lastCommandResult?.pluginId === plugin.id ? (
+                <div className="plugin-command-result">
+                  <strong>最近命令结果</strong>
+                  <span>{lastCommandResult.commandId}{lastCommandResult.exitCode != null ? ` · exit ${lastCommandResult.exitCode}` : ''}</span>
+                  <p>{lastCommandResult.message}</p>
+                  {lastCommandResult.resultText ? <code>{lastCommandResult.resultText}</code> : null}
+                  {lastCommandResult.stdout ? <p>stdout: {lastCommandResult.stdout}</p> : null}
+                  {lastCommandResult.stderr ? <p>stderr: {lastCommandResult.stderr}</p> : null}
+                </div>
+              ) : null}
+              <PluginEntryDetails source={plugin} compact />
+              {plugin.entries?.setup?.length ? (
+                <div className="plugin-commands">
+                  {plugin.entries.setup.map((setup) => {
+                    const setupKey = `${plugin.id}:${setup.id}`
+                    const setupStatus = setup.runtime?.status || 'not-run'
+                    const running = setupStatus === 'running' || runningSetup === setupKey
+                    const title = setup.title || setup.id
+                    return (
+                      <div className="plugin-service-control" key={setup.id}>
+                        <span>Setup status: {setupStatus}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || running}
+                          onClick={() => onRunSetup(plugin.id, setup.id)}
+                        >
+                          {running ? '运行中' : `Run ${title} Setup`}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {plugin.entries?.services?.length ? (
+                <div className="plugin-commands">
+                  {plugin.entries.services.map((service) => {
+                    const serviceKey = `${plugin.id}:${service.id}`
+                    const runtimeStatus = service.runtime?.status || 'stopped'
+                    const healthStatus = service.runtime?.health?.status || (service.health?.url ? 'unknown' : 'not-configured')
+                    const policy = service.healthPolicy || { enabled: false, intervalMs: 30000 }
+                    const policyEnabled = Boolean(policy.enabled)
+                    const running = runtimeStatus === 'running'
+                    const policySaving = savingServiceHealthPolicy === serviceKey
+                    const policyDisabled = !plugin.enabled || Boolean(plugin.blockStatus?.blocked) || policySaving
+                    const title = service.title || service.id
+                    return (
+                      <div className="plugin-service-control" key={service.id}>
+                        <span>Service status: {runtimeStatus}{service.runtime?.pid ? ` · pid ${service.runtime.pid}` : ''}</span>
+                        <span>Health: {healthStatus}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || changingService === serviceKey}
+                          onClick={() => running ? onStopService(plugin.id, service.id) : onStartService(plugin.id, service.id)}
+                        >
+                          {changingService === serviceKey
+                            ? '处理中'
+                            : running
+                              ? `Stop ${title}`
+                              : `Start ${title}`}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || !service.health?.url || checkingServiceHealth === serviceKey}
+                          onClick={() => onCheckServiceHealth(plugin.id, service.id)}
+                        >
+                          {checkingServiceHealth === serviceKey ? '检查中' : `Check ${title} Health`}
+                        </button>
+                        {service.health?.url ? (
+                          <div className="plugin-health-policy">
+                            <label className="plugin-health-policy-toggle">
+                              <span>Periodic health</span>
+                              <Toggle
+                                ariaLabel={`Periodic health for ${title}`}
+                                checked={policyEnabled}
+                                disabled={policyDisabled}
+                                onChange={(nextEnabled) => onSaveServiceHealthPolicy(plugin.id, service.id, nextEnabled, policy.intervalMs)}
+                              />
+                            </label>
+                            <label className="plugin-health-policy-interval">
+                              <span>Interval</span>
+                              <select
+                                className="text-input"
+                                value={policy.intervalMs}
+                                disabled={policyDisabled || !policyEnabled}
+                                onChange={(event) => onSaveServiceHealthPolicy(plugin.id, service.id, policyEnabled, Number(event.target.value))}
+                              >
+                                <option value={15000}>15s</option>
+                                <option value={30000}>30s</option>
+                                <option value={60000}>60s</option>
+                                <option value={300000}>5m</option>
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="ghost"
+                              disabled={policyDisabled}
+                              onClick={() => onSaveServiceHealthPolicy(plugin.id, service.id, policyEnabled, policy.intervalMs)}
+                            >
+                              {policySaving ? '保存中' : 'Save policy'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {plugin.entries?.dashboards?.length ? (
+                <div className="plugin-commands">
+                  {plugin.entries.dashboards.map((dashboard) => {
+                    const dashboardKey = `${plugin.id}:${dashboard.id}`
+                    return (
+                      <button
+                        type="button"
+                        className="ghost"
+                        key={dashboard.id}
+                        disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === dashboardKey}
+                        onClick={() => onOpenDashboard(plugin.id, dashboard.id)}
+                      >
+                        {openingDashboard === dashboardKey ? '打开中' : dashboard.title}
                       </button>
                     )
                   })}
@@ -253,7 +403,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                               ))}
                             </select>
                           ) : field.type === 'boolean' ? (
-                            <Toggle checked={Boolean(value)} onChange={(nextValue) => onChangeConfig(plugin.id, field.key, nextValue)} />
+                            <Toggle ariaLabel={field.title || field.key} checked={Boolean(value)} onChange={(nextValue) => onChangeConfig(plugin.id, field.key, nextValue)} />
                           ) : (
                             <input
                               className="text-input"
@@ -270,7 +420,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, sa
                 </div>
               ) : null}
             </div>
-            <Toggle checked={plugin.enabled} onChange={(enabled) => onToggle(plugin.id, enabled)} />
+            <Toggle ariaLabel={`Enable ${plugin.name}`} checked={plugin.enabled} onChange={(enabled) => onToggle(plugin.id, enabled)} />
           </div>
         ))}
       </div>

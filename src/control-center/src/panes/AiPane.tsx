@@ -91,7 +91,7 @@ export function AiPane({
       <div className="section">
         <div className="field-row">
           <div className="field-label">启用聊天</div>
-          <Toggle checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
+          <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
         </div>
 
         <label className="field-row">
@@ -160,7 +160,7 @@ export function AiPane({
             <div className="field-label">Behavior</div>
             <div className="field-note">AI 行为编排</div>
           </div>
-          <Toggle checked={behavior.enabled} onChange={(enabled) => onChangeBehavior({ enabled })} />
+          <Toggle ariaLabel="Enable AI behavior" checked={behavior.enabled} onChange={(enabled) => onChangeBehavior({ enabled })} />
         </div>
 
         <div className="field-row">
@@ -168,7 +168,7 @@ export function AiPane({
             <div className="field-label">Provider tools</div>
             <div className="field-note">openpet_behavior tool_call</div>
           </div>
-          <Toggle checked={behavior.useTools} onChange={(useTools) => onChangeBehavior({ useTools })} />
+          <Toggle ariaLabel="Enable provider tools" checked={behavior.useTools} onChange={(useTools) => onChangeBehavior({ useTools })} />
         </div>
 
         <label className="field-row">

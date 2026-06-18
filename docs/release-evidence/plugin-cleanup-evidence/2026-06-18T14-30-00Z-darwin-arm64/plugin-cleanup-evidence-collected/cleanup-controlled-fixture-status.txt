@@ -1,0 +1,1 @@
+Controlled fixture evidence created under: /Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/plugin-cleanup-evidence-collected/cleanup-controlled-fixture

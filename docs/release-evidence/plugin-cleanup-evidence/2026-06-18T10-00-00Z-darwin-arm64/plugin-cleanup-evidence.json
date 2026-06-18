@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-06-18T04:51:23.074Z",
+  "ok": true,
+  "phase": 86,
+  "platform": "darwin",
+  "signal": "SIGTERM",
+  "cleanupAttempted": true,
+  "rootPid": 13044,
+  "rootExited": true,
+  "rootExitCode": 0,
+  "rootSignal": "",
+  "descendantPidsBefore": [
+    13045
+  ],
+  "liveDescendantPidsAfter": [],
+  "descendantsExited": true,
+  "claimBoundary": "single controlled host cleanup fixture; not a universal process-tree guarantee",
+  "warnings": [
+    "This evidence only covers a controlled fixture on the current host and OS.",
+    "OpenPet still does not claim guaranteed descendant termination for every plugin or platform.",
+    "Runtime cleanup semantics remain bounded to the documented service/setup/command stop paths."
+  ],
+  "files": {
+    "json": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T10-00-00Z-darwin-arm64/plugin-cleanup-evidence.json",
+    "markdown": "/Users/mango/project/codex/OpenPet/docs/release-evidence/plugin-cleanup-evidence/2026-06-18T10-00-00Z-darwin-arm64/plugin-cleanup-evidence.md"
+  }
+}
