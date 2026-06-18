@@ -12,9 +12,11 @@ const fs = require('fs')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
-const { applyWindowScale, createWindow, createSettingsWindow, loadPetWindow } = require('./src/main/window')
+const { applyWindowScale, createWindow, createSettingsWindow, loadPetWindow, restorePetWindowVisibility } = require('./src/main/window')
 const { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers } = require('./src/main/ipc')
 const { configureUserDataPath } = require('./src/main/user-data-path')
+const { registerWindowAllClosedPolicy } = require('./src/main/app-lifecycle')
+const { createActivityLogService } = require('./src/main/services/activity-log-service')
 const { createEventBus } = require('./src/main/services/event-bus')
 const { createSettingsService } = require('./src/main/services/settings-service')
 const { createActionService } = require('./src/main/services/action-service')
@@ -35,6 +37,8 @@ const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic
 const packageJson = require('./package.json')
 
 let petWindow = null
+let isQuitting = false
+let activityLog = null
 const getPetWindow = () => petWindow
 
 // ── 单实例锁：同一时间只允许一个宠物窗口 ──
@@ -55,6 +59,20 @@ app.whenReady().then(() => {
   // Keep the pre-OpenPet userData directory so upgrades retain settings,
   // secrets, installed plugins, pet packs, and local service state.
   configureUserDataPath({ app })
+  activityLog = createActivityLogService({
+    logDir: path.join(app.getPath('userData'), 'logs'),
+    mirrorToConsole: true
+  })
+  activityLog.record({
+    category: 'app',
+    action: 'ready',
+    message: 'OpenPet app is ready',
+    details: {
+      version: packageJson.version,
+      platform: process.platform,
+      userData: app.getPath('userData')
+    }
+  })
   const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/main/settings')
   const eventBus = createEventBus()
   const settingsService = createSettingsService({
@@ -116,6 +134,12 @@ app.whenReady().then(() => {
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
   app.on('before-quit', () => {
+    isQuitting = true
+    activityLog.record({
+      category: 'app',
+      action: 'before-quit',
+      message: 'OpenPet app is quitting'
+    })
     pluginService.stopAllServices?.()
   })
   catalogService = createCatalogService({
@@ -156,10 +180,16 @@ app.whenReady().then(() => {
     applyWindowScale: (scale) => applyWindowScale(petWindow, scale),
     clampToWorkArea,
     getMovementState,
-    createSettingsWindow: () => createSettingsWindow(petWindow)
+    createSettingsWindow: () => createSettingsWindow(petWindow, { activityLog }),
+    restorePetWindowVisibility,
+    activityLog
   })
 
-  petWindow = createWindow({ load: false })
+  petWindow = createWindow({
+    load: false,
+    shouldAllowClose: () => isQuitting || Boolean(petWindow?.openPetAllowClose),
+    activityLog
+  })
 
   // 页面加载完成后推送初始设置到渲染进程
   petWindow.webContents.on('did-finish-load', () => {
@@ -174,9 +204,17 @@ app.whenReady().then(() => {
   // macOS：Dock 图标点击时若窗口已关闭则重建
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      petWindow = createWindow()
+      petWindow = createWindow({
+        shouldAllowClose: () => isQuitting || Boolean(petWindow?.openPetAllowClose),
+        activityLog
+      })
     }
   })
 })
 
-app.on('window-all-closed', () => app.quit())
+registerWindowAllClosedPolicy({
+  app,
+  activityLog: {
+    record: (entry) => activityLog?.record(entry)
+  }
+})

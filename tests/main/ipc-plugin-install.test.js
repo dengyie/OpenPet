@@ -202,6 +202,112 @@ test('service:get-status returns Control Center service status shape', async () 
   })
 })
 
+test('settings and pet quit IPC handlers record user activity', () => {
+  const ipcMain = createIpcMainStub()
+  const activityEntries = []
+  let closeCalled = false
+  let restoreCalled = false
+  let settingsOpened = false
+  let quitCalled = false
+  const petWindow = { id: 7, settingsWindow: null, openPetAllowClose: false }
+  const settingsWindow = {
+    id: 8,
+    close: () => {
+      closeCalled = true
+    }
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    getPetWindow: () => petWindow,
+    createSettingsWindow: () => {
+      settingsOpened = true
+    },
+    restorePetWindowVisibility: () => {
+      restoreCalled = true
+    },
+    activityLog: {
+      record: (entry) => activityEntries.push(entry)
+    },
+    appService: {
+      quit: () => {
+        quitCalled = true
+      }
+    },
+    browserWindowService: {
+      fromWebContents: () => settingsWindow
+    },
+    ipcMainService: ipcMain
+  })
+
+  ipcMain.listeners.get(IPC.SETTINGS_OPEN)()
+  ipcMain.listeners.get(IPC.SETTINGS_CLOSE)({ sender: {} })
+  ipcMain.listeners.get(IPC.PET_QUIT)()
+
+  assert.equal(settingsOpened, true)
+  assert.equal(closeCalled, true)
+  assert.equal(restoreCalled, true)
+  assert.equal(quitCalled, true)
+  assert.equal(petWindow.openPetAllowClose, true)
+  assert.deepEqual(activityEntries.map((entry) => entry.action), [
+    IPC.SETTINGS_OPEN,
+    IPC.SETTINGS_CLOSE,
+    IPC.PET_QUIT
+  ])
+})
+
+test('generic IPC activity logging redacts direct secret payloads', async () => {
+  const ipcMain = createIpcMainStub()
+  const activityEntries = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiService: {
+      getConfig: () => ({}),
+      saveConfig: (config) => config,
+      saveApiKey: () => ({ ok: true }),
+      testConnection: () => ({ ok: true }),
+      getConversation: () => [],
+      chat: () => ({ reply: 'ok' })
+    },
+    activityLog: {
+      record: (entry) => activityEntries.push(entry)
+    },
+    ipcMainService: ipcMain
+  })
+
+  await ipcMain.handlers.get(IPC.AI_SAVE_API_KEY)(null, 'sk-raw-secret')
+
+  const saveKeyEntry = activityEntries.find((entry) => entry.action === IPC.AI_SAVE_API_KEY)
+  assert.ok(saveKeyEntry)
+  assert.equal(JSON.stringify(saveKeyEntry).includes('sk-raw-secret'), false)
+  assert.equal(saveKeyEntry.details.payload, '[redacted]')
+})
+
 test('about handlers return stable info and update check view shapes', async () => {
   const ipcMain = createIpcMainStub()
 

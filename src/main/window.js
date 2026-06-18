@@ -10,6 +10,20 @@ const BASE_HEIGHT = 300
 const CONTROL_CENTER_WIDTH = 900
 const CONTROL_CENTER_HEIGHT = 640
 
+const createNoopActivityLog = () => ({ record: () => {} })
+
+const getWindowSnapshot = (win) => {
+  if (!win) return null
+  const destroyed = Boolean(win.isDestroyed?.())
+  if (destroyed) return { id: win.id, destroyed }
+  return {
+    id: win.id,
+    destroyed,
+    visible: typeof win.isVisible === 'function' ? win.isVisible() : undefined,
+    bounds: typeof win.getBounds === 'function' ? win.getBounds() : undefined
+  }
+}
+
 const applyWindowScale = (petWindow, scale) => {
   if (!petWindow || petWindow.isDestroyed()) return
   const targetWidth = Math.round(BASE_WIDTH * Math.max(scale, 1))
@@ -29,7 +43,35 @@ const applyWindowScale = (petWindow, scale) => {
 
 const loadPetWindow = (petWindow) => petWindow.loadFile(path.join(projectRoot, 'index.html'))
 
-const createWindow = ({ load = true, BrowserWindow = electron.BrowserWindow, screen = electron.screen } = {}) => {
+const restorePetWindowVisibility = (petWindow, { activityLog = createNoopActivityLog(), reason = 'unknown' } = {}) => {
+  activityLog.record({
+    category: 'window',
+    action: 'pet.visibility-restore.requested',
+    message: 'Pet window visibility restore requested',
+    details: { reason, window: getWindowSnapshot(petWindow) }
+  })
+  if (!petWindow || petWindow.isDestroyed()) {
+    activityLog.record({
+      level: 'warn',
+      category: 'window',
+      action: 'pet.visibility-restore.skipped',
+      message: 'Pet window visibility restore skipped',
+      details: { reason, window: getWindowSnapshot(petWindow) }
+    })
+    return
+  }
+  petWindow.showInactive?.()
+  petWindow.setAlwaysOnTop?.(true, 'screen-saver')
+  petWindow.moveTop?.()
+  activityLog.record({
+    category: 'window',
+    action: 'pet.visibility-restore.completed',
+    message: 'Pet window visibility restored',
+    details: { reason, window: getWindowSnapshot(petWindow) }
+  })
+}
+
+const createWindow = ({ load = true, BrowserWindow = electron.BrowserWindow, screen = electron.screen, shouldAllowClose = () => true, activityLog = createNoopActivityLog() } = {}) => {
   const petWindow = new BrowserWindow({
     width: BASE_WIDTH,
     height: BASE_HEIGHT,
@@ -53,13 +95,62 @@ const createWindow = ({ load = true, BrowserWindow = electron.BrowserWindow, scr
     workArea.y + workArea.height - BASE_HEIGHT - 40
   )
   petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  petWindow.on('close', (event) => {
+    const allowed = Boolean(shouldAllowClose())
+    activityLog.record({
+      category: 'window',
+      action: allowed ? 'pet.close-allowed' : 'pet.close-prevented',
+      message: allowed ? 'Pet window close allowed' : 'Pet window close prevented',
+      details: { window: getWindowSnapshot(petWindow) }
+    })
+    if (!allowed) event.preventDefault()
+  })
+  petWindow.on('closed', () => {
+    activityLog.record({
+      category: 'window',
+      action: 'pet.closed',
+      message: 'Pet window closed',
+      details: { window: getWindowSnapshot(petWindow) }
+    })
+  })
+  petWindow.on('hide', () => {
+    activityLog.record({
+      category: 'window',
+      action: 'pet.hidden',
+      message: 'Pet window hidden',
+      details: { window: getWindowSnapshot(petWindow) }
+    })
+  })
+  petWindow.on('show', () => {
+    activityLog.record({
+      category: 'window',
+      action: 'pet.shown',
+      message: 'Pet window shown',
+      details: { window: getWindowSnapshot(petWindow) }
+    })
+  })
+  activityLog.record({
+    category: 'window',
+    action: 'pet.created',
+    message: 'Pet window created',
+    details: { window: getWindowSnapshot(petWindow) }
+  })
   if (load) loadPetWindow(petWindow)
 
   return petWindow
 }
 
-const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindow, screen = electron.screen } = {}) => {
+const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindow, screen = electron.screen, activityLog = createNoopActivityLog() } = {}) => {
   if (petWindow.settingsWindow && !petWindow.settingsWindow.isDestroyed()) {
+    activityLog.record({
+      category: 'window',
+      action: 'settings.focus-existing',
+      message: 'Existing settings window focused',
+      details: {
+        petWindow: getWindowSnapshot(petWindow),
+        settingsWindow: getWindowSnapshot(petWindow.settingsWindow)
+      }
+    })
     petWindow.settingsWindow.focus()
     return
   }
@@ -105,6 +196,30 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
   settingsWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   petWindow.settingsWindow = settingsWindow
+  activityLog.record({
+    category: 'window',
+    action: 'settings.created',
+    message: 'Settings window created',
+    details: {
+      petWindow: getWindowSnapshot(petWindow),
+      settingsWindow: getWindowSnapshot(settingsWindow)
+    }
+  })
+  settingsWindow.on('closed', () => {
+    if (petWindow.settingsWindow === settingsWindow) {
+      petWindow.settingsWindow = null
+    }
+    restorePetWindowVisibility(petWindow, { activityLog, reason: 'settings.closed' })
+    activityLog.record({
+      category: 'window',
+      action: 'settings.closed',
+      message: 'Settings window closed',
+      details: {
+        petWindow: getWindowSnapshot(petWindow),
+        settingsWindow: getWindowSnapshot(settingsWindow)
+      }
+    })
+  })
 }
 
-module.exports = { BASE_WIDTH, BASE_HEIGHT, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow }
+module.exports = { BASE_WIDTH, BASE_HEIGHT, applyWindowScale, createWindow, createSettingsWindow, getWindowSnapshot, loadPetWindow, restorePetWindowVisibility }
