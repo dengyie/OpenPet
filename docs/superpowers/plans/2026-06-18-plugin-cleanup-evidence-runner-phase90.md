@@ -93,7 +93,7 @@ Assert existing report/collector/evidence/manifest paths throw before writing.
 Run:
 
 ```bash
-node --test tests/release/plugin-cleanup-evidence-runner.test.js tests/release/plugin-cleanup-packaged-runbook.test.js
+node --test tests/release/plugin-cleanup-evidence-runner.test.js
 ```
 
 Expected before implementation:
@@ -162,7 +162,7 @@ node --test tests/release/plugin-cleanup-evidence-runner.test.js
 
 Expected:
 
-- PASS `15/15`.
+- PASS `8/8`.
 
 ## Task 3: Wire npm Script And Archive Rehearsal
 
@@ -221,7 +221,7 @@ The runner creates and archives a pending cleanup evidence session; it does not 
 Run:
 
 ```bash
-node --test tests/release/plugin-cleanup-evidence-runner.test.js tests/release/plugin-cleanup-packaged-runbook.test.js
+node --test tests/release/plugin-cleanup-evidence-runner.test.js
 npm run check:syntax
 npm test
 npm run test:control-center
@@ -232,7 +232,7 @@ node -e "JSON.parse(require('node:fs').readFileSync('docs/project-context.json',
 
 Expected:
 
-- targeted Phase 90 tests pass `15/15`;
+- targeted Phase 90 tests pass `8/8`;
 - full Node tests pass with the updated baseline;
 - Control Center stays `10/10`;
 - review records no blocking production issues.

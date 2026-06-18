@@ -1,10 +1,10 @@
 # Plugin Cleanup Evidence Runner Phase 90 Design
 
-**Goal:** Add a packaged cleanup evidence runbook and an executable cleanup evidence runner that turns the Phase 86-89 report/collector/archive chain into a repeatable local evidence session.
+**Goal:** Add an executable cleanup evidence runner that turns the Phase 86-89 report/collector/archive chain into a repeatable local evidence session.
 
-**Architecture:** Compose existing cleanup evidence modules. The report generator owns report shape, the Phase 88 collector owns evidence file layout, and the Phase 89 archive manifest owns hash validation. The new runner orchestrates those pieces and stores its own execution transcripts inside the evidence directory.
+**Architecture:** Compose existing cleanup evidence modules. The report generator owns report shape, the Phase 88 collector owns evidence file layout, and the Phase 89 archive manifest owns hash validation. The runner orchestrates those pieces and stores its own execution transcripts inside the evidence directory.
 
-**Tech Stack:** Node CommonJS scripts, Node native tests, existing cleanup evidence report validator, Markdown docs.
+**Tech Stack:** Node CommonJS scripts, Node native tests, existing cleanup evidence report validator.
 
 ---
 
@@ -16,7 +16,6 @@ OpenPet can create cleanup reports, safely update them, generate a collector hel
 
 In scope:
 
-- add `npm run create-plugin-cleanup-packaged-runbook`;
 - add `npm run run-plugin-cleanup-evidence-collector`;
 - generate pending cleanup reports;
 - generate the existing collector;
@@ -62,6 +61,5 @@ Reason: strict cleanup readiness still requires every check to pass with reviewe
 ## Acceptance
 
 - runner tests cover CLI parsing, default archive sessions, collector execution env, transcript persistence, failure preservation, and overwrite protection;
-- runbook tests cover required checks and conservative wording;
 - a local archive under `docs/release-evidence/plugin-cleanup-evidence/2026-06-18T14-30-00Z-darwin-arm64/` has `ok: true` and `cleanupReady: false`;
 - docs state that Phase 90 gathers evidence and does not expand runtime cleanup guarantees.

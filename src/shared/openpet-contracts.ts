@@ -707,6 +707,19 @@ export interface PluginCleanupEvidenceReport {
 
 export type PluginCleanupEvidenceCheckStatus = 'pass' | 'fail' | 'pending' | 'blocked'
 
+export interface PluginCleanupEvidenceValidationSummary {
+  passed: number
+  total: number
+  cleanupReady: boolean
+}
+
+export interface PluginCleanupEvidenceValidationResult {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  summary: PluginCleanupEvidenceValidationSummary
+}
+
 export interface PluginCleanupEvidenceChecklistReport {
   schemaVersion: string
   generatedAt: string
@@ -730,6 +743,85 @@ export interface PluginCleanupEvidenceChecklistReport {
     evidence: string
     notes?: string
   }>
+}
+
+export interface PluginCleanupEvidenceArchiveFile {
+  role: string
+  path: string
+  exists: boolean
+  bytes: number
+  sha256: string
+  error?: string
+}
+
+export interface PluginCleanupEvidenceCollectedFile {
+  role: string
+  file: string
+  path: string
+  bytes: number
+  sha256: string
+}
+
+export interface PluginCleanupEvidenceArchiveManifest {
+  generatedAt: string
+  ok: boolean
+  cleanupReady: boolean
+  archive: {
+    archiveDir: string
+    outputPath: string
+  }
+  files: PluginCleanupEvidenceArchiveFile[]
+  collector: {
+    path: string
+    conservativeWording: boolean
+    avoidsPassShortcut: boolean
+  }
+  evidence: {
+    evidenceDir: string
+    requiredFiles: string[]
+    requiredFilesPresent: boolean
+    files: PluginCleanupEvidenceCollectedFile[]
+  }
+  report: {
+    path: string
+    schemaVersion: string
+    generatedAt: string
+    source: string
+    environment: Partial<PluginCleanupEvidenceChecklistReport['environment']>
+    scenario: Partial<PluginCleanupEvidenceChecklistReport['scenario']>
+    structuralValidation: PluginCleanupEvidenceValidationResult
+    readinessValidation: PluginCleanupEvidenceValidationResult
+  }
+  errors: string[]
+  warnings: string[]
+}
+
+export interface PluginCleanupEvidenceCollectorRun {
+  startedAt: string
+  finishedAt: string
+  ok: boolean
+  command: string[]
+  cwd: string
+  timeoutMs: number
+  reportPath: string
+  evidenceDir: string
+  exitCode: number | null
+  signal: string
+  error: string
+  stdoutPath: string
+  stderrPath: string
+  runPath: string
+}
+
+export interface PluginCleanupEvidenceRunResult {
+  ok: boolean
+  archiveDir: string
+  reportPath: string
+  collectorPath: string
+  evidenceDir: string
+  manifestPath: string
+  collectorRun: PluginCleanupEvidenceCollectorRun
+  manifest: PluginCleanupEvidenceArchiveManifest
 }
 
 export interface CatalogPluginInstallSelection {

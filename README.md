@@ -153,7 +153,7 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 Current local baseline:
 
 ```bash
-npm test                     # 659/659 Node tests
+npm test                     # 652/652 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-18 | Branch: `codex/plugin-cleanup-evidence-runner-phase90`
+> Last updated: 2026-06-18 | Branch: `codex/plugin-cleanup-evidence-contracts-phase91`
 
 ## Current Snapshot
 
@@ -14,7 +14,7 @@ OpenPet is a desktop pet platform with:
 - AI behavior decisions with Control Center replay and redacted diagnostics,
 - developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, user-approved picker frame inspection/import for declaration-only commands, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths, current-host plugin cleanup evidence collection, cleanup evidence helper generation, cleanup evidence runner archives, cleanup evidence archive manifests, structured plugin cleanup readiness reports with validation-first updates, plugin submission bundles, scaffold author rehearsal, maintainer approval rehearsal records, existing-plugin real-world submission rehearsal evidence, and remote-source submission rehearsal evidence,
 - loopback-only local HTTP / MCP,
-- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
+- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, plugin cleanup archive/runner contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
 
 ## Read First
 
@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 659/659 Node tests
+npm test                     # 652/652 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax
@@ -51,7 +51,6 @@ npm run validate-plugin-maintainer-approval -- <submission-bundle-dir> --require
 npm run create-plugin-cleanup-evidence -- --output-dir docs/release-evidence/plugin-cleanup-evidence/<session>
 npm run create-plugin-cleanup-evidence-report -- --output docs/release-evidence/plugin-cleanup-evidence/<session>/plugin-cleanup-evidence-report.json
 npm run create-plugin-cleanup-evidence-collector -- docs/release-evidence/plugin-cleanup-evidence/<session>/plugin-cleanup-evidence-report.json
-npm run create-plugin-cleanup-packaged-runbook -- docs/release-evidence/plugin-cleanup-evidence/<session>/plugin-cleanup-evidence-report.json
 npm run run-plugin-cleanup-evidence-collector -- --archive-dir docs/release-evidence/plugin-cleanup-evidence/<session>
 npm run create-plugin-cleanup-evidence-archive-manifest -- --archive-dir docs/release-evidence/plugin-cleanup-evidence/<session>
 npm run update-plugin-cleanup-evidence-report -- docs/release-evidence/plugin-cleanup-evidence/<session>/plugin-cleanup-evidence-report.json --check service-exit-confirmed-stop --status pass --evidence-file evidence/service-stop.txt
@@ -95,7 +94,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 5. Use Phase 67 release picker archive link closure as the desktop picker archive boundary: release-level archive manifests and signed closure wording explicitly require the reviewed desktop picker archive manifest to match the archived picker report.
 6. Use Phase 73 cleanup hardening plus Phase 72 service process-tree fallback, Phase 71 periodic health policy, Phase 70 setup/command cleanup parity, and Phase 69 plugin service force stop as the current extension cleanup/health boundary: setup, declaration-only command, and service stop requests now keep stop intent visible until child exit confirmation, setup and declaration-only commands now try host-owned process-tree cleanup before direct child kill fallback, only service entries add the bounded host-side force-stop path, and only running services can receive opt-in periodic health checks.
 7. Use Phase 74 maintainer approval rehearsal as the current extension review-handoff boundary: author rehearsal stops at a ready-for-human-review submission bundle, maintainer approval is recorded as a separate Markdown/JSON artifact, and approval remains explicit human judgment rather than automated trust or publication.
-8. Use Phase 54 Release Evidence Contracts plus Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
+8. Use Phase 91 plugin cleanup evidence contracts plus Phase 54 Release Evidence Contracts and Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
 9. Use Phase 75 real-world submission rehearsal as the current existing-plugin submission baseline: `examples/plugins/weather-status` now has an archived local package -> submission bundle -> maintainer approval evidence chain, but that archive still does not prove external community provenance, signing trust, catalog publication, runtime safety, or release readiness.
 10. Use Phase 76 remote-source rehearsal as the current source-review baseline: `https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main` now has an archived HTTPS archive -> extracted plugin -> submission bundle -> maintainer approval evidence chain that records archive URL, final URL, archive SHA-256, archive size, selected plugin path, and extracted file hashes, but it still does not prove independent public community ownership, signing trust, catalog publication, runtime safety, or release readiness.
 11. Use Phase 77 macOS release evidence capture as the current signed-evidence collection path: the helper can archive `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, and Markdown/JSON summaries, but official readiness remains false until real signed, notarized, Gatekeeper-accepted evidence is present.
@@ -109,4 +108,5 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 19. Use Phase 85 creator-tools picker import as the current user-approved external asset boundary: declaration-only creator-tools commands with `assets:inspect` / `assets:generate` can ask the host to open a native folder picker and inspect/import the approved frame folder without receiving the selected path or raw filesystem grants.
 20. Use Phase 86 plugin cleanup evidence as the current cleanup-evidence boundary: maintainers can run a controlled current-host cleanup fixture, archive JSON/Markdown evidence, create structured readiness reports, and validate those reports, while universal process-tree cleanup guarantees remain out of scope.
 21. Use Phase 90 plugin cleanup evidence runner as the current cleanup-evidence execution boundary: maintainers can execute the conservative collector, archive stdout/stderr/run metadata, and create hash manifests while keeping cleanup readiness report-driven.
-22. After Phase 90, continue from collecting real signed workflow artifacts, live external community submission evidence, packaged app UI cleanup evidence, or another high-drift service/report boundary.
+22. Use Phase 91 plugin cleanup evidence contracts as the current cleanup TypeScript boundary: cleanup archive manifests, collector transcripts, and runner results now have shared contracts and representative fixtures without changing runtime guarantees.
+23. After Phase 91, continue from collecting real signed workflow artifacts, live external community submission evidence, packaged app UI cleanup evidence, or another high-drift service/report boundary.

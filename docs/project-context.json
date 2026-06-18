@@ -2,7 +2,7 @@
   "project": "OpenPet",
   "release": "1.0.1-rc.2",
   "updated": "2026-06-18",
-  "branch": "codex/plugin-cleanup-evidence-runner-phase90",
+  "branch": "codex/plugin-cleanup-evidence-contracts-phase91",
   "scope": {
     "platform": [
       "macOS",
@@ -20,7 +20,7 @@
     "Local HTTP and MCP are loopback-only and disabled by default",
     "Codex pet directory and zip import are supported",
     "Bundled pets include doro, duodong, and chispa",
-    "TypeScript migration baseline covers shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative product payload fixtures",
+    "TypeScript migration baseline covers shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, plugin cleanup archive/runner contracts, full release evidence archive / signed closure report contracts, and representative product payload fixtures",
     "Packaged runtime smoke runner has archived real macOS packaged runtime evidence for automated launch, transparency, sprite, speech bubble, action playback, and built-in pack switching checks; desktop picker reports now include invalid-package feedback evidence, native picker evidence is still pending, Phase 65 requires packaged runtime readiness plus archive readiness to link the paired desktop picker smoke report, Phase 66 adds desktop picker evidence summary/archive manifest tooling for reviewed picker archives, Phase 67 requires release-level archive and signed closure flows to consume that reviewed picker archive manifest, and Phase 81 requires release-level archive and signed closure flows to consume a matching reviewed Windows smoke archive manifest",
     "Release evidence archive manifest tooling, macOS codesign/notarization/Gatekeeper evidence capture with GitHub Actions artifact upload and permanent artifact archive handoff, reviewed Windows smoke and desktop picker archive gates, and signed release closure reporting are available; the current archived closure report records official desktop, macOS, and Windows claims as not-ready until real signed evidence is complete",
     "Current legacy plugin config is public settings; secret-like plugin config fields are rejected by the compatibility validator",
@@ -34,7 +34,7 @@
     "The Phase 38+ execution design lives in docs/productization-v1.1-todo-design.md"
   ],
   "validation": {
-    "nodeTests": 659,
+    "nodeTests": 652,
     "uiTests": 10,
     "commands": [
       "npm test",
@@ -51,7 +51,6 @@
       "npm run create-plugin-cleanup-evidence",
       "npm run create-plugin-cleanup-evidence-report",
       "npm run create-plugin-cleanup-evidence-collector",
-      "npm run create-plugin-cleanup-packaged-runbook",
       "npm run run-plugin-cleanup-evidence-collector",
       "npm run create-plugin-cleanup-evidence-archive-manifest",
       "npm run update-plugin-cleanup-evidence-report",

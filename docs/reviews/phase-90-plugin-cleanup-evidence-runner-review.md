@@ -4,13 +4,13 @@
 > Date: 2026-06-18
 > Branch: `codex/plugin-cleanup-evidence-runner-phase90`
 > Mode: deep
-> Scope: packaged plugin cleanup runbook, cleanup evidence collector runner, tests, local evidence archive, and docs.
+> Scope: cleanup evidence collector runner, tests, local evidence archive, and docs.
 
 ## Scope
 
 - Base: Phase 89 HEAD.
 - Scope mode: working tree.
-- Changed files reviewed: `scripts/create-plugin-cleanup-packaged-runbook.js`, `scripts/run-plugin-cleanup-evidence-collector.js`, Phase 90 tests, `package.json`, generated local cleanup evidence archive, Phase 90 docs, and live documentation updates.
+- Changed files reviewed: `scripts/run-plugin-cleanup-evidence-collector.js`, Phase 90 tests, `package.json`, generated local cleanup evidence archive, Phase 90 docs, and live documentation updates.
 - Risk level: medium, because the change executes an evidence collector and could mislead maintainers if execution success were confused with cleanup readiness.
 
 ## Findings
@@ -20,15 +20,15 @@ No blocking production issues remain in the Phase 90 diff.
 ## Review Notes
 
 - Runtime cleanup behavior is unchanged.
-- The packaged runbook is an operator guide only and does not mark checks as passed.
 - The runner creates a pending report, generates the existing Phase 88 collector, executes that collector, records transcripts, and then writes the Phase 89 archive manifest.
+- The runner creates and archives a pending cleanup evidence session; it does not mark cleanup checks as pass and does not prove cleanup readiness.
 - Runner transcripts are stored under `plugin-cleanup-evidence-collected/` so they are included in recursive archive hashes.
 - Existing evidence sessions are not overwritten.
 - `cleanupReady` remains false until the structured report passes strict readiness validation.
 
 ## Review Fixes
 
-- Fixed a missing-file issue found during review: `package.json` and docs referenced the packaged cleanup runbook, but the runbook script and tests were not present in the worktree. Both files are now added and covered by tests.
+- Removed the earlier packaged-runbook detour from the Phase 90 scope so the implementation stays focused on the executable evidence runner.
 - Added a default 5-minute collector execution timeout so a stalled helper produces diagnosable failed evidence instead of hanging indefinitely.
 
 ## Architecture Assessment
@@ -50,9 +50,8 @@ Strongest coverage:
 - successful pending archive creation;
 - failed collector preservation without readiness claims;
 - overwrite protection;
-- packaged runbook content, required checks, and pass-shortcut avoidance.
 
-The remaining gap is true packaged app UI cleanup evidence. Phase 90 gives maintainers the execution chain and operator runbook; it does not automate packaged Control Center setup/command/service cleanup scenarios.
+The remaining gap is true packaged app UI cleanup evidence. Phase 90 gives maintainers the execution chain; it does not automate packaged Control Center setup/command/service cleanup scenarios.
 
 ## Quality Gate
 
@@ -64,13 +63,13 @@ The remaining gap is true packaged app UI cleanup evidence. Phase 90 gives maint
 ## Verification
 
 ```bash
-node --test tests/release/plugin-cleanup-evidence-runner.test.js tests/release/plugin-cleanup-packaged-runbook.test.js
-# pass: 15/15
+node --test tests/release/plugin-cleanup-evidence-runner.test.js
+# pass: 8/8
 ```
 
 ```bash
-node --test tests/release/plugin-cleanup-evidence-runner.test.js tests/release/plugin-cleanup-packaged-runbook.test.js tests/release/plugin-cleanup-evidence-archive-manifest.test.js tests/release/plugin-cleanup-evidence-collector.test.js tests/release/plugin-cleanup-evidence-report.test.js tests/release/plugin-cleanup-evidence-report-update.test.js tests/scripts/create-plugin-cleanup-evidence.test.js
-# pass: 57/57
+node --test tests/release/plugin-cleanup-evidence-runner.test.js tests/release/plugin-cleanup-evidence-archive-manifest.test.js tests/release/plugin-cleanup-evidence-collector.test.js tests/release/plugin-cleanup-evidence-report.test.js tests/release/plugin-cleanup-evidence-report-update.test.js tests/scripts/create-plugin-cleanup-evidence.test.js
+# pass: 50/50
 ```
 
 ```bash
@@ -91,7 +90,7 @@ npm run check:syntax
 
 ```bash
 npm test
-# pass: 659/659
+# pass: 652/652
 ```
 
 ```bash

@@ -1,7 +1,7 @@
 # OpenPet Development Summary
 
 > Last updated: 2026-06-18
-> Branch: `codex/plugin-cleanup-evidence-runner-phase90`
+> Branch: `codex/plugin-cleanup-evidence-contracts-phase91`
 > Current release track: `v1.0.1-rc.2`
 
 This is the short engineering summary for the current repository state. For long phase history, read `docs/phases/` and `docs/reviews/`. For support claims and documentation rules, read `docs/project-documentation-design.md`.
@@ -17,7 +17,7 @@ OpenPet is now a desktop pet platform with:
 - AI chat with secret storage in the main process,
 - developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, short-lived command bridge access, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import for declaration-only commands, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, broader host-owned process-tree fallback cleanup for explicit local-process stops, current-host plugin cleanup evidence collection, cleanup evidence helper generation, cleanup evidence runner archives, cleanup evidence archive manifests, structured plugin cleanup readiness reports with validation-first updates, structured maintainer approval rehearsal artifacts for submission bundles, existing-plugin real-world submission rehearsal evidence, and remote-source submission rehearsal evidence,
 - loopback-only local HTTP / MCP endpoints,
-- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, full release evidence archive / signed closure report contracts, and representative product payload fixtures.
+- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin cleanup archive/runner contracts, full release evidence archive / signed closure report contracts, and representative product payload fixtures.
 
 ## Current Capability Summary
 
@@ -25,12 +25,12 @@ OpenPet is now a desktop pet platform with:
 - AI: OpenAI-compatible chat, main-process secret storage, behavior decisions, replay, redacted diagnostics export, and clear-history controls.
 - Extensions: current legacy SDK examples, validation, submission bundles, scaffold author rehearsal, existing-plugin real-world submission rehearsal, remote-source submission rehearsal, maintainer approval rehearsal, plugin cleanup evidence collection/reporting/updating/helper generation/runner archives/archive manifests, developer-first local extension docs, normalized `entries` declarations including explicit `entries.setup` execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived command bridge access for `pet.say` / `pet.action` / `pet.event` / read-only context, host-owned `OPENPET_DATA_DIR` / `OPENPET_CACHE_DIR` / `OPENPET_LOG_DIR` injection for declaration-only command runs, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import through the same short-lived bridge, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime status and logs, manual loopback-only health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup on service stop, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, and separate maintainer approval artifacts beside ready-for-review submission bundles. Command, setup, and service processes are spawned without shell expansion; setup and command entries never run during install or enable, services do not auto-start, approval remains a human review decision, raw filesystem grants are not exposed to plugin commands, and universal process-tree guarantees remain future runtime work.
 - Release evidence: packaged runtime smoke runner, stricter runtime/picker evidence-link validation, desktop picker evidence summary/archive manifest tooling, Windows smoke evidence summary/archive manifest tooling, macOS codesign/notarization/Gatekeeper evidence capture with GitHub Actions artifact upload and permanent artifact archive handoff, release archive manifest tooling that now requires reviewed Windows smoke and desktop picker archive manifests, and signed release closure reporting without unsupported readiness claims.
-- TypeScript: shared IPC/view contracts, typed Control Center API facade, typed Control Center hook state boundaries, typed Control Center pane prop surfaces, `@ts-check` main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures in `npm run typecheck`.
+- TypeScript: shared IPC/view contracts, typed Control Center API facade, typed Control Center hook state boundaries, typed Control Center pane prop surfaces, `@ts-check` main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, plugin cleanup archive/runner contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures in `npm run typecheck`.
 
 ## Validation Baseline
 
 ```bash
-npm test                     # 659/659 Node tests
+npm test                     # 652/652 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
@@ -61,11 +61,12 @@ npm run check:syntax         # Node syntax + typecheck + Control Center build
 - Phase 88 is now complete: maintainers can generate a POSIX cleanup evidence helper that writes manual checklists and updater command notes without marking any cleanup check as passed.
 - Phase 89 is now complete: maintainers can generate cleanup evidence archive manifests that hash report, collector, and collected evidence files while keeping archive validity separate from cleanup readiness.
 - Phase 90 is now complete: maintainers can run a local cleanup evidence collector chain that archives stdout/stderr/run metadata with `cleanupReady: false` until reviewed evidence is marked pass.
+- Phase 91 is now complete: shared TypeScript contracts now cover plugin cleanup archive manifests, collector transcripts, and runner results so Phase 89/90 JSON boundaries type-check against representative fixtures without changing runtime behavior.
 
 ## Next Engineering Steps
 
 1. Use `npm run create-macos-release-evidence-archive` to copy the next signed macOS workflow's `openpet-macos-release-evidence-<tag>` artifact into a permanent release archive, then produce real signed release and Windows smoke evidence before changing platform wording.
 2. Fill Windows smoke and native picker evidence from real launched or packaged app runs, archive them with their evidence summary/archive manifest commands, then feed both reviewed archive manifests into the release-level manifest and closure report.
 3. Continue signed evidence/report hardening or gather live external community submission evidence beyond the current official-repository remote-source rehearsal.
-4. Phase 90 adds a local cleanup evidence runner; future cleanup work can add packaged app UI automation or broader real-host archives without changing runtime guarantees.
+4. Phase 90 adds a local cleanup evidence runner, and Phase 91 adds shared contracts for its manifest/transcript outputs; future cleanup work can add packaged app UI automation or broader real-host archives without changing runtime guarantees.
 5. Keep `npm start` functional and keep user-facing configuration in Control Center.

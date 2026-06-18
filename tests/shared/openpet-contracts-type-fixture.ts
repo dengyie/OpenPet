@@ -12,8 +12,11 @@ import type {
   CreatorPackManifestMutationRequest,
   CreatorPackManifestMutationResult,
   CreatorPackManifestReadResponse,
+  PluginCleanupEvidenceArchiveManifest,
   PluginCleanupEvidenceChecklistReport,
+  PluginCleanupEvidenceCollectorRun,
   PluginCleanupEvidenceReport,
+  PluginCleanupEvidenceRunResult,
   PluginCommandRunResultViewState,
   PluginPackageReviewViewState,
   PluginSetupRunResultViewState,
@@ -323,6 +326,109 @@ const pluginCleanupEvidenceChecklistFixture = {
     }
   ]
 } satisfies PluginCleanupEvidenceChecklistReport
+
+const pluginCleanupEvidenceArchiveManifestFixture = {
+  generatedAt: '2026-06-18T14:30:00.000Z',
+  ok: true,
+  cleanupReady: false,
+  archive: {
+    archiveDir: '/tmp/openpet-plugin-cleanup-evidence',
+    outputPath: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-archive-manifest.json'
+  },
+  files: [
+    {
+      role: 'report',
+      path: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-report.json',
+      exists: true,
+      bytes: 2048,
+      sha256: '4'.repeat(64)
+    },
+    {
+      role: 'collector',
+      path: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collector.sh',
+      exists: true,
+      bytes: 4096,
+      sha256: '5'.repeat(64)
+    }
+  ],
+  collector: {
+    path: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collector.sh',
+    conservativeWording: true,
+    avoidsPassShortcut: true
+  },
+  evidence: {
+    evidenceDir: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collected',
+    requiredFiles: ['environment.txt', 'manual-checks.md'],
+    requiredFilesPresent: true,
+    files: [
+      {
+        role: 'evidence',
+        file: 'collector-run.json',
+        path: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collected/collector-run.json',
+        bytes: 512,
+        sha256: '6'.repeat(64)
+      }
+    ]
+  },
+  report: {
+    path: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-report.json',
+    schemaVersion: pluginCleanupEvidenceChecklistFixture.schemaVersion,
+    generatedAt: pluginCleanupEvidenceChecklistFixture.generatedAt,
+    source: pluginCleanupEvidenceChecklistFixture.source,
+    environment: pluginCleanupEvidenceChecklistFixture.environment,
+    scenario: pluginCleanupEvidenceChecklistFixture.scenario,
+    structuralValidation: {
+      ok: true,
+      errors: [],
+      warnings: [],
+      summary: {
+        passed: 0,
+        total: 7,
+        cleanupReady: false
+      }
+    },
+    readinessValidation: {
+      ok: false,
+      errors: ['required cleanup check is pending: service-exit-confirmed-stop'],
+      warnings: [],
+      summary: {
+        passed: 0,
+        total: 7,
+        cleanupReady: false
+      }
+    }
+  },
+  errors: [],
+  warnings: ['archive is valid but does not prove plugin cleanup readiness until every required check passes with evidence']
+} satisfies PluginCleanupEvidenceArchiveManifest
+
+const pluginCleanupEvidenceCollectorRunFixture = {
+  startedAt: '2026-06-18T14:30:00.000Z',
+  finishedAt: '2026-06-18T14:30:01.000Z',
+  ok: true,
+  command: ['bash', '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collector.sh'],
+  cwd: '/Users/mango/project/codex/OpenPet',
+  timeoutMs: 300000,
+  reportPath: pluginCleanupEvidenceArchiveManifestFixture.report.path,
+  evidenceDir: pluginCleanupEvidenceArchiveManifestFixture.evidence.evidenceDir,
+  exitCode: 0,
+  signal: '',
+  error: '',
+  stdoutPath: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collected/collector-stdout.txt',
+  stderrPath: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collected/collector-stderr.txt',
+  runPath: '/tmp/openpet-plugin-cleanup-evidence/plugin-cleanup-evidence-collected/collector-run.json'
+} satisfies PluginCleanupEvidenceCollectorRun
+
+const pluginCleanupEvidenceRunResultFixture = {
+  ok: true,
+  archiveDir: pluginCleanupEvidenceArchiveManifestFixture.archive.archiveDir,
+  reportPath: pluginCleanupEvidenceArchiveManifestFixture.report.path,
+  collectorPath: pluginCleanupEvidenceArchiveManifestFixture.collector.path,
+  evidenceDir: pluginCleanupEvidenceArchiveManifestFixture.evidence.evidenceDir,
+  manifestPath: pluginCleanupEvidenceArchiveManifestFixture.archive.outputPath,
+  collectorRun: pluginCleanupEvidenceCollectorRunFixture,
+  manifest: pluginCleanupEvidenceArchiveManifestFixture
+} satisfies PluginCleanupEvidenceRunResult
 
 const releaseArchiveFixture = {
   generatedAt: '2026-06-17T00:00:00.000Z',

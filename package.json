@@ -45,7 +45,6 @@
     "create-plugin-cleanup-evidence": "node scripts/create-plugin-cleanup-evidence.js",
     "create-plugin-cleanup-evidence-collector": "node scripts/create-plugin-cleanup-evidence-collector.js",
     "create-plugin-cleanup-evidence-archive-manifest": "node scripts/create-plugin-cleanup-evidence-archive-manifest.js",
-    "create-plugin-cleanup-packaged-runbook": "node scripts/create-plugin-cleanup-packaged-runbook.js",
     "run-plugin-cleanup-evidence-collector": "node scripts/run-plugin-cleanup-evidence-collector.js",
     "create-plugin-cleanup-evidence-report": "node scripts/create-plugin-cleanup-evidence-report.js",
     "update-plugin-cleanup-evidence-report": "node scripts/update-plugin-cleanup-evidence-report.js",
