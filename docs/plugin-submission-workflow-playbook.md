@@ -16,6 +16,7 @@ It covers:
 - recording and validating a separate maintainer approval artifact after review
 - one-command existing-plugin rehearsal for a more realistic local submission path
 - one-command remote-source rehearsal for a reviewed HTTPS archive path
+- invitation-kit drafting when discovery has not found a compatible third-party source
 - one-command community-source intake reporting for public candidate archives before they claim OpenPet compatibility
 
 It does not:
@@ -60,6 +61,14 @@ npm run create-plugin-community-source-intake-report -- --archive-url <https-arc
 ```
 
 This archives the public source URL, submitter label, archive URL, final URL, archive SHA-256, archive size, candidate plugin path, and extracted file hashes, then records whether the selected path is a current OpenPet `plugin.json` package. It is a compatibility-first maintainer intake step, not submission approval, signing trust, runtime safety, or release readiness.
+
+If discovery reports `compatible-source-not-found`, prepare an invitation kit before waiting for a compatible package:
+
+```bash
+npm run create-plugin-community-source-invitation-kit -- --target-author "OpenPet-compatible extension authors" --target-url https://github.com/dengyie/OpenPet --candidate-context "Phase 104 discovery currently has no compatible public plugin.json source." --requested-capabilities "weather pet-action pet-dialogue pet-personality creator-tools" --output-dir docs/release-evidence/plugin-community-source-invitation-kit/<session>
+```
+
+The kit writes a summary, README, message draft, and checklist. It is draft outreach material only: it does not prove the invitation was sent, a reply was received, a compatible package exists, or any trust/publication decision was made.
 
 For a community-source evidence archive, run:
 
