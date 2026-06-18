@@ -18,6 +18,7 @@ const catEl = document.getElementById('cat')     // 小猫元素，精灵图渲�
 const bubble = document.getElementById('bubble') // 头顶气泡
 const menu = document.getElementById('menu')     // 右键菜单容器
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
+const cursorStyle = window.OpenPetCursorStyle || { resolvePetCursorStyle: () => '' }
 
 const state = {
   // ── 动画 ──
@@ -41,6 +42,8 @@ const state = {
   drag: null,            // { pointerId, offsetX, offsetY, moved } | null
   mousePassthrough: false,
   currentLayout: null,
+  customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '' },
+  lastPointerPoint: null,
 
   // ── 气泡 ──
   bubbleTimer: 0,        // setTimeout id，到期后隐藏气泡
@@ -177,8 +180,29 @@ const isPointInsideCurrentFrame = (clientX, clientY) => {
   return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom
 }
 
+const applyPetCursorStyle = (insideFrame) => {
+  pet.style.cursor = cursorStyle.resolvePetCursorStyle(state.customCursor, {
+    insideFrame,
+    dragging: Boolean(state.drag),
+    menuOpen: menu.classList.contains('open')
+  })
+}
+
+const refreshMouseStateFromLastPoint = () => {
+  if (!state.lastPointerPoint) {
+    applyPetCursorStyle(false)
+    return
+  }
+  const insideFrame = isPointInsideCurrentFrame(state.lastPointerPoint.clientX, state.lastPointerPoint.clientY)
+  applyPetCursorStyle(insideFrame)
+  setMousePassthrough(!insideFrame)
+}
+
 const updateMousePassthroughFromPoint = (event) => {
-  setMousePassthrough(!isPointInsideCurrentFrame(event.clientX, event.clientY))
+  state.lastPointerPoint = { clientX: event.clientX, clientY: event.clientY }
+  const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
+  applyPetCursorStyle(insideFrame)
+  setMousePassthrough(!insideFrame)
 }
 
 /**
@@ -203,6 +227,7 @@ const setAction = (action) => {
   frameCount = a.frameCount
   renderCurrentFrame()
   setMousePassthrough(false)
+  refreshMouseStateFromLastPoint()
 
   scheduleFrameTick()
 
@@ -298,6 +323,7 @@ const onPointerDown = async (event) => {
   }
   pet.setPointerCapture(event.pointerId)
   pet.classList.add('dragging')
+  applyPetCursorStyle(false)
   setMousePassthrough(false)
 }
 
@@ -346,9 +372,13 @@ const applyAnimationsConfig = ({ actions, defaultAction, clickAction }) => {
   if (state.defaultAction) setAction(state.defaultAction)
 }
 
-const hideMenu = () => menu.classList.remove('open')
+const hideMenu = () => {
+  menu.classList.remove('open')
+  refreshMouseStateFromLastPoint()
+}
 const showMenu = () => {
   setMousePassthrough(false)
+  applyPetCursorStyle(false)
   menu.classList.add('open')
 }
 
@@ -383,6 +413,15 @@ window.petAPI.onSettingsChanged((s) => {
   if (s.walkSpeed != null) state.walkSpeed = s.walkSpeed
   if (s.walkDuration != null) state.walkDuration = s.walkDuration
   if (s.bubbleDuration != null) state.bubbleDuration = s.bubbleDuration
+  if (s.customCursor) {
+    state.customCursor = {
+      enabled: Boolean(s.customCursor.enabled && s.customCursor.assetUrl),
+      assetPath: s.customCursor.assetPath || '',
+      assetUrl: s.customCursor.assetUrl || '',
+      fileName: s.customCursor.fileName || ''
+    }
+    refreshMouseStateFromLastPoint()
+  }
 })
 
 window.petAPI.onPetSay((payload) => {
