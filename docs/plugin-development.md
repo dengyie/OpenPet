@@ -6,6 +6,28 @@ This document follows the extension ecosystem boundary design. It is the target 
 
 For lifecycle, safety, and review language, read [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md) together with this guide.
 
+## Author Capability Promise
+
+OpenPet should feel like a welcoming local extension platform, not a closed list of first-party feature slots.
+
+Third-party authors are encouraged to build practical pet experiences such as:
+
+- a weather announcer where the pet speaks the forecast, plays a matching action, and opens a dashboard;
+- a pet dialogue pack that adds configurable phrases, tone, timing, and fallback lines;
+- a personality injector that changes how a pet responds without modifying OpenPet core code;
+- an action studio that inspects frame folders, validates action metadata, imports new actions, and regenerates sprites through host-mediated creator tools;
+- a local model or image workflow that generates pet action art into package/data locations and asks the host to import the approved result;
+- a service-backed companion that watches RSS, calendar, build status, local files, or third-party APIs and turns them into pet speech/actions.
+
+The current host intentionally gives declaration-only command entries a bounded but useful bridge instead of forcing every author into a JavaScript SDK. Authors can combine their own runtime, local files, external APIs, dashboards, services, and setup flows with OpenPet-owned bridge calls for pet speech, pet actions, pet events, read-only context, action configuration, pack manifest metadata, and action frame import.
+
+This is a permissioned collaboration model:
+
+- authors may choose JavaScript, Python, shell scripts, compiled binaries, or other local runtimes;
+- OpenPet mediates pet mutations and creator-tool writes through explicit bridge permissions;
+- OpenPet should reject unsafe package structure and hidden install-time execution;
+- OpenPet should not reject useful third-party ideas merely because they are not first-party features yet.
+
 ## Core Model
 
 OpenPet uses one package model: an extension.
@@ -391,6 +413,48 @@ Use `manifest` to disclose facts OpenPet should show to the user.
 ```
 
 OpenPet should display these declarations honestly. It should not treat them as proof that every runtime behavior is enforced.
+
+## Permissioned Pet And Creator Capabilities
+
+Use manifest permissions to request host-mediated capabilities only when the extension needs them. Keep the request small and explain the user value in `description`, `manifest`, or `README.md`.
+
+Current bridge-backed capabilities:
+
+| Capability | Typical author use | Boundary |
+| --- | --- | --- |
+| `pet:say` | Weather reports, reminders, dialogue packs, personality text | Goes through `PetService`; no renderer or raw window access. |
+| `pet:action` | Play an existing action after a forecast, event, or local workflow | Action id must be meaningful to the installed pet/action set. |
+| `pet:event` | Emit bounded pet events for host-visible integration | Event payload stays command-run scoped. |
+| `actions:read` | Action studio reads current action configuration | Read through host action service. |
+| `actions:write` | Add or update bounded action configuration | Validated and applied by the host; no raw config-file write. |
+| `pack-manifest:read` | Read active installed user pack metadata | Active installed user pack only. |
+| `pack-manifest:write` | Update bounded user pack metadata | No built-in pack edits or arbitrary pack targeting. |
+| `assets:inspect` | Inspect package-local or user-approved action frame folders | No raw filesystem grant; paths stay host-confined. |
+| `assets:generate` | Import frames and regenerate sprites/action metadata | Host-mediated, resource-limited, no plugin-selected output path. |
+
+Example permission shape:
+
+```json
+{
+  "permissions": [
+    "pet:say",
+    "pet:action",
+    "actions:read",
+    "assets:inspect",
+    "assets:generate"
+  ]
+}
+```
+
+Recommended mapping:
+
+- Weather announcer: `pet:say`, optionally `pet:action`, plus any extension-owned network/API disclosure in `manifest`.
+- Pet dialogue/personality pack: `pet:say`, optionally `pet:event`, with config schema for tone, verbosity, and quiet hours.
+- Pet action studio: `actions:read`, `actions:write`, `assets:inspect`, `assets:generate`.
+- Pack metadata helper: `pack-manifest:read`, optionally `pack-manifest:write`.
+- Dashboard-only extension: no pet/creator permission unless it actually calls the bridge.
+
+If a desired capability is not available yet, authors should still be able to submit the package as a local/community extension with the gap clearly disclosed. Maintainers should classify the missing capability as backlog instead of rejecting the idea outright when the package is structurally safe and honest about its limits.
 
 ## Setup And Dependencies
 

@@ -25,6 +25,13 @@ The ecosystem should welcome practical third-party work such as:
 
 OpenPet should not require every new idea to become a first-party hardcoded feature before authors can experiment.
 
+The default posture for third-party authors is welcome-first:
+
+- accept local/community experiments when the package is structurally safe and honest about what it does;
+- prefer clear disclosure, least-necessary permissions, and user-controlled lifecycle over broad rejection;
+- treat missing host APIs as backlog when the author idea is valid but the runtime does not support it yet;
+- reserve hard rejection for unsafe package structure, hidden install/enable execution, misleading declarations, credential leakage, destructive behavior, or review artifacts that cannot be trusted.
+
 ## 2. One Extension Model
 
 OpenPet has one conceptual third-party package model: extension.
@@ -68,6 +75,8 @@ OpenPet should hard-check structural safety:
 OpenPet should not claim that the manifest fully constrains runtime behavior. A local command or service may use its own runtime, filesystem access, network stack, secrets, databases, binaries, and external accounts.
 
 The right product promise is transparency and lifecycle control, not complete local-process policing.
+
+This means review should not turn the manifest into a narrow allowlist of allowed ideas. The manifest declares what OpenPet can inspect, operate, and present to users; it should also help authors disclose extension-owned behavior that exists outside OpenPet's direct control.
 
 ## 4. Lifecycle Management
 
@@ -168,6 +177,27 @@ The current local bridge stays intentionally small:
 - `POST /creator/pack-manifest/apply`
 
 The bridge is for integration convenience. It is not a complete SDK, not a full security broker, and not a reason to block extensions from using their own local capabilities.
+
+### Welcomed Pet And Creator Use Cases
+
+The following capabilities are intentionally available to ordinary third-party authors through explicit declaration-only command runs and route permissions:
+
+- pet speech and status updates through `pet:say`;
+- pet action playback through `pet:action`;
+- bounded pet event emission through `pet:event`;
+- action configuration reads/writes through `actions:read` and `actions:write`;
+- active installed user pack metadata reads/writes through `pack-manifest:read` and `pack-manifest:write`;
+- package-local or user-approved frame inspection through `assets:inspect`;
+- package-local or user-approved frame import and sprite/action metadata generation through `assets:generate`.
+
+These are not official-only powers. A community weather announcer, pet dialogue pack, pet personality helper, action editor, sprite generator, or local model workflow may request them when the package explains the user value and accepts the host boundary.
+
+The boundary remains:
+
+- pet mutations go through `PetService`;
+- creator writes go through host validation/apply paths;
+- built-in pack edits, arbitrary pack targeting, raw filesystem writes, plugin-selected output paths, persistent folder grants, and universal process cleanup guarantees remain out of scope;
+- reviewers should ask authors to reduce or explain permissions, not remove useful pet-facing behavior by default.
 
 ## 7. Data And Secret Ownership
 
@@ -274,6 +304,8 @@ Reviewer questions should be practical:
 - Are likely data, secret, account, and network dependencies disclosed?
 - Does uninstall behavior explain what OpenPet can and cannot remove?
 - Are logs and health checks sufficient for troubleshooting?
+- Are requested pet/creator permissions proportional to the feature?
+- If the author needs an unsupported capability, is the package still useful with that gap disclosed?
 
 ## 11. Compatibility Rules
 
@@ -336,6 +368,12 @@ Good OpenPet pet integration habits:
 
 The ecosystem should be broad enough for authors to build things like "a pet that announces weather with custom actions and personality" without waiting for OpenPet core to add every individual capability first.
 
+Maintainers should distinguish between:
+
+- **blockers**: unsafe archives, path escapes, install-time execution, deceptive manifests, leaked credentials, destructive defaults, or unverifiable review evidence;
+- **changes requested**: unclear entry names, excessive permissions without explanation, missing setup/cleanup disclosure, or weak user recovery logs;
+- **allowed backlog gaps**: a good extension idea that needs a future host API but is otherwise transparent and safe to install/review locally.
+
 ## 14. Current Implementation Gap
 
 Some repository tools and examples still reflect the older plugin SDK implementation:
@@ -349,4 +387,4 @@ Some repository tools and examples still reflect the older plugin SDK implementa
 - `ctx.ai`;
 - short-lived isolated JavaScript command handlers.
 
-These are compatibility surfaces, not the target boundary. The host now supports explicit setup execution with runtime state and logs, explicit language-neutral command process execution with stdin JSON context, explicit lifecycle-managed service start/stop, manual and opt-in periodic loopback health checks, best-effort process-group cleanup plus host-owned process-tree fallback cleanup for explicit local-process stop paths, and dashboard entries opened explicitly as external HTTP/HTTPS URLs from Control Center. Services still keep the strongest cleanup contract because they alone add process-group signalling and bounded force-stop escalation. Future development should close the remaining gap by adding bridge flows, richer command result UX, harder cleanup guarantees where feasible for more entry types, and honest user-facing copy.
+These are compatibility surfaces, not the target boundary. The host now supports explicit setup execution with runtime state and logs, explicit language-neutral command process execution with stdin JSON context, explicit short-lived command bridge access for bounded pet and creator-tool capabilities, explicit lifecycle-managed service start/stop, manual and opt-in periodic loopback health checks, best-effort process-group cleanup plus host-owned process-tree fallback cleanup for explicit local-process stop paths, command result UX, and dashboard entries opened explicitly as external HTTP/HTTPS URLs from Control Center. Services still keep the strongest cleanup contract because they alone add process-group signalling and bounded force-stop escalation. Future development should close remaining gaps with broader bridge flows only where they preserve user control and honest safety language.

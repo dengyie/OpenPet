@@ -26,7 +26,28 @@ It does not:
 - approve publication
 - replace manual reviewer judgment
 
-## 2. One-Command Author Rehearsal
+## 2. Author-Friendly Review Posture
+
+Submission tooling is a rehearsal and handoff path, not a gatekeeping promise that only perfect extensions may exist.
+
+Maintainers should classify review outcomes this way:
+
+- **Ready for review**: the package is structurally valid, declarations are understandable, and requested permissions match the described feature.
+- **Changes requested**: the idea is welcome, but the author should clarify setup, cleanup, data locations, external accounts, logs, or permission rationale.
+- **Blocked**: the archive is unsafe, paths escape the package, code would run during install/enable, secrets are leaked into OpenPet-managed public config, or the package misrepresents what it does.
+- **Backlog gap**: the extension idea is valid but needs a host API that does not exist yet. Record the missing capability instead of forcing the author to reshape the idea into a weaker first-party pattern.
+
+Common welcome examples:
+
+- weather announcer: may request `pet:say` and `pet:action`, disclose weather API/network use, and keep provider credentials in extension-owned setup or files;
+- pet dialogue/personality helper: may request `pet:say` / `pet:event` and expose tone, verbosity, quiet hours, or fallback lines through config;
+- pet action studio: may request `actions:read`, `actions:write`, `assets:inspect`, and `assets:generate` to inspect frames, validate metadata, import frame folders, and regenerate sprites through the host;
+- pack metadata helper: may request `pack-manifest:read` / `pack-manifest:write` for active installed user pack metadata only;
+- dashboard companion: may expose a local HTTP dashboard and service without needing pet permissions unless it calls the bridge.
+
+Review should ask for least-necessary permissions and clear user disclosure. It should not reject an honest third-party package simply because it uses Python, a shell script, a compiled binary, external APIs, local model files, or an extension-owned settings store.
+
+## 3. One-Command Author Rehearsal
 
 For the complete Phase 44 author path, run:
 
@@ -78,7 +99,7 @@ npm run create-plugin-community-source-submission-evidence -- --archive-url <htt
 
 This keeps the same archive/package/submission/approval chain as the remote-source rehearsal, then adds community provenance metadata that is missing from an official-repository archive alone: source URL, submitter label, source relation, and independence notes. For public sources, run the intake report first so incompatible neighboring repositories are archived as evidence gaps instead of being forced through the submission chain. This is still review evidence. It does not prove signing trust, catalog publication, runtime safety, or release readiness.
 
-## 3. Manual Rehearsal Order
+## 4. Manual Rehearsal Order
 
 Start from a generated local extension or a tested legacy example such as `examples/plugins/focus-timer`.
 
@@ -99,7 +120,7 @@ If the maintainer decision is `changes-requested`, keep the approval files as re
 
 Current validation may still reject legacy SDK config fields that look like secrets, such as `apiKey`, `accessToken`, `password`, `credential`, `format: "password"`, or `writeOnly: true`. Under the extension boundary, treat that as a current tooling limitation for OpenPet-managed config: disclose extension-owned secrets in `manifest`, keep them in extension-managed files or setup flows, and avoid implying that OpenPet controls every credential.
 
-## 4. What Each Artifact Means
+## 5. What Each Artifact Means
 
 - `plugin-submission-report.md`: reviewer-facing validation report
 - `plugin-submission-pr.md`: PR body template with checklist and review notes
@@ -116,7 +137,7 @@ The summary should confirm:
 - the package hash
 - the signature state
 
-## 5. Reviewer Handoff
+## 6. Reviewer Handoff
 
 When the author rehearsal succeeds:
 
@@ -132,7 +153,7 @@ npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --requir
 
 The approval record is a human review artifact. It does not establish signing trust, catalog publication, runtime safety, or release readiness.
 
-## 6. Common Failure Patterns
+## 7. Common Failure Patterns
 
 - `validate:plugin` fails: fix manifest, signature metadata, blocklist, current compatibility checks, or package safety issues first.
 - `create-plugin-submission-bundle` exits non-zero: the package is not ready for human review yet.
@@ -140,6 +161,13 @@ The approval record is a human review artifact. It does not establish signing tr
 - `create-plugin-maintainer-approval` exits non-zero: the submission bundle is malformed, the maintainer metadata is incomplete, or the generated record is not approval-ready.
 - `validate-plugin-maintainer-approval --require-approved` fails: the approval artifact is missing, mismatched, malformed, or the submission bundle was not ready for human review.
 
-## 7. Why This Exists
+Do not treat every validation failure as a rejection of the extension idea. Separate package-safety failures from ecosystem-growth gaps:
+
+- path traversal, unsafe zip entries, malformed JSON, hidden install execution, or credential leakage are blockers;
+- unknown permissions may mean the author used a future capability name, so ask them to map it to current permissions or record a backlog gap;
+- secret-like OpenPet-managed config fields are current tooling limitations, so authors may move credentials to extension-owned setup/files and disclose that ownership;
+- missing real community provenance is an evidence gap, not proof the package is low quality.
+
+## 8. Why This Exists
 
 The project already had command-level documentation for validation, report generation, PR packets, bundle generation, and bundle validation. This playbook gives third-party authors a single rehearsal path they can follow without stitching the steps together themselves, while the runtime and tooling migrate from the legacy plugin SDK toward the unified extension model.
