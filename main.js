@@ -110,6 +110,28 @@ app.whenReady().then(() => {
   const cursorAssetService = createCursorAssetService({
     cursorDir: path.join(app.getPath('userData'), 'cursors')
   })
+  cursorAssetService.repairCursor(petService.getSettings().customCursor).then((customCursor) => {
+    const currentSettings = petService.getSettings()
+    if (customCursor.assetPath && customCursor.assetPath !== currentSettings.customCursor?.assetPath) {
+      petService.saveSettings({ ...currentSettings, customCursor })
+      appLogService.record({
+        scope: 'settings',
+        level: 'info',
+        actor: 'system',
+        event: 'settings.cursor.asset.repaired',
+        message: 'Cursor asset resized for browser compatibility',
+        details: { fileName: customCursor.fileName, enabled: customCursor.enabled }
+      })
+    }
+  }).catch((error) => {
+    appLogService.record({
+      scope: 'settings',
+      level: 'error',
+      actor: 'system',
+      event: 'settings.cursor.asset.repair.failed',
+      message: error.message
+    })
+  })
   const pluginDir = path.join(app.getPath('userData'), 'plugins')
   const pluginInstallService = createPluginInstallService({
     settingsService,
