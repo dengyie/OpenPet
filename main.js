@@ -12,7 +12,7 @@ const fs = require('fs')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
-const { applyWindowScale, createWindow, createSettingsWindow, loadPetWindow, restorePetWindowVisibility } = require('./src/main/window')
+const { applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow, restorePetWindowVisibility } = require('./src/main/window')
 const { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers } = require('./src/main/ipc')
 const { configureUserDataPath } = require('./src/main/user-data-path')
 const { registerWindowAllClosedPolicy } = require('./src/main/app-lifecycle')
@@ -178,6 +178,7 @@ app.whenReady().then(() => {
     aboutService,
     actionImportService,
     applyWindowScale: (scale) => applyWindowScale(petWindow, scale),
+    applyPetViewport,
     clampToWorkArea,
     getMovementState,
     createSettingsWindow: () => createSettingsWindow(petWindow, { activityLog }),

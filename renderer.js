@@ -44,6 +44,7 @@ const state = {
   bubbleTimer: 0,        // setTimeout id，到期后隐藏气泡
   bubbleDuration: 1300   // 气泡显示时长 ms（由设置同步）
 }
+state.scale = 1
 
 // ═══════════════════════════════════════════
 // 2. 气泡 — 在小猫头顶显示文字，定时消失
@@ -79,6 +80,43 @@ let frameCount = 0  // 当前动作总帧数
 const getDisplayDimensions = (animation) => {
   const s = Math.min(1, MAX_DISPLAY_SIZE / animation.frameWidth, MAX_DISPLAY_SIZE / animation.frameHeight)
   return { width: Math.round(animation.frameWidth * s), height: Math.round(animation.frameHeight * s), fitScale: s }
+}
+
+const getActionViewport = (animation, dims) => {
+  const viewport = animation.viewport || { x: 0, y: 0, width: animation.frameWidth, height: animation.frameHeight, padding: 8 }
+  const fitScale = dims.fitScale || 1
+  const padding = Number(viewport.padding ?? 8)
+  return {
+    x: Math.round((Number(viewport.x) || 0) * fitScale),
+    y: Math.round((Number(viewport.y) || 0) * fitScale),
+    width: Math.max(1, Math.round((Number(viewport.width) || dims.width) * fitScale)),
+    height: Math.max(1, Math.round((Number(viewport.height) || dims.height) * fitScale)),
+    padding: Math.max(0, Math.round(padding * fitScale)),
+    scale: state.scale
+  }
+}
+
+const applyActionLayout = (animation, dims) => {
+  const viewport = getActionViewport(animation, dims)
+  const windowWidth = (viewport.width + viewport.padding * 2) * state.scale
+  const catLeft = Math.round((windowWidth / 2) - ((viewport.x + viewport.width / 2) * state.scale))
+  const catBottom = Math.round((viewport.padding - (dims.height - viewport.y - viewport.height)) * state.scale)
+
+  catEl.style.left = catLeft + 'px'
+  catEl.style.bottom = catBottom + 'px'
+  window.petAPI.setViewport?.(viewport)
+}
+
+const applySpriteGeometry = (animation, dims) => {
+  const scaledWidth = Math.max(1, Math.round(dims.width * state.scale))
+  const scaledHeight = Math.max(1, Math.round(dims.height * state.scale))
+  catEl.style.width = scaledWidth + 'px'
+  catEl.style.height = scaledHeight + 'px'
+  frameStepX = Math.round(animation.frameWidth * dims.fitScale * state.scale)
+  frameStepY = Math.round(animation.frameHeight * dims.fitScale * state.scale)
+  const atlasColumns = animation.atlas?.columns || animation.frameCount
+  const atlasRows = animation.atlas?.rows || 1
+  catEl.style.backgroundSize = `${Math.round(atlasColumns * frameStepX)}px ${Math.round(atlasRows * frameStepY)}px`
 }
 
 /**
@@ -125,17 +163,12 @@ const setAction = (action) => {
   state.frameIndex = 0
 
   const dims = getDisplayDimensions(a)
-  catEl.style.width = dims.width + 'px'
-  catEl.style.height = dims.height + 'px'
+  applyActionLayout(a, dims)
+  applySpriteGeometry(a, dims)
   catEl.style.backgroundImage = 'url(' + a.sprite + ')'
-  frameStepX = Math.round(a.frameWidth * dims.fitScale)
-  frameStepY = Math.round(a.frameHeight * dims.fitScale)
   frameColumn = a.frameColumn || 0
   frameRow = a.frameRow || 0
   frameCount = a.frameCount
-  const atlasColumns = a.atlas?.columns || a.frameCount
-  const atlasRows = a.atlas?.rows || 1
-  catEl.style.backgroundSize = `${Math.round(atlasColumns * frameStepX)}px ${Math.round(atlasRows * frameStepY)}px`
   renderCurrentFrame()
 
   scheduleFrameTick()
@@ -299,7 +332,16 @@ const onMenuClick = (event) => {
 
 // 监听主进程推送的设置变更，同步到渲染状态
 window.petAPI.onSettingsChanged((s) => {
-  if (s.scale != null) catEl.style.setProperty('--cat-scale', s.scale)
+  if (s.scale != null) {
+    state.scale = Math.max(Number(s.scale) || 1, 1)
+    const currentAction = state.animations[state.action]
+    if (currentAction) {
+      const dims = getDisplayDimensions(currentAction)
+      applyActionLayout(currentAction, dims)
+      applySpriteGeometry(currentAction, dims)
+      renderCurrentFrame()
+    }
+  }
   if (s.walkSpeed != null) state.walkSpeed = s.walkSpeed
   if (s.walkDuration != null) state.walkDuration = s.walkDuration
   if (s.bubbleDuration != null) state.bubbleDuration = s.bubbleDuration

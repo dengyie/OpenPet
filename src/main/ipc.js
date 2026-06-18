@@ -56,6 +56,7 @@ const createNoopActivityLog = () => ({ record: () => {} })
 
 const HIGH_FREQUENCY_IPC_CHANNELS = new Set([
   IPC.PET_SET_POSITION,
+  IPC.PET_SET_VIEWPORT,
   IPC.PET_MOVE_BY
 ])
 
@@ -129,7 +130,7 @@ const executeBehaviorDecision = (petService, decision) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale,
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, restorePetWindowVisibility = () => {}, activityLog = createNoopActivityLog(), appService = app, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
   ipcMainService = createLoggedIpcMainService({ ipcMainService, activityLog })
@@ -181,6 +182,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     if (!win || !point) return
     const next = clampToWorkArea(win, point.x, point.y)
     win.setPosition(next.x, next.y)
+  })
+
+  ipcMainService.on(IPC.PET_SET_VIEWPORT, (event, viewport) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || !viewport) return
+    applyPetViewport(win, viewport)
   })
 
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
@@ -311,7 +318,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
     const savedSettings = petService.saveSettings(settings)
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
-    applyWindowScale(getPetWindow(), savedSettings.scale)
+    applyWindowScale(savedSettings.scale)
     return savedSettings
   })
 
@@ -518,7 +525,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 设置面板拖动滑块：实时预览缩放（不持久化）
   ipcMainService.on(IPC.SETTINGS_PREVIEW_SCALE, (_event, scale) => {
     petService.previewSettings({ scale })
-    applyWindowScale(getPetWindow(), scale)
+    applyWindowScale(scale)
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, { scale })
   })
 
