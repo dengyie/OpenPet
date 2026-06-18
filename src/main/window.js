@@ -10,11 +10,30 @@ const BASE_HEIGHT = 300
 const CONTROL_CENTER_WIDTH = 900
 const CONTROL_CENTER_HEIGHT = 640
 
+const toFiniteNumber = (value, fallback) => (
+  Number.isFinite(Number(value)) ? Number(value) : fallback
+)
+
+const isValidWindowSize = (bounds) => (
+  Number.isFinite(bounds?.width) && Number.isFinite(bounds?.height) && bounds.width > 0 && bounds.height > 0
+)
+
 const applyWindowScale = (petWindow, scale) => {
   if (!petWindow || petWindow.isDestroyed()) return
-  const targetWidth = Math.round(BASE_WIDTH * Math.max(scale, 1))
-  const targetHeight = Math.round(BASE_HEIGHT * Math.max(scale, 1))
+  const safeScale = Math.max(toFiniteNumber(scale, 1), 1)
+  const targetWidth = Math.round(BASE_WIDTH * safeScale)
+  const targetHeight = Math.round(BASE_HEIGHT * safeScale)
   const bounds = petWindow.getBounds()
+  if (!isValidWindowSize(bounds)) {
+    const [fallbackX, fallbackY] = typeof petWindow.getPosition === 'function' ? petWindow.getPosition() : [0, 0]
+    petWindow.setBounds({
+      x: toFiniteNumber(bounds?.x, fallbackX),
+      y: toFiniteNumber(bounds?.y, fallbackY),
+      width: targetWidth,
+      height: targetHeight
+    })
+    return
+  }
   if (targetWidth === bounds.width && targetHeight === bounds.height) return
   const [x, y] = petWindow.getPosition()
   const deltaW = targetWidth - bounds.width
