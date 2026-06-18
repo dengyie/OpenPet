@@ -304,6 +304,43 @@ test('pet viewport IPC delegates dynamic action bounds to the window service', (
   }])
 })
 
+test('pet mouse passthrough IPC toggles transparent window hit behavior', () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const petWindow = {
+    id: 10,
+    setIgnoreMouseEvents: (...args) => calls.push(args)
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    browserWindowService: {
+      fromWebContents: () => petWindow
+    },
+    ipcMainService: ipcMain
+  })
+
+  ipcMain.listeners.get(IPC.PET_SET_MOUSE_PASSTHROUGH)({ sender: {} }, true)
+  ipcMain.listeners.get(IPC.PET_SET_MOUSE_PASSTHROUGH)({ sender: {} }, false)
+
+  assert.deepEqual(calls, [
+    [true, { forward: true }],
+    [false]
+  ])
+})
+
 test('generic IPC activity logging redacts direct secret payloads', async () => {
   const ipcMain = createIpcMainStub()
   const activityEntries = []

@@ -57,6 +57,7 @@ const createNoopActivityLog = () => ({ record: () => {} })
 const HIGH_FREQUENCY_IPC_CHANNELS = new Set([
   IPC.PET_SET_POSITION,
   IPC.PET_SET_VIEWPORT,
+  IPC.PET_SET_MOUSE_PASSTHROUGH,
   IPC.PET_MOVE_BY
 ])
 
@@ -188,6 +189,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !viewport) return
     applyPetViewport(win, viewport)
+  })
+
+  ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
+    if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
+    else win.setIgnoreMouseEvents(false)
   })
 
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头

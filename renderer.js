@@ -39,6 +39,8 @@ const state = {
 
   // ── 拖拽 ──
   drag: null,            // { pointerId, offsetX, offsetY, moved } | null
+  mousePassthrough: false,
+  currentLayout: null,
 
   // ── 气泡 ──
   bubbleTimer: 0,        // setTimeout id，到期后隐藏气泡
@@ -104,6 +106,7 @@ const applyActionLayout = (animation, dims) => {
 
   catEl.style.left = catLeft + 'px'
   catEl.style.bottom = catBottom + 'px'
+  state.currentLayout = { viewport, dims, catLeft, catBottom }
   window.petAPI.setViewport?.(viewport)
 }
 
@@ -149,6 +152,35 @@ const scheduleFrameTick = () => {
   state.frameTimer = window.setTimeout(tickFrame, getFrameDuration(a, state.frameIndex))
 }
 
+const setMousePassthrough = (passthrough) => {
+  const next = Boolean(passthrough)
+  if (state.mousePassthrough === next) return
+  state.mousePassthrough = next
+  window.petAPI.setMousePassthrough?.(next)
+}
+
+const isPointInsideCurrentFrame = (clientX, clientY) => {
+  if (state.drag || menu.classList.contains('open')) return true
+  const animation = state.animations[state.action]
+  const layout = state.currentLayout
+  if (!animation || !layout) return true
+
+  const frame = Array.isArray(animation.frames) ? animation.frames[state.frameIndex] : null
+  const trim = frame?.trim || { x: 0, y: 0, width: animation.frameWidth, height: animation.frameHeight }
+  const fitScale = layout.dims.fitScale || 1
+  const padding = (layout.viewport.padding || 0) * state.scale
+  const left = layout.catLeft + (trim.x * fitScale * state.scale) - padding
+  const top = (window.innerHeight - layout.catBottom - (layout.dims.height * state.scale)) + (trim.y * fitScale * state.scale) - padding
+  const right = left + (trim.width * fitScale * state.scale) + padding * 2
+  const bottom = top + (trim.height * fitScale * state.scale) + padding * 2
+
+  return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom
+}
+
+const updateMousePassthroughFromPoint = (event) => {
+  setMousePassthrough(!isPointInsideCurrentFrame(event.clientX, event.clientY))
+}
+
 /**
  * 切换到指定动作，启动帧播放定时器。
  * — 动作无 sprite 时静默返回（防御性编程）。
@@ -170,6 +202,7 @@ const setAction = (action) => {
   frameRow = a.frameRow || 0
   frameCount = a.frameCount
   renderCurrentFrame()
+  setMousePassthrough(false)
 
   scheduleFrameTick()
 
@@ -265,6 +298,7 @@ const onPointerDown = async (event) => {
   }
   pet.setPointerCapture(event.pointerId)
   pet.classList.add('dragging')
+  setMousePassthrough(false)
 }
 
 /** pointermove：持续更新窗口位置。moved 标志用于区分拖拽与点击。 */
@@ -280,6 +314,7 @@ const onPointerUp = (event) => {
   const wasClick = !state.drag.moved
   state.drag = null
   pet.classList.remove('dragging')
+  updateMousePassthroughFromPoint(event)
   if (wasClick) setAction(state.clickAction)
 }
 
@@ -312,7 +347,10 @@ const applyAnimationsConfig = ({ actions, defaultAction, clickAction }) => {
 }
 
 const hideMenu = () => menu.classList.remove('open')
-const showMenu = () => menu.classList.add('open')
+const showMenu = () => {
+  setMousePassthrough(false)
+  menu.classList.add('open')
+}
 
 /** 菜单点击统一分发 —— 根据按钮 data-action 路由到对应逻辑。 */
 const onMenuClick = (event) => {
@@ -364,6 +402,7 @@ window.petAPI.onAnimationsChanged((config) => {
 
 // DOM 事件绑定
 pet.addEventListener('pointerdown', onPointerDown)
+pet.addEventListener('pointermove', updateMousePassthroughFromPoint)
 pet.addEventListener('pointermove', onPointerMove)
 pet.addEventListener('pointerup', onPointerUp)
 pet.addEventListener('dblclick', toggleWalk)
