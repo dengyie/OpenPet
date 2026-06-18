@@ -106,7 +106,7 @@ npm run generate-sprites
 
 ## 扩展开发
 
-OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.setup`、`entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`，仅声明本地扩展也可以在用户显式触发时运行短生命周期的 `entries.commands`，通过 stdin 接收 JSON 上下文，并在运行期间获得短时 bridge 以调用 `pet.say`、`pet.action`、`pet.event`、受限 context、creator-tools 动作读写、包内 frame inspection，以及包内 frame import/sprite generation。已启用插件可以从 Control Center 显式运行声明的 setup entry、打开声明的 HTTP/HTTPS dashboard、启动或停止声明的 service entry，并手动检查声明的 loopback service health endpoint。Command、setup 和 service 进程启动都不经过 shell 展开，service 不会自动启动，setup 和 command 不会在 install 或 enable 时自动执行，停止 service 时会尽力清理进程组，health check 不会后台轮询；任意 shell 控制台、任意文件写入、pet-pack 写入和硬性的完整进程树清理保证仍属于后续 runtime 工作。
+OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.setup`、`entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`，仅声明本地扩展也可以在用户显式触发时运行短生命周期的 `entries.commands`，通过 stdin 接收 JSON 上下文，并在运行期间获得短时 bridge 以调用 `pet.say`、`pet.action`、`pet.event`、受限 context、creator-tools 动作读写、当前激活已安装用户包的 manifest 元数据工作流、包内 frame inspection，以及包内 frame import/sprite generation。已启用插件可以从 Control Center 显式运行声明的 setup entry、打开声明的 HTTP/HTTPS dashboard、启动或停止声明的 service entry，并手动检查声明的 loopback service health endpoint。Command、setup 和 service 进程启动都不经过 shell 展开，service 不会自动启动，setup 和 command 不会在 install 或 enable 时自动执行，停止 service 时会尽力清理进程组，health check 不会后台轮询；任意 shell 控制台、任意文件写入、通用 pet-pack 写入和硬性的完整进程树清理保证仍属于后续 runtime 工作。
 
 当前 legacy SDK 示例在宿主运行时追上新模型前仍然有参考价值：
 

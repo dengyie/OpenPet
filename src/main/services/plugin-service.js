@@ -567,7 +567,7 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const serviceRuntimes = new Map()
@@ -694,6 +694,24 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const actions = actionService.applyCreatorActionMutation(payload)
       return { ok: true, actions }
     },
+    creatorPackManifestRead: async () => {
+      assertPermission(plugin.manifest, 'pack-manifest:read')
+      if (!petPackService?.getActiveCreatorPackManifest) throw new Error('Creator pack manifest read is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pack-manifest read invoked' })
+      return { ok: true, manifest: petPackService.getActiveCreatorPackManifest() }
+    },
+    creatorPackManifestValidate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pack-manifest:write')
+      if (!petPackService?.validateActiveCreatorPackManifestMutation) throw new Error('Creator pack manifest validation is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pack-manifest validate invoked' })
+      return { ok: true, validation: petPackService.validateActiveCreatorPackManifestMutation(payload) }
+    },
+    creatorPackManifestApply: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pack-manifest:write')
+      if (!petPackService?.applyActiveCreatorPackManifestMutation) throw new Error('Creator pack manifest apply is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pack-manifest apply invoked' })
+      return { ok: true, manifest: petPackService.applyActiveCreatorPackManifestMutation(payload) }
+    },
     creatorAssetsInspectFrames: async (payload = {}) => {
       assertPermission(plugin.manifest, 'assets:inspect')
       if (!actionImportService?.inspectActionFrames) throw new Error('Creator asset inspection is not available')
@@ -783,7 +801,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     commandBridgeServer = http.createServer(async (request, response) => {
       try {
         const url = new URL(request.url, `http://${PLUGIN_BRIDGE_HOST}`)
-        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames)$/)
+        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames)$/)
         if (!match) {
           sendJson(response, 404, { ok: false, error: 'Not found' })
           return
@@ -812,6 +830,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           sendJson(response, 200, await runtime.handlers.creatorActionsRead())
           return
         }
+        if (route === '/creator/pack-manifest') {
+          sendJson(response, 200, await runtime.handlers.creatorPackManifestRead())
+          return
+        }
 
         if (!isJsonRequest(request)) {
           sendJson(response, 415, { ok: false, error: 'Content-Type must be application/json' })
@@ -837,6 +859,14 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         }
         if (route === '/creator/actions/apply') {
           sendJson(response, 200, await runtime.handlers.creatorActionsApply(payload))
+          return
+        }
+        if (route === '/creator/pack-manifest/validate') {
+          sendJson(response, 200, await runtime.handlers.creatorPackManifestValidate(payload))
+          return
+        }
+        if (route === '/creator/pack-manifest/apply') {
+          sendJson(response, 200, await runtime.handlers.creatorPackManifestApply(payload))
           return
         }
         if (route === '/creator/assets/inspect-frames') {

@@ -6,6 +6,9 @@ import type {
   CreatorAssetsImportFramesResponse,
   CreatorAssetsInspectFramesRequest,
   CreatorAssetsInspectFramesResponse,
+  CreatorPackManifestMutationRequest,
+  CreatorPackManifestMutationResult,
+  CreatorPackManifestReadResponse,
   PluginCommandRunResultViewState,
   PluginPackageReviewViewState,
   PluginSetupRunResultViewState,
@@ -177,6 +180,61 @@ const creatorAssetsImportFramesResponseFixture = {
   },
   importedAction: { id: 'wave', label: 'Wave Hello', sprite: 'file:///packs/cat/sprites/wave.png', frameCount: 2, frameMs: 95, frameWidth: 8, frameHeight: 8 }
 } satisfies CreatorAssetsImportFramesResponse
+
+const creatorPackManifestMutationRequestFixture = {
+  displayName: 'Community Weather Cat Deluxe',
+  version: '1.1.0',
+  provenance: {
+    sourceUrl: 'https://example.com/deluxe',
+    assetAuthor: 'Updated Author',
+    license: 'CC-BY-SA-4.0',
+    licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/'
+  }
+} satisfies CreatorPackManifestMutationRequest
+
+const creatorPackManifestReadFixture = {
+  ok: true,
+  manifest: {
+    id: 'community-weather-cat',
+    displayName: 'Community Weather Cat',
+    version: '1.0.0',
+    source: 'user-installed',
+    provenance: {
+      sourceUrl: 'https://example.com/original',
+      assetAuthor: 'Original Author',
+      license: 'CC-BY-4.0',
+      licenseUrl: 'https://creativecommons.org/licenses/by/4.0/'
+    }
+  }
+} satisfies CreatorPackManifestReadResponse
+
+const creatorPackManifestMutationFixture = {
+  ok: true,
+  validation: {
+    ok: true,
+    errors: [],
+    warnings: [],
+    manifest: {
+      id: 'community-weather-cat',
+      displayName: 'Community Weather Cat Deluxe',
+      version: '1.1.0',
+      source: 'user-installed',
+      provenance: {
+        sourceUrl: 'https://example.com/deluxe',
+        assetAuthor: 'Updated Author',
+        license: 'CC-BY-SA-4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/'
+      }
+    }
+  },
+  manifest: {
+    id: 'community-weather-cat',
+    displayName: 'Community Weather Cat Deluxe',
+    version: '1.1.0',
+    source: 'user-installed',
+    provenance: creatorPackManifestMutationRequestFixture.provenance
+  }
+} satisfies CreatorPackManifestMutationResult
 
 const releaseArchiveFixture = {
   generatedAt: '2026-06-17T00:00:00.000Z',

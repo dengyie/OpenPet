@@ -539,6 +539,211 @@ test('declaration-only creator action bridge rejects missing permissions', async
   assert.equal(writeResponse.status, 403)
 })
 
+test('declaration-only creator pack manifest bridge reads validates and applies active pack metadata', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const petPackService = {
+    getActiveCreatorPackManifest: () => ({
+      id: 'community-weather-cat',
+      displayName: 'Community Weather Cat',
+      version: '1.0.0',
+      source: 'user-installed',
+      provenance: {
+        sourceUrl: 'https://example.com/original',
+        assetAuthor: 'Original Author',
+        license: 'CC-BY-4.0',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/'
+      }
+    }),
+    validateActiveCreatorPackManifestMutation: (payload) => ({
+      ok: true,
+      errors: [],
+      warnings: [],
+      manifest: {
+        id: 'community-weather-cat',
+        displayName: payload.displayName,
+        version: payload.version,
+        source: 'user-installed',
+        provenance: {
+          sourceUrl: payload.provenance.sourceUrl,
+          assetAuthor: payload.provenance.assetAuthor,
+          license: payload.provenance.license,
+          licenseUrl: payload.provenance.licenseUrl
+        }
+      }
+    }),
+    applyActiveCreatorPackManifestMutation: (payload) => ({
+      id: 'community-weather-cat',
+      displayName: payload.displayName,
+      version: payload.version,
+      source: 'user-installed',
+      provenance: {
+        sourceUrl: payload.provenance.sourceUrl,
+        assetAuthor: payload.provenance.assetAuthor,
+        license: payload.provenance.license,
+        licenseUrl: payload.provenance.licenseUrl
+      }
+    })
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    petPackService,
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'creator-tools',
+      permissions: ['pack-manifest:read', 'pack-manifest:write']
+    })],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const payload = {
+    displayName: 'Community Weather Cat Deluxe',
+    version: '1.1.0',
+    provenance: {
+      sourceUrl: 'https://example.com/deluxe',
+      assetAuthor: 'Updated Author',
+      license: 'CC-BY-SA-4.0',
+      licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/'
+    }
+  }
+
+  const readResponse = await requestBridge(`${baseUrl}/creator/pack-manifest`, { token })
+  const validateResponse = await requestBridge(`${baseUrl}/creator/pack-manifest/validate`, {
+    method: 'POST',
+    token,
+    body: payload
+  })
+  const applyResponse = await requestBridge(`${baseUrl}/creator/pack-manifest/apply`, {
+    method: 'POST',
+    token,
+    body: payload
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(readResponse.status, 200)
+  assert.equal(readResponse.body.manifest.id, 'community-weather-cat')
+  assert.equal(validateResponse.status, 200)
+  assert.equal(validateResponse.body.validation.ok, true)
+  assert.equal(applyResponse.status, 200)
+  assert.equal(applyResponse.body.manifest.displayName, 'Community Weather Cat Deluxe')
+})
+
+test('declaration-only creator pack manifest bridge rejects missing permissions', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    petPackService: {
+      getActiveCreatorPackManifest: () => ({
+        id: 'ignored',
+        displayName: 'Ignored',
+        version: '1.0.0',
+        source: 'user-installed',
+        provenance: {}
+      })
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'creator-tools',
+      permissions: []
+    })],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  const readResponse = await requestBridge(`${baseUrl}/creator/pack-manifest`, { token })
+  const writeResponse = await requestBridge(`${baseUrl}/creator/pack-manifest/apply`, {
+    method: 'POST',
+    token,
+    body: { displayName: 'Nope' }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(readResponse.status, 403)
+  assert.equal(writeResponse.status, 403)
+})
+
+test('declaration-only creator pack manifest bridge rejects non-editable active packs', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    petPackService: {
+      getActiveCreatorPackManifest: () => {
+        throw new Error('Creator pack manifest workflows require an active installed pet pack')
+      },
+      validateActiveCreatorPackManifestMutation: () => ({
+        ok: false,
+        errors: ['Creator pack manifest workflows require an active installed pet pack'],
+        warnings: [],
+        manifest: null
+      }),
+      applyActiveCreatorPackManifestMutation: () => {
+        throw new Error('Creator pack manifest workflows require an active installed pet pack')
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'creator-tools',
+      permissions: ['pack-manifest:read', 'pack-manifest:write']
+    })],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  const readResponse = await requestBridge(`${baseUrl}/creator/pack-manifest`, { token })
+  const validateResponse = await requestBridge(`${baseUrl}/creator/pack-manifest/validate`, {
+    method: 'POST',
+    token,
+    body: { displayName: 'Still Nope' }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(readResponse.status, 400)
+  assert.match(readResponse.body.error, /active installed pet pack/)
+  assert.equal(validateResponse.status, 200)
+  assert.equal(validateResponse.body.validation.ok, false)
+})
+
 test('declaration-only creator asset inspection bridge inspects package-local frame folders', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

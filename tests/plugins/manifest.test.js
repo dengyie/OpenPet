@@ -264,6 +264,32 @@ test('normalizes creator-tools asset generation permission', () => {
   assert.deepEqual(manifest.permissions, ['assets:generate'])
 })
 
+test('normalizes creator-tools pack manifest read permission', () => {
+  const manifest = normalizePluginManifest({
+    id: 'pack-manifest-reader',
+    name: 'Pack Manifest Reader',
+    version: '1.0.0',
+    profile: 'creator-tools',
+    permissions: ['pack-manifest:read']
+  })
+
+  assert.equal(manifest.profile, 'creator-tools')
+  assert.deepEqual(manifest.permissions, ['pack-manifest:read'])
+})
+
+test('normalizes creator-tools pack manifest write permission', () => {
+  const manifest = normalizePluginManifest({
+    id: 'pack-manifest-writer',
+    name: 'Pack Manifest Writer',
+    version: '1.0.0',
+    profile: 'creator-tools',
+    permissions: ['pack-manifest:write']
+  })
+
+  assert.equal(manifest.profile, 'creator-tools')
+  assert.deepEqual(manifest.permissions, ['pack-manifest:write'])
+})
+
 test('normalizes optional plugin signature metadata', () => {
   assert.deepEqual(normalizePluginManifest({
     id: 'signed-plugin',

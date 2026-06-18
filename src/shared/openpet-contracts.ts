@@ -564,6 +564,36 @@ export interface CreatorAssetsImportFramesResponse {
   importedAction?: ActionEntry
 }
 
+export interface CreatorPackManifestView {
+  id: string
+  displayName: string
+  version: string
+  source: string
+  provenance: Pick<PetPackProvenance, 'sourceUrl' | 'assetAuthor' | 'license' | 'licenseUrl'>
+}
+
+export interface CreatorPackManifestMutationRequest {
+  displayName?: string
+  version?: string
+  provenance?: Partial<Pick<PetPackProvenance, 'sourceUrl' | 'assetAuthor' | 'license' | 'licenseUrl'>>
+}
+
+export interface CreatorPackManifestReadResponse {
+  ok: boolean
+  manifest: CreatorPackManifestView
+}
+
+export interface CreatorPackManifestMutationResult {
+  ok: boolean
+  validation?: {
+    ok: boolean
+    errors: string[]
+    warnings: string[]
+    manifest: CreatorPackManifestView | null
+  }
+  manifest?: CreatorPackManifestView
+}
+
 export interface PluginMutationResult extends OkResponse {
   pluginId?: string
   installMode?: string

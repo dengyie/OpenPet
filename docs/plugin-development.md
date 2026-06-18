@@ -220,6 +220,9 @@ Current bridge routes:
 - `GET /creator/actions`
 - `POST /creator/actions/validate`
 - `POST /creator/actions/apply`
+- `GET /creator/pack-manifest`
+- `POST /creator/pack-manifest/validate`
+- `POST /creator/pack-manifest/apply`
 - `POST /creator/assets/inspect-frames`
 - `POST /creator/assets/import-frames`
 
@@ -258,6 +261,9 @@ Current endpoint set:
 - `GET /creator/actions`
 - `POST /creator/actions/validate`
 - `POST /creator/actions/apply`
+- `GET /creator/pack-manifest`
+- `POST /creator/pack-manifest/validate`
+- `POST /creator/pack-manifest/apply`
 - `POST /creator/assets/inspect-frames`
 - `POST /creator/assets/import-frames`
 
@@ -266,9 +272,10 @@ Bridge rules:
 - the bridge exists only during an explicit declaration-only command run;
 - the command must belong to an enabled, policy-allowed local extension;
 - requests must use `Authorization: Bearer <OPENPET_BRIDGE_TOKEN>`;
-- `pet:say`, `pet:action`, `pet:event`, `actions:read`, `actions:write`, `assets:inspect`, and `assets:generate` permissions are enforced per route;
+- `pet:say`, `pet:action`, `pet:event`, `actions:read`, `actions:write`, `pack-manifest:read`, `pack-manifest:write`, `assets:inspect`, and `assets:generate` permissions are enforced per route;
 - all pet mutations still flow through `PetService`;
-- creator-tools reads and writes flow through the host action service boundary;
+- creator-tools action reads and writes flow through the host action service boundary, while pack manifest metadata reads and writes flow through the host pet-pack service boundary;
+- `pack-manifest:read` / `pack-manifest:write` only expose the current active installed user pack metadata workflow and do not permit arbitrary pet-pack writes, arbitrary pack targeting, or raw filesystem access;
 - creator-tools frame inspection is read-only, package-local, and confined to the extension directory;
 - creator-tools frame import/sprite generation is host-mediated, package-local, resource-limited, and does not grant raw filesystem writes or plugin-selected output paths;
 - setup entries, services, install, enable, and background health paths do not receive bridge access.
@@ -428,7 +435,7 @@ Good extension shapes include:
 - scheduled companions that announce calendar, RSS, build, or system status;
 - dashboards for configuring extension-specific workflows.
 
-Pet action tooling should prefer package-local assets and generated outputs under `OPENPET_DATA_DIR` or a declared asset directory. Creator-tools commands should use the host bridge for bounded action reads/writes, package-local frame inspection, and package-local frame import/sprite generation. Do not modify `cat_anime/` directly unless the user is intentionally working on core app assets.
+Pet action tooling should prefer package-local assets and generated outputs under `OPENPET_DATA_DIR` or a declared asset directory. Creator-tools commands should use the host bridge for bounded action reads/writes, active installed pack metadata edits, package-local frame inspection, and package-local frame import/sprite generation. Do not modify `cat_anime/` directly unless the user is intentionally working on core app assets.
 
 ## Packaging And Submission
 
@@ -444,7 +451,7 @@ npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer
 npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
 
-These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, a broader process-tree cleanup fallback for explicit stop paths, creator-tools action reads and bounded writes through the short-lived bridge, package-local creator frame inspection through `assets:inspect`, package-local frame import/sprite generation through `assets:generate`, and a separate maintainer approval artifact layered on top of a ready-for-review submission bundle. Approval remains human-authored and does not prove signing trust, catalog publication, runtime safety, or release readiness. Arbitrary folder imports, pet-pack writes, broader bridge flows, and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
+These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, a broader process-tree cleanup fallback for explicit stop paths, creator-tools action reads and bounded writes through the short-lived bridge, active installed pack metadata reads / validation / bounded writes through `pack-manifest:read` and `pack-manifest:write`, package-local creator frame inspection through `assets:inspect`, package-local frame import/sprite generation through `assets:generate`, and a separate maintainer approval artifact layered on top of a ready-for-review submission bundle. Approval remains human-authored and does not prove signing trust, catalog publication, runtime safety, or release readiness. Arbitrary folder imports, arbitrary pet-pack writes, broader bridge flows, and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
 
 For a local author rehearsal:
 

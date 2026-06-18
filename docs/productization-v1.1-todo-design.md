@@ -25,7 +25,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - PetService remains the single source of truth for `say`, `action`, and event state.
 - Pet pack runtime supports legacy cat assets, OpenPet packs, Codex pet directory import, Codex pet zip import, and bundled packs.
 - Bundled pet assets are integrated without replacing the legacy `cat_anime/` structure.
-- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner and explicit short-lived process execution for declaration-only local extensions, a short-lived command bridge for `pet.say` / `pet.action` / `pet.event` / read-only context, creator-tools action reads / validation / bounded writes, package-local frame inspection, and package-local frame import/sprite generation for declaration-only command runs, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
+- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner and explicit short-lived process execution for declaration-only local extensions, a short-lived command bridge for `pet.say` / `pet.action` / `pet.event` / read-only context, creator-tools action reads / validation / bounded writes, active installed pack metadata reads / validation / bounded writes, package-local frame inspection, and package-local frame import/sprite generation for declaration-only command runs, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
 - TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin entry/dashboard/service contracts, and full release evidence archive / signed closure report contracts exist.
@@ -36,7 +36,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - macOS signed/notarized release evidence still needs real artifact capture and archive.
 - Windows signed installer/zip smoke evidence still needs real Windows execution.
 - Packaged runtime smoke reports still need real app evidence for pet window visibility, transparent rendering, bundled pack switching, and native picker flows.
-- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, creator-tools action reads / validation / bounded writes, package-local frame inspection, package-local frame import/sprite generation, explicit service start/stop, manual loopback service health checks, opt-in periodic health checks for running services, and best-effort process-group cleanup now exists. Local scaffold and existing-plugin submission rehearsals now exist. External community provenance, creator pack-manifest workflows, user-approved arbitrary folder imports, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
+- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, creator-tools action reads / validation / bounded writes, package-local frame inspection, package-local frame import/sprite generation, explicit service start/stop, manual loopback service health checks, opt-in periodic health checks for running services, and best-effort process-group cleanup now exists. Local scaffold and existing-plugin submission rehearsals now exist. External community provenance, deeper pack workflows beyond active metadata, user-approved arbitrary folder imports, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
 - Legacy SDK plugin secrets policy remains conservative; target extension docs require honest disclosure for extension-managed secrets and data.
 - Plugin sandbox strategy has been evaluated against SES and Electron `utilityProcess`; current recommendation is to keep the existing runner for v1.1 while documenting limits.
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
@@ -1183,7 +1183,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - reject traversal, missing folders, non-folders, and symlink escapes;
 - preflight frame folders with frame/pixel limits before copying or generating;
 - reuse `ActionImportService.importActionFrames()` for frame copy, sprite generation, and action config updates;
-- keep arbitrary folder imports, plugin-selected output paths, raw writes, pet-pack writes, and renderer UI changes out of scope.
+- keep arbitrary folder imports, plugin-selected output paths, raw writes, general pet-pack writes, and renderer UI changes out of scope.
 
 **Acceptance**:
 
@@ -1195,7 +1195,33 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - shared contracts cover the request/response shape;
 - docs describe the route as host-mediated, package-local, and not raw filesystem access.
 
-**Status**: completed in Phase 83. Declaration-only creator-tools command runs can use `assets:generate` for package-local frame import and sprite regeneration through the host bridge while arbitrary folder imports, raw writes, plugin-selected output paths, and pet-pack writes remain future work.
+**Status**: completed in Phase 83. Declaration-only creator-tools command runs can use `assets:generate` for package-local frame import and sprite regeneration through the host bridge while arbitrary folder imports, raw writes, plugin-selected output paths, and general pet-pack writes remain future work.
+
+### Phase 84: Plugin creator-tools pack manifest workflow
+
+**Goal**: let declaration-only creator-tools extensions read, validate, and apply bounded active installed pack manifest metadata without granting arbitrary pet-pack writes.
+
+**Scope**:
+
+- accept `pack-manifest:read` and `pack-manifest:write` as normalized creator-tools permissions;
+- expose `GET /creator/pack-manifest`, `POST /creator/pack-manifest/validate`, and `POST /creator/pack-manifest/apply`;
+- target only the active installed user pack;
+- allow bounded metadata edits for `displayName`, `version`, `provenance.sourceUrl`, `provenance.assetAuthor`, `provenance.license`, and `provenance.licenseUrl`;
+- preserve `id`, `schemaVersion`, `actions`, `defaultAction`, `clickAction`, and host-owned provenance fields;
+- keep built-in pack edits, arbitrary pack targeting, action-field edits through this route, raw filesystem writes, and general pet-pack writes out of scope.
+
+**Acceptance**:
+
+- manifests accept `pack-manifest:read` and `pack-manifest:write` and still reject unknown permissions;
+- a plugin with `pack-manifest:read` can read active installed pack metadata;
+- a plugin with `pack-manifest:write` can validate and apply bounded metadata edits;
+- a plugin without the required permission receives `403`;
+- built-in active packs fail cleanly;
+- unsupported fields are rejected before persistence;
+- shared contracts cover the request/response shapes;
+- docs describe the route as host-mediated active-pack metadata editing, not arbitrary pet-pack write access.
+
+**Status**: completed in Phase 84. Declaration-only creator-tools command runs can use `pack-manifest:read` / `pack-manifest:write` for host-mediated active installed pack metadata workflows while built-in pack edits, arbitrary pack targeting, action-field edits through this route, and general pet-pack writes remain future work.
 
 ## 6. Priority Order
 
@@ -1210,6 +1236,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 80 Plugin creator-tools action bridge | Completed; declaration-only creator-tools commands can read, validate, and apply bounded action configuration updates through the host bridge. |
 | P1 | Phase 82 Plugin creator-tools asset inspection | Completed; declaration-only creator-tools commands can inspect package-local action frame folders through the host bridge. |
 | P1 | Phase 83 Plugin creator-tools sprite import | Completed; declaration-only creator-tools commands can import package-local frame folders and generate sprites through the host bridge with resource limits. |
+| P1 | Phase 84 Plugin creator-tools pack manifest workflow | Completed; declaration-only creator-tools commands can read, validate, and apply bounded active installed pack manifest metadata through the host bridge. |
 | P1 | Phase 40 pet pack export and provenance | Completed; keep provenance and conflict review as constraints for future catalog work. |
 | P1 | Phase 44 plugin author experience rehearsal | Completed; use the archived rehearsal as the plugin author baseline. |
 | P1 | Phase 74 Plugin maintainer approval rehearsal | Completed; submission bundles can now receive separate maintainer approval artifacts and author rehearsal now points at that human review step explicitly. |
@@ -1293,6 +1320,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 44. Phase 81 is complete; release archive and signed closure reports now require reviewed Windows smoke archive manifests to match the archived Windows smoke report.
 45. Phase 82 is complete; declaration-only creator-tools commands can use `assets:inspect` for host-mediated package-local frame inspection without sprite generation or raw writes.
 46. Phase 83 is complete; declaration-only creator-tools commands can use `assets:generate` for host-mediated package-local frame import and sprite regeneration with frame/pixel limits.
+47. Phase 84 is complete; declaration-only creator-tools commands can use `pack-manifest:read` / `pack-manifest:write` for host-mediated active installed pack manifest metadata workflows without arbitrary pet-pack writes.
 
 ## 8. Verification Contract
 

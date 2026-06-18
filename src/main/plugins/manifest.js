@@ -9,7 +9,9 @@ const KNOWN_PLUGIN_PERMISSIONS = new Set([
   'actions:read',
   'actions:write',
   'assets:inspect',
-  'assets:generate'
+  'assets:generate',
+  'pack-manifest:read',
+  'pack-manifest:write'
 ])
 
 const KNOWN_PLUGIN_PROFILES = new Set(['runtime', 'creator-tools', 'hybrid'])
