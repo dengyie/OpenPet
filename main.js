@@ -30,6 +30,7 @@ const { createLocalHttpService } = require('./src/main/services/local-http-servi
 const { createActionImportService } = require('./src/main/services/action-import-service')
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
+const { createCursorAssetService } = require('./src/main/services/cursor-asset-service')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
 const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
@@ -89,6 +90,9 @@ app.whenReady().then(() => {
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
     configPath: path.join(__dirname, 'cat_anime', 'animations.json')
+  })
+  const cursorAssetService = createCursorAssetService({
+    cursorDir: path.join(app.getPath('userData'), 'cursors')
   })
   const pluginDir = path.join(app.getPath('userData'), 'plugins')
   const pluginInstallService = createPluginInstallService({
@@ -158,6 +162,7 @@ app.whenReady().then(() => {
     localHttpService,
     aboutService,
     actionImportService,
+    cursorAssetService,
     applyWindowScale: (scale) => applyWindowScale(petWindow, scale),
     applyPetViewport,
     clampToWorkArea,

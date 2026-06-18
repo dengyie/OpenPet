@@ -10,6 +10,19 @@ export interface ControlCenterSettings {
   walkDuration: number
   bubbleDuration: number
   autoStart: boolean
+  customCursor: CustomCursorSettings
+}
+
+export interface CustomCursorSettings {
+  enabled: boolean
+  assetPath: string
+  assetUrl: string
+  fileName: string
+}
+
+export interface CursorImportResult {
+  canceled: boolean
+  cursor?: CustomCursorSettings
 }
 
 export interface AiBehaviorRule {
@@ -2025,6 +2038,7 @@ export interface SignedReleaseClaimSummary {
 export interface ControlCenterApi {
   getSettings: () => Promise<ControlCenterSettings>
   saveSettings: (settings: Partial<ControlCenterSettings>) => Promise<ControlCenterSettings>
+  importCursor: () => Promise<CursorImportResult>
   previewScale: (scale: number) => void
   getActions: () => Promise<ActionsConfigViewState>
   inspectActionFrames: (payload?: ActionFrameInspectRequest) => Promise<ActionFrameInspectionResult>

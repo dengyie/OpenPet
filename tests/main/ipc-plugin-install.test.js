@@ -275,6 +275,107 @@ test('pet mouse passthrough IPC toggles transparent window hit behavior', () => 
   ])
 })
 
+test('settings cursor asset picker copies a selected cursor into hosted user data', async () => {
+  const ipcMain = createIpcMainStub()
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-cursor-ipc-'))
+  const sourcePath = path.join(root, 'cursor.png')
+  const cursorDir = path.join(root, 'hosted-cursors')
+  fs.writeFileSync(sourcePath, 'cursor-image')
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: false, filePaths: [sourcePath] })
+      }
+    }),
+    cursorAssetService: {
+      importCursor: async (selectedPath) => {
+        assert.equal(selectedPath, sourcePath)
+        fs.mkdirSync(cursorDir, { recursive: true })
+        const assetPath = path.join(cursorDir, 'cursor.png')
+        fs.copyFileSync(selectedPath, assetPath)
+        return {
+          enabled: true,
+          assetPath,
+          assetUrl: `file://${assetPath}`,
+          fileName: 'cursor.png'
+        }
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.SETTINGS_IMPORT_CURSOR)()
+
+  assert.equal(result.canceled, false)
+  assert.equal(result.cursor.enabled, true)
+  assert.equal(result.cursor.fileName, 'cursor.png')
+  assert.equal(fs.readFileSync(result.cursor.assetPath, 'utf-8'), 'cursor-image')
+})
+
+test('settings save syncs custom cursor settings to the pet renderer', async () => {
+  const ipcMain = createIpcMainStub()
+  const petWindowMessages = []
+  const savedCursor = {
+    enabled: true,
+    assetPath: '/tmp/openpet/cursors/cursor.png',
+    assetUrl: 'file:///tmp/openpet/cursors/cursor.png',
+    fileName: 'cursor.png'
+  }
+  const services = createRequiredServices({
+    pluginInstallService: {
+      inspectPluginPackage: () => ({}),
+      clearPendingSelection: () => ({ ok: true }),
+      installPlugin: () => ({ ok: true }),
+      updatePlugin: () => ({ ok: true }),
+      uninstallPlugin: () => ({ ok: true })
+    },
+    pluginService: { listPlugins: () => [] },
+    dialogService: {
+      showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+    }
+  })
+
+  registerIpcHandlers({
+    ...services,
+    petService: {
+      ...services.petService,
+      saveSettings: (settings) => ({ ...settings, customCursor: savedCursor })
+    },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      webContents: {
+        send: (...args) => petWindowMessages.push(args)
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  await ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, {
+    scale: 1,
+    walkSpeed: 2,
+    walkDuration: 15000,
+    bubbleDuration: 1300,
+    customCursor: savedCursor
+  })
+
+  assert.deepEqual(petWindowMessages, [[IPC.SETTINGS_CHANGED, {
+    scale: 1,
+    walkSpeed: 2,
+    walkDuration: 15000,
+    bubbleDuration: 1300,
+    customCursor: savedCursor
+  }]])
+})
+
 test('about handlers return stable info and update check view shapes', async () => {
   const ipcMain = createIpcMainStub()
 

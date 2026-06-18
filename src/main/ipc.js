@@ -25,7 +25,8 @@ const createPetRendererSettings = (settings = {}) => ({
   scale: settings.scale,
   walkSpeed: settings.walkSpeed,
   walkDuration: settings.walkDuration,
-  bubbleDuration: settings.bubbleDuration
+  bubbleDuration: settings.bubbleDuration,
+  customCursor: settings.customCursor
 })
 
 const normalizeLocalHttpConfig = (currentConfig = {}, nextConfig = {}) => {
@@ -85,7 +86,7 @@ const executeBehaviorDecision = (petService, decision) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
 
@@ -171,6 +172,17 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   // 设置面板启动时读取当前设置
   ipcMainService.handle(IPC.SETTINGS_GET, () => petService.getSettings())
+
+  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async () => {
+    if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
+    const selected = await dialogService.showOpenDialog({
+      title: '选择自定义鼠标指针图片',
+      properties: ['openFile'],
+      filters: [{ name: 'Cursor Images', extensions: ['png', 'webp', 'cur'] }]
+    })
+    if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
+    return { canceled: false, cursor: await cursorAssetService.importCursor(selected.filePaths[0]) }
+  })
 
   ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
 
