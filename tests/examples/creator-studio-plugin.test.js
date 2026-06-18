@@ -4,6 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const { spawnSync } = require('node:child_process')
 
 const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
 
@@ -75,4 +76,63 @@ test('creator studio fake hatch pet creates valid codex output and bundle', () =
   assert.equal(fs.existsSync(path.join(output.outputDir, 'spritesheet.webp')), true)
   assert.equal(fs.existsSync(output.bundlePath), true)
   assert.equal(output.sha256, bundleHash)
+})
+
+const runCreatorCommand = ({ command, dataDir, payload = {}, env = {} }) => {
+  const result = spawnSync(process.execPath, [path.join(pluginRoot, 'commands', `${command}.js`)], {
+    input: `${JSON.stringify({
+      pluginId: 'openpet.creator-studio',
+      commandId: command,
+      payload,
+      config: { backend: 'fixture', autoActivateAfterImport: true },
+      paths: { extensionDir: pluginRoot }
+    })}\n`,
+    env: {
+      ...process.env,
+      OPENPET_DATA_DIR: dataDir,
+      OPENPET_CACHE_DIR: path.join(dataDir, 'cache'),
+      OPENPET_LOG_DIR: path.join(dataDir, 'logs'),
+      ...env
+    },
+    encoding: 'utf-8'
+  })
+  return {
+    ...result,
+    json: JSON.parse(result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1))
+  }
+}
+
+test('creator studio commands create run generate output approve and export', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-commands-'))
+
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Sprout Cat', prompt: 'A small mint helper cat' }
+  })
+  const generated = runCreatorCommand({
+    command: 'run-step',
+    dataDir,
+    payload: { runId: created.json.run.runId }
+  })
+  const approved = runCreatorCommand({
+    command: 'approve-run',
+    dataDir,
+    payload: { runId: created.json.run.runId }
+  })
+  const exported = runCreatorCommand({
+    command: 'export-bundle',
+    dataDir,
+    payload: { runId: created.json.run.runId }
+  })
+
+  assert.equal(created.status, 0)
+  assert.equal(generated.status, 0)
+  assert.equal(approved.status, 0)
+  assert.equal(exported.status, 0)
+  assert.equal(created.json.ok, true)
+  assert.equal(generated.json.run.status, 'ready_for_review')
+  assert.equal(approved.json.run.status, 'approved')
+  assert.equal(exported.json.ok, true)
+  assert.equal(fs.existsSync(exported.json.bundle.path), true)
 })
