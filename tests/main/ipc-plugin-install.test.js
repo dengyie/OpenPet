@@ -499,6 +499,64 @@ test('plugin mutation handlers return plugin mutation result with refreshed plug
   ])
 })
 
+test('plugin github inspection handler delegates to github import service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    pluginGithubImportService: {
+      inspectRepositoryUrl: async (repositoryUrl) => {
+        calls.push(repositoryUrl)
+        return {
+          selectionId: 'selection-github',
+          installMode: 'install',
+          existingVersion: '',
+          riskLevel: 'review',
+          plugin: {
+            id: 'demo-plugin',
+            name: 'Demo Plugin',
+            version: '1.0.0',
+            permissions: [],
+            commands: [],
+            entries: { commands: [], services: [], dashboards: [] }
+          },
+          permissionDiff: {
+            permissions: { added: [], removed: [], unchanged: [] },
+            networkAllowlist: { added: [], removed: [], unchanged: [] }
+          },
+          signature: { label: 'Unsigned plugin', errors: [] },
+          blockStatus: { blocked: false, reasons: [] },
+          packageHash: 'abc',
+          fileCount: 2,
+          byteSize: 20
+        }
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_INSPECT_GITHUB_REPOSITORY)(null, {
+    repositoryUrl: 'https://github.com/openpet/demo-plugin'
+  })
+
+  assert.equal(result.canceled, false)
+  assert.equal(result.plugin.id, 'demo-plugin')
+  assert.deepEqual(calls, ['https://github.com/openpet/demo-plugin'])
+})
+
 test('plugin dashboard open handler delegates to plugin service', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []

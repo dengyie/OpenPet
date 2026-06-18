@@ -2063,6 +2063,7 @@ export interface ControlCenterApi {
   stopPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
   checkPluginServiceHealth: (pluginId: string, serviceId: string) => Promise<PluginServiceHealthCheckResult>
   inspectPluginPackage: () => Promise<PluginPackageInspectionResult>
+  inspectPluginGithubRepository: (repositoryUrl: string) => Promise<PluginPackageInspectionResult>
   clearPluginSelection: (selectionId: string) => Promise<OkResponse>
   installPlugin: (selectionId: string) => Promise<PluginMutationResult>
   updatePlugin: (selectionId: string) => Promise<PluginMutationResult>

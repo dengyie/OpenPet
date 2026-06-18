@@ -200,10 +200,16 @@ const extractZipToTemp = (zipPath) => {
   return tempRoot
 }
 
-const normalizeSourceRoot = (sourcePath) => {
+const normalizeSourceRoot = (sourcePath, options = {}) => {
   if (!sourcePath || typeof sourcePath !== 'string') throw new Error('Plugin source path is required')
   const stats = fs.statSync(sourcePath)
-  if (stats.isDirectory()) return { rootPath: sourcePath, sourceType: 'directory', cleanupPath: '' }
+  if (stats.isDirectory()) {
+    return {
+      rootPath: sourcePath,
+      sourceType: typeof options.sourceType === 'string' && options.sourceType ? options.sourceType : 'directory',
+      cleanupPath: typeof options.cleanupPath === 'string' ? options.cleanupPath : ''
+    }
+  }
   if (stats.isFile() && /\.(?:openpet|ibot)-plugin\.zip$|\.zip$/i.test(sourcePath)) {
     const rootPath = extractZipToTemp(sourcePath)
     return { rootPath, sourceType: 'zip', cleanupPath: rootPath }
@@ -301,9 +307,9 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
     return review
   }
 
-  const inspectPluginPackage = (sourcePath) => {
+  const inspectPluginPackage = (sourcePath, options = {}) => {
     pruneSelections()
-    const normalized = normalizeSourceRoot(sourcePath)
+    const normalized = normalizeSourceRoot(sourcePath, options)
     try {
       return buildReview(normalized)
     } catch (error) {

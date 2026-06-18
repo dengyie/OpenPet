@@ -35,6 +35,8 @@ export function usePluginsPane() {
   const [inspectingPlugin, setInspectingPlugin] = useState(false)
   const [installingPlugin, setInstallingPlugin] = useState(false)
   const [uninstallingPlugin, setUninstallingPlugin] = useState('')
+  const [githubRepositoryUrl, setGithubRepositoryUrl] = useState('')
+  const [inspectingGithubPlugin, setInspectingGithubPlugin] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -84,6 +86,21 @@ export function usePluginsPane() {
       setStatus(messageFromError(error, '插件包检查失败'))
     } finally {
       setInspectingPlugin(false)
+    }
+  }
+
+  const onInspectGithubPluginRepository = async () => {
+    setInspectingGithubPlugin(true)
+    setStatus('')
+    try {
+      const result = await api.inspectPluginGithubRepository(githubRepositoryUrl)
+      if (result.canceled) return
+      setPluginReview(result)
+      setStatus(result.installMode === 'update' ? '已读取 GitHub 插件更新包' : '已读取 GitHub 插件安装包')
+    } catch (error) {
+      setStatus(messageFromError(error, 'GitHub 插件导入失败'))
+    } finally {
+      setInspectingGithubPlugin(false)
     }
   }
 
@@ -371,14 +388,18 @@ export function usePluginsPane() {
     clearingStorage,
     pluginReview,
     inspectingPlugin,
+    githubRepositoryUrl,
+    inspectingGithubPlugin,
     installingPlugin,
     uninstallingPlugin,
     onToggle,
     onInspectPluginPackage,
+    onInspectGithubPluginRepository,
     onClearPluginReview,
     onInstallReviewedPlugin,
     onUninstallPlugin,
     onChangeConfig,
+    onChangeGithubRepositoryUrl: setGithubRepositoryUrl,
     onSaveConfig,
     onRun,
     onRunSetup,

@@ -57,6 +57,7 @@ const IPC = Object.freeze({
   PLUGINS_CHECK_SERVICE_HEALTH: 'plugins:check-service-health',
   PLUGINS_SAVE_SERVICE_HEALTH_POLICY: 'plugins:save-service-health-policy',
   PLUGINS_INSPECT_PACKAGE: 'plugins:inspect-package',
+  PLUGINS_INSPECT_GITHUB_REPOSITORY: 'plugins:inspect-github-repository',
   PLUGINS_CLEAR_SELECTION: 'plugins:clear-selection',
   PLUGINS_INSTALL: 'plugins:install',
   PLUGINS_UPDATE: 'plugins:update',
