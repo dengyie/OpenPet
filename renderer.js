@@ -245,8 +245,10 @@ const onPointerMove = (event) => {
 const onPointerUp = (event) => {
   if (!state.drag || event.pointerId !== state.drag.pointerId) return
   const wasClick = !state.drag.moved
+  const wasDrag = state.drag.moved
   state.drag = null
   pet.classList.remove('dragging')
+  if (wasDrag) window.petAPI.dragEnded()
   if (wasClick) setAction(state.clickAction)
 }
 

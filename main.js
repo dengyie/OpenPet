@@ -7,7 +7,7 @@
  *
  * 不包含：窗口创建细节、IPC 处理、设置读写、屏幕计算 —— 均在 src/main/ 中。
  */
-const { app, BrowserWindow, dialog, shell } = require('electron')
+const { app, BrowserWindow, dialog, shell, screen } = require('electron')
 const fs = require('fs')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
@@ -30,6 +30,7 @@ const { createLocalHttpService } = require('./src/main/services/local-http-servi
 const { createActionImportService } = require('./src/main/services/action-import-service')
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
+const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
 const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
@@ -85,6 +86,7 @@ app.whenReady().then(() => {
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
+  const petMovementPolicy = createPetMovementPolicy({ screen })
   const actionImportService = createActionImportService({
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
@@ -161,10 +163,52 @@ app.whenReady().then(() => {
     applyWindowScale: (scale) => applyWindowScale(petWindow, scale),
     clampToWorkArea,
     getMovementState,
-    createSettingsWindow: () => createSettingsWindow(petWindow)
+    createSettingsWindow: () => createSettingsWindow(petWindow),
+    petMovementPolicy
   })
 
   petWindow = createWindow({ load: false })
+
+  const normalizePetWindowForDisplayChange = () => {
+    if (!petWindow || petWindow.isDestroyed()) return
+    const currentSettings = petService.getSettings()
+    const next = petMovementPolicy.normalizeWindowForDisplay({
+      windowBounds: petWindow.getBounds(),
+      settings: currentSettings.petBehavior
+    })
+    petWindow.setPosition(next.x, next.y)
+
+    const behavior = petMovementPolicy.normalizePetBehaviorSettings(currentSettings.petBehavior)
+    if (!behavior.home.enabled || !behavior.home.anchor) return
+    const display = petMovementPolicy.resolveDisplayForWindow(petWindow.getBounds())
+    const anchor = petMovementPolicy.normalizeAnchorForDisplay({
+      anchor: behavior.home.anchor,
+      display,
+      windowBounds: petWindow.getBounds()
+    })
+
+    if (
+      anchor.displayId !== behavior.home.anchor.displayId
+      || anchor.x !== behavior.home.anchor.x
+      || anchor.y !== behavior.home.anchor.y
+    ) {
+      petService.saveSettings({
+        ...currentSettings,
+        petBehavior: {
+          ...behavior,
+          home: {
+            ...behavior.home,
+            anchor
+          }
+        }
+      })
+      petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(petService.getSettings()))
+    }
+  }
+
+  screen.on('display-metrics-changed', normalizePetWindowForDisplayChange)
+  screen.on('display-removed', normalizePetWindowForDisplayChange)
+  screen.on('display-added', normalizePetWindowForDisplayChange)
 
   // 页面加载完成后推送初始设置到渲染进程
   petWindow.webContents.on('did-finish-load', () => {

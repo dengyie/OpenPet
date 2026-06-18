@@ -18,7 +18,7 @@ The extension ecosystem has also crossed another platform threshold: declaration
 
 | Area | Current State | Evidence |
 |------|---------------|----------|
-| Desktop pet runtime | Transparent Electron pet window with movement, actions, speech bubbles, and pet pack switching | `main.js`, `renderer.js`, `src/main/services/pet-service.js` |
+| Desktop pet runtime | Transparent Electron pet window with movement, actions, speech bubbles, pet pack switching, optional grounded movement, and optional home-anchor roaming constraints | `main.js`, `renderer.js`, `src/main/services/pet-service.js`, `src/main/pet-movement-policy.js` |
 | Control Center | React + Vite app with Pet, Actions, AI, Plugins, Catalog, Service, and About tabs | `src/control-center/`, `tests/control-center/` |
 | Pet packs | Legacy cat, OpenPet packs, Codex pet directory/zip import, bundled read-only packs, export/provenance | `src/main/pet-pack/`, `src/main/services/pet-pack-service.js` |
 | AI | OpenAI-compatible chat, main-process secret storage, behavior decisions, replay, redacted diagnostics | `src/main/services/ai-service.js`, `src/main/services/behavior-orchestrator-service.js` |
@@ -32,8 +32,8 @@ The extension ecosystem has also crossed another platform threshold: declaration
 Current local baseline:
 
 ```bash
-npm test                     # 691/691 Node tests
-npm run test:control-center  # 10/10 Playwright UI tests
+npm test                     # 695/695 Node tests
+npm run test:control-center  # 12/12 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
 npm run pack                 # electron-builder directory package

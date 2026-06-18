@@ -373,6 +373,23 @@ const demoState = readDemoState()
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
 
+const normalizeDemoSettings = (settings: Partial<ControlCenterSettings> | ControlCenterSettings): ControlCenterSettings => {
+  const nextSettings = cloneSettings(settings)
+  if (!nextSettings.grounded) {
+    nextSettings.home = {
+      ...nextSettings.home,
+      enabled: false
+    }
+  }
+  if (nextSettings.home.enabled) {
+    nextSettings.home = {
+      ...nextSettings.home,
+      hasAnchor: true
+    }
+  }
+  return nextSettings
+}
+
 const clonePluginEntries = (entries: PluginViewState['entries']): PluginViewState['entries'] => ({
   setup: Array.isArray(entries?.setup)
     ? entries.setup.map((setup) => ({
@@ -540,11 +557,11 @@ const markDemoCatalogItemInstalled = (selection: CatalogInstallSelection): Catal
 }
 
 const demoApi: ControlCenterApi = {
-  getSettings: async () => cloneSettings(demoState.settings),
+  getSettings: async () => normalizeDemoSettings(demoState.settings),
   saveSettings: async (settings) => {
-    demoState.settings = cloneSettings(settings)
+    demoState.settings = normalizeDemoSettings(settings)
     writeDemoState()
-    return cloneSettings(demoState.settings)
+    return normalizeDemoSettings(demoState.settings)
   },
   previewScale: () => {},
   getActions: async () => defaultActionsConfig,

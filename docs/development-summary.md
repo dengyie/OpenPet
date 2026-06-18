@@ -12,6 +12,7 @@ For the latest phase execution design, read `docs/productization-v1.1-todo-desig
 OpenPet is now a desktop pet platform with:
 
 - an Electron pet window,
+- optional grounded pet movement and host-owned home-anchor roaming controls exposed in Control Center,
 - a React + Vite Control Center,
 - pet pack import and bundled pet packs,
 - AI chat with secret storage in the main process,
@@ -22,6 +23,7 @@ OpenPet is now a desktop pet platform with:
 ## Current Capability Summary
 
 - Pet packs: Codex pet directory/zip import, bundled `doro`, `duodong`, `chispa`, export, provenance, and version-conflict review.
+- Pet behavior: scale, walk speed/duration, bubble timing, auto-start, optional grounded movement, optional home-anchor roaming, drag-to-rehome when home is enabled, and display-change normalization for saved home anchors.
 - AI: OpenAI-compatible chat, main-process secret storage, behavior decisions, replay, redacted diagnostics export, and clear-history controls.
 - Extensions: current legacy SDK examples, validation, submission bundles, scaffold author rehearsal, existing-plugin real-world submission rehearsal, remote-source submission rehearsal, community-source discovery reporting, community-source invitation kits, community-source submission evidence, community-source candidate intake reporting, compatible-intake-to-submission bridge tooling, maintainer approval rehearsal, plugin cleanup evidence collection/reporting/updating/helper generation/runner archives/archive manifests, packaged-app plugin cleanup evidence reporting and runner archives, developer-first local extension docs, normalized `entries` declarations including explicit `entries.setup` execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived command bridge access for `pet.say` / `pet.action` / `pet.event` / read-only context, host-owned `OPENPET_DATA_DIR` / `OPENPET_CACHE_DIR` / `OPENPET_LOG_DIR` injection for declaration-only command runs, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import through the same short-lived bridge, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime status and logs, manual loopback-only health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup on service stop, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, and separate maintainer approval artifacts beside ready-for-review submission bundles. Command, setup, and service processes are spawned without shell expansion; setup and command entries never run during install or enable, services do not auto-start, approval remains a human review decision, raw filesystem grants are not exposed to plugin commands, and packaged cleanup evidence still proves only the observed packaged run rather than universal process-tree cleanup guarantees.
 - Release evidence: packaged runtime smoke runner, stricter runtime/picker evidence-link validation, desktop picker evidence summary/archive manifest tooling, Windows smoke evidence summary/archive manifest tooling, macOS codesign/notarization/Gatekeeper evidence capture with GitHub Actions artifact upload and permanent artifact archive handoff, release archive manifest tooling that now requires reviewed Windows smoke and desktop picker archive manifests, and signed release closure reporting without unsupported readiness claims.
@@ -30,8 +32,8 @@ OpenPet is now a desktop pet platform with:
 ## Validation Baseline
 
 ```bash
-npm test                     # 691/691 Node tests
-npm run test:control-center  # 10/10 Playwright UI tests
+npm test                     # 695/695 Node tests
+npm run test:control-center  # 12/12 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
 ```

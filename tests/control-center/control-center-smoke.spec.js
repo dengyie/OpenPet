@@ -71,6 +71,35 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
   })
 
+  test('persists grounded and home settings in the demo API session', async ({ page }) => {
+    await page.goto('/')
+
+    await page.getByRole('switch', { name: 'Enable grounded mode' }).click()
+    await page.getByRole('switch', { name: 'Enable home anchor' }).click()
+    await page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '大' }).click()
+    await page.getByRole('button', { name: '保存', exact: true }).click()
+
+    await page.reload()
+    await expect(page.getByRole('switch', { name: 'Enable grounded mode' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByRole('switch', { name: 'Enable home anchor' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '大' })).toHaveClass(/active/)
+  })
+
+  test('turning grounded off disables home in the demo API session', async ({ page }) => {
+    await page.goto('/')
+
+    const grounded = page.getByRole('switch', { name: 'Enable grounded mode' })
+    const home = page.getByRole('switch', { name: 'Enable home anchor' })
+
+    await grounded.click()
+    await home.click()
+    await grounded.click()
+
+    await expect(home).toBeDisabled()
+    await expect(home).toHaveAttribute('aria-checked', 'false')
+    await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '中' })).toBeDisabled()
+  })
+
   test('persists AI config and clears API key drafts with the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

@@ -10,6 +10,7 @@ const IPC = Object.freeze({
   PET_GET_BOUNDS: 'pet:get-bounds',
   PET_GET_MOVEMENT_STATE: 'pet:get-movement-state',
   PET_SET_POSITION: 'pet:set-position',
+  PET_DRAG_ENDED: 'pet:drag-ended',
   PET_MOVE_BY: 'pet:move-by',
   PET_SAY: 'pet:say',
   PET_PLAY_ACTION: 'pet:play-action',

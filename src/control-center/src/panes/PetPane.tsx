@@ -1,7 +1,7 @@
 import type { ControlCenterSettings } from '../../../shared/openpet-contracts'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { Toggle } from '../components/Toggle'
-import { bubbleDurationOptions, speedOptions, walkDurationOptions } from '../constants'
+import { bubbleDurationOptions, homeRadiusOptions, speedOptions, walkDurationOptions } from '../constants'
 
 export interface PetPaneProps {
   settings: ControlCenterSettings
@@ -73,6 +73,46 @@ export function PetPane({ settings, originalSettings, status, onChange, onSave, 
           <div className="field-label">开机自启</div>
           <Toggle ariaLabel="Enable auto start" checked={settings.autoStart} onChange={(autoStart) => onChange({ autoStart })} />
         </div>
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">落地模式</div>
+            <div className="field-note">宠物沿着当前屏幕底边活动</div>
+          </div>
+          <Toggle
+            ariaLabel="Enable grounded mode"
+            checked={settings.grounded}
+            onChange={(grounded) => onChange({
+              grounded,
+              home: grounded ? settings.home : { ...settings.home, enabled: false }
+            })}
+          />
+        </div>
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">Home 点</div>
+            <div className="field-note">开启后会把当前位置当作家，拖动宠物会更新家的位置</div>
+          </div>
+          <Toggle
+            ariaLabel="Enable home anchor"
+            checked={settings.home.enabled}
+            disabled={!settings.grounded}
+            onChange={(enabled) => onChange({
+              home: { ...settings.home, enabled }
+            })}
+          />
+        </div>
+
+        <SegmentedControl
+          label="活动范围"
+          value={settings.home.radius}
+          options={homeRadiusOptions}
+          disabled={!settings.home.enabled}
+          onChange={(radius) => onChange({
+            home: { ...settings.home, radius: String(radius) as ControlCenterSettings['home']['radius'] }
+          })}
+        />
       </div>
 
       <div className="status-line">

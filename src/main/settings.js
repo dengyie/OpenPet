@@ -21,6 +21,14 @@ const defaultSettings = {
   walkDuration: 15000,   // 散步自动停止时长（ms）
   bubbleDuration: 1300,  // 气泡显示时长（ms）
   autoStart: false,      // 是否开机自启
+  petBehavior: {
+    grounded: false,
+    home: {
+      enabled: false,
+      radius: 'medium',
+      anchor: null
+    }
+  },
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -80,6 +88,17 @@ const mergeSettings = (settings = {}) => ({
     conversations: isPlainObject(settings.ai?.conversations)
       ? settings.ai.conversations
       : defaultSettings.ai.conversations
+  },
+  petBehavior: {
+    ...defaultSettings.petBehavior,
+    ...(isPlainObject(settings.petBehavior) ? settings.petBehavior : {}),
+    home: {
+      ...defaultSettings.petBehavior.home,
+      ...(isPlainObject(settings.petBehavior?.home) ? settings.petBehavior.home : {}),
+      anchor: isPlainObject(settings.petBehavior?.home?.anchor)
+        ? settings.petBehavior.home.anchor
+        : defaultSettings.petBehavior.home.anchor
+    }
   },
   plugins: {
     ...defaultSettings.plugins,

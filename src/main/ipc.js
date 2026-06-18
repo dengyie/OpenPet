@@ -25,8 +25,38 @@ const createPetRendererSettings = (settings = {}) => ({
   scale: settings.scale,
   walkSpeed: settings.walkSpeed,
   walkDuration: settings.walkDuration,
-  bubbleDuration: settings.bubbleDuration
+  bubbleDuration: settings.bubbleDuration,
+  grounded: Boolean(settings.petBehavior?.grounded),
+  home: {
+    enabled: Boolean(settings.petBehavior?.home?.enabled),
+    radius: settings.petBehavior?.home?.radius || 'medium',
+    hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
+  }
 })
+
+const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings = {}) => {
+  const currentHome = currentSettings.petBehavior?.home || {}
+  const nextHome = nextSettings.home || {}
+
+  return {
+    ...currentSettings,
+    scale: Number(nextSettings.scale ?? currentSettings.scale ?? 1),
+    walkSpeed: Number(nextSettings.walkSpeed ?? currentSettings.walkSpeed ?? 2),
+    walkDuration: Number(nextSettings.walkDuration ?? currentSettings.walkDuration ?? 15000),
+    bubbleDuration: Number(nextSettings.bubbleDuration ?? currentSettings.bubbleDuration ?? 1300),
+    autoStart: Boolean(nextSettings.autoStart ?? currentSettings.autoStart),
+    petBehavior: {
+      ...(currentSettings.petBehavior || {}),
+      grounded: Boolean(nextSettings.grounded),
+      home: {
+        ...(currentHome || {}),
+        enabled: Boolean(nextHome.enabled),
+        radius: nextHome.radius || currentHome.radius || 'medium',
+        anchor: currentHome.anchor || null
+      }
+    }
+  }
+}
 
 const normalizeLocalHttpConfig = (currentConfig = {}, nextConfig = {}) => {
   const enabled = Boolean(nextConfig.enabled)
@@ -86,7 +116,7 @@ const executeBehaviorDecision = (petService, decision) => {
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale,
-  clampToWorkArea, getMovementState, createSettingsWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -134,8 +164,35 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.on(IPC.PET_SET_POSITION, (event, point) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || !point) return
-    const next = clampToWorkArea(win, point.x, point.y)
+    const next = petMovementPolicy
+      ? petMovementPolicy.clampDragPosition({
+          windowBounds: win.getBounds(),
+          requestedTopLeft: { x: point.x, y: point.y },
+          settings: petService.getSettings().petBehavior
+        })
+      : clampToWorkArea(win, point.x, point.y)
     win.setPosition(next.x, next.y)
+  })
+
+  ipcMainService.on(IPC.PET_DRAG_ENDED, (event) => {
+    if (!petMovementPolicy) return
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    const currentSettings = petService.getSettings()
+    const behavior = petMovementPolicy.normalizePetBehaviorSettings(currentSettings.petBehavior)
+    if (!behavior.home.enabled) return
+    const anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: win.getBounds() })
+    const savedSettings = petService.saveSettings({
+      ...currentSettings,
+      petBehavior: {
+        ...behavior,
+        home: {
+          ...behavior.home,
+          anchor
+        }
+      }
+    })
+    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
   })
 
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
@@ -143,7 +200,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || !delta) return null
     const [x, y] = win.getPosition()
-    const next = clampToWorkArea(win, x + delta.x, y + delta.y)
+    const next = petMovementPolicy
+      ? petMovementPolicy.clampMoveBy({
+          windowBounds: win.getBounds(),
+          delta,
+          settings: petService.getSettings().petBehavior
+        })
+      : clampToWorkArea(win, x + delta.x, y + delta.y)
     win.setPosition(next.x, next.y)
     return next
   })
@@ -157,7 +220,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   // 设置面板启动时读取当前设置
-  ipcMainService.handle(IPC.SETTINGS_GET, () => petService.getSettings())
+  ipcMainService.handle(IPC.SETTINGS_GET, () => createPetRendererSettings(petService.getSettings()))
 
   ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
 
@@ -260,10 +323,23 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   // 设置面板点击"保存"：持久化并通知宠物窗口应用变更
   ipcMainService.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
-    const savedSettings = petService.saveSettings(settings)
-    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
+    const petWindow = getPetWindow()
+    const nextSettings = mergePetSettingsViewIntoHostSettings(petService.getSettings(), settings)
+    if (petMovementPolicy && petWindow && !petWindow.isDestroyed()) {
+      const behavior = petMovementPolicy.normalizePetBehaviorSettings(nextSettings.petBehavior)
+      const currentBehavior = petMovementPolicy.normalizePetBehaviorSettings(petService.getSettings().petBehavior)
+      const needsInitialHomeAnchor = behavior.home.enabled && !behavior.home.anchor
+      if (needsInitialHomeAnchor || (!currentBehavior.home.enabled && behavior.home.enabled)) {
+        behavior.home.anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: petWindow.getBounds() })
+      }
+      nextSettings.petBehavior = behavior
+    }
+
+    const savedSettings = petService.saveSettings(nextSettings)
+    const rendererSettings = createPetRendererSettings(savedSettings)
+    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, rendererSettings)
     applyWindowScale(getPetWindow(), savedSettings.scale)
-    return savedSettings
+    return rendererSettings
   })
 
   ipcMainService.handle(IPC.AI_GET_CONFIG, () => aiService.getConfig())

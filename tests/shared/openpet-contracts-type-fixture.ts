@@ -1,4 +1,5 @@
 import type {
+  ControlCenterSettings,
   CatalogInstallSelection,
   CreatorActionsMutationResult,
   CreatorActionsReadResponse,
@@ -44,6 +45,20 @@ import type {
   WindowsSmokeReport,
   WindowsSmokeEvidenceSummary
 } from '../../src/shared/openpet-contracts'
+
+const controlCenterSettingsFixture = {
+  scale: 1,
+  walkSpeed: 2,
+  walkDuration: 15000,
+  bubbleDuration: 1300,
+  autoStart: false,
+  grounded: true,
+  home: {
+    enabled: true,
+    radius: 'medium',
+    hasAnchor: true
+  }
+} satisfies ControlCenterSettings
 
 const pluginReviewFixture = {
   installMode: 'install',

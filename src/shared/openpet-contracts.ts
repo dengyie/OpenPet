@@ -10,6 +10,16 @@ export interface ControlCenterSettings {
   walkDuration: number
   bubbleDuration: number
   autoStart: boolean
+  grounded: boolean
+  home: ControlCenterPetHomeSettings
+}
+
+export type PetHomeRadius = 'small' | 'medium' | 'large'
+
+export interface ControlCenterPetHomeSettings {
+  enabled: boolean
+  radius: PetHomeRadius
+  hasAnchor: boolean
 }
 
 export interface AiBehaviorRule {

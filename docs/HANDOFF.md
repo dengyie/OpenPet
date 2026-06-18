@@ -6,7 +6,7 @@
 
 OpenPet is a desktop pet platform with:
 
-- Electron pet window runtime,
+- Electron pet window runtime with optional grounded movement and home-anchor roaming controls,
 - React + Vite Control Center,
 - pet pack runtime with Codex pet import and zip import,
 - bundled built-in packs `doro`, `duodong`, and `chispa`,
@@ -27,6 +27,7 @@ OpenPet is a desktop pet platform with:
 ## Facts To Preserve
 
 - `PetService` remains the single source of truth for pet state.
+- Pet grounded/home behavior remains host-owned movement policy, configured from Control Center rather than pet packs or AI rules.
 - New user-facing configuration belongs in Control Center.
 - API keys must stay out of the renderer.
 - Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can inject short-lived bridge URL/token plus host-owned data/cache/log env vars for those declaration-only command runs, can expose bounded creator-tools action reads / validation / apply, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import through the same short-lived bridge, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, can host-manage periodic health checks for running services through Control Center, attempts best-effort process-group cleanup when stopping service entries, only reports setup/command/service stop completion after child exit confirmation, will attempt one bounded host-side force stop if the service ignores the grace-period stop request, now tries a host-owned process-tree fallback before direct child kill across service/setup/declaration-command stop paths, and can record/update/collect/run/archive bounded cleanup evidence through controlled host fixtures, generated collector helpers, runner transcripts, structured readiness reports, archive manifests, and validation-first report updates. Submission bundles can now also receive a separate structured maintainer approval record. Approval remains a human review decision and not signing trust, catalog publication, runtime safety, or release readiness proof. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, background checks stay opt-in and runtime-bound, picker frame import and pack metadata workflows do not imply raw filesystem grants, raw file writes, plugin-selected output paths, built-in pack edits, arbitrary pack targeting, general pet-pack writes, or universal process-tree cleanup guarantees, and OpenPet does not claim complete sandboxing for arbitrary local processes.
@@ -38,7 +39,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 691/691 Node tests
+npm test                     # 695/695 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax

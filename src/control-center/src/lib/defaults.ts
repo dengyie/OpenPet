@@ -18,7 +18,13 @@ export const defaultSettings = {
   walkSpeed: 2,
   walkDuration: 15000,
   bubbleDuration: 1300,
-  autoStart: false
+  autoStart: false,
+  grounded: false,
+  home: {
+    enabled: false,
+    radius: 'medium',
+    hasAnchor: false
+  }
 } satisfies ControlCenterSettings
 
 export const defaultAiConfig = {
@@ -121,7 +127,11 @@ export const defaultUpdateCheck = {
 
 export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
   ...defaultSettings,
-  ...(settings || {})
+  ...(settings || {}),
+  home: {
+    ...defaultSettings.home,
+    ...(settings?.home || {})
+  }
 })
 
 export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({
