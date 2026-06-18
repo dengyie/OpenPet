@@ -17,8 +17,18 @@ const pet = document.getElementById('pet')       // 主容器，承载所有指�
 const catEl = document.getElementById('cat')     // 小猫元素，精灵图渲染目标
 const bubble = document.getElementById('bubble') // 头顶气泡
 const menu = document.getElementById('menu')     // 右键菜单容器
+const cursorOverlay = document.getElementById('custom-cursor-overlay') || {
+  style: {},
+  classList: { add() {}, remove() {}, contains() { return false } },
+  removeAttribute() {},
+  src: ''
+}
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
-const cursorStyle = window.OpenPetCursorStyle || { resolvePetCursorStyle: () => '' }
+const cursorStyle = {
+  resolvePetCursorStyle: () => '',
+  resolvePetCursorOverlayState: () => ({ visible: false, assetUrl: '', nativeCursor: '' }),
+  ...(window.OpenPetCursorStyle || {})
+}
 const petHitbox = window.OpenPetHitbox || {
   getFrameHitbox: () => null,
   getWindowHitbox: () => null,
@@ -49,6 +59,8 @@ const state = {
   mousePassthrough: false,
   currentLayout: null,
   customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '' },
+  customCursorOverlayVisible: false,
+  nativeCursor: '',
   lastPointerPoint: null,
   lastMouseDiagnostic: null,
   lastMouseDiagnosticAt: 0,
@@ -93,6 +105,7 @@ const maybeLogMouseDiagnostic = (event, diagnostic) => {
     previous.insideCursorRegion !== diagnostic.insideCursorRegion ||
     previous.passthrough !== diagnostic.passthrough ||
     previous.cursorApplied !== diagnostic.cursorApplied ||
+    previous.cursorOverlayVisible !== diagnostic.cursorOverlayVisible ||
     previous.dragging !== diagnostic.dragging ||
     previous.menuOpen !== diagnostic.menuOpen
   if (!changed && now - state.lastMouseDiagnosticAt < 1000) return
@@ -243,16 +256,44 @@ const isPointInsideCursorRegion = (clientX, clientY) => {
   return petHitbox.isPointInHitbox({ x: clientX, y: clientY }, hitbox)
 }
 
-const applyPetCursorStyle = (insideCursorRegion) => {
-  const nextCursor = cursorStyle.resolvePetCursorStyle(state.customCursor, {
-    insideFrame: insideCursorRegion,
+const setNativeCursor = (nextCursor) => {
+  const value = nextCursor || ''
+  document.documentElement.style.cursor = value
+  document.body.style.cursor = value
+  pet.style.cursor = value
+  state.nativeCursor = value
+}
+
+const moveCursorOverlay = (clientX, clientY) => {
+  cursorOverlay.style.transform = `translate3d(${Math.round(clientX)}px, ${Math.round(clientY)}px, 0)`
+}
+
+const hideCursorOverlay = () => {
+  if (!state.customCursorOverlayVisible) return
+  state.customCursorOverlayVisible = false
+  cursorOverlay.classList.remove('visible')
+}
+
+const showCursorOverlay = (assetUrl, clientX, clientY) => {
+  if (cursorOverlay.src !== assetUrl) cursorOverlay.src = assetUrl
+  moveCursorOverlay(clientX, clientY)
+  if (state.customCursorOverlayVisible) return
+  state.customCursorOverlayVisible = true
+  cursorOverlay.classList.add('visible')
+}
+
+const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint) => {
+  const context = {
+    insideFrame,
     dragging: Boolean(state.drag),
     menuOpen: menu.classList.contains('open')
-  })
-  document.documentElement.style.cursor = nextCursor
-  document.body.style.cursor = nextCursor
-  pet.style.cursor = nextCursor
-  return nextCursor
+  }
+  const overlayState = cursorStyle.resolvePetCursorOverlayState(state.customCursor, context)
+  const fallbackCursor = cursorStyle.resolvePetCursorStyle(state.customCursor, context)
+  setNativeCursor(overlayState.visible ? overlayState.nativeCursor : fallbackCursor)
+  if (overlayState.visible && point) showCursorOverlay(overlayState.assetUrl, point.clientX, point.clientY)
+  else hideCursorOverlay()
+  return overlayState
 }
 
 const refreshMouseStateFromLastPoint = () => {
@@ -263,13 +304,15 @@ const refreshMouseStateFromLastPoint = () => {
   const { clientX, clientY } = state.lastPointerPoint
   const insideFrame = isPointInsideCurrentFrame(clientX, clientY)
   const insideCursorRegion = isPointInsideCursorRegion(clientX, clientY)
-  const appliedCursor = applyPetCursorStyle(insideCursorRegion)
+  const cursorState = applyPetCursorStyle(insideFrame, { clientX, clientY })
   setMousePassthrough(!insideFrame)
   maybeLogMouseDiagnostic({ clientX, clientY, screenX: clientX, screenY: clientY }, {
     insideFrame,
     insideCursorRegion,
     passthrough: !insideFrame,
-    cursorApplied: Boolean(appliedCursor),
+    cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
+    cursorOverlayVisible: cursorState.visible,
+    nativeCursor: state.nativeCursor,
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: menu.classList.contains('open')
@@ -280,13 +323,15 @@ const updateMousePassthroughFromPoint = (event) => {
   state.lastPointerPoint = { clientX: event.clientX, clientY: event.clientY }
   const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
   const insideCursorRegion = isPointInsideCursorRegion(event.clientX, event.clientY)
-  const appliedCursor = applyPetCursorStyle(insideCursorRegion)
+  const cursorState = applyPetCursorStyle(insideFrame, state.lastPointerPoint)
   setMousePassthrough(!insideFrame)
   maybeLogMouseDiagnostic(event, {
     insideFrame,
     insideCursorRegion,
     passthrough: !insideFrame,
-    cursorApplied: Boolean(appliedCursor),
+    cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
+    cursorOverlayVisible: cursorState.visible,
+    nativeCursor: state.nativeCursor,
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: menu.classList.contains('open')
@@ -436,6 +481,8 @@ const onPointerDown = async (event) => {
     insideCursorRegion,
     mousePassthrough: state.mousePassthrough,
     cursorApplied: Boolean(pet.style.cursor),
+    cursorOverlayVisible: state.customCursorOverlayVisible,
+    nativeCursor: state.nativeCursor,
     boundsWidth: bounds.width,
     boundsHeight: bounds.height
   }, { actor: 'user', message: 'Pointer down' })
@@ -472,6 +519,8 @@ const onPointerUp = (event) => {
     wasClick,
     insideFrame,
     insideCursorRegion,
+    cursorOverlayVisible: state.customCursorOverlayVisible,
+    nativeCursor: state.nativeCursor,
     clickAction: state.clickAction
   }, { actor: 'user', message: 'Pointer up' })
   if (wasClick) setAction(state.clickAction)

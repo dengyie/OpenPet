@@ -3,6 +3,7 @@ const { test } = require('node:test')
 
 const {
   createCustomCursorCss,
+  resolvePetCursorOverlayState,
   resolvePetCursorStyle
 } = require('../../src/shared/cursor-style')
 
@@ -26,4 +27,25 @@ test('resolvePetCursorStyle applies custom cursor only inside the active pet reg
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: false, dragging: false, menuOpen: false }), '')
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: true, menuOpen: false }), '')
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: false, menuOpen: true }), '')
+})
+
+test('resolvePetCursorOverlayState shows a DOM cursor and hides the native cursor inside the active pet region', () => {
+  const cursor = { enabled: true, assetUrl: 'file:///tmp/openpet/cursor.webp' }
+
+  assert.deepEqual(
+    resolvePetCursorOverlayState(cursor, { insideFrame: true, dragging: false, menuOpen: false }),
+    { visible: true, assetUrl: 'file:///tmp/openpet/cursor.webp', nativeCursor: 'none' }
+  )
+  assert.deepEqual(
+    resolvePetCursorOverlayState(cursor, { insideFrame: false, dragging: false, menuOpen: false }),
+    { visible: false, assetUrl: '', nativeCursor: '' }
+  )
+  assert.deepEqual(
+    resolvePetCursorOverlayState(cursor, { insideFrame: true, dragging: true, menuOpen: false }),
+    { visible: false, assetUrl: '', nativeCursor: '' }
+  )
+  assert.deepEqual(
+    resolvePetCursorOverlayState(cursor, { insideFrame: true, dragging: false, menuOpen: true }),
+    { visible: false, assetUrl: '', nativeCursor: '' }
+  )
 })
