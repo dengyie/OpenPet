@@ -73,4 +73,3 @@ Result:
 
 - TypeScript no-emit passed.
 - 18/18 targeted desktop picker evidence tests passed.
-

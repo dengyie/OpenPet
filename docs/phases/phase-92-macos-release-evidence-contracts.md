@@ -77,4 +77,3 @@ Result:
 - 14/14 targeted macOS evidence tests passed.
 
 Full verification is recorded in the Phase 92 review note.
-

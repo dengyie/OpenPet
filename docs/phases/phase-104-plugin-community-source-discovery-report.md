@@ -75,4 +75,3 @@ node --test tests/scripts/create-plugin-community-source-discovery-report.test.j
 ```
 
 完整验证记录见 Phase 104 review 文档。当前验收口径是：发现证据可归档，但没有找到兼容第三方 `plugin.json` package，因此下一步仍是 find-or-invite compatible package source。
-

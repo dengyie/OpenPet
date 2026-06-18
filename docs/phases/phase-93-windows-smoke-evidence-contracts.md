@@ -74,4 +74,3 @@ Result:
 
 - TypeScript no-emit passed.
 - 17/17 targeted Windows smoke evidence tests passed.
-

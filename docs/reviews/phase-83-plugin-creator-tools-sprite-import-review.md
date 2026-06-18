@@ -1,8 +1,8 @@
 # Phase 83 Production Code Quality Review
 
-> Date: 2026-06-18  
-> Branch: `codex/creator-tools-sprite-import-phase83`  
-> Mode: deep  
+> Date: 2026-06-18
+> Branch: `codex/creator-tools-sprite-import-phase83`
+> Mode: deep
 > Scope: `assets:generate` manifest permission, creator-tools `/creator/assets/import-frames` bridge route, resource limits, shared contracts, tests, and docs.
 
 ## Summary
