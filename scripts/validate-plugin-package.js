@@ -123,7 +123,7 @@ const validateReview = (review, options = {}) => {
     errors.push('Signature hash metadata must be verified when --require-signature is used')
   }
   if (review.signature?.status === 'unsigned') {
-    warnings.push('Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence')
+    warnings.push('Plugin is unsigned; local testing and community review may continue; trusted signing is optional future hardening')
   } else if (review.signature?.status === 'present-unverified') {
     warnings.push('Signature metadata is present but not verified')
   }

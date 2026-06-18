@@ -18,7 +18,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | --- | --- |
 | Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
-| Desktop release evidence | [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md) |
+| Desktop test builds and paused release evidence | [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md) |
 | MCP usage and compatibility | [`mcp-usage.md`](./mcp-usage.md), [`mcp-compatibility.md`](./mcp-compatibility.md) |
 
 ## Planning Docs
@@ -34,7 +34,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
-- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports.
+- [`release-evidence/`](./release-evidence/) stores historical and review evidence artifacts; desktop certificate/release evidence collection is paused while plugin ecosystem work is the priority.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 
 Historical documents are intentionally retained. When facts conflict, prefer current live docs in this order:

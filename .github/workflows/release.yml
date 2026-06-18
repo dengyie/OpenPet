@@ -104,74 +104,11 @@ jobs:
             echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Inspect signing secrets
-        id: signing
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          missing=""
-          test -n "$CSC_LINK" || missing="$missing CSC_LINK"
-          test -n "$CSC_KEY_PASSWORD" || missing="$missing CSC_KEY_PASSWORD"
-          test -n "$APPLE_ID" || missing="$missing APPLE_ID"
-          test -n "$APPLE_APP_SPECIFIC_PASSWORD" || missing="$missing APPLE_APP_SPECIFIC_PASSWORD"
-          test -n "$APPLE_TEAM_ID" || missing="$missing APPLE_TEAM_ID"
-
-          if [ -z "$missing" ]; then
-            echo "mode=signed" >> "$GITHUB_OUTPUT"
-            echo "All signing and notarization secrets are present. Building a signed macOS release."
-          else
-            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
-            echo "::notice::Missing signing secrets:$missing. Building an unsigned macOS release."
-          fi
-
-      - name: Build signed distribution
-        if: steps.signing.outputs.mode == 'signed'
-        run: npm run dist -- --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Build unsigned distribution
-        if: steps.signing.outputs.mode == 'unsigned'
+      - name: Build unsigned macOS test distribution
         run: npm run dist -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Create macOS release evidence
-        shell: bash
-        env:
-          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
-        run: |
-          app_path="$(find release -maxdepth 3 -name 'OpenPet.app' -type d | head -n 1)"
-
-          if [ "$SIGNING_MODE" = "signed" ]; then
-            notarization_text=$'status: Accepted\nsource: GitHub Actions signed macOS release workflow completed electron-builder notarization\n'
-          else
-            notarization_text=$'status: NotSubmitted\nsource: unsigned macOS release workflow\n'
-          fi
-
-          if [ -n "$app_path" ]; then
-            npm run create-macos-release-evidence -- --app "$app_path" --notarization-text "$notarization_text" --output-dir release/macos-release-evidence
-          else
-            echo "::warning::OpenPet.app was not found under release/. Writing pending macOS release evidence."
-            npm run create-macos-release-evidence -- --skip-codesign --skip-spctl --notarization-text "$notarization_text" --output-dir release/macos-release-evidence
-          fi
-
-      - name: Upload macOS release evidence
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: openpet-macos-release-evidence-${{ steps.release.outputs.tag }}
-          path: release/macos-release-evidence/**
-          if-no-files-found: error
 
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2
@@ -236,66 +173,15 @@ jobs:
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if [[ "$tag" =~ -(alpha|beta|rc)(\.|-|$) ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
 
-      - name: Inspect Windows signing secrets
-        id: signing
-        shell: bash
-        env:
-          WINDOWS_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
-        run: |
-          missing=""
-          test -n "$WINDOWS_CSC_LINK" || missing="$missing WINDOWS_CSC_LINK"
-          test -n "$WINDOWS_CSC_KEY_PASSWORD" || missing="$missing WINDOWS_CSC_KEY_PASSWORD"
-
-          if [ -z "$missing" ]; then
-            echo "mode=signed" >> "$GITHUB_OUTPUT"
-            echo "All Windows signing secrets are present. Building a signed Windows release."
-          elif [ "$IS_PRERELEASE" = "true" ]; then
-            echo "mode=unsigned-prerelease" >> "$GITHUB_OUTPUT"
-            echo "::notice::Missing Windows signing secrets:$missing. Building unsigned prerelease assets for $RELEASE_TAG; filenames will include unsigned."
-          else
-            echo "::error::Missing Windows signing secrets:$missing. Stable Windows releases must be signed. Use a prerelease tag such as vX.Y.Z-rc.N for unsigned validation artifacts."
-            exit 1
-          fi
-
-      - name: Build signed Windows distribution
-        if: steps.signing.outputs.mode == 'signed'
-        run: npm run dist -- --win --x64 --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-
-      - name: Build unsigned Windows prerelease distribution
-        if: steps.signing.outputs.mode == 'unsigned-prerelease'
+      - name: Build unsigned Windows test distribution
         run: npm run dist -- --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Mark unsigned Windows prerelease assets
-        if: steps.signing.outputs.mode == 'unsigned-prerelease'
+      - name: Mark unsigned Windows test assets
         run: npm run prepare-windows-release-assets
-
-      - name: Create pending Windows smoke report
-        run: npm run create-windows-smoke-report -- --output release/windows-smoke-report.json
-
-      - name: Validate pending Windows smoke report
-        run: npm run validate-windows-smoke-report -- release/windows-smoke-report.json --allow-pending
-
-      - name: Create Windows smoke validation runbook
-        run: npm run create-windows-smoke-runbook -- release/windows-smoke-report.json --output release/windows-smoke-runbook.md
-
-      - name: Create Windows smoke evidence collector
-        run: npm run create-windows-smoke-collector -- release/windows-smoke-report.json --output release/windows-smoke-collector.ps1
 
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2
@@ -317,14 +203,4 @@ jobs:
             release/*.zip
             release/*.blockmap
             release/latest.yml
-          if-no-files-found: error
-
-      - name: Upload Windows smoke report
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: openpet-windows-smoke-evidence-${{ steps.release.outputs.tag }}
-          path: |
-            release/windows-smoke-report.json
-            release/windows-smoke-runbook.md
-            release/windows-smoke-collector.ps1
           if-no-files-found: error

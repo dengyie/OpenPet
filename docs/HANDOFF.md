@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-18 | Branch: `main`
+> Last updated: 2026-06-19 | Branch: `main`
 
 ## Current Snapshot
 
@@ -31,7 +31,8 @@ OpenPet is a desktop pet platform with:
 - API keys must stay out of the renderer.
 - Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can inject short-lived bridge URL/token plus host-owned data/cache/log env vars for those declaration-only command runs, can expose bounded creator-tools action reads / validation / apply, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import through the same short-lived bridge, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, can host-manage periodic health checks for running services through Control Center, attempts best-effort process-group cleanup when stopping service entries, only reports setup/command/service stop completion after child exit confirmation, will attempt one bounded host-side force stop if the service ignores the grace-period stop request, now tries a host-owned process-tree fallback before direct child kill across service/setup/declaration-command stop paths, and can record/update/collect/run/archive bounded cleanup evidence through controlled host fixtures, generated collector helpers, runner transcripts, structured readiness reports, archive manifests, and validation-first report updates. Submission bundles can now also receive a separate structured maintainer approval record. Approval remains a human review decision and not signing trust, catalog publication, runtime safety, or release readiness proof. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, background checks stay opt-in and runtime-bound, picker frame import and pack metadata workflows do not imply raw filesystem grants, raw file writes, plugin-selected output paths, built-in pack edits, arbitrary pack targeting, general pet-pack writes, or universal process-tree cleanup guarantees, and OpenPet does not claim complete sandboxing for arbitrary local processes.
 - `cat_anime/` structure is unchanged.
-- Windows is not release-ready yet.
+- Desktop certificate/release evidence work is paused. GitHub release jobs should produce unsigned macOS/Windows test artifacts for small-scope validation, and Windows assets must stay visibly marked `unsigned`.
+- `dengyie/weather-morning-report` is the current real plugin ecosystem candidate: `origin/main` has a legacy `openpet-plugin/plugin.json`, while the unified `extension/plugin.json` is on an active development branch/local repo and still needs host compatibility validation before being claimed as a completed third-party source.
 
 ## Useful Commands
 
@@ -69,10 +70,7 @@ npm run validate-packaged-runtime-smoke-report
 npm run create-windows-smoke-archive-manifest
 npm run create-desktop-picker-evidence-summary
 npm run create-desktop-picker-archive-manifest
-npm run create-release-evidence-archive-manifest
-npm run create-signed-release-closure-report
-npm run create-macos-release-evidence -- --app release/mac/OpenPet.app --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/macos-release-evidence/<session>
-npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-openpet-macos-release-evidence-tag> --archive-dir docs/release-evidence/macos-release-evidence-archive/<session>
+npm run validate:plugin -- <plugin-dir-or-zip>
 ```
 
 ## Where To Look For Detail
@@ -84,7 +82,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 - `docs/productization-v1.1-todo-design.md` for the Phase 38+ execution design.
 - `docs/project-review-todo-design.md` for the consolidated whole-project review TODO design.
 - `docs/productization-todo-design.md` for the prioritized TODO implementation design.
-- `docs/desktop-release-design.md` for desktop release evidence.
+- `docs/desktop-release-design.md` for unsigned desktop test-build posture and dormant release evidence tooling.
 - `docs/plugin-sandbox-evaluation.md` for current plugin runner guarantees, limits, and v1.1 recommendation.
 - `scripts/run-packaged-runtime-smoke.js`, `scripts/create-packaged-runtime-smoke-report.js`, and `scripts/validate-packaged-runtime-smoke-report.js` for packaged app runtime evidence.
 - `scripts/create-desktop-picker-evidence-summary.js` and `scripts/create-desktop-picker-archive-manifest.js` for reviewed native picker evidence archive summaries and manifests.
@@ -95,7 +93,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 
 ## Next Steps
 
-1. Use the archived Phase 43 signed release closure report as the current release-claim gate: official desktop, macOS, and Windows release readiness remain `not-ready` until signed evidence and platform smoke reports are complete.
+1. Treat plugin ecosystem maturity as the active product milestone. Do not start new macOS/Windows certificate, notarization, signed closure, or release evidence phases unless the user explicitly resumes release promotion.
 2. Use Phase 64 plugin command bridge as the current plugin-command boundary: command entries still run only from an explicit Control Center action on enabled policy-allowed local plugins, and declaration-only command runs now get a short-lived bridge URL/token for `pet.say`, `pet.action`, `pet.event`, and read-only context.
 3. Use Phase 65 release evidence link closure as the current runtime/picker evidence boundary: packaged runtime reports must link the paired desktop picker report before they can claim readiness, and archive release readiness now fails when that link is missing or mismatched.
 4. Use Phase 66 desktop picker evidence archive tooling when a packaged native picker run is collected: generate the summary, create the archive manifest, and only claim readiness when the filled report and archive both pass.
@@ -105,9 +103,9 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 8. Use Phase 101 plugin submission evidence contracts plus Phase 98 packaged plugin cleanup evidence contracts, Phase 97 Windows smoke report contracts, Phase 96 desktop picker smoke report contracts, Phase 95 packaged runtime evidence contracts, Phase 94 desktop picker evidence contracts, Phase 93 Windows smoke evidence contracts, Phase 92 macOS release evidence contracts, Phase 91 plugin cleanup evidence contracts, Phase 54 Release Evidence Contracts, and Phase 64 plugin entry/setup/command/dashboard/service contracts as the current TypeScript migration baseline.
 9. Use Phase 75 real-world submission rehearsal as the current existing-plugin submission baseline: `examples/plugins/weather-status` now has an archived local package -> submission bundle -> maintainer approval evidence chain, but that archive still does not prove external community provenance, signing trust, catalog publication, runtime safety, or release readiness.
 10. Use Phase 76 remote-source rehearsal as the current source-review baseline: `https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main` now has an archived HTTPS archive -> extracted plugin -> submission bundle -> maintainer approval evidence chain that records archive URL, final URL, archive SHA-256, archive size, selected plugin path, and extracted file hashes, but it still does not prove independent public community ownership, signing trust, catalog publication, runtime safety, or release readiness.
-11. Use Phase 77 macOS release evidence capture as the current signed-evidence collection path: the helper can archive `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, and Markdown/JSON summaries, but official readiness remains false until real signed, notarized, Gatekeeper-accepted evidence is present.
-12. Use Phase 78 macOS release evidence artifact upload as the current release-workflow evidence boundary: macOS release jobs upload `openpet-macos-release-evidence-<tag>` as a maintainer artifact, while public GitHub Release assets stay limited to install/update files.
-13. Use Phase 79 macOS release evidence archive tooling as the current long-term artifact retention boundary: downloaded workflow evidence can be copied into a permanent archive with provenance and hashes, but it still does not prove official release readiness by itself.
+11. Keep Phase 77/78/79 macOS evidence tooling as dormant future-release infrastructure. The active GitHub release workflow should not upload macOS release evidence or require Apple signing/notarization secrets.
+12. Keep Windows release evidence and signing scripts as dormant future-release infrastructure. The active GitHub release workflow should not require Windows signing secrets, and unsigned Windows test assets should remain labeled `unsigned`.
+13. Use `dengyie/weather-morning-report` as the current real-plugin adaptation target, but be precise: the unified extension manifest is not yet on that repository's `origin/main`.
 14. Use Phase 80 creator-tools bridge as the current action-config authoring boundary: declaration-only creator-tools commands can declare `runtime` / `creator-tools` / `hybrid` profiles, receive host-owned data/cache/log directories, and read / validate / apply bounded action configuration updates through the short-lived bridge.
 15. Use Phase 81 Windows smoke archive gate as the current release-evidence integrity boundary: release-level archive manifests and signed closure reports now require `windows-smoke-archive-manifest.json` to exist, validate, and match the archived Windows smoke report path and SHA-256 hash.
 16. Use Phase 82 creator-tools asset inspection as the current read-only asset-authoring boundary: declaration-only creator-tools commands with `assets:inspect` can ask the host to inspect package-local action frame folders through the short-lived bridge.
@@ -132,4 +130,4 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 35. Use Phase 104 community-source discovery reporting as the current pre-intake search boundary: public search and adjacent candidates can be archived without claiming compatibility; the current archived report is `compatible-source-not-found`.
 36. Use Phase 105 community-source invitation kits as the current compatible-source outreach boundary: maintainers can archive draft invitation materials after `compatible-source-not-found`, but invitation is not proof that outreach was sent, accepted, or compatible.
 37. Use Phase 106 invitation evidence contracts as the current TypeScript boundary for those invitation-kit summaries; the contract still represents draft outreach only.
-38. Continue from collecting real signed workflow artifacts, receiving a compatible live community source that passes discovery, intake, bridge, and Phase 99 evidence, or another high-drift service/report boundary.
+38. Continue from validating/adapting a real plugin candidate, improving author-facing runtime capabilities, or another high-drift plugin/control-center boundary.

@@ -15,7 +15,7 @@ An Electron desktop pet platform with a visual Control Center, AI chat, plugins,
 
 OpenPet puts a small animated pet on your desktop and gives it a real platform behind the scenes. The pet can walk, speak, play actions, switch character packs, react to AI replies, and grow through a developer-first local extension ecosystem.
 
-The current release track is macOS-first. Windows build and validation tooling exists, but Windows is not advertised as release-ready until signed installer evidence and real smoke reports are archived.
+The current product track is plugin-ecosystem-first. GitHub release jobs produce unsigned macOS and Windows test artifacts for small-scope validation; certificate, signing, notarization, and release-evidence gates are intentionally paused until the ecosystem is worth broader distribution.
 
 ## What You Get
 
@@ -34,7 +34,7 @@ Requirements:
 
 - Node.js 18 or newer
 - npm 9 or newer
-- macOS for the currently validated packaged app path
+- macOS or Windows for local desktop testing; distributed artifacts are currently unsigned test builds
 
 ```bash
 git clone https://github.com/dengyie/OpenPet.git
@@ -53,7 +53,7 @@ npm run test:control-center  # Playwright UI regression suite
 npm run typecheck            # TypeScript no-emit check
 npm run check:syntax         # Node syntax + typecheck + Control Center build
 npm run pack                 # electron-builder directory package
-npm run dist                 # macOS DMG/ZIP on macOS
+npm run dist                 # electron-builder distribution artifacts for the current host
 ```
 
 ## Project Shape
@@ -133,6 +133,8 @@ npm run validate:plugin -- <plugin-dir-or-zip>
 npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
 ```
+
+The validator accepts extension directories plus `.openpet-extension.zip`, `.openpet-plugin.zip`, legacy `.ibot-plugin.zip`, and ordinary `.zip` archives for compatibility.
 
 Read [plugin-development.md](./docs/plugin-development.md) and [plugin-submission-workflow-playbook.md](./docs/plugin-submission-workflow-playbook.md) for the full path.
 Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) for lifecycle, transparency, compatibility, and honest safety boundaries.

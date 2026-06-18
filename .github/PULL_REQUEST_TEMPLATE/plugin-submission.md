@@ -25,7 +25,7 @@ Explain why each permission and network host is necessary:
 - [ ] Package validation passed without blocking errors
 - [ ] Manifest id, name, version, main file, config schema, permissions, and command titles match the submitted source
 - [ ] Network allowlist is limited to required public HTTPS hosts
-- [ ] Signature hash metadata is reviewed; trusted signing evidence is required separately before distribution
+- [ ] Package hash metadata, file count, and byte size are reviewed; trusted signing is optional/future hardening, not required for community review
 - [ ] Package hash, file count, and byte size are recorded
 - [ ] Plugin remains disabled by default after install or update
 - [ ] Manual reviewer approval is recorded before merge

@@ -347,6 +347,35 @@ test('plugin install service accepts legacy .ibot-plugin.zip packages for compat
   service.clearPendingSelection(review.selectionId)
 })
 
+test('plugin install service accepts .openpet-extension.zip packages for unified extensions', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const zipRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-extension-plugin-zip-'))
+  const sourcePath = createExtensionDeclarationPackage()
+  const zipPath = path.join(zipRoot, 'weather-morning-report.openpet-extension.zip')
+  execFileSync('zip', ['-qr', zipPath, '.'], { cwd: sourcePath })
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+
+  const review = service.inspectPluginPackage(zipPath)
+
+  assert.equal(review.plugin.id, 'weather-morning-report')
+  assert.equal(review.sourceType, 'zip')
+  assert.equal(review.plugin.entries.commands[0].id, 'announce')
+  service.clearPendingSelection(review.selectionId)
+})
+
+test('plugin install service unsupported package message lists unified extension packages', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-unsupported-plugin-package-'))
+  const packagePath = path.join(tempRoot, 'weather-morning-report.openpet-extension')
+  fs.writeFileSync(packagePath, 'not a zip\n')
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+
+  assert.throws(
+    () => service.inspectPluginPackage(packagePath),
+    /\.openpet-extension\.zip/
+  )
+})
+
 test('plugin install service rejects zip packages with path traversal entries', () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const zipRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-zip-'))

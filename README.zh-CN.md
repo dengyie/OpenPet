@@ -15,7 +15,7 @@
 
 OpenPet 会把一只小宠物放在你的桌面上。它能走动、说话、播放动作、切换宠物包，也可以通过 AI 回复触发行为，并通过面向开发者的本地扩展生态继续成长。
 
-当前发布轨道优先验证 macOS。Windows 的打包和证据工具已经在仓库里，但在真实签名安装包和冒烟报告归档前，不声明 Windows release-ready。
+当前产品轨道优先建设插件生态。GitHub release job 会产出 unsigned 的 macOS / Windows 小范围测试包；证书、签名、公证和 release evidence 门禁已暂停，等生态值得更大规模分发时再恢复。
 
 ## 能做什么
 
@@ -34,7 +34,7 @@ OpenPet 会把一只小宠物放在你的桌面上。它能走动、说话、播
 
 - Node.js 18 或更新版本
 - npm 9 或更新版本
-- 当前已验证的打包路径为 macOS
+- macOS 或 Windows 均可用于本地桌面测试；当前分发产物是 unsigned 测试包
 
 ```bash
 git clone https://github.com/dengyie/OpenPet.git
@@ -53,7 +53,7 @@ npm run test:control-center  # Playwright UI 回归
 npm run typecheck            # TypeScript no-emit 检查
 npm run check:syntax         # Node 语法 + typecheck + Control Center build
 npm run pack                 # electron-builder 目录打包
-npm run dist                 # 在 macOS 生成 DMG/ZIP
+npm run dist                 # 为当前宿主生成 electron-builder 分发产物
 ```
 
 ## 项目结构
@@ -133,6 +133,8 @@ npm run validate:plugin -- <plugin-dir-or-zip>
 npm run create-plugin-submission-bundle -- <plugin-dir-or-zip> --output-dir plugin-submission-bundle
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
 ```
+
+校验器兼容扩展目录、`.openpet-extension.zip`、`.openpet-plugin.zip`、legacy `.ibot-plugin.zip` 和普通 `.zip` 包，方便第三方作者逐步迁移。
 
 完整流程见 [plugin-development.md](./docs/plugin-development.md)、[plugin-submission-workflow-playbook.md](./docs/plugin-submission-workflow-playbook.md) 和 [plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md)。其中生态规则文档说明生命周期、透明声明、兼容策略和诚实的安全边界。
 

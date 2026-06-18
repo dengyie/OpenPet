@@ -34,6 +34,7 @@ test('validate plugin package accepts a tested example plugin with review warnin
   assert.deepEqual(result.review.plugin.permissions, ['pet:say', 'storage'])
   assert.ok(result.review.packageHash)
   assert.match(result.warnings.join('\n'), /unsigned/)
+  assert.doesNotMatch(result.warnings.join('\n'), /trusted signature evidence/)
 })
 
 test('validate plugin package can require verified signature metadata', () => {

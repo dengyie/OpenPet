@@ -20,20 +20,20 @@ const sectionBetween = (lines, startPattern, endPattern) => {
   return lines.slice(start, end)
 }
 
-test('macOS release workflow creates and uploads release evidence', () => {
+test('macOS release workflow skips signing gates and release evidence while paused', () => {
   const workflow = readWorkflow()
   const lines = workflow.split(/\r?\n/)
-  const createEvidenceIndex = lineIndex(lines, /name: Create macOS release evidence/)
+  const buildIndex = lineIndex(lines, /name: Build unsigned macOS test distribution/)
   const publishAssetsIndex = lineIndex(lines, /name: Publish GitHub Release assets/)
-  const uploadEvidenceIndex = lineIndex(lines, /name: Upload macOS release evidence/)
 
-  assert.ok(createEvidenceIndex < publishAssetsIndex, 'macOS evidence should be created before release asset publishing')
-  assert.ok(createEvidenceIndex < uploadEvidenceIndex, 'macOS evidence should be uploaded after it is created')
-  assert.ok(uploadEvidenceIndex < publishAssetsIndex, 'macOS evidence should be uploaded before public release publishing can fail')
-  assert.match(workflow, /npm run create-macos-release-evidence -- --app "\$app_path"/)
-  assert.match(workflow, /--skip-codesign --skip-spctl/)
-  assert.match(workflow, /release\/macos-release-evidence/)
-  assert.match(workflow, /openpet-macos-release-evidence-\$\{\{ steps\.release\.outputs\.tag \}\}/)
+  assert.ok(buildIndex < publishAssetsIndex, 'unsigned macOS test artifacts should be built before release asset publishing')
+  assert.match(workflow, /CSC_IDENTITY_AUTO_DISCOVERY: false/)
+  assert.doesNotMatch(workflow, /name: Inspect signing secrets/)
+  assert.doesNotMatch(workflow, /name: Build signed distribution/)
+  assert.doesNotMatch(workflow, /name: Create macOS release evidence/)
+  assert.doesNotMatch(workflow, /name: Upload macOS release evidence/)
+  assert.doesNotMatch(workflow, /APPLE_ID/)
+  assert.doesNotMatch(workflow, /openpet-macos-release-evidence/)
 })
 
 test('macOS release evidence is not published as a user-facing release asset', () => {
@@ -47,4 +47,21 @@ test('macOS release evidence is not published as a user-facing release asset', (
   assert.match(publishSection, /release\/\*\.dmg/)
   assert.match(publishSection, /release\/latest-mac\.yml/)
   assert.doesNotMatch(publishSection, /macos-release-evidence/)
+})
+
+test('Windows release workflow builds unsigned test assets without smoke evidence upload', () => {
+  const workflow = readWorkflow()
+  const lines = workflow.split(/\r?\n/)
+  const buildIndex = lineIndex(lines, /name: Build unsigned Windows test distribution/)
+  const markUnsignedIndex = lineIndex(lines, /name: Mark unsigned Windows test assets/)
+  const publishAssetsIndex = lineIndex(lines.slice(markUnsignedIndex + 1), /name: Publish GitHub Release assets/) + markUnsignedIndex + 1
+
+  assert.ok(buildIndex < markUnsignedIndex, 'Windows artifacts should be built before unsigned labeling')
+  assert.ok(markUnsignedIndex < publishAssetsIndex, 'Windows artifacts should be labeled before release upload')
+  assert.match(workflow, /npm run prepare-windows-release-assets/)
+  assert.doesNotMatch(workflow, /WINDOWS_CSC_LINK/)
+  assert.doesNotMatch(workflow, /WINDOWS_CSC_KEY_PASSWORD/)
+  assert.doesNotMatch(workflow, /name: Inspect Windows signing secrets/)
+  assert.doesNotMatch(workflow, /name: Create pending Windows smoke report/)
+  assert.doesNotMatch(workflow, /windows-smoke-evidence-/)
 })
