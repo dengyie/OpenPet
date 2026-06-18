@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('path')
 
-const { BASE_HEIGHT, BASE_WIDTH, applyPetViewport, applyWindowScale, createWindow, loadPetWindow } = require('../../src/main/window')
+const { BASE_HEIGHT, BASE_WIDTH, PET_BASE_SCALE, applyPetViewport, applyWindowScale, createWindow, loadPetWindow } = require('../../src/main/window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const petIndexPath = path.join(projectRoot, 'index.html')
@@ -85,7 +85,7 @@ test('createWindow preserves automatic loading by default', () => {
   assert.equal(petWindow.options.alwaysOnTop, true)
 })
 
-test('applyWindowScale recovers a collapsed pet window back to valid base bounds', () => {
+test('applyWindowScale recovers a collapsed pet window back to valid default bounds', () => {
   const instances = []
   const petWindow = createWindow({
     load: false,
@@ -99,8 +99,27 @@ test('applyWindowScale recovers a collapsed pet window back to valid base bounds
   assert.deepEqual(petWindow.getBounds(), {
     x: 40,
     y: 33,
-    width: BASE_WIDTH,
-    height: BASE_HEIGHT
+    width: BASE_WIDTH * PET_BASE_SCALE,
+    height: BASE_HEIGHT * PET_BASE_SCALE
+  })
+})
+
+test('applyWindowScale uses the reduced visual base size for user scale values', () => {
+  const instances = []
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: BASE_WIDTH, height: BASE_HEIGHT })
+
+  applyWindowScale(petWindow, 0.5)
+
+  assert.deepEqual(petWindow.getBounds(), {
+    x: 212,
+    y: 425,
+    width: 75,
+    height: 75
   })
 })
 
@@ -120,5 +139,24 @@ test('applyPetViewport resizes around bottom center for dynamic action bounds', 
     y: 230,
     width: 180,
     height: 270
+  })
+})
+
+test('applyPetViewport can shrink dynamic action bounds below their source size', () => {
+  const instances = []
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: 300, height: 300 })
+
+  applyPetViewport(petWindow, { width: 120, height: 180, scale: 0.5 })
+
+  assert.deepEqual(petWindow.getBounds(), {
+    x: 220,
+    y: 410,
+    width: 60,
+    height: 90
   })
 })

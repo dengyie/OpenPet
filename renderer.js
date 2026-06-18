@@ -24,6 +24,7 @@ const cursorOverlay = document.getElementById('custom-cursor-overlay') || {
   src: ''
 }
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
+const PET_BASE_SCALE = 0.5                       // UI 100% 对应旧版视觉大小的 50%
 const cursorStyle = {
   resolvePetCursorStyle: () => '',
   resolvePetCursorOverlayState: () => ({ visible: false, assetUrl: '', nativeCursor: '' }),
@@ -69,7 +70,9 @@ const state = {
   bubbleTimer: 0,        // setTimeout id，到期后隐藏气泡
   bubbleDuration: 1300   // 气泡显示时长 ms（由设置同步）
 }
-state.scale = 1
+state.scale = PET_BASE_SCALE
+
+const normalizePetScale = (scale) => Math.max((Number(scale) || 1) * PET_BASE_SCALE, Number.EPSILON)
 
 const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
 
@@ -167,16 +170,33 @@ const getActionViewport = (animation, dims) => {
   }
 }
 
-const applyActionLayout = (animation, dims) => {
-  const viewport = getActionViewport(animation, dims)
-  const windowWidth = (viewport.width + viewport.padding * 2) * state.scale
+const getScaledViewportSize = (viewport) => {
+  const padding = Math.max(0, Number(viewport?.padding) || 0)
+  const scale = Math.max(Number(viewport?.scale) || state.scale, Number.EPSILON)
+  return {
+    width: Math.max(1, Math.round(((Number(viewport?.width) || 1) + padding * 2) * scale)),
+    height: Math.max(1, Math.round(((Number(viewport?.height) || 1) + padding * 2) * scale))
+  }
+}
+
+const applyCatPositionForWindowWidth = (layout, windowWidth) => {
+  if (!layout?.viewport || !layout?.dims) return
+  const { viewport, dims } = layout
   const catLeft = Math.round((windowWidth / 2) - ((viewport.x + viewport.width / 2) * state.scale))
   const catBottom = Math.round((viewport.padding - (dims.height - viewport.y - viewport.height)) * state.scale)
 
   catEl.style.left = catLeft + 'px'
   catEl.style.bottom = catBottom + 'px'
-  state.currentLayout = { viewport, dims, catLeft, catBottom }
-  window.petAPI.setViewport?.(viewport)
+  layout.catLeft = catLeft
+  layout.catBottom = catBottom
+}
+
+const applyActionLayout = (animation, dims) => {
+  const viewport = getActionViewport(animation, dims)
+  state.currentLayout = { viewport, dims, catLeft: 0, catBottom: 0 }
+  applyCatPositionForWindowWidth(state.currentLayout, getScaledViewportSize(viewport).width)
+  if (menu.classList.contains('open')) applyMenuViewport()
+  else window.petAPI.setViewport?.(viewport)
 }
 
 const applySpriteGeometry = (animation, dims) => {
@@ -213,6 +233,16 @@ const getFrameDuration = (animation, frameIndex) => {
 const renderCurrentFrame = () => {
   catEl.style.backgroundPositionX = -((frameColumn + state.frameIndex) * frameStepX) + 'px'
   catEl.style.backgroundPositionY = -(frameRow * frameStepY) + 'px'
+}
+
+const freezeActionForScalePreview = () => {
+  if (state.action !== state.defaultAction) {
+    stopWalk()
+    setAction(state.defaultAction)
+  }
+  state.frameIndex = 0
+  window.clearTimeout(state.frameTimer)
+  renderCurrentFrame()
 }
 
 const scheduleFrameTick = () => {
@@ -546,6 +576,38 @@ const renderMenu = (actions) => {
   mkDiv(); mkBtn('散步', 'walk'); mkBtn('设置', 'settings'); mkDiv(); mkBtn('退出', 'quit')
 }
 
+const MENU_EDGE_MARGIN = 12
+
+const getMenuViewport = () => {
+  if (!state.currentLayout?.viewport) return null
+  const menuRect = menu.getBoundingClientRect()
+  const currentSize = getScaledViewportSize(state.currentLayout.viewport)
+  const targetWidth = Math.max(currentSize.width, Math.ceil(menuRect.width + MENU_EDGE_MARGIN * 2))
+  const targetHeight = Math.max(currentSize.height, Math.ceil(menuRect.height + MENU_EDGE_MARGIN * 2))
+  const scale = Math.max(state.scale, Number.EPSILON)
+  return {
+    width: Math.ceil(targetWidth / scale),
+    height: Math.ceil(targetHeight / scale),
+    padding: 0,
+    scale
+  }
+}
+
+const applyMenuViewport = () => {
+  const viewport = getMenuViewport()
+  if (!viewport) return
+  const windowSize = getScaledViewportSize(viewport)
+  applyCatPositionForWindowWidth(state.currentLayout, windowSize.width)
+  window.petAPI.setViewport?.(viewport)
+  return { viewport, windowSize }
+}
+
+const restoreActionViewport = () => {
+  if (!state.currentLayout?.viewport) return
+  applyCatPositionForWindowWidth(state.currentLayout, getScaledViewportSize(state.currentLayout.viewport).width)
+  window.petAPI.setViewport?.(state.currentLayout.viewport)
+}
+
 const applyAnimationsConfig = ({ actions, defaultAction, clickAction }) => {
   state.defaultAction = defaultAction
   state.clickAction = clickAction
@@ -557,6 +619,7 @@ const applyAnimationsConfig = ({ actions, defaultAction, clickAction }) => {
 const hideMenu = () => {
   const wasOpen = menu.classList.contains('open')
   menu.classList.remove('open')
+  if (wasOpen) restoreActionViewport()
   refreshMouseStateFromLastPoint()
   if (wasOpen) {
     logPetEvent('pet.menu.closed', {}, { level: 'info', actor: 'user', message: 'Pet menu closed' })
@@ -566,7 +629,15 @@ const showMenu = () => {
   setMousePassthrough(false)
   applyPetCursorStyle(false)
   menu.classList.add('open')
-  logPetEvent('pet.menu.opened', {}, { level: 'info', actor: 'user', message: 'Pet menu opened' })
+  const menuViewport = applyMenuViewport()
+  logPetEvent('pet.menu.opened', {
+    menuWidth: Math.round(menu.getBoundingClientRect().width),
+    menuHeight: Math.round(menu.getBoundingClientRect().height),
+    viewportWidth: menuViewport?.viewport.width,
+    viewportHeight: menuViewport?.viewport.height,
+    windowWidth: menuViewport?.windowSize.width,
+    windowHeight: menuViewport?.windowSize.height
+  }, { level: 'info', actor: 'user', message: 'Pet menu opened' })
 }
 
 /** 菜单点击统一分发 —— 根据按钮 data-action 路由到对应逻辑。 */
@@ -591,12 +662,13 @@ const onMenuClick = (event) => {
 // 监听主进程推送的设置变更，同步到渲染状态
 window.petAPI.onSettingsChanged((s) => {
   if (s.scale != null) {
-    state.scale = Math.max(Number(s.scale) || 1, 1)
+    state.scale = normalizePetScale(s.scale)
     const currentAction = state.animations[state.action]
     if (currentAction) {
       const dims = getDisplayDimensions(currentAction)
       applyActionLayout(currentAction, dims)
       applySpriteGeometry(currentAction, dims)
+      freezeActionForScalePreview()
       renderCurrentFrame()
     }
   }

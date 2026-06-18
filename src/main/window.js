@@ -7,6 +7,7 @@ const electron = require('electron')
 const projectRoot = path.join(__dirname, '..', '..')
 const BASE_WIDTH = 300
 const BASE_HEIGHT = 300
+const PET_BASE_SCALE = 0.5
 const CONTROL_CENTER_WIDTH = 900
 const CONTROL_CENTER_HEIGHT = 640
 
@@ -19,7 +20,7 @@ const isValidWindowSize = (bounds) => (
 )
 
 const normalizeViewportSize = (viewport = {}) => {
-  const scale = Math.max(toFiniteNumber(viewport.scale, 1), 1)
+  const scale = Math.max(toFiniteNumber(viewport.scale, 1), Number.EPSILON)
   const padding = Math.max(0, Math.round(toFiniteNumber(viewport.padding, 0)))
   const sourceWidth = toFiniteNumber(viewport.width, BASE_WIDTH)
   const sourceHeight = toFiniteNumber(viewport.height, BASE_HEIGHT)
@@ -54,7 +55,7 @@ const resizeWindowAroundBottomCenter = (petWindow, targetWidth, targetHeight) =>
 
 const applyWindowScale = (petWindow, scale) => {
   if (!petWindow || petWindow.isDestroyed()) return
-  const safeScale = Math.max(toFiniteNumber(scale, 1), 1)
+  const safeScale = Math.max(toFiniteNumber(scale, 1) * PET_BASE_SCALE, Number.EPSILON)
   const targetWidth = Math.round(BASE_WIDTH * safeScale)
   const targetHeight = Math.round(BASE_HEIGHT * safeScale)
   resizeWindowAroundBottomCenter(petWindow, targetWidth, targetHeight)
@@ -146,4 +147,4 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
   petWindow.settingsWindow = settingsWindow
 }
 
-module.exports = { BASE_WIDTH, BASE_HEIGHT, applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow }
+module.exports = { BASE_WIDTH, BASE_HEIGHT, PET_BASE_SCALE, applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow }
