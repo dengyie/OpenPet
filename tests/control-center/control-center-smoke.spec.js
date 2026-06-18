@@ -349,4 +349,24 @@ test.describe('Control Center smoke', () => {
     await expect(reloadedPluginRow.locator('.plugin-health-policy').getByRole('combobox')).toHaveValue('60000')
     await expect(page.locator('.plugin-log-row', { hasText: 'Plugin installed' })).toContainText('openpet.demo.manual-review')
   })
+
+  test('inspects GitHub repository plugins from the Plugins pane with the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const repositoryInput = page.getByRole('textbox', { name: 'GitHub repository URL' })
+    await repositoryInput.fill('https://github.com/openpet/demo-plugin')
+    await page.getByRole('button', { name: 'Import from GitHub' }).click()
+
+    const reviewPanel = page.locator('.plugin-review-panel', { hasText: 'Demo Manual Review' })
+    await expect(reviewPanel).toContainText('安装 1.0.0')
+    await expect(reviewPanel).toContainText('Unsigned plugin')
+    await expect(reviewPanel).toContainText('命令：hello')
+
+    await reviewPanel.getByRole('button', { name: '安装插件' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('插件已安装，默认保持停用')
+    await expect(reviewPanel).toBeHidden()
+    await expect(page.locator('.plugin-row', { hasText: 'Demo Manual Review' })).toContainText('openpet.demo.manual-review')
+  })
 })

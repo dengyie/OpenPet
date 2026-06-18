@@ -766,6 +766,23 @@ const demoApi: ControlCenterApi = {
       blockStatus: { ...demoManualPluginReview.blockStatus }
     }
   },
+  inspectPluginGithubRepository: async () => {
+    demoManualPluginSelection = demoManualPluginReview.selectionId
+    return {
+      ...demoManualPluginReview,
+      plugin: {
+        ...demoManualPluginReview.plugin,
+        commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })),
+        entries: clonePluginEntries(demoManualPluginReview.plugin.entries)
+      },
+      permissionDiff: {
+        permissions: { ...demoManualPluginReview.permissionDiff.permissions },
+        networkAllowlist: { ...demoManualPluginReview.permissionDiff.networkAllowlist }
+      },
+      signature: { ...demoManualPluginReview.signature },
+      blockStatus: { ...demoManualPluginReview.blockStatus }
+    }
+  },
   clearPluginSelection: async (selectionId) => {
     if (!selectionId || demoManualPluginSelection === selectionId) demoManualPluginSelection = null
     return { ok: true }

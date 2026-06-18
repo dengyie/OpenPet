@@ -45,14 +45,18 @@ export interface PluginsPaneProps {
   clearingStorage: string
   pluginReview: PluginPackageReviewViewState | null
   inspectingPlugin: boolean
+  githubRepositoryUrl: string
+  inspectingGithubPlugin: boolean
   installingPlugin: boolean
   uninstallingPlugin: string
   onToggle: (pluginId: string, enabled: boolean) => void | Promise<void>
   onInspectPluginPackage: () => void | Promise<void>
+  onInspectGithubPluginRepository: () => void | Promise<void>
   onClearPluginReview: () => void | Promise<void>
   onInstallReviewedPlugin: () => void | Promise<void>
   onUninstallPlugin: (pluginId: string) => void | Promise<void>
   onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
+  onChangeGithubRepositoryUrl: (value: string) => void
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
   onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>
@@ -150,7 +154,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, lastCommandResult, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, lastCommandResult, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -164,6 +168,31 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
           </button>
         </div>
       </header>
+
+      <div className="card-stack">
+        <div className="field-row">
+          <label className="field-label" htmlFor="plugin-github-repository-url">GitHub repository URL</label>
+          <div className="inline-form">
+            <input
+              id="plugin-github-repository-url"
+              className="text-input"
+              type="url"
+              value={githubRepositoryUrl}
+              placeholder="https://github.com/owner/repo"
+              onChange={(event) => onChangeGithubRepositoryUrl(event.target.value)}
+            />
+            <button
+              type="button"
+              className="ghost"
+              disabled={inspectingGithubPlugin || !githubRepositoryUrl.trim()}
+              onClick={onInspectGithubPluginRepository}
+            >
+              {inspectingGithubPlugin ? '读取中' : 'Import from GitHub'}
+            </button>
+          </div>
+          <p className="field-help">Only repositories with plugin.json at the repository root are supported.</p>
+        </div>
+      </div>
 
       <PluginReviewPanel
         review={pluginReview}

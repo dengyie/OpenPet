@@ -27,6 +27,7 @@ const { createAiService } = require('./src/main/services/ai-service')
 const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
 const { createPluginInstallService } = require('./src/main/services/plugin-install-service')
+const { createPluginGithubImportService } = require('./src/main/services/plugin-github-import-service')
 const { createLocalHttpService } = require('./src/main/services/local-http-service')
 const { createActionImportService } = require('./src/main/services/action-import-service')
 const { createAboutService } = require('./src/main/services/about-service')
@@ -113,6 +114,9 @@ app.whenReady().then(() => {
     pluginDir,
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
+  const pluginGithubImportService = createPluginGithubImportService({
+    pluginInstallService
+  })
   const pluginService = createPluginService({
     settingsService,
     petService,
@@ -173,6 +177,7 @@ app.whenReady().then(() => {
     behaviorOrchestratorService,
     pluginService,
     pluginInstallService,
+    pluginGithubImportService,
     catalogService,
     localHttpService,
     aboutService,

@@ -131,7 +131,7 @@ const executeBehaviorDecision = (petService, decision) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, restorePetWindowVisibility = () => {}, activityLog = createNoopActivityLog(), appService = app, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
   ipcMainService = createLoggedIpcMainService({ ipcMainService, activityLog })
@@ -431,6 +431,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     })
     if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
     return { canceled: false, ...pluginInstallService.inspectPluginPackage(selected.filePaths[0]) }
+  })
+
+  ipcMainService.handle(IPC.PLUGINS_INSPECT_GITHUB_REPOSITORY, async (_event, payload) => {
+    if (!pluginGithubImportService?.inspectRepositoryUrl) throw new Error('GitHub plugin import is not available')
+    return { canceled: false, ...await pluginGithubImportService.inspectRepositoryUrl(payload?.repositoryUrl) }
   })
 
   ipcMainService.handle(IPC.PLUGINS_CLEAR_SELECTION, (_event, payload) => {
