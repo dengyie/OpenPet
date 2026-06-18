@@ -144,6 +144,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     applyPetViewport(win, viewport)
   })
 
+  ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
+    if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
+    else win.setIgnoreMouseEvents(false)
+  })
+
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
   ipcMainService.handle(IPC.PET_MOVE_BY, (event, delta) => {
     const win = browserWindowService.fromWebContents(event.sender)

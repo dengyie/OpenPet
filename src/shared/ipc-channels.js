@@ -11,6 +11,7 @@ const IPC = Object.freeze({
   PET_GET_MOVEMENT_STATE: 'pet:get-movement-state',
   PET_SET_POSITION: 'pet:set-position',
   PET_SET_VIEWPORT: 'pet:set-viewport',
+  PET_SET_MOUSE_PASSTHROUGH: 'pet:set-mouse-passthrough',
   PET_MOVE_BY: 'pet:move-by',
   PET_SAY: 'pet:say',
   PET_PLAY_ACTION: 'pet:play-action',
