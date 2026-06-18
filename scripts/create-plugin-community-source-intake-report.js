@@ -269,20 +269,23 @@ const resolvePluginCandidate = ({ extractRoot, pluginPath, entries, fsImpl = fs 
   if (pluginPath) candidates.push(pluginPath)
   const topLevelDirs = [...new Set((entries || []).map((entry) => entry.split('/')[0]).filter(Boolean))]
   for (const topLevelDir of topLevelDirs) {
-    candidates.push(`${topLevelDir}/${pluginPath}`)
+    candidates.push(pluginPath === '.' ? topLevelDir : `${topLevelDir}/${pluginPath}`)
   }
 
+  const existingCandidates = []
   for (const candidate of candidates) {
     const absoluteCandidate = resolveInside(extractRoot, candidate)
     if (fsImpl.existsSync(absoluteCandidate)) {
-      return {
+      existingCandidates.push({
         absoluteCandidate,
         archivePluginPath: candidate
-      }
+      })
     }
   }
 
-  return null
+  return existingCandidates.find((candidate) => fsImpl.existsSync(path.join(candidate.absoluteCandidate, 'plugin.json'))) ||
+    existingCandidates[0] ||
+    null
 }
 
 const createPluginCommunitySourceIntakeReport = async ({

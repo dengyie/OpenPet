@@ -16,6 +16,7 @@ It covers:
 - recording and validating a separate maintainer approval artifact after review
 - one-command existing-plugin rehearsal for a more realistic local submission path
 - one-command remote-source rehearsal for a reviewed HTTPS archive path
+- one-command community-source intake reporting for public candidate archives before they claim OpenPet compatibility
 
 It does not:
 
@@ -52,13 +53,21 @@ npm run create-plugin-remote-source-submission-rehearsal -- --archive-url https:
 
 This downloads a public HTTPS archive, records archive URL, final URL, archive SHA-256, archive size, selected plugin path, and extracted file hashes, then packages the selected plugin snapshot, creates a submission bundle, records maintainer approval, and writes local evidence files. It is closer to a real reviewer handoff than a plain directory rehearsal, but the current archived example still does not prove independent public community provenance or release trust.
 
+For a public candidate-source intake report, run:
+
+```bash
+npm run create-plugin-community-source-intake-report -- --archive-url <https-archive> --plugin-path <path-inside-archive> --community-source-url <public-source-url> --submitter "<submitter>" --output-dir docs/release-evidence/plugin-community-source-intake-report/<session>
+```
+
+This archives the public source URL, submitter label, archive URL, final URL, archive SHA-256, archive size, candidate plugin path, and extracted file hashes, then records whether the selected path is a current OpenPet `plugin.json` package. It is a compatibility-first maintainer intake step, not submission approval, signing trust, runtime safety, or release readiness.
+
 For a community-source evidence archive, run:
 
 ```bash
 npm run create-plugin-community-source-submission-evidence -- --archive-url <https-archive> --plugin-path <path-inside-archive> --community-source-url <public-source-url> --submitter "<submitter>" --source-relation independent-third-party --independence-notes "..." --output-dir docs/release-evidence/plugin-community-source-submission-evidence/<session>
 ```
 
-This keeps the same archive/package/submission/approval chain as the remote-source rehearsal, then adds community provenance metadata that is missing from an official-repository archive alone: source URL, submitter label, source relation, and independence notes. It is still review evidence. It does not prove signing trust, catalog publication, runtime safety, or release readiness.
+This keeps the same archive/package/submission/approval chain as the remote-source rehearsal, then adds community provenance metadata that is missing from an official-repository archive alone: source URL, submitter label, source relation, and independence notes. For public sources, run the intake report first so incompatible neighboring repositories are archived as evidence gaps instead of being forced through the submission chain. This is still review evidence. It does not prove signing trust, catalog publication, runtime safety, or release readiness.
 
 ## 3. Manual Rehearsal Order
 

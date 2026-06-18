@@ -40,6 +40,20 @@ const createCompatibleArchiveFixture = () => {
   }
 }
 
+const createCompatibleRootArchiveFixture = () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-community-intake-compatible-root-'))
+  const archiveRoot = path.join(root, 'community-plugin-root')
+  copyDir(EXAMPLE_PLUGIN_PATH, archiveRoot)
+
+  const archivePath = path.join(root, 'community-plugin-root.zip')
+  execFileSync('zip', ['-qr', archivePath, 'community-plugin-root'], { cwd: root })
+  return {
+    archivePath,
+    archiveSha256: sha256(archivePath),
+    archiveByteSize: fs.statSync(archivePath).size
+  }
+}
+
 const createIncompatibleArchiveFixture = () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-community-intake-incompatible-'))
   const archiveRoot = path.join(root, 'opencode-pets-main')
@@ -125,6 +139,36 @@ test('createPluginCommunitySourceIntakeReport marks compatible OpenPet plugin ca
   assert.equal(fs.existsSync(summary.files.commands), true)
 })
 
+test('createPluginCommunitySourceIntakeReport resolves archive root plugin paths inside top-level zip directories', async () => {
+  const fixture = createCompatibleRootArchiveFixture()
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-community-intake-report-compatible-root-'))
+
+  const summary = await createPluginCommunitySourceIntakeReport({
+    archiveUrl: 'https://example.test/community-plugin-root/archive.zip',
+    pluginPath: '.',
+    communitySourceUrl: 'https://example.test/community/submission/root',
+    submitter: 'Example Root Author',
+    outputDir,
+    notes: 'Candidate root source inspected.',
+    now: () => new Date('2026-06-18T22:05:00.000Z'),
+    downloadArchive: ({ archivePath }) => {
+      fs.copyFileSync(fixture.archivePath, archivePath)
+      return {
+        archivePath,
+        finalUrl: 'https://example.test/community-plugin-root/archive.zip',
+        archiveSha256: fixture.archiveSha256,
+        archiveByteSize: fixture.archiveByteSize
+      }
+    }
+  })
+
+  assert.equal(summary.status, 'ready-for-community-evidence')
+  assert.equal(summary.compatibility.ok, true)
+  assert.equal(summary.compatibility.reasonCode, 'openpet-plugin-package')
+  assert.equal(summary.archive.archivePluginPath, 'community-plugin-root')
+  assert.equal(summary.plugin.id, 'openpet.example.weather-status')
+})
+
 test('createPluginCommunitySourceIntakeReport records incompatible package models without overstating ecosystem support', async () => {
   const fixture = createIncompatibleArchiveFixture()
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-community-intake-report-incompatible-'))
@@ -158,4 +202,3 @@ test('createPluginCommunitySourceIntakeReport records incompatible package model
   assert.match(readme, /does not prove community plugin compatibility/i)
   assert.match(readme, /requires a package rooted by plugin\.json/i)
 })
-

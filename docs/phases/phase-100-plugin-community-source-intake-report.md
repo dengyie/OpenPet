@@ -44,10 +44,10 @@ Neither is good enough for a production-facing plugin ecosystem.
    - validates compatible packages with the existing package validator;
    - writes a README, command list, machine-readable intake report, and summary JSON.
 
-2. Emit explicit status values:
+2. Emit explicit status values and reason codes:
    - `ready-for-community-evidence`
    - `incompatible-package-model`
-   - `plugin-path-not-found`
+   - reason codes such as `plugin-path-not-found`, `plugin-json-missing`, and `plugin-json-invalid`
 
 3. Keep trust claims conservative:
    - intake compatibility is not maintainer approval;
@@ -59,4 +59,3 @@ Neither is good enough for a production-facing plugin ecosystem.
 - Maintainers can archive a public candidate source and get a structured compatibility verdict.
 - Compatible archives can be routed into Phase 99 next.
 - Incompatible public repositories are recorded as evidence gaps rather than being silently ignored or misrepresented.
-

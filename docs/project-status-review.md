@@ -32,7 +32,7 @@ The extension ecosystem has also crossed another platform threshold: declaration
 Current local baseline:
 
 ```bash
-npm test                     # 675/675 Node tests
+npm test                     # 676/676 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build

@@ -18,6 +18,11 @@ No blocking issues found in the Phase 100 diff.
 
 The intake report cleanly separates candidate-source compatibility triage from the existing submission/approval evidence flow. That avoids overstating ecosystem support when a public repository belongs to a neighboring package model rather than the current OpenPet `plugin.json` model.
 
+## Review Iteration Notes
+
+- Checkpoint review found and fixed one compatibility edge case before merge: `--plugin-path .` against a GitHub-style zip with a single top-level directory could select the extraction root before the actual package root and incorrectly report `plugin-json-missing`.
+- The fix now prefers an existing candidate path that contains `plugin.json`, and a regression test covers root plugin packages nested under the archive top-level directory.
+
 ## Improvement Suggestions
 
 - When a confirmed independent third-party OpenPet plugin repository becomes available, archive one successful Phase 100 intake session and then route it through Phase 99 so the docs can point at a real green-path external sample instead of only compatibility tooling.
@@ -43,6 +48,7 @@ Covered by tests:
 
 - CLI argument parsing;
 - compatible archive path producing `ready-for-community-evidence`;
+- compatible archive root path inside a top-level zip directory producing `ready-for-community-evidence`;
 - incompatible archive path producing `incompatible-package-model`;
 - conservative README wording for non-compatible sources.
 
@@ -51,4 +57,3 @@ No blocking missing test remains for this tooling slice.
 ## Final Recommendation
 
 Safe to merge
-
