@@ -264,6 +264,19 @@ test('normalizes creator-tools asset generation permission', () => {
   assert.deepEqual(manifest.permissions, ['assets:generate'])
 })
 
+test('normalizes creator-tools pet pack import permission', () => {
+  const manifest = normalizePluginManifest({
+    id: 'creator-studio',
+    name: 'Creator Studio',
+    version: '1.0.0',
+    profile: 'hybrid',
+    permissions: ['pet-pack:import']
+  })
+
+  assert.equal(manifest.profile, 'hybrid')
+  assert.deepEqual(manifest.permissions, ['pet-pack:import'])
+})
+
 test('normalizes creator-tools pack manifest read permission', () => {
   const manifest = normalizePluginManifest({
     id: 'pack-manifest-reader',

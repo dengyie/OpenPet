@@ -1,0 +1,38 @@
+{
+  "id": "openpet.creator-studio",
+  "name": "Creator Studio",
+  "version": "0.1.0",
+  "profile": "hybrid",
+  "description": "Create, review, import, and export Codex-compatible OpenPet pets.",
+  "permissions": ["pet-pack:import", "pet:say"],
+  "config": "config.schema.json",
+  "entries": {
+    "commands": [
+      { "id": "create-run", "title": "Create Run", "command": "node ./commands/create-run.js", "cwd": "." },
+      { "id": "run-step", "title": "Run Step", "command": "node ./commands/run-step.js", "cwd": "." },
+      { "id": "approve-run", "title": "Approve Run", "command": "node ./commands/approve-run.js", "cwd": "." },
+      { "id": "import-approved-pet", "title": "Import Approved Pet", "command": "node ./commands/import-approved-pet.js", "cwd": "." },
+      { "id": "export-bundle", "title": "Export Bundle", "command": "node ./commands/export-bundle.js", "cwd": "." }
+    ],
+    "services": [
+      {
+        "id": "studio",
+        "title": "Creator Studio Service",
+        "command": "node ./service/studio-service.js",
+        "cwd": ".",
+        "health": { "type": "http", "url": "http://127.0.0.1:8794/health" }
+      }
+    ],
+    "dashboards": [
+      { "id": "main", "title": "Creator Studio", "url": "http://127.0.0.1:8794" }
+    ]
+  },
+  "manifest": {
+    "dataLocations": [
+      { "path": "OPENPET_DATA_DIR/runs", "description": "Creator Studio run workspaces and generated pet outputs." }
+    ],
+    "modelBackends": ["fixture", "cloud", "local"],
+    "outputFormat": "codex-pet"
+  },
+  "assets": ["web/dashboard/index.html"]
+}

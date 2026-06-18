@@ -1,0 +1,26 @@
+{
+  "title": "Creator Studio Settings",
+  "description": "Controls the pet generation backend and import behavior for the Creator Studio example extension.",
+  "type": "object",
+  "properties": {
+    "backend": {
+      "title": "Backend",
+      "description": "Generation backend selected for new Creator Studio runs.",
+      "type": "string",
+      "enum": ["fixture", "cloud", "local"],
+      "default": "fixture"
+    },
+    "autoActivateAfterImport": {
+      "title": "Auto activate imported pet",
+      "description": "Activate the imported pet pack after a run is approved and imported.",
+      "type": "boolean",
+      "default": true
+    },
+    "servicePort": {
+      "title": "Dashboard service port",
+      "description": "Loopback port used by the Creator Studio dashboard service.",
+      "type": "number",
+      "default": 8794
+    }
+  }
+}

@@ -10,6 +10,7 @@ const KNOWN_PLUGIN_PERMISSIONS = new Set([
   'actions:write',
   'assets:inspect',
   'assets:generate',
+  'pet-pack:import',
   'pack-manifest:read',
   'pack-manifest:write'
 ])
