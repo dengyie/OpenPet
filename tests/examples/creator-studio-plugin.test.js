@@ -7,6 +7,7 @@ const crypto = require('node:crypto')
 const { spawnSync } = require('node:child_process')
 
 const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
+const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/creator-studio')
 
@@ -28,6 +29,19 @@ test('creator studio example manifest declares hybrid creator workflow entries',
   ])
   assert.equal(manifest.entries.services[0].id, 'studio')
   assert.equal(manifest.entries.dashboards[0].id, 'main')
+})
+
+test('creator studio example config schema normalizes backend controls', () => {
+  const schema = normalizeConfigSchema(
+    JSON.parse(fs.readFileSync(path.join(pluginRoot, 'config.schema.json'), 'utf-8'))
+  )
+
+  assert.deepEqual(schema.properties.map((field) => field.key), [
+    'backend',
+    'autoActivateAfterImport',
+    'servicePort'
+  ])
+  assert.deepEqual(schema.properties.find((field) => field.key === 'backend').enum, ['fixture', 'cloud', 'local'])
 })
 
 test('creator studio run store creates and advances durable run state', () => {

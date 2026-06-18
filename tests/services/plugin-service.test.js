@@ -946,6 +946,43 @@ test('declaration-only pet pack bridge rejects missing import permission', async
   assert.match(response.body.error, /pet-pack:import/)
 })
 
+test('creator studio example imports approved fixture pet through host bridge', async () => {
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'openpet.creator-studio': true } },
+    petPacks: { activePackId: 'legacy-cat', installed: {} }
+  })
+  const userPacksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-'))
+  const petPackService = createPetPackService({
+    settingsService,
+    userPacksDir,
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [] }),
+    now: () => new Date('2026-06-19T00:00:00.000Z')
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: createBridgeAwarePetService(),
+    petPackService,
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')]
+  })
+
+  const createResult = await service.runCommand('openpet.creator-studio', 'create-run', {
+    petName: 'Sprout Cat',
+    prompt: 'A small mint helper cat'
+  })
+  const runId = createResult.result.run.runId
+  await service.runCommand('openpet.creator-studio', 'run-step', { runId })
+  await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
+  const importResult = await service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true })
+
+  assert.equal(importResult.ok, true)
+  assert.equal(importResult.result.ok, true)
+  assert.equal(importResult.result.run.importStatus, 'imported')
+  assert.equal(settingsService.get().petPacks.activePackId, 'sprout-cat')
+  assert.equal(fs.existsSync(path.join(userPacksDir, 'sprout-cat', 'pet.json')), true)
+})
+
 test('declaration-only creator asset inspection bridge rejects missing permissions', async () => {
   const spawned = []
   const child = createFakeServiceProcess()
