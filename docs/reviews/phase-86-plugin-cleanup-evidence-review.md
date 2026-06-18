@@ -59,7 +59,7 @@ The remaining evidence gap is broader packaged-app cleanup evidence against real
 
 ```bash
 node --test tests/release/plugin-cleanup-evidence-report.test.js
-# pass: 6/6
+# pass: 7/7
 ```
 
 ```bash

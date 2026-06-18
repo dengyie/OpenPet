@@ -20,7 +20,7 @@ In scope:
 - JSON and Markdown evidence output;
 - structured checklist report validation with pending/readiness modes;
 - overwrite protection for existing evidence files;
-- shared `PluginCleanupEvidenceReport` contract and fixture;
+- shared `PluginCleanupEvidenceReport` / `PluginCleanupEvidenceChecklistReport` contracts and fixtures;
 - one archived macOS host evidence run.
 
 Out of scope:
