@@ -22,6 +22,7 @@ import type {
   PackagedPluginCleanupRuntimeArtifact,
   PackagedRuntimeSmokeEvidence,
   PackagedRuntimeSmokeReport,
+  PluginCommunitySourceInvitationSummary,
   PluginCommunitySourceSubmissionEvidenceSummary,
   PluginCleanupEvidenceArchiveManifest,
   PluginCleanupEvidenceChecklistReport,
@@ -721,6 +722,34 @@ const pluginCommunitySourceSubmissionEvidenceSummaryFixture = {
     summary: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/plugin-community-source-submission-evidence-summary.json'
   }
 } satisfies PluginCommunitySourceSubmissionEvidenceSummary
+
+const pluginCommunitySourceInvitationSummaryFixture = {
+  generatedAt: '2026-06-18T23:59:00.000Z',
+  outputDir: '/tmp/openpet/plugin-community-source-invitation-kit/2026-06-18T23-59-00Z-compatible-author-outreach',
+  status: 'invitation-draft-ready',
+  nextAction: 'send-invitation-and-wait-for-compatible-plugin-json-package',
+  contactState: 'not-sent',
+  target: {
+    author: 'OpenPet-compatible extension authors',
+    url: 'https://github.com/dengyie/OpenPet'
+  },
+  candidateContext: 'Phase 104 discovery currently has no compatible public plugin.json source.',
+  requestedCapabilities: ['weather', 'pet-action', 'pet-dialogue', 'pet-personality', 'creator-tools'],
+  maintainer: 'OpenPet Maintainer',
+  boundaries: [
+    'Invitation kits are draft outreach materials only.',
+    'Invitation kits do not prove an invitation was sent or accepted.',
+    'Invitation kits do not prove OpenPet plugin compatibility.',
+    'Invitation kits do not prove signing trust, catalog publication, runtime safety, or release readiness.',
+    'A received package must still pass Phase 104 discovery, Phase 100 intake, Phase 103 bridge, Phase 99 evidence, and maintainer review.'
+  ],
+  files: {
+    summary: '/tmp/openpet/plugin-community-source-invitation-kit/plugin-community-source-invitation-summary.json',
+    readme: '/tmp/openpet/plugin-community-source-invitation-kit/README-community-source-invitation.md',
+    message: '/tmp/openpet/plugin-community-source-invitation-kit/invitation-message.md',
+    checklist: '/tmp/openpet/plugin-community-source-invitation-kit/invitation-checklist.md'
+  }
+} satisfies PluginCommunitySourceInvitationSummary
 
 const macosReleaseEvidenceSummaryFixture = {
   generatedAt: '2026-06-18T02:00:00.000Z',
@@ -1653,6 +1682,7 @@ export {
   pluginRealWorldSubmissionRehearsalSummaryFixture,
   pluginRemoteSourceSubmissionRehearsalSummaryFixture,
   pluginCommunitySourceSubmissionEvidenceSummaryFixture,
+  pluginCommunitySourceInvitationSummaryFixture,
   pluginSetupRunFixture,
   releaseArchiveManifestFixture,
   releaseArchiveFixture,

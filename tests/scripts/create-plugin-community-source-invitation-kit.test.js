@@ -58,12 +58,26 @@ test('createPluginCommunitySourceInvitationKit writes conservative invitation ar
   assert.equal(summary.generatedAt, '2026-06-18T23:59:00.000Z')
   assert.equal(summary.status, 'invitation-draft-ready')
   assert.equal(summary.nextAction, 'send-invitation-and-wait-for-compatible-plugin-json-package')
+  assert.equal(summary.contactState, 'not-sent')
   assert.equal(summary.target.author, 'Example Maintainer')
   assert.deepEqual(summary.requestedCapabilities, ['weather', 'pet-action', 'pet-dialogue'])
+  assert.deepEqual(summary.boundaries, [
+    'Invitation kits are draft outreach materials only.',
+    'Invitation kits do not prove an invitation was sent or accepted.',
+    'Invitation kits do not prove OpenPet plugin compatibility.',
+    'Invitation kits do not prove signing trust, catalog publication, runtime safety, or release readiness.',
+    'A received package must still pass Phase 104 discovery, Phase 100 intake, Phase 103 bridge, Phase 99 evidence, and maintainer review.'
+  ])
   assert.equal(fs.existsSync(summary.files.summary), true)
   assert.equal(fs.existsSync(summary.files.readme), true)
   assert.equal(fs.existsSync(summary.files.message), true)
   assert.equal(fs.existsSync(summary.files.checklist), true)
+
+  const persistedSummary = JSON.parse(fs.readFileSync(summary.files.summary, 'utf-8'))
+  assert.equal(persistedSummary.status, 'invitation-draft-ready')
+  assert.equal(persistedSummary.contactState, 'not-sent')
+  assert.equal(persistedSummary.nextAction, 'send-invitation-and-wait-for-compatible-plugin-json-package')
+  assert.deepEqual(persistedSummary.boundaries, summary.boundaries)
 
   const message = fs.readFileSync(summary.files.message, 'utf-8')
   assert.match(message, /OpenPet welcomes third-party extension authors/)

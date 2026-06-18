@@ -776,6 +776,35 @@ export interface PluginCommunitySourceSubmissionEvidenceSummary {
   files: PluginCommunitySourceSubmissionEvidenceFiles
 }
 
+export type PluginCommunitySourceInvitationStatus = 'invitation-draft-ready'
+export type PluginCommunitySourceInvitationContactState = 'not-sent'
+
+export interface PluginCommunitySourceInvitationTarget {
+  author: string
+  url: string
+}
+
+export interface PluginCommunitySourceInvitationFiles {
+  summary: string
+  readme: string
+  message: string
+  checklist: string
+}
+
+export interface PluginCommunitySourceInvitationSummary {
+  generatedAt: string
+  outputDir: string
+  status: PluginCommunitySourceInvitationStatus
+  nextAction: 'send-invitation-and-wait-for-compatible-plugin-json-package'
+  contactState: PluginCommunitySourceInvitationContactState
+  target: PluginCommunitySourceInvitationTarget
+  candidateContext: string
+  requestedCapabilities: string[]
+  maintainer: string
+  boundaries: string[]
+  files: PluginCommunitySourceInvitationFiles
+}
+
 export interface PluginStorageViewState {
   keyCount: number
   byteSize: number
