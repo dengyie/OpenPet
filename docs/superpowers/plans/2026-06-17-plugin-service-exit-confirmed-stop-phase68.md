@@ -53,6 +53,34 @@ Expected:
 
 If `src/main/services/plugin-service.js` already contains later-phase force-stop or process-tree hardening work, do not remove it. Instead, adapt only the tests/docs needed to preserve the Phase 68 contract and keep later-phase behavior out of the Phase 68 narrative.
 
+## Continuation Note for Current Repository State
+
+As of 2026-06-18, this repository already contains Phase 68 and multiple later plugin-service cleanup phases. Treat this plan as the historical implementation contract for Phase 68, not as an instruction to rewind later work.
+
+When continuing from a later branch:
+
+- keep all Phase 69+ force-stop, health-policy, process-tree, setup-command, and evidence-runner behavior intact;
+- use this plan to verify that later work still preserves the Phase 68 truth: `stopService()` reports `stopping` until child `exit`, then finalizes to `stopped` or `failed`;
+- if a current test or doc contradicts this plan, add the smallest compatibility fix that preserves the later-phase behavior rather than reverting to the original Phase 68-only implementation;
+- avoid creating a new Phase 68 runtime commit unless the current code has actually regressed against the exit-confirmed stop contract;
+- if only documentation needs clarification, stage only the relevant Phase 68 plan/docs files and commit with a docs-prefixed message.
+
+Recommended continuation checks:
+
+```bash
+rg -n "Service stop requested|Service stopped|ACTIVE_SERVICE_STATUSES|stopping" src/main/services/plugin-service.js tests/services/plugin-service.test.js docs
+node --test tests/services/plugin-service.test.js --test-name-pattern "stopping|Service stop requested|Service stopped|force stop|process tree"
+npm run check:syntax
+git diff --check
+```
+
+Expected:
+
+- service runtime `stopping` remains an active state;
+- stop-request logging and stop-confirmation logging remain separate;
+- later hardening phases may add bounded force-stop behavior, but they must not claim a service is fully `stopped` before child exit confirmation;
+- docs continue to distinguish Phase 68's honest lifecycle reporting from later cleanup guarantees.
+
 ## Task 1: Baseline and locate the service lifecycle boundary
 
 **Files:**
