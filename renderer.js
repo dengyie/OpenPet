@@ -21,6 +21,7 @@ const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px�
 const cursorStyle = window.OpenPetCursorStyle || { resolvePetCursorStyle: () => '' }
 const petHitbox = window.OpenPetHitbox || {
   getFrameHitbox: () => null,
+  getWindowHitbox: () => null,
   getViewportHitbox: () => null,
   isPointInHitbox: () => false
 }
@@ -185,23 +186,22 @@ const isPointInsideCurrentFrame = (clientX, clientY) => {
 
 const isPointInsideCursorRegion = (clientX, clientY) => {
   if (state.drag || menu.classList.contains('open')) return true
-  const layout = state.currentLayout
-  if (!layout) return true
-
-  const hitbox = petHitbox.getViewportHitbox({
-    layout,
-    windowHeight: window.innerHeight,
-    scale: state.scale
+  const hitbox = petHitbox.getWindowHitbox({
+    windowWidth: window.innerWidth,
+    windowHeight: window.innerHeight
   })
   return petHitbox.isPointInHitbox({ x: clientX, y: clientY }, hitbox)
 }
 
 const applyPetCursorStyle = (insideCursorRegion) => {
-  pet.style.cursor = cursorStyle.resolvePetCursorStyle(state.customCursor, {
+  const nextCursor = cursorStyle.resolvePetCursorStyle(state.customCursor, {
     insideFrame: insideCursorRegion,
     dragging: Boolean(state.drag),
     menuOpen: menu.classList.contains('open')
   })
+  document.documentElement.style.cursor = nextCursor
+  document.body.style.cursor = nextCursor
+  pet.style.cursor = nextCursor
 }
 
 const refreshMouseStateFromLastPoint = () => {

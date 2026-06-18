@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const {
   getFrameHitbox,
+  getWindowHitbox,
   getViewportHitbox,
   isPointInHitbox
 } = require('../../src/shared/pet-hitbox')
@@ -48,4 +49,12 @@ test('frame hitbox preserves alpha trim precision for transparent passthrough', 
 
   assert.equal(isPointInHitbox({ x: 7, y: 4 }, frameHitbox), false)
   assert.equal(isPointInHitbox({ x: 9, y: 4 }, frameHitbox), true)
+})
+
+test('window hitbox covers every point that can be received by the pet renderer', () => {
+  const hitbox = getWindowHitbox({ windowWidth: 120, windowHeight: 80 })
+
+  assert.equal(isPointInHitbox({ x: 0, y: 0 }, hitbox), true)
+  assert.equal(isPointInHitbox({ x: 119, y: 79 }, hitbox), true)
+  assert.equal(isPointInHitbox({ x: 121, y: 40 }, hitbox), false)
 })

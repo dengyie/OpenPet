@@ -36,6 +36,13 @@
     }
   }
 
+  const getWindowHitbox = ({ windowWidth, windowHeight }) => ({
+    left: 0,
+    top: 0,
+    right: Math.max(0, Number(windowWidth) || 0),
+    bottom: Math.max(0, Number(windowHeight) || 0)
+  })
+
   const isPointInHitbox = (point, hitbox) => {
     if (!point || !hitbox) return false
     return point.x >= hitbox.left && point.x <= hitbox.right && point.y >= hitbox.top && point.y <= hitbox.bottom
@@ -43,6 +50,7 @@
 
   return {
     getFrameHitbox,
+    getWindowHitbox,
     getViewportHitbox,
     isPointInHitbox
   }
