@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-18 | Branch: `codex/phase105-community-source-invitation-kit`
+> Last updated: 2026-06-18 | Branch: `main`
 
 ## Current Snapshot
 
@@ -14,7 +14,7 @@ OpenPet is a desktop pet platform with:
 - AI behavior decisions with Control Center replay and redacted diagnostics,
 - developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, user-approved picker frame inspection/import for declaration-only commands, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths, current-host plugin cleanup evidence collection, cleanup evidence helper generation, cleanup evidence runner archives, packaged-app plugin cleanup evidence runner archives, cleanup evidence archive manifests, structured plugin cleanup readiness reports with validation-first updates, plugin submission bundles, scaffold author rehearsal, maintainer approval rehearsal records, existing-plugin real-world submission rehearsal evidence, remote-source submission rehearsal evidence, community-source submission evidence tooling, community-source candidate discovery reporting, community-source invitation kits, community-source candidate intake reporting, and compatible-intake-to-submission bridge tooling,
 - loopback-only local HTTP / MCP,
-- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, plugin submission evidence contracts, plugin cleanup archive/runner contracts, packaged plugin cleanup evidence contracts, macOS release evidence summary/archive contracts, Windows smoke report/evidence summary/archive contracts, desktop picker smoke report contracts, desktop picker evidence summary/archive contracts, packaged runtime smoke report/evidence contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
+- and a TypeScript migration baseline covering shared IPC, Control Center view contracts, the Control Center API facade, Control Center hook state boundaries, Control Center pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin extension entry contracts, plugin submission evidence contracts, community-source invitation evidence contracts, plugin cleanup archive/runner contracts, packaged plugin cleanup evidence contracts, macOS release evidence summary/archive contracts, Windows smoke report/evidence summary/archive contracts, desktop picker smoke report contracts, desktop picker evidence summary/archive contracts, packaged runtime smoke report/evidence contracts, full release evidence archive / signed closure report contracts, and representative payload fixtures.
 
 ## Read First
 
@@ -77,6 +77,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 
 ## Where To Look For Detail
 
+- `docs/README.md` for the documentation map and reading order.
 - `docs/phases/` for phase records.
 - `docs/reviews/` for phase review notes.
 - `docs/project-status-review.md` for longer evaluation.
@@ -130,4 +131,5 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 34. Use Phase 103 community intake submission bridge as the current compatible-source handoff boundary: only `ready-for-community-evidence` Phase 100 summaries can be routed into Phase 99, while incompatible adjacent ecosystem archives remain intake evidence only.
 35. Use Phase 104 community-source discovery reporting as the current pre-intake search boundary: public search and adjacent candidates can be archived without claiming compatibility; the current archived report is `compatible-source-not-found`.
 36. Use Phase 105 community-source invitation kits as the current compatible-source outreach boundary: maintainers can archive draft invitation materials after `compatible-source-not-found`, but invitation is not proof that outreach was sent, accepted, or compatible.
-37. After Phase 105, continue from collecting real signed workflow artifacts, receiving a compatible live community source that passes discovery, intake, bridge, and Phase 99 evidence, or another high-drift service/report boundary.
+37. Use Phase 106 invitation evidence contracts as the current TypeScript boundary for those invitation-kit summaries; the contract still represents draft outreach only.
+38. Continue from collecting real signed workflow artifacts, receiving a compatible live community source that passes discovery, intake, bridge, and Phase 99 evidence, or another high-drift service/report boundary.

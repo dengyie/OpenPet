@@ -106,7 +106,7 @@ npm run generate-sprites
 
 ## 扩展开发
 
-OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.setup`、`entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`，仅声明本地扩展也可以在用户显式触发时运行短生命周期的 `entries.commands`，通过 stdin 接收 JSON 上下文，并在运行期间获得短时 bridge 以调用 `pet.say`、`pet.action`、`pet.event`、受限 context、creator-tools 动作读写、当前激活已安装用户包的 manifest 元数据工作流、包内 frame inspection/import，以及用户批准 picker frame inspection/import。已启用插件可以从 Control Center 显式运行声明的 setup entry、打开声明的 HTTP/HTTPS dashboard、启动或停止声明的 service entry，并手动检查声明的 loopback service health endpoint。Command、setup 和 service 进程启动都不经过 shell 展开，service 不会自动启动，setup 和 command 不会在 install 或 enable 时自动执行，停止 service 时会尽力清理进程组，health check 不会后台轮询；任意 shell 控制台、任意文件写入、原始文件系统授权、通用 pet-pack 写入和硬性的完整进程树清理保证仍属于后续 runtime 工作。
+OpenPet 使用统一的第三方包模型：扩展。出于兼容性，包清单文件仍叫 `plugin.json`。宿主现在可以规范化并审查 `entries.setup`、`entries.commands`、`entries.services`、`entries.dashboards`、`manifest`、`config` 和 `assets` 声明；JavaScript 兼容包可以通过现有 runner 暴露 `entries.commands`，仅声明本地扩展也可以在用户显式触发时运行短生命周期的 `entries.commands`，通过 stdin 接收 JSON 上下文，并在运行期间获得短时 bridge 以调用 `pet.say`、`pet.action`、`pet.event`、受限 context、creator-tools 动作读写、当前激活已安装用户包的 manifest 元数据工作流、包内 frame inspection/import，以及用户批准 picker frame inspection/import。已启用插件可以从 Control Center 显式运行声明的 setup entry、打开声明的 HTTP/HTTPS dashboard、启动或停止声明的 service entry，手动检查声明的 loopback service health endpoint，并为已运行的 service 启用宿主管理的周期健康检查。Command、setup 和 service 进程启动都不经过 shell 展开，service 不会自动启动，setup 和 command 不会在 install 或 enable 时自动执行；任意 shell 控制台、任意文件写入、原始文件系统授权、通用 pet-pack 写入和硬性的完整进程树清理保证仍属于后续 runtime 工作。
 
 当前 legacy SDK 示例在宿主运行时追上新模型前仍然有参考价值：
 
@@ -139,20 +139,19 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 ## 文档
 
 - [CHANGELOG.md](./CHANGELOG.md)：版本记录。
-- [docs/development-summary.md](./docs/development-summary.md)：当前开发摘要。
-- [docs/HANDOFF.md](./docs/HANDOFF.md)：维护交接文档。
+- [docs/README.md](./docs/README.md)：文档地图和阅读顺序。
 - [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md)：扩展生态边界、生命周期规则和三方作者指导。
+- [docs/HANDOFF.md](./docs/HANDOFF.md)：当前状态的维护交接文档。
 - [docs/project-context.json](./docs/project-context.json)：给程序/代理读取的紧凑项目上下文。
-- [docs/project-documentation-design.md](./docs/project-documentation-design.md)：文档规则和支持声明口径。
-- [docs/desktop-release-design.md](./docs/desktop-release-design.md) 与 [docs/release-checklist.md](./docs/release-checklist.md)：桌面发布证据门禁。
-- [docs/phases/](./docs/phases/) 与 [docs/reviews/](./docs/reviews/)：历史阶段记录。
+
+优先从 `docs/README.md` 进入，不需要逐个浏览 `docs/` 下所有文件；历史 phase / review 文档保留为审计记录。
 
 ## 验证基线
 
 当前本地基线：
 
 ```bash
-npm test                     # 652/652 Node tests
+npm test                     # 691/691 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build

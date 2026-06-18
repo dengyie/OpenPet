@@ -83,7 +83,7 @@ The docs should be read as layered sources of truth, not as interchangeable note
 
 | Layer | Documents | Owns | Detail Level |
 |-------|-----------|------|--------------|
-| Product entry | `README.md`, `README.zh-CN.md` | Public feature list, quick start, support claims, documentation index | Broad, user-facing, concise |
+| Product entry | `README.md`, `README.zh-CN.md`, `docs/README.md` | Public feature list, quick start, support claims, documentation index, maintainer reading order | Broad, user-facing, concise |
 | Current state | `docs/HANDOFF.md`, `docs/project-status-review.md` | What is true now, what is verified, what remains risky | Operational handoff and status snapshot |
 | Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants | Normative project rules |
 | Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md`, `docs/productization-next-steps-design.md`, `docs/productization-todo-design.md` | System design, completed productization arc, near-term productization sequence, prioritized TODO implementation design, planned enhancements | Architecture and sequencing |
@@ -107,6 +107,7 @@ The persistent documentation layout should stay close to this shape:
 ```text
 README.md / README.zh-CN.md        # public entry and conservative support wording
 AGENTS.md                          # local contributor constraints
+docs/README.md                     # documentation map and reading order
 docs/HANDOFF.md                    # current project state and next work
 docs/project-documentation-design.md # goal anchor and documentation operating model
 docs/jishuwendang.md               # Chinese technical architecture reference
@@ -130,6 +131,7 @@ New folders should earn their place by having a distinct lifecycle. For example,
 |----------|------|-------------|
 | `AGENTS.md` | Local contributor instructions and non-negotiable project constraints | Test counts, commands, architecture invariants, or support scope change |
 | `README.md` / `README.zh-CN.md` | Public entry point, feature list, quick start, roadmap | User-facing capabilities, commands, test totals, or support claims change |
+| `docs/README.md` | Canonical documentation map and reading order | Persistent docs are added, removed, renamed, or reclassified as current vs historical |
 | `docs/HANDOFF.md` | Current factual project state, next work, file map, command map | A phase lands, service map changes, release status changes, or test totals change |
 | `docs/project-documentation-design.md` | Project goal anchor and documentation governance | Documentation structure, support claim rules, or phase governance changes |
 | `docs/pet-platform-development-plan.md` | Historical platform architecture and staged refactor plan | Core architecture contracts or completed phase status changes |

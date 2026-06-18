@@ -3,6 +3,7 @@
   "version": "1.0.1-rc.2",
   "description": "OpenPet Electron desktop pet platform with Control Center, AI, plugins, and local APIs.",
   "author": "OpenPet contributors",
+  "license": "MIT",
   "main": "main.js",
   "scripts": {
     "start": "npm run build:control-center && electron .",

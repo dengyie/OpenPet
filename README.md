@@ -106,7 +106,7 @@ For normal use, import pet packs from Control Center -> Actions -> Pet Packs.
 
 ## Extension Development
 
-OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.setup`, `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner, and declaration-only local extensions can run short-lived `entries.commands` as explicit user actions with JSON stdin context and a short-lived bridge for `pet.say`, `pet.action`, `pet.event`, bounded context reads, creator-tools action reads/writes, active installed pack manifest metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import. Enabled plugins can explicitly run declared setup entries, open declared HTTP/HTTPS dashboards, start or stop declared service entries, and manually check declared loopback service health endpoints from Control Center. Command, setup, and service processes are spawned without shell expansion, services do not auto-start, setup and commands do not run during install or enable, service stops attempt best-effort process-group cleanup, and health checks do not run in the background. Arbitrary shell consoles, arbitrary file writes, raw filesystem grants, general pet-pack writes, and hard process-tree guarantees remain future runtime work.
+OpenPet uses one third-party package model: an extension. The package manifest is still named `plugin.json` for compatibility. The host now normalizes and inspects extension declarations for `entries.setup`, `entries.commands`, `entries.services`, `entries.dashboards`, `manifest`, `config`, and `assets`; JavaScript compatibility packages can expose `entries.commands` through the existing runner, and declaration-only local extensions can run short-lived `entries.commands` as explicit user actions with JSON stdin context and a short-lived bridge for `pet.say`, `pet.action`, `pet.event`, bounded context reads, creator-tools action reads/writes, active installed pack manifest metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import. Enabled plugins can explicitly run declared setup entries, open declared HTTP/HTTPS dashboards, start or stop declared service entries, manually check declared loopback service health endpoints, and enable host-managed periodic checks for already-running services from Control Center. Command, setup, and service processes are spawned without shell expansion, services do not auto-start, and setup and commands do not run during install or enable. Arbitrary shell consoles, arbitrary file writes, raw filesystem grants, general pet-pack writes, and hard process-tree guarantees remain future runtime work.
 
 Current legacy SDK examples are still useful while the host runtime catches up:
 
@@ -140,20 +140,19 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 ## Documentation
 
 - [CHANGELOG.md](./CHANGELOG.md) - release notes.
-- [docs/development-summary.md](./docs/development-summary.md) - current engineering summary.
-- [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff.
+- [docs/README.md](./docs/README.md) - documentation map and reading order.
 - [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - extension ecosystem boundary, lifecycle rules, and third-party author guidance.
+- [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff for the current state.
 - [docs/project-context.json](./docs/project-context.json) - compact machine-readable project context.
-- [docs/project-documentation-design.md](./docs/project-documentation-design.md) - documentation rules and support-claim policy.
-- [docs/desktop-release-design.md](./docs/desktop-release-design.md) and [docs/release-checklist.md](./docs/release-checklist.md) - desktop release evidence gates.
-- [docs/phases/](./docs/phases/) and [docs/reviews/](./docs/reviews/) - historical phase records.
+
+Use `docs/README.md` instead of browsing every file under `docs/`; historical phase and review records are retained as audit history.
 
 ## Validation Baseline
 
 Current local baseline:
 
 ```bash
-npm test                     # 652/652 Node tests
+npm test                     # 691/691 Node tests
 npm run test:control-center  # 10/10 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build
