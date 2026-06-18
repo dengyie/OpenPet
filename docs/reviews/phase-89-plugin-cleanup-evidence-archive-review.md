@@ -63,12 +63,12 @@ The remaining gap is true packaged-app cleanup execution. Phase 89 intentionally
 
 ```bash
 node --test tests/release/plugin-cleanup-evidence-archive-manifest.test.js
-# pass: 9/9
+# pass: 11/11
 ```
 
 ```bash
 node --test tests/release/plugin-cleanup-evidence-archive-manifest.test.js tests/release/plugin-cleanup-evidence-collector.test.js tests/release/plugin-cleanup-evidence-report.test.js tests/release/plugin-cleanup-evidence-report-update.test.js tests/scripts/create-plugin-cleanup-evidence.test.js
-# pass: 40/40
+# pass: 42/42
 ```
 
 ```bash
@@ -83,7 +83,7 @@ npm run check:syntax
 
 ```bash
 npm test
-# pass: 642/642
+# pass: 644/644
 ```
 
 ```bash

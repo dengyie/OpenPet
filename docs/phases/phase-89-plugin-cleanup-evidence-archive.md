@@ -83,7 +83,7 @@ node --test tests/release/plugin-cleanup-evidence-archive-manifest.test.js
 
 Result:
 
-- 9/9 pass for Phase 89 archive manifest tests.
+- 11/11 pass for Phase 89 archive manifest tests.
 
 Full verification is recorded in the Phase 89 review document.
 

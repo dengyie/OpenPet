@@ -337,7 +337,7 @@ node --test tests/release/plugin-cleanup-evidence-archive-manifest.test.js
 
 Expected:
 
-- PASS `9/9`.
+- PASS `11/11`.
 
 ## Task 3: Wire CLI and npm Script
 
@@ -411,7 +411,7 @@ npm run create-plugin-cleanup-evidence-archive-manifest -- --archive-dir docs/re
 Update the Node test count after full verification. Expected for this phase:
 
 ```bash
-npm test                     # 642/642 Node tests
+npm test                     # 644/644 Node tests
 ```
 
 - [x] **Step 3: Preserve support boundaries**
@@ -456,8 +456,8 @@ node -e "JSON.parse(require('node:fs').readFileSync('docs/project-context.json',
 
 Expected:
 
-- targeted Phase 89 tests pass `9/9`;
-- `npm test` passes `642/642`;
+- targeted Phase 89 tests pass `11/11`;
+- `npm test` passes `644/644`;
 - Control Center Playwright baseline passes `10/10`;
 - TypeScript, syntax, diff whitespace, and `project-context.json` parse checks pass.
 
