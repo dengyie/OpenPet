@@ -31,6 +31,7 @@ const { createActionImportService } = require('./src/main/services/action-import
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
 const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
+const { configureSingleInstanceLock } = require('./src/main/single-instance')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
 const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
@@ -39,24 +40,17 @@ const packageJson = require('./package.json')
 let petWindow = null
 const getPetWindow = () => petWindow
 
+// Keep the pre-OpenPet userData directory so upgrades retain settings,
+// secrets, installed plugins, pet packs, and local service state.
+// Electron's single-instance lock is scoped by app identity/user data,
+// so configure this before requesting the lock.
+configureUserDataPath({ app })
+
 // ── 单实例锁：同一时间只允许一个宠物窗口 ──
-const gotTheLock = app.requestSingleInstanceLock()
-if (!gotTheLock) {
-  app.quit()
-} else {
-  app.on('second-instance', () => {
-    if (petWindow) {
-      if (petWindow.isMinimized()) petWindow.restore()
-      petWindow.focus()
-    }
-  })
-}
+const canBootstrap = configureSingleInstanceLock({ app, getPetWindow })
 
 // ── 应用就绪 ──
-app.whenReady().then(() => {
-  // Keep the pre-OpenPet userData directory so upgrades retain settings,
-  // secrets, installed plugins, pet packs, and local service state.
-  configureUserDataPath({ app })
+if (canBootstrap) app.whenReady().then(() => {
   const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/main/settings')
   const eventBus = createEventBus()
   const settingsService = createSettingsService({
