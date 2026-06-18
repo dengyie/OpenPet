@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('path')
 
-const { createSettingsWindow, createWindow, loadPetWindow } = require('../../src/main/window')
+const { BASE_HEIGHT, BASE_WIDTH, applyWindowScale, createSettingsWindow, createWindow, loadPetWindow } = require('../../src/main/window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const petIndexPath = path.join(projectRoot, 'index.html')
@@ -37,11 +37,18 @@ const createBrowserWindowStub = (instances) => class BrowserWindowStub {
     this.handlers = new Map()
     this.destroyed = false
     this.visible = true
+    this.bounds = { x: 0, y: 0, width: options.width, height: options.height }
     instances.push(this)
   }
 
   setPosition(x, y) {
     this.position = { x, y }
+    this.bounds.x = x
+    this.bounds.y = y
+  }
+
+  setBounds(bounds) {
+    this.bounds = { ...this.bounds, ...bounds }
   }
 
   setVisibleOnAllWorkspaces(value, options) {
@@ -58,11 +65,11 @@ const createBrowserWindowStub = (instances) => class BrowserWindowStub {
   }
 
   getBounds() {
-    return { x: 0, y: 0, width: this.options.width, height: this.options.height }
+    return { ...this.bounds }
   }
 
   getPosition() {
-    return [0, 0]
+    return [this.bounds.x, this.bounds.y]
   }
 
   isDestroyed() {
@@ -207,4 +214,23 @@ test('createSettingsWindow restores pet window visibility when the settings wind
   assert.deepEqual(petWindow.alwaysOnTop, { value: true, level: 'screen-saver' })
   assert.equal(petWindow.movedTop, true)
   assert.equal(activityLog.entries.some((entry) => entry.action === 'pet.visibility-restore.completed'), true)
+})
+
+test('applyWindowScale recovers a collapsed pet window back to valid base bounds', () => {
+  const instances = []
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 40, y: 33, width: 0, height: 0 })
+
+  applyWindowScale(petWindow, 1)
+
+  assert.deepEqual(petWindow.getBounds(), {
+    x: 40,
+    y: 33,
+    width: BASE_WIDTH,
+    height: BASE_HEIGHT
+  })
 })
