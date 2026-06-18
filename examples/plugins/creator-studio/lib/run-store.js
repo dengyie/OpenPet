@@ -25,13 +25,29 @@ const writeJson = (filePath, value) => fs.writeFileSync(filePath, `${JSON.string
 
 const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf-8'))
 
+const createUniqueRunDirectory = ({ dataDir, baseRunId }) => {
+  ensureDirectory(getRunsDir(dataDir))
+  for (let attempt = 1; attempt <= 999; attempt += 1) {
+    const runId = attempt === 1 ? baseRunId : `${baseRunId}-${String(attempt).padStart(3, '0')}`
+    const runDir = getRunDir({ dataDir, runId })
+    try {
+      fs.mkdirSync(runDir)
+      return { runId, runDir }
+    } catch (error) {
+      if (error?.code === 'EEXIST') continue
+      throw error
+    }
+  }
+  throw new Error('Creator Studio could not allocate a unique runId')
+}
+
 const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }) => {
   if (!dataDir) throw new Error('Creator Studio dataDir is required')
   const timestamp = now()
   const petName = String(input.petName || 'Creator Studio Pet').trim() || 'Creator Studio Pet'
   const petId = slugify(input.petId || petName)
-  const runId = `${timestamp.slice(0, 10)}-${petId}`.replace(/[^a-zA-Z0-9_-]/g, '-')
-  const runDir = getRunDir({ dataDir, runId })
+  const baseRunId = `${timestamp.slice(0, 10)}-${petId}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+  const { runId, runDir } = createUniqueRunDirectory({ dataDir, baseRunId })
   ensureDirectory(path.join(runDir, 'inputs', 'references'))
   ensureDirectory(path.join(runDir, 'jobs', 'prompts'))
   ensureDirectory(path.join(runDir, 'decoded'))

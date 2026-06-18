@@ -309,13 +309,6 @@ Inside `createPluginBridgeHandlers`, add these handlers after asset handlers:
         : null
       return { ok: true, imported, activated }
     },
-    creatorPetPackActivate: async (payload = {}) => {
-      assertPermission(plugin.manifest, 'pet-pack:import')
-      if (!petPackService?.setActivePack) throw new Error('Creator pet pack activation is not available')
-      const packId = String(payload.packId || '')
-      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: `Bridge creator.pet-pack activate invoked: ${packId}`.slice(0, 240) })
-      return { ok: true, activated: petPackService.setActivePack(packId) }
-    },
 ```
 
 - [ ] **Step 5: Add route matching and dispatch**
@@ -325,7 +318,6 @@ Extend the bridge route regex to include:
 ```text
 /creator/pet-pack/inspect-output
 /creator/pet-pack/import-output
-/creator/pet-pack/activate
 ```
 
 Then add dispatch blocks after JSON payload parsing:
@@ -337,10 +329,6 @@ Then add dispatch blocks after JSON payload parsing:
         }
         if (route === '/creator/pet-pack/import-output') {
           sendJson(response, 200, await runtime.handlers.creatorPetPackImportOutput(payload))
-          return
-        }
-        if (route === '/creator/pet-pack/activate') {
-          sendJson(response, 200, await runtime.handlers.creatorPetPackActivate(payload))
           return
         }
 ```

@@ -177,7 +177,6 @@ The current local bridge stays intentionally small:
 - `POST /creator/pack-manifest/apply`
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
-- `POST /creator/pet-pack/activate`
 
 The bridge is for integration convenience. It is not a complete SDK, not a full security broker, and not a reason to block extensions from using their own local capabilities.
 

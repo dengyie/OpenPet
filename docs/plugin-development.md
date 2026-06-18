@@ -257,7 +257,6 @@ Current bridge routes:
 - `POST /creator/assets/pick-frames/import`
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
-- `POST /creator/pet-pack/activate`
 
 The bridge is loopback-only, token-gated, and valid only while the command run is active.
 
@@ -303,7 +302,6 @@ Current endpoint set:
 - `POST /creator/assets/pick-frames/import`
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
-- `POST /creator/pet-pack/activate`
 
 Bridge rules:
 

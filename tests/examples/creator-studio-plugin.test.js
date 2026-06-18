@@ -71,6 +71,34 @@ test('creator studio run store creates and advances durable run state', () => {
   assert.equal(updated.currentStep, 'prepare')
 })
 
+test('creator studio run store keeps same-name same-day runs separate', () => {
+  const { createRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-collisions-'))
+
+  const first = createRun({
+    dataDir,
+    input: {
+      petName: 'Sprout Cat',
+      prompt: 'First concept',
+      backend: 'fixture'
+    },
+    now: () => '2026-06-19T00:00:00.000Z'
+  })
+  const second = createRun({
+    dataDir,
+    input: {
+      petName: 'Sprout Cat',
+      prompt: 'Second concept',
+      backend: 'fixture'
+    },
+    now: () => '2026-06-19T00:00:00.000Z'
+  })
+
+  assert.notEqual(first.runId, second.runId)
+  assert.equal(fs.readFileSync(path.join(dataDir, 'runs', first.runId, 'inputs', 'prompt.md'), 'utf-8'), 'First concept\n')
+  assert.equal(fs.readFileSync(path.join(dataDir, 'runs', second.runId, 'inputs', 'prompt.md'), 'utf-8'), 'Second concept\n')
+})
+
 test('creator studio fake hatch pet creates valid codex output and bundle', () => {
   const { createRun } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { generateFixturePetOutput } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')

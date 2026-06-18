@@ -836,13 +836,6 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         : null
       return { ok: true, imported, activated }
     },
-    creatorPetPackActivate: async (payload = {}) => {
-      assertPermission(plugin.manifest, 'pet-pack:import')
-      if (!petPackService?.setActivePack) throw new Error('Creator pet pack activation is not available')
-      const packId = String(payload.packId || '')
-      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: `Bridge creator.pet-pack activate invoked: ${packId}`.slice(0, 240) })
-      return { ok: true, activated: petPackService.setActivePack(packId) }
-    },
     petSay: async (payload = {}) => {
       assertPermission(plugin.manifest, 'pet:say')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge pet.say invoked' })
@@ -904,7 +897,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     commandBridgeServer = http.createServer(async (request, response) => {
       try {
         const url = new URL(request.url, `http://${PLUGIN_BRIDGE_HOST}`)
-        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import|\/creator\/pet-pack\/inspect-output|\/creator\/pet-pack\/import-output|\/creator\/pet-pack\/activate)$/)
+        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import|\/creator\/pet-pack\/inspect-output|\/creator\/pet-pack\/import-output)$/)
         if (!match) {
           sendJson(response, 404, { ok: false, error: 'Not found' })
           return
@@ -994,10 +987,6 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         }
         if (route === '/creator/pet-pack/import-output') {
           sendJson(response, 200, await runtime.handlers.creatorPetPackImportOutput(payload))
-          return
-        }
-        if (route === '/creator/pet-pack/activate') {
-          sendJson(response, 200, await runtime.handlers.creatorPetPackActivate(payload))
           return
         }
         sendJson(response, 404, { ok: false, error: 'Not found' })

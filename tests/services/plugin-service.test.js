@@ -901,6 +901,55 @@ test('declaration-only pet pack bridge inspects imports and activates approved p
   assert.equal(settingsService.get().petPacks.activePackId, 'creator-studio-cat')
 })
 
+test('declaration-only pet pack bridge does not expose arbitrary activation route', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } },
+    petPacks: {
+      activePackId: 'legacy-cat',
+      installed: {
+        'legacy-cat': { id: 'legacy-cat', displayName: 'Legacy Cat' },
+        'other-installed-cat': { id: 'other-installed-cat', displayName: 'Other Installed Cat' }
+      }
+    }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: createBridgeAwarePetService(),
+    petPackService: createPetPackService({
+      settingsService,
+      userPacksDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-packs-')),
+      projectRoot: '/app/openpet',
+      loadLegacyAnimations: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [] })
+    }),
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'hybrid',
+      permissions: ['pet-pack:import']
+    })],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.listenerCount('exit') > 0)
+  const response = await requestBridge(`${spawned[0].options.env.OPENPET_BRIDGE_URL}/creator/pet-pack/activate`, {
+    method: 'POST',
+    token: spawned[0].options.env.OPENPET_BRIDGE_TOKEN,
+    body: { packId: 'other-installed-cat' }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(response.status, 404)
+  assert.equal(settingsService.get().petPacks.activePackId, 'legacy-cat')
+})
+
 test('declaration-only pet pack bridge rejects missing import permission', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

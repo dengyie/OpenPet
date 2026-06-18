@@ -406,12 +406,13 @@ Recommended bridge routes:
 
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
-- optional `POST /creator/pet-pack/activate`
+
+Activation, when requested, should be an option on `import-output` so plugins can activate only the pack that was just imported.
 
 These routes should:
 
 - accept a plugin-owned approved output path or structured reference;
-- reuse `PetPackService` inspection/import/activation logic;
+- reuse `PetPackService` inspection/import logic and import-bound activation;
 - preserve OpenPet provenance, policy, and blocklist behavior;
 - avoid giving the plugin direct write access to OpenPet's pet-pack storage.
 
