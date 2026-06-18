@@ -30,7 +30,7 @@ OpenPet is now a desktop pet platform with:
 ## Validation Baseline
 
 ```bash
-npm test                     # 586/586 Node tests
+npm test                     # 596/596 Node tests
 npm run test:control-center  # 10/10 Playwright UI tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build

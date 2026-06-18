@@ -38,7 +38,7 @@ OpenPet is a desktop pet platform with:
 ```bash
 npm start
 npm run dev:control-center
-npm test                     # 586/586 Node tests
+npm test                     # 596/596 Node tests
 npm run test:control-center
 npm run typecheck
 npm run check:syntax

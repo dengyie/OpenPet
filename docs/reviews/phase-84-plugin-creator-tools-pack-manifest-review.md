@@ -12,6 +12,13 @@ No P0, P1, or material P2 issues remain in the Phase 84 diff.
 
 The review found one concrete boundary issue during development: non-object mutation payloads could be treated like empty metadata updates. That was fixed before completion by explicitly rejecting non-object creator manifest mutations and adding a regression test.
 
+## Quality Gate
+
+- Severe issues: none open.
+- Improvement recommendations: keep future arbitrary pack selection and user-approved folder imports behind separate picker consent, target-selection, race, and rollback tests instead of expanding the Phase 84 active-pack route.
+- Quality score: 95/100.
+- Pass status: passed.
+
 ## Review Focus
 
 - built-in pack rejection
