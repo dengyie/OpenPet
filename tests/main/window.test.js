@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('path')
 
-const { BASE_HEIGHT, BASE_WIDTH, applyWindowScale, createWindow, loadPetWindow } = require('../../src/main/window')
+const { BASE_HEIGHT, BASE_WIDTH, applyPetViewport, applyWindowScale, createWindow, loadPetWindow } = require('../../src/main/window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const petIndexPath = path.join(projectRoot, 'index.html')
@@ -101,5 +101,24 @@ test('applyWindowScale recovers a collapsed pet window back to valid base bounds
     y: 33,
     width: BASE_WIDTH,
     height: BASE_HEIGHT
+  })
+})
+
+test('applyPetViewport resizes around bottom center for dynamic action bounds', () => {
+  const instances = []
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: 300, height: 300 })
+
+  applyPetViewport(petWindow, { width: 120, height: 180, scale: 1.5 })
+
+  assert.deepEqual(petWindow.getBounds(), {
+    x: 160,
+    y: 230,
+    width: 180,
+    height: 270
   })
 })

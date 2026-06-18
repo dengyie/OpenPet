@@ -85,8 +85,8 @@ const executeBehaviorDecision = (petService, decision) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale,
-  clampToWorkArea, getMovementState, createSettingsWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale, applyPetViewport = () => {},
+  clampToWorkArea, getMovementState, createSettingsWindow, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -119,28 +119,34 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   // 拖拽开始时读取窗口位置，用于计算鼠标偏移
   ipcMainService.handle(IPC.PET_GET_BOUNDS, (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     return win.getBounds()
   })
 
   // 散步启动时查询窗口是否贴边，用于决定初始方向
   ipcMainService.handle(IPC.PET_GET_MOVEMENT_STATE, (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win) return null
     return getMovementState(win)
   })
 
   // 拖拽移动：直接设置窗口位置（主进程负责钳制到工作区）
   ipcMainService.on(IPC.PET_SET_POSITION, (event, point) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !point) return
     const next = clampToWorkArea(win, point.x, point.y)
     win.setPosition(next.x, next.y)
   })
 
+  ipcMainService.on(IPC.PET_SET_VIEWPORT, (event, viewport) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || !viewport) return
+    applyPetViewport(win, viewport)
+  })
+
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
   ipcMainService.handle(IPC.PET_MOVE_BY, (event, delta) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !delta) return null
     const [x, y] = win.getPosition()
     const next = clampToWorkArea(win, x + delta.x, y + delta.y)
@@ -262,7 +268,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
     const savedSettings = petService.saveSettings(settings)
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
-    applyWindowScale(getPetWindow(), savedSettings.scale)
+    applyWindowScale(savedSettings.scale)
     return savedSettings
   })
 
@@ -474,13 +480,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 设置面板拖动滑块：实时预览缩放（不持久化）
   ipcMainService.on(IPC.SETTINGS_PREVIEW_SCALE, (_event, scale) => {
     petService.previewSettings({ scale })
-    applyWindowScale(getPetWindow(), scale)
+    applyWindowScale(scale)
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, { scale })
   })
 
   // 设置面板关闭：清理 settingsWindow 引用
   ipcMainService.on(IPC.SETTINGS_CLOSE, (_event) => {
-    const win = BrowserWindow.fromWebContents(_event.sender)
+    const win = browserWindowService.fromWebContents(_event.sender)
     if (win) {
       const petWindow = getPetWindow()
       if (petWindow && petWindow.settingsWindow === win) {

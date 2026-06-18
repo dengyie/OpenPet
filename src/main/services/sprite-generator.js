@@ -9,6 +9,7 @@ const actionLabels = {
 }
 
 const isImageFile = (fileName) => /\.(png|jpe?g|webp)$/i.test(fileName)
+const DEFAULT_HIT_PADDING = 8
 
 const compareFrameName = (left, right) => {
   const leftNumber = Number(left.match(/\d+/)?.[0] || 0)
@@ -16,6 +17,48 @@ const compareFrameName = (left, right) => {
   return leftNumber === rightNumber
     ? left.localeCompare(right)
     : leftNumber - rightNumber
+}
+
+const readAlphaTrim = async (filePath, width, height) => {
+  const { data } = await sharp(filePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = data[((y * width + x) * 4) + 3]
+      if (alpha === 0) continue
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return { x: 0, y: 0, width, height }
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
+}
+
+const createActionViewport = (frames, padding = DEFAULT_HIT_PADDING) => {
+  const trims = frames.map((frame) => frame.trim).filter(Boolean)
+  if (!trims.length) return null
+  const minX = trims.reduce((min, trim) => Math.min(min, trim.x), Infinity)
+  const minY = trims.reduce((min, trim) => Math.min(min, trim.y), Infinity)
+  const maxX = trims.reduce((max, trim) => Math.max(max, trim.x + trim.width), -Infinity)
+  const maxY = trims.reduce((max, trim) => Math.max(max, trim.y + trim.height), -Infinity)
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    padding
+  }
 }
 
 const readFrameMetadata = async (folderPath, frameFiles) => {
@@ -26,11 +69,14 @@ const readFrameMetadata = async (folderPath, frameFiles) => {
   for (const fileName of frameFiles) {
     try {
       const metadata = await sharp(path.join(folderPath, fileName)).metadata()
+      const width = metadata.width || 0
+      const height = metadata.height || 0
       frames.push({
         fileName,
-        width: metadata.width || 0,
-        height: metadata.height || 0,
-        hasAlpha: Boolean(metadata.hasAlpha)
+        width,
+        height,
+        hasAlpha: Boolean(metadata.hasAlpha),
+        trim: width && height ? await readAlphaTrim(path.join(folderPath, fileName), width, height) : null
       })
       if (!metadata.hasAlpha) errors.push(`${fileName} has no alpha channel`)
     } catch (error) {
@@ -64,6 +110,7 @@ const inspectFrameFolder = async (folderPath) => {
     maxWidth,
     maxHeight,
     frames,
+    viewport: createActionViewport(frames),
     skippedFiles,
     errors,
     warnings
@@ -155,7 +202,12 @@ const processActionFolder = async ({ folderEntry, framesRoot, spritesDir, labels
     frameWidth: cellW,
     frameHeight: cellH,
     sprite: path.posix.join('cat_anime', 'sprites', `${folderEntry.name}.png`),
-    frameCount
+    frameCount,
+    frames: inspection.frames.map((frame) => ({
+      fileName: frame.fileName,
+      trim: frame.trim
+    })),
+    viewport: inspection.viewport
   }
 }
 
@@ -203,6 +255,7 @@ const generateSpritesFromFrames = async ({
 
 module.exports = {
   compareFrameName,
+  createActionViewport,
   generateSpritesFromFrames,
   inspectFrameFolder,
   isImageFile,

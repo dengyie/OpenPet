@@ -202,6 +202,42 @@ test('service:get-status returns Control Center service status shape', async () 
   })
 })
 
+test('pet viewport IPC delegates dynamic action bounds to the window service', () => {
+  const ipcMain = createIpcMainStub()
+  const petWindow = { id: 9 }
+  const viewportCalls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    browserWindowService: {
+      fromWebContents: () => petWindow
+    },
+    applyPetViewport: (win, viewport) => {
+      viewportCalls.push({ win, viewport })
+    },
+    ipcMainService: ipcMain
+  })
+
+  ipcMain.listeners.get(IPC.PET_SET_VIEWPORT)({ sender: {} }, { width: 120, height: 90, padding: 8, scale: 1.2 })
+
+  assert.deepEqual(viewportCalls, [{
+    win: petWindow,
+    viewport: { width: 120, height: 90, padding: 8, scale: 1.2 }
+  }])
+})
+
 test('about handlers return stable info and update check view shapes', async () => {
   const ipcMain = createIpcMainStub()
 
