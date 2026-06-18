@@ -546,6 +546,15 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return cloneSettings(demoState.settings)
   },
+  importCursor: async () => ({
+    canceled: false,
+    cursor: {
+      enabled: true,
+      assetPath: '/demo/openpet/cursors/demo-cursor.png',
+      assetUrl: 'file:///demo/openpet/cursors/demo-cursor.png',
+      fileName: 'demo-cursor.png'
+    }
+  }),
   previewScale: () => {},
   getActions: async () => defaultActionsConfig,
   inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),

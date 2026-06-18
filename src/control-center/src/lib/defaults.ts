@@ -7,18 +7,27 @@ import type {
   CatalogState,
   ChatMessage,
   ControlCenterSettings,
+  CustomCursorSettings,
   PetPacksViewState,
   ServiceLogEntry,
   ServiceStatusViewState,
   UpdateCheckViewState
 } from '../../../shared/openpet-contracts'
 
+export const defaultCustomCursor = {
+  enabled: false,
+  assetPath: '',
+  assetUrl: '',
+  fileName: ''
+} satisfies CustomCursorSettings
+
 export const defaultSettings = {
   scale: 1,
   walkSpeed: 2,
   walkDuration: 15000,
   bubbleDuration: 1300,
-  autoStart: false
+  autoStart: false,
+  customCursor: defaultCustomCursor
 } satisfies ControlCenterSettings
 
 export const defaultAiConfig = {
@@ -119,9 +128,16 @@ export const defaultUpdateCheck = {
   message: ''
 } satisfies UpdateCheckViewState
 
+export const cloneCustomCursor = (cursor: Partial<CustomCursorSettings> | null | undefined): CustomCursorSettings => ({
+  ...defaultCustomCursor,
+  ...(cursor || {}),
+  enabled: Boolean(cursor?.enabled && cursor?.assetUrl)
+})
+
 export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
   ...defaultSettings,
-  ...(settings || {})
+  ...(settings || {}),
+  customCursor: cloneCustomCursor(settings?.customCursor)
 })
 
 export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({

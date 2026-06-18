@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
-import { cloneSettings, defaultSettings } from '../lib/defaults'
+import { cloneCustomCursor, cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type { ControlCenterSettings } from '../../../shared/openpet-contracts'
 import type { PetPaneProps } from '../panes/PetPane'
@@ -65,12 +65,32 @@ export function usePetSettingsPane() {
     api.previewScale(restoredSettings.scale)
   }
 
+  const onImportCursor = async () => {
+    try {
+      const result = await api.importCursor()
+      if (result.canceled || !result.cursor) return
+      const customCursor = cloneCustomCursor(result.cursor)
+      const nextSettings = { ...settings, customCursor }
+      setSettings(nextSettings)
+      setStatus(`已选择鼠标指针：${customCursor.fileName || '自定义图片'}`)
+    } catch (error) {
+      setStatus(messageFromError(error, '鼠标指针图片选择失败'))
+    }
+  }
+
+  const onClearCursor = () => {
+    setSettings({ ...settings, customCursor: defaultSettings.customCursor })
+    setStatus('')
+  }
+
   const paneProps = {
     settings,
     originalSettings,
     status,
     saving,
     onChange,
+    onImportCursor,
+    onClearCursor,
     onSave,
     onReset
   } satisfies PetPaneProps

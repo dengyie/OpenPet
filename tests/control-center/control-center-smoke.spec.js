@@ -71,6 +71,29 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
   })
 
+  test('configures a custom pet hover cursor in the demo API session', async ({ page }) => {
+    await page.goto('/')
+
+    const customCursorRow = page.locator('.field-row', { hasText: '自定义鼠标指针' })
+    await expect(customCursorRow).toContainText('未选择')
+    await expect(customCursorRow.getByRole('switch', { name: '启用自定义鼠标指针' })).toBeDisabled()
+
+    await customCursorRow.getByRole('button', { name: '选择图片' }).click()
+    await expect(customCursorRow).toContainText('demo-cursor.png')
+    await expect(customCursorRow.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
+
+    await page.getByRole('button', { name: '保存', exact: true }).click()
+    await page.reload()
+
+    const reloadedCursorRow = page.locator('.field-row', { hasText: '自定义鼠标指针' })
+    await expect(reloadedCursorRow).toContainText('demo-cursor.png')
+    await expect(reloadedCursorRow.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
+
+    await reloadedCursorRow.getByRole('button', { name: '清除' }).click()
+    await expect(reloadedCursorRow).toContainText('未选择')
+    await expect(reloadedCursorRow.getByRole('switch', { name: '启用自定义鼠标指针' })).toBeDisabled()
+  })
+
   test('persists AI config and clears API key drafts with the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
