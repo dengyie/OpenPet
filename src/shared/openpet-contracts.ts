@@ -824,6 +824,117 @@ export interface PluginCleanupEvidenceRunResult {
   manifest: PluginCleanupEvidenceArchiveManifest
 }
 
+export type DesktopPickerSmokeCheckStatus = 'pass' | 'fail' | 'pending' | 'blocked'
+
+export interface DesktopPickerValidationSummary {
+  passed: number
+  total: number
+  smokeReady?: boolean
+  officialReady?: boolean
+}
+
+export interface DesktopPickerValidationResult {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  summary: DesktopPickerValidationSummary
+}
+
+export interface DesktopPickerEvidenceFile {
+  file: string
+  path?: string
+  bytes: number
+  sha256: string
+}
+
+export interface DesktopPickerEvidenceSummaryEvidenceSection {
+  evidenceDir: string
+  presentFiles: DesktopPickerEvidenceFile[]
+  presentCount: number
+}
+
+export interface DesktopPickerReportArtifactSummary {
+  version: string
+  appPath: string
+  installer: string
+  zip: string
+  latestYml: string
+  signed: boolean
+  signatureStatus: string
+  authenticodeStatus: string
+}
+
+export interface DesktopPickerReportCheckSummary {
+  total: number
+  present: number
+  counts: Record<DesktopPickerSmokeCheckStatus, number> & Record<string, number>
+  byStatus: Record<DesktopPickerSmokeCheckStatus, string[]> & Record<string, string[]>
+}
+
+export interface DesktopPickerEvidenceReportSummary {
+  reportPath: string
+  platform: string
+  arch: string
+  generatedAt: string
+  artifact: DesktopPickerReportArtifactSummary
+  fixtures: JsonObject
+  checks: DesktopPickerReportCheckSummary
+  structuralValidation: DesktopPickerValidationResult
+  readinessValidation: DesktopPickerValidationResult
+}
+
+export interface DesktopPickerEvidenceReportError {
+  reportPath: string
+  error: string
+}
+
+export type DesktopPickerEvidenceReport =
+  | DesktopPickerEvidenceReportSummary
+  | DesktopPickerEvidenceReportError
+
+export interface DesktopPickerEvidenceSummary {
+  generatedAt: string
+  requireSigned: boolean
+  ok: boolean
+  releaseReady: boolean
+  evidence: DesktopPickerEvidenceSummaryEvidenceSection
+  report: DesktopPickerEvidenceReport | null
+  errors: string[]
+  warnings: string[]
+}
+
+export interface DesktopPickerArchiveManifest {
+  generatedAt: string
+  requireSigned: boolean
+  ok: boolean
+  releaseReady: boolean
+  archive: {
+    archiveDir: string
+    outputPath: string
+  }
+  files: ReleaseEvidenceArchiveFile[]
+  evidence: {
+    evidenceDir: string
+    ok: boolean
+    files: DesktopPickerEvidenceFile[]
+  }
+  summary: {
+    path: string
+    format: '' | 'markdown' | 'json'
+    matchesComputedSummary: boolean
+  }
+  report: {
+    path: string
+    platform: string
+    arch: string
+    generatedAt: string
+    structuralValidation: DesktopPickerValidationResult
+    readinessValidation: DesktopPickerValidationResult
+  }
+  errors: string[]
+  warnings: string[]
+}
+
 export type WindowsSmokeCheckStatus = 'pass' | 'fail' | 'pending' | 'blocked'
 
 export interface WindowsSmokeValidationSummary {

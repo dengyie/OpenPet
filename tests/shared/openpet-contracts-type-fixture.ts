@@ -12,6 +12,8 @@ import type {
   CreatorPackManifestMutationRequest,
   CreatorPackManifestMutationResult,
   CreatorPackManifestReadResponse,
+  DesktopPickerArchiveManifest,
+  DesktopPickerEvidenceSummary,
   MacosReleaseEvidenceArtifactArchiveManifest,
   MacosReleaseEvidenceCommand,
   MacosReleaseEvidenceSummary,
@@ -528,6 +530,146 @@ const macosReleaseEvidenceArtifactArchiveManifestFixture = {
   ],
   warnings: ['macOS evidence files look passing; official release readiness still requires release archive and signed closure validation']
 } satisfies MacosReleaseEvidenceArtifactArchiveManifest
+
+const desktopPickerEvidenceSummaryFixture = {
+  generatedAt: '2026-06-17T00:00:00.000Z',
+  requireSigned: true,
+  ok: true,
+  releaseReady: false,
+  evidence: {
+    evidenceDir: '/tmp/openpet-desktop-picker-evidence',
+    presentFiles: [
+      {
+        file: 'environment.txt',
+        path: '/tmp/openpet-desktop-picker-evidence/environment.txt',
+        bytes: 96,
+        sha256: 'b'.repeat(64)
+      },
+      {
+        file: 'signature.txt',
+        path: '/tmp/openpet-desktop-picker-evidence/signature.txt',
+        bytes: 80,
+        sha256: 'c'.repeat(64)
+      }
+    ],
+    presentCount: 2
+  },
+  report: {
+    reportPath: '/tmp/openpet-desktop-picker-evidence/desktop-picker-smoke-report.json',
+    platform: 'darwin',
+    arch: 'arm64',
+    generatedAt: '2026-06-17T00:00:00.000Z',
+    artifact: {
+      version: '1.0.1-rc.2',
+      appPath: 'release/mac-arm64/OpenPet.app',
+      installer: 'OpenPet-1.0.1-rc.2-mac.dmg',
+      zip: 'OpenPet-1.0.1-rc.2-mac.zip',
+      latestYml: 'latest-mac.yml',
+      signed: true,
+      signatureStatus: 'Valid',
+      authenticodeStatus: ''
+    },
+    fixtures: {
+      pluginPackage: 'fixtures/focus-timer.openpet-plugin.zip',
+      frameFolder: 'fixtures/wave-frames',
+      petPack: 'fixtures/doro.pet-pack'
+    },
+    checks: {
+      total: 9,
+      present: 9,
+      counts: {
+        pass: 0,
+        fail: 0,
+        pending: 9,
+        blocked: 0
+      },
+      byStatus: {
+        pass: [],
+        fail: [],
+        pending: ['packaged-launch', 'control-center-open'],
+        blocked: []
+      }
+    },
+    structuralValidation: {
+      ok: true,
+      errors: [],
+      warnings: [],
+      summary: {
+        passed: 0,
+        total: 9,
+        smokeReady: false,
+        officialReady: false
+      }
+    },
+    readinessValidation: {
+      ok: false,
+      errors: ['packaged-launch must pass before desktop picker smoke readiness can be claimed'],
+      warnings: [],
+      summary: {
+        passed: 0,
+        total: 9,
+        smokeReady: false,
+        officialReady: false
+      }
+    }
+  },
+  errors: [],
+  warnings: ['Pending or unsigned evidence cannot prove signed official desktop picker readiness']
+} satisfies DesktopPickerEvidenceSummary
+
+const desktopPickerArchiveManifestFixture = {
+  generatedAt: '2026-06-17T00:00:00.000Z',
+  requireSigned: true,
+  ok: true,
+  releaseReady: false,
+  archive: {
+    archiveDir: '/tmp/openpet-desktop-picker-archive',
+    outputPath: '/tmp/openpet-desktop-picker-archive/desktop-picker-archive-manifest.json'
+  },
+  files: [
+    {
+      role: 'report',
+      path: '/tmp/openpet-desktop-picker-archive/desktop-picker-smoke-report.json',
+      exists: true,
+      bytes: 2048,
+      sha256: 'd'.repeat(64)
+    },
+    {
+      role: 'runbook',
+      path: '/tmp/openpet-desktop-picker-archive/desktop-picker-smoke-runbook.md',
+      exists: true,
+      bytes: 1024,
+      sha256: 'e'.repeat(64)
+    },
+    {
+      role: 'summary',
+      path: '/tmp/openpet-desktop-picker-archive/desktop-picker-evidence-summary.md',
+      exists: true,
+      bytes: 1024,
+      sha256: 'f'.repeat(64)
+    }
+  ],
+  evidence: {
+    evidenceDir: '/tmp/openpet-desktop-picker-archive/desktop-picker-evidence',
+    ok: true,
+    files: desktopPickerEvidenceSummaryFixture.evidence.presentFiles
+  },
+  summary: {
+    path: '/tmp/openpet-desktop-picker-archive/desktop-picker-evidence-summary.md',
+    format: 'markdown',
+    matchesComputedSummary: true
+  },
+  report: {
+    path: desktopPickerEvidenceSummaryFixture.report.reportPath,
+    platform: desktopPickerEvidenceSummaryFixture.report.platform,
+    arch: desktopPickerEvidenceSummaryFixture.report.arch,
+    generatedAt: desktopPickerEvidenceSummaryFixture.report.generatedAt,
+    structuralValidation: desktopPickerEvidenceSummaryFixture.report.structuralValidation,
+    readinessValidation: desktopPickerEvidenceSummaryFixture.report.readinessValidation
+  },
+  errors: [],
+  warnings: ['evidence: Pending or unsigned evidence cannot prove signed official desktop picker readiness']
+} satisfies DesktopPickerArchiveManifest
 
 const windowsSmokeEvidenceSummaryFixture = {
   generatedAt: '2026-06-14T00:00:00.000Z',
