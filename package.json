@@ -44,6 +44,7 @@
     "create-plugin-remote-source-submission-rehearsal": "node scripts/create-plugin-remote-source-submission-rehearsal.js",
     "create-plugin-community-source-submission-evidence": "node scripts/create-plugin-community-source-submission-evidence.js",
     "create-plugin-community-source-intake-report": "node scripts/create-plugin-community-source-intake-report.js",
+    "create-plugin-community-source-evidence-from-intake": "node scripts/create-plugin-community-source-evidence-from-intake.js",
     "create-plugin-cleanup-evidence": "node scripts/create-plugin-cleanup-evidence.js",
     "create-plugin-cleanup-evidence-collector": "node scripts/create-plugin-cleanup-evidence-collector.js",
     "create-plugin-cleanup-evidence-archive-manifest": "node scripts/create-plugin-cleanup-evidence-archive-manifest.js",
