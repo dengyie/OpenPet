@@ -19,6 +19,11 @@ const bubble = document.getElementById('bubble') // 头顶气泡
 const menu = document.getElementById('menu')     // 右键菜单容器
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
 const cursorStyle = window.OpenPetCursorStyle || { resolvePetCursorStyle: () => '' }
+const petHitbox = window.OpenPetHitbox || {
+  getFrameHitbox: () => null,
+  getViewportHitbox: () => null,
+  isPointInHitbox: () => false
+}
 
 const state = {
   // ── 动画 ──
@@ -168,21 +173,32 @@ const isPointInsideCurrentFrame = (clientX, clientY) => {
   const layout = state.currentLayout
   if (!animation || !layout) return true
 
-  const frame = Array.isArray(animation.frames) ? animation.frames[state.frameIndex] : null
-  const trim = frame?.trim || { x: 0, y: 0, width: animation.frameWidth, height: animation.frameHeight }
-  const fitScale = layout.dims.fitScale || 1
-  const padding = (layout.viewport.padding || 0) * state.scale
-  const left = layout.catLeft + (trim.x * fitScale * state.scale) - padding
-  const top = (window.innerHeight - layout.catBottom - (layout.dims.height * state.scale)) + (trim.y * fitScale * state.scale) - padding
-  const right = left + (trim.width * fitScale * state.scale) + padding * 2
-  const bottom = top + (trim.height * fitScale * state.scale) + padding * 2
-
-  return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom
+  const hitbox = petHitbox.getFrameHitbox({
+    animation,
+    layout,
+    frameIndex: state.frameIndex,
+    windowHeight: window.innerHeight,
+    scale: state.scale
+  })
+  return petHitbox.isPointInHitbox({ x: clientX, y: clientY }, hitbox)
 }
 
-const applyPetCursorStyle = (insideFrame) => {
+const isPointInsideCursorRegion = (clientX, clientY) => {
+  if (state.drag || menu.classList.contains('open')) return true
+  const layout = state.currentLayout
+  if (!layout) return true
+
+  const hitbox = petHitbox.getViewportHitbox({
+    layout,
+    windowHeight: window.innerHeight,
+    scale: state.scale
+  })
+  return petHitbox.isPointInHitbox({ x: clientX, y: clientY }, hitbox)
+}
+
+const applyPetCursorStyle = (insideCursorRegion) => {
   pet.style.cursor = cursorStyle.resolvePetCursorStyle(state.customCursor, {
-    insideFrame,
+    insideFrame: insideCursorRegion,
     dragging: Boolean(state.drag),
     menuOpen: menu.classList.contains('open')
   })
@@ -193,15 +209,18 @@ const refreshMouseStateFromLastPoint = () => {
     applyPetCursorStyle(false)
     return
   }
-  const insideFrame = isPointInsideCurrentFrame(state.lastPointerPoint.clientX, state.lastPointerPoint.clientY)
-  applyPetCursorStyle(insideFrame)
+  const { clientX, clientY } = state.lastPointerPoint
+  const insideFrame = isPointInsideCurrentFrame(clientX, clientY)
+  const insideCursorRegion = isPointInsideCursorRegion(clientX, clientY)
+  applyPetCursorStyle(insideCursorRegion)
   setMousePassthrough(!insideFrame)
 }
 
 const updateMousePassthroughFromPoint = (event) => {
   state.lastPointerPoint = { clientX: event.clientX, clientY: event.clientY }
   const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
-  applyPetCursorStyle(insideFrame)
+  const insideCursorRegion = isPointInsideCursorRegion(event.clientX, event.clientY)
+  applyPetCursorStyle(insideCursorRegion)
   setMousePassthrough(!insideFrame)
 }
 
