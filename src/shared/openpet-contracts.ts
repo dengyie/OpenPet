@@ -1008,6 +1008,47 @@ export interface WindowsSmokeEvidenceFile {
   sha256: string
 }
 
+export interface WindowsSmokeArtifactFile {
+  name: string
+  size: number
+}
+
+export interface WindowsSmokeReportEnvironment {
+  windowsVersion: string
+  machine: string
+  runner: string
+  evidence: string
+}
+
+export interface WindowsSmokeReportArtifact {
+  version: string
+  installer: string
+  zip: string
+  latestYml: string
+  blockmaps: string[]
+  files: WindowsSmokeArtifactFile[]
+  signed: boolean
+  authenticodeStatus: string
+  authenticodeEvidence: string
+}
+
+export interface WindowsSmokeCheck {
+  id: string
+  status: WindowsSmokeCheckStatus
+  evidence: string
+  notes: string
+}
+
+export interface WindowsSmokeReport {
+  platform: 'win32'
+  arch: string
+  generatedAt: string
+  source: string
+  environment: WindowsSmokeReportEnvironment
+  artifact: WindowsSmokeReportArtifact
+  checks: WindowsSmokeCheck[]
+}
+
 export interface WindowsSmokeEvidenceBundleSummary {
   evidenceDir: string
   requiredFiles: string[]

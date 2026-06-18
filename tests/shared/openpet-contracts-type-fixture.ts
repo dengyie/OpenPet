@@ -33,6 +33,7 @@ import type {
   SignedReleaseClosureReport,
   SignedReleaseClaimSummary,
   WindowsSmokeArchiveManifest,
+  WindowsSmokeReport,
   WindowsSmokeEvidenceSummary
 } from '../../src/shared/openpet-contracts'
 
@@ -861,6 +862,53 @@ const windowsSmokeArchiveManifestFixture = {
   errors: [],
   warnings: ['summary: Pending or unsigned evidence does not prove Windows release readiness; a real Windows smoke report must pass readiness validation, and official stable releases must also pass signed Authenticode validation.']
 } satisfies WindowsSmokeArchiveManifest
+
+const windowsSmokeReportFixture = {
+  platform: 'win32',
+  arch: 'x64',
+  generatedAt: '2026-06-14T00:00:00.000Z',
+  source: 'scripts/create-windows-smoke-report.js',
+  environment: {
+    windowsVersion: 'Windows 10.0.22631',
+    machine: 'windows-smoke-vm',
+    runner: 'GitHub Actions 1',
+    evidence: 'https://github.com/dengyie/OpenPet/actions/runs/12345'
+  },
+  artifact: {
+    version: '1.0.1-rc.2',
+    installer: 'OpenPet-1.0.1-rc.1-win32-x64-unsigned.exe',
+    zip: 'OpenPet-1.0.1-rc.1-win32-x64-unsigned.zip',
+    latestYml: 'latest.yml',
+    blockmaps: ['OpenPet-1.0.1-rc.1-win32-x64.exe-unsigned.blockmap'],
+    files: [
+      {
+        name: 'OpenPet-1.0.1-rc.1-win32-x64-unsigned.exe',
+        size: 9
+      },
+      {
+        name: 'latest.yml',
+        size: 48
+      }
+    ],
+    signed: false,
+    authenticodeStatus: 'NotSigned',
+    authenticodeEvidence: 'Status                 : NotSigned'
+  },
+  checks: [
+    {
+      id: 'launch',
+      status: 'pending',
+      evidence: '',
+      notes: 'Launch the installed or unpacked Windows app successfully. Fill with evidence from a real Windows smoke validation run.'
+    },
+    {
+      id: 'transparent-window',
+      status: 'pending',
+      evidence: '',
+      notes: 'Pet window renders transparently with the pet visible. Fill with evidence from a real Windows smoke validation run.'
+    }
+  ]
+} satisfies WindowsSmokeReport
 
 const packagedRuntimeSmokeEvidenceFixture = {
   schemaVersion: 1,
