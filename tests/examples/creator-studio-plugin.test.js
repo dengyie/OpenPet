@@ -67,6 +67,12 @@ test('creator studio run store creates and advances durable run state', () => {
 
   assert.equal(run.status, 'draft')
   assert.equal(readRun({ dataDir, runId: run.runId }).input.petName, 'Sprout Cat')
+  assert.deepEqual(run.backendStatus, {
+    backend: 'fixture',
+    state: 'idle',
+    message: '',
+    updatedAt: '2026-06-19T00:00:00.000Z'
+  })
   assert.equal(updated.status, 'prepared')
   assert.equal(updated.currentStep, 'prepare')
 })
@@ -99,9 +105,9 @@ test('creator studio run store keeps same-name same-day runs separate', () => {
   assert.equal(fs.readFileSync(path.join(dataDir, 'runs', second.runId, 'inputs', 'prompt.md'), 'utf-8'), 'Second concept\n')
 })
 
-test('creator studio fake hatch pet creates valid codex output and bundle', () => {
+test('creator studio backend runner generates fixture output through the selected adapter', () => {
   const { createRun } = require('../../examples/plugins/creator-studio/lib/run-store')
-  const { generateFixturePetOutput } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
+  const { runGenerationStep } = require('../../examples/plugins/creator-studio/lib/backend-runner')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-output-'))
   const run = createRun({
     dataDir,
@@ -109,7 +115,7 @@ test('creator studio fake hatch pet creates valid codex output and bundle', () =
     now: () => '2026-06-19T00:00:00.000Z'
   })
 
-  const output = generateFixturePetOutput({ dataDir, runId: run.runId })
+  const output = runGenerationStep({ dataDir, runId: run.runId })
   const manifest = JSON.parse(fs.readFileSync(path.join(output.outputDir, 'pet.json'), 'utf-8'))
   const bundleHash = crypto.createHash('sha256').update(fs.readFileSync(output.bundlePath)).digest('hex')
 
@@ -118,15 +124,40 @@ test('creator studio fake hatch pet creates valid codex output and bundle', () =
   assert.equal(fs.existsSync(path.join(output.outputDir, 'spritesheet.webp')), true)
   assert.equal(fs.existsSync(output.bundlePath), true)
   assert.equal(output.sha256, bundleHash)
+  assert.equal(output.run.backendStatus.state, 'ready')
+  assert.equal(output.run.backendStatus.backend, 'fixture')
 })
 
-const runCreatorCommand = ({ command, dataDir, payload = {}, env = {} }) => {
+test('creator studio backend runner records unavailable cloud backend without fixture fallback', () => {
+  const { createRun, readRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { runGenerationStep } = require('../../examples/plugins/creator-studio/lib/backend-runner')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-cloud-'))
+  const run = createRun({
+    dataDir,
+    input: { petName: 'Cloud Cat', prompt: 'A cloud generated cat', backend: 'cloud' },
+    now: () => '2026-06-19T00:00:00.000Z'
+  })
+
+  assert.throws(
+    () => runGenerationStep({ dataDir, runId: run.runId }),
+    /Cloud backend is not configured/
+  )
+  const failed = readRun({ dataDir, runId: run.runId })
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.currentStep, 'generate')
+  assert.equal(failed.backendStatus.backend, 'cloud')
+  assert.equal(failed.backendStatus.state, 'not_configured')
+  assert.match(failed.error, /Cloud backend is not configured/)
+  assert.equal(fs.existsSync(path.join(dataDir, 'runs', run.runId, 'outputs', 'pet.json')), false)
+})
+
+const runCreatorCommand = ({ command, dataDir, payload = {}, config = {}, env = {} }) => {
   const result = spawnSync(process.execPath, [path.join(pluginRoot, 'commands', `${command}.js`)], {
     input: `${JSON.stringify({
       pluginId: 'openpet.creator-studio',
       commandId: command,
       payload,
-      config: { backend: 'fixture', autoActivateAfterImport: true },
+      config: { backend: 'fixture', autoActivateAfterImport: true, ...config },
       paths: { extensionDir: pluginRoot }
     })}\n`,
     env: {
@@ -143,6 +174,32 @@ const runCreatorCommand = ({ command, dataDir, payload = {}, env = {} }) => {
     json: JSON.parse(result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1))
   }
 }
+
+test('creator studio run-step command fails unavailable local backend with persisted run state', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-command-'))
+
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Local Cat', prompt: 'A local generated cat', backend: 'local' },
+    config: { backend: 'local' }
+  })
+  const generated = runCreatorCommand({
+    command: 'run-step',
+    dataDir,
+    payload: { runId: created.json.run.runId },
+    config: { backend: 'local' }
+  })
+  const run = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.json.run.runId, 'run.json'), 'utf-8'))
+
+  assert.equal(created.status, 0)
+  assert.equal(generated.status, 1)
+  assert.equal(generated.json.ok, false)
+  assert.match(generated.json.error, /Local backend is not configured/)
+  assert.equal(run.status, 'failed')
+  assert.equal(run.backendStatus.backend, 'local')
+  assert.equal(run.backendStatus.state, 'not_configured')
+})
 
 test('creator studio commands create run generate output approve and export', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-commands-'))

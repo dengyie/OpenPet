@@ -81,6 +81,12 @@ Creator Studio plugin owns:
 
 The plugin must never directly write into OpenPet's installed pet-pack directories. Approved output becomes importable only by asking the host to perform pet-pack inspection/import on behalf of the plugin.
 
+### First Backend Slice Boundary
+
+The first backend implementation keeps model settings out of the plugin. Creator Studio owns the backend adapter interface and per-run status. OpenPet host/main UI owns future provider credentials, default model settings, local endpoint setup, and any host-mediated model bridge.
+
+Until that host work exists, `fixture` is the only generating backend. `cloud` and `local` adapters must fail explicitly with a `not_configured` run state instead of silently falling back to fixture output.
+
 ## 6. Plugin Package Shape
 
 Recommended package structure:

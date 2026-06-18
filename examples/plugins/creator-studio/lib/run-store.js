@@ -69,6 +69,12 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
       prompt: String(input.prompt || ''),
       backend: input.backend || 'fixture'
     },
+    backendStatus: {
+      backend: input.backend || 'fixture',
+      state: 'idle',
+      message: '',
+      updatedAt: timestamp
+    },
     artifacts: {},
     jobs: [],
     reviewStatus: 'pending',

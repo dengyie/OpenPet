@@ -4,6 +4,8 @@ Creator Studio is a hybrid OpenPet extension that demonstrates the end-to-end pe
 
 The first implementation uses a deterministic fixture backend. It creates a valid `codex-pet` output, moves the run through review, then imports the approved output through OpenPet's host-owned pet-pack bridge.
 
+`cloud` and `local` backend choices are intentionally wired through the same adapter boundary but currently return a clear `not_configured` run state. OpenPet host/model settings work must provide provider credentials, local endpoints, or a host model bridge before those adapters can generate real images.
+
 Current commands:
 
 - `create-run`: create a run workspace under `OPENPET_DATA_DIR/runs`.
@@ -12,4 +14,4 @@ Current commands:
 - `import-approved-pet`: ask OpenPet to inspect and import the approved output.
 - `export-bundle`: return the generated `.codex-pet.zip` output details.
 
-Future backend adapters can replace the fixture generator without changing the run workspace contract.
+Future backend adapters can replace the unavailable cloud/local stubs without changing the run workspace contract.
