@@ -284,6 +284,7 @@ test('settings cursor asset picker copies a selected cursor into hosted user dat
   const settingsWindow = { id: 'settings-window' }
   const sender = { id: 'settings-web-contents' }
   const dialogCalls = []
+  const appLogEntries = []
 
   registerIpcHandlers({
     ...createRequiredServices({
@@ -322,6 +323,9 @@ test('settings cursor asset picker copies a selected cursor into hosted user dat
         return settingsWindow
       }
     },
+    appLogService: {
+      record: (entry) => appLogEntries.push(entry)
+    },
     ipcMainService: ipcMain
   })
 
@@ -333,6 +337,11 @@ test('settings cursor asset picker copies a selected cursor into hosted user dat
   assert.equal(fs.readFileSync(result.cursor.assetPath, 'utf-8'), 'cursor-image')
   assert.equal(dialogCalls[0][0], settingsWindow)
   assert.deepEqual(dialogCalls[0][1].properties, ['openFile'])
+  assert.deepEqual(appLogEntries.map((entry) => entry.event), [
+    'settings.cursor.import.opened',
+    'settings.cursor.import.completed'
+  ])
+  assert.equal(appLogEntries[1].details.fileName, 'cursor.png')
 })
 
 test('settings save syncs custom cursor settings to the pet renderer', async () => {

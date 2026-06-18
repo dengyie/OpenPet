@@ -81,8 +81,6 @@ test.describe('Control Center smoke', () => {
     await customCursorRow.getByRole('button', { name: '选择图片' }).click()
     await expect(customCursorRow).toContainText('demo-cursor.png')
     await expect(customCursorRow.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
-
-    await page.getByRole('button', { name: '保存', exact: true }).click()
     await page.reload()
 
     const reloadedCursorRow = page.locator('.field-row', { hasText: '自定义鼠标指针' })

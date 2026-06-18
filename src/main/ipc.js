@@ -86,7 +86,7 @@ const executeBehaviorDecision = (petService, decision) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
 
@@ -98,6 +98,14 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       return dialogService.showOpenDialog(parentWindow, options)
     }
     return dialogService.showOpenDialog(options)
+  }
+
+  const recordAppLog = (entry) => {
+    try {
+      appLogService?.record?.(entry)
+    } catch (_) {
+      // Logging must never break the user action that triggered it.
+    }
   }
 
   const getPendingActionFrameSelection = (selectionId) => {
@@ -183,13 +191,52 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
     if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
-    const selected = await showOpenDialogForEvent(event, {
-      title: '选择自定义鼠标指针图片',
-      properties: ['openFile'],
-      filters: [{ name: 'Cursor Images', extensions: ['png', 'webp', 'cur'] }]
+    recordAppLog({
+      scope: 'settings',
+      level: 'info',
+      actor: 'user',
+      event: 'settings.cursor.import.opened',
+      message: 'Cursor image picker opened'
     })
-    if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-    return { canceled: false, cursor: await cursorAssetService.importCursor(selected.filePaths[0]) }
+    try {
+      const selected = await showOpenDialogForEvent(event, {
+        title: '选择自定义鼠标指针图片',
+        properties: ['openFile'],
+        filters: [{ name: 'Cursor Images', extensions: ['png', 'webp', 'cur'] }]
+      })
+      if (selected.canceled || !selected.filePaths[0]) {
+        recordAppLog({
+          scope: 'settings',
+          level: 'info',
+          actor: 'user',
+          event: 'settings.cursor.import.canceled',
+          message: 'Cursor image picker canceled'
+        })
+        return { canceled: true }
+      }
+      const cursor = await cursorAssetService.importCursor(selected.filePaths[0])
+      recordAppLog({
+        scope: 'settings',
+        level: 'info',
+        actor: 'system',
+        event: 'settings.cursor.import.completed',
+        message: 'Cursor image imported',
+        details: {
+          fileName: cursor.fileName,
+          enabled: cursor.enabled
+        }
+      })
+      return { canceled: false, cursor }
+    } catch (error) {
+      recordAppLog({
+        scope: 'settings',
+        level: 'error',
+        actor: 'system',
+        event: 'settings.cursor.import.failed',
+        message: error.message
+      })
+      throw error
+    }
   })
 
   ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
@@ -296,6 +343,17 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const savedSettings = petService.saveSettings(settings)
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
     applyWindowScale(savedSettings.scale)
+    recordAppLog({
+      scope: 'settings',
+      level: 'info',
+      actor: 'user',
+      event: 'settings.saved',
+      message: 'Settings saved',
+      details: {
+        customCursorEnabled: Boolean(savedSettings.customCursor?.enabled),
+        customCursorFileName: savedSettings.customCursor?.fileName || ''
+      }
+    })
     return savedSettings
   })
 

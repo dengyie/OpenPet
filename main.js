@@ -31,6 +31,7 @@ const { createActionImportService } = require('./src/main/services/action-import
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
 const { createCursorAssetService } = require('./src/main/services/cursor-asset-service')
+const { createAppLogService } = require('./src/main/services/app-log-service')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
 const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
@@ -86,6 +87,21 @@ app.whenReady().then(() => {
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
+  const appLogService = createAppLogService({
+    logDir: path.join(app.getPath('userData'), 'logs')
+  })
+  try {
+    appLogService.record({
+      scope: 'app',
+      level: 'info',
+      actor: 'system',
+      event: 'app.ready',
+      message: 'OpenPet app services initialized'
+    })
+    console.log(`OpenPet app log: ${appLogService.logPath}`)
+  } catch (error) {
+    console.warn(`OpenPet app log unavailable: ${error.message}`)
+  }
   const actionImportService = createActionImportService({
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
@@ -163,6 +179,7 @@ app.whenReady().then(() => {
     aboutService,
     actionImportService,
     cursorAssetService,
+    appLogService,
     applyWindowScale: (scale) => applyWindowScale(petWindow, scale),
     applyPetViewport,
     clampToWorkArea,

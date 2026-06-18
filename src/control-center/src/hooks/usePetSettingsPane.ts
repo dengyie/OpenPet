@@ -41,22 +41,31 @@ export function usePetSettingsPane() {
     setSettings(nextSettings)
     if (status) setStatus('')
     if (previewScale) api.previewScale(nextSettings.scale)
+    if (partial.customCursor) {
+      void persistSettings(
+        nextSettings,
+        partial.customCursor.enabled ? '自定义鼠标指针已启用' : '自定义鼠标指针已关闭',
+        '鼠标指针设置保存失败'
+      )
+    }
   }
 
-  const onSave = async () => {
+  const persistSettings = async (nextSettings: ControlCenterSettings, successMessage: string, errorFallback: string) => {
     setSaving(true)
     try {
-      const savedSettings = cloneSettings(await api.saveSettings(settings))
+      const savedSettings = cloneSettings(await api.saveSettings(nextSettings))
       originalRef.current = savedSettings
       setOriginalSettings(savedSettings)
       setSettings(savedSettings)
-      setStatus('')
+      setStatus(successMessage)
     } catch (error) {
-      setStatus(messageFromError(error, '宠物设置保存失败'))
+      setStatus(messageFromError(error, errorFallback))
     } finally {
       setSaving(false)
     }
   }
+
+  const onSave = () => persistSettings(settings, '', '宠物设置保存失败')
 
   const onReset = () => {
     const restoredSettings = cloneSettings(originalRef.current)
@@ -72,15 +81,20 @@ export function usePetSettingsPane() {
       const customCursor = cloneCustomCursor(result.cursor)
       const nextSettings = { ...settings, customCursor }
       setSettings(nextSettings)
-      setStatus(`已选择鼠标指针：${customCursor.fileName || '自定义图片'}`)
+      await persistSettings(
+        nextSettings,
+        `已选择并启用鼠标指针：${customCursor.fileName || '自定义图片'}`,
+        '鼠标指针图片保存失败'
+      )
     } catch (error) {
       setStatus(messageFromError(error, '鼠标指针图片选择失败'))
     }
   }
 
   const onClearCursor = () => {
-    setSettings({ ...settings, customCursor: defaultSettings.customCursor })
-    setStatus('')
+    const nextSettings = { ...settings, customCursor: defaultSettings.customCursor }
+    setSettings(nextSettings)
+    void persistSettings(nextSettings, '自定义鼠标指针已清除', '鼠标指针设置保存失败')
   }
 
   const paneProps = {
