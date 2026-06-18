@@ -13,6 +13,7 @@ import type {
   CreatorPackManifestMutationResult,
   CreatorPackManifestReadResponse,
   DesktopPickerArchiveManifest,
+  DesktopPickerSmokeReport,
   DesktopPickerEvidenceSummary,
   MacosReleaseEvidenceArtifactArchiveManifest,
   MacosReleaseEvidenceCommand,
@@ -672,6 +673,59 @@ const desktopPickerArchiveManifestFixture = {
   errors: [],
   warnings: ['evidence: Pending or unsigned evidence cannot prove signed official desktop picker readiness']
 } satisfies DesktopPickerArchiveManifest
+
+const desktopPickerSmokeReportFixture = {
+  platform: 'darwin',
+  arch: 'arm64',
+  generatedAt: '2026-06-15T00:00:00.000Z',
+  source: 'scripts/create-desktop-picker-smoke-report.js',
+  environment: {
+    osRelease: '25.5.0',
+    machine: 'mac-smoke-host',
+    runner: '',
+    evidence: ''
+  },
+  artifact: {
+    version: '1.0.1-rc.2',
+    releaseDir: '/Users/mango/project/codex/OpenPet/release',
+    appPath: 'mac-arm64/OpenPet.app',
+    installer: 'OpenPet-1.0.1-rc.1-mac.dmg',
+    zip: 'OpenPet-1.0.1-rc.1-mac.zip',
+    latestYml: 'latest-mac.yml',
+    files: [
+      {
+        name: 'mac-arm64/OpenPet.app',
+        size: 96
+      },
+      {
+        name: 'OpenPet-1.0.1-rc.1-mac.dmg',
+        size: 3
+      }
+    ],
+    signed: true,
+    signatureStatus: 'Valid',
+    signatureEvidence: 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement'
+  },
+  fixture: {
+    pluginPackage: 'Use a valid .openpet-plugin.zip fixture with a signature.json hash metadata file.',
+    frameFolder: 'Use a folder containing ordered transparent PNG frames.',
+    petPack: 'Use a valid pet pack directory with pet.json and sprite assets.'
+  },
+  checks: [
+    {
+      id: 'packaged-launch',
+      status: 'pending',
+      evidence: '',
+      notes: 'Launch packaged OpenPet and keep it running. Fill with evidence from a real packaged-app native picker smoke validation run.'
+    },
+    {
+      id: 'invalid-package-feedback',
+      status: 'pending',
+      evidence: '',
+      notes: 'Invalid plugin or pet package shows a visible error from the packaged app. Fill with evidence from a real packaged-app native picker smoke validation run.'
+    }
+  ]
+} satisfies DesktopPickerSmokeReport
 
 const windowsSmokeEvidenceSummaryFixture = {
   generatedAt: '2026-06-14T00:00:00.000Z',

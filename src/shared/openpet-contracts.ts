@@ -847,6 +847,57 @@ export interface DesktopPickerEvidenceFile {
   sha256: string
 }
 
+export interface DesktopPickerArtifactFile {
+  name: string
+  size: number
+}
+
+export interface DesktopPickerSmokeReportArtifact {
+  version: string
+  releaseDir: string
+  appPath: string
+  installer: string
+  zip: string
+  latestYml: string
+  files: DesktopPickerArtifactFile[]
+  signed: boolean
+  signatureStatus?: string
+  signatureEvidence?: string
+  authenticodeStatus?: string
+  authenticodeEvidence?: string
+}
+
+export interface DesktopPickerSmokeReportEnvironment {
+  osRelease: string
+  machine: string
+  runner: string
+  evidence: string
+}
+
+export interface DesktopPickerSmokeReportFixture {
+  pluginPackage: string
+  frameFolder: string
+  petPack: string
+}
+
+export interface DesktopPickerSmokeCheck {
+  id: string
+  status: DesktopPickerSmokeCheckStatus
+  evidence: string
+  notes: string
+}
+
+export interface DesktopPickerSmokeReport {
+  platform: string
+  arch: string
+  generatedAt: string
+  source: string
+  environment: DesktopPickerSmokeReportEnvironment
+  artifact: DesktopPickerSmokeReportArtifact
+  fixture: DesktopPickerSmokeReportFixture
+  checks: DesktopPickerSmokeCheck[]
+}
+
 export interface DesktopPickerEvidenceSummaryEvidenceSection {
   evidenceDir: string
   presentFiles: DesktopPickerEvidenceFile[]
