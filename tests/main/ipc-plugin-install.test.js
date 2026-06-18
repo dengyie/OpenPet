@@ -275,6 +275,58 @@ test('pet mouse passthrough IPC toggles transparent window hit behavior', () => 
   ])
 })
 
+test('pet renderer log IPC records sanitized user diagnostics', () => {
+  const ipcMain = createIpcMainStub()
+  const appLogEntries = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    appLogService: {
+      record: (entry) => appLogEntries.push(entry)
+    },
+    ipcMainService: ipcMain
+  })
+
+  ipcMain.listeners.get(IPC.PET_RECORD_APP_LOG)(null, {
+    level: 'debug',
+    actor: 'user',
+    event: 'pet.pointer.down',
+    message: 'Pointer down',
+    details: {
+      clientX: 12,
+      clientY: 34,
+      insideFrame: true,
+      assetPath: '/Users/mango/private-cursor.png',
+      nested: { unsafe: true }
+    }
+  })
+
+  assert.deepEqual(appLogEntries, [{
+    scope: 'pet-renderer',
+    level: 'debug',
+    actor: 'user',
+    event: 'pet.pointer.down',
+    message: 'Pointer down',
+    details: {
+      clientX: 12,
+      clientY: 34,
+      insideFrame: true
+    }
+  }])
+})
+
 test('settings cursor asset picker copies a selected cursor into hosted user data', async () => {
   const ipcMain = createIpcMainStub()
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-cursor-ipc-'))

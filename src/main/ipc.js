@@ -8,6 +8,7 @@
  */
 const { ipcMain, BrowserWindow, app, dialog } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { sanitizeDetails } = require('./services/app-log-service')
 const {
   createActionFrameImportResult,
   createActionsMutationResult,
@@ -166,6 +167,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
     if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
     else win.setIgnoreMouseEvents(false)
+  })
+
+  ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry = {}) => {
+    if (!entry || typeof entry !== 'object') return
+    recordAppLog({
+      scope: 'pet-renderer',
+      level: entry.level,
+      actor: entry.actor,
+      event: entry.event,
+      message: entry.message,
+      details: sanitizeDetails(entry.details)
+    })
   })
 
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
