@@ -52,6 +52,14 @@ npm run create-plugin-remote-source-submission-rehearsal -- --archive-url https:
 
 This downloads a public HTTPS archive, records archive URL, final URL, archive SHA-256, archive size, selected plugin path, and extracted file hashes, then packages the selected plugin snapshot, creates a submission bundle, records maintainer approval, and writes local evidence files. It is closer to a real reviewer handoff than a plain directory rehearsal, but the current archived example still does not prove independent public community provenance or release trust.
 
+For a community-source evidence archive, run:
+
+```bash
+npm run create-plugin-community-source-submission-evidence -- --archive-url <https-archive> --plugin-path <path-inside-archive> --community-source-url <public-source-url> --submitter "<submitter>" --source-relation independent-third-party --independence-notes "..." --output-dir docs/release-evidence/plugin-community-source-submission-evidence/<session>
+```
+
+This keeps the same archive/package/submission/approval chain as the remote-source rehearsal, then adds community provenance metadata that is missing from an official-repository archive alone: source URL, submitter label, source relation, and independence notes. It is still review evidence. It does not prove signing trust, catalog publication, runtime safety, or release readiness.
+
 ## 3. Manual Rehearsal Order
 
 Start from a generated local extension or a tested legacy example such as `examples/plugins/focus-timer`.

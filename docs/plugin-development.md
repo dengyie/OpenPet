@@ -466,6 +466,7 @@ npm run create-plugin-submission-bundle -- <extension-dir-or-zip> --output-dir p
 npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-ready
 npm run create-plugin-real-world-submission-rehearsal -- --source examples/plugins/weather-status --output-dir docs/release-evidence/plugin-real-world-submission-rehearsal/<session>
 npm run create-plugin-remote-source-submission-rehearsal -- --archive-url https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main --plugin-path examples/plugins/weather-status --output-dir docs/release-evidence/plugin-remote-source-submission-rehearsal/<session>
+npm run create-plugin-community-source-submission-evidence -- --archive-url <https-archive> --plugin-path <path-inside-archive> --community-source-url <public-source-url> --submitter "<submitter>" --source-relation independent-third-party --independence-notes "..." --output-dir docs/release-evidence/plugin-community-source-submission-evidence/<session>
 npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer "OpenPet Maintainer" --decision approved --notes "Manifest, permissions, package hash, and submission artifacts reviewed."
 npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
@@ -490,6 +491,8 @@ This is still review evidence, not catalog approval or signing trust.
 For an existing-plugin rehearsal, use `create-plugin-real-world-submission-rehearsal`. The current archived example uses `examples/plugins/weather-status` to exercise package validation, network allowlist review, submission bundle generation, and maintainer approval in one local evidence chain. It is workflow evidence, not proof of external community provenance.
 
 For a remote-source rehearsal, use `create-plugin-remote-source-submission-rehearsal`. The current archived example uses `https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main` to exercise archive URL capture, final URL capture, archive SHA-256 recording, archive size recording, plugin-path selection, extracted file hashing, package validation, submission bundle generation, and maintainer approval in one local evidence chain. It is remote-source workflow evidence, not proof of independent public ecosystem trust.
+
+For a stricter community-source evidence archive, use `create-plugin-community-source-submission-evidence`. It wraps the remote-source rehearsal with a public community source URL, submitter label, source-relationship classification, and required maintainer independence notes. The command can archive provenance even when relationship is still unknown, but it only marks `communityEvidenceReady` when the maintainer classifies the source as `independent-third-party` or `external-community`. This is still provenance and review traceability, not signing trust, catalog publication, runtime safety, or release readiness.
 
 ## Legacy JavaScript SDK Compatibility
 
