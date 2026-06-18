@@ -225,6 +225,8 @@ Current bridge routes:
 - `POST /creator/pack-manifest/apply`
 - `POST /creator/assets/inspect-frames`
 - `POST /creator/assets/import-frames`
+- `POST /creator/assets/pick-frames/inspect`
+- `POST /creator/assets/pick-frames/import`
 
 The bridge is loopback-only, token-gated, and valid only while the command run is active.
 
@@ -266,6 +268,8 @@ Current endpoint set:
 - `POST /creator/pack-manifest/apply`
 - `POST /creator/assets/inspect-frames`
 - `POST /creator/assets/import-frames`
+- `POST /creator/assets/pick-frames/inspect`
+- `POST /creator/assets/pick-frames/import`
 
 Bridge rules:
 
@@ -278,6 +282,7 @@ Bridge rules:
 - `pack-manifest:read` / `pack-manifest:write` only expose the current active installed user pack metadata workflow and do not permit arbitrary pet-pack writes, arbitrary pack targeting, or raw filesystem access;
 - creator-tools frame inspection is read-only, package-local, and confined to the extension directory;
 - creator-tools frame import/sprite generation is host-mediated, package-local, resource-limited, and does not grant raw filesystem writes or plugin-selected output paths;
+- creator-tools picker frame inspection/import is host-mediated and user-approved: the command can request a native folder picker, but selected absolute paths stay in the main process and are not returned to the bridge caller;
 - setup entries, services, install, enable, and background health paths do not receive bridge access.
 
 Example bridge requests:
@@ -311,6 +316,20 @@ curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/import-frames" \
   -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"relativePath":"assets/actions/wave","actionId":"wave","label":"Wave Hello"}'
+```
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/pick-frames/inspect" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"picked-wave"}'
+```
+
+```bash
+curl -X POST "$OPENPET_BRIDGE_URL/creator/assets/pick-frames/import" \
+  -H "Authorization: Bearer $OPENPET_BRIDGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"actionId":"picked-wave","label":"Picked Wave"}'
 ```
 
 Example command behavior:
@@ -435,7 +454,7 @@ Good extension shapes include:
 - scheduled companions that announce calendar, RSS, build, or system status;
 - dashboards for configuring extension-specific workflows.
 
-Pet action tooling should prefer package-local assets and generated outputs under `OPENPET_DATA_DIR` or a declared asset directory. Creator-tools commands should use the host bridge for bounded action reads/writes, active installed pack metadata edits, package-local frame inspection, and package-local frame import/sprite generation. Do not modify `cat_anime/` directly unless the user is intentionally working on core app assets.
+Pet action tooling should prefer package-local assets and generated outputs under `OPENPET_DATA_DIR` or a declared asset directory. Creator-tools commands should use the host bridge for bounded action reads/writes, active installed pack metadata edits, package-local frame inspection/import, or user-approved native picker frame inspection/import. Do not modify `cat_anime/` directly unless the user is intentionally working on core app assets.
 
 ## Packaging And Submission
 
@@ -451,7 +470,7 @@ npm run create-plugin-maintainer-approval -- plugin-submission-bundle --reviewer
 npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --require-approved
 ```
 
-These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, a broader process-tree cleanup fallback for explicit stop paths, creator-tools action reads and bounded writes through the short-lived bridge, active installed pack metadata reads / validation / bounded writes through `pack-manifest:read` and `pack-manifest:write`, package-local creator frame inspection through `assets:inspect`, package-local frame import/sprite generation through `assets:generate`, and a separate maintainer approval artifact layered on top of a ready-for-review submission bundle. Approval remains human-authored and does not prove signing trust, catalog publication, runtime safety, or release readiness. Arbitrary folder imports, arbitrary pet-pack writes, broader bridge flows, and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
+These commands are useful for structural validation and reviewer handoff, but some checks still reflect the legacy short-lived JavaScript SDK plugin model. The host now supports explicit setup execution, visible setup runtime status, explicit language-neutral command execution, explicit service start/stop, manual and opt-in periodic loopback service health checks, exit-confirmed cleanup for explicit setup/command/service stop flows, bounded service-side force stop, a broader process-tree cleanup fallback for explicit stop paths, creator-tools action reads and bounded writes through the short-lived bridge, active installed pack metadata reads / validation / bounded writes through `pack-manifest:read` and `pack-manifest:write`, package-local creator frame inspection through `assets:inspect`, package-local frame import/sprite generation through `assets:generate`, user-approved native picker frame inspection/import through the host, and a separate maintainer approval artifact layered on top of a ready-for-review submission bundle. Approval remains human-authored and does not prove signing trust, catalog publication, runtime safety, or release readiness. Arbitrary raw filesystem grants, arbitrary pet-pack writes, broader bridge flows, and universal process-tree cleanup guarantees are still implementation gaps to reconcile with the extension boundary design when developing the next host runtime.
 
 For a local author rehearsal:
 

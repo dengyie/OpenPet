@@ -567,7 +567,7 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const serviceRuntimes = new Map()
@@ -648,6 +648,25 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     if (!fs.statSync(realTargetPath).isDirectory()) throw new Error('Plugin asset path must be a folder')
     assertDirectoryHasNoSymlinks(realTargetPath)
     return realTargetPath
+  }
+
+  const resolvePickedAssetPath = (sourceDir) => {
+    if (typeof sourceDir !== 'string' || !sourceDir.trim()) {
+      throw new Error('Selected frame folder is required')
+    }
+    const targetPath = path.resolve(sourceDir)
+    if (!fs.existsSync(targetPath)) throw new Error('Selected frame folder does not exist')
+    if (fs.lstatSync(targetPath).isSymbolicLink()) throw new Error('Selected frame folder must not be a symlink')
+    const realTargetPath = fs.realpathSync(targetPath)
+    if (!fs.statSync(realTargetPath).isDirectory()) throw new Error('Selected frame folder must be a folder')
+    assertDirectoryHasNoSymlinks(realTargetPath)
+    return realTargetPath
+  }
+
+  const selectCreatorAssetSourceDir = async () => {
+    const selected = await selectCreatorAssetFrameFolder()
+    if (selected?.canceled || !selected?.sourceDir) return { canceled: true }
+    return { canceled: false, sourceDir: resolvePickedAssetPath(selected.sourceDir) }
   }
 
   const createPluginBridgeContext = () => {
@@ -740,6 +759,34 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const { importedAction, ...actions } = result
       return { ok: true, actions, importedAction }
     },
+    creatorAssetsPickFramesInspect: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'assets:inspect')
+      if (!actionImportService?.inspectActionFrames) throw new Error('Creator asset inspection is not available')
+      const selected = await selectCreatorAssetSourceDir()
+      if (selected.canceled) return { ok: true, canceled: true }
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets pick-frames inspect invoked' })
+      const result = await actionImportService.inspectActionFrames({
+        sourceDir: selected.sourceDir,
+        actionId: payload.actionId
+      })
+      return { ok: true, canceled: false, result }
+    },
+    creatorAssetsPickFramesImport: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'assets:generate')
+      if (!actionImportService?.inspectActionFrames || !actionImportService?.importActionFrames) {
+        throw new Error('Creator asset import is not available')
+      }
+      const selected = await selectCreatorAssetSourceDir()
+      if (selected.canceled) return { ok: true, canceled: true }
+      const actionId = String(payload.actionId || '')
+      const label = payload.label == null || payload.label === '' ? undefined : String(payload.label)
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets pick-frames import invoked' })
+      const preflight = await actionImportService.inspectActionFrames({ sourceDir: selected.sourceDir, actionId })
+      assertCreatorAssetImportWithinLimits(preflight.inspection, selected.sourceDir)
+      const result = await actionImportService.importActionFrames({ sourceDir: selected.sourceDir, actionId, label })
+      const { importedAction, ...actions } = result
+      return { ok: true, canceled: false, actions, importedAction }
+    },
     petSay: async (payload = {}) => {
       assertPermission(plugin.manifest, 'pet:say')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge pet.say invoked' })
@@ -801,7 +848,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     commandBridgeServer = http.createServer(async (request, response) => {
       try {
         const url = new URL(request.url, `http://${PLUGIN_BRIDGE_HOST}`)
-        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames)$/)
+        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import)$/)
         if (!match) {
           sendJson(response, 404, { ok: false, error: 'Not found' })
           return
@@ -875,6 +922,14 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         }
         if (route === '/creator/assets/import-frames') {
           sendJson(response, 200, await runtime.handlers.creatorAssetsImportFrames(payload))
+          return
+        }
+        if (route === '/creator/assets/pick-frames/inspect') {
+          sendJson(response, 200, await runtime.handlers.creatorAssetsPickFramesInspect(payload))
+          return
+        }
+        if (route === '/creator/assets/pick-frames/import') {
+          sendJson(response, 200, await runtime.handlers.creatorAssetsPickFramesImport(payload))
           return
         }
         sendJson(response, 404, { ok: false, error: 'Not found' })

@@ -25,7 +25,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - PetService remains the single source of truth for `say`, `action`, and event state.
 - Pet pack runtime supports legacy cat assets, OpenPet packs, Codex pet directory import, Codex pet zip import, and bundled packs.
 - Bundled pet assets are integrated without replacing the legacy `cat_anime/` structure.
-- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner and explicit short-lived process execution for declaration-only local extensions, a short-lived command bridge for `pet.say` / `pet.action` / `pet.event` / read-only context, creator-tools action reads / validation / bounded writes, active installed pack metadata reads / validation / bounded writes, package-local frame inspection, and package-local frame import/sprite generation for declaration-only command runs, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
+- Extension ecosystem docs now use a developer-first local extension model while current runtime/tools keep legacy JavaScript SDK compatibility, manifest validation, normalized `entries` declarations, explicit user-triggered `entries.setup` execution, `entries.commands` support through the existing JavaScript runner and explicit short-lived process execution for declaration-only local extensions, a short-lived command bridge for `pet.say` / `pet.action` / `pet.event` / read-only context, creator-tools action reads / validation / bounded writes, active installed pack metadata reads / validation / bounded writes, package-local frame inspection/import, and user-approved picker frame inspection/import for declaration-only command runs, entry declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop, manual loopback service health checks, logs, catalog, blocklist, and submission tooling.
 - AI provider configuration and API keys remain in the main process boundary.
 - Local HTTP/MCP is loopback-only, token-gated, logged, and off by default.
 - TypeScript scaffold, Control Center view contracts, API facade, hook state boundaries, pane prop surfaces, main-process Control Center adapters for service/catalog/plugin/pet pack/About/update/actions payloads, plugin entry/dashboard/service contracts, and full release evidence archive / signed closure report contracts exist.
@@ -36,7 +36,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - macOS signed/notarized release evidence still needs real artifact capture and archive.
 - Windows signed installer/zip smoke evidence still needs real Windows execution.
 - Packaged runtime smoke reports still need real app evidence for pet window visibility, transparent rendering, bundled pack switching, and native picker flows.
-- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, creator-tools action reads / validation / bounded writes, package-local frame inspection, package-local frame import/sprite generation, explicit service start/stop, manual loopback service health checks, opt-in periodic health checks for running services, and best-effort process-group cleanup now exists. Local scaffold and existing-plugin submission rehearsals now exist. External community provenance, deeper pack workflows beyond active metadata, user-approved arbitrary folder imports, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
+- Extension runtime support for explicit setup execution, explicit short-lived command execution, explicit short-lived command bridge access, creator-tools action reads / validation / bounded writes, package-local frame inspection/import, user-approved picker frame inspection/import, explicit service start/stop, manual loopback service health checks, opt-in periodic health checks for running services, and best-effort process-group cleanup now exists. Local scaffold and existing-plugin submission rehearsals now exist. External community provenance, deeper pack workflows beyond active metadata, richer command orchestration, and hard process-tree cleanup guarantees are still future work. Dashboard entries can now be opened explicitly as external HTTP/HTTPS URLs from Control Center.
 - Legacy SDK plugin secrets policy remains conservative; target extension docs require honest disclosure for extension-managed secrets and data.
 - Plugin sandbox strategy has been evaluated against SES and Electron `utilityProcess`; current recommendation is to keep the existing runner for v1.1 while documenting limits.
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
@@ -1195,7 +1195,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - shared contracts cover the request/response shape;
 - docs describe the route as host-mediated, package-local, and not raw filesystem access.
 
-**Status**: completed in Phase 83. Declaration-only creator-tools command runs can use `assets:generate` for package-local frame import and sprite regeneration through the host bridge while arbitrary folder imports, raw writes, plugin-selected output paths, and general pet-pack writes remain future work.
+**Status**: completed in Phase 83. Declaration-only creator-tools command runs can use `assets:generate` for package-local frame import and sprite regeneration through the host bridge while raw writes, plugin-selected output paths, and general pet-pack writes remain future work.
 
 ### Phase 84: Plugin creator-tools pack manifest workflow
 
@@ -1223,6 +1223,32 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 
 **Status**: completed in Phase 84. Declaration-only creator-tools command runs can use `pack-manifest:read` / `pack-manifest:write` for host-mediated active installed pack metadata workflows while built-in pack edits, arbitrary pack targeting, action-field edits through this route, and general pet-pack writes remain future work.
 
+### Phase 85: Plugin creator-tools user-approved picker import
+
+**Goal**: let declaration-only creator-tools extensions ask the host to open a native folder picker, then inspect or import only the user-approved external frame folder.
+
+**Scope**:
+
+- expose `POST /creator/assets/pick-frames/inspect` and `POST /creator/assets/pick-frames/import`;
+- require `assets:inspect` for inspect and `assets:generate` for import;
+- keep native folder selection in the host process;
+- return canceled results cleanly when the user cancels;
+- reject missing folders, non-folders, symlinks, and oversized imports before generation;
+- never return the raw selected folder path to the bridge caller;
+- keep raw filesystem grants, plugin-selected output paths, persistent folder grants, built-in pack writes, and arbitrary pet-pack writes out of scope.
+
+**Acceptance**:
+
+- a plugin with `assets:inspect` can inspect a user-approved external frame folder without receiving its path;
+- a plugin with `assets:generate` can import a user-approved external frame folder and receive generated action metadata;
+- missing permissions receive `403`;
+- canceled picker calls do not inspect or import;
+- symlinked picked folders fail before import;
+- shared contracts cover the request/response shapes;
+- Electron startup wires the picker through native `dialog.showOpenDialog`.
+
+**Status**: completed in Phase 85. Declaration-only creator-tools command runs can use host-owned native picker routes for user-approved frame inspection/import without raw filesystem grants, plugin-selected output paths, or general pet-pack writes.
+
 ## 6. Priority Order
 
 | Priority | Work | Reason |
@@ -1237,6 +1263,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 82 Plugin creator-tools asset inspection | Completed; declaration-only creator-tools commands can inspect package-local action frame folders through the host bridge. |
 | P1 | Phase 83 Plugin creator-tools sprite import | Completed; declaration-only creator-tools commands can import package-local frame folders and generate sprites through the host bridge with resource limits. |
 | P1 | Phase 84 Plugin creator-tools pack manifest workflow | Completed; declaration-only creator-tools commands can read, validate, and apply bounded active installed pack manifest metadata through the host bridge. |
+| P1 | Phase 85 Plugin creator-tools user-approved picker import | Completed; declaration-only creator-tools commands can inspect/import a user-approved external frame folder through the host bridge without receiving raw filesystem grants. |
 | P1 | Phase 40 pet pack export and provenance | Completed; keep provenance and conflict review as constraints for future catalog work. |
 | P1 | Phase 44 plugin author experience rehearsal | Completed; use the archived rehearsal as the plugin author baseline. |
 | P1 | Phase 74 Plugin maintainer approval rehearsal | Completed; submission bundles can now receive separate maintainer approval artifacts and author rehearsal now points at that human review step explicitly. |
@@ -1321,6 +1348,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 45. Phase 82 is complete; declaration-only creator-tools commands can use `assets:inspect` for host-mediated package-local frame inspection without sprite generation or raw writes.
 46. Phase 83 is complete; declaration-only creator-tools commands can use `assets:generate` for host-mediated package-local frame import and sprite regeneration with frame/pixel limits.
 47. Phase 84 is complete; declaration-only creator-tools commands can use `pack-manifest:read` / `pack-manifest:write` for host-mediated active installed pack manifest metadata workflows without arbitrary pet-pack writes.
+48. Phase 85 is complete; declaration-only creator-tools commands can use host-owned native picker routes for user-approved frame inspection/import without receiving selected paths or raw filesystem grants.
 
 ## 8. Verification Contract
 

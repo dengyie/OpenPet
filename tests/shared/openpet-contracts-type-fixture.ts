@@ -6,6 +6,9 @@ import type {
   CreatorAssetsImportFramesResponse,
   CreatorAssetsInspectFramesRequest,
   CreatorAssetsInspectFramesResponse,
+  CreatorAssetsPickFramesImportResponse,
+  CreatorAssetsPickFramesInspectResponse,
+  CreatorAssetsPickFramesRequest,
   CreatorPackManifestMutationRequest,
   CreatorPackManifestMutationResult,
   CreatorPackManifestReadResponse,
@@ -180,6 +183,33 @@ const creatorAssetsImportFramesResponseFixture = {
   },
   importedAction: { id: 'wave', label: 'Wave Hello', sprite: 'file:///packs/cat/sprites/wave.png', frameCount: 2, frameMs: 95, frameWidth: 8, frameHeight: 8 }
 } satisfies CreatorAssetsImportFramesResponse
+
+const creatorAssetsPickFramesRequestFixture = {
+  actionId: 'picked-wave',
+  label: 'Picked Wave'
+} satisfies CreatorAssetsPickFramesRequest
+
+const creatorAssetsPickFramesInspectResponseFixture = {
+  ok: true,
+  canceled: false,
+  result: {
+    actionId: 'picked-wave',
+    folderName: 'picked-wave',
+    inspection: creatorAssetsInspectFramesResponseFixture.result.inspection
+  }
+} satisfies CreatorAssetsPickFramesInspectResponse
+
+const creatorAssetsPickFramesImportResponseFixture = {
+  ok: true,
+  canceled: false,
+  actions: creatorAssetsImportFramesResponseFixture.actions,
+  importedAction: creatorAssetsImportFramesResponseFixture.importedAction
+} satisfies CreatorAssetsPickFramesImportResponse
+
+const creatorAssetsPickFramesCanceledFixture = {
+  ok: true,
+  canceled: true
+} satisfies CreatorAssetsPickFramesInspectResponse
 
 const creatorPackManifestMutationRequestFixture = {
   displayName: 'Community Weather Cat Deluxe',

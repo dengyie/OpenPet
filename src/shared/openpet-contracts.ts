@@ -564,6 +564,29 @@ export interface CreatorAssetsImportFramesResponse {
   importedAction?: ActionEntry
 }
 
+export interface CreatorAssetsPickFramesRequest {
+  actionId: string
+  label?: string
+}
+
+export interface CreatorAssetsPickFramesCanceledResponse {
+  ok: boolean
+  canceled: true
+}
+
+export type CreatorAssetsPickFramesInspectResponse = CreatorAssetsPickFramesCanceledResponse | {
+  ok: boolean
+  canceled: false
+  result: CreatorAssetsInspectFramesResult
+}
+
+export type CreatorAssetsPickFramesImportResponse = CreatorAssetsPickFramesCanceledResponse | {
+  ok: boolean
+  canceled: false
+  actions: ActionsConfigViewState
+  importedAction?: ActionEntry
+}
+
 export interface CreatorPackManifestView {
   id: string
   displayName: string

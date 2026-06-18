@@ -7,7 +7,7 @@
  *
  * 不包含：窗口创建细节、IPC 处理、设置读写、屏幕计算 —— 均在 src/main/ 中。
  */
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, dialog, shell } = require('electron')
 const fs = require('fs')
 const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
@@ -104,6 +104,14 @@ app.whenReady().then(() => {
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
     openExternal: (url) => shell.openExternal(url),
+    selectCreatorAssetFrameFolder: async () => {
+      const selected = await dialog.showOpenDialog({
+        title: '选择动作帧文件夹',
+        properties: ['openDirectory']
+      })
+      if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
+      return { canceled: false, sourceDir: selected.filePaths[0] }
+    },
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
   app.on('before-quit', () => {

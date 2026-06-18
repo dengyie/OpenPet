@@ -280,6 +280,28 @@ const createPluginAssetFrame = async (root, relativePath, fileName) => {
   return folderPath
 }
 
+const createExternalFrameFolder = async (root, folderName = 'picked-wave') => {
+  const folderPath = path.join(root, folderName)
+  fs.mkdirSync(folderPath, { recursive: true })
+  await sharp({
+    create: {
+      width: 8,
+      height: 8,
+      channels: 4,
+      background: { r: 120, g: 220, b: 120, alpha: 0.9 }
+    }
+  }).png().toFile(path.join(folderPath, '01_no_bg.png'))
+  await sharp({
+    create: {
+      width: 8,
+      height: 8,
+      channels: 4,
+      background: { r: 140, g: 240, b: 140, alpha: 0.9 }
+    }
+  }).png().toFile(path.join(folderPath, '02_no_bg.png'))
+  return folderPath
+}
+
 const createTestActionImportService = (root) => createActionImportService({
   framesRoot: path.join(root, 'cat_anime', 'flames'),
   spritesDir: path.join(root, 'cat_anime', 'sprites'),
@@ -1366,6 +1388,336 @@ test('declaration-only creator asset import bridge rejects oversized source fold
 
   assert.equal(importResponse.status, 400)
   assert.match(importResponse.body.error, /too large to import: \d+ bytes/)
+  assert.equal(importCalled, false)
+})
+
+test('declaration-only creator asset picker inspection opens a host picker without leaking the selected path', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:inspect']
+  })
+  const externalFrames = await createExternalFrameFolder(root)
+  let pickerCalls = 0
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService: createTestActionImportService(root),
+    officialPlugins: [],
+    pluginDirs: [root],
+    selectCreatorAssetFrameFolder: async () => {
+      pickerCalls += 1
+      return { canceled: false, sourceDir: externalFrames }
+    },
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const inspectResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/inspect`, {
+    method: 'POST',
+    token,
+    body: {
+      actionId: 'picked-wave'
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(pickerCalls, 1)
+  assert.equal(inspectResponse.status, 200)
+  assert.equal(inspectResponse.body.ok, true)
+  assert.equal(inspectResponse.body.canceled, false)
+  assert.equal(inspectResponse.body.result.actionId, 'picked-wave')
+  assert.equal(inspectResponse.body.result.folderName, 'picked-wave')
+  assert.equal(inspectResponse.body.result.inspection.valid, true)
+  assert.equal(JSON.stringify(inspectResponse.body).includes(externalFrames), false)
+})
+
+test('declaration-only creator asset picker inspection returns canceled without inspecting', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:inspect']
+  })
+  let inspectCalled = false
+  const actionImportService = {
+    inspectActionFrames: async () => {
+      inspectCalled = true
+      return {}
+    }
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService,
+    officialPlugins: [],
+    pluginDirs: [root],
+    selectCreatorAssetFrameFolder: async () => ({ canceled: true }),
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const inspectResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/inspect`, {
+    method: 'POST',
+    token,
+    body: {
+      actionId: 'picked-wave'
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(inspectResponse.status, 200)
+  assert.deepEqual(inspectResponse.body, { ok: true, canceled: true })
+  assert.equal(inspectCalled, false)
+})
+
+test('declaration-only creator asset picker import imports a user-approved external frame folder', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:generate']
+  })
+  const externalFrames = await createExternalFrameFolder(root, 'approved-wave')
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService: createTestActionImportService(root),
+    officialPlugins: [],
+    pluginDirs: [root],
+    selectCreatorAssetFrameFolder: async () => ({ canceled: false, sourceDir: externalFrames }),
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const importResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/import`, {
+    method: 'POST',
+    token,
+    body: {
+      actionId: 'approved-wave',
+      label: 'Approved Wave'
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(importResponse.status, 200)
+  assert.equal(importResponse.body.ok, true)
+  assert.equal(importResponse.body.canceled, false)
+  assert.equal(importResponse.body.importedAction.id, 'approved-wave')
+  assert.equal(importResponse.body.importedAction.label, 'Approved Wave')
+  assert.equal(importResponse.body.actions.actions.find((action) => action.id === 'approved-wave').sprite, 'cat_anime/sprites/approved-wave.png')
+  assert.equal(fs.existsSync(path.join(root, 'cat_anime', 'flames', 'approved-wave', '01_no_bg.png')), true)
+  assert.equal(JSON.stringify(importResponse.body).includes(externalFrames), false)
+})
+
+test('declaration-only creator asset picker routes reject missing permissions', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: []
+  })
+  const externalFrames = await createExternalFrameFolder(root)
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService: createTestActionImportService(root),
+    officialPlugins: [],
+    pluginDirs: [root],
+    selectCreatorAssetFrameFolder: async () => ({ canceled: false, sourceDir: externalFrames }),
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const inspectResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/inspect`, {
+    method: 'POST',
+    token,
+    body: { actionId: 'picked-wave' }
+  })
+  const importResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/import`, {
+    method: 'POST',
+    token,
+    body: { actionId: 'picked-wave' }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(inspectResponse.status, 403)
+  assert.equal(importResponse.status, 403)
+})
+
+test('declaration-only creator asset picker import rejects symlinks inside picked folders before importing', async (t) => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:generate']
+  })
+  const externalFrames = path.join(root, 'picked-symlink-wave')
+  fs.mkdirSync(externalFrames, { recursive: true })
+  const outsideFile = path.join(root, 'outside-picked-frame.png')
+  await sharp({
+    create: {
+      width: 8,
+      height: 8,
+      channels: 4,
+      background: { r: 30, g: 60, b: 220, alpha: 0.9 }
+    }
+  }).png().toFile(outsideFile)
+  try {
+    fs.symlinkSync(outsideFile, path.join(externalFrames, '01_no_bg.png'))
+  } catch (error) {
+    t.skip(`File symlinks are unavailable: ${error.message}`)
+    return
+  }
+  let importCalled = false
+  const actionImportService = {
+    inspectActionFrames: async () => {
+      throw new Error('inspection should not run before symlink rejection')
+    },
+    importActionFrames: async () => {
+      importCalled = true
+      return {}
+    }
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService,
+    officialPlugins: [],
+    pluginDirs: [root],
+    selectCreatorAssetFrameFolder: async () => ({ canceled: false, sourceDir: externalFrames }),
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const importResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/import`, {
+    method: 'POST',
+    token,
+    body: {
+      actionId: 'picked-symlink-wave'
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(importResponse.status, 400)
+  assert.match(importResponse.body.error, /must not contain symlinks/)
+  assert.equal(importCalled, false)
+})
+
+test('declaration-only creator asset picker import rejects a picked folder that is itself a symlink', async (t) => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:generate']
+  })
+  const externalFrames = await createExternalFrameFolder(root, 'picked-real-wave')
+  const symlinkFolder = path.join(root, 'picked-folder-symlink')
+  try {
+    fs.symlinkSync(externalFrames, symlinkFolder, 'dir')
+  } catch (error) {
+    t.skip(`Directory symlinks are unavailable: ${error.message}`)
+    return
+  }
+  let importCalled = false
+  const actionImportService = {
+    inspectActionFrames: async () => {
+      throw new Error('inspection should not run before symlink rejection')
+    },
+    importActionFrames: async () => {
+      importCalled = true
+      return {}
+    }
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService,
+    officialPlugins: [],
+    pluginDirs: [root],
+    selectCreatorAssetFrameFolder: async () => ({ canceled: false, sourceDir: symlinkFolder }),
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const importResponse = await requestBridge(`${baseUrl}/creator/assets/pick-frames/import`, {
+    method: 'POST',
+    token,
+    body: {
+      actionId: 'picked-folder-symlink'
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(importResponse.status, 400)
+  assert.match(importResponse.body.error, /must not be a symlink/)
   assert.equal(importCalled, false)
 })
 
