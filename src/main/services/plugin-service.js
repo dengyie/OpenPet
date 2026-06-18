@@ -650,6 +650,35 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return realTargetPath
   }
 
+  const resolvePluginDataPath = (manifest, relativePath) => {
+    if (typeof relativePath !== 'string' || !relativePath.trim()) {
+      throw new Error('Plugin data relative path is required')
+    }
+    const normalized = relativePath.replace(/\\/g, '/')
+    if (
+      normalized.startsWith('/') ||
+      /^[a-zA-Z]:\//.test(normalized) ||
+      normalized.includes('\0') ||
+      normalized.split('/').includes('..')
+    ) {
+      throw new Error('Plugin data path must be a safe relative path')
+    }
+    const { dataDir } = ensurePluginCreatorDirs(manifest)
+    const basePath = path.resolve(dataDir)
+    const targetPath = path.resolve(basePath, normalized)
+    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
+      throw new Error('Plugin data path must stay inside plugin data directory')
+    }
+    if (!fs.existsSync(targetPath)) throw new Error('Plugin data path does not exist')
+    const realTargetPath = fs.realpathSync(targetPath)
+    const realBasePath = fs.realpathSync(basePath)
+    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
+      throw new Error('Plugin data path must stay inside plugin data directory')
+    }
+    if (fs.statSync(realTargetPath).isDirectory()) assertDirectoryHasNoSymlinks(realTargetPath)
+    return realTargetPath
+  }
+
   const resolvePickedAssetPath = (sourceDir) => {
     if (typeof sourceDir !== 'string' || !sourceDir.trim()) {
       throw new Error('Selected frame folder is required')
@@ -787,6 +816,33 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const { importedAction, ...actions } = result
       return { ok: true, canceled: false, actions, importedAction }
     },
+    creatorPetPackInspectOutput: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet-pack:import')
+      if (!petPackService?.inspectPackSource) throw new Error('Creator pet pack inspection is not available')
+      const sourcePath = payload.dataRelativePath
+        ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
+        : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pet-pack inspect-output invoked' })
+      return { ok: true, inspection: petPackService.inspectPackSource(sourcePath) }
+    },
+    creatorPetPackImportOutput: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet-pack:import')
+      if (!petPackService?.importPack) throw new Error('Creator pet pack import is not available')
+      const selectionId = String(payload.selectionId || '')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pet-pack import-output invoked' })
+      const imported = petPackService.importPack(selectionId)
+      const activated = payload.activate && imported?.pack?.id && petPackService?.setActivePack
+        ? petPackService.setActivePack(imported.pack.id)
+        : null
+      return { ok: true, imported, activated }
+    },
+    creatorPetPackActivate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet-pack:import')
+      if (!petPackService?.setActivePack) throw new Error('Creator pet pack activation is not available')
+      const packId = String(payload.packId || '')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: `Bridge creator.pet-pack activate invoked: ${packId}`.slice(0, 240) })
+      return { ok: true, activated: petPackService.setActivePack(packId) }
+    },
     petSay: async (payload = {}) => {
       assertPermission(plugin.manifest, 'pet:say')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge pet.say invoked' })
@@ -848,7 +904,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     commandBridgeServer = http.createServer(async (request, response) => {
       try {
         const url = new URL(request.url, `http://${PLUGIN_BRIDGE_HOST}`)
-        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import)$/)
+        const match = url.pathname.match(/^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import|\/creator\/pet-pack\/inspect-output|\/creator\/pet-pack\/import-output|\/creator\/pet-pack\/activate)$/)
         if (!match) {
           sendJson(response, 404, { ok: false, error: 'Not found' })
           return
@@ -930,6 +986,18 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         }
         if (route === '/creator/assets/pick-frames/import') {
           sendJson(response, 200, await runtime.handlers.creatorAssetsPickFramesImport(payload))
+          return
+        }
+        if (route === '/creator/pet-pack/inspect-output') {
+          sendJson(response, 200, await runtime.handlers.creatorPetPackInspectOutput(payload))
+          return
+        }
+        if (route === '/creator/pet-pack/import-output') {
+          sendJson(response, 200, await runtime.handlers.creatorPetPackImportOutput(payload))
+          return
+        }
+        if (route === '/creator/pet-pack/activate') {
+          sendJson(response, 200, await runtime.handlers.creatorPetPackActivate(payload))
           return
         }
         sendJson(response, 404, { ok: false, error: 'Not found' })

@@ -10,6 +10,7 @@ const sharp = require('sharp')
 
 const { createPluginService } = require('../../src/main/services/plugin-service')
 const { createActionImportService } = require('../../src/main/services/action-import-service')
+const { createPetPackService } = require('../../src/main/services/pet-pack-service')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {
@@ -265,6 +266,26 @@ const requestBridge = (url, { method = 'GET', token, body } = {}) => new Promise
   if (body) request.write(JSON.stringify(body))
   request.end()
 })
+
+const createMinimalCodexPetOutput = (root, manifest = {}) => {
+  fs.mkdirSync(root, { recursive: true })
+  const buffer = Buffer.alloc(30)
+  buffer.write('RIFF', 0, 'ascii')
+  buffer.writeUInt32LE(22, 4)
+  buffer.write('WEBP', 8, 'ascii')
+  buffer.write('VP8X', 12, 'ascii')
+  buffer.writeUInt32LE(10, 16)
+  buffer.writeUInt8(0, 20)
+  buffer.writeUIntLE(1536 - 1, 24, 3)
+  buffer.writeUIntLE(1872 - 1, 27, 3)
+  fs.writeFileSync(path.join(root, 'spritesheet.webp'), buffer)
+  fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
+    id: manifest.id || 'creator-studio-cat',
+    displayName: manifest.displayName || 'Creator Studio Cat',
+    description: manifest.description || 'A generated OpenPet pet.',
+    spritesheetPath: 'spritesheet.webp'
+  }))
+}
 
 const createPluginAssetFrame = async (root, relativePath, fileName) => {
   const folderPath = path.join(root, 'weather-declaration', relativePath)
@@ -812,6 +833,117 @@ test('declaration-only creator asset inspection bridge inspects package-local fr
   assert.equal(inspectResponse.body.result.folderName, 'wave')
   assert.equal(inspectResponse.body.result.inspection.valid, true)
   assert.equal(inspectResponse.body.result.inspection.frameCount, 2)
+})
+
+test('declaration-only pet pack bridge inspects imports and activates approved plugin output', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  let capturedDataDir = ''
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } },
+    petPacks: { activePackId: 'legacy-cat', installed: {} }
+  })
+  const petPackService = createPetPackService({
+    settingsService,
+    userPacksDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-packs-')),
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [] }),
+    now: () => new Date('2026-06-19T00:00:00.000Z')
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: createBridgeAwarePetService(),
+    petPackService,
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'hybrid',
+      permissions: ['pet-pack:import']
+    })],
+    spawnCommandProcess: (file, args, options) => {
+      capturedDataDir = options.env.OPENPET_DATA_DIR
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.listenerCount('exit') > 0)
+  const outputDir = path.join(capturedDataDir, 'runs', 'approved-cat', 'outputs')
+  createMinimalCodexPetOutput(outputDir)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  const inspectResponse = await requestBridge(`${baseUrl}/creator/pet-pack/inspect-output`, {
+    method: 'POST',
+    token,
+    body: { dataRelativePath: 'runs/approved-cat/outputs' }
+  })
+  const importResponse = inspectResponse.body.inspection?.selectionId
+    ? await requestBridge(`${baseUrl}/creator/pet-pack/import-output`, {
+        method: 'POST',
+        token,
+        body: { selectionId: inspectResponse.body.inspection.selectionId, activate: true }
+      })
+    : { status: 0, body: {} }
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(inspectResponse.status, 200)
+  assert.equal(inspectResponse.body.ok, true)
+  assert.equal(inspectResponse.body.inspection.valid, true)
+  assert.equal(inspectResponse.body.inspection.pack.id, 'creator-studio-cat')
+  assert.equal(importResponse.status, 200)
+  assert.equal(importResponse.body.ok, true)
+  assert.equal(importResponse.body.imported.pack.id, 'creator-studio-cat')
+  assert.equal(importResponse.body.activated.activePackId, 'creator-studio-cat')
+  assert.equal(settingsService.get().petPacks.activePackId, 'creator-studio-cat')
+})
+
+test('declaration-only pet pack bridge rejects missing import permission', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  let capturedDataDir = ''
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: createBridgeAwarePetService(),
+    petPackService: createPetPackService({
+      settingsService,
+      userPacksDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-packs-')),
+      projectRoot: '/app/openpet',
+      loadLegacyAnimations: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [] })
+    }),
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'hybrid',
+      permissions: []
+    })],
+    spawnCommandProcess: (file, args, options) => {
+      capturedDataDir = options.env.OPENPET_DATA_DIR
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.listenerCount('exit') > 0)
+  createMinimalCodexPetOutput(path.join(capturedDataDir, 'runs', 'approved-cat', 'outputs'))
+  const response = await requestBridge(`${spawned[0].options.env.OPENPET_BRIDGE_URL}/creator/pet-pack/inspect-output`, {
+    method: 'POST',
+    token: spawned[0].options.env.OPENPET_BRIDGE_TOKEN,
+    body: { dataRelativePath: 'runs/approved-cat/outputs' }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(response.status, 403)
+  assert.match(response.body.error, /pet-pack:import/)
 })
 
 test('declaration-only creator asset inspection bridge rejects missing permissions', async () => {
