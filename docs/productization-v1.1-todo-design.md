@@ -1418,6 +1418,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 89 Plugin cleanup evidence archive manifest | Completed; report, collector, and collected evidence directories can now be hashed and validated while archive validity stays separate from cleanup readiness. |
 | P1 | Phase 90 Plugin cleanup evidence runner | Completed; maintainers can execute the collector chain into a hashed pending archive without marking checks passed. |
 | P1 | Phase 98 Packaged app plugin cleanup evidence | Completed; maintainers can launch a packaged app cleanup evidence session and map observed setup/command/service cleanup into the existing report without claiming universal cleanup guarantees. |
+| P1 | Phase 101 Plugin submission evidence contracts | Completed; submission bundles, maintainer approvals, existing-plugin rehearsals, remote-source rehearsals, and community-source evidence summaries now follow shared TypeScript contracts and representative fixtures. |
 | P1 | Phase 40 pet pack export and provenance | Completed; keep provenance and conflict review as constraints for future catalog work. |
 | P1 | Phase 44 plugin author experience rehearsal | Completed; use the archived rehearsal as the plugin author baseline. |
 | P1 | Phase 74 Plugin maintainer approval rehearsal | Completed; submission bundles can now receive separate maintainer approval artifacts and author rehearsal now points at that human review step explicitly. |
@@ -1510,6 +1511,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 53. Phase 90 is complete; plugin cleanup evidence runner archives can now execute the conservative collector and preserve stdout/stderr/run metadata while keeping strict cleanup readiness report-driven.
 54. Phase 98 is complete; packaged app plugin cleanup evidence runner archives can now launch a built OpenPet app, drive fixture setup/command/service cleanup through real plugin services, and update the existing cleanup report without auto-claiming fallback or force-stop checks.
 55. Phase 99 is complete; community-source submission evidence can now wrap the existing remote-source rehearsal with source URL, submitter label, source relation, and independence notes while keeping trust claims conservative.
+56. Phase 100 is complete; candidate-source intake reporting can now classify whether a public source is a compatible OpenPet `plugin.json` package before the Phase 99 evidence flow.
+57. Phase 101 is complete; the plugin submission evidence chain now has shared TypeScript contracts and representative fixtures without changing readiness or trust boundaries.
 
 ## 8. Verification Contract
 

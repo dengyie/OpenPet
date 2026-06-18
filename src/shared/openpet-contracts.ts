@@ -474,6 +474,308 @@ export interface PluginPackageReviewViewState {
 
 export type PluginPackageInspectionResult = CanceledSelectionResult | PluginPackageReviewViewState
 
+export type PluginSubmissionDecision = 'ready-for-human-review' | 'blocked-before-review'
+
+export type PluginMaintainerApprovalDecision = 'approved' | 'changes-requested'
+
+export interface PluginSubmissionCommandSummary {
+  id: string
+  title: string
+}
+
+export interface PluginSubmissionPluginSummary {
+  id: string
+  name: string
+  version: string
+  description: string
+  permissions: string[]
+  networkAllowlist: string[]
+  commands: PluginSubmissionCommandSummary[]
+}
+
+export interface PluginSubmissionPackageSummary {
+  sourceType: string
+  installMode: string
+  sha256: string
+  fileCount: number
+  byteSize: number
+  riskLevel: string
+  requiresReview: boolean
+}
+
+export interface PluginSubmissionSignatureSummary {
+  status: string
+  label: string
+  signer: string
+  algorithm?: string
+  errors?: string[]
+}
+
+export interface PluginSubmissionValidation {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export type PluginSubmissionChecklistStatus = 'pass' | 'fail' | 'warn'
+
+export interface PluginSubmissionChecklistItem {
+  id: string
+  label: string
+  status: PluginSubmissionChecklistStatus
+  evidence: string
+}
+
+export interface PluginSubmissionReport {
+  generatedAt: string
+  sourcePath: string
+  requireSignature: boolean
+  readyForHumanReview: boolean
+  decision: PluginSubmissionDecision
+  validation: PluginSubmissionValidation
+  plugin: PluginSubmissionPluginSummary
+  package: PluginSubmissionPackageSummary
+  signature: PluginSubmissionSignatureSummary
+  permissionDiff: PluginPermissionDiff
+  blockStatus: CatalogReviewState
+  checklist: PluginSubmissionChecklistItem[]
+  reviewerActions: string[]
+}
+
+export interface PluginSubmissionPrPacket {
+  generatedAt: string
+  title: string
+  summary: string
+  sourcePath: string
+  readyForHumanReview: boolean
+  decision: PluginSubmissionDecision
+  plugin: PluginSubmissionPluginSummary
+  package: PluginSubmissionPackageSummary
+  signature: PluginSubmissionSignatureSummary
+  validation: PluginSubmissionValidation
+  checklist: PluginSubmissionChecklistItem[]
+  reviewerActions: string[]
+  body: string
+  assignees: string[]
+  labels: string[]
+}
+
+export interface PluginSubmissionBundleFiles {
+  report: string
+  pr: string
+  summary: string
+}
+
+export interface PluginSubmissionBundleSummary {
+  generatedAt: string
+  sourcePath: string
+  outputDir: string
+  readyForHumanReview: boolean
+  decision: PluginSubmissionDecision
+  plugin: PluginSubmissionPluginSummary
+  package: PluginSubmissionPackageSummary
+  signature: PluginSubmissionSignatureSummary
+  validation: PluginSubmissionValidation
+  files: PluginSubmissionBundleFiles
+  nextSteps: string[]
+}
+
+export interface PluginSubmissionBundleValidationSummary {
+  filesPresent: number
+  filesTotal: number
+  readyForHumanReview: boolean
+  decision: PluginSubmissionDecision | ''
+  requireReady: boolean
+}
+
+export interface PluginSubmissionBundleValidationResult {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  summary: PluginSubmissionBundleValidationSummary
+}
+
+export interface PluginMaintainerApprovalFiles {
+  markdown: string
+  json: string
+}
+
+export interface PluginMaintainerApprovalPluginSummary {
+  id: string
+  name: string
+  version: string
+}
+
+export interface PluginMaintainerApprovalPackageSummary {
+  sha256: string
+}
+
+export interface PluginMaintainerApprovalRecord {
+  generatedAt: string
+  reviewer: string
+  decision: PluginMaintainerApprovalDecision
+  notes: string
+  sourceBundleDir: string
+  plugin: PluginMaintainerApprovalPluginSummary
+  package: PluginMaintainerApprovalPackageSummary
+  submissionDecision: PluginSubmissionDecision
+  approvalReady: boolean
+  files: PluginMaintainerApprovalFiles
+}
+
+export interface PluginMaintainerApprovalValidationSummary {
+  approved: boolean
+  approvalReady: boolean
+  requireApproved: boolean
+}
+
+export interface PluginMaintainerApprovalValidationResult {
+  ok: boolean
+  errors: string[]
+  warnings: string[]
+  summary: PluginMaintainerApprovalValidationSummary
+}
+
+export interface PluginSubmissionSourcePlugin {
+  id: string
+  name: string
+  version: string
+  permissions: string[]
+  networkAllowlist: string[]
+}
+
+export interface PluginSubmissionSourceValidation {
+  ok: boolean
+  warnings: string[]
+  errors: string[]
+  riskLevel: string
+}
+
+export interface PluginSubmissionPackageValidation extends PluginSubmissionSourceValidation {
+  sha256: string
+}
+
+export interface PluginSubmissionRehearsalSubmissionSection {
+  bundleDir: string
+  bundle: PluginSubmissionBundleSummary
+  bundleValidation: PluginSubmissionBundleValidationResult
+}
+
+export interface PluginSubmissionRehearsalApprovalSection {
+  record: PluginMaintainerApprovalRecord
+  validation: PluginMaintainerApprovalValidationResult
+}
+
+export interface PluginSubmissionRehearsalFiles {
+  readme: string
+  checklist: string
+  commands: string
+  summary: string
+}
+
+export interface PluginRealWorldSubmissionRehearsalSummary {
+  generatedAt: string
+  outputDir: string
+  sourcePath: string
+  sourcePlugin: PluginSubmissionSourcePlugin
+  sourceValidation: PluginSubmissionSourceValidation
+  packagePath: string
+  packageValidation: PluginSubmissionPackageValidation
+  submission: PluginSubmissionRehearsalSubmissionSection
+  approval: PluginSubmissionRehearsalApprovalSection
+  files: PluginSubmissionRehearsalFiles
+}
+
+export interface PluginRemoteSourceArchiveProvenance {
+  kind: 'https-archive'
+  archiveUrl: string
+  finalUrl: string
+  archiveSha256: string
+  archiveByteSize: number
+  pluginPath: string
+  archivePluginPath: string
+  archiveRootPrefix: string
+  extractedFileHashes: Record<string, string>
+  downloadedAt: string
+}
+
+export interface PluginRemoteSourceSubmissionRehearsalFiles extends PluginSubmissionRehearsalFiles {
+  provenance: string
+}
+
+export interface PluginRemoteSourceSubmissionRehearsalSummary {
+  generatedAt: string
+  outputDir: string
+  sourceArchive: PluginRemoteSourceArchiveProvenance
+  sourcePlugin: PluginSubmissionSourcePlugin
+  sourceValidation: PluginSubmissionSourceValidation
+  packagePath: string
+  packageValidation: PluginSubmissionPackageValidation
+  submission: PluginSubmissionRehearsalSubmissionSection
+  approval: PluginSubmissionRehearsalApprovalSection
+  files: PluginRemoteSourceSubmissionRehearsalFiles
+}
+
+export type PluginCommunitySourceRelation = 'independent-third-party' | 'external-community' | 'unknown'
+
+export interface PluginCommunitySourceMetadata {
+  kind: 'community-source'
+  url: string
+  sourceLabel: 'community'
+  sourceRelation: PluginCommunitySourceRelation
+  submitter: string
+  independenceNotes: string
+}
+
+export interface PluginCommunitySourceEvidenceApprovalSummary {
+  reviewer: string
+  decision: PluginMaintainerApprovalDecision
+  approvalReady: boolean
+}
+
+export interface PluginCommunitySourceEvidenceArtifact {
+  generatedAt: string
+  communitySource: PluginCommunitySourceMetadata
+  communityEvidenceReady: boolean
+  sourceArchive: PluginRemoteSourceArchiveProvenance
+  sourcePlugin: PluginSubmissionSourcePlugin
+  approval: PluginCommunitySourceEvidenceApprovalSummary
+  boundaries: string[]
+}
+
+export interface PluginCommunitySourceRemoteRehearsalFiles {
+  summary: string
+  readme: string
+  checklist: string
+  commands: string
+  provenance: string
+}
+
+export interface PluginCommunitySourceSubmissionEvidenceFiles {
+  readme: string
+  checklist: string
+  commands: string
+  communityEvidence: string
+  summary: string
+}
+
+export interface PluginCommunitySourceSubmissionEvidenceSummary {
+  generatedAt: string
+  outputDir: string
+  communitySource: PluginCommunitySourceMetadata
+  communityEvidenceReady: boolean
+  sourceArchive: PluginRemoteSourceArchiveProvenance
+  sourcePlugin: PluginSubmissionSourcePlugin
+  sourceValidation: PluginSubmissionSourceValidation
+  packagePath: string
+  packageValidation: PluginSubmissionPackageValidation
+  submission: PluginSubmissionRehearsalSubmissionSection
+  approval: PluginSubmissionRehearsalApprovalSection
+  remoteSourceRehearsal: PluginCommunitySourceRemoteRehearsalFiles
+  boundaries: string[]
+  files: PluginCommunitySourceSubmissionEvidenceFiles
+}
+
 export interface PluginStorageViewState {
   keyCount: number
   byteSize: number

@@ -22,13 +22,18 @@ import type {
   PackagedPluginCleanupRuntimeArtifact,
   PackagedRuntimeSmokeEvidence,
   PackagedRuntimeSmokeReport,
+  PluginCommunitySourceSubmissionEvidenceSummary,
   PluginCleanupEvidenceArchiveManifest,
   PluginCleanupEvidenceChecklistReport,
   PluginCleanupEvidenceCollectorRun,
   PluginCleanupEvidenceReport,
   PluginCleanupEvidenceRunResult,
   PluginCommandRunResultViewState,
+  PluginMaintainerApprovalRecord,
   PluginPackageReviewViewState,
+  PluginRealWorldSubmissionRehearsalSummary,
+  PluginRemoteSourceSubmissionRehearsalSummary,
+  PluginSubmissionBundleSummary,
   PluginSetupRunResultViewState,
   ReleaseEvidenceArchiveManifest,
   ReleaseEvidenceArchiveSummary,
@@ -442,6 +447,280 @@ const pluginCleanupEvidenceRunResultFixture = {
   collectorRun: pluginCleanupEvidenceCollectorRunFixture,
   manifest: pluginCleanupEvidenceArchiveManifestFixture
 } satisfies PluginCleanupEvidenceRunResult
+
+const pluginSubmissionBundleSummaryFixture = {
+  generatedAt: '2026-06-17T15:14:15.000Z',
+  sourcePath: '/tmp/openpet/plugin-submission/packages/openpet.example.weather-status.openpet-plugin.zip',
+  outputDir: '/tmp/openpet/plugin-submission/submission-bundle',
+  readyForHumanReview: true,
+  decision: 'ready-for-human-review',
+  plugin: {
+    id: 'openpet.example.weather-status',
+    name: 'Weather Status',
+    version: '1.0.0',
+    description: 'Example local plugin that fetches allowlisted weather JSON and asks the pet to summarize it.',
+    permissions: ['network', 'pet:say', 'storage'],
+    networkAllowlist: ['api.weather.example.com'],
+    commands: [
+      { id: 'refresh', title: 'Refresh weather' },
+      { id: 'last', title: 'Show last weather' }
+    ]
+  },
+  package: {
+    sourceType: 'zip',
+    installMode: 'install',
+    sha256: '9d90fc03bf24fa70b79fe8f4fbc6fffd62212df9c91d1abf384df0a571790567',
+    fileCount: 4,
+    byteSize: 5457,
+    riskLevel: 'review',
+    requiresReview: false
+  },
+  signature: {
+    status: 'unsigned',
+    label: 'Unsigned plugin',
+    signer: ''
+  },
+  validation: {
+    ok: true,
+    errors: [],
+    warnings: [
+      'Plugin is unsigned; local testing may continue, but catalog/release review should require trusted signature evidence',
+      'Package requires human review before distribution'
+    ]
+  },
+  files: {
+    report: '/tmp/openpet/plugin-submission/submission-bundle/plugin-submission-report.md',
+    pr: '/tmp/openpet/plugin-submission/submission-bundle/plugin-submission-pr.md',
+    summary: '/tmp/openpet/plugin-submission/submission-bundle/plugin-submission-summary.json'
+  },
+  nextSteps: [
+    'Attach or paste plugin-submission-report.md in the plugin PR.',
+    'Use plugin-submission-pr.md as the PR body with the plugin submission template.',
+    'Record manual reviewer approval before merge.',
+    'Do not treat this bundle as signing trust, catalog approval, or runtime smoke evidence.'
+  ]
+} satisfies PluginSubmissionBundleSummary
+
+const pluginMaintainerApprovalRecordFixture = {
+  generatedAt: '2026-06-17T15:14:15.000Z',
+  reviewer: 'OpenPet Maintainer',
+  decision: 'approved',
+  notes: 'Manifest, permissions, package hash, network hosts, and submission artifacts reviewed.',
+  sourceBundleDir: pluginSubmissionBundleSummaryFixture.outputDir,
+  plugin: {
+    id: pluginSubmissionBundleSummaryFixture.plugin.id,
+    name: pluginSubmissionBundleSummaryFixture.plugin.name,
+    version: pluginSubmissionBundleSummaryFixture.plugin.version
+  },
+  package: {
+    sha256: pluginSubmissionBundleSummaryFixture.package.sha256
+  },
+  submissionDecision: pluginSubmissionBundleSummaryFixture.decision,
+  approvalReady: true,
+  files: {
+    markdown: '/tmp/openpet/plugin-submission/submission-bundle/plugin-maintainer-approval.md',
+    json: '/tmp/openpet/plugin-submission/submission-bundle/plugin-maintainer-approval.json'
+  }
+} satisfies PluginMaintainerApprovalRecord
+
+const pluginRealWorldSubmissionRehearsalSummaryFixture = {
+  generatedAt: '2026-06-17T15:14:15.000Z',
+  outputDir: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z',
+  sourcePath: '/Users/mango/project/codex/OpenPet/examples/plugins/weather-status',
+  sourcePlugin: {
+    id: 'openpet.example.weather-status',
+    name: 'Weather Status',
+    version: '1.0.0',
+    permissions: ['network', 'pet:say', 'storage'],
+    networkAllowlist: ['api.weather.example.com']
+  },
+  sourceValidation: {
+    ok: true,
+    warnings: pluginSubmissionBundleSummaryFixture.validation.warnings,
+    errors: [],
+    riskLevel: 'review'
+  },
+  packagePath: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/packages/openpet.example.weather-status.openpet-plugin.zip',
+  packageValidation: {
+    ok: true,
+    warnings: pluginSubmissionBundleSummaryFixture.validation.warnings,
+    errors: [],
+    riskLevel: 'review',
+    sha256: pluginSubmissionBundleSummaryFixture.package.sha256
+  },
+  submission: {
+    bundleDir: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-bundle',
+    bundle: pluginSubmissionBundleSummaryFixture,
+    bundleValidation: {
+      ok: true,
+      errors: [],
+      warnings: [],
+      summary: {
+        filesPresent: 3,
+        filesTotal: 3,
+        readyForHumanReview: true,
+        decision: 'ready-for-human-review',
+        requireReady: true
+      }
+    }
+  },
+  approval: {
+    record: pluginMaintainerApprovalRecordFixture,
+    validation: {
+      ok: true,
+      errors: [],
+      warnings: [],
+      summary: {
+        approved: true,
+        approvalReady: true,
+        requireApproved: true
+      }
+    }
+  },
+  files: {
+    readme: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/README.md',
+    checklist: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/submission-checklist.md',
+    commands: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/commands.json',
+    summary: '/tmp/openpet/plugin-real-world-submission-rehearsal/2026-06-17T15-14-15Z/plugin-real-world-submission-rehearsal-summary.json'
+  }
+} satisfies PluginRealWorldSubmissionRehearsalSummary
+
+const pluginRemoteSourceSubmissionRehearsalSummaryFixture = {
+  generatedAt: '2026-06-17T17:33:39.420Z',
+  outputDir: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z',
+  sourceArchive: {
+    kind: 'https-archive',
+    archiveUrl: 'https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main',
+    finalUrl: 'https://codeload.github.com/dengyie/OpenPet/zip/refs/heads/main',
+    archiveSha256: '607bcf3f6791f228a2ccde8eb72d381d037b6d89205026536530d573748d16c6',
+    archiveByteSize: 18022439,
+    pluginPath: 'examples/plugins/weather-status',
+    archivePluginPath: 'OpenPet-main/examples/plugins/weather-status',
+    archiveRootPrefix: 'OpenPet-main',
+    extractedFileHashes: {
+      'README.md': 'fb27bfdeb2666eb41af6ab962ccd103fb9cb9e814d455f285684a905257f83bb',
+      'config.schema.json': '26a811621e79717fbc5424507be7e8b94d41071119bd86e0b29d25583fb91320',
+      'index.js': '7b6f7ace639645dc174cbd5b1cc8c412f811bcc03df970d48a3094f877e1642b',
+      'plugin.json': '851c7b9d8c9487da7e79225d5572efc13307afc1bc1a44301533d11af876efff'
+    },
+    downloadedAt: '2026-06-17T17:33:39.420Z'
+  },
+  sourcePlugin: pluginRealWorldSubmissionRehearsalSummaryFixture.sourcePlugin,
+  sourceValidation: pluginRealWorldSubmissionRehearsalSummaryFixture.sourceValidation,
+  packagePath: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip',
+  packageValidation: pluginRealWorldSubmissionRehearsalSummaryFixture.packageValidation,
+  submission: {
+    bundleDir: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle',
+    bundle: {
+      ...pluginSubmissionBundleSummaryFixture,
+      generatedAt: '2026-06-17T17:33:39.420Z',
+      sourcePath: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip',
+      outputDir: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle',
+      files: {
+        report: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-submission-report.md',
+        pr: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-submission-pr.md',
+        summary: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-submission-summary.json'
+      }
+    },
+    bundleValidation: pluginRealWorldSubmissionRehearsalSummaryFixture.submission.bundleValidation
+  },
+  approval: {
+    record: {
+      ...pluginMaintainerApprovalRecordFixture,
+      generatedAt: '2026-06-17T17:33:39.420Z',
+      notes: 'Remote source archive, manifest, package hash, and submission artifacts reviewed.',
+      sourceBundleDir: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle',
+      files: {
+        markdown: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-maintainer-approval.md',
+        json: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-bundle/plugin-maintainer-approval.json'
+      }
+    },
+    validation: pluginRealWorldSubmissionRehearsalSummaryFixture.approval.validation
+  },
+  files: {
+    readme: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/README.md',
+    checklist: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/submission-checklist.md',
+    commands: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/commands.json',
+    provenance: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/source-provenance.json',
+    summary: '/tmp/openpet/plugin-remote-source-submission-rehearsal/2026-06-18T00-30-00Z/plugin-remote-source-submission-rehearsal-summary.json'
+  }
+} satisfies PluginRemoteSourceSubmissionRehearsalSummary
+
+const pluginCommunitySourceSubmissionEvidenceSummaryFixture = {
+  generatedAt: '2026-06-18T18:30:00.000Z',
+  outputDir: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z',
+  communitySource: {
+    kind: 'community-source',
+    url: 'https://example.test/community/submission/42',
+    sourceLabel: 'community',
+    sourceRelation: 'independent-third-party',
+    submitter: 'Example Community Author',
+    independenceNotes: 'Repository is maintained outside OpenPet and reviewed as a community source.'
+  },
+  communityEvidenceReady: true,
+  sourceArchive: {
+    ...pluginRemoteSourceSubmissionRehearsalSummaryFixture.sourceArchive,
+    archiveUrl: 'https://example.test/community-plugin/archive.zip',
+    finalUrl: 'https://example.test/community-plugin/archive.zip',
+    archiveSha256: 'c'.repeat(64),
+    archiveByteSize: 8192,
+    pluginPath: 'plugin',
+    archivePluginPath: 'community-plugin-main/plugin',
+    archiveRootPrefix: 'community-plugin-main',
+    downloadedAt: '2026-06-18T18:30:00.000Z'
+  },
+  sourcePlugin: pluginRealWorldSubmissionRehearsalSummaryFixture.sourcePlugin,
+  sourceValidation: pluginRealWorldSubmissionRehearsalSummaryFixture.sourceValidation,
+  packagePath: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip',
+  packageValidation: pluginRealWorldSubmissionRehearsalSummaryFixture.packageValidation,
+  submission: {
+    bundleDir: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle',
+    bundle: {
+      ...pluginSubmissionBundleSummaryFixture,
+      generatedAt: '2026-06-18T18:30:00.000Z',
+      sourcePath: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/packages/openpet.example.weather-status.openpet-plugin.zip',
+      outputDir: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle',
+      files: {
+        report: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle/plugin-submission-report.md',
+        pr: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle/plugin-submission-pr.md',
+        summary: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle/plugin-submission-summary.json'
+      }
+    },
+    bundleValidation: pluginRealWorldSubmissionRehearsalSummaryFixture.submission.bundleValidation
+  },
+  approval: {
+    record: {
+      ...pluginMaintainerApprovalRecordFixture,
+      generatedAt: '2026-06-18T18:30:00.000Z',
+      notes: 'Community source archive, provenance, package hash, and submission artifacts reviewed.',
+      sourceBundleDir: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle',
+      files: {
+        markdown: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle/plugin-maintainer-approval.md',
+        json: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-bundle/plugin-maintainer-approval.json'
+      }
+    },
+    validation: pluginRealWorldSubmissionRehearsalSummaryFixture.approval.validation
+  },
+  remoteSourceRehearsal: {
+    summary: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/plugin-remote-source-submission-rehearsal-summary.json',
+    readme: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/README.remote-source.md',
+    checklist: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/submission-checklist.remote-source.md',
+    commands: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/commands.remote-source.json',
+    provenance: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/source-provenance.json'
+  },
+  boundaries: [
+    'Community-source evidence records provenance and review traceability only.',
+    'Maintainer approval does not prove signing trust, catalog publication, runtime safety, or release readiness.',
+    'Runtime smoke, cleanup readiness, signing, and catalog publication evidence must be collected separately.'
+  ],
+  files: {
+    readme: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/README.md',
+    checklist: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/community-source-checklist.md',
+    commands: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/commands.json',
+    communityEvidence: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/community-source-evidence.json',
+    summary: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/plugin-community-source-submission-evidence-summary.json'
+  }
+} satisfies PluginCommunitySourceSubmissionEvidenceSummary
 
 const macosReleaseEvidenceSummaryFixture = {
   generatedAt: '2026-06-18T02:00:00.000Z',
@@ -1369,6 +1648,11 @@ const signedReleaseClaimFixture = {
 export {
   catalogSelectionFixture,
   pluginReviewFixture,
+  pluginSubmissionBundleSummaryFixture,
+  pluginMaintainerApprovalRecordFixture,
+  pluginRealWorldSubmissionRehearsalSummaryFixture,
+  pluginRemoteSourceSubmissionRehearsalSummaryFixture,
+  pluginCommunitySourceSubmissionEvidenceSummaryFixture,
   pluginSetupRunFixture,
   releaseArchiveManifestFixture,
   releaseArchiveFixture,
