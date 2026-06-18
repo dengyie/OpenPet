@@ -281,6 +281,9 @@ test('settings cursor asset picker copies a selected cursor into hosted user dat
   const sourcePath = path.join(root, 'cursor.png')
   const cursorDir = path.join(root, 'hosted-cursors')
   fs.writeFileSync(sourcePath, 'cursor-image')
+  const settingsWindow = { id: 'settings-window' }
+  const sender = { id: 'settings-web-contents' }
+  const dialogCalls = []
 
   registerIpcHandlers({
     ...createRequiredServices({
@@ -293,7 +296,10 @@ test('settings cursor asset picker copies a selected cursor into hosted user dat
       },
       pluginService: { listPlugins: () => [] },
       dialogService: {
-        showOpenDialog: async () => ({ canceled: false, filePaths: [sourcePath] })
+        showOpenDialog: async (...args) => {
+          dialogCalls.push(args)
+          return { canceled: false, filePaths: [sourcePath] }
+        }
       }
     }),
     cursorAssetService: {
@@ -310,15 +316,23 @@ test('settings cursor asset picker copies a selected cursor into hosted user dat
         }
       }
     },
+    browserWindowService: {
+      fromWebContents: (webContents) => {
+        assert.equal(webContents, sender)
+        return settingsWindow
+      }
+    },
     ipcMainService: ipcMain
   })
 
-  const result = await ipcMain.handlers.get(IPC.SETTINGS_IMPORT_CURSOR)()
+  const result = await ipcMain.handlers.get(IPC.SETTINGS_IMPORT_CURSOR)({ sender })
 
   assert.equal(result.canceled, false)
   assert.equal(result.cursor.enabled, true)
   assert.equal(result.cursor.fileName, 'cursor.png')
   assert.equal(fs.readFileSync(result.cursor.assetPath, 'utf-8'), 'cursor-image')
+  assert.equal(dialogCalls[0][0], settingsWindow)
+  assert.deepEqual(dialogCalls[0][1].properties, ['openFile'])
 })
 
 test('settings save syncs custom cursor settings to the pet renderer', async () => {

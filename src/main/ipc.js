@@ -92,6 +92,14 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
+  const showOpenDialogForEvent = (event, options) => {
+    const parentWindow = event?.sender && browserWindowService?.fromWebContents?.(event.sender)
+    if (parentWindow && !parentWindow.isDestroyed?.()) {
+      return dialogService.showOpenDialog(parentWindow, options)
+    }
+    return dialogService.showOpenDialog(options)
+  }
+
   const getPendingActionFrameSelection = (selectionId) => {
     if (!pendingActionFrameSelection || pendingActionFrameSelection.id !== selectionId) {
       throw new Error('Selected frame folder is no longer available')
@@ -173,9 +181,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 设置面板启动时读取当前设置
   ipcMainService.handle(IPC.SETTINGS_GET, () => petService.getSettings())
 
-  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async () => {
+  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
     if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
-    const selected = await dialogService.showOpenDialog({
+    const selected = await showOpenDialogForEvent(event, {
       title: '选择自定义鼠标指针图片',
       properties: ['openFile'],
       filters: [{ name: 'Cursor Images', extensions: ['png', 'webp', 'cur'] }]
@@ -186,8 +194,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
 
-  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, async (_event, payload) => {
-    const selected = await dialogService.showOpenDialog({
+  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, async (event, payload) => {
+    const selected = await showOpenDialogForEvent(event, {
       title: '选择动作帧文件夹',
       properties: ['openDirectory']
     })
@@ -242,8 +250,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.PET_PACKS_LIST, () => petPackService.listPacks())
 
-  ipcMainService.handle(IPC.PET_PACKS_INSPECT_DIRECTORY, async () => {
-    const selected = await dialogService.showOpenDialog({
+  ipcMainService.handle(IPC.PET_PACKS_INSPECT_DIRECTORY, async (event) => {
+    const selected = await showOpenDialogForEvent(event, {
       title: '选择 Pet Pack 文件夹或 Codex Pet 包',
       properties: ['openFile', 'openDirectory'],
       filters: [{ name: 'Pet Pack Package', extensions: ['zip'] }]
@@ -261,8 +269,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return createPetPackMutationResult(result, petPackService.listPacks())
   })
 
-  ipcMainService.handle(IPC.PET_PACKS_EXPORT, async (_event, payload) => {
-    const selected = await dialogService.showOpenDialog({
+  ipcMainService.handle(IPC.PET_PACKS_EXPORT, async (event, payload) => {
+    const selected = await showOpenDialogForEvent(event, {
       title: '选择 Pet Pack 导出目录',
       properties: ['openDirectory', 'createDirectory']
     })
@@ -381,8 +389,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return pluginService.saveServiceHealthPolicy(payload.pluginId, payload.serviceId, payload.policy)
   })
 
-  ipcMainService.handle(IPC.PLUGINS_INSPECT_PACKAGE, async () => {
-    const selected = await dialogService.showOpenDialog({
+  ipcMainService.handle(IPC.PLUGINS_INSPECT_PACKAGE, async (event) => {
+    const selected = await showOpenDialogForEvent(event, {
       title: '选择插件目录或 OpenPet 插件包',
       properties: ['openFile', 'openDirectory'],
       filters: [
