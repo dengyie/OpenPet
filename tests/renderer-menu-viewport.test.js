@@ -47,7 +47,6 @@ const createRendererHarness = async () => {
   const viewportCalls = []
   const contextMenuRequests = []
   const mousePassthroughCalls = []
-  let getBoundsCalls = 0
   const callbacks = {}
   const elements = {
     pet: createElement('pet'),
@@ -93,10 +92,7 @@ const createRendererHarness = async () => {
         onPetAction: () => {},
         onAnimationsChanged: () => {},
         showContextMenu: (point) => contextMenuRequests.push(point),
-        getBounds: async () => {
-          getBoundsCalls += 1
-          return { x: 0, y: 0, width: 58, height: 58 }
-        },
+        getBounds: async () => ({ x: 0, y: 0, width: 58, height: 58 }),
         getMovementState: async () => ({}),
         moveBy: async () => ({}),
         setPosition: () => {},
@@ -110,7 +106,7 @@ const createRendererHarness = async () => {
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, contextMenuRequests, elements, getBoundsCalls: () => getBoundsCalls, mousePassthroughCalls, viewportCalls }
+  return { callbacks, contextMenuRequests, elements, mousePassthroughCalls, viewportCalls }
 }
 
 test('right-click delegates menu placement to the native main-process menu', async () => {

@@ -124,6 +124,24 @@ test('custom cursor overlay follows pointer inside the clickable pet region', as
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
 })
 
+test('custom cursor overlay aligns the image using hotspot offsets', async () => {
+  const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
+
+  callbacks.settings({
+    customCursor: {
+      enabled: true,
+      assetUrl: 'file:///cursor.png',
+      assetPath: '/cursor.png',
+      fileName: 'cursor.png',
+      hotspotX: 4,
+      hotspotY: 6
+    }
+  })
+  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
+
+  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(20px, 83px, 0)')
+})
+
 test('custom cursor overlay hides outside the clickable pet region', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({ insideFrame: false })
 

@@ -227,6 +227,305 @@ button {
   min-width: 0;
 }
 
+.button-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.button-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ghost.accent {
+  border-color: rgba(109, 76, 255, 0.35);
+  color: #6d4cff;
+}
+
+.ghost.icon-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ghost.danger {
+  color: #d14343;
+}
+
+.cursor-settings-block {
+  display: grid;
+  gap: 20px;
+  padding: 22px 0 6px;
+  border-bottom: 1px solid #dde2e8;
+}
+
+.cursor-selection-header {
+  display: grid;
+  gap: 8px;
+}
+
+.cursor-selection-header h2,
+.cursor-library-title h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.cursor-selection-header p {
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cursor-options-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 164px;
+  gap: 18px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+  scrollbar-width: thin;
+}
+
+.cursor-option-card {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  min-height: 214px;
+  padding: 16px 14px 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.cursor-option-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.11);
+}
+
+.cursor-option-card.selected {
+  border-color: #7c64ff;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f1ff 100%);
+  box-shadow: 0 18px 36px rgba(124, 100, 255, 0.18);
+}
+
+.cursor-option-card.add-card {
+  border-style: dashed;
+  border-color: rgba(124, 100, 255, 0.45);
+  color: #6d4cff;
+}
+
+.cursor-card-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 138px;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.cursor-card-surface {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(246, 247, 251, 0.96)),
+    linear-gradient(45deg, rgba(203, 213, 225, 0.16) 25%, transparent 25%, transparent 50%, rgba(203, 213, 225, 0.16) 50%, rgba(203, 213, 225, 0.16) 75%, transparent 75%, transparent);
+  background-size: auto, 36px 36px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.cursor-card-preview img,
+.cursor-library-preview img {
+  position: relative;
+  z-index: 1;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.cursor-card-add-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  color: #7c64ff;
+  background: rgba(124, 100, 255, 0.1);
+}
+
+.cursor-card-add-icon svg,
+.cursor-card-check svg,
+.cursor-guidance-icon svg,
+.cursor-library-title-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.cursor-card-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.cursor-option-card.selected .cursor-card-label {
+  color: #6d4cff;
+}
+
+.cursor-card-check {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8b76ff 0%, #6d4cff 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(124, 100, 255, 0.3);
+}
+
+.cursor-library-panel {
+  display: grid;
+  gap: 8px;
+  padding: 26px 26px 10px;
+  border: 1px solid #e8e8ef;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfbfe 100%);
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.08);
+}
+
+.cursor-library-header,
+.cursor-library-row,
+.cursor-library-name-row,
+.cursor-library-meta {
+  display: flex;
+  align-items: center;
+}
+
+.cursor-library-header {
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 12px;
+}
+
+.cursor-library-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cursor-library-title-icon,
+.cursor-guidance-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  color: #98a2b3;
+}
+
+.cursor-library-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cursor-library-list {
+  display: grid;
+}
+
+.cursor-library-row {
+  gap: 18px;
+  padding: 18px 0;
+  border-top: 1px solid #edf0f4;
+}
+
+.cursor-library-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 172px;
+  min-height: 60px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.cursor-library-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cursor-library-name-row {
+  gap: 10px;
+  min-width: 0;
+}
+
+.cursor-library-name-row strong {
+  font-size: 15px;
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.cursor-usage-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(124, 100, 255, 0.12);
+  color: #6d4cff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cursor-library-meta {
+  gap: 18px;
+  flex-wrap: wrap;
+  color: #667085;
+  font-size: 13px;
+}
+
+.cursor-library-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cursor-library-empty {
+  padding: 22px 0 12px;
+  border-top: 1px solid #edf0f4;
+  color: #667085;
+  font-size: 14px;
+}
+
+.cursor-edit-form {
+  display: grid;
+  gap: 10px;
+}
+
+.cursor-guidance-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.5;
+}
 .cursor-preview-card {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -240,49 +539,47 @@ button {
 
 .cursor-preview-surface {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-  min-height: 112px;
-  padding: 12px;
+  place-items: center;
+  min-height: 132px;
+  padding: 14px;
   border-radius: 10px;
   background:
     radial-gradient(circle at top left, rgba(31, 41, 55, 0.06), transparent 42%),
     linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
 }
 
-.cursor-preview-slot {
+.cursor-preview-target {
   position: relative;
-  min-height: 84px;
-  overflow: hidden;
-  border: 1px solid #d6dce4;
-  border-radius: 10px;
+  width: 108px;
+  height: 108px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
   background:
-    linear-gradient(135deg, rgba(148, 163, 184, 0.12) 25%, transparent 25%) -8px 0 / 16px 16px,
-    linear-gradient(225deg, rgba(148, 163, 184, 0.12) 25%, transparent 25%) -8px 0 / 16px 16px,
-    linear-gradient(315deg, rgba(148, 163, 184, 0.12) 25%, transparent 25%) 0 0 / 16px 16px,
-    linear-gradient(45deg, rgba(148, 163, 184, 0.12) 25%, transparent 25%) 0 0 / 16px 16px,
-    #fbfcfe;
+    linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+    #ffffff;
+  background-size: 18px 18px;
 }
 
-.cursor-preview-target {
+.cursor-preview-target::before {
+  content: '';
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(31, 41, 55, 0.2);
+  left: 28px;
+  top: 28px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  transform: translate(-50%, -50%);
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
 }
 
 .cursor-preview-surface img {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 24px;
-  height: 24px;
+  left: 28px;
+  top: 28px;
+  max-width: 56px;
+  max-height: 56px;
   object-fit: contain;
-  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
@@ -291,7 +588,7 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 12px;
+  padding: 14px;
   color: #6b7280;
   font-size: 12px;
   text-align: center;
@@ -1236,6 +1533,20 @@ button {
 
   .actions-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .cursor-library-header,
+  .cursor-library-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cursor-library-preview {
+    width: 100%;
+  }
+
+  .cursor-library-row-actions {
+    justify-content: flex-start;
   }
 
   .preview-stage {

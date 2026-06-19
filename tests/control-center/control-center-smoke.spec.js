@@ -76,24 +76,36 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '菜单位置' }).getByRole('button', { name: '左侧' })).toHaveClass(/active/)
   })
 
-  test('configures a custom pet hover cursor in the demo API session', async ({ page }) => {
+  test('configures a custom pet hover cursor in the redesigned cursor library', async ({ page }) => {
     await page.goto('/')
 
-    await expect(page.locator('.field-row', { hasText: '自定义鼠标指针' })).toHaveCount(1)
-    await expect(page.locator('.cursor-preview-card')).toHaveCount(1)
-    await expect(page.locator('.cursor-preview-slot')).toHaveCount(6)
-    await expect(page.locator('.cursor-preview-card')).toContainText('未选择指针')
+    const cursorHeader = page.locator('.cursor-selection-header')
+    const cursorOptionsRow = page.locator('.cursor-options-row')
+    const cursorOptionCards = page.locator('.cursor-option-card')
+    const cursorLibraryPanel = page.locator('.cursor-library-panel')
 
-    await page.getByRole('button', { name: '选择图片' }).click()
-    await expect(page.locator('.cursor-preview-card')).toContainText('demo-cursor.png')
-    await expect(page.locator('.cursor-preview-slot img')).toHaveCount(6)
-    await expect(page.locator('.cursor-preview-slot').first().locator('img')).toHaveAttribute('src', /data:image\/svg\+xml/)
-    await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
-    await expect(page.locator('.status-line')).toContainText('已选择并启用鼠标指针')
+    await expect(cursorHeader).toContainText('指针选择')
+    await expect(cursorHeader).toContainText('预览会模拟真实指针落点')
+    await expect(cursorOptionsRow).toBeVisible()
+    await expect(cursorOptionCards).toHaveCount(8)
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('系统默认')
+    await expect(cursorLibraryPanel).toBeVisible()
+    await expect(page.locator('.cursor-library-empty')).toContainText('还没有上传自定义指针')
 
-    await page.getByRole('button', { name: '清除' }).click()
-    await expect(page.locator('.cursor-preview-card')).toContainText('未选择指针')
-    await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toBeDisabled()
+    await page.getByRole('button', { name: '添加自定义' }).click()
+    await expect(cursorOptionCards).toHaveCount(9)
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('demo-cursor')
+    await expect(cursorLibraryPanel).toContainText('demo-cursor')
+    await expect(cursorLibraryPanel).toContainText('使用中')
+
+    await page.getByRole('button', { name: '系统默认' }).click()
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('系统默认')
+
+    page.once('dialog', (dialog) => dialog.accept())
+    await page.getByRole('button', { name: '管理' }).click()
+    await page.getByRole('button', { name: '删除' }).click()
+    await expect(cursorOptionCards).toHaveCount(8)
+    await expect(page.locator('.cursor-library-empty')).toContainText('还没有上传自定义指针')
   })
 
   test('persists grounded and home settings in the demo API session', async ({ page }) => {
@@ -129,25 +141,25 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
 
-    await page.getByLabel('Base URL').fill('https://ai.example.test/v1')
-    await page.getByLabel('Model').fill('openpet-test-model')
+    await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://ai.example.test/v1')
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('openpet-test-model')
     await page.getByLabel('System Prompt').fill('Stay tiny, helpful, and local-first.')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(page.locator('.status-line')).toContainText('AI 配置已保存')
 
-    const apiKeyInput = page.locator('.field-row', { hasText: 'API Key' }).locator('input[type="password"]')
+    const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
+    const apiKeyInput = page.getByPlaceholder('输入 API Key')
     await apiKeyInput.fill('sk-demo-secret')
-    await page.getByRole('button', { name: '保存密钥' }).click()
+    await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
     await expect(page.locator('.status-line')).toContainText('API Key 已保存')
-    await expect(apiKeyInput).toHaveValue('')
-    await expect(page.locator('.field-row', { hasText: 'API Key' })).toContainText('已保存')
+    await expect(apiKeyRow).toContainText('已保存')
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
-    await expect(page.getByLabel('Base URL')).toHaveValue('https://ai.example.test/v1')
-    await expect(page.getByLabel('Model')).toHaveValue('openpet-test-model')
+    await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveValue('https://ai.example.test/v1')
+    await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveValue('openpet-test-model')
     await expect(page.getByLabel('System Prompt')).toHaveValue('Stay tiny, helpful, and local-first.')
-    await expect(page.locator('.field-row', { hasText: 'API Key' })).toContainText('已保存')
+    await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 
   test('persists image generation config and supports key health actions in the demo API', async ({ page }) => {

@@ -14,12 +14,24 @@ import type {
   ServiceStatusViewState,
   UpdateCheckViewState
 } from '../../../shared/openpet-contracts'
+import {
+  SYSTEM_CURSOR_ID,
+  createDefaultRuntimeCursor,
+  normalizeCursorSettingsState,
+  normalizeRuntimeCursor
+} from '../../../shared/cursor-library.ts'
+
+const normalizeCursorState = (settings: Partial<ControlCenterSettings> | null | undefined) => (
+  normalizeCursorSettingsState(settings || {}) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors'>
+)
 
 export const defaultCustomCursor = {
   enabled: false,
   assetPath: '',
   assetUrl: '',
-  fileName: ''
+  fileName: '',
+  hotspotX: 0,
+  hotspotY: 0
 } satisfies CustomCursorSettings
 
 export const defaultSettings = {
@@ -29,13 +41,15 @@ export const defaultSettings = {
   bubbleDuration: 1300,
   menuPosition: 'auto',
   autoStart: false,
+  selectedCursorId: SYSTEM_CURSOR_ID,
+  customCursor: createDefaultRuntimeCursor(),
+  customCursors: [],
   grounded: false,
   home: {
     enabled: false,
     radius: 'medium',
     hasAnchor: false
-  },
-  customCursor: defaultCustomCursor
+  }
 } satisfies ControlCenterSettings
 
 export const defaultAiConfig = {
@@ -158,20 +172,18 @@ export const defaultUpdateCheck = {
   message: ''
 } satisfies UpdateCheckViewState
 
-export const cloneCustomCursor = (cursor: Partial<CustomCursorSettings> | null | undefined): CustomCursorSettings => ({
-  ...defaultCustomCursor,
-  ...(cursor || {}),
-  enabled: Boolean(cursor?.enabled && cursor?.assetUrl)
-})
+export const cloneCustomCursor = (cursor: Partial<CustomCursorSettings> | null | undefined): CustomCursorSettings => (
+  normalizeRuntimeCursor(cursor) as CustomCursorSettings
+)
 
 export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
   ...defaultSettings,
   ...(settings || {}),
+  ...normalizeCursorState(settings),
   home: {
     ...defaultSettings.home,
     ...(settings?.home || {})
-  },
-  customCursor: cloneCustomCursor(settings?.customCursor)
+  }
 })
 
 export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({

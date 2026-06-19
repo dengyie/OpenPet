@@ -8,7 +8,8 @@
 const fs = require('fs')
 const path = require('path')
 const { app } = require('electron')
-const { createDefaultCursorSettings, normalizeCustomCursor } = require('./services/cursor-asset-service')
+const { createDefaultCursorSettings } = require('./services/cursor-asset-service')
+const { SYSTEM_CURSOR_ID, normalizeCursorSettingsState } = require('../shared/cursor-library')
 
 // 设置保存在 Electron 用户数据目录，卸载重装后仍然保留。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -23,6 +24,9 @@ const defaultSettings = {
   bubbleDuration: 1300,  // 气泡显示时长（ms）
   menuPosition: 'auto',  // 右键菜单相对宠物位置：auto/right/left/above/below
   autoStart: false,      // 是否开机自启
+  selectedCursorId: SYSTEM_CURSOR_ID,
+  customCursor: createDefaultCursorSettings(),
+  customCursors: [],
   petBehavior: {
     grounded: false,
     home: {
@@ -31,7 +35,6 @@ const defaultSettings = {
       anchor: null
     }
   },
-  customCursor: createDefaultCursorSettings(),
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -112,7 +115,7 @@ const mergeSettings = (settings = {}) => ({
       ? settings.ai.conversations
       : defaultSettings.ai.conversations
   },
-  customCursor: normalizeCustomCursor(settings.customCursor),
+  ...normalizeCursorSettingsState(settings),
   petBehavior: {
     ...defaultSettings.petBehavior,
     ...(isPlainObject(settings.petBehavior) ? settings.petBehavior : {}),

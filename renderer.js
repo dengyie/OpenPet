@@ -66,7 +66,7 @@ const state = {
   drag: null,            // { pointerId, offsetX, offsetY, moved } | null
   mousePassthrough: false,
   currentLayout: null,
-  customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '' },
+  customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '', hotspotX: 0, hotspotY: 0 },
   customCursorOverlayVisible: false,
   nativeCursor: '',
   lastPointerPoint: null,
@@ -267,14 +267,11 @@ const setMousePassthrough = (passthrough) => {
 
 const isPointInsideCurrentFrame = (clientX, clientY) => {
   if (state.drag) return true
-  const animation = state.animations[state.action]
   const layout = state.currentLayout
-  if (!animation || !layout) return true
+  if (!layout) return true
 
-  const hitbox = petHitbox.getFrameHitbox({
-    animation,
+  const hitbox = petHitbox.getViewportHitbox({
     layout,
-    frameIndex: state.frameIndex,
     windowHeight: window.innerHeight,
     scale: state.scale
   })
@@ -299,7 +296,9 @@ const setNativeCursor = (nextCursor) => {
 }
 
 const moveCursorOverlay = (clientX, clientY) => {
-  cursorOverlay.style.transform = `translate3d(${Math.round(clientX)}px, ${Math.round(clientY)}px, 0)`
+  const hotspotX = Number.isFinite(Number(state.customCursor.hotspotX)) ? Number(state.customCursor.hotspotX) : 0
+  const hotspotY = Number.isFinite(Number(state.customCursor.hotspotY)) ? Number(state.customCursor.hotspotY) : 0
+  cursorOverlay.style.transform = `translate3d(${Math.round(clientX - hotspotX)}px, ${Math.round(clientY - hotspotY)}px, 0)`
 }
 
 const hideCursorOverlay = () => {
@@ -638,7 +637,9 @@ window.petAPI.onSettingsChanged((s) => {
       enabled: Boolean(s.customCursor.enabled && s.customCursor.assetUrl),
       assetPath: s.customCursor.assetPath || '',
       assetUrl: s.customCursor.assetUrl || '',
-      fileName: s.customCursor.fileName || ''
+      fileName: s.customCursor.fileName || '',
+      hotspotX: Number(s.customCursor.hotspotX) || 0,
+      hotspotY: Number(s.customCursor.hotspotY) || 0
     }
     refreshMouseStateFromLastPoint()
   }

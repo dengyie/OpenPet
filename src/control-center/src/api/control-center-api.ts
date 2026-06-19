@@ -1,4 +1,5 @@
 import { cloneAiConfig, cloneCatalog, cloneImageGenerationConfig, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
   ActionFrameInspectionResult,
@@ -14,6 +15,7 @@ import type {
   CatalogState,
   ControlCenterApi,
   ControlCenterSettings,
+  CustomCursorRecord,
   ImageGenerationConfigViewState,
   JsonObject,
   PluginCommandRunResultViewState,
@@ -573,23 +575,36 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return normalizeDemoSettings(demoState.settings)
   },
+  previewScale: () => {},
   importCursor: async () => {
+    const cursor: CustomCursorRecord = {
+      id: 'demo-cursor',
+      type: 'custom',
+      name: stripFileExtension('demo-cursor.png'),
+      assetPath: '/demo/cursors/demo-cursor.png',
+      assetUrl: demoCursorAssetUrl,
+      fileName: 'demo-cursor.png',
+      width: 32,
+      height: 32,
+      byteSize: 2048,
+      hotspotX: 0,
+      hotspotY: 0,
+      createdAt: '2026-06-19T10:00:00.000Z'
+    }
     demoState.settings = normalizeDemoSettings({
       ...demoState.settings,
-      customCursor: {
-        enabled: true,
-        assetPath: '/demo/cursors/demo-cursor.png',
-        assetUrl: demoCursorAssetUrl,
-        fileName: 'demo-cursor.png'
-      }
+      selectedCursorId: cursor.id,
+      customCursors: [
+        ...demoState.settings.customCursors.filter((item) => item.id !== cursor.id),
+        cursor
+      ]
     })
     writeDemoState()
     return {
       canceled: false,
-      cursor: { ...demoState.settings.customCursor }
+      cursor
     }
   },
-  previewScale: () => {},
   getActions: async () => defaultActionsConfig,
   inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
   reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
