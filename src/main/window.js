@@ -10,6 +10,7 @@ const BASE_HEIGHT = 300
 const PET_BASE_SCALE = 0.5
 const CONTROL_CENTER_WIDTH = 900
 const CONTROL_CENTER_HEIGHT = 640
+const RESIZE_ANCHOR = Symbol('openpet.resizeAnchor')
 
 const toFiniteNumber = (value, fallback) => (
   Number.isFinite(Number(value)) ? Number(value) : fallback
@@ -30,27 +31,51 @@ const normalizeViewportSize = (viewport = {}) => {
   }
 }
 
+const boundsEqual = (left, right) => (
+  left?.x === right?.x &&
+  left?.y === right?.y &&
+  left?.width === right?.width &&
+  left?.height === right?.height
+)
+
+const getResizeAnchor = (petWindow, bounds) => {
+  const existing = petWindow[RESIZE_ANCHOR]
+  if (existing && boundsEqual(bounds, existing.lastAppliedBounds)) return existing
+  return {
+    centerX: bounds.x + bounds.width / 2,
+    bottomY: bounds.y + bounds.height,
+    lastAppliedBounds: bounds
+  }
+}
+
 const resizeWindowAroundBottomCenter = (petWindow, targetWidth, targetHeight) => {
   const bounds = petWindow.getBounds()
   if (!isValidWindowSize(bounds)) {
     const [fallbackX, fallbackY] = typeof petWindow.getPosition === 'function' ? petWindow.getPosition() : [0, 0]
-    petWindow.setBounds({
+    const nextBounds = {
       x: toFiniteNumber(bounds?.x, fallbackX),
       y: toFiniteNumber(bounds?.y, fallbackY),
       width: targetWidth,
       height: targetHeight
-    })
+    }
+    petWindow[RESIZE_ANCHOR] = {
+      centerX: nextBounds.x + targetWidth / 2,
+      bottomY: nextBounds.y + targetHeight,
+      lastAppliedBounds: nextBounds
+    }
+    petWindow.setBounds(nextBounds)
     return
   }
+  const anchor = getResizeAnchor(petWindow, bounds)
   if (targetWidth === bounds.width && targetHeight === bounds.height) return
-  const deltaW = targetWidth - bounds.width
-  const deltaH = targetHeight - bounds.height
-  petWindow.setBounds({
-    x: bounds.x - Math.round(deltaW / 2),
-    y: bounds.y - deltaH,
+  const nextBounds = {
+    x: Math.round(anchor.centerX - targetWidth / 2),
+    y: Math.round(anchor.bottomY - targetHeight),
     width: targetWidth,
     height: targetHeight
-  })
+  }
+  petWindow[RESIZE_ANCHOR] = { ...anchor, lastAppliedBounds: nextBounds }
+  petWindow.setBounds(nextBounds)
 }
 
 const applyWindowScale = (petWindow, scale) => {

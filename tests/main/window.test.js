@@ -155,7 +155,7 @@ test('applyWindowScale uses the reduced visual base size for user scale values',
   applyWindowScale(petWindow, 0.5)
 
   assert.deepEqual(petWindow.getBounds(), {
-    x: 212,
+    x: 213,
     y: 425,
     width: 75,
     height: 75
@@ -200,4 +200,58 @@ test('applyPetViewport can shrink dynamic action bounds below their source size'
     width: 60,
     height: 90
   })
+})
+
+test('applyPetViewport preserves the same horizontal anchor across repeated odd-pixel resizes', () => {
+  const instances = []
+  const { applyPetViewport, createWindow } = loadWindowModule()
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: 150, height: 150 })
+  const initialCenter = petWindow.getBounds().x + petWindow.getBounds().width / 2
+
+  for (const width of [151, 150, 151, 150, 151, 150, 151, 150]) {
+    applyPetViewport(petWindow, { width, height: 150, scale: 1 })
+  }
+
+  const bounds = petWindow.getBounds()
+  assert.equal(bounds.x + bounds.width / 2, initialCenter)
+})
+
+test('applyPetViewport keeps the left edge stable for adjacent odd-even preview widths', () => {
+  const instances = []
+  const { applyPetViewport, createWindow } = loadWindowModule()
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: 150, height: 150 })
+
+  for (const width of [151, 150, 151, 150]) {
+    applyPetViewport(petWindow, { width, height: 150, scale: 1 })
+    assert.equal(petWindow.getBounds().x, 100)
+  }
+})
+
+test('applyPetViewport preserves the same bottom anchor across repeated odd-pixel resizes', () => {
+  const instances = []
+  const { applyPetViewport, createWindow } = loadWindowModule()
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: 150, height: 150 })
+  const initialBottom = petWindow.getBounds().y + petWindow.getBounds().height
+
+  for (const height of [151, 150, 151, 150, 151, 150, 151, 150]) {
+    applyPetViewport(petWindow, { width: 150, height, scale: 1 })
+  }
+
+  const bounds = petWindow.getBounds()
+  assert.equal(bounds.y + bounds.height, initialBottom)
 })
