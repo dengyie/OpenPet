@@ -10,8 +10,21 @@ export interface ControlCenterSettings {
   walkDuration: number
   bubbleDuration: number
   autoStart: boolean
+  customCursor: CustomCursorSettings
   grounded: boolean
   home: ControlCenterPetHomeSettings
+}
+
+export interface CustomCursorSettings {
+  enabled: boolean
+  assetPath: string
+  assetUrl: string
+  fileName: string
+}
+
+export interface CursorImportResult {
+  canceled: boolean
+  cursor?: CustomCursorSettings
 }
 
 export type PetHomeRadius = 'small' | 'medium' | 'large'

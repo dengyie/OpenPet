@@ -8,6 +8,7 @@
 const fs = require('fs')
 const path = require('path')
 const { app } = require('electron')
+const { createDefaultCursorSettings, normalizeCustomCursor } = require('./services/cursor-asset-service')
 
 // 设置保存在 Electron 用户数据目录，卸载重装后仍然保留。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -21,6 +22,7 @@ const defaultSettings = {
   walkDuration: 15000,   // 散步自动停止时长（ms）
   bubbleDuration: 1300,  // 气泡显示时长（ms）
   autoStart: false,      // 是否开机自启
+  customCursor: createDefaultCursorSettings(),
   petBehavior: {
     grounded: false,
     home: {
@@ -89,6 +91,7 @@ const mergeSettings = (settings = {}) => ({
       ? settings.ai.conversations
       : defaultSettings.ai.conversations
   },
+  customCursor: normalizeCustomCursor(settings.customCursor),
   petBehavior: {
     ...defaultSettings.petBehavior,
     ...(isPlainObject(settings.petBehavior) ? settings.petBehavior : {}),

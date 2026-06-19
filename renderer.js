@@ -17,8 +17,25 @@ const pet = document.getElementById('pet')       // 主容器，承载所有指�
 const catEl = document.getElementById('cat')     // 小猫元素，精灵图渲染目标
 const bubble = document.getElementById('bubble') // 头顶气泡
 const menu = document.getElementById('menu')     // 右键菜单容器
+const cursorOverlay = document.getElementById('custom-cursor-overlay') || {
+  style: {},
+  classList: { add() {}, remove() {}, contains() { return false } },
+  removeAttribute() {},
+  src: ''
+}
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
 const PET_BASE_SCALE = 0.5                       // UI 100% 对应旧版视觉大小的 50%
+const cursorStyle = {
+  resolvePetCursorStyle: () => '',
+  resolvePetCursorOverlayState: () => ({ visible: false, assetUrl: '', nativeCursor: '' }),
+  ...(window.OpenPetCursorStyle || {})
+}
+const petHitbox = window.OpenPetHitbox || {
+  getFrameHitbox: () => null,
+  getWindowHitbox: () => null,
+  getViewportHitbox: () => null,
+  isPointInHitbox: () => false
+}
 
 const state = {
   // ── 动画 ──
@@ -40,7 +57,14 @@ const state = {
 
   // ── 拖拽 ──
   drag: null,            // { pointerId, offsetX, offsetY, moved } | null
+  mousePassthrough: false,
   currentLayout: null,
+  customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '' },
+  customCursorOverlayVisible: false,
+  nativeCursor: '',
+  lastPointerPoint: null,
+  lastMouseDiagnostic: null,
+  lastMouseDiagnosticAt: 0,
 
   // ── 气泡 ──
   bubbleTimer: 0,        // setTimeout id，到期后隐藏气泡
@@ -48,7 +72,52 @@ const state = {
 }
 state.scale = PET_BASE_SCALE
 
+const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
 const normalizePetScale = (scale) => Math.max((Number(scale) || 1) * PET_BASE_SCALE, Number.EPSILON)
+
+const logPetEvent = (event, details = {}, { level = 'debug', actor = 'system', message = event } = {}) => {
+  window.petAPI.recordAppLog?.({
+    level,
+    actor,
+    event,
+    message,
+    details: {
+      action: state.action,
+      frameIndex: state.frameIndex,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      scale: state.scale,
+      ...details
+    }
+  })
+}
+
+const createPointDetails = (event) => ({
+  clientX: roundNumber(event.clientX),
+  clientY: roundNumber(event.clientY),
+  screenX: roundNumber(event.screenX),
+  screenY: roundNumber(event.screenY)
+})
+
+const maybeLogMouseDiagnostic = (event, diagnostic) => {
+  const now = Date.now()
+  const previous = state.lastMouseDiagnostic
+  const changed = !previous ||
+    previous.insideFrame !== diagnostic.insideFrame ||
+    previous.insideCursorRegion !== diagnostic.insideCursorRegion ||
+    previous.passthrough !== diagnostic.passthrough ||
+    previous.cursorApplied !== diagnostic.cursorApplied ||
+    previous.cursorOverlayVisible !== diagnostic.cursorOverlayVisible ||
+    previous.dragging !== diagnostic.dragging ||
+    previous.menuOpen !== diagnostic.menuOpen
+  if (!changed && now - state.lastMouseDiagnosticAt < 1000) return
+  state.lastMouseDiagnosticAt = now
+  state.lastMouseDiagnostic = diagnostic
+  logPetEvent('pet.pointer.diagnostic', {
+    ...createPointDetails(event),
+    ...diagnostic
+  }, { actor: 'user', message: 'Pointer hitbox diagnostic' })
+}
 
 // ═══════════════════════════════════════════
 // 2. 气泡 — 在小猫头顶显示文字，定时消失
@@ -181,6 +250,143 @@ const scheduleFrameTick = () => {
   state.frameTimer = window.setTimeout(tickFrame, getFrameDuration(a, state.frameIndex))
 }
 
+const setMousePassthrough = (passthrough) => {
+  const next = Boolean(passthrough)
+  if (state.mousePassthrough === next) return
+  state.mousePassthrough = next
+  window.petAPI.setMousePassthrough?.(next)
+  logPetEvent('pet.mouse.passthrough.changed', {
+    passthrough: next
+  }, { message: 'Mouse passthrough changed' })
+}
+
+const isPointInsideCurrentFrame = (clientX, clientY) => {
+  if (state.drag || menu.classList.contains('open')) return true
+  const layout = state.currentLayout
+  if (!layout) return true
+
+  const hitbox = petHitbox.getViewportHitbox({
+    layout,
+    windowHeight: window.innerHeight,
+    scale: state.scale
+  })
+  return petHitbox.isPointInHitbox({ x: clientX, y: clientY }, hitbox)
+}
+
+const isPointInsideCursorRegion = (clientX, clientY) => {
+  if (state.drag || menu.classList.contains('open')) return true
+  const hitbox = petHitbox.getWindowHitbox({
+    windowWidth: window.innerWidth,
+    windowHeight: window.innerHeight
+  })
+  return petHitbox.isPointInHitbox({ x: clientX, y: clientY }, hitbox)
+}
+
+const setNativeCursor = (nextCursor) => {
+  const value = nextCursor || ''
+  document.documentElement.style.cursor = value
+  document.body.style.cursor = value
+  pet.style.cursor = value
+  state.nativeCursor = value
+}
+
+const moveCursorOverlay = (clientX, clientY) => {
+  cursorOverlay.style.transform = `translate3d(${Math.round(clientX)}px, ${Math.round(clientY)}px, 0)`
+}
+
+const hideCursorOverlay = () => {
+  if (!state.customCursorOverlayVisible) return
+  state.customCursorOverlayVisible = false
+  cursorOverlay.classList.remove('visible')
+}
+
+const showCursorOverlay = (assetUrl, clientX, clientY) => {
+  if (cursorOverlay.src !== assetUrl) cursorOverlay.src = assetUrl
+  moveCursorOverlay(clientX, clientY)
+  if (state.customCursorOverlayVisible) return
+  state.customCursorOverlayVisible = true
+  cursorOverlay.classList.add('visible')
+}
+
+const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint) => {
+  const context = {
+    insideFrame,
+    dragging: Boolean(state.drag),
+    menuOpen: menu.classList.contains('open')
+  }
+  const overlayState = cursorStyle.resolvePetCursorOverlayState(state.customCursor, context)
+  const fallbackCursor = cursorStyle.resolvePetCursorStyle(state.customCursor, context)
+  setNativeCursor(overlayState.visible ? overlayState.nativeCursor : fallbackCursor)
+  if (overlayState.visible && point) showCursorOverlay(overlayState.assetUrl, point.clientX, point.clientY)
+  else hideCursorOverlay()
+  return overlayState
+}
+
+const refreshMouseStateFromLastPoint = () => {
+  if (!state.lastPointerPoint) {
+    applyPetCursorStyle(false)
+    return
+  }
+  const { clientX, clientY } = state.lastPointerPoint
+  const insideFrame = isPointInsideCurrentFrame(clientX, clientY)
+  const insideCursorRegion = isPointInsideCursorRegion(clientX, clientY)
+  const cursorState = applyPetCursorStyle(insideFrame, { clientX, clientY })
+  setMousePassthrough(!insideFrame)
+  maybeLogMouseDiagnostic({ clientX, clientY, screenX: clientX, screenY: clientY }, {
+    insideFrame,
+    insideCursorRegion,
+    passthrough: !insideFrame,
+    cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
+    cursorOverlayVisible: cursorState.visible,
+    nativeCursor: state.nativeCursor,
+    customCursorEnabled: Boolean(state.customCursor.enabled),
+    dragging: Boolean(state.drag),
+    menuOpen: menu.classList.contains('open')
+  })
+}
+
+const updateMousePassthroughFromPoint = (event) => {
+  state.lastPointerPoint = { clientX: event.clientX, clientY: event.clientY }
+  const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
+  const insideCursorRegion = isPointInsideCursorRegion(event.clientX, event.clientY)
+  const cursorState = applyPetCursorStyle(insideFrame, state.lastPointerPoint)
+  setMousePassthrough(!insideFrame)
+  maybeLogMouseDiagnostic(event, {
+    insideFrame,
+    insideCursorRegion,
+    passthrough: !insideFrame,
+    cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
+    cursorOverlayVisible: cursorState.visible,
+    nativeCursor: state.nativeCursor,
+    customCursorEnabled: Boolean(state.customCursor.enabled),
+    dragging: Boolean(state.drag),
+    menuOpen: menu.classList.contains('open')
+  })
+}
+
+const clearPointerHoverState = (event = {}) => {
+  state.lastPointerPoint = null
+  hideCursorOverlay()
+  setNativeCursor('')
+  setMousePassthrough(false)
+  maybeLogMouseDiagnostic({
+    clientX: event.clientX ?? -1,
+    clientY: event.clientY ?? -1,
+    screenX: event.screenX ?? -1,
+    screenY: event.screenY ?? -1
+  }, {
+    insideFrame: false,
+    insideCursorRegion: false,
+    passthrough: false,
+    cursorApplied: false,
+    cursorOverlayVisible: false,
+    nativeCursor: '',
+    customCursorEnabled: Boolean(state.customCursor.enabled),
+    dragging: Boolean(state.drag),
+    menuOpen: menu.classList.contains('open')
+  })
+}
+
 /**
  * 切换到指定动作，启动帧播放定时器。
  * — 动作无 sprite 时静默返回（防御性编程）。
@@ -189,8 +395,15 @@ const scheduleFrameTick = () => {
  */
 const setAction = (action) => {
   const a = state.animations[action]
-  if (!a?.sprite) return
+  if (!a?.sprite) {
+    logPetEvent('pet.action.ignored', {
+      requestedAction: action,
+      reason: 'missing-sprite'
+    }, { level: 'info', message: 'Pet action ignored' })
+    return
+  }
 
+  const previousAction = state.action
   state.action = action
   state.frameIndex = 0
 
@@ -202,6 +415,8 @@ const setAction = (action) => {
   frameRow = a.frameRow || 0
   frameCount = a.frameCount
   renderCurrentFrame()
+  setMousePassthrough(false)
+  refreshMouseStateFromLastPoint()
 
   scheduleFrameTick()
 
@@ -210,6 +425,17 @@ const setAction = (action) => {
     stopWalk()
     say(a.label)
   }
+  logPetEvent('pet.action.changed', {
+    previousAction,
+    nextAction: action,
+    defaultAction: state.defaultAction,
+    clickAction: state.clickAction,
+    frameCount,
+    frameWidth: a.frameWidth,
+    frameHeight: a.frameHeight,
+    viewportWidth: state.currentLayout?.viewport?.width,
+    viewportHeight: state.currentLayout?.viewport?.height
+  }, { level: 'info', message: 'Pet action changed' })
 }
 
 // ═══════════════════════════════════════════
@@ -275,6 +501,12 @@ const toggleWalk = async () => {
 
   if (state.walking !== wasWalking) setAction(state.defaultAction)
   say(state.walking ? '出发' : '休息一下')
+  logPetEvent('pet.walk.toggled', {
+    walking: state.walking,
+    walkDirection: state.walkDirection,
+    walkSpeed: state.walkSpeed,
+    walkDuration: state.walkDuration
+  }, { level: 'info', actor: 'user', message: 'Walk toggled' })
 }
 
 // ═══════════════════════════════════════════
@@ -289,6 +521,20 @@ const onPointerDown = async (event) => {
   if (event.button !== 0 || event.target.closest('#menu')) return
   hideMenu()
   const bounds = await window.petAPI.getBounds()
+  const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
+  const insideCursorRegion = isPointInsideCursorRegion(event.clientX, event.clientY)
+  logPetEvent('pet.pointer.down', {
+    ...createPointDetails(event),
+    button: event.button,
+    insideFrame,
+    insideCursorRegion,
+    mousePassthrough: state.mousePassthrough,
+    cursorApplied: Boolean(pet.style.cursor),
+    cursorOverlayVisible: state.customCursorOverlayVisible,
+    nativeCursor: state.nativeCursor,
+    boundsWidth: bounds.width,
+    boundsHeight: bounds.height
+  }, { actor: 'user', message: 'Pointer down' })
   state.drag = {
     pointerId: event.pointerId,
     offsetX: event.screenX - bounds.x,
@@ -297,6 +543,8 @@ const onPointerDown = async (event) => {
   }
   pet.setPointerCapture(event.pointerId)
   pet.classList.add('dragging')
+  applyPetCursorStyle(false)
+  setMousePassthrough(false)
 }
 
 /** pointermove：持续更新窗口位置。moved 标志用于区分拖拽与点击。 */
@@ -311,9 +559,21 @@ const onPointerUp = (event) => {
   if (!state.drag || event.pointerId !== state.drag.pointerId) return
   const wasClick = !state.drag.moved
   const wasDrag = state.drag.moved
+  const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
+  const insideCursorRegion = isPointInsideCursorRegion(event.clientX, event.clientY)
   state.drag = null
   pet.classList.remove('dragging')
-  if (wasDrag) window.petAPI.dragEnded()
+  updateMousePassthroughFromPoint(event)
+  logPetEvent('pet.pointer.up', {
+    ...createPointDetails(event),
+    wasClick,
+    insideFrame,
+    insideCursorRegion,
+    cursorOverlayVisible: state.customCursorOverlayVisible,
+    nativeCursor: state.nativeCursor,
+    clickAction: state.clickAction
+  }, { actor: 'user', message: 'Pointer up' })
+  if (wasDrag) window.petAPI.dragEnded?.()
   if (wasClick) setAction(state.clickAction)
 }
 
@@ -356,7 +616,7 @@ const getMenuViewport = () => {
 
 const applyMenuViewport = () => {
   const viewport = getMenuViewport()
-  if (!viewport) return
+  if (!viewport) return null
   const windowSize = getScaledViewportSize(viewport)
   applyCatPositionForWindowWidth(state.currentLayout, windowSize.width)
   window.petAPI.setViewport?.(viewport)
@@ -381,10 +641,17 @@ const hideMenu = () => {
   const wasOpen = menu.classList.contains('open')
   menu.classList.remove('open')
   if (wasOpen) restoreActionViewport()
+  refreshMouseStateFromLastPoint()
+  if (wasOpen) {
+    logPetEvent('pet.menu.closed', {}, { level: 'info', actor: 'user', message: 'Pet menu closed' })
+  }
 }
 const showMenu = () => {
+  setMousePassthrough(false)
+  applyPetCursorStyle(false)
   menu.classList.add('open')
   applyMenuViewport()
+  logPetEvent('pet.menu.opened', {}, { level: 'info', actor: 'user', message: 'Pet menu opened' })
 }
 
 /** 菜单点击统一分发 —— 根据按钮 data-action 路由到对应逻辑。 */
@@ -393,6 +660,9 @@ const onMenuClick = (event) => {
   if (!btn) return
   const action = btn.dataset.action
   hideMenu()
+  logPetEvent('pet.menu.action.selected', {
+    selectedAction: action
+  }, { level: 'info', actor: 'user', message: 'Pet menu action selected' })
   if (action === 'quit') window.petAPI.quit()
   else if (action === 'walk') toggleWalk()
   else if (action === 'settings') window.petAPI.openSettings()
@@ -419,6 +689,24 @@ window.petAPI.onSettingsChanged((s) => {
   if (s.walkSpeed != null) state.walkSpeed = s.walkSpeed
   if (s.walkDuration != null) state.walkDuration = s.walkDuration
   if (s.bubbleDuration != null) state.bubbleDuration = s.bubbleDuration
+  if (s.customCursor) {
+    state.customCursor = {
+      enabled: Boolean(s.customCursor.enabled && s.customCursor.assetUrl),
+      assetPath: s.customCursor.assetPath || '',
+      assetUrl: s.customCursor.assetUrl || '',
+      fileName: s.customCursor.fileName || ''
+    }
+    refreshMouseStateFromLastPoint()
+  }
+  logPetEvent('pet.settings.applied', {
+    scaleUpdated: s.scale != null,
+    walkSpeedUpdated: s.walkSpeed != null,
+    walkDurationUpdated: s.walkDuration != null,
+    bubbleDurationUpdated: s.bubbleDuration != null,
+    customCursorUpdated: Boolean(s.customCursor),
+    customCursorEnabled: Boolean(state.customCursor.enabled),
+    customCursorFileName: state.customCursor.fileName || ''
+  }, { level: 'info', message: 'Pet renderer settings applied' })
 })
 
 window.petAPI.onPetSay((payload) => {
@@ -438,12 +726,14 @@ window.petAPI.onAnimationsChanged((config) => {
 
 // DOM 事件绑定
 pet.addEventListener('pointerdown', onPointerDown)
+pet.addEventListener('pointermove', updateMousePassthroughFromPoint)
 pet.addEventListener('pointermove', onPointerMove)
 pet.addEventListener('pointerup', onPointerUp)
+pet.addEventListener('pointerleave', clearPointerHoverState)
 pet.addEventListener('dblclick', toggleWalk)
 pet.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu() })
 menu.addEventListener('click', onMenuClick)
-window.addEventListener('blur', hideMenu)  // 窗口失焦时自动关闭菜单
+window.addEventListener('blur', () => { hideMenu(); clearPointerHoverState() })  // 窗口失焦时自动关闭菜单并清理 hover 态
 
 /**
  * 启动流程：
@@ -455,6 +745,11 @@ window.addEventListener('blur', hideMenu)  // 窗口失焦时自动关闭菜单
 const start = async () => {
   const config = await window.petAPI.getAnimations()
   applyAnimationsConfig(config)
+  logPetEvent('pet.renderer.started', {
+    actionsCount: Array.isArray(config?.actions) ? config.actions.length : 0,
+    defaultAction: state.defaultAction,
+    clickAction: state.clickAction
+  }, { level: 'info', message: 'Pet renderer started' })
 
   if (!state.defaultAction) { say('没有找到动作图片'); return }
 

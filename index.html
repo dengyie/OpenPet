@@ -38,6 +38,7 @@
             position: relative;
             width: 100vw;
             height: 100vh;
+            background: rgba(255, 255, 255, 0.001);
             cursor: grab;
         }
 
@@ -63,6 +64,28 @@
             transform-origin: center bottom;
             filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.22));
             pointer-events: none;
+        }
+
+        /*
+           自定义 cursor 用 DOM 图层绘制，而不是完全依赖系统 CSS cursor。
+           透明 Electron 窗口下原生 cursor 在部分区域更新不稳定，DOM 图层更可控。
+        */
+        #custom-cursor-overlay {
+            position: absolute;
+            left: 0;
+            top: 0;
+            display: none;
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            pointer-events: none;
+            z-index: 20;
+            transform: translate3d(0, 0, 0);
+            will-change: transform;
+        }
+
+        #custom-cursor-overlay.visible {
+            display: block;
         }
 
         /* 气泡默认隐藏在小猫头顶，显示时通过 opacity 和 transform 做轻量过渡。 */
@@ -148,10 +171,15 @@
         <!-- 小猫帧动画使用 div + background-image 逐帧偏移播放。 -->
         <div id="cat"></div>
 
+        <!-- 透明窗口下的可见自定义鼠标指针，由 renderer.js 跟随 pointer 坐标。 -->
+        <img id="custom-cursor-overlay" alt="" aria-hidden="true">
+
         <!-- 右键菜单内容由 menu.js 根据 animations.json 动态生成。 -->
         <nav id="menu" aria-label="小猫菜单"></nav>
     </main>
 
+    <script src="src/shared/cursor-style.js"></script>
+    <script src="src/shared/pet-hitbox.js"></script>
     <!-- 渲染层入口（ES 模块），组装各模块并绑定事件、启动应用。 -->
     <script src="renderer.js"></script>
 </body>

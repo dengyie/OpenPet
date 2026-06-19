@@ -26,6 +26,7 @@ const createPetRendererSettings = (settings = {}) => ({
   walkSpeed: settings.walkSpeed,
   walkDuration: settings.walkDuration,
   bubbleDuration: settings.bubbleDuration,
+  customCursor: settings.customCursor,
   grounded: Boolean(settings.petBehavior?.grounded),
   home: {
     enabled: Boolean(settings.petBehavior?.home?.enabled),
@@ -115,11 +116,27 @@ const executeBehaviorDecision = (petService, decision) => {
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, dialogService = dialog, ipcMainService = ipcMain }) => {
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+  const showOpenDialogForEvent = (event, options) => {
+    const parentWindow = event?.sender && browserWindowService?.fromWebContents?.(event.sender)
+    if (parentWindow && !parentWindow.isDestroyed?.()) {
+      return dialogService.showOpenDialog(parentWindow, options)
+    }
+    return dialogService.showOpenDialog(options)
+  }
+
+  const recordAppLog = (entry) => {
+    try {
+      appLogService?.record?.(entry)
+    } catch (_) {
+      // Logging must never break user flows.
+    }
+  }
 
   const getPendingActionFrameSelection = (selectionId) => {
     if (!pendingActionFrameSelection || pendingActionFrameSelection.id !== selectionId) {
@@ -149,26 +166,26 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   // 拖拽开始时读取窗口位置，用于计算鼠标偏移
   ipcMainService.handle(IPC.PET_GET_BOUNDS, (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     return win.getBounds()
   })
 
   // 散步启动时查询窗口是否贴边，用于决定初始方向
   ipcMainService.handle(IPC.PET_GET_MOVEMENT_STATE, (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win) return null
     return getMovementState(win)
   })
 
   ipcMainService.on(IPC.PET_SET_VIEWPORT, (event, viewport) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win) return
     applyPetViewport(win, viewport)
   })
 
   // 拖拽移动：直接设置窗口位置（主进程负责钳制到工作区）
   ipcMainService.on(IPC.PET_SET_POSITION, (event, point) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !point) return
     const next = petMovementPolicy
       ? petMovementPolicy.clampDragPosition({
@@ -180,9 +197,21 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     win.setPosition(next.x, next.y)
   })
 
+  ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
+    if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
+    else win.setIgnoreMouseEvents(false)
+  })
+
+  ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
+    recordAppLog(entry)
+  })
+
   ipcMainService.on(IPC.PET_DRAG_ENDED, (event) => {
     if (!petMovementPolicy) return
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win) return
     const currentSettings = petService.getSettings()
     const behavior = petMovementPolicy.normalizePetBehaviorSettings(currentSettings.petBehavior)
@@ -203,7 +232,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
   ipcMainService.handle(IPC.PET_MOVE_BY, (event, delta) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !delta) return null
     const [x, y] = win.getPosition()
     const next = petMovementPolicy
@@ -228,10 +257,60 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 设置面板启动时读取当前设置
   ipcMainService.handle(IPC.SETTINGS_GET, () => createPetRendererSettings(petService.getSettings()))
 
+  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
+    if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
+    recordAppLog({
+      scope: 'settings',
+      level: 'info',
+      actor: 'user',
+      event: 'settings.cursor.import.opened',
+      message: 'Cursor image picker opened'
+    })
+    try {
+      const selected = await showOpenDialogForEvent(event, {
+        title: '选择自定义鼠标指针图片',
+        properties: ['openFile'],
+        filters: [{ name: 'Cursor Images', extensions: ['png', 'webp', 'cur'] }]
+      })
+      if (selected.canceled || !selected.filePaths[0]) {
+        recordAppLog({
+          scope: 'settings',
+          level: 'info',
+          actor: 'user',
+          event: 'settings.cursor.import.canceled',
+          message: 'Cursor image picker canceled'
+        })
+        return { canceled: true }
+      }
+      const cursor = await cursorAssetService.importCursor(selected.filePaths[0])
+      recordAppLog({
+        scope: 'settings',
+        level: 'info',
+        actor: 'system',
+        event: 'settings.cursor.import.completed',
+        message: 'Cursor image imported',
+        details: {
+          fileName: cursor.fileName,
+          enabled: cursor.enabled
+        }
+      })
+      return { canceled: false, cursor }
+    } catch (error) {
+      recordAppLog({
+        scope: 'settings',
+        level: 'error',
+        actor: 'system',
+        event: 'settings.cursor.import.failed',
+        message: error.message
+      })
+      throw error
+    }
+  })
+
   ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
 
-  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, async (_event, payload) => {
-    const selected = await dialogService.showOpenDialog({
+  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, async (event, payload) => {
+    const selected = await showOpenDialogForEvent(event, {
       title: '选择动作帧文件夹',
       properties: ['openDirectory']
     })

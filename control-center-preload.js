@@ -9,6 +9,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 const IPC = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+  SETTINGS_IMPORT_CURSOR: 'settings:import-cursor',
   SETTINGS_PREVIEW_SCALE: 'settings:preview-scale',
   SETTINGS_CLOSE: 'settings:close',
   ACTIONS_GET: 'actions:get',
@@ -77,6 +78,7 @@ const IPC = {
 contextBridge.exposeInMainWorld('controlCenterAPI', {
   getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
   saveSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
+  importCursor: () => ipcRenderer.invoke(IPC.SETTINGS_IMPORT_CURSOR),
   previewScale: (scale) => ipcRenderer.send(IPC.SETTINGS_PREVIEW_SCALE, scale),
   getActions: () => ipcRenderer.invoke(IPC.ACTIONS_GET),
   inspectActionFrames: (payload) => ipcRenderer.invoke(IPC.ACTIONS_INSPECT_FRAMES, payload),
