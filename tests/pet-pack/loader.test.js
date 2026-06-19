@@ -12,6 +12,13 @@ const WRONG_SIZE_WEBP = Buffer.from(
   'base64'
 )
 
+const TRANSPARENT_FIXTURE_ATLAS_WEBP = Buffer.from([
+  'UklGRpgAAABXRUJQVlA4TIsAAAAv/8XTEQcQEREAUKT//ymi/6n//e9///vf//73',
+  'v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3',
+  'vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///',
+  'vf//73v//973//+9///q8CAA=='
+].join(''), 'base64')
+
 const createWebpHeader = ({ width, height }) => {
   const riffSize = 22
   const buffer = Buffer.alloc(30)
@@ -161,6 +168,21 @@ test('rejects Codex pet atlases with truncated VP8 image data', () => {
   assert.throws(
     () => loadPetPackFromDirectory(root),
     /Codex pet atlas WebP image data could not be read/
+  )
+})
+
+test('rejects Codex pet atlases that contain no visible pixels', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-codex-pet-transparent-'))
+  fs.writeFileSync(path.join(root, 'spritesheet.webp'), TRANSPARENT_FIXTURE_ATLAS_WEBP)
+  fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
+    id: 'codex-cat',
+    displayName: 'Codex Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }))
+
+  assert.throws(
+    () => loadPetPackFromDirectory(root),
+    /Codex pet atlas must contain visible pixels/
   )
 })
 
