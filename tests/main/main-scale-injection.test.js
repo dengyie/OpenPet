@@ -5,7 +5,7 @@ const path = require('path')
 
 const mainPath = require.resolve('../../main')
 
-test('main forwards IPC-provided scale values to the window scaler', () => {
+test('main forwards IPC-provided scale values to the window scaler', async () => {
   delete require.cache[mainPath]
 
   const scaleCalls = []
@@ -160,6 +160,8 @@ test('main forwards IPC-provided scale values to the window scaler', () => {
 
   try {
     require(mainPath)
+    await Promise.resolve()
+    await Promise.resolve()
     assert.ok(registeredIpcDependencies)
 
     const ipcWindow = { id: 'ipc-window' }

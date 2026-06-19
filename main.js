@@ -52,8 +52,7 @@ configureUserDataPath({ app })
 // ── 单实例锁：同一时间只允许一个宠物窗口 ──
 const canBootstrap = configureSingleInstanceLock({ app, getPetWindow })
 
-// ── 应用就绪 ──
-if (canBootstrap) app.whenReady().then(() => {
+const bootstrapOpenPet = () => {
   const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/main/settings')
   const eventBus = createEventBus()
   const settingsService = createSettingsService({
@@ -270,6 +269,15 @@ if (canBootstrap) app.whenReady().then(() => {
       petWindow = createWindow()
     }
   })
+}
+
+// ── 应用就绪 ──
+canBootstrap.then((canStart) => {
+  if (!canStart) return null
+  return app.whenReady().then(bootstrapOpenPet)
+}).catch((error) => {
+  console.error('Failed to bootstrap OpenPet:', error)
+  app.quit()
 })
 
 app.on('window-all-closed', () => app.quit())
