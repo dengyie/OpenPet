@@ -71,6 +71,20 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
   })
 
+  test('configures a custom pet hover cursor in the demo API session', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(page.getByText('未选择')).toBeVisible()
+    await page.getByRole('button', { name: '选择图片' }).click()
+    await expect(page.locator('.field-row', { hasText: '自定义鼠标指针' })).toContainText('demo-cursor.png')
+    await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator('.status-line')).toContainText('已选择并启用鼠标指针')
+
+    await page.getByRole('button', { name: '清除' }).click()
+    await expect(page.locator('.field-row', { hasText: '自定义鼠标指针' })).toContainText('未选择')
+    await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toBeDisabled()
+  })
+
   test('persists grounded and home settings in the demo API session', async ({ page }) => {
     await page.goto('/')
 

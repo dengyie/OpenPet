@@ -27,6 +27,7 @@ const createPetRendererSettings = (settings = {}) => ({
   walkSpeed: settings.walkSpeed,
   walkDuration: settings.walkDuration,
   bubbleDuration: settings.bubbleDuration,
+  customCursor: settings.customCursor,
   grounded: Boolean(settings.petBehavior?.grounded),
   home: {
     enabled: Boolean(settings.petBehavior?.home?.enabled),
@@ -196,6 +197,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         })
       : clampToWorkArea(win, point.x, point.y)
     win.setPosition(next.x, next.y)
+  })
+
+  ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
+    if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
+    else win.setIgnoreMouseEvents(false)
+  })
+
+  ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
+    recordAppLog(entry)
   })
 
   ipcMainService.on(IPC.PET_DRAG_ENDED, (event) => {

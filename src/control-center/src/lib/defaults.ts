@@ -27,6 +27,12 @@ export const defaultSettings = {
   walkDuration: 15000,
   bubbleDuration: 1300,
   autoStart: false,
+  customCursor: {
+    enabled: false,
+    assetPath: '',
+    assetUrl: '',
+    fileName: ''
+  },
   grounded: false,
   home: {
     enabled: false,
@@ -143,11 +149,20 @@ export const cloneCustomCursor = (cursor: Partial<CustomCursorSettings> | null |
 export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
   ...defaultSettings,
   ...(settings || {}),
+  customCursor: {
+    ...defaultSettings.customCursor,
+    ...(settings?.customCursor || {})
+  },
   home: {
     ...defaultSettings.home,
     ...(settings?.home || {})
   },
   customCursor: cloneCustomCursor(settings?.customCursor)
+})
+
+export const cloneCustomCursor = (cursor: Partial<ControlCenterSettings['customCursor']> | null | undefined): ControlCenterSettings['customCursor'] => ({
+  ...defaultSettings.customCursor,
+  ...(cursor || {})
 })
 
 export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({

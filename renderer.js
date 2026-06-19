@@ -80,6 +80,7 @@ const state = {
 }
 state.scale = PET_BASE_SCALE
 
+const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
 const normalizePetScale = (scale) => Math.max((Number(scale) || 1) * PET_BASE_SCALE, Number.EPSILON)
 
 const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
@@ -673,7 +674,7 @@ const getMenuViewport = () => {
 
 const applyMenuViewport = () => {
   const viewport = getMenuViewport()
-  if (!viewport) return
+  if (!viewport) return null
   const windowSize = getScaledViewportSize(viewport)
   applyCatPositionForWindowWidth(state.currentLayout, windowSize.width)
   const menuRect = menu.getBoundingClientRect()
@@ -806,10 +807,11 @@ pet.addEventListener('pointerdown', onPointerDown)
 pet.addEventListener('pointermove', updateMousePassthroughFromPoint)
 pet.addEventListener('pointermove', onPointerMove)
 pet.addEventListener('pointerup', onPointerUp)
+pet.addEventListener('pointerleave', clearPointerHoverState)
 pet.addEventListener('dblclick', toggleWalk)
 pet.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu() })
 menu.addEventListener('click', onMenuClick)
-window.addEventListener('blur', hideMenu)  // 窗口失焦时自动关闭菜单
+window.addEventListener('blur', () => { hideMenu(); clearPointerHoverState() })  // 窗口失焦时自动关闭菜单并清理 hover 态
 
 /**
  * 启动流程：

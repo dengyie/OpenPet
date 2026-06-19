@@ -22,6 +22,7 @@ const defaultSettings = {
   walkDuration: 15000,   // 散步自动停止时长（ms）
   bubbleDuration: 1300,  // 气泡显示时长（ms）
   autoStart: false,      // 是否开机自启
+  customCursor: createDefaultCursorSettings(),
   petBehavior: {
     grounded: false,
     home: {
@@ -91,6 +92,7 @@ const mergeSettings = (settings = {}) => ({
       ? settings.ai.conversations
       : defaultSettings.ai.conversations
   },
+  customCursor: normalizeCustomCursor(settings.customCursor),
   petBehavior: {
     ...defaultSettings.petBehavior,
     ...(isPlainObject(settings.petBehavior) ? settings.petBehavior : {}),

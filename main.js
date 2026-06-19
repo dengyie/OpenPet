@@ -28,6 +28,8 @@ const { createPluginInstallService } = require('./src/main/services/plugin-insta
 const { createPluginGithubImportService } = require('./src/main/services/plugin-github-import-service')
 const { createLocalHttpService } = require('./src/main/services/local-http-service')
 const { createActionImportService } = require('./src/main/services/action-import-service')
+const { createCursorAssetService } = require('./src/main/services/cursor-asset-service')
+const { createAppLogService } = require('./src/main/services/app-log-service')
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
 const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
@@ -82,6 +84,12 @@ if (canBootstrap) app.whenReady().then(() => {
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
+  const cursorAssetService = createCursorAssetService({
+    cursorDir: path.join(app.getPath('userData'), 'cursors')
+  })
+  const appLogService = createAppLogService({
+    logDir: path.join(app.getPath('userData'), 'logs')
+  })
   const petMovementPolicy = createPetMovementPolicy({ screen })
   const appLogService = createAppLogService({
     logDir: path.join(app.getPath('userData'), 'logs')
