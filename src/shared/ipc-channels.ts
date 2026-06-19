@@ -11,6 +11,8 @@ export const IPC = Object.freeze({
   PET_MOVE_BY: 'pet:move-by',
   PET_SAY: 'pet:say',
   PET_PLAY_ACTION: 'pet:play-action',
+  PET_SHOW_CONTEXT_MENU: 'pet:show-context-menu',
+  PET_MENU_COMMAND: 'pet:menu-command',
   PET_QUIT: 'pet:quit',
   SETTINGS_OPEN: 'settings:open',
   SETTINGS_GET: 'settings:get',

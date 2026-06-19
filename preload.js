@@ -22,6 +22,8 @@ const IPC = {
   PET_MOVE_BY: 'pet:move-by',
   PET_SAY: 'pet:say',
   PET_PLAY_ACTION: 'pet:play-action',
+  PET_SHOW_CONTEXT_MENU: 'pet:show-context-menu',
+  PET_MENU_COMMAND: 'pet:menu-command',
   PET_QUIT: 'pet:quit',
   SETTINGS_OPEN: 'settings:open',
   SETTINGS_CHANGED: 'settings:changed'
@@ -37,6 +39,7 @@ contextBridge.exposeInMainWorld('petAPI', {
   recordAppLog: (entry) => ipcRenderer.send(IPC.PET_RECORD_APP_LOG, entry),
   dragEnded: () => ipcRenderer.send(IPC.PET_DRAG_ENDED),
   moveBy: (delta) => ipcRenderer.invoke(IPC.PET_MOVE_BY, delta),
+  showContextMenu: (point) => ipcRenderer.invoke(IPC.PET_SHOW_CONTEXT_MENU, point),
   quit: () => ipcRenderer.send(IPC.PET_QUIT),
   openSettings: () => ipcRenderer.send(IPC.SETTINGS_OPEN),
   onPetSay: (callback) => {
@@ -44,6 +47,9 @@ contextBridge.exposeInMainWorld('petAPI', {
   },
   onPetAction: (callback) => {
     ipcRenderer.on(IPC.PET_PLAY_ACTION, (_event, payload) => callback(payload))
+  },
+  onPetMenuCommand: (callback) => {
+    ipcRenderer.on(IPC.PET_MENU_COMMAND, (_event, payload) => callback(payload))
   },
   onAnimationsChanged: (callback) => {
     ipcRenderer.on(IPC.PET_ANIMATIONS_CHANGED, (_event, payload) => callback(payload))

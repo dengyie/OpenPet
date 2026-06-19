@@ -12,6 +12,16 @@ import type {
   ServiceStatusViewState,
   UpdateCheckViewState
 } from '../../../shared/openpet-contracts'
+import {
+  SYSTEM_CURSOR_ID,
+  createDefaultRuntimeCursor,
+  normalizeCursorSettingsState,
+  normalizeRuntimeCursor
+} from '../../../shared/cursor-library.ts'
+
+const normalizeCursorState = (settings: Partial<ControlCenterSettings> | null | undefined) => (
+  normalizeCursorSettingsState(settings || {}) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors'>
+)
 
 export const defaultSettings = {
   scale: 1,
@@ -19,12 +29,9 @@ export const defaultSettings = {
   walkDuration: 15000,
   bubbleDuration: 1300,
   autoStart: false,
-  customCursor: {
-    enabled: false,
-    assetPath: '',
-    assetUrl: '',
-    fileName: ''
-  },
+  selectedCursorId: SYSTEM_CURSOR_ID,
+  customCursor: createDefaultRuntimeCursor(),
+  customCursors: [],
   grounded: false,
   home: {
     enabled: false,
@@ -134,20 +141,14 @@ export const defaultUpdateCheck = {
 export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
   ...defaultSettings,
   ...(settings || {}),
-  customCursor: {
-    ...defaultSettings.customCursor,
-    ...(settings?.customCursor || {})
-  },
+  ...normalizeCursorState(settings),
   home: {
     ...defaultSettings.home,
     ...(settings?.home || {})
   }
 })
 
-export const cloneCustomCursor = (cursor: Partial<ControlCenterSettings['customCursor']> | null | undefined): ControlCenterSettings['customCursor'] => ({
-  ...defaultSettings.customCursor,
-  ...(cursor || {})
-})
+export const cloneCustomCursor = (cursor: Partial<ControlCenterSettings['customCursor']> | null | undefined): ControlCenterSettings['customCursor'] => normalizeRuntimeCursor(cursor)
 
 export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({
   ...defaultAiConfig.behavior,

@@ -12,7 +12,9 @@
 
   const createCustomCursorCss = (cursor) => {
     if (!cursor || !cursor.enabled || !cursor.assetUrl) return ''
-    return `url("${escapeCssUrl(cursor.assetUrl)}") 0 0, auto`
+    const hotspotX = Number.isFinite(Number(cursor.hotspotX)) ? Number(cursor.hotspotX) : 0
+    const hotspotY = Number.isFinite(Number(cursor.hotspotY)) ? Number(cursor.hotspotY) : 0
+    return `url("${escapeCssUrl(cursor.assetUrl)}") ${hotspotX} ${hotspotY}, auto`
   }
 
   const resolvePetCursorStyle = (cursor, context = {}) => {

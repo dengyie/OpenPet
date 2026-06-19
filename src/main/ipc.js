@@ -6,8 +6,10 @@
  * — 依赖通过参数注入而非直接 import，避免与 window/settings/screen 模块形成硬耦合。
  * — 修改或新增 IPC 通道时，只需改这一个文件 + shared/ipc-channels.js。
  */
-const { ipcMain, BrowserWindow, app, dialog } = require('electron')
+const { ipcMain, BrowserWindow, app, dialog, Menu, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { normalizeCursorSettingsState } = require('../shared/cursor-library')
+const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
 const {
   createActionFrameImportResult,
   createActionsMutationResult,
@@ -21,23 +23,33 @@ const {
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
 const { createLocalHttpToken } = require('./services/local-http-service')
 
-const createPetRendererSettings = (settings = {}) => ({
-  scale: settings.scale,
-  walkSpeed: settings.walkSpeed,
-  walkDuration: settings.walkDuration,
-  bubbleDuration: settings.bubbleDuration,
-  customCursor: settings.customCursor,
-  grounded: Boolean(settings.petBehavior?.grounded),
-  home: {
-    enabled: Boolean(settings.petBehavior?.home?.enabled),
-    radius: settings.petBehavior?.home?.radius || 'medium',
-    hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
+const createPetRendererSettings = (settings = {}) => {
+  const cursorState = normalizeCursorSettingsState(settings)
+  return {
+    scale: settings.scale,
+    walkSpeed: settings.walkSpeed,
+    walkDuration: settings.walkDuration,
+    bubbleDuration: settings.bubbleDuration,
+    selectedCursorId: cursorState.selectedCursorId,
+    customCursor: cursorState.customCursor,
+    customCursors: cursorState.customCursors,
+    grounded: Boolean(settings.petBehavior?.grounded),
+    home: {
+      enabled: Boolean(settings.petBehavior?.home?.enabled),
+      radius: settings.petBehavior?.home?.radius || 'medium',
+      hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
+    }
   }
-})
+}
 
 const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings = {}) => {
   const currentHome = currentSettings.petBehavior?.home || {}
   const nextHome = nextSettings.home || {}
+  const cursorState = normalizeCursorSettingsState({
+    selectedCursorId: nextSettings.selectedCursorId ?? currentSettings.selectedCursorId,
+    customCursors: nextSettings.customCursors ?? currentSettings.customCursors,
+    customCursor: nextSettings.customCursor ?? currentSettings.customCursor
+  })
 
   return {
     ...currentSettings,
@@ -46,6 +58,9 @@ const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings
     walkDuration: Number(nextSettings.walkDuration ?? currentSettings.walkDuration ?? 15000),
     bubbleDuration: Number(nextSettings.bubbleDuration ?? currentSettings.bubbleDuration ?? 1300),
     autoStart: Boolean(nextSettings.autoStart ?? currentSettings.autoStart),
+    selectedCursorId: cursorState.selectedCursorId,
+    customCursors: cursorState.customCursors,
+    customCursor: cursorState.customCursor,
     petBehavior: {
       ...(currentSettings.petBehavior || {}),
       grounded: Boolean(nextSettings.grounded),
@@ -113,11 +128,17 @@ const executeBehaviorDecision = (petService, decision) => {
   return decision
 }
 
+const collectCustomCursorAssetPaths = (cursors = []) => (
+  (Array.isArray(cursors) ? cursors : [])
+    .map((cursor) => (typeof cursor?.assetPath === 'string' ? cursor.assetPath : ''))
+    .filter(Boolean)
+)
+
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -249,6 +270,67 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 右键菜单"退出"
   ipcMainService.on(IPC.PET_QUIT, () => app.quit())
 
+  ipcMainService.handle(IPC.PET_SHOW_CONTEXT_MENU, (event, point = {}) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return null
+    const actions = petService.getAnimations()?.actions || []
+    const bounds = win.getBounds()
+    const { workArea } = screenService.getDisplayMatching(bounds)
+    const menuSize = estimatePetContextMenuSize(actions)
+    const requestedPoint = {
+      x: Number(point.x),
+      y: Number(point.y)
+    }
+    const placement = choosePetContextMenuPoint({
+      petBounds: bounds,
+      workArea,
+      menuSize,
+      preferredPoint: requestedPoint
+    })
+    const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
+    const template = [
+      ...actions.map((action) => ({
+        label: action.label || action.id,
+        click: () => sendMenuCommand({ command: 'action', actionId: action.id })
+      })),
+      { type: 'separator' },
+      { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
+      { label: '设置', click: () => createSettingsWindow(win) },
+      { type: 'separator' },
+      { label: '退出', click: () => app.quit() }
+    ]
+    recordAppLog({
+      scope: 'pet-menu',
+      level: 'info',
+      actor: 'user',
+      event: 'pet.menu.popup',
+      message: 'Native pet context menu popup requested',
+      details: {
+        petX: bounds.x,
+        petY: bounds.y,
+        petWidth: bounds.width,
+        petHeight: bounds.height,
+        workAreaX: workArea.x,
+        workAreaY: workArea.y,
+        workAreaWidth: workArea.width,
+        workAreaHeight: workArea.height,
+        menuWidth: menuSize.width,
+        menuHeight: menuSize.height,
+        requestedX: requestedPoint.x,
+        requestedY: requestedPoint.y,
+        placement: placement.placement,
+        menuX: placement.screenPoint.x,
+        menuY: placement.screenPoint.y
+      }
+    })
+    menuService.buildFromTemplate(template).popup({
+      window: win,
+      x: placement.screenPoint.x,
+      y: placement.screenPoint.y
+    })
+    return placement
+  })
+
   // 右键菜单"设置"：打开设置面板
   ipcMainService.on(IPC.SETTINGS_OPEN, () => {
     createSettingsWindow(getPetWindow())
@@ -270,7 +352,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       const selected = await showOpenDialogForEvent(event, {
         title: '选择自定义鼠标指针图片',
         properties: ['openFile'],
-        filters: [{ name: 'Cursor Images', extensions: ['png', 'webp', 'cur'] }]
+        filters: [{ name: 'Cursor Images', extensions: ['png', 'webp'] }]
       })
       if (selected.canceled || !selected.filePaths[0]) {
         recordAppLog({
@@ -409,10 +491,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 设置面板点击"保存"：持久化并通知宠物窗口应用变更
   ipcMainService.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
     const petWindow = getPetWindow()
+    const previousSettings = petService.getSettings()
     const nextSettings = mergePetSettingsViewIntoHostSettings(petService.getSettings(), settings)
     if (petMovementPolicy && petWindow && !petWindow.isDestroyed()) {
       const behavior = petMovementPolicy.normalizePetBehaviorSettings(nextSettings.petBehavior)
-      const currentBehavior = petMovementPolicy.normalizePetBehaviorSettings(petService.getSettings().petBehavior)
+      const currentBehavior = petMovementPolicy.normalizePetBehaviorSettings(previousSettings.petBehavior)
       const needsInitialHomeAnchor = behavior.home.enabled && !behavior.home.anchor
       if (needsInitialHomeAnchor || (!currentBehavior.home.enabled && behavior.home.enabled)) {
         behavior.home.anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: petWindow.getBounds() })
@@ -421,6 +504,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
 
     const savedSettings = petService.saveSettings(nextSettings)
+    const previousAssetPaths = new Set(collectCustomCursorAssetPaths(previousSettings.customCursors))
+    const nextAssetPaths = new Set(collectCustomCursorAssetPaths(savedSettings.customCursors))
+    const orphanedAssetPaths = Array.from(previousAssetPaths).filter((assetPath) => !nextAssetPaths.has(assetPath))
+    if (orphanedAssetPaths.length > 0) cursorAssetService?.deleteAssets?.(orphanedAssetPaths)
     const rendererSettings = createPetRendererSettings(savedSettings)
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, rendererSettings)
     applyWindowScale(getPetWindow(), savedSettings.scale)

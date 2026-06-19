@@ -52,6 +52,16 @@ const controlCenterSettingsFixture = {
   walkDuration: 15000,
   bubbleDuration: 1300,
   autoStart: false,
+  selectedCursorId: 'system',
+  customCursor: {
+    enabled: false,
+    assetPath: '',
+    assetUrl: '',
+    fileName: '',
+    hotspotX: 0,
+    hotspotY: 0
+  },
+  customCursors: [],
   grounded: true,
   home: {
     enabled: true,

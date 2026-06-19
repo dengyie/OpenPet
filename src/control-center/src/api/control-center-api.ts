@@ -1,4 +1,5 @@
 import { cloneAiConfig, cloneCatalog, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
   ActionFrameInspectionResult,
@@ -573,10 +574,18 @@ const demoApi: ControlCenterApi = {
   importCursor: async () => ({
     canceled: false,
     cursor: {
-      enabled: true,
+      id: 'demo-cursor',
+      type: 'custom',
+      name: stripFileExtension('demo-cursor.png'),
       assetPath: '/demo/cursors/demo-cursor.png',
       assetUrl: demoCursorAssetUrl,
-      fileName: 'demo-cursor.png'
+      fileName: 'demo-cursor.png',
+      width: 32,
+      height: 32,
+      byteSize: 2048,
+      hotspotX: 0,
+      hotspotY: 0,
+      createdAt: '2026-06-19T10:00:00.000Z'
     }
   }),
   getActions: async () => defaultActionsConfig,

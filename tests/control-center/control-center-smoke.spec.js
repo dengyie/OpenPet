@@ -71,26 +71,36 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
   })
 
-  test('configures a custom pet hover cursor in the demo API session', async ({ page }) => {
+  test('configures a custom pet hover cursor in the redesigned cursor library', async ({ page }) => {
     await page.goto('/')
 
-    const cursorToggleRow = page.locator('.field-row', { hasText: '自定义鼠标指针' })
-    const cursorPreviewRow = page.locator('.field-row.tall', { hasText: '指针选择' })
-    const cursorPreviewCard = page.locator('.cursor-preview-card')
+    const cursorHeader = page.locator('.cursor-selection-header')
+    const cursorOptionsRow = page.locator('.cursor-options-row')
+    const cursorOptionCards = page.locator('.cursor-option-card')
+    const cursorLibraryPanel = page.locator('.cursor-library-panel')
 
-    await expect(cursorToggleRow).toHaveCount(1)
-    await expect(cursorPreviewRow).toBeVisible()
-    await expect(cursorPreviewCard).toContainText('未选择指针')
+    await expect(cursorHeader).toContainText('指针选择')
+    await expect(cursorHeader).toContainText('预览会模拟真实指针落点')
+    await expect(cursorOptionsRow).toBeVisible()
+    await expect(cursorOptionCards).toHaveCount(8)
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('系统默认')
+    await expect(cursorLibraryPanel).toBeVisible()
+    await expect(page.locator('.cursor-library-empty')).toContainText('还没有上传自定义指针')
 
-    await page.getByRole('button', { name: '选择图片' }).click()
-    await expect(cursorPreviewCard).toContainText('demo-cursor.png')
-    await expect(cursorPreviewCard.locator('img')).toHaveAttribute('src', /data:image\/svg\+xml/)
-    await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
-    await expect(page.locator('.status-line')).toContainText('已选择并启用鼠标指针')
+    await page.getByRole('button', { name: '添加自定义' }).click()
+    await expect(cursorOptionCards).toHaveCount(9)
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('demo-cursor')
+    await expect(cursorLibraryPanel).toContainText('demo-cursor')
+    await expect(cursorLibraryPanel).toContainText('使用中')
 
-    await page.getByRole('button', { name: '清除' }).click()
-    await expect(cursorPreviewCard).toContainText('未选择指针')
-    await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toBeDisabled()
+    await page.getByRole('button', { name: '系统默认' }).click()
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('系统默认')
+
+    page.once('dialog', (dialog) => dialog.accept())
+    await page.getByRole('button', { name: '管理' }).click()
+    await page.getByRole('button', { name: '删除' }).click()
+    await expect(cursorOptionCards).toHaveCount(8)
+    await expect(page.locator('.cursor-library-empty')).toContainText('还没有上传自定义指针')
   })
 
   test('persists grounded and home settings in the demo API session', async ({ page }) => {

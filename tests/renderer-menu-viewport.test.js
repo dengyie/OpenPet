@@ -45,12 +45,12 @@ const dispatch = (element, eventName, event = {}) => {
 
 const createRendererHarness = async () => {
   const viewportCalls = []
+  const contextMenuRequests = []
   const callbacks = {}
   const elements = {
     pet: createElement('pet'),
     cat: createElement('cat'),
     bubble: createElement('bubble'),
-    menu: createElement('menu', { width: 180, height: 260 }),
     'custom-cursor-overlay': createElement('custom-cursor-overlay')
   }
   const context = {
@@ -89,7 +89,9 @@ const createRendererHarness = async () => {
         onSettingsChanged: () => {},
         onPetSay: () => {},
         onPetAction: () => {},
+        onPetMenuCommand: () => {},
         onAnimationsChanged: () => {},
+        showContextMenu: (point) => contextMenuRequests.push(point),
         getBounds: async () => ({ x: 0, y: 0, width: 58, height: 58 }),
         getMovementState: async () => ({}),
         moveBy: async () => ({}),
@@ -104,29 +106,34 @@ const createRendererHarness = async () => {
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, elements, viewportCalls }
+  return { callbacks, contextMenuRequests, elements, viewportCalls }
 }
 
-test('opening the menu expands the pet viewport enough to avoid clipping', async () => {
-  const { elements, viewportCalls } = await createRendererHarness()
+test('right-click delegates menu display without resizing the pet viewport', async () => {
+  const { contextMenuRequests, elements, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)
+  let prevented = false
 
-  dispatch(elements.pet, 'contextmenu', { preventDefault() {} })
+  dispatch(elements.pet, 'contextmenu', {
+    clientX: 12,
+    clientY: 18,
+    preventDefault() { prevented = true }
+  })
 
-  const menuViewport = viewportCalls.at(-1)
-  assert.notDeepEqual(menuViewport, initialViewport)
-  assert.equal(menuViewport.scale, initialViewport.scale)
-  assert.equal((menuViewport.width + menuViewport.padding * 2) * menuViewport.scale >= 204, true)
-  assert.equal((menuViewport.height + menuViewport.padding * 2) * menuViewport.scale >= 284, true)
-  assert.equal(elements.cat.style.left, '77px')
-  assert.equal(elements.cat.style.bottom, initialViewport.padding * initialViewport.scale + 'px')
+  assert.equal(prevented, true)
+  assert.equal(contextMenuRequests.length, 1)
+  assert.equal(contextMenuRequests[0].x, 12)
+  assert.equal(contextMenuRequests[0].y, 18)
+  assert.deepEqual(viewportCalls.at(-1), initialViewport)
+  assert.equal(elements.cat.style.left, '4px')
+  assert.equal(elements.cat.style.bottom, '4px')
 })
 
-test('closing the menu restores the current action viewport', async () => {
+test('window blur keeps the current action viewport intact', async () => {
   const { callbacks, elements, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)
 
-  dispatch(elements.pet, 'contextmenu', { preventDefault() {} })
+  dispatch(elements.pet, 'contextmenu', { clientX: 12, clientY: 18, preventDefault() {} })
   callbacks.blur()
 
   assert.deepEqual(viewportCalls.at(-1), initialViewport)

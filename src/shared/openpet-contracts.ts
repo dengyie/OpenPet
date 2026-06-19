@@ -10,7 +10,9 @@ export interface ControlCenterSettings {
   walkDuration: number
   bubbleDuration: number
   autoStart: boolean
+  selectedCursorId: string
   customCursor: CustomCursorSettings
+  customCursors: CustomCursorRecord[]
   grounded: boolean
   home: ControlCenterPetHomeSettings
 }
@@ -20,11 +22,36 @@ export interface CustomCursorSettings {
   assetPath: string
   assetUrl: string
   fileName: string
+  hotspotX: number
+  hotspotY: number
 }
+
+export type CursorOptionType = 'system' | 'builtin' | 'custom'
+
+export interface CursorOption {
+  id: string
+  type: CursorOptionType
+  name: string
+  assetPath: string
+  assetUrl: string
+  fileName: string
+  width: number
+  height: number
+  byteSize: number
+  hotspotX: number
+  hotspotY: number
+  createdAt: string
+}
+
+export interface CustomCursorRecord extends CursorOption {
+  type: 'custom'
+}
+
+export interface ImportedCursorAsset extends CustomCursorRecord {}
 
 export interface CursorImportResult {
   canceled: boolean
-  cursor?: CustomCursorSettings
+  cursor?: ImportedCursorAsset
 }
 
 export type PetHomeRadius = 'small' | 'medium' | 'large'

@@ -115,51 +115,6 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* 右键菜单固定在窗口右下角，默认不占布局。 */
-        #menu {
-            position: absolute;
-            right: 12px;
-            bottom: 12px;
-            display: none;
-            min-width: 92px;
-            padding: 6px;
-            border: 1px solid rgba(0, 0, 0, 0.08);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.94);
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-        }
-
-        /* 菜单打开时用 grid 排列按钮和分隔线。 */
-        #menu.open {
-            display: grid;
-            gap: 4px;
-        }
-
-        /* 菜单按钮保持轻量样式，避免在小窗口里显得拥挤。 */
-        #menu button {
-            width: 100%;
-            min-height: 30px;
-            border: 0;
-            border-radius: 6px;
-            background: transparent;
-            color: #262626;
-            font-size: 13px;
-            text-align: left;
-            cursor: pointer;
-        }
-
-        /* 悬停反馈只改变背景，不改变尺寸，避免菜单抖动。 */
-        #menu button:hover {
-            background: rgba(0, 0, 0, 0.07);
-        }
-
-        /* 分隔动作按钮和固定控制按钮。 */
-        #menu .divider {
-            width: 100%;
-            height: 1px;
-            margin: 3px 0;
-            background: rgba(0, 0, 0, 0.08);
-        }
     </style>
 </head>
 <body>
@@ -174,8 +129,6 @@
         <!-- 透明窗口下的可见自定义鼠标指针，由 renderer.js 跟随 pointer 坐标。 -->
         <img id="custom-cursor-overlay" alt="" aria-hidden="true">
 
-        <!-- 右键菜单内容由 menu.js 根据 animations.json 动态生成。 -->
-        <nav id="menu" aria-label="小猫菜单"></nav>
     </main>
 
     <script src="src/shared/cursor-style.js"></script>
