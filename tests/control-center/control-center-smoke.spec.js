@@ -47,6 +47,9 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: '快' }).click()
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
 
+    await page.getByRole('button', { name: '上方' }).click()
+    await expect(page.getByRole('group', { name: '菜单位置' }).getByRole('button', { name: '上方' })).toHaveClass(/active/)
+
     await page.getByRole('button', { name: 'About' }).click()
     await page.getByRole('button', { name: '检查更新' }).click()
     await expect(page.locator('.readonly-row', { hasText: '更新状态' })).toContainText('Update feed is not configured.')
@@ -63,12 +66,14 @@ test.describe('Control Center smoke', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }))
     })
     await page.getByRole('button', { name: '快' }).click()
+    await page.getByRole('button', { name: '左侧' }).click()
     await page.getByRole('button', { name: '保存', exact: true }).click()
 
     await expect(page.locator('.status-line')).toContainText('原始大小 135%')
     await page.getByRole('button', { name: '还原' }).click()
     await expect(scale).toHaveValue('135')
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
+    await expect(page.getByRole('group', { name: '菜单位置' }).getByRole('button', { name: '左侧' })).toHaveClass(/active/)
   })
 
   test('configures a custom pet hover cursor in the demo API session', async ({ page }) => {

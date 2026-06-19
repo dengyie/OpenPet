@@ -72,6 +72,12 @@ export function PetPane({ settings, originalSettings, status, onChange, onImport
           options={bubbleDurationOptions}
           onChange={(bubbleDuration) => onChange({ bubbleDuration })}
         />
+        <SegmentedControl
+          label="菜单位置"
+          value={settings.menuPosition}
+          options={menuPositionOptions}
+          onChange={(menuPosition) => onChange({ menuPosition: menuPosition as ControlCenterSettings['menuPosition'] })}
+        />
 
         <div className="field-row">
           <div className="field-label">开机自启</div>

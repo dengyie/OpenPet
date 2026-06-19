@@ -6,7 +6,7 @@
  * — 依赖通过参数注入而非直接 import，避免与 window/settings/screen 模块形成硬耦合。
  * — 修改或新增 IPC 通道时，只需改这一个文件 + shared/ipc-channels.js。
  */
-const { ipcMain, BrowserWindow, app, dialog } = require('electron')
+const { ipcMain, BrowserWindow, app, dialog, Menu, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
 const { sanitizeDetails } = require('./services/app-log-service')
 const {
@@ -269,6 +269,46 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   // 右键菜单"退出"
   ipcMainService.on(IPC.PET_QUIT, () => app.quit())
+
+  ipcMainService.handle(IPC.PET_SHOW_CONTEXT_MENU, (event, point = {}) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return null
+    const animations = petService.getAnimations()
+    const actions = animations?.actions || []
+    const bounds = win.getBounds()
+    const { workArea } = screenService.getDisplayMatching(bounds)
+    const menuSize = estimatePetContextMenuSize(actions)
+    const settings = petService.getSettings?.() || {}
+    const placement = choosePetContextMenuPoint({
+      petBounds: bounds,
+      workArea,
+      menuSize,
+      menuPosition: settings.menuPosition,
+      preferredPoint: {
+        x: Number(point.x),
+        y: Number(point.y)
+      }
+    })
+    const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
+    const template = [
+      ...actions.map((action) => ({
+        label: action.label || action.id,
+        click: () => sendMenuCommand({ command: 'action', actionId: action.id })
+      })),
+      { type: 'separator' },
+      { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
+      { label: '设置', click: () => createSettingsWindow(win) },
+      { type: 'separator' },
+      { label: '退出', click: () => app.quit() }
+    ]
+    const contextMenu = menuService.buildFromTemplate(template)
+    contextMenu.popup({
+      window: win,
+      x: placement.popupPoint.x,
+      y: placement.popupPoint.y
+    })
+    return placement
+  })
 
   // 右键菜单"设置"：打开设置面板
   ipcMainService.on(IPC.SETTINGS_OPEN, () => {

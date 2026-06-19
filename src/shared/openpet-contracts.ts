@@ -9,6 +9,7 @@ export interface ControlCenterSettings {
   walkSpeed: number
   walkDuration: number
   bubbleDuration: number
+  menuPosition: 'auto' | 'right' | 'left' | 'above' | 'below'
   autoStart: boolean
   customCursor: CustomCursorSettings
   grounded: boolean

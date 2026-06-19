@@ -6,6 +6,7 @@ const { BASE_HEIGHT, BASE_WIDTH, PET_BASE_SCALE, applyPetViewport, applyWindowSc
 
 const projectRoot = path.join(__dirname, '..', '..')
 const petIndexPath = path.join(projectRoot, 'index.html')
+const windowModulePath = require.resolve('../../src/main/window')
 
 const createScreenStub = () => ({
   getPrimaryDisplay: () => ({
@@ -56,8 +57,24 @@ const createBrowserWindowStub = (instances) => class BrowserWindowStub {
   }
 }
 
+const loadWindowModule = (electronStub = {}) => {
+  delete require.cache[windowModulePath]
+  const originalLoad = Module._load
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === 'electron') return electronStub
+    return originalLoad.call(this, request, parent, isMain)
+  }
+
+  try {
+    return require(windowModulePath)
+  } finally {
+    Module._load = originalLoad
+  }
+}
+
 test('createWindow can defer loading so callers register lifecycle handlers first', () => {
   const instances = []
+  const { createWindow, loadPetWindow } = loadWindowModule()
   const petWindow = createWindow({
     load: false,
     BrowserWindow: createBrowserWindowStub(instances),
@@ -72,6 +89,7 @@ test('createWindow can defer loading so callers register lifecycle handlers firs
 
 test('createWindow preserves automatic loading by default', () => {
   const instances = []
+  const { createWindow } = loadWindowModule()
   const petWindow = createWindow({
     BrowserWindow: createBrowserWindowStub(instances),
     screen: createScreenStub()

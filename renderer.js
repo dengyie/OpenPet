@@ -505,7 +505,7 @@ const toggleWalk = async () => {
 
 /**
  * pointerdown：记录鼠标相对窗口偏移，进入拖拽状态。
- * 忽略右键（button !== 0）和菜单区域点击。
+ * 忽略右键（button !== 0）。
  */
 const onPointerDown = async (event) => {
   if (event.button !== 0 || event.target.closest('#menu')) return
@@ -573,7 +573,7 @@ const onPointerUp = (event) => {
 }
 
 // ═══════════════════════════════════════════
-// 6. 右键菜单 — 动态生成 + 点击分发
+// 6. 右键菜单 — 主进程原生菜单 + 命令分发
 // ═══════════════════════════════════════════
 
 /**
@@ -704,7 +704,6 @@ const applyAnimationsConfig = ({ actions, defaultAction, clickAction }) => {
   state.defaultAction = defaultAction
   state.clickAction = clickAction
   state.animations = Object.fromEntries(actions.map((a) => [a.id, a]))
-  renderMenu(actions)
   if (state.defaultAction) setAction(state.defaultAction)
 }
 
@@ -802,6 +801,8 @@ window.petAPI.onAnimationsChanged((config) => {
   if (config?.actions) applyAnimationsConfig(config)
 })
 
+window.petAPI.onPetMenuCommand?.(runMenuCommand)
+
 // DOM 事件绑定
 pet.addEventListener('pointerdown', onPointerDown)
 pet.addEventListener('pointermove', updateMousePassthroughFromPoint)
@@ -816,7 +817,7 @@ window.addEventListener('blur', () => { hideMenu(); clearPointerHoverState() }) 
 /**
  * 启动流程：
  * 1. 从主进程获取动作配置
- * 2. 构建菜单
+ * 2. 缓存动作表供菜单命令使用
  * 3. 播放待机动画
  * 4. 启动散步 tick 循环（40ms ≈ 25fps）
  */
