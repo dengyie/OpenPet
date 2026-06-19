@@ -8,8 +8,17 @@ const rendererSource = fs.readFileSync(path.join(__dirname, '..', 'renderer.js')
 
 const createStyle = () => ({
   values: {},
-  setProperty(name, value) {
+  priorities: {},
+  setProperty(name, value, priority = '') {
     this.values[name] = String(value)
+    this.priorities[name] = String(priority)
+  },
+  get cursor() {
+    return this.values.cursor || ''
+  },
+  set cursor(value) {
+    this.values.cursor = String(value || '')
+    this.priorities.cursor = ''
   }
 })
 
@@ -100,7 +109,7 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, elements, logs }
+  return { callbacks, context, elements, logs }
 }
 
 const dispatch = (element, eventName, event) => {
@@ -108,7 +117,7 @@ const dispatch = (element, eventName, event) => {
 }
 
 test('custom cursor overlay follows pointer inside the clickable pet region', async () => {
-  const { callbacks, elements, logs } = await createRendererHarness({ insideFrame: true })
+  const { callbacks, context, elements, logs } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
@@ -116,6 +125,12 @@ test('custom cursor overlay follows pointer inside the clickable pet region', as
   assert.equal(elements['custom-cursor-overlay'].src, 'file:///cursor.png')
   assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(24px, 89px, 0)')
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.values.cursor, 'none')
+  assert.equal(elements.pet.style.priorities.cursor, 'important')
+  assert.equal(context.document.body.style.values.cursor, 'none')
+  assert.equal(context.document.body.style.priorities.cursor, 'important')
+  assert.equal(context.document.documentElement.style.values.cursor, 'none')
+  assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
   assert.equal(elements.pet.style.cursor, 'none')
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
 })
