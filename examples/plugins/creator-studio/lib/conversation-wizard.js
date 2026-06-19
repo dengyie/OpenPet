@@ -15,6 +15,16 @@ const inferMode = (prompt) => {
   return 'single-action'
 }
 
+const shouldDraftGenerationTask = ({ prompt = '', mode = '', generationTask = null } = {}) => {
+  if (generationTask) return true
+  const normalizedMode = String(mode || '').trim()
+  if (normalizedMode === 'legacy' || normalizedMode === 'full-pet') return false
+  if (normalizedMode === 'single-action') return true
+  const text = String(prompt || '').trim()
+  if (!text) return false
+  return /自定义|动作|加一个|新增|添加|点击|点按|菜单|手动|随机|定时|偶尔|鼠标|悬停|靠近|状态|情绪|事件|click|manual|random|timer|hover|state|event/i.test(text)
+}
+
 const inferActionName = (prompt) => {
   const quoted = firstMatch(prompt, [/“([^”]+)”/, /"([^"]+)"/, /'([^']+)'/])
   if (quoted) return quoted
@@ -84,5 +94,6 @@ const draftGenerationTask = ({ prompt = '', context = {} } = {}) => {
 }
 
 module.exports = {
-  draftGenerationTask
+  draftGenerationTask,
+  shouldDraftGenerationTask
 }

@@ -582,6 +582,124 @@ test('declaration-only creator action bridge rejects missing permissions', async
   assert.equal(writeResponse.status, 403)
 })
 
+test('declaration-only creator model bridge exposes settings, health, and host-owned generation', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['model:image-generate']
+  })
+  const bridgeCalls = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    imageGenerationModelService: {
+      getConfig: () => ({
+        defaultBackend: 'cloud',
+        cloud: {
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-image-1',
+          apiKeyRef: 'secret:model.image.openai.apiKey',
+          hasApiKey: true,
+          apiKeyPreview: '••••1234',
+          apiKeyLabel: 'Image API Key'
+        },
+        local: {
+          endpoint: 'http://127.0.0.1:7860/generate',
+          healthUrl: 'http://127.0.0.1:7860/health',
+          model: 'local-pet-sprite',
+          timeoutMs: 120000,
+          maxConcurrentJobs: 1
+        }
+      }),
+      checkHealth: async (payload) => {
+        bridgeCalls.push(['checkHealth', payload])
+        return {
+          ok: true,
+          backend: payload?.backend || 'cloud',
+          code: 'provider_healthy',
+          message: 'Cloud provider is reachable'
+        }
+      },
+      generateImage: async (payload) => {
+        bridgeCalls.push(['generateImage', payload])
+        return {
+          ok: true,
+          backend: payload.backend || 'cloud',
+          model: 'gpt-image-1',
+          generatedAt: '2026-06-19T00:00:00.000Z',
+          outputs: [{
+            dataRelativePath: `${payload.output.dataRelativeDir}/0001.png`,
+            mimeType: 'image/png',
+            sha256: 'abc123'
+          }]
+        }
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+
+  const settingsResponse = await requestBridge(`${baseUrl}/creator/model-settings`, { token })
+  const healthResponse = await requestBridge(`${baseUrl}/creator/model-health-check`, {
+    method: 'POST',
+    token,
+    body: { backend: 'local' }
+  })
+  const generateResponse = await requestBridge(`${baseUrl}/creator/model-image-generate`, {
+    method: 'POST',
+    token,
+    body: {
+      backend: 'local',
+      prompt: 'small mint helper cat, transparent background',
+      output: {
+        dataDir: '/tmp/should-be-ignored',
+        dataRelativeDir: 'runs/demo-run/frames/base'
+      },
+      constraints: {
+        width: 1024,
+        height: 1024,
+        transparent: true
+      }
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(settingsResponse.status, 200)
+  assert.equal(settingsResponse.body.ok, true)
+  assert.equal(settingsResponse.body.config.defaultBackend, 'cloud')
+  assert.equal(settingsResponse.body.config.cloud.apiKeyPreview, '••••1234')
+
+  assert.equal(healthResponse.status, 200)
+  assert.equal(healthResponse.body.ok, true)
+  assert.equal(healthResponse.body.result.backend, 'local')
+
+  assert.equal(generateResponse.status, 200)
+  assert.equal(generateResponse.body.ok, true)
+  assert.equal(generateResponse.body.result.outputs[0].dataRelativePath, 'runs/demo-run/frames/base/0001.png')
+
+  assert.deepEqual(bridgeCalls[0], ['checkHealth', { backend: 'local' }])
+  assert.equal(bridgeCalls[1][0], 'generateImage')
+  assert.equal(bridgeCalls[1][1].backend, 'local')
+  assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
+  assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
+})
+
 test('declaration-only creator pack manifest bridge reads validates and applies active pack metadata', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

@@ -49,7 +49,7 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
   const timestamp = now()
   const petName = String(input.petName || 'Creator Studio Pet').trim() || 'Creator Studio Pet'
   const petId = slugify(input.petId || petName)
-  const originalPrompt = String(input.originalPrompt || input.prompt || '').trim()
+  const originalPrompt = input.originalPrompt == null ? '' : String(input.originalPrompt).trim()
   const generationTask = input.generationTask ? normalizeGenerationTask(input.generationTask) : null
   const baseRunId = `${timestamp.slice(0, 10)}-${petId}`.replace(/[^a-zA-Z0-9_-]/g, '-')
   const { runId, runDir } = createUniqueRunDirectory({ dataDir, baseRunId })

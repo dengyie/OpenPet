@@ -1,5 +1,6 @@
 const { getBackendAdapter } = require('./backend-adapters')
 const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
+const { generateViaHostModelBridge } = require('./host-model-bridge')
 
 const createBackendStatus = ({ backend, state, message = '', updatedAt }) => ({
   backend,
@@ -8,7 +9,31 @@ const createBackendStatus = ({ backend, state, message = '', updatedAt }) => ({
   updatedAt
 })
 
-const runGenerationStep = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
+const buildHostGeneratedRunOutput = ({ dataDir, run, generationResult, now }) => {
+  const completedAt = now()
+  const outputDir = `${dataDir}/runs/${run.runId}/outputs`
+  const nextRun = {
+    ...run,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    updatedAt: completedAt,
+    artifacts: {
+      ...run.artifacts,
+      outputDir,
+      generatedImage: generationResult
+    },
+    reviewStatus: 'pending',
+    error: ''
+  }
+  return {
+    outputDir,
+    bundlePath: '',
+    sha256: '',
+    run: nextRun
+  }
+}
+
+const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOString() }) => {
   const run = readRun({ dataDir, runId })
   const backend = run.backend || run.input?.backend || 'fixture'
   const startedAt = now()
@@ -38,7 +63,14 @@ const runGenerationStep = ({ dataDir, runId, now = () => new Date().toISOString(
   })
 
   try {
-    const output = getBackendAdapter(backend).run({ dataDir, runId, now })
+    const output = backend === 'fixture'
+      ? getBackendAdapter(backend).run({ dataDir, runId, now })
+      : buildHostGeneratedRunOutput({
+          dataDir,
+          run,
+          generationResult: await generateViaHostModelBridge({ backend, run }),
+          now
+        })
     const completedAt = now()
     const completedRun = {
       ...output.run,

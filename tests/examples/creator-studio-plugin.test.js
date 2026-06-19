@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { spawnSync } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 
 const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
 const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
@@ -19,7 +19,7 @@ test('creator studio example manifest declares hybrid creator workflow entries',
 
   assert.equal(manifest.id, 'openpet.creator-studio')
   assert.equal(manifest.profile, 'hybrid')
-  assert.deepEqual(manifest.permissions, ['pet-pack:import', 'pet:say'])
+  assert.deepEqual(manifest.permissions, ['pet-pack:import', 'pet:say', 'model:image-generate'])
   assert.deepEqual(manifest.commands.map((command) => command.id), [
     'create-run',
     'run-step',
@@ -82,6 +82,17 @@ test('creator studio wizard asks one trigger question for ambiguous custom actio
     question: 'How should this custom action be triggered?',
     options: ['manual', 'click', 'random', 'state', 'event', 'unbound']
   }])
+})
+
+test('creator studio wizard does not treat legacy pet prompts as action tasks', () => {
+  const { shouldDraftGenerationTask } = require('../../examples/plugins/creator-studio/lib/conversation-wizard')
+
+  assert.equal(shouldDraftGenerationTask({ prompt: 'A small mint helper cat' }), false)
+  assert.equal(shouldDraftGenerationTask({ prompt: '帮我做一只软乎乎的橘猫桌宠' }), false)
+  assert.equal(shouldDraftGenerationTask({ prompt: '新增一个动作，但是按旧版流程创建', mode: 'legacy' }), false)
+  assert.equal(shouldDraftGenerationTask({ prompt: '生成一只完整的新桌宠', mode: 'full-pet' }), false)
+  assert.equal(shouldDraftGenerationTask({ prompt: '新增一个自定义动作：原地打滚，动作要循环。' }), true)
+  assert.equal(shouldDraftGenerationTask({ prompt: 'A custom action that waves on click', mode: 'single-action' }), true)
 })
 
 test('creator studio generation task validation rejects unsafe trigger proposals', () => {
@@ -224,7 +235,7 @@ test('creator studio run store lists runs and persists append-only logs', () => 
   }])
 })
 
-test('creator studio backend runner generates fixture output through the selected adapter', () => {
+test('creator studio backend runner generates fixture output through the selected adapter', async () => {
   const { createRun, readRunLogs } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { draftGenerationTask } = require('../../examples/plugins/creator-studio/lib/conversation-wizard')
   const { runGenerationStep } = require('../../examples/plugins/creator-studio/lib/backend-runner')
@@ -244,7 +255,7 @@ test('creator studio backend runner generates fixture output through the selecte
     now: () => '2026-06-19T00:00:00.000Z'
   })
 
-  const output = runGenerationStep({ dataDir, runId: run.runId })
+  const output = await runGenerationStep({ dataDir, runId: run.runId })
   const manifest = JSON.parse(fs.readFileSync(path.join(output.outputDir, 'pet.json'), 'utf-8'))
   const actionQa = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', run.runId, 'qa', 'action-generation-task.json'), 'utf-8'))
   const bundleHash = crypto.createHash('sha256').update(fs.readFileSync(output.bundlePath)).digest('hex')
@@ -266,7 +277,7 @@ test('creator studio backend runner generates fixture output through the selecte
   ])
 })
 
-test('creator studio backend runner records unavailable cloud backend without fixture fallback', () => {
+test('creator studio backend runner records unavailable cloud backend without fixture fallback', async () => {
   const { createRun, readRun, readRunLogs } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { runGenerationStep } = require('../../examples/plugins/creator-studio/lib/backend-runner')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-cloud-'))
@@ -276,8 +287,8 @@ test('creator studio backend runner records unavailable cloud backend without fi
     now: () => '2026-06-19T00:00:00.000Z'
   })
 
-  assert.throws(
-    () => runGenerationStep({ dataDir, runId: run.runId }),
+  await assert.rejects(
+    runGenerationStep({ dataDir, runId: run.runId }),
     /Cloud backend is not configured/
   )
   const failed = readRun({ dataDir, runId: run.runId })
@@ -293,29 +304,57 @@ test('creator studio backend runner records unavailable cloud backend without fi
   ])
 })
 
-const runCreatorCommand = ({ command, dataDir, payload = {}, config = {}, env = {} }) => {
-  const result = spawnSync(process.execPath, [path.join(pluginRoot, 'commands', `${command}.js`)], {
-    input: `${JSON.stringify({
+const createCommandInput = ({ command, payload = {}, config = {} }) => `${JSON.stringify({
       pluginId: 'openpet.creator-studio',
       commandId: command,
       payload,
       config: { backend: 'fixture', autoActivateAfterImport: true, ...config },
       paths: { extensionDir: pluginRoot }
-    })}\n`,
+    })}\n`
+
+const createCommandEnv = ({ dataDir, env = {} }) => ({
+  ...process.env,
+  OPENPET_DATA_DIR: dataDir,
+  OPENPET_CACHE_DIR: path.join(dataDir, 'cache'),
+  OPENPET_LOG_DIR: path.join(dataDir, 'logs'),
+  ...env
+})
+
+const parseCommandJson = (stdout) => JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).at(-1))
+
+const runCreatorCommand = ({ command, dataDir, payload = {}, config = {}, env = {} }) => {
+  const result = spawnSync(process.execPath, [path.join(pluginRoot, 'commands', `${command}.js`)], {
+    input: createCommandInput({ command, payload, config }),
     env: {
-      ...process.env,
-      OPENPET_DATA_DIR: dataDir,
-      OPENPET_CACHE_DIR: path.join(dataDir, 'cache'),
-      OPENPET_LOG_DIR: path.join(dataDir, 'logs'),
-      ...env
+      ...createCommandEnv({ dataDir, env })
     },
     encoding: 'utf-8'
   })
   return {
     ...result,
-    json: JSON.parse(result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1))
+    json: parseCommandJson(result.stdout)
   }
 }
+
+const runCreatorCommandAsync = ({ command, dataDir, payload = {}, config = {}, env = {} }) => new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, [path.join(pluginRoot, 'commands', `${command}.js`)], {
+    env: createCommandEnv({ dataDir, env }),
+    stdio: ['pipe', 'pipe', 'pipe']
+  })
+  let stdout = ''
+  let stderr = ''
+  child.stdout.on('data', (chunk) => { stdout += chunk })
+  child.stderr.on('data', (chunk) => { stderr += chunk })
+  child.on('error', reject)
+  child.on('close', (status, signal) => {
+    try {
+      resolve({ status, signal, stdout, stderr, json: parseCommandJson(stdout) })
+    } catch (error) {
+      reject(error)
+    }
+  })
+  child.stdin.end(createCommandInput({ command, payload, config }))
+})
 
 test('creator studio run-step command fails unavailable local backend with persisted run state', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-command-'))
@@ -343,6 +382,109 @@ test('creator studio run-step command fails unavailable local backend with persi
   assert.equal(run.backendStatus.state, 'not_configured')
 })
 
+test('creator studio run-step command uses host bridge for local backend generation when available', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-bridge-'))
+  const requests = []
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Local Cat', prompt: 'A local generated cat', backend: 'local' },
+    config: { backend: 'local' }
+  })
+  const bridgeServer = require('node:http').createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {}
+      requests.push({ method: request.method, url: request.url, payload })
+      response.writeHead(200, {
+        'Content-Type': 'application/json',
+        Connection: 'close'
+      })
+      if (request.url.endsWith('/creator/model-image-generate')) {
+        response.end(JSON.stringify({
+          ok: true,
+          result: {
+            ok: true,
+            backend: 'local',
+            model: 'local-pet-sprite',
+            generatedAt: '2026-06-19T00:00:00.000Z',
+            outputs: [{
+              dataRelativePath: `runs/${created.json.run.runId}/frames/base/0001.png`,
+              mimeType: 'image/png',
+              sha256: 'local-bridge-sha'
+            }]
+          }
+        }))
+        return
+      }
+      if (request.url.endsWith('/creator/model-health-check')) {
+        response.end(JSON.stringify({
+          ok: true,
+          result: {
+            ok: true,
+            backend: 'local',
+            code: 'endpoint_healthy',
+            message: 'Local endpoint is reachable'
+          }
+        }))
+        return
+      }
+      response.end(JSON.stringify({
+        ok: true,
+        config: {
+          defaultBackend: 'local',
+          cloud: {
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            model: 'gpt-image-1',
+            apiKeyRef: 'secret:model.image.openai.apiKey',
+            hasApiKey: false,
+            apiKeyPreview: '',
+            apiKeyLabel: 'Image API Key'
+          },
+          local: {
+            endpoint: 'http://127.0.0.1:7860/generate',
+            healthUrl: 'http://127.0.0.1:7860/health',
+            model: 'local-pet-sprite',
+            timeoutMs: 120000,
+            maxConcurrentJobs: 1
+          }
+        }
+      }))
+    })
+  })
+  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  const port = bridgeServer.address().port
+
+  try {
+    const generated = await runCreatorCommandAsync({
+      command: 'run-step',
+      dataDir,
+      payload: { runId: created.json.run.runId },
+      config: { backend: 'local' },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const run = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.json.run.runId, 'run.json'), 'utf-8'))
+
+    assert.equal(created.status, 0)
+    assert.equal(generated.status, 0)
+    assert.equal(generated.json.ok, true)
+    assert.equal(generated.json.run.backendStatus.backend, 'local')
+    assert.equal(generated.json.run.backendStatus.state, 'ready')
+    assert.equal(run.status, 'ready_for_review')
+    assert.equal(run.backendStatus.state, 'ready')
+    assert.equal(run.artifacts.generatedImage.outputs[0].dataRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
+    assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-image-generate'])
+  } finally {
+    bridgeServer.closeAllConnections?.()
+    await new Promise((resolve) => bridgeServer.close(resolve))
+  }
+})
+
 test('creator studio create-run command drafts a generation task from a conversation prompt', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-create-task-'))
 
@@ -359,6 +501,25 @@ test('creator studio create-run command drafts a generation task from a conversa
   assert.equal(created.json.run.generationTask.mode, 'single-action')
   assert.equal(created.json.run.generationTask.actions[0].name, '原地打滚')
   assert.equal(created.json.run.generationTask.questions[0].id, 'trigger')
+})
+
+test('creator studio create-run command keeps legacy pet prompts as plain runs', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-legacy-prompt-'))
+
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: {
+      petName: 'Sprout Cat',
+      prompt: 'A small mint helper cat'
+    }
+  })
+
+  assert.equal(created.status, 0)
+  assert.equal(created.json.run.input.prompt, 'A small mint helper cat')
+  assert.equal(created.json.run.input.originalPrompt, undefined)
+  assert.equal(created.json.run.generationTask, undefined)
+  assert.equal(fs.existsSync(path.join(dataDir, 'runs', created.json.run.runId, 'inputs', 'generation-task.json')), false)
 })
 
 test('creator studio commands create run generate output approve and export', () => {
