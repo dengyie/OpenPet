@@ -295,9 +295,10 @@ const isPointInsideCursorRegion = (clientX, clientY) => {
 
 const setNativeCursor = (nextCursor) => {
   const value = nextCursor || ''
-  document.documentElement.style.cursor = value
-  document.body.style.cursor = value
-  pet.style.cursor = value
+  const priority = value === 'none' ? 'important' : ''
+  document.documentElement.style.setProperty('cursor', value, priority)
+  document.body.style.setProperty('cursor', value, priority)
+  pet.style.setProperty('cursor', value, priority)
   state.nativeCursor = value
 }
 
