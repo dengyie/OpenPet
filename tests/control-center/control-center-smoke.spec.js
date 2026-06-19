@@ -79,14 +79,22 @@ test.describe('Control Center smoke', () => {
   test('configures a custom pet hover cursor in the demo API session', async ({ page }) => {
     await page.goto('/')
 
-    await expect(page.getByText('未选择')).toBeVisible()
+    const cursorToggleRow = page.locator('.field-row', { hasText: '自定义鼠标指针' })
+    const cursorPreviewRow = page.locator('.field-row.tall', { hasText: '指针选择' })
+    const cursorPreviewCard = page.locator('.cursor-preview-card')
+
+    await expect(cursorToggleRow).toHaveCount(1)
+    await expect(cursorPreviewRow).toBeVisible()
+    await expect(cursorPreviewCard).toContainText('未选择指针')
+
     await page.getByRole('button', { name: '选择图片' }).click()
-    await expect(page.locator('.field-row', { hasText: '自定义鼠标指针' })).toContainText('demo-cursor.png')
+    await expect(cursorPreviewCard).toContainText('demo-cursor.png')
+    await expect(cursorPreviewCard.locator('img')).toHaveAttribute('src', /data:image\/svg\+xml/)
     await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
     await expect(page.locator('.status-line')).toContainText('已选择并启用鼠标指针')
 
     await page.getByRole('button', { name: '清除' }).click()
-    await expect(page.locator('.field-row', { hasText: '自定义鼠标指针' })).toContainText('未选择')
+    await expect(cursorPreviewCard).toContainText('未选择指针')
     await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toBeDisabled()
   })
 

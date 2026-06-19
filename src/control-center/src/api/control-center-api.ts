@@ -590,6 +590,15 @@ const demoApi: ControlCenterApi = {
     }
   },
   previewScale: () => {},
+  importCursor: async () => ({
+    canceled: false,
+    cursor: {
+      enabled: true,
+      assetPath: '/demo/cursors/demo-cursor.png',
+      assetUrl: demoCursorAssetUrl,
+      fileName: 'demo-cursor.png'
+    }
+  }),
   getActions: async () => defaultActionsConfig,
   inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
   reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
