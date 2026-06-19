@@ -6,7 +6,7 @@
   "license": "MIT",
   "main": "main.js",
   "scripts": {
-    "start": "npm run build:control-center && electron .",
+    "start": "node scripts/cleanup-dev-instances.js && npm run build:control-center && electron .",
     "dev:control-center": "vite --config src/control-center/vite.config.js --host 127.0.0.1",
     "build:control-center": "vite build --config src/control-center/vite.config.js",
     "pack": "npm run build:control-center && electron-builder --dir",

@@ -138,7 +138,7 @@ const collectCustomCursorAssetPaths = (cursors = []) => (
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen, appService = app }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -157,6 +157,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     } catch (_) {
       // Logging must never break user flows.
     }
+  }
+
+  const requestAppQuit = (source) => {
+    recordAppLog({
+      scope: 'app',
+      level: 'info',
+      actor: 'user',
+      event: 'app.quit.requested',
+      message: 'OpenPet quit requested',
+      details: { source }
+    })
+    appService.quit()
   }
 
   const getPendingActionFrameSelection = (selectionId) => {
@@ -268,7 +280,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   // 右键菜单"退出"
-  ipcMainService.on(IPC.PET_QUIT, () => app.quit())
+  ipcMainService.on(IPC.PET_QUIT, () => requestAppQuit('pet-renderer'))
 
   ipcMainService.handle(IPC.PET_SHOW_CONTEXT_MENU, (event, point = {}) => {
     const win = browserWindowService.fromWebContents(event.sender)
@@ -297,7 +309,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
       { label: '设置', click: () => createSettingsWindow(win) },
       { type: 'separator' },
-      { label: '退出', click: () => app.quit() }
+      { label: '退出', click: () => requestAppQuit('pet-context-menu') }
     ]
     recordAppLog({
       scope: 'pet-menu',
