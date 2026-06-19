@@ -9,7 +9,9 @@ test('main forwards IPC-provided scale values to the window scaler', () => {
   delete require.cache[mainPath]
 
   const scaleCalls = []
+  const animationReloadCalls = []
   let registeredIpcDependencies = null
+  let registeredPluginDependencies = null
   const petWindow = {
     webContents: { on: () => {}, send: () => {} },
     isMinimized: () => false,
@@ -52,6 +54,10 @@ test('main forwards IPC-provided scale values to the window scaler', () => {
       return {
         createPetRendererSettings: (settings) => settings,
         normalizeLocalHttpConfig: (_currentConfig, nextConfig) => nextConfig,
+        reloadAndSendAnimations: (getPetWindow, petService) => {
+          animationReloadCalls.push({ petWindow: getPetWindow(), petService })
+          return { actions: [] }
+        },
         registerIpcHandlers: (dependencies) => { registeredIpcDependencies = dependencies }
       }
     }
@@ -130,7 +136,12 @@ test('main forwards IPC-provided scale values to the window scaler', () => {
       './src/main/services/secret-service': { createSecretService: () => ({}) },
       './src/main/services/ai-service': { createAiService: () => ({}) },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
-      './src/main/services/plugin-service': { createPluginService: () => ({ stopAllServices: () => {} }) },
+      './src/main/services/plugin-service': {
+        createPluginService: (dependencies) => {
+          registeredPluginDependencies = dependencies
+          return { stopAllServices: () => {} }
+        }
+      },
       './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
       './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
       './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
@@ -153,8 +164,11 @@ test('main forwards IPC-provided scale values to the window scaler', () => {
 
     const ipcWindow = { id: 'ipc-window' }
     registeredIpcDependencies.applyWindowScale(ipcWindow, 0.5)
+    registeredPluginDependencies.onPetPackActivated()
 
     assert.deepEqual(scaleCalls, [{ targetWindow: ipcWindow, scale: 0.5 }])
+    assert.equal(animationReloadCalls.length, 1)
+    assert.equal(animationReloadCalls[0].petWindow, petWindow)
   } finally {
     Module._load = originalLoad
     delete require.cache[mainPath]

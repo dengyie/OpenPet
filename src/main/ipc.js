@@ -788,4 +788,4 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 }
 
-module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, registerIpcHandlers, triggerAiSemanticAction, executeBehaviorDecision }
+module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, reloadAndSendAnimations, registerIpcHandlers, triggerAiSemanticAction, executeBehaviorDecision }
