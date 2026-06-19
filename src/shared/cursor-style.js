@@ -18,7 +18,8 @@
   }
 
   const resolvePetCursorStyle = (cursor, context = {}) => {
-    if (!context.insideFrame || context.dragging || context.menuOpen) return ''
+    const insideCursorRegion = context.insideCursorRegion ?? context.insideFrame
+    if (!insideCursorRegion || context.menuOpen) return ''
     return createCustomCursorCss(cursor)
   }
 

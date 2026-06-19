@@ -48,10 +48,16 @@ const createElement = (id = '') => ({
 })
 
 const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true } = {}) => {
-  const hitboxResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
+  const frameResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const cursorRegionResults = insideCursorRegion === undefined
     ? null
     : Array.isArray(insideCursorRegion) ? insideCursorRegion.slice() : null
+  const readHitboxResult = (source, fallback) => {
+    if (!source) return fallback
+    if (source.length === 0) return fallback
+    const value = source.shift()
+    return value ?? source.at(-1) ?? fallback
+  }
   const elements = {
     pet: createElement('pet'),
     cat: createElement('cat'),
@@ -76,17 +82,16 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
       ...(includeHitbox
         ? {
             OpenPetHitbox: {
-              getFrameHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
+              getFrameHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300, type: 'frame' }),
               getWindowHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300, type: 'window' }),
               getViewportHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300, type: 'viewport' }),
               isPointInHitbox: (_point, hitbox) => {
                 if (hitbox?.type === 'window') {
-                  if (insideCursorRegion === undefined) {
-                    return hitboxResults ? hitboxResults.shift() ?? hitboxResults.at(-1) ?? false : insideFrame
-                  }
-                  return cursorRegionResults ? cursorRegionResults.shift() ?? cursorRegionResults.at(-1) ?? false : insideCursorRegion
+                  return insideCursorRegion === undefined
+                    ? readHitboxResult(frameResults, insideFrame)
+                    : readHitboxResult(cursorRegionResults, insideCursorRegion)
                 }
-                return hitboxResults ? hitboxResults.shift() ?? hitboxResults.at(-1) ?? false : insideFrame
+                return readHitboxResult(frameResults, insideFrame)
               }
             }
           }
@@ -132,6 +137,10 @@ const dispatch = (element, eventName, event) => {
   for (const listener of element.listeners[eventName] || []) listener(event)
 }
 
+const dispatchAsync = async (element, eventName, event) => {
+  for (const listener of element.listeners[eventName] || []) await listener(event)
+}
+
 test('custom cursor uses native CSS cursor inside the clickable pet region without drawing an overlay', async () => {
   const { callbacks, context, elements, logs } = await createRendererHarness({ insideFrame: true })
 
@@ -149,14 +158,21 @@ test('custom cursor uses native CSS cursor inside the clickable pet region witho
   assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
 })
 
-test('custom cursor overlay hides outside the clickable pet region', async () => {
-  const { callbacks, elements, logs } = await createRendererHarness({ insideFrame: false })
+test('custom cursor remains visible in the cursor region without expanding pet click handling', async () => {
+  const { callbacks, elements, logs } = await createRendererHarness({
+    insideFrame: false,
+    insideCursorRegion: true
+  })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, '')
+  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(logs.find((entry) => entry.event === 'pet:test:set-mouse-passthrough').passthrough, true)
+  assert.equal(logs.at(-1).details.insideFrame, false)
+  assert.equal(logs.at(-1).details.insideCursorRegion, true)
+  assert.equal(logs.at(-1).details.cursorApplied, true)
   assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
 })
 
