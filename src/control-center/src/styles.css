@@ -229,20 +229,30 @@ button {
 
 .cursor-preview-card {
   display: grid;
-  grid-template-columns: 144px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 16px;
   align-items: center;
-  width: min(100%, 520px);
-  padding: 14px 16px;
-  border: 1px solid #d7dde6;
+  padding: 14px;
+  border: 1px solid #dde2e8;
   border-radius: 12px;
-  background: linear-gradient(180deg, #ffffff 0%, #f7f8fb 100%);
+  background: #ffffff;
 }
 
 .cursor-preview-surface {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  min-height: 112px;
+  padding: 12px;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at top left, rgba(31, 41, 55, 0.06), transparent 42%),
+    linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.cursor-preview-slot {
   position: relative;
-  width: 144px;
-  height: 96px;
+  min-height: 84px;
   overflow: hidden;
   border: 1px solid #d6dce4;
   border-radius: 10px;
@@ -256,29 +266,35 @@ button {
 
 .cursor-preview-target {
   position: absolute;
-  left: 72px;
-  top: 48px;
-  width: 18px;
-  height: 18px;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(31, 41, 55, 0.2);
   border-radius: 999px;
-  border: 2px solid rgba(31, 41, 55, 0.22);
   transform: translate(-50%, -50%);
 }
 
-.cursor-preview-surface img,
-.cursor-preview-empty {
+.cursor-preview-surface img {
   position: absolute;
-  left: 72px;
-  top: 48px;
-  width: 32px;
-  height: 32px;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .cursor-preview-empty {
-  border: 1px dashed #c5ccd6;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: #6b7280;
+  font-size: 12px;
+  text-align: center;
 }
 
 .cursor-preview-meta {
@@ -288,10 +304,10 @@ button {
 }
 
 .cursor-preview-name {
+  color: #111827;
   font-size: 14px;
   font-weight: 600;
-  color: #1f2937;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .segmented {
@@ -1194,6 +1210,10 @@ button {
 
   .cursor-preview-card {
     grid-template-columns: 1fr;
+  }
+
+  .cursor-preview-surface {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .plugin-row {

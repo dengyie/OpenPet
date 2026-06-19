@@ -81,11 +81,13 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.locator('.field-row', { hasText: '自定义鼠标指针' })).toHaveCount(1)
     await expect(page.locator('.cursor-preview-card')).toHaveCount(1)
+    await expect(page.locator('.cursor-preview-slot')).toHaveCount(6)
     await expect(page.locator('.cursor-preview-card')).toContainText('未选择指针')
 
     await page.getByRole('button', { name: '选择图片' }).click()
     await expect(page.locator('.cursor-preview-card')).toContainText('demo-cursor.png')
-    await expect(page.locator('.cursor-preview-surface img')).toHaveAttribute('src', /data:image\/svg\+xml/)
+    await expect(page.locator('.cursor-preview-slot img')).toHaveCount(6)
+    await expect(page.locator('.cursor-preview-slot').first().locator('img')).toHaveAttribute('src', /data:image\/svg\+xml/)
     await expect(page.getByRole('switch', { name: '启用自定义鼠标指针' })).toHaveAttribute('aria-checked', 'true')
     await expect(page.locator('.status-line')).toContainText('已选择并启用鼠标指针')
 

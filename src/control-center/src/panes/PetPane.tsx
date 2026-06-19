@@ -20,7 +20,8 @@ export function PetPane({ settings, originalSettings, status, onChange, onImport
   const hasCustomCursor = Boolean(settings.customCursor.assetUrl)
   const cursorLabel = settings.customCursor.fileName || '未选择'
   const cursorActionLabel = hasCustomCursor ? '更换图片' : '选择图片'
-  const cursorPreviewAlt = settings.customCursor.fileName ? `${settings.customCursor.fileName} cursor preview` : 'cursor preview'
+  const cursorPreviewAlt = settings.customCursor.fileName || '自定义鼠标指针预览'
+  const cursorPreviewSlots = Array.from({ length: 6 }, (_, index) => index)
 
   return (
     <section className="pane">
@@ -89,33 +90,43 @@ export function PetPane({ settings, originalSettings, status, onChange, onImport
         <div className="field-row">
           <div>
             <div className="field-label">自定义鼠标指针</div>
-            <div className="field-note">开启后仅在宠物可交互区域显示自定义指针</div>
+            <div className="field-note">开启后，鼠标移动到宠物交互区域时会显示你选择的指针图片。</div>
           </div>
-          <Toggle
-            ariaLabel="启用自定义鼠标指针"
-            checked={Boolean(settings.customCursor.enabled && hasCustomCursor)}
-            disabled={!hasCustomCursor || saving}
-            onChange={(enabled) => onChange({ customCursor: { ...settings.customCursor, enabled } })}
-          />
+          <div className="inline-action">
+            <Toggle
+              ariaLabel="启用自定义鼠标指针"
+              checked={Boolean(settings.customCursor.enabled && hasCustomCursor)}
+              disabled={!hasCustomCursor || saving}
+              onChange={(enabled) => onChange({ customCursor: { ...settings.customCursor, enabled } })}
+            />
+          </div>
         </div>
 
         <div className="field-row tall">
           <div>
             <div className="field-label">指针选择</div>
-            <div className="field-note">预览会模拟真实指针落点，方便确认最终显示效果</div>
+            <div className="field-note">预览会模拟真实指针落点，方便你判断图片尺寸和视觉效果。</div>
           </div>
           <div className="cursor-preview-card">
-            <div className="cursor-preview-surface" aria-label="Cursor preview surface">
-              <div className="cursor-preview-target" aria-hidden="true" />
-              {hasCustomCursor
-                ? <img src={settings.customCursor.assetUrl} alt={cursorPreviewAlt} />
-                : <div className="cursor-preview-empty" aria-hidden="true" />}
+            <div className="cursor-preview-surface" aria-label="指针预览画布">
+              {cursorPreviewSlots.map((slot) => (
+                <div key={slot} className="cursor-preview-slot">
+                  <div className="cursor-preview-target" aria-hidden="true" />
+                  {hasCustomCursor ? (
+                    <img src={settings.customCursor.assetUrl} alt={cursorPreviewAlt} />
+                  ) : (
+                    <div className="cursor-preview-empty" aria-hidden="true">未选择指针</div>
+                  )}
+                </div>
+              ))}
             </div>
             <div className="cursor-preview-meta">
-              <div className="cursor-preview-name">{cursorLabel}</div>
-              <div className="field-note">
-                {hasCustomCursor ? '当前展示的是模拟指针效果' : '未选择指针'}
-              </div>
+              <strong className="cursor-preview-name">{cursorLabel}</strong>
+              <span className="field-note">
+                {hasCustomCursor
+                  ? '当前会在宠物交互区域内作为鼠标指针显示。'
+                  : '支持选择带透明背景的 PNG 图片。'}
+              </span>
               <div className="inline-action">
                 <button type="button" className="ghost" onClick={onImportCursor} disabled={saving}>
                   {cursorActionLabel}
