@@ -226,20 +226,35 @@ test('creator studio run store lists runs and persists append-only logs', () => 
 
 test('creator studio backend runner generates fixture output through the selected adapter', () => {
   const { createRun, readRunLogs } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { draftGenerationTask } = require('../../examples/plugins/creator-studio/lib/conversation-wizard')
   const { runGenerationStep } = require('../../examples/plugins/creator-studio/lib/backend-runner')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-output-'))
+  const draft = draftGenerationTask({
+    prompt: '给当前猫猫加一个“被摸头后害羞转圈”的动作，点击触发，风格保持一致。'
+  })
   const run = createRun({
     dataDir,
-    input: { petName: 'Sprout Cat', prompt: 'A small mint helper cat', backend: 'fixture' },
+    input: {
+      petName: 'Sprout Cat',
+      prompt: draft.originalPrompt,
+      backend: 'fixture',
+      generationTask: draft.generationTask,
+      originalPrompt: draft.originalPrompt
+    },
     now: () => '2026-06-19T00:00:00.000Z'
   })
 
   const output = runGenerationStep({ dataDir, runId: run.runId })
   const manifest = JSON.parse(fs.readFileSync(path.join(output.outputDir, 'pet.json'), 'utf-8'))
+  const actionQa = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', run.runId, 'qa', 'action-generation-task.json'), 'utf-8'))
   const bundleHash = crypto.createHash('sha256').update(fs.readFileSync(output.bundlePath)).digest('hex')
 
   assert.equal(manifest.id, run.petId)
   assert.equal(manifest.spritesheetPath, 'spritesheet.webp')
+  assert.equal(manifest.creatorStudio.mode, 'single-action')
+  assert.equal(manifest.creatorStudio.actions[0].name, '被摸头后害羞转圈')
+  assert.equal(actionQa.ok, true)
+  assert.equal(actionQa.actions[0].triggerProposal.type, 'click')
   assert.equal(fs.existsSync(path.join(output.outputDir, 'spritesheet.webp')), true)
   assert.equal(fs.existsSync(output.bundlePath), true)
   assert.equal(output.sha256, bundleHash)
