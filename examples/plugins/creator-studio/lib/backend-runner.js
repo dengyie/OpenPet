@@ -52,6 +52,7 @@ const writeHostGeneratedStandardOutputs = ({ dataDir, run, generationResult, now
     fs.writeFileSync(path.join(qaDir, 'action-generation-task.json'), `${JSON.stringify({
       ok: true,
       originalPrompt: run.input.originalPrompt || run.input.prompt || '',
+      ...(generationResult.promptBuilder ? { promptBuilder: generationResult.promptBuilder } : {}),
       ...creatorStudio
     }, null, 2)}\n`)
   }
