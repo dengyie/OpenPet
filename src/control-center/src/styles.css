@@ -284,8 +284,8 @@ button {
 .cursor-options-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 164px;
-  gap: 18px;
+  grid-auto-columns: 118px;
+  gap: 12px;
   overflow-x: auto;
   padding: 4px 2px 10px;
   scrollbar-width: thin;
@@ -294,12 +294,12 @@ button {
 .cursor-option-card {
   position: relative;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   justify-items: center;
-  min-height: 214px;
-  padding: 16px 14px 18px;
+  min-height: 132px;
+  padding: 10px 9px 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 24px;
+  border-radius: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   cursor: pointer;
@@ -328,8 +328,8 @@ button {
   display: grid;
   place-items: center;
   width: 100%;
-  min-height: 138px;
-  border-radius: 20px;
+  min-height: 82px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
@@ -348,8 +348,8 @@ button {
 .cursor-library-preview img {
   position: relative;
   z-index: 1;
-  width: 64px;
-  height: 64px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -359,8 +359,8 @@ button {
   z-index: 1;
   display: grid;
   place-items: center;
-  width: 54px;
-  height: 54px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   color: #7c64ff;
   background: rgba(124, 100, 255, 0.1);
@@ -375,9 +375,13 @@ button {
 }
 
 .cursor-card-label {
-  font-size: 16px;
+  max-width: 100%;
+  font-size: 13px;
   font-weight: 700;
   color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cursor-option-card.selected .cursor-card-label {
@@ -386,12 +390,12 @@ button {
 
 .cursor-card-check {
   position: absolute;
-  top: -10px;
-  right: -10px;
+  top: -7px;
+  right: -7px;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
   background: linear-gradient(180deg, #8b76ff 0%, #6d4cff 100%);
   color: #ffffff;
@@ -456,9 +460,10 @@ button {
   position: relative;
   display: grid;
   place-items: center;
-  flex: 0 0 172px;
-  min-height: 60px;
-  border-radius: 16px;
+  flex: 0 0 64px;
+  width: 64px;
+  min-height: 48px;
+  border-radius: 10px;
   overflow: hidden;
 }
 
