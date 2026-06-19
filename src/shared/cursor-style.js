@@ -18,13 +18,14 @@
   }
 
   const resolvePetCursorStyle = (cursor, context = {}) => {
-    const insideCursorRegion = context.insideCursorRegion ?? context.insideFrame
-    if (!insideCursorRegion || context.menuOpen) return ''
-    return createCustomCursorCss(cursor)
+    return ''
   }
 
   const resolvePetCursorOverlayState = (cursor, context = {}) => {
-    return { visible: false, assetUrl: '', nativeCursor: '' }
+    if (!cursor || !cursor.enabled || !cursor.assetUrl || !context.insideFrame || context.menuOpen) {
+      return { visible: false, assetUrl: '', nativeCursor: '' }
+    }
+    return { visible: true, assetUrl: cursor.assetUrl, nativeCursor: 'none' }
   }
 
   return {

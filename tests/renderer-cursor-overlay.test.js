@@ -141,24 +141,26 @@ const dispatchAsync = async (element, eventName, event) => {
   for (const listener of element.listeners[eventName] || []) await listener(event)
 }
 
-test('custom cursor uses native CSS cursor inside the clickable pet region without drawing an overlay', async () => {
+test('custom cursor uses a DOM overlay inside the clickable pet region and hides the native cursor', async () => {
   const { callbacks, context, elements, logs } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements['custom-cursor-overlay'].src, 'file:///cursor.png')
+  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(20px, 83px, 0)')
+  assert.equal(elements.pet.style.values.cursor, 'none')
   assert.equal(elements.pet.style.priorities.cursor, 'important')
-  assert.equal(context.document.body.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.body.style.values.cursor, 'none')
   assert.equal(context.document.body.style.priorities.cursor, 'important')
-  assert.equal(context.document.documentElement.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.documentElement.style.values.cursor, 'none')
   assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 4 6, auto')
-  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+  assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
 })
 
-test('custom cursor remains visible in the cursor region without expanding pet click handling', async () => {
+test('custom cursor is not shown in passthrough-only padding so desktop clicks are not trapped', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({
     insideFrame: false,
     insideCursorRegion: true
@@ -168,25 +170,25 @@ test('custom cursor remains visible in the cursor region without expanding pet c
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, '')
   assert.equal(logs.find((entry) => entry.event === 'pet:test:set-mouse-passthrough').passthrough, true)
   assert.equal(logs.at(-1).details.insideFrame, false)
   assert.equal(logs.at(-1).details.insideCursorRegion, true)
-  assert.equal(logs.at(-1).details.cursorApplied, true)
+  assert.equal(logs.at(-1).details.cursorApplied, false)
   assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
 })
 
-test('custom cursor stays active in the pet cursor region without expanding click handling', async () => {
+test('custom cursor stays inactive in passthrough cursor padding without expanding click handling', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({ insideFrame: false, insideCursorRegion: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 0.2, clientY: 78.5, screenX: 1250.2, screenY: 782.5 })
 
   const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, '')
   assert.equal(logs.at(-1).details.insideFrame, false)
   assert.equal(logs.at(-1).details.insideCursorRegion, true)
-  assert.equal(logs.at(-1).details.cursorApplied, true)
+  assert.equal(logs.at(-1).details.cursorApplied, false)
   assert.deepEqual(passthroughCalls.map((entry) => entry.passthrough), [true])
 })
 
@@ -200,22 +202,22 @@ test('pet remains clickable when the optional hitbox helper is unavailable', asy
   assert.equal(logs.at(-1).details.passthrough, false)
 })
 
-test('custom cursor style survives transient pointerleave events from transparent window edges', async () => {
+test('pointerleave clears the DOM cursor overlay and restores the native cursor', async () => {
   const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.cursor, 'none')
 
   dispatch(elements.pet, 'pointerleave', { clientX: 301, clientY: 301, screenX: 1301, screenY: 901 })
 
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, '')
 })
 
-test('transient out-of-window pointer movement keeps the applied custom cursor stable', async () => {
+test('transient out-of-window pointer movement clears the DOM cursor overlay', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({
     insideFrame: [true, false],
     insideCursorRegion: [true, false]
@@ -224,13 +226,15 @@ test('transient out-of-window pointer movement keeps the applied custom cursor s
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
 
   dispatch(elements.pet, 'pointermove', { clientX: -7.4, clientY: 38.73, screenX: 992.6, screenY: 738.73 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, '')
   assert.equal(logs.at(-1).details.insideCursorRegion, false)
-  assert.equal(logs.at(-1).details.cursorApplied, true)
+  assert.equal(logs.at(-1).details.cursorApplied, false)
 })
 
 test('pointer down does not flash the active custom cursor back to the system cursor', async () => {
@@ -239,11 +243,13 @@ test('pointer down does not flash the active custom cursor back to the system cu
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
 
   await dispatchAsync(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
 })
 
 test('pointer leave does not cancel passthrough while hovering transparent pet padding', async () => {
