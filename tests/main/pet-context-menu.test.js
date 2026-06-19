@@ -13,6 +13,7 @@ test('choosePetContextMenuPoint places the menu beside the pet when there is roo
 
   assert.equal(point.placement, 'right')
   assert.deepEqual(point.screenPoint, { x: 262, y: 270 })
+  assert.deepEqual(point.windowPoint, { x: 162, y: -30 })
 })
 
 test('choosePetContextMenuPoint moves the menu to the left near the right screen edge', () => {
@@ -25,6 +26,7 @@ test('choosePetContextMenuPoint moves the menu to the left near the right screen
 
   assert.equal(point.placement, 'left')
   assert.deepEqual(point.screenPoint, { x: 568, y: 270 })
+  assert.deepEqual(point.windowPoint, { x: -152, y: -30 })
 })
 
 test('choosePetContextMenuPoint honors a preferred placement when it fits', () => {

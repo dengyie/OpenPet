@@ -143,7 +143,7 @@ const createRequiredServices = (overrides = {}) => ({
   ...overrides
 })
 
-test('pet context menu uses native popup outside the pet window and sends action commands back', async () => {
+test('pet context menu opens a positioned menu window and sends action commands back', async () => {
   const ipcMain = createIpcMainStub()
   const sentMessages = []
   const petWindow = {
@@ -153,18 +153,18 @@ test('pet context menu uses native popup outside the pet window and sends action
       send: (channel, payload) => sentMessages.push({ channel, payload })
     }
   }
-  let template = null
   let popupOptions = null
+  let menuWindowRequest = null
+  const browserWindowService = {
+    fromWebContents: () => petWindow
+  }
   const { registerIpcHandlers } = loadIpcWithElectron({
     ipcMain,
-    BrowserWindow: {
-      fromWebContents: () => petWindow
-    },
+    BrowserWindow: browserWindowService,
     app: { quit: () => {} },
     dialog: {},
     Menu: {
       buildFromTemplate: (nextTemplate) => {
-        template = nextTemplate
         return {
           popup: (options) => { popupOptions = options }
         }
@@ -178,7 +178,10 @@ test('pet context menu uses native popup outside the pet window and sends action
   registerIpcHandlers({
     ...createRequiredServices(),
     getPetWindow: () => petWindow,
-    ipcMainService: ipcMain
+    ipcMainService: ipcMain,
+    showContextMenuWindow: (request) => {
+      menuWindowRequest = request
+    }
   })
 
   const placement = await ipcMain.handlers.get(IPC.PET_SHOW_CONTEXT_MENU)({
@@ -186,12 +189,15 @@ test('pet context menu uses native popup outside the pet window and sends action
   }, { x: 70, y: 80 })
 
   assert.equal(placement.placement, 'above')
-  assert.equal(popupOptions.window, petWindow)
-  assert.deepEqual({ x: popupOptions.x, y: popupOptions.y }, placement.screenPoint)
-  assert.equal(popupOptions.positioningItem, undefined)
+  assert.equal(popupOptions, null)
+  const template = menuWindowRequest.items
   assert.equal(template[0].label, '待机')
+  assert.deepEqual(menuWindowRequest.point, placement.screenPoint)
+  assert.deepEqual(menuWindowRequest.size, { width: 112, height: 176 })
+  assert.equal(menuWindowRequest.parentWindow, petWindow)
+  assert.equal(menuWindowRequest.BrowserWindow, browserWindowService)
 
-  template[1].click()
+  menuWindowRequest.onSelect(template[1])
 
   assert.deepEqual(sentMessages, [{
     channel: IPC.PET_MENU_COMMAND,

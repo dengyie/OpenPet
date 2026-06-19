@@ -6,11 +6,12 @@
  * — 依赖通过参数注入而非直接 import，避免与 window/settings/screen 模块形成硬耦合。
  * — 修改或新增 IPC 通道时，只需改这一个文件 + shared/ipc-channels.js。
  */
-const { ipcMain, BrowserWindow, app, dialog, Menu, screen } = require('electron')
+const { ipcMain, BrowserWindow, app, dialog, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
 const { sanitizeDetails } = require('./services/app-log-service')
 const { normalizeCursorSettingsState } = require('../shared/cursor-library')
 const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
+const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const {
   createActionFrameImportResult,
   createActionsMutationResult,
@@ -141,7 +142,7 @@ const collectCustomCursorAssetPaths = (cursors = []) => (
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -316,7 +317,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       level: 'info',
       actor: 'user',
       event: 'pet.menu.popup',
-      message: 'Native pet context menu popup requested',
+      message: 'Pet context menu popup requested',
       details: {
         petX: bounds.x,
         petY: bounds.y,
@@ -332,13 +333,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         requestedY: requestedPoint.y,
         placement: placement.placement,
         menuX: placement.screenPoint.x,
-        menuY: placement.screenPoint.y
+        menuY: placement.screenPoint.y,
+        popupX: placement.windowPoint.x,
+        popupY: placement.windowPoint.y
       }
     })
-    menuService.buildFromTemplate(template).popup({
-      window: win,
-      x: placement.screenPoint.x,
-      y: placement.screenPoint.y
+    showContextMenuWindow({
+      BrowserWindow: browserWindowService,
+      parentWindow: win,
+      items: template,
+      point: placement.screenPoint,
+      size: menuSize,
+      onSelect: (item) => item?.click?.()
     })
     return placement
   })

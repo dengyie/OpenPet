@@ -109,7 +109,7 @@ const createRendererHarness = async () => {
   return { callbacks, contextMenuRequests, elements, mousePassthroughCalls, viewportCalls }
 }
 
-test('right-click delegates menu placement to the native main-process menu', async () => {
+test('right-click delegates menu placement to the main-process menu', async () => {
   const { contextMenuRequests, elements, mousePassthroughCalls, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)
   let prevented = false
@@ -148,7 +148,7 @@ test('right-clicking the pet does not resize or offset the current action viewpo
   assert.equal(elements.cat.style.bottom, initialCatBottom)
 })
 
-test('native menu blur leaves the current action viewport intact', async () => {
+test('menu blur leaves the current action viewport intact', async () => {
   const { callbacks, elements, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)
   const initialCatLeft = elements.cat.style.left
