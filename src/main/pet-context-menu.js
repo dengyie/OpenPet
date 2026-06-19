@@ -71,10 +71,52 @@ const normalizeMenuPosition = (menuPosition) => MENU_POSITION_ALIASES[String(men
 const getPlacementOrder = (menuPosition) => {
   const preferredPlacement = normalizeMenuPosition(menuPosition)
   if (!preferredPlacement) return MENU_PLACEMENTS
-  return [
-    preferredPlacement,
-    ...MENU_PLACEMENTS.filter((placement) => placement !== preferredPlacement)
-  ]
+  if (preferredPlacement === 'right') return ['right', 'left', 'above', 'below']
+  if (preferredPlacement === 'left') return ['left', 'right', 'above', 'below']
+  if (preferredPlacement === 'above') return ['above', 'below', 'right', 'left']
+  return ['below', 'above', 'right', 'left']
+}
+
+const fitsPrimaryAxis = (candidate, workArea, menuSize) => {
+  if (candidate.placement === 'right') {
+    return candidate.x + menuSize.width <= workArea.x + workArea.width - MENU_MARGIN
+  }
+  if (candidate.placement === 'left') {
+    return candidate.x >= workArea.x + MENU_MARGIN
+  }
+  if (candidate.placement === 'above') {
+    return candidate.y >= workArea.y + MENU_MARGIN
+  }
+  return candidate.y + menuSize.height <= workArea.y + workArea.height - MENU_MARGIN
+}
+
+const clampCrossAxisNearPet = ({ candidate, petBounds, workArea, menuSize }) => {
+  const minX = workArea.x + MENU_MARGIN
+  const minY = workArea.y + MENU_MARGIN
+  const maxX = workArea.x + workArea.width - menuSize.width - MENU_MARGIN
+  const maxY = workArea.y + workArea.height - menuSize.height - MENU_MARGIN
+
+  if (candidate.placement === 'right' || candidate.placement === 'left') {
+    const relativeY = clamp(
+      candidate.y - petBounds.y,
+      -Math.round(petBounds.height / 2),
+      Math.round(petBounds.height / 2)
+    )
+    return {
+      x: Math.round(clamp(candidate.x, minX, Math.max(minX, maxX))),
+      y: Math.round(Math.max(minY, petBounds.y + relativeY))
+    }
+  }
+
+  const relativeX = clamp(
+    candidate.x - petBounds.x,
+    -Math.round(petBounds.width / 2),
+    Math.round(petBounds.width / 2)
+  )
+  return {
+    x: Math.round(clamp(petBounds.x + relativeX, minX, Math.max(minX, maxX))),
+    y: Math.round(clamp(candidate.y, minY, Math.max(minY, maxY)))
+  }
 }
 
 const choosePetContextMenuPoint = ({ petBounds, workArea, menuSize, preferredPoint, menuPosition }) => {
@@ -90,22 +132,17 @@ const choosePetContextMenuPoint = ({ petBounds, workArea, menuSize, preferredPoi
     preferredPoint: safePreferredPoint,
     placement
   }))
-  const chosen = candidates.find((candidate) => fitsWorkArea(candidate, workArea, menuSize)) || candidates[0]
-  const minX = workArea.x + MENU_MARGIN
-  const minY = workArea.y + MENU_MARGIN
-  const maxX = workArea.x + workArea.width - menuSize.width - MENU_MARGIN
-  const maxY = workArea.y + workArea.height - menuSize.height - MENU_MARGIN
-  const screenPoint = {
-    x: Math.round(clamp(chosen.x, minX, Math.max(minX, maxX))),
-    y: Math.round(clamp(chosen.y, minY, Math.max(minY, maxY)))
-  }
+  const preferredPlacement = normalizeMenuPosition(menuPosition)
+  const preferredCandidate = preferredPlacement ? candidates[0] : null
+  const chosen = (preferredCandidate && fitsPrimaryAxis(preferredCandidate, workArea, menuSize) ? preferredCandidate : null)
+    || (!preferredPlacement ? candidates.find((candidate) => fitsPrimaryAxis(candidate, workArea, menuSize)) : null)
+    || candidates.find((candidate) => fitsWorkArea(candidate, workArea, menuSize))
+    || candidates.find((candidate) => fitsPrimaryAxis(candidate, workArea, menuSize))
+    || candidates[0]
+  const screenPoint = clampCrossAxisNearPet({ candidate: chosen, petBounds, workArea, menuSize })
   return {
     placement: chosen.placement,
-    screenPoint,
-    popupPoint: {
-      x: screenPoint.x - petBounds.x,
-      y: screenPoint.y - petBounds.y
-    }
+    screenPoint
   }
 }
 

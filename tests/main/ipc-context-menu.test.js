@@ -187,7 +187,7 @@ test('pet context menu uses native popup outside the pet window and sends action
 
   assert.equal(placement.placement, 'above')
   assert.equal(popupOptions.window, petWindow)
-  assert.deepEqual({ x: popupOptions.x, y: popupOptions.y }, placement.popupPoint)
+  assert.deepEqual({ x: popupOptions.x, y: popupOptions.y }, placement.screenPoint)
   assert.equal(popupOptions.positioningItem, undefined)
   assert.equal(template[0].label, '待机')
 
