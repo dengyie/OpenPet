@@ -48,6 +48,7 @@ const createElement = (id = '') => ({
 })
 
 const createRendererHarness = async ({ insideFrame = true, includeHitbox = true } = {}) => {
+  const hitboxResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const elements = {
     pet: createElement('pet'),
     cat: createElement('cat'),
@@ -75,7 +76,7 @@ const createRendererHarness = async ({ insideFrame = true, includeHitbox = true 
               getFrameHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
               getWindowHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
               getViewportHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
-              isPointInHitbox: () => insideFrame
+              isPointInHitbox: () => hitboxResults ? hitboxResults.shift() ?? hitboxResults.at(-1) ?? false : insideFrame
             }
           }
         : {}),
