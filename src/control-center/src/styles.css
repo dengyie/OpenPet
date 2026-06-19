@@ -1367,6 +1367,31 @@ button {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.plugin-command-details {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.plugin-command-details div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.plugin-command-details dt,
+.plugin-command-details dd {
+  margin: 0;
+  color: #4b5563;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plugin-command-details dt {
+  color: #6b7280;
+  font-weight: 700;
+}
+
 .plugin-log-row {
   display: grid;
   grid-template-columns: 76px 48px minmax(140px, 220px) minmax(0, 1fr);

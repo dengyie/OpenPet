@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
-import { shouldRestoreScalePreview } from '../lib/pet-scale-preview'
+import { shouldRestoreScalePreview } from '../lib/pet-scale-preview.mjs'
 import {
   SYSTEM_CURSOR_ID,
   listCursorOptions,

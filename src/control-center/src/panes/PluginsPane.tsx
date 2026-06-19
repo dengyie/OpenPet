@@ -35,6 +35,7 @@ export interface PluginsPaneProps {
     stdout: string
     stderr: string
     resultText: string
+    details: Array<{ label: string, value: string }>
   } | null
   runningSetup: string
   openingDashboard: string
@@ -254,6 +255,16 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                   <strong>最近命令结果</strong>
                   <span>{lastCommandResult.commandId}{lastCommandResult.exitCode != null ? ` · exit ${lastCommandResult.exitCode}` : ''}</span>
                   <p>{lastCommandResult.message}</p>
+                  {lastCommandResult.details.length ? (
+                    <dl className="plugin-command-details">
+                      {lastCommandResult.details.map((detail) => (
+                        <div key={`${detail.label}:${detail.value}`}>
+                          <dt>{detail.label}</dt>
+                          <dd>{detail.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
                   {lastCommandResult.resultText ? <code>{lastCommandResult.resultText}</code> : null}
                   {lastCommandResult.stdout ? <p>stdout: {lastCommandResult.stdout}</p> : null}
                   {lastCommandResult.stderr ? <p>stderr: {lastCommandResult.stderr}</p> : null}

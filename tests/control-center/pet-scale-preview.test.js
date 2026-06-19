@@ -1,7 +1,13 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const path = require('path')
+const { pathToFileURL } = require('node:url')
 
-const { shouldRestoreScalePreview } = require('../../src/control-center/src/lib/pet-scale-preview')
+let shouldRestoreScalePreview
+
+test.before(async () => {
+  ;({ shouldRestoreScalePreview } = await import(pathToFileURL(path.resolve(__dirname, '../../src/control-center/src/lib/pet-scale-preview.mjs')).href))
+})
 
 test('does not restore scale preview when the user never changed the preview scale', () => {
   assert.equal(shouldRestoreScalePreview({ currentScale: 1, originalScale: 1 }), false)
