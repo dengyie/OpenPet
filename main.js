@@ -34,6 +34,7 @@ const { createCursorAssetService } = require('./src/main/services/cursor-asset-s
 const { createAppLogService } = require('./src/main/services/app-log-service')
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
+const { registerAppLifecycleLogs } = require('./src/main/app-lifecycle-logger')
 const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
 const { configureSingleInstanceLock } = require('./src/main/single-instance')
 const { createCursorAssetService } = require('./src/main/services/cursor-asset-service')
@@ -225,6 +226,7 @@ const bootstrapOpenPet = () => {
     petPackService,
     catalogPath: path.join(__dirname, 'catalog', 'openpet-catalog.json')
   })
+  registerAppLifecycleLogs({ app, appLogService })
   let localHttpConfig = petService.getSettings().localHttp
   if (localHttpConfig?.enabled) {
     const normalizedConfig = normalizeLocalHttpConfig(localHttpConfig, localHttpConfig)

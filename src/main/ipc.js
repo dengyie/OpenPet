@@ -133,7 +133,7 @@ const collectCustomCursorAssetPaths = (cursors = []) => (
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen, appService = app }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
