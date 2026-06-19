@@ -148,6 +148,14 @@ test('right-clicking the pet does not resize or offset the current action viewpo
   assert.equal(elements.cat.style.bottom, initialCatBottom)
 })
 
+test('pet viewport reserves top chrome space for the speech bubble', async () => {
+  const { elements, viewportCalls } = await createRendererHarness()
+  const initialViewport = viewportCalls.at(-1)
+
+  assert.equal(initialViewport.topInset, 64)
+  assert.equal(elements.cat.style.bottom, '4px')
+})
+
 test('menu blur leaves the current action viewport intact', async () => {
   const { callbacks, elements, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)

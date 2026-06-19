@@ -24,6 +24,7 @@ const cursorOverlay = document.getElementById('custom-cursor-overlay') || {
 }
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
 const PET_BASE_SCALE = 0.5                       // UI 100% 对应旧版视觉大小的 50%
+const BUBBLE_TOP_INSET = 64                      // 给头顶聊天气泡预留窗口空间，避免被宠物裁剪或覆盖。
 const cursorStyle = {
   resolvePetCursorStyle: () => '',
   resolvePetCursorOverlayState: () => ({ visible: false, assetUrl: '', nativeCursor: '' }),
@@ -171,6 +172,7 @@ const getActionViewport = (animation, dims) => {
     width: Math.max(1, Math.round((Number(viewport.width) || dims.width) * fitScale)),
     height: Math.max(1, Math.round((Number(viewport.height) || dims.height) * fitScale)),
     padding: Math.max(0, Math.round(padding * fitScale)),
+    topInset: BUBBLE_TOP_INSET,
     scale: state.scale
   }
 }
@@ -180,7 +182,7 @@ const getScaledViewportSize = (viewport) => {
   const scale = Math.max(Number(viewport?.scale) || state.scale, Number.EPSILON)
   return {
     width: Math.max(1, Math.round(((Number(viewport?.width) || 1) + padding * 2) * scale)),
-    height: Math.max(1, Math.round(((Number(viewport?.height) || 1) + padding * 2) * scale))
+    height: Math.max(1, Math.round(((Number(viewport?.height) || 1) + padding * 2) * scale) + Math.max(0, Number(viewport?.topInset) || 0))
   }
 }
 
