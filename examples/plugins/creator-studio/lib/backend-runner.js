@@ -1,5 +1,5 @@
 const { getBackendAdapter } = require('./backend-adapters')
-const { readRun, updateRunStatus, writeRun } = require('./run-store')
+const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
 
 const createBackendStatus = ({ backend, state, message = '', updatedAt }) => ({
   backend,
@@ -12,6 +12,15 @@ const runGenerationStep = ({ dataDir, runId, now = () => new Date().toISOString(
   const run = readRun({ dataDir, runId })
   const backend = run.backend || run.input?.backend || 'fixture'
   const startedAt = now()
+  appendRunLog({
+    dataDir,
+    runId,
+    level: 'info',
+    event: 'generate.start',
+    message: `Generation started with ${backend} backend`,
+    data: { backend },
+    now: () => startedAt
+  })
   writeRun({
     dataDir,
     run: {
@@ -42,6 +51,19 @@ const runGenerationStep = ({ dataDir, runId, now = () => new Date().toISOString(
       error: ''
     }
     writeRun({ dataDir, run: completedRun })
+    appendRunLog({
+      dataDir,
+      runId,
+      level: 'info',
+      event: 'generate.complete',
+      message: `Generation completed with ${backend} backend`,
+      data: {
+        backend,
+        outputDir: output.outputDir || '',
+        bundlePath: output.bundlePath || ''
+      },
+      now: () => completedAt
+    })
     return { ...output, run: completedRun }
   } catch (error) {
     const failedAt = now()
@@ -58,6 +80,18 @@ const runGenerationStep = ({ dataDir, runId, now = () => new Date().toISOString(
           updatedAt: failedAt
         }),
         error: error.message || 'Creator Studio generation failed'
+      },
+      now: () => failedAt
+    })
+    appendRunLog({
+      dataDir,
+      runId,
+      level: 'error',
+      event: 'generate.failed',
+      message: error.message || 'Creator Studio generation failed',
+      data: {
+        backend: error.backend || backend,
+        state: error.state || 'failed'
       },
       now: () => failedAt
     })
