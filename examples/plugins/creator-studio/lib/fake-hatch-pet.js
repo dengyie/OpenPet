@@ -5,10 +5,11 @@ const { execFileSync } = require('child_process')
 const { getRunDir, readRun, writeRun } = require('./run-store')
 
 const VALID_FIXTURE_ATLAS_WEBP_BASE64 = [
-  'UklGRpgAAABXRUJQVlA4TIsAAAAv/8XTEQcQEREAUKT//ymi/6n//e9///vf//73',
-  'v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3',
-  'vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///',
-  'vf//73v//973//+9///q8CAA=='
+  'UklGRrIAAABXRUJQVlA4TKUAAAAv/8XTEQ8Q8x/zHwwFbdtIe/gz3t2huDmi',
+  '/xMQ/+95vfzjf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7n',
+  'f/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7n',
+  'f/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7nf/7n',
+  'f/7nf/7nf/7nf/5fagIA'
 ].join('')
 
 const createMinimalWebp = () => Buffer.from(VALID_FIXTURE_ATLAS_WEBP_BASE64, 'base64')
@@ -42,7 +43,8 @@ const generateFixturePetOutput = ({ dataDir, runId, now = () => new Date().toISO
   const outputDir = path.join(runDir, 'outputs')
   const creatorStudio = createCreatorStudioMetadata(run)
   fs.mkdirSync(outputDir, { recursive: true })
-  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  const spritesheet = path.join(outputDir, 'spritesheet.webp')
+  fs.writeFileSync(spritesheet, createMinimalWebp())
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: run.petId,
     displayName: run.input.petName,
@@ -76,7 +78,7 @@ const generateFixturePetOutput = ({ dataDir, runId, now = () => new Date().toISO
       ...run.artifacts,
       outputDir,
       petJson: path.join(outputDir, 'pet.json'),
-      spritesheet: path.join(outputDir, 'spritesheet.webp'),
+      spritesheet,
       bundle: bundlePath,
       qa: path.join(qaDir, 'atlas-validation.json'),
       ...(creatorStudio ? { actionTaskQa: path.join(qaDir, 'action-generation-task.json') } : {})

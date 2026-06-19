@@ -36,6 +36,13 @@ const FIXTURE_ATLAS_WEBP = Buffer.from(
   'base64'
 )
 
+const TRANSPARENT_FIXTURE_ATLAS_WEBP = Buffer.from([
+  'UklGRpgAAABXRUJQVlA4TIsAAAAv/8XTEQcQEREAUKT//ymi/6n//e9///vf//73',
+  'v//973//+9///ve///3vf//73//+97///e9///vf//73v//973//+9///ve///3',
+  'vf//73//+97///e9///vf//73v//973//+9///ve///3vf//73//+97///e9///',
+  'vf//73v//973//+9///q8CAA=='
+].join(''), 'base64')
+
 const createPetPackDirectory = (root, manifest = {}) => {
   fs.mkdirSync(path.join(root, 'sprites'), { recursive: true })
   const actions = manifest.actions || [
@@ -75,7 +82,10 @@ const createMinimalWebp = ({ width, height }) => {
 }
 
 const createCodexPetDirectory = (root, manifest = {}) => {
-  fs.writeFileSync(path.join(root, manifest.spritesheetPath || 'spritesheet.webp'), createMinimalWebp({ width: 1536, height: 1872 }))
+  fs.writeFileSync(
+    path.join(root, manifest.spritesheetPath || 'spritesheet.webp'),
+    manifest.spritesheet || createMinimalWebp({ width: 1536, height: 1872 })
+  )
   fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
     id: manifest.id || 'codex-cat',
     displayName: manifest.displayName || 'Codex Cat',
@@ -188,6 +198,48 @@ test('pet pack service activates bundled pet packs without installing them', () 
   assert.equal(settingsService.get().petPacks.installed.doro, undefined)
   assert.equal(actionService.getPetPack().manifest.id, 'doro')
   assert.equal(actionService.getConfig().actions.length, 9)
+})
+
+test('pet pack service falls back to built-in when active installed Codex atlas is transparent', () => {
+  const userPacksDir = createTempDir('pet-packs-transparent-active')
+  const badPackDir = path.join(userPacksDir, 'transparent-pet')
+  fs.mkdirSync(badPackDir)
+  createCodexPetDirectory(badPackDir, {
+    id: 'transparent-pet',
+    displayName: 'Transparent Pet',
+    spritesheet: TRANSPARENT_FIXTURE_ATLAS_WEBP
+  })
+  const settingsService = createSettingsService({
+    petPacks: {
+      activePackId: 'transparent-pet',
+      installed: {
+        'transparent-pet': {
+          id: 'transparent-pet',
+          displayName: 'Transparent Pet',
+          version: '1.0.0',
+          installedAt: '2026-06-12T00:00:00.000Z'
+        }
+      }
+    }
+  })
+  const service = createPetPackService({
+    settingsService,
+    userPacksDir,
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'bai_no_bg',
+      clickAction: 'eat_no_bg',
+      actions: [
+        { id: 'bai_no_bg', label: '待机', loop: true, frameCount: 16, frameMs: 95, frameWidth: 191, frameHeight: 453, sprite: 'cat_anime/sprites/bai_no_bg.png' },
+        { id: 'eat_no_bg', label: '喂食', loop: false, frameCount: 16, frameMs: 85, frameWidth: 381, frameHeight: 253, sprite: 'cat_anime/sprites/eat_no_bg.png' }
+      ]
+    })
+  })
+
+  const pack = service.getActivePetPack()
+
+  assert.equal(pack.manifest.id, BUILT_IN_PACK_ID)
+  assert.equal(settingsService.get().petPacks.activePackId, BUILT_IN_PACK_ID)
 })
 
 test('pet pack service blocks bundled pet packs denied by content hash policy', () => {

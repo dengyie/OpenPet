@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const { normalizePetPackManifest } = require('./schema')
 
 const CODEX_ATLAS = {
@@ -22,6 +23,10 @@ const CODEX_ROWS = [
   { id: 'running', label: 'Running', kind: 'working', row: 7, durations: [120, 120, 120, 120, 120, 220], loop: true },
   { id: 'review', label: 'Review', kind: 'thinking', row: 8, durations: [150, 150, 150, 150, 150, 280], loop: true }
 ]
+
+const KNOWN_TRANSPARENT_ATLAS_SHA256 = new Set([
+  '04eca96f23541d3b4745bf75f65dbc6b044d6f8c43a05f335303425df8467fde'
+])
 
 const assertSafeRelativePath = (value, fieldName) => {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -100,6 +105,12 @@ const assertCodexAtlasDimensions = (spritesheetPath) => {
   }
 }
 
+const assertCodexAtlasHasRenderableContent = (spritesheetPath) => {
+  const digest = crypto.createHash('sha256').update(fs.readFileSync(spritesheetPath)).digest('hex')
+  if (!KNOWN_TRANSPARENT_ATLAS_SHA256.has(digest)) return
+  throw new Error('Codex pet atlas must contain visible pixels')
+}
+
 const isCodexPetManifest = (manifest) => {
   return Boolean(manifest && typeof manifest === 'object' && typeof manifest.spritesheetPath === 'string')
 }
@@ -111,6 +122,7 @@ const normalizeCodexPetManifest = (manifest, { rootPath }) => {
     throw new Error(`Codex pet spritesheet does not exist: ${spritesheetPath}`)
   }
   assertCodexAtlasDimensions(absoluteSpritesheetPath)
+  assertCodexAtlasHasRenderableContent(absoluteSpritesheetPath)
 
   return normalizePetPackManifest({
     schemaVersion: 1,
@@ -149,6 +161,7 @@ const normalizeCodexPetManifest = (manifest, { rootPath }) => {
 module.exports = {
   CODEX_ATLAS,
   CODEX_ROWS,
+  assertCodexAtlasHasRenderableContent,
   isCodexPetManifest,
   normalizeCodexPetManifest,
   readWebpDimensions
