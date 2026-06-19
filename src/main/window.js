@@ -117,7 +117,7 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
     resizable: true,
     frame: true,
     transparent: false,
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     backgroundColor: '#f5f5f5',
     hasShadow: true,
     title: 'OpenPet Control Center',
@@ -147,7 +147,6 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
   settingsWindow.loadFile(path.join(projectRoot, 'dist', 'control-center', 'index.html')).catch((error) => {
     settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><title>OpenPet Control Center</title><body style="font-family: system-ui; padding: 24px;"><h1>Control Center build missing</h1><p>${error.message}</p></body>`)}`)
   })
-  settingsWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   petWindow.settingsWindow = settingsWindow
 }

@@ -11,6 +11,9 @@ const windowModulePath = require.resolve('../../src/main/window')
 const createScreenStub = () => ({
   getPrimaryDisplay: () => ({
     workArea: { x: 0, y: 0, width: 1440, height: 900 }
+  }),
+  getDisplayMatching: () => ({
+    workArea: { x: 0, y: 0, width: 1440, height: 900 }
   })
 })
 
@@ -98,6 +101,26 @@ test('createWindow preserves automatic loading by default', () => {
   assert.deepEqual(petWindow.loadedFiles, [petIndexPath])
   assert.equal(petWindow.options.transparent, true)
   assert.equal(petWindow.options.alwaysOnTop, true)
+})
+
+test('createSettingsWindow uses normal app stacking instead of pet-level always-on-top', () => {
+  const instances = []
+  const { createSettingsWindow, createWindow } = loadWindowModule()
+  const BrowserWindow = createBrowserWindowStub(instances)
+  const screen = createScreenStub()
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow,
+    screen
+  })
+
+  createSettingsWindow(petWindow, { BrowserWindow, screen })
+
+  assert.equal(instances.length, 2)
+  assert.equal(instances[0].options.alwaysOnTop, true)
+  assert.equal(instances[0].visibleOnAllWorkspaces.value, true)
+  assert.equal(instances[1].options.alwaysOnTop, false)
+  assert.equal(instances[1].visibleOnAllWorkspaces, null)
 })
 
 test('applyWindowScale recovers a collapsed pet window back to valid default bounds', () => {
