@@ -32,9 +32,17 @@ const cursorStyle = {
 }
 const petHitbox = window.OpenPetHitbox || {
   getFrameHitbox: () => null,
-  getWindowHitbox: () => null,
+  getWindowHitbox: ({ windowWidth, windowHeight }) => ({
+    left: 0,
+    top: 0,
+    right: Math.max(0, Number(windowWidth) || 0),
+    bottom: Math.max(0, Number(windowHeight) || 0)
+  }),
   getViewportHitbox: () => null,
-  isPointInHitbox: () => false
+  isPointInHitbox: (point, hitbox) => {
+    if (!hitbox) return true
+    return point.x >= hitbox.left && point.x <= hitbox.right && point.y >= hitbox.top && point.y <= hitbox.bottom
+  }
 }
 
 const state = {

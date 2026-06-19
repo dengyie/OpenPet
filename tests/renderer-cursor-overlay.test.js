@@ -38,7 +38,7 @@ const createElement = (id = '') => ({
   closest() { return null }
 })
 
-const createRendererHarness = async ({ insideFrame = true } = {}) => {
+const createRendererHarness = async ({ insideFrame = true, includeHitbox = true } = {}) => {
   const elements = {
     pet: createElement('pet'),
     cat: createElement('cat'),
@@ -60,12 +60,16 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
       innerWidth: 300,
       innerHeight: 300,
       OpenPetCursorStyle: require('../src/shared/cursor-style'),
-      OpenPetHitbox: {
-        getFrameHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
-        getWindowHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
-        getViewportHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
-        isPointInHitbox: () => insideFrame
-      },
+      ...(includeHitbox
+        ? {
+            OpenPetHitbox: {
+              getFrameHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
+              getWindowHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
+              getViewportHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
+              isPointInHitbox: () => insideFrame
+            }
+          }
+        : {}),
       clearTimeout: () => {},
       addEventListener: () => {},
       setInterval: () => 0,
@@ -80,7 +84,7 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
           ]
         }),
         setViewport: () => {},
-        setMousePassthrough: () => {},
+        setMousePassthrough: (passthrough) => logs.push({ event: 'pet:test:set-mouse-passthrough', passthrough }),
         recordAppLog: (entry) => logs.push(entry),
         onSettingsChanged: (callback) => { callbacks.settings = callback },
         onPetSay: () => {},
@@ -129,4 +133,14 @@ test('custom cursor overlay hides outside the clickable pet region', async () =>
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
   assert.equal(elements.pet.style.cursor, '')
   assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+})
+
+test('pet remains clickable when the optional hitbox helper is unavailable', async () => {
+  const { elements, logs } = await createRendererHarness({ includeHitbox: false })
+
+  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
+
+  const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
+  assert.equal(passthroughCalls.some((entry) => entry.passthrough), false)
+  assert.equal(logs.at(-1).details.passthrough, false)
 })
