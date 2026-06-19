@@ -296,6 +296,13 @@ const setNativeCursor = (nextCursor) => {
   state.nativeCursor = value
 }
 
+const isPointInsidePetWindow = (clientX, clientY) => (
+  clientX >= 0 &&
+  clientY >= 0 &&
+  clientX <= window.innerWidth &&
+  clientY <= window.innerHeight
+)
+
 const moveCursorOverlay = (clientX, clientY) => {
   const hotspotX = Number.isFinite(Number(state.customCursor.hotspotX)) ? Number(state.customCursor.hotspotX) : 0
   const hotspotY = Number.isFinite(Number(state.customCursor.hotspotY)) ? Number(state.customCursor.hotspotY) : 0
@@ -316,9 +323,10 @@ const showCursorOverlay = (assetUrl, clientX, clientY) => {
   cursorOverlay.classList.add('visible')
 }
 
-const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint) => {
+const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, insideCursorRegion = insideFrame) => {
   const context = {
     insideFrame,
+    insideCursorRegion,
     dragging: Boolean(state.drag),
     menuOpen: false
   }
@@ -330,6 +338,11 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint) => {
   return overlayState
 }
 
+const preservePetCursorStyle = () => {
+  hideCursorOverlay()
+  return { visible: false, assetUrl: '', nativeCursor: state.nativeCursor }
+}
+
 const refreshMouseStateFromLastPoint = () => {
   if (!state.lastPointerPoint) {
     applyPetCursorStyle(false)
@@ -338,7 +351,7 @@ const refreshMouseStateFromLastPoint = () => {
   const { clientX, clientY } = state.lastPointerPoint
   const insideFrame = isPointInsideCurrentFrame(clientX, clientY)
   const insideCursorRegion = isPointInsideCursorRegion(clientX, clientY)
-  const cursorState = applyPetCursorStyle(insideFrame, { clientX, clientY })
+  const cursorState = applyPetCursorStyle(insideFrame, { clientX, clientY }, insideCursorRegion)
   setMousePassthrough(!insideFrame)
   maybeLogMouseDiagnostic({ clientX, clientY, screenX: clientX, screenY: clientY }, {
     insideFrame,
@@ -357,11 +370,15 @@ const updateMousePassthroughFromPoint = (event) => {
   state.lastPointerPoint = { clientX: event.clientX, clientY: event.clientY }
   const insideFrame = isPointInsideCurrentFrame(event.clientX, event.clientY)
   const insideCursorRegion = isPointInsideCursorRegion(event.clientX, event.clientY)
-  const cursorState = applyPetCursorStyle(insideFrame, state.lastPointerPoint)
+  const isInsideWindow = isPointInsidePetWindow(event.clientX, event.clientY)
+  const cursorState = isInsideWindow
+    ? applyPetCursorStyle(insideFrame, state.lastPointerPoint, insideCursorRegion)
+    : preservePetCursorStyle()
   setMousePassthrough(!insideFrame)
   maybeLogMouseDiagnostic(event, {
     insideFrame,
     insideCursorRegion,
+    insideWindow: isInsideWindow,
     passthrough: !insideFrame,
     cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
     cursorOverlayVisible: cursorState.visible,
@@ -375,7 +392,6 @@ const updateMousePassthroughFromPoint = (event) => {
 const clearPointerHoverState = (event = {}) => {
   state.lastPointerPoint = null
   hideCursorOverlay()
-  setNativeCursor('')
   maybeLogMouseDiagnostic({
     clientX: event.clientX ?? -1,
     clientY: event.clientY ?? -1,
@@ -385,9 +401,9 @@ const clearPointerHoverState = (event = {}) => {
     insideFrame: false,
     insideCursorRegion: false,
     passthrough: state.mousePassthrough,
-    cursorApplied: false,
+    cursorApplied: Boolean(state.nativeCursor),
     cursorOverlayVisible: false,
-    nativeCursor: '',
+    nativeCursor: state.nativeCursor,
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false
@@ -548,7 +564,7 @@ const onPointerDown = async (event) => {
   }
   pet.setPointerCapture(event.pointerId)
   pet.classList.add('dragging')
-  applyPetCursorStyle(false)
+  applyPetCursorStyle(true, { clientX: event.clientX, clientY: event.clientY }, true)
   setMousePassthrough(false)
 }
 

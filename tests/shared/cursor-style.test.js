@@ -20,12 +20,13 @@ test('createCustomCursorCss builds a CSS cursor from the hosted asset URL', () =
   )
 })
 
-test('resolvePetCursorStyle applies custom cursor only inside the active pet region', () => {
+test('resolvePetCursorStyle applies custom cursor only inside the active cursor region', () => {
   const cursor = { enabled: true, assetUrl: 'file:///tmp/openpet/cursor.webp', hotspotX: 3, hotspotY: 5 }
 
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: false, menuOpen: false }), 'url("file:///tmp/openpet/cursor.webp") 3 5, auto')
-  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: false, dragging: false, menuOpen: false }), '')
-  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: true, menuOpen: false }), '')
+  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: false, insideCursorRegion: true, dragging: false, menuOpen: false }), 'url("file:///tmp/openpet/cursor.webp") 3 5, auto')
+  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, insideCursorRegion: false, dragging: false, menuOpen: false }), '')
+  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: true, menuOpen: false }), 'url("file:///tmp/openpet/cursor.webp") 3 5, auto')
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: false, menuOpen: true }), '')
 })
 
