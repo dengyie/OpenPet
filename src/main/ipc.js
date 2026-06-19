@@ -475,7 +475,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.PET_PACKS_IMPORT, (_event, payload) => {
     const result = petPackService.importPack(payload.selectionId)
-    return createPetPackMutationResult(result, petPackService.listPacks())
+    const petPacks = petPackService.listPacks()
+    if (result?.pack?.id && petPacks?.activePackId === result.pack.id) {
+      const animations = reloadAndSendAnimations(getPetWindow, petService)
+      return createPetPackMutationResult(result, petPacks, animations)
+    }
+    return createPetPackMutationResult(result, petPacks)
   })
 
   ipcMainService.handle(IPC.PET_PACKS_EXPORT, async (event, payload) => {

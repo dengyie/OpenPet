@@ -235,6 +235,49 @@ test('creator studio run store lists runs and persists append-only logs', () => 
   }])
 })
 
+test('creator studio run store resolves latest run by workflow status', () => {
+  const { createRun, resolveRunId, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-resolve-run-'))
+
+  const oldRun = createRun({
+    dataDir,
+    input: { petName: 'Old Cat', prompt: 'Old prompt', backend: 'fixture' },
+    now: () => '2026-06-19T00:00:00.000Z'
+  })
+  const latestRun = createRun({
+    dataDir,
+    input: { petName: 'Latest Cat', prompt: 'Latest prompt', backend: 'fixture' },
+    now: () => '2026-06-19T00:01:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: oldRun.runId,
+    status: 'ready_for_review',
+    now: () => '2026-06-19T00:02:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: latestRun.runId,
+    status: 'ready_for_review',
+    now: () => '2026-06-19T00:03:00.000Z'
+  })
+
+  assert.equal(resolveRunId({
+    dataDir,
+    statuses: ['ready_for_review'],
+    description: 'ready_for_review'
+  }), latestRun.runId)
+  assert.equal(resolveRunId({
+    dataDir,
+    runId: oldRun.runId,
+    statuses: ['ready_for_review']
+  }), oldRun.runId)
+  assert.throws(
+    () => resolveRunId({ dataDir, statuses: ['approved'], description: 'approved' }),
+    /No approved run found/
+  )
+})
+
 test('creator studio backend runner generates fixture output through the selected adapter', async () => {
   const { createRun, readRunLogs } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { draftGenerationTask } = require('../../examples/plugins/creator-studio/lib/conversation-wizard')
@@ -621,6 +664,37 @@ test('creator studio commands create run generate output approve and export', ()
   assert.equal(exported.status, 0)
   assert.equal(created.json.ok, true)
   assert.equal(generated.json.run.status, 'ready_for_review')
+  assert.equal(approved.json.run.status, 'approved')
+  assert.equal(exported.json.ok, true)
+  assert.equal(fs.existsSync(exported.json.bundle.path), true)
+})
+
+test('creator studio commands infer latest run for generic plugin button flow', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-button-flow-'))
+
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Button Cat', prompt: 'A button generated cat' }
+  })
+  const generated = runCreatorCommand({
+    command: 'run-step',
+    dataDir
+  })
+  const approved = runCreatorCommand({
+    command: 'approve-run',
+    dataDir
+  })
+  const exported = runCreatorCommand({
+    command: 'export-bundle',
+    dataDir
+  })
+
+  assert.equal(created.status, 0)
+  assert.equal(generated.status, 0)
+  assert.equal(approved.status, 0)
+  assert.equal(exported.status, 0)
+  assert.equal(generated.json.run.runId, created.json.run.runId)
   assert.equal(approved.json.run.status, 'approved')
   assert.equal(exported.json.ok, true)
   assert.equal(fs.existsSync(exported.json.bundle.path), true)

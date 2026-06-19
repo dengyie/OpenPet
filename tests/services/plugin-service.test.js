@@ -958,6 +958,7 @@ test('declaration-only pet pack bridge inspects imports and activates approved p
   const spawned = []
   const child = createFakeServiceProcess()
   let capturedDataDir = ''
+  const activatedPacks = []
   const settingsService = createSettingsService({
     plugins: { enabled: { 'weather-declaration': true } },
     petPacks: { activePackId: 'legacy-cat', installed: {} }
@@ -978,6 +979,7 @@ test('declaration-only pet pack bridge inspects imports and activates approved p
       profile: 'hybrid',
       permissions: ['pet-pack:import']
     })],
+    onPetPackActivated: (event) => activatedPacks.push(event),
     spawnCommandProcess: (file, args, options) => {
       capturedDataDir = options.env.OPENPET_DATA_DIR
       spawned.push({ file, args, options })
@@ -1018,6 +1020,8 @@ test('declaration-only pet pack bridge inspects imports and activates approved p
   assert.equal(importResponse.body.imported.pack.id, 'creator-studio-cat')
   assert.equal(importResponse.body.activated.activePackId, 'creator-studio-cat')
   assert.equal(settingsService.get().petPacks.activePackId, 'creator-studio-cat')
+  assert.equal(activatedPacks.length, 1)
+  assert.equal(activatedPacks[0].packId, 'creator-studio-cat')
 })
 
 test('declaration-only pet pack bridge does not expose arbitrary activation route', async () => {
@@ -2160,6 +2164,31 @@ test('plugin service rejects non-zero declaration command exits', async () => {
   assert.deepEqual(service.getLogs().map((entry) => entry.message).slice(0, 3), [
     'Plugin command exited with code 7',
     'Command stderr: boom',
+    'Command started'
+  ])
+})
+
+test('plugin service surfaces structured command errors from declaration stdout', async () => {
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnCommandProcess: () => child
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.stdout.listenerCount('data') > 0)
+  child.stdout.write('{"ok":false,"error":"runId is required"}\n')
+  child.emit('exit', 1, null)
+
+  await assert.rejects(commandRun, /runId is required/)
+  assert.deepEqual(service.getLogs().map((entry) => entry.message).slice(0, 3), [
+    'runId is required',
+    'Command stdout: {"ok":false,"error":"runId is required"}',
     'Command started'
   ])
 })

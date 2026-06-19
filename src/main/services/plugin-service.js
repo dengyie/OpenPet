@@ -567,7 +567,7 @@ const readLocalPluginManifests = (pluginDirs = []) => {
   return plugins
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const serviceRuntimes = new Map()
@@ -834,6 +834,15 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const activated = payload.activate && imported?.pack?.id && petPackService?.setActivePack
         ? petPackService.setActivePack(imported.pack.id)
         : null
+      if (activated) {
+        onPetPackActivated({
+          pluginId: plugin.manifest.id,
+          commandId,
+          packId: imported.pack.id,
+          imported,
+          activated
+        })
+      }
       return { ok: true, imported, activated }
     },
     creatorModelSettingsRead: async () => {
@@ -1862,7 +1871,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             return
           }
           if (exitCode !== 0 || signal) {
-            reject(new Error(signal ? `Plugin command exited with signal ${signal}` : `Plugin command exited with code ${exitCode ?? 'unknown'}`))
+            const parsedResult = readCommandResult(stdoutText)
+            const parsedError = parsedResult && typeof parsedResult === 'object' && typeof parsedResult.error === 'string'
+              ? parsedResult.error.trim()
+              : ''
+            const message = parsedError || (signal ? `Plugin command exited with signal ${signal}` : `Plugin command exited with code ${exitCode ?? 'unknown'}`)
+            reject(new Error(message))
             return
           }
           const parsedResult = readCommandResult(stdoutText)

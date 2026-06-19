@@ -784,7 +784,7 @@ const demoApi: ControlCenterApi = {
     return { id: pluginId, enabled }
   },
   savePluginConfig: async (pluginId, config) => ({ id: pluginId, config }),
-  runPluginCommand: async (pluginId, commandId) => {
+  runPluginCommand: async (pluginId, commandId, payload) => {
     demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
     writeDemoState()
     return {
@@ -795,6 +795,7 @@ const demoApi: ControlCenterApi = {
       result: {
         ok: true,
         message: 'Demo command completed',
+        ...(payload ? { payload } : {}),
         petSay: 'hello'
       }
     } satisfies PluginCommandRunResultViewState

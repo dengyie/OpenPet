@@ -1,11 +1,15 @@
 const path = require('path')
 const { runCommand } = require('../lib/command-io')
 const { callBridge } = require('../lib/bridge-client')
-const { readRun, updateRunStatus } = require('../lib/run-store')
+const { readRun, resolveRunId, updateRunStatus } = require('../lib/run-store')
 
 runCommand(async (context) => {
-  const runId = String(context.payload?.runId || '')
-  if (!runId) throw new Error('runId is required')
+  const runId = resolveRunId({
+    dataDir: process.env.OPENPET_DATA_DIR,
+    runId: context.payload?.runId,
+    statuses: ['approved'],
+    description: 'approved'
+  })
   const current = readRun({ dataDir: process.env.OPENPET_DATA_DIR, runId })
   if (current.status !== 'approved') throw new Error(`Run must be approved before import: ${current.status}`)
   const outputDir = current.artifacts?.outputDir
