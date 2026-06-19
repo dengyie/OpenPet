@@ -23,11 +23,12 @@ const isValidWindowSize = (bounds) => (
 const normalizeViewportSize = (viewport = {}) => {
   const scale = Math.max(toFiniteNumber(viewport.scale, 1), Number.EPSILON)
   const padding = Math.max(0, Math.round(toFiniteNumber(viewport.padding, 0)))
+  const topInset = Math.max(0, Math.round(toFiniteNumber(viewport.topInset, 0)))
   const sourceWidth = toFiniteNumber(viewport.width, BASE_WIDTH)
   const sourceHeight = toFiniteNumber(viewport.height, BASE_HEIGHT)
   return {
     width: Math.max(1, Math.round((sourceWidth + padding * 2) * scale)),
-    height: Math.max(1, Math.round((sourceHeight + padding * 2) * scale))
+    height: Math.max(1, Math.round((sourceHeight + padding * 2) * scale) + topInset)
   }
 }
 

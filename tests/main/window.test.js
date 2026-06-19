@@ -202,6 +202,26 @@ test('applyPetViewport can shrink dynamic action bounds below their source size'
   })
 })
 
+test('applyPetViewport expands upward for renderer chrome above the pet viewport', () => {
+  const instances = []
+  const { applyPetViewport, createWindow } = loadWindowModule()
+  const petWindow = createWindow({
+    load: false,
+    BrowserWindow: createBrowserWindowStub(instances),
+    screen: createScreenStub()
+  })
+  petWindow.setBounds({ x: 100, y: 200, width: 300, height: 300 })
+
+  applyPetViewport(petWindow, { width: 120, height: 180, scale: 1, topInset: 64 })
+
+  assert.deepEqual(petWindow.getBounds(), {
+    x: 190,
+    y: 256,
+    width: 120,
+    height: 244
+  })
+})
+
 test('applyPetViewport preserves the same horizontal anchor across repeated odd-pixel resizes', () => {
   const instances = []
   const { applyPetViewport, createWindow } = loadWindowModule()
