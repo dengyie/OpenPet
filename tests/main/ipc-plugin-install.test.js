@@ -950,7 +950,8 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
     petService: {
       ...services.petService,
       getAnimations: () => animations,
-      getPreviewAnimations: () => animations
+      getPreviewAnimations: () => animations,
+      reloadAnimations: () => animations
     },
     getPetWindow: () => ({
       isDestroyed: () => false,
@@ -984,7 +985,7 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
   const activeResult = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)(null, { packId: 'doro' })
   const removeResult = await ipcMain.handlers.get(IPC.PET_PACKS_REMOVE)(null, { packId: 'doro' })
 
-  assert.deepEqual(importResult, { pack, petPacks })
+  assert.deepEqual(importResult, { pack, petPacks, animations })
   assert.deepEqual(activeResult, { activePackId: 'doro', pack: activePack, petPacks, animations })
   assert.deepEqual(removeResult, { petPacks })
   assert.deepEqual(calls, [
@@ -992,8 +993,9 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
     ['set-active', 'doro'],
     ['remove', 'doro']
   ])
-  assert.equal(petWindowMessages.length, 1)
+  assert.equal(petWindowMessages.length, 2)
   assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
+  assert.equal(petWindowMessages[1][0], IPC.PET_ANIMATIONS_CHANGED)
 })
 
 test('pet-packs:export opens native output folder picker and delegates selected pack id', async () => {

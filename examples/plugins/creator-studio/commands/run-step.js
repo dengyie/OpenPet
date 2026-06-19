@@ -1,9 +1,14 @@
 const { runCommand } = require('../lib/command-io')
 const { runGenerationStep } = require('../lib/backend-runner')
+const { resolveRunId } = require('../lib/run-store')
 
 runCommand(async (context) => {
-  const runId = String(context.payload?.runId || '')
-  if (!runId) throw new Error('runId is required')
+  const runId = resolveRunId({
+    dataDir: process.env.OPENPET_DATA_DIR,
+    runId: context.payload?.runId,
+    statuses: ['draft', 'failed'],
+    description: 'draft or failed'
+  })
   const output = await runGenerationStep({
     dataDir: process.env.OPENPET_DATA_DIR,
     runId

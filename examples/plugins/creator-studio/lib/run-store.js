@@ -110,7 +110,23 @@ const listRuns = ({ dataDir }) => {
       }
     })
     .filter(Boolean)
-    .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')))
+    .sort((left, right) => {
+      const leftTimestamp = String(left.updatedAt || left.createdAt || '')
+      const rightTimestamp = String(right.updatedAt || right.createdAt || '')
+      const timestampOrder = rightTimestamp.localeCompare(leftTimestamp)
+      return timestampOrder || String(right.runId || '').localeCompare(String(left.runId || ''))
+    })
+}
+
+const resolveRunId = ({ dataDir, runId, statuses = [], description = 'matching' }) => {
+  const explicitRunId = String(runId || '').trim()
+  if (explicitRunId) return explicitRunId
+  const allowedStatuses = new Set(statuses.map((status) => String(status)))
+  const run = listRuns({ dataDir }).find((candidate) => (
+    allowedStatuses.size === 0 || allowedStatuses.has(candidate.status)
+  ))
+  if (!run?.runId) throw new Error(`No ${description} run found`)
+  return run.runId
 }
 
 const appendRunLog = ({ dataDir, runId, level = 'info', event, message = '', data = {}, now = () => new Date().toISOString() }) => {
@@ -161,6 +177,7 @@ module.exports = {
   listRuns,
   readRunLogs,
   readRun,
+  resolveRunId,
   updateRunStatus,
   writeRun
 }

@@ -158,6 +158,7 @@ if (canBootstrap) app.whenReady().then(() => {
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
     openExternal: (url) => shell.openExternal(url),
+    onPetPackActivated: () => reloadAndSendAnimations(getPetWindow, petService),
     selectCreatorAssetFrameFolder: async () => {
       const selected = await dialog.showOpenDialog({
         title: '选择动作帧文件夹',
