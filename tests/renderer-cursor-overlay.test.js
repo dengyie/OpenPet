@@ -116,27 +116,8 @@ const dispatch = (element, eventName, event) => {
   for (const listener of element.listeners[eventName] || []) listener(event)
 }
 
-test('custom cursor overlay follows pointer inside the clickable pet region', async () => {
+test('custom cursor applies native CSS cursor inside the clickable pet region without DOM overlay', async () => {
   const { callbacks, context, elements, logs } = await createRendererHarness({ insideFrame: true })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
-  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
-
-  assert.equal(elements['custom-cursor-overlay'].src, 'file:///cursor.png')
-  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(24px, 89px, 0)')
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-  assert.equal(elements.pet.style.values.cursor, 'none')
-  assert.equal(elements.pet.style.priorities.cursor, 'important')
-  assert.equal(context.document.body.style.values.cursor, 'none')
-  assert.equal(context.document.body.style.priorities.cursor, 'important')
-  assert.equal(context.document.documentElement.style.values.cursor, 'none')
-  assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
-  assert.equal(elements.pet.style.cursor, 'none')
-  assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
-})
-
-test('custom cursor overlay aligns the image using hotspot offsets', async () => {
-  const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({
     customCursor: {
@@ -150,10 +131,20 @@ test('custom cursor overlay aligns the image using hotspot offsets', async () =>
   })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(20px, 83px, 0)')
+  assert.equal(elements['custom-cursor-overlay'].src, '')
+  assert.equal(elements['custom-cursor-overlay'].style.transform, undefined)
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(elements.pet.style.priorities.cursor, 'important')
+  assert.equal(context.document.body.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.body.style.priorities.cursor, 'important')
+  assert.equal(context.document.documentElement.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+  assert.equal(logs.at(-1).details.nativeCursor, 'url("file:///cursor.png") 4 6, auto')
 })
 
-test('custom cursor overlay hides outside the clickable pet region', async () => {
+test('custom cursor clears outside the clickable pet region', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({ insideFrame: false })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
@@ -164,14 +155,14 @@ test('custom cursor overlay hides outside the clickable pet region', async () =>
   assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
 })
 
-test('custom cursor overlay clears when the pointer leaves the pet surface', async () => {
+test('custom cursor clears when the pointer leaves the pet surface', async () => {
   const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-  assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
 
   dispatch(elements.pet, 'pointerleave', { clientX: 301, clientY: 301, screenX: 1301, screenY: 901 })
 

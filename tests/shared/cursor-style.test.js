@@ -29,12 +29,12 @@ test('resolvePetCursorStyle applies custom cursor only inside the active pet reg
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: false, menuOpen: true }), '')
 })
 
-test('resolvePetCursorOverlayState shows a DOM cursor and hides the native cursor inside the active pet region', () => {
+test('resolvePetCursorOverlayState keeps DOM cursor overlay disabled for native cursor rendering', () => {
   const cursor = { enabled: true, assetUrl: 'file:///tmp/openpet/cursor.webp' }
 
   assert.deepEqual(
     resolvePetCursorOverlayState(cursor, { insideFrame: true, dragging: false, menuOpen: false }),
-    { visible: true, assetUrl: 'file:///tmp/openpet/cursor.webp', nativeCursor: 'none' }
+    { visible: false, assetUrl: '', nativeCursor: '' }
   )
   assert.deepEqual(
     resolvePetCursorOverlayState(cursor, { insideFrame: false, dragging: false, menuOpen: false }),
