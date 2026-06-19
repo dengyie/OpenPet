@@ -39,6 +39,7 @@ const createElement = (id = '') => ({
 })
 
 const createRendererHarness = async ({ insideFrame = true, includeHitbox = true } = {}) => {
+  const hitboxResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const elements = {
     pet: createElement('pet'),
     cat: createElement('cat'),
@@ -66,7 +67,7 @@ const createRendererHarness = async ({ insideFrame = true, includeHitbox = true 
               getFrameHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
               getWindowHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
               getViewportHitbox: () => ({ left: 0, top: 0, right: 300, bottom: 300 }),
-              isPointInHitbox: () => insideFrame
+              isPointInHitbox: () => hitboxResults ? hitboxResults.shift() ?? hitboxResults.at(-1) ?? false : insideFrame
             }
           }
         : {}),
@@ -176,4 +177,24 @@ test('custom cursor overlay clears when the pointer leaves the pet surface', asy
 
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
   assert.equal(elements.pet.style.cursor, '')
+})
+
+test('pointer leave does not cancel passthrough while hovering transparent pet padding', async () => {
+  const { elements, logs } = await createRendererHarness({ insideFrame: [false, true] })
+
+  dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 1, screenX: 1001, screenY: 701 })
+  dispatch(elements.pet, 'pointerleave', { clientX: -1, clientY: -1, screenX: 999, screenY: 699 })
+
+  const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
+  assert.deepEqual(passthroughCalls.map((entry) => entry.passthrough), [true])
+})
+
+test('pointer movement back over the visible pet restores click handling after passthrough', async () => {
+  const { elements, logs } = await createRendererHarness({ insideFrame: [false, false, true, true] })
+
+  dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 1, screenX: 1001, screenY: 701 })
+  dispatch(elements.pet, 'pointermove', { clientX: 140, clientY: 140, screenX: 1140, screenY: 840 })
+
+  const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
+  assert.deepEqual(passthroughCalls.map((entry) => entry.passthrough), [true, false])
 })

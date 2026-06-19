@@ -375,7 +375,6 @@ const clearPointerHoverState = (event = {}) => {
   state.lastPointerPoint = null
   hideCursorOverlay()
   setNativeCursor('')
-  setMousePassthrough(false)
   maybeLogMouseDiagnostic({
     clientX: event.clientX ?? -1,
     clientY: event.clientY ?? -1,
@@ -384,7 +383,7 @@ const clearPointerHoverState = (event = {}) => {
   }, {
     insideFrame: false,
     insideCursorRegion: false,
-    passthrough: false,
+    passthrough: state.mousePassthrough,
     cursorApplied: false,
     cursorOverlayVisible: false,
     nativeCursor: '',
