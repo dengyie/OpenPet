@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const crypto = require('crypto')
 const { EventEmitter } = require('events')
 const http = require('http')
 const { PassThrough } = require('stream')
@@ -1148,6 +1149,87 @@ test('creator studio example imports approved fixture pet through host bridge', 
   assert.equal(importResult.result.run.importStatus, 'imported')
   assert.equal(settingsService.get().petPacks.activePackId, 'sprout-cat')
   assert.equal(fs.existsSync(path.join(userPacksDir, 'sprout-cat', 'pet.json')), true)
+})
+
+test('creator studio example imports approved host-bridged local pet through host bridge', async () => {
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'openpet.creator-studio': true } },
+    petPacks: { activePackId: 'legacy-cat', installed: {} }
+  })
+  const userPacksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-import-'))
+  const petPackService = createPetPackService({
+    settingsService,
+    userPacksDir,
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [] }),
+    now: () => new Date('2026-06-19T00:00:00.000Z')
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: createBridgeAwarePetService(),
+    petPackService,
+    imageGenerationModelService: {
+      getConfig: () => ({
+        defaultBackend: 'local',
+        cloud: {
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-image-1',
+          apiKeyRef: 'secret:model.image.openai.apiKey',
+          hasApiKey: false,
+          apiKeyPreview: '',
+          apiKeyLabel: 'Image API Key'
+        },
+        local: {
+          endpoint: 'http://127.0.0.1:7860/generate',
+          healthUrl: 'http://127.0.0.1:7860/health',
+          model: 'local-pet-sprite',
+          timeoutMs: 120000,
+          maxConcurrentJobs: 1
+        }
+      }),
+      checkHealth: async ({ backend } = {}) => ({
+        ok: true,
+        backend: backend || 'local',
+        code: 'endpoint_healthy',
+        message: 'Local endpoint is reachable'
+      }),
+      generateImage: async ({ backend, output }) => {
+        const targetPath = path.join(output.dataDir, output.dataRelativeDir, '0001.png')
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+        fs.writeFileSync(targetPath, Buffer.from('host-generated-png'))
+        return {
+          ok: true,
+          backend: backend || 'local',
+          model: 'local-pet-sprite',
+          generatedAt: '2026-06-19T00:00:00.000Z',
+          outputs: [{
+            dataRelativePath: `${output.dataRelativeDir}/0001.png`,
+            mimeType: 'image/png',
+            sha256: crypto.createHash('sha256').update(fs.readFileSync(targetPath)).digest('hex')
+          }]
+        }
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')]
+  })
+
+  const createResult = await service.runCommand('openpet.creator-studio', 'create-run', {
+    petName: 'Local Sprout Cat',
+    prompt: 'A small mint helper cat',
+    backend: 'local'
+  })
+  const runId = createResult.result.run.runId
+  await service.runCommand('openpet.creator-studio', 'run-step', { runId })
+  await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
+  const importResult = await service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true })
+
+  assert.equal(importResult.ok, true)
+  assert.equal(importResult.result.ok, true)
+  assert.equal(importResult.result.run.importStatus, 'imported')
+  assert.equal(settingsService.get().petPacks.activePackId, 'local-sprout-cat')
+  assert.equal(fs.existsSync(path.join(userPacksDir, 'local-sprout-cat', 'pet.json')), true)
 })
 
 test('declaration-only creator asset inspection bridge rejects missing permissions', async () => {

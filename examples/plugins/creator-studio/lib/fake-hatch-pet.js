@@ -97,4 +97,10 @@ const generateFixturePetOutput = ({ dataDir, runId, now = () => new Date().toISO
   }
 }
 
-module.exports = { generateFixturePetOutput }
+module.exports = {
+  createCreatorStudioMetadata,
+  createMinimalWebp,
+  generateFixturePetOutput,
+  sha256,
+  writeZip
+}

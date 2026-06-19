@@ -485,6 +485,75 @@ test('creator studio run-step command uses host bridge for local backend generat
   }
 })
 
+test('creator studio host-bridged local run can be approved and exported as a standard pet bundle', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-export-'))
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Local Export Cat', prompt: 'A local generated export cat', backend: 'local' },
+    config: { backend: 'local' }
+  })
+  const bridgeServer = require('node:http').createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      response.writeHead(200, {
+        'Content-Type': 'application/json',
+        Connection: 'close'
+      })
+      response.end(JSON.stringify({
+        ok: true,
+        result: {
+          ok: true,
+          backend: 'local',
+          model: 'local-pet-sprite',
+          generatedAt: '2026-06-19T00:00:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${created.json.run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: 'local-export-sha'
+          }]
+        }
+      }))
+      void body
+    })
+  })
+  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  const port = bridgeServer.address().port
+
+  try {
+    const generated = await runCreatorCommandAsync({
+      command: 'run-step',
+      dataDir,
+      payload: { runId: created.json.run.runId },
+      config: { backend: 'local' },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const approved = runCreatorCommand({
+      command: 'approve-run',
+      dataDir,
+      payload: { runId: created.json.run.runId }
+    })
+    const exported = runCreatorCommand({
+      command: 'export-bundle',
+      dataDir,
+      payload: { runId: created.json.run.runId }
+    })
+
+    assert.equal(generated.status, 0)
+    assert.equal(approved.status, 0)
+    assert.equal(exported.status, 0)
+    assert.equal(fs.existsSync(exported.json.bundle.path), true)
+    assert.match(exported.json.bundle.path, /\.codex-pet\.zip$/)
+  } finally {
+    bridgeServer.closeAllConnections?.()
+    await new Promise((resolve) => bridgeServer.close(resolve))
+  }
+})
+
 test('creator studio create-run command drafts a generation task from a conversation prompt', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-create-task-'))
 
