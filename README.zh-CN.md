@@ -48,7 +48,10 @@ npm start
 ```bash
 npm start                    # 构建 Control Center 并启动 Electron
 npm run dev:control-center   # Control Center 热重载：http://127.0.0.1:5173
-npm test                     # Node 测试
+npm run test:core            # 核心运行时 Node 回归
+npm run test:core:all        # 核心 Node 回归 + Control Center Playwright
+npm run test:tools           # 发布 / 工具 Node 测试
+npm test                     # 全量 Node 测试
 npm run test:control-center  # Playwright UI 回归
 npm run typecheck            # TypeScript no-emit 检查
 npm run check:syntax         # Node 语法 + typecheck + Control Center build
@@ -151,8 +154,10 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 当前本地基线：
 
 ```bash
-npm test                     # 691/691 Node tests
-npm run test:control-center  # 10/10 Playwright tests
+npm run test:core            # 468/468 core Node tests
+npm run test:tools           # 340/340 tool/release Node tests
+npm test                     # 808/808 Node tests
+npm run test:control-center  # 15/15 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build
 ```

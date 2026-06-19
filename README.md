@@ -48,7 +48,10 @@ Useful commands:
 ```bash
 npm start                    # Build Control Center and launch Electron
 npm run dev:control-center   # Control Center hot reload at http://127.0.0.1:5173
-npm test                     # Node test suite
+npm run test:core            # Core Node runtime regression suite
+npm run test:core:all        # Core Node suite + Control Center Playwright suite
+npm run test:tools           # Release/tooling Node tests
+npm test                     # Full Node test suite
 npm run test:control-center  # Playwright UI regression suite
 npm run typecheck            # TypeScript no-emit check
 npm run check:syntax         # Node syntax + typecheck + Control Center build
@@ -152,8 +155,10 @@ Use `docs/README.md` instead of browsing every file under `docs/`; historical ph
 Current local baseline:
 
 ```bash
-npm test                     # 691/691 Node tests
-npm run test:control-center  # 10/10 Playwright tests
+npm run test:core            # 468/468 core Node tests
+npm run test:tools           # 340/340 tool/release Node tests
+npm test                     # 808/808 Node tests
+npm run test:control-center  # 15/15 Playwright tests
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # syntax + typecheck + Control Center build
 ```
