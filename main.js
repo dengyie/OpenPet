@@ -34,6 +34,7 @@ const { createCursorAssetService } = require('./src/main/services/cursor-asset-s
 const { createAppLogService } = require('./src/main/services/app-log-service')
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
+const { registerAppLifecycleLogs } = require('./src/main/app-lifecycle-logger')
 const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
 const { configureSingleInstanceLock } = require('./src/main/single-instance')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
@@ -91,18 +92,15 @@ const bootstrapOpenPet = () => {
     cursorDir: path.join(app.getPath('userData'), 'cursors')
   })
   const petMovementPolicy = createPetMovementPolicy({ screen })
-  try {
-    appLogService.record({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.ready',
-      message: 'OpenPet app services initialized'
-    })
-    console.log(`OpenPet app log: ${appLogService.logPath}`)
-  } catch (error) {
-    console.warn(`OpenPet app log unavailable: ${error.message}`)
-  }
+  console.log(`OpenPet app log: ${appLogService.logPath}`)
+  let pluginService = null
+  registerAppLifecycleLogs({
+    app,
+    appLogService,
+    onBeforeQuit: () => {
+      pluginService?.stopAllServices?.()
+    }
+  })
   const actionImportService = createActionImportService({
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
@@ -162,7 +160,7 @@ const bootstrapOpenPet = () => {
   const pluginGithubImportService = createPluginGithubImportService({
     pluginInstallService
   })
-  const pluginService = createPluginService({
+  pluginService = createPluginService({
     settingsService,
     petService,
     actionService,
@@ -183,32 +181,6 @@ const bootstrapOpenPet = () => {
       return { canceled: false, sourceDir: selected.filePaths[0] }
     },
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
-  })
-  const recordLifecycleLog = (entry) => {
-    try {
-      appLogService.record(entry)
-    } catch (error) {
-      console.warn(`OpenPet lifecycle log unavailable: ${error.message}`)
-    }
-  }
-  app.on('before-quit', () => {
-    recordLifecycleLog({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.before-quit',
-      message: 'OpenPet app is preparing to quit'
-    })
-    pluginService.stopAllServices?.()
-  })
-  app.on('will-quit', () => {
-    recordLifecycleLog({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.will-quit',
-      message: 'OpenPet app will quit'
-    })
   })
   catalogService = createCatalogService({
     settingsService,

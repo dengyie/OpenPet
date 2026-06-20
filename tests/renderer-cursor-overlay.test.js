@@ -47,7 +47,7 @@ const createElement = (id = '') => ({
   closest() { return null }
 })
 
-const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true } = {}) => {
+const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true, hasFocus = true } = {}) => {
   const frameResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const cursorRegionResults = insideCursorRegion === undefined
     ? null
@@ -72,6 +72,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
     document: {
       documentElement: { style: createStyle() },
       body: { style: createStyle() },
+      hasFocus: () => hasFocus,
       getElementById: (id) => elements[id],
       createElement: () => createElement()
     },
@@ -158,6 +159,7 @@ test('custom cursor uses a DOM overlay inside the clickable pet region and hides
   assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
   assert.equal(elements.pet.style.cursor, 'none')
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
+  assert.equal(logs.at(-1).details.nativeCursor, 'none')
 })
 
 test('custom cursor is not shown in passthrough-only padding so desktop clicks are not trapped', async () => {
@@ -250,6 +252,24 @@ test('pointer down does not flash the active custom cursor back to the system cu
 
   assert.equal(elements.pet.style.cursor, 'none')
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+})
+
+test('unfocused pet window uses native custom cursor instead of DOM overlay to avoid double cursors', async () => {
+  const { callbacks, context, elements, logs } = await createRendererHarness({
+    insideFrame: true,
+    hasFocus: false
+  })
+
+  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
+  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.body.style.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.documentElement.style.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+  assert.equal(logs.at(-1).details.nativeCursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(logs.at(-1).details.windowFocused, false)
 })
 
 test('pointer leave does not cancel passthrough while hovering transparent pet padding', async () => {

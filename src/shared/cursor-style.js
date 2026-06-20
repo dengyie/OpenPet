@@ -18,13 +18,17 @@
   }
 
   const resolvePetCursorStyle = (cursor, context = {}) => {
-    return ''
+    if (!cursor || !cursor.enabled || !cursor.assetUrl || context.menuOpen) return ''
+    if (!context.insideFrame) return ''
+    return context.windowFocused === false ? createCustomCursorCss(cursor) : ''
   }
 
   const resolvePetCursorOverlayState = (cursor, context = {}) => {
-    if (!cursor || !cursor.enabled || !cursor.assetUrl || !context.insideFrame || context.menuOpen) {
+    if (!cursor || !cursor.enabled || !cursor.assetUrl || context.menuOpen) {
       return { visible: false, assetUrl: '', nativeCursor: '' }
     }
+    if (!context.insideFrame) return { visible: false, assetUrl: '', nativeCursor: '' }
+    if (context.windowFocused === false) return { visible: false, assetUrl: '', nativeCursor: '' }
     return { visible: true, assetUrl: cursor.assetUrl, nativeCursor: 'none' }
   }
 
