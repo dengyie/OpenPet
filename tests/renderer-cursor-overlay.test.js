@@ -47,7 +47,7 @@ const createElement = (id = '') => ({
   closest() { return null }
 })
 
-const createRendererHarness = async ({ insideFrame = true, insideCursorRegion = insideFrame, includeHitbox = true } = {}) => {
+const createRendererHarness = async ({ insideFrame = true, insideCursorRegion = insideFrame, includeHitbox = true, hasFocus = true } = {}) => {
   const frameResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const cursorRegionResults = Array.isArray(insideCursorRegion) ? insideCursorRegion.slice() : null
   const readHitboxResult = (source, fallback) => {
@@ -70,6 +70,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion = 
     document: {
       documentElement: { style: createStyle() },
       body: { style: createStyle() },
+      hasFocus: () => hasFocus,
       getElementById: (id) => elements[id],
       createElement: () => createElement()
     },
@@ -134,24 +135,27 @@ const dispatchAsync = async (element, eventName, event) => {
   for (const listener of element.listeners[eventName] || []) await listener(event)
 }
 
-test('custom cursor uses native CSS cursor inside the clickable pet region without drawing an overlay', async () => {
+test('custom cursor draws a DOM overlay and hides the native cursor inside the clickable pet region', async () => {
   const { callbacks, context, elements, logs } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements['custom-cursor-overlay'].src, 'file:///cursor.png')
+  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(20px, 83px, 0)')
+  assert.equal(elements.pet.style.values.cursor, 'none')
   assert.equal(elements.pet.style.priorities.cursor, 'important')
-  assert.equal(context.document.body.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.body.style.values.cursor, 'none')
   assert.equal(context.document.body.style.priorities.cursor, 'important')
-  assert.equal(context.document.documentElement.style.values.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.documentElement.style.values.cursor, 'none')
   assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 4 6, auto')
-  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+  assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
+  assert.equal(logs.at(-1).details.nativeCursor, 'none')
 })
 
-test('custom cursor remains visible in the cursor region without expanding pet click handling', async () => {
+test('custom cursor stays disabled in transparent padding even when the pointer is inside the cursor region', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({
     insideFrame: false,
     insideCursorRegion: true
@@ -161,11 +165,11 @@ test('custom cursor remains visible in the cursor region without expanding pet c
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, '')
   assert.equal(logs.find((entry) => entry.event === 'pet:test:set-mouse-passthrough').passthrough, true)
   assert.equal(logs.at(-1).details.insideFrame, false)
   assert.equal(logs.at(-1).details.insideCursorRegion, true)
-  assert.equal(logs.at(-1).details.cursorApplied, true)
+  assert.equal(logs.at(-1).details.cursorApplied, false)
   assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
 })
 
@@ -179,22 +183,22 @@ test('pet remains clickable when the optional hitbox helper is unavailable', asy
   assert.equal(logs.at(-1).details.passthrough, false)
 })
 
-test('transient pointerleave keeps the applied custom cursor stable', async () => {
+test('pointerleave clears the DOM cursor overlay and restores the native cursor', async () => {
   const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.cursor, 'none')
 
   dispatch(elements.pet, 'pointerleave', { clientX: 301, clientY: 301, screenX: 1301, screenY: 901 })
 
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements.pet.style.cursor, '')
 })
 
-test('transient out-of-window pointer movement keeps the applied custom cursor stable', async () => {
+test('transient out-of-window pointer movement clears the DOM cursor overlay', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({
     insideFrame: [true, false],
     insideCursorRegion: [true, false]
@@ -203,26 +207,48 @@ test('transient out-of-window pointer movement keeps the applied custom cursor s
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.cursor, 'none')
 
   dispatch(elements.pet, 'pointermove', { clientX: -7.4, clientY: 38.73, screenX: 992.6, screenY: 738.73 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, '')
   assert.equal(logs.at(-1).details.insideCursorRegion, false)
-  assert.equal(logs.at(-1).details.cursorApplied, true)
+  assert.equal(logs.at(-1).details.cursorApplied, false)
 })
 
-test('pointer down does not flash the active custom cursor back to the system cursor', async () => {
+test('pointer down keeps the DOM cursor overlay visible without flashing the system cursor', async () => {
   const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
 
   callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
   dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.cursor, 'none')
 
   await dispatchAsync(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
 
-  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 0 0, auto')
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.cursor, 'none')
+})
+
+test('unfocused pet window uses native custom cursor instead of DOM overlay to avoid double cursors', async () => {
+  const { callbacks, context, elements, logs } = await createRendererHarness({
+    insideFrame: true,
+    hasFocus: false
+  })
+
+  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
+  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.body.style.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(context.document.documentElement.style.cursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+  assert.equal(logs.at(-1).details.nativeCursor, 'url("file:///cursor.png") 4 6, auto')
+  assert.equal(logs.at(-1).details.windowFocused, false)
 })
 
 test('pointer leave does not cancel passthrough while hovering transparent pet padding', async () => {

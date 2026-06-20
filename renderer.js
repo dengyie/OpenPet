@@ -303,6 +303,11 @@ const isPointInsidePetWindow = (clientX, clientY) => (
   clientY <= window.innerHeight
 )
 
+const isPetWindowFocused = () => {
+  if (typeof document.hasFocus !== 'function') return true
+  return document.hasFocus()
+}
+
 const moveCursorOverlay = (clientX, clientY) => {
   const hotspotX = Number.isFinite(Number(state.customCursor.hotspotX)) ? Number(state.customCursor.hotspotX) : 0
   const hotspotY = Number.isFinite(Number(state.customCursor.hotspotY)) ? Number(state.customCursor.hotspotY) : 0
@@ -327,6 +332,7 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
   const context = {
     insideFrame,
     insideCursorRegion,
+    windowFocused: isPetWindowFocused(),
     dragging: Boolean(state.drag),
     menuOpen: false
   }
@@ -340,6 +346,7 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
 
 const preservePetCursorStyle = () => {
   hideCursorOverlay()
+  setNativeCursor('')
   return { visible: false, assetUrl: '', nativeCursor: state.nativeCursor }
 }
 
@@ -360,6 +367,7 @@ const refreshMouseStateFromLastPoint = () => {
     cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
     cursorOverlayVisible: cursorState.visible,
     nativeCursor: state.nativeCursor,
+    windowFocused: isPetWindowFocused(),
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false
@@ -383,6 +391,7 @@ const updateMousePassthroughFromPoint = (event) => {
     cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
     cursorOverlayVisible: cursorState.visible,
     nativeCursor: state.nativeCursor,
+    windowFocused: isPetWindowFocused(),
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false
@@ -392,6 +401,7 @@ const updateMousePassthroughFromPoint = (event) => {
 const clearPointerHoverState = (event = {}) => {
   state.lastPointerPoint = null
   hideCursorOverlay()
+  setNativeCursor('')
   maybeLogMouseDiagnostic({
     clientX: event.clientX ?? -1,
     clientY: event.clientY ?? -1,
@@ -404,6 +414,7 @@ const clearPointerHoverState = (event = {}) => {
     cursorApplied: Boolean(state.nativeCursor),
     cursorOverlayVisible: false,
     nativeCursor: state.nativeCursor,
+    windowFocused: isPetWindowFocused(),
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false

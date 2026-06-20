@@ -111,7 +111,11 @@ const createRequiredServices = ({ ipcMainService, appLogService, menuService, sc
   ipcMainService,
   menuService,
   screenService,
-  appService
+  appService,
+  showContextMenuWindow: (request) => {
+    const quitItem = request.items.find((item) => item.label === '退出')
+    request.onSelect(quitItem)
+  }
 })
 
 test('pet renderer quit records user intent before quitting', () => {
@@ -142,7 +146,6 @@ test('pet context menu quit records menu source before quitting', async () => {
   const ipcMain = createIpcMainStub()
   const logs = []
   let quitCalls = 0
-  let template = null
   const petWindow = {
     isDestroyed: () => false,
     getBounds: () => ({ x: 100, y: 100, width: 80, height: 120 }),
@@ -154,19 +157,12 @@ test('pet context menu quit records menu source before quitting', async () => {
     petWindow,
     appLogService: { record: (entry) => logs.push(entry) },
     appService: { quit: () => { quitCalls += 1 } },
-    menuService: {
-      buildFromTemplate: (nextTemplate) => {
-        template = nextTemplate
-        return { popup: () => {} }
-      }
-    },
     screenService: {
       getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
     }
   }))
 
   await ipcMain.handlers.get(IPC.PET_SHOW_CONTEXT_MENU)({ sender: petWindow.webContents }, { x: 40, y: 60 })
-  template.find((item) => item.label === '退出').click()
 
   assert.equal(quitCalls, 1)
   assert.deepEqual(logs.at(-1), {

@@ -91,18 +91,7 @@ const bootstrapOpenPet = () => {
     logDir: path.join(app.getPath('userData'), 'logs')
   })
   const petMovementPolicy = createPetMovementPolicy({ screen })
-  try {
-    appLogService.record({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.ready',
-      message: 'OpenPet app services initialized'
-    })
-    console.log(`OpenPet app log: ${appLogService.logPath}`)
-  } catch (error) {
-    console.warn(`OpenPet app log unavailable: ${error.message}`)
-  }
+  console.log(`OpenPet app log: ${appLogService.logPath}`)
   const actionImportService = createActionImportService({
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
@@ -161,32 +150,6 @@ const bootstrapOpenPet = () => {
     },
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
-  const recordLifecycleLog = (entry) => {
-    try {
-      appLogService.record(entry)
-    } catch (error) {
-      console.warn(`OpenPet lifecycle log unavailable: ${error.message}`)
-    }
-  }
-  app.on('before-quit', () => {
-    recordLifecycleLog({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.before-quit',
-      message: 'OpenPet app is preparing to quit'
-    })
-    pluginService.stopAllServices?.()
-  })
-  app.on('will-quit', () => {
-    recordLifecycleLog({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.will-quit',
-      message: 'OpenPet app will quit'
-    })
-  })
   catalogService = createCatalogService({
     settingsService,
     pluginInstallService,
@@ -194,7 +157,13 @@ const bootstrapOpenPet = () => {
     petPackService,
     catalogPath: path.join(__dirname, 'catalog', 'openpet-catalog.json')
   })
-  registerAppLifecycleLogs({ app, appLogService })
+  registerAppLifecycleLogs({
+    app,
+    appLogService,
+    onBeforeQuit: () => {
+      pluginService.stopAllServices?.()
+    }
+  })
   let localHttpConfig = petService.getSettings().localHttp
   if (localHttpConfig?.enabled) {
     const normalizedConfig = normalizeLocalHttpConfig(localHttpConfig, localHttpConfig)
