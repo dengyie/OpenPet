@@ -59,6 +59,8 @@ const controlCenterSettingsFixture = {
     assetPath: '',
     assetUrl: '',
     fileName: '',
+    width: 0,
+    height: 0,
     hotspotX: 0,
     hotspotY: 0
   },

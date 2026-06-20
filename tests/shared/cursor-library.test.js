@@ -63,6 +63,8 @@ test('normalizeCursorSettingsState migrates a legacy hosted cursor into the new 
     assetPath: '/tmp/openpet/cursors/legacy.png',
     assetUrl: 'file:///tmp/openpet/cursors/legacy.png',
     fileName: 'legacy.png',
+    width: 0,
+    height: 0,
     hotspotX: 0,
     hotspotY: 0
   })
@@ -74,6 +76,8 @@ test('resolveSelectedCursor returns a disabled runtime cursor for system default
     assetPath: '',
     assetUrl: '',
     fileName: '',
+    width: 0,
+    height: 0,
     hotspotX: 0,
     hotspotY: 0
   })
@@ -84,5 +88,37 @@ test('resolveSelectedCursor returns a disabled runtime cursor for system default
   })
   assert.equal(builtin.enabled, true)
   assert.equal(builtin.fileName, BUILTIN_CURSORS[0].fileName)
+  assert.equal(builtin.width, BUILTIN_CURSORS[0].width)
+  assert.equal(builtin.height, BUILTIN_CURSORS[0].height)
   assert.match(builtin.assetUrl, /^data:image\/svg\+xml/)
+})
+
+test('resolveSelectedCursor preserves custom cursor dimensions for runtime overlay alignment', () => {
+  const runtime = resolveSelectedCursor({
+    selectedCursorId: 'cursor-large',
+    customCursors: [{
+      id: 'cursor-large',
+      name: 'Large Cursor',
+      assetPath: '/tmp/large.png',
+      assetUrl: 'file:///tmp/large.png',
+      fileName: 'large.png',
+      width: 64,
+      height: 40,
+      byteSize: 1200,
+      hotspotX: 9,
+      hotspotY: 11,
+      createdAt: '2026-06-20T00:00:00.000Z'
+    }]
+  })
+
+  assert.deepEqual(runtime, {
+    enabled: true,
+    assetPath: '/tmp/large.png',
+    assetUrl: 'file:///tmp/large.png',
+    fileName: 'large.png',
+    width: 64,
+    height: 40,
+    hotspotX: 9,
+    hotspotY: 11
+  })
 })

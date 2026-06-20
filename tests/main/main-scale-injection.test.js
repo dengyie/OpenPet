@@ -4,6 +4,9 @@ const Module = require('module')
 const path = require('path')
 
 const mainPath = require.resolve('../../main')
+const flushAsync = async (times = 6) => {
+  for (let index = 0; index < times; index += 1) await Promise.resolve()
+}
 
 test('main forwards IPC-provided scale values to the window scaler', async () => {
   delete require.cache[mainPath]
@@ -164,8 +167,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
 
   try {
     require(mainPath)
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushAsync()
     assert.ok(registeredIpcDependencies)
 
     const ipcWindow = { id: 'ipc-window' }
@@ -335,12 +337,182 @@ test('main still stops plugin services when lifecycle logging fails during quit'
 
   try {
     require(mainPath)
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushAsync()
 
     appHandlers.get('before-quit')()
 
     assert.equal(stopAllServicesCalls, 1)
+  } finally {
+    Module._load = originalLoad
+    delete require.cache[mainPath]
+  }
+})
+
+test('main persists repaired cursor metadata even when the asset path is unchanged', async () => {
+  delete require.cache[mainPath]
+
+  const initialCursor = {
+    enabled: true,
+    assetPath: '/tmp/cursor.png',
+    assetUrl: 'file:///tmp/cursor.png',
+    fileName: 'cursor.png',
+    width: 0,
+    height: 0,
+    hotspotX: 0,
+    hotspotY: 0
+  }
+  const savedSettings = []
+  const appLogs = []
+  const petWindow = {
+    webContents: { on: () => {}, send: () => {} },
+    isMinimized: () => false,
+    restore: () => {},
+    focus: () => {}
+  }
+
+  const originalLoad = Module._load
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === 'electron') {
+      return {
+        app: {
+          getPath: () => path.join(__dirname, '..', '.tmp-main-scale-injection'),
+          isPackaged: false,
+          on: () => {},
+          quit: () => {},
+          requestSingleInstanceLock: () => true,
+          setLoginItemSettings: () => {},
+          whenReady: () => ({ then: (callback) => { callback(); return { catch: () => {} } } })
+        },
+        BrowserWindow: { getAllWindows: () => [petWindow] },
+        dialog: {},
+        screen: { on: () => {} },
+        shell: { openExternal: () => {} }
+      }
+    }
+
+    if (request === './src/main/window') {
+      return {
+        applyWindowScale: () => {},
+        createSettingsWindow: () => {},
+        createWindow: () => petWindow,
+        loadPetWindow: () => {}
+      }
+    }
+
+    if (request === './src/main/ipc') {
+      return {
+        createPetRendererSettings: (settings) => settings,
+        normalizeLocalHttpConfig: (_currentConfig, nextConfig) => nextConfig,
+        reloadAndSendAnimations: () => ({ actions: [] }),
+        registerIpcHandlers: () => {}
+      }
+    }
+
+    if (request === './src/main/settings') {
+      return {
+        loadSettings: () => ({
+          scale: 1,
+          autoStart: false,
+          selectedCursorId: 'cursor-old',
+          customCursor: initialCursor,
+          customCursors: [{
+            id: 'cursor-old',
+            type: 'custom',
+            name: 'Cursor',
+            assetPath: initialCursor.assetPath,
+            assetUrl: initialCursor.assetUrl,
+            fileName: initialCursor.fileName,
+            width: 0,
+            height: 0,
+            byteSize: 100,
+            hotspotX: 0,
+            hotspotY: 0,
+            createdAt: '2026-06-20T00:00:00.000Z'
+          }],
+          localHttp: {},
+          ai: { behavior: {} },
+          plugins: { enabled: {}, config: {}, storage: {}, logs: [] },
+          petPacks: { activePackId: 'legacy-cat', installed: {} },
+          ecosystem: { blocklist: { pluginIds: [], packIds: [], sha256: [] } }
+        }),
+        saveSettings: (settings) => savedSettings.push(settings),
+        syncLoginItemSettings: () => {}
+      }
+    }
+
+    if (request === './src/main/services/settings-service') {
+      return {
+        createSettingsService: ({ loadSettings, saveSettings }) => {
+          let settings = loadSettings()
+          return {
+            get: () => settings,
+            preview: (partial) => ({ ...settings, ...partial }),
+            save: (nextSettings) => {
+              settings = nextSettings
+              saveSettings(nextSettings)
+              return settings
+            }
+          }
+        }
+      }
+    }
+
+    if (request === './src/main/services/cursor-asset-service') {
+      return {
+        createCursorAssetService: () => ({
+          repairCursor: async () => ({
+            ...initialCursor,
+            width: 64,
+            height: 64,
+            hotspotX: 13,
+            hotspotY: 8
+          })
+        })
+      }
+    }
+
+    const serviceFactories = {
+      './src/main/screen': { clampToWorkArea: (_win, x, y) => ({ x, y }), getMovementState: () => null },
+      './src/main/services/event-bus': { createEventBus: () => ({ on: () => {}, emit: () => {} }) },
+      './src/main/services/action-service': { createActionService: () => ({ getConfig: () => ({ actions: [] }), getPreviewConfig: () => ({ actions: [] }), reloadConfig: () => ({ actions: [] }) }) },
+      './src/main/services/pet-service': { createPetService: ({ settingsService }) => ({ getSettings: () => settingsService.get(), saveSettings: (settings) => settingsService.save(settings), previewSettings: (partial) => settingsService.preview(partial), getAnimations: () => ({ actions: [] }), getPreviewAnimations: () => ({ actions: [] }), reloadAnimations: () => ({ actions: [] }), onSay: () => {}, onAction: () => {}, onEvent: () => {}, say: (payload) => payload, playAction: (payload) => payload, setEvent: (payload) => payload }) },
+      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [] }) },
+      './src/main/services/secret-service': { createSecretService: () => ({}) },
+      './src/main/services/ai-service': { createAiService: () => ({}) },
+      './src/main/services/image-generation-model-service': { createImageGenerationModelService: () => ({}) },
+      './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/main/services/plugin-service': { createPluginService: () => ({ stopAllServices: () => {} }) },
+      './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
+      './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
+      './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
+      './src/main/services/action-import-service': { createActionImportService: () => ({}) },
+      './src/main/services/app-log-service': { createAppLogService: () => ({ record: (entry) => appLogs.push(entry), logPath: '/tmp/openpet-app.jsonl' }) },
+      './src/main/services/about-service': { createAboutService: () => ({}) },
+      './src/main/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
+      './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
+      './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
+      './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/main/user-data-path': { configureUserDataPath: () => {} }
+    }
+    if (serviceFactories[request]) return serviceFactories[request]
+
+    return originalLoad.call(this, request, parent, isMain)
+  }
+
+  try {
+    require(mainPath)
+    await flushAsync()
+
+    assert.equal(savedSettings.length, 1)
+    assert.equal(savedSettings[0].customCursor.width, 64)
+    assert.equal(savedSettings[0].customCursor.height, 64)
+    assert.equal(savedSettings[0].customCursor.hotspotX, 13)
+    assert.equal(savedSettings[0].customCursor.hotspotY, 8)
+    assert.equal(savedSettings[0].customCursors[0].width, 64)
+    assert.equal(savedSettings[0].customCursors[0].height, 64)
+    assert.equal(savedSettings[0].customCursors[0].hotspotX, 13)
+    assert.equal(savedSettings[0].customCursors[0].hotspotY, 8)
+    assert.equal(appLogs.some((entry) => entry.event === 'settings.cursor.asset.repaired'), true)
   } finally {
     Module._load = originalLoad
     delete require.cache[mainPath]

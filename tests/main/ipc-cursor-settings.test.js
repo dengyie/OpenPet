@@ -110,6 +110,8 @@ test('settings:save removes orphaned cursor assets after replacing a custom curs
       assetPath: '/tmp/cursor-old.png',
       assetUrl: 'file:///tmp/cursor-old.png',
       fileName: 'cursor-old.png',
+      width: 32,
+      height: 32,
       hotspotX: 0,
       hotspotY: 0
     },

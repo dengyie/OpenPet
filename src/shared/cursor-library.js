@@ -117,6 +117,8 @@ const createDefaultRuntimeCursor = () => ({
   assetPath: '',
   assetUrl: '',
   fileName: '',
+  width: 0,
+  height: 0,
   hotspotX: 0,
   hotspotY: 0
 })
@@ -136,6 +138,8 @@ const normalizeRuntimeCursor = (cursor) => {
     assetPath,
     assetUrl,
     fileName,
+    width: Math.max(0, normalizeNumber(cursor.width, 0)),
+    height: Math.max(0, normalizeNumber(cursor.height, 0)),
     hotspotX: normalizeNumber(cursor.hotspotX, 0),
     hotspotY: normalizeNumber(cursor.hotspotY, 0)
   }
@@ -197,6 +201,8 @@ const toRuntimeCursor = (cursor) => normalizeRuntimeCursor({
   assetPath: cursor?.assetPath,
   assetUrl: cursor?.assetUrl,
   fileName: cursor?.fileName,
+  width: cursor?.width,
+  height: cursor?.height,
   hotspotX: cursor?.hotspotX,
   hotspotY: cursor?.hotspotY
 })

@@ -155,6 +155,28 @@ test('custom cursor draws a DOM overlay and hides the native cursor inside the c
   assert.equal(logs.at(-1).details.nativeCursor, 'none')
 })
 
+test('custom cursor overlay uses runtime cursor dimensions to keep the hotspot aligned', async () => {
+  const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
+
+  callbacks.settings({
+    customCursor: {
+      enabled: true,
+      assetUrl: 'file:///cursor-64.png',
+      assetPath: '/cursor-64.png',
+      fileName: 'cursor-64.png',
+      width: 64,
+      height: 40,
+      hotspotX: 9,
+      hotspotY: 11
+    }
+  })
+  dispatch(elements.pet, 'pointermove', { clientX: 100, clientY: 120, screenX: 1100, screenY: 820 })
+
+  assert.equal(elements['custom-cursor-overlay'].style.width, '64px')
+  assert.equal(elements['custom-cursor-overlay'].style.height, '40px')
+  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(91px, 109px, 0)')
+})
+
 test('custom cursor stays disabled in transparent padding even when the pointer is inside the cursor region', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({
     insideFrame: false,
