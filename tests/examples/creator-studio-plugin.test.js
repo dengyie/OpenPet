@@ -753,6 +753,70 @@ test('creator studio run-step command fails and persists run state when bridge i
   }
 })
 
+test('creator studio run-step command surfaces provider business errors from the bridge', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-cloud-business-error-'))
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: {
+      petName: 'Cloud Business Error Cat',
+      prompt: '新增一个自定义动作：开心挥手，动作要循环。',
+      backend: 'cloud'
+    },
+    config: { backend: 'cloud' }
+  })
+
+  const bridgeServer = require('node:http').createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      void body
+      response.writeHead(200, {
+        'Content-Type': 'application/json',
+        Connection: 'close'
+      })
+      response.end(JSON.stringify({
+        ok: false,
+        error: '该接口未接入公益站独立网关，旧转发链路已关闭'
+      }))
+    })
+  })
+  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  const port = bridgeServer.address().port
+
+  try {
+    const generated = await runCreatorCommandAsync({
+      command: 'run-step',
+      dataDir,
+      payload: { runId: created.json.run.runId },
+      config: { backend: 'cloud' },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const runPath = path.join(dataDir, 'runs', created.json.run.runId, 'run.json')
+    const logPath = path.join(dataDir, 'runs', created.json.run.runId, 'logs', 'events.jsonl')
+    const run = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
+    const events = fs.readFileSync(logPath, 'utf-8').trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+
+    assert.equal(created.status, 0)
+    assert.equal(generated.status, 1)
+    assert.equal(generated.json.ok, false)
+    assert.match(generated.json.error, /旧转发链路已关闭/)
+    assert.equal(run.status, 'failed')
+    assert.equal(run.currentStep, 'generate')
+    assert.equal(run.backendStatus.backend, 'cloud')
+    assert.equal(run.backendStatus.state, 'failed')
+    assert.match(run.backendStatus.message, /旧转发链路已关闭/)
+    assert.match(run.error, /旧转发链路已关闭/)
+    assert.deepEqual(events.map((entry) => entry.event), ['generate.start', 'generate.failed'])
+  } finally {
+    bridgeServer.closeAllConnections?.()
+    await new Promise((resolve) => bridgeServer.close(resolve))
+  }
+})
+
 test('creator studio host-bridged local run can be approved and exported as a standard pet bundle', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-export-'))
   const created = runCreatorCommand({

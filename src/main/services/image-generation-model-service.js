@@ -179,6 +179,14 @@ const getErrorMessage = async (response) => {
   }
 }
 
+const extractCloudProviderBusinessError = (body) => {
+  if (!isPlainObject(body)) return ''
+  if (Array.isArray(body.data)) return ''
+  const message = String(body.error?.message || body.message || body.msg || '').trim()
+  if (!message) return ''
+  return message.slice(0, 240)
+}
+
 const buildCloudGenerationPayload = ({ model, prompt, constraints }) => {
   const payload = {
     model,
@@ -502,6 +510,27 @@ const createImageGenerationModelService = ({
     const body = await response.json()
     const items = Array.isArray(body?.data) ? body.data : []
     if (!items.length) {
+      const businessError = extractCloudProviderBusinessError(body)
+      if (businessError) {
+        recordLog({
+          level: 'error',
+          event: 'imageGeneration.provider.request.failed',
+          message: 'Cloud image provider returned a business error',
+          details: {
+            requestId,
+            backend: 'cloud',
+            provider: config.cloud.provider,
+            model: config.cloud.model,
+            baseUrlHost: getUrlHost(config.cloud.baseUrl),
+            status: response.status || 200,
+            durationMs: nowMs() - providerStartMs,
+            outputCount: 0,
+            errorCode: 'provider_business_error',
+            errorMessage: businessError
+          }
+        })
+        throw new Error(businessError)
+      }
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
