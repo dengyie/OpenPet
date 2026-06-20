@@ -28,6 +28,8 @@ test('settings default custom cursor is disabled', () => {
     assetPath: '',
     assetUrl: '',
     fileName: '',
+    width: 0,
+    height: 0,
     hotspotX: 0,
     hotspotY: 0
   })
@@ -52,6 +54,8 @@ test('mergeSettings migrates a legacy hosted custom cursor into the new cursor l
     assetPath: '/tmp/openpet/cursors/cursor.png',
     assetUrl: 'file:///tmp/openpet/cursors/cursor.png',
     fileName: 'cursor.png',
+    width: 0,
+    height: 0,
     hotspotX: 0,
     hotspotY: 0
   })
@@ -81,6 +85,8 @@ test('mergeSettings falls back to system default when the selected custom cursor
     assetPath: '',
     assetUrl: '',
     fileName: '',
+    width: 0,
+    height: 0,
     hotspotX: 0,
     hotspotY: 0
   })

@@ -67,7 +67,7 @@ const state = {
   drag: null,            // { pointerId, offsetX, offsetY, moved } | null
   mousePassthrough: false,
   currentLayout: null,
-  customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '', hotspotX: 0, hotspotY: 0 },
+  customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '', width: 0, height: 0, hotspotX: 0, hotspotY: 0 },
   customCursorOverlayVisible: false,
   nativeCursor: '',
   lastPointerPoint: null,
@@ -323,6 +323,20 @@ const moveCursorOverlay = (clientX, clientY) => {
   cursorOverlay.style.transform = `translate3d(${Math.round(clientX - hotspotX)}px, ${Math.round(clientY - hotspotY)}px, 0)`
 }
 
+const getCursorOverlayDimension = (configuredSize, naturalSize) => {
+  const configured = Number(configuredSize)
+  if (Number.isFinite(configured) && configured > 0) return configured
+  const natural = Number(naturalSize)
+  return Number.isFinite(natural) && natural > 0 ? natural : 48
+}
+
+const applyCursorOverlaySize = () => {
+  const width = getCursorOverlayDimension(state.customCursor.width, cursorOverlay.naturalWidth)
+  const height = getCursorOverlayDimension(state.customCursor.height, cursorOverlay.naturalHeight)
+  cursorOverlay.style.width = `${Math.round(width)}px`
+  cursorOverlay.style.height = `${Math.round(height)}px`
+}
+
 const hideCursorOverlay = () => {
   if (!state.customCursorOverlayVisible) return
   state.customCursorOverlayVisible = false
@@ -331,11 +345,19 @@ const hideCursorOverlay = () => {
 
 const showCursorOverlay = (assetUrl, clientX, clientY) => {
   if (cursorOverlay.src !== assetUrl) cursorOverlay.src = assetUrl
+  applyCursorOverlaySize()
   moveCursorOverlay(clientX, clientY)
   if (state.customCursorOverlayVisible) return
   state.customCursorOverlayVisible = true
   cursorOverlay.classList.add('visible')
 }
+
+cursorOverlay.addEventListener?.('load', () => {
+  applyCursorOverlaySize()
+  if (state.customCursorOverlayVisible && state.lastPointerPoint) {
+    moveCursorOverlay(state.lastPointerPoint.clientX, state.lastPointerPoint.clientY)
+  }
+})
 
 const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, insideCursorRegion = insideFrame) => {
   const context = {
@@ -671,6 +693,8 @@ window.petAPI.onSettingsChanged((s) => {
       assetPath: s.customCursor.assetPath || '',
       assetUrl: s.customCursor.assetUrl || '',
       fileName: s.customCursor.fileName || '',
+      width: Number(s.customCursor.width) || 0,
+      height: Number(s.customCursor.height) || 0,
       hotspotX: Number(s.customCursor.hotspotX) || 0,
       hotspotY: Number(s.customCursor.hotspotY) || 0
     }

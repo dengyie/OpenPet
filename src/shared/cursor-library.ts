@@ -135,6 +135,8 @@ export const createDefaultRuntimeCursor = (): CustomCursorSettings => ({
   assetPath: '',
   assetUrl: '',
   fileName: '',
+  width: 0,
+  height: 0,
   hotspotX: 0,
   hotspotY: 0
 })
@@ -154,6 +156,8 @@ export const normalizeRuntimeCursor = (cursor: Partial<CustomCursorSettings> | n
     assetPath,
     assetUrl,
     fileName,
+    width: Math.max(0, normalizeNumber(cursor.width, 0)),
+    height: Math.max(0, normalizeNumber(cursor.height, 0)),
     hotspotX: normalizeNumber(cursor.hotspotX, 0),
     hotspotY: normalizeNumber(cursor.hotspotY, 0)
   }
@@ -210,11 +214,13 @@ export const migrateLegacyCustomCursorRecord = (cursor: Partial<CustomCursorSett
 
 export const getBuiltinCursorById = (cursorId: string) => BUILTIN_CURSORS.find((cursor) => cursor.id === cursorId) || null
 
-const toRuntimeCursor = (cursor: Pick<CursorOption, 'assetPath' | 'assetUrl' | 'fileName' | 'hotspotX' | 'hotspotY'>) => normalizeRuntimeCursor({
+const toRuntimeCursor = (cursor: Pick<CursorOption, 'assetPath' | 'assetUrl' | 'fileName' | 'width' | 'height' | 'hotspotX' | 'hotspotY'>) => normalizeRuntimeCursor({
   enabled: true,
   assetPath: cursor.assetPath,
   assetUrl: cursor.assetUrl,
   fileName: cursor.fileName,
+  width: cursor.width,
+  height: cursor.height,
   hotspotX: cursor.hotspotX,
   hotspotY: cursor.hotspotY
 })

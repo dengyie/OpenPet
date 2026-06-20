@@ -23,6 +23,8 @@ export interface CustomCursorSettings {
   assetPath: string
   assetUrl: string
   fileName: string
+  width: number
+  height: number
   hotspotX: number
   hotspotY: number
 }

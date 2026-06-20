@@ -106,10 +106,39 @@ const bootstrapOpenPet = () => {
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
     configPath: path.join(__dirname, 'cat_anime', 'animations.json')
   })
+  const hasCursorRepairChanged = (before = {}, after = {}) => (
+    ['assetPath', 'assetUrl', 'fileName', 'width', 'height', 'hotspotX', 'hotspotY']
+      .some((key) => before?.[key] !== after?.[key])
+  )
+  const applyCursorRepairToCollection = (customCursors = [], customCursor = {}) => (
+    Array.isArray(customCursors)
+      ? customCursors.map((cursor) => {
+        const isRepairedCursor = cursor?.assetPath === customCursor.assetPath ||
+          cursor?.assetUrl === customCursor.assetUrl
+        return isRepairedCursor
+          ? {
+              ...cursor,
+              assetPath: customCursor.assetPath,
+              assetUrl: customCursor.assetUrl,
+              fileName: customCursor.fileName,
+              width: customCursor.width,
+              height: customCursor.height,
+              hotspotX: customCursor.hotspotX,
+              hotspotY: customCursor.hotspotY
+            }
+          : cursor
+      })
+      : []
+  )
+
   cursorAssetService.repairCursor(petService.getSettings().customCursor).then((customCursor) => {
     const currentSettings = petService.getSettings()
-    if (customCursor.assetPath && customCursor.assetPath !== currentSettings.customCursor?.assetPath) {
-      petService.saveSettings({ ...currentSettings, customCursor })
+    if (customCursor.assetPath && hasCursorRepairChanged(currentSettings.customCursor, customCursor)) {
+      petService.saveSettings({
+        ...currentSettings,
+        customCursor,
+        customCursors: applyCursorRepairToCollection(currentSettings.customCursors, customCursor)
+      })
       appLogService.record({
         scope: 'settings',
         level: 'info',
