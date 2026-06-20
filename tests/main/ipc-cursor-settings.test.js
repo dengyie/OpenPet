@@ -24,6 +24,7 @@ const createRequiredServices = ({
   petService,
   cursorAssetService,
   dialogService,
+  browserWindowService,
   getPetWindow = () => null,
   applyWindowScale = () => {}
 }) => ({
@@ -99,6 +100,7 @@ const createRequiredServices = ({
   dialogService: dialogService || {
     showOpenDialog: async () => ({ canceled: true, filePaths: [] })
   },
+  browserWindowService,
   ipcMainService
 })
 
@@ -191,6 +193,49 @@ test('settings:save removes orphaned cursor assets after replacing a custom curs
   assert.equal(result.selectedCursorId, 'cursor-new')
   assert.deepEqual(deletedPaths, ['/tmp/cursor-old.png'])
 })
+
+test('pet cursor focus request focuses the pet window only when it is unfocused', () => {
+  const ipcMain = createIpcMainStub()
+  let focusCalls = 0
+  let focused = false
+  const petWindow = {
+    isFocused: () => focused,
+    focus: () => {
+      focusCalls += 1
+      focused = true
+    }
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService: {
+      onSay: () => {},
+      onAction: () => {},
+      onEvent: () => {},
+      getAnimations: () => ({ actions: [] }),
+      getPreviewAnimations: () => ({ actions: [] }),
+      reloadAnimations: () => ({ actions: [] }),
+      previewSettings: () => {},
+      getSettings: () => ({}),
+      saveSettings: (settings) => settings,
+      say: (payload) => payload,
+      playAction: (payload) => payload,
+      setEvent: (payload) => payload
+    },
+    cursorAssetService: {
+      deleteAssets: () => {}
+    },
+    browserWindowService: {
+      fromWebContents: () => petWindow
+    }
+  }))
+
+  ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: { id: 'pet-web-contents' } })
+  ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: { id: 'pet-web-contents' } })
+
+  assert.equal(focusCalls, 1)
+})
+
 
 test('settings:import-cursor only offers PNG and WEBP files in the picker', async () => {
   const ipcMain = createIpcMainStub()

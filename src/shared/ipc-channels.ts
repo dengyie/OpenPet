@@ -6,6 +6,7 @@ export const IPC = Object.freeze({
   PET_SET_VIEWPORT: 'pet:set-viewport',
   PET_SET_POSITION: 'pet:set-position',
   PET_SET_MOUSE_PASSTHROUGH: 'pet:set-mouse-passthrough',
+  PET_REQUEST_FOCUS_FOR_CURSOR: 'pet:request-focus-for-cursor',
   PET_RECORD_APP_LOG: 'pet:record-app-log',
   PET_DRAG_ENDED: 'pet:drag-ended',
   PET_MOVE_BY: 'pet:move-by',

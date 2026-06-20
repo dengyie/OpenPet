@@ -262,6 +262,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     else win.setIgnoreMouseEvents(false)
   })
 
+  ipcMainService.on(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, (event) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || typeof win.focus !== 'function') return
+    if (typeof win.isFocused === 'function' && win.isFocused()) return
+    win.focus()
+  })
+
   ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry = {}) => {
     if (!entry || typeof entry !== 'object') return
     recordAppLog({

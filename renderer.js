@@ -69,6 +69,7 @@ const state = {
   currentLayout: null,
   customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '', width: 0, height: 0, hotspotX: 0, hotspotY: 0 },
   customCursorOverlayVisible: false,
+  cursorFocusRequested: false,
   nativeCursor: '',
   lastPointerPoint: null,
   lastMouseDiagnostic: null,
@@ -352,6 +353,12 @@ const showCursorOverlay = (assetUrl, clientX, clientY) => {
   cursorOverlay.classList.add('visible')
 }
 
+const requestFocusForCursorIfNeeded = (overlayVisible, windowFocused) => {
+  if (!overlayVisible || windowFocused || state.cursorFocusRequested) return
+  state.cursorFocusRequested = true
+  window.petAPI.requestFocusForCursor?.()
+}
+
 cursorOverlay.addEventListener?.('load', () => {
   applyCursorOverlaySize()
   if (state.customCursorOverlayVisible && state.lastPointerPoint) {
@@ -372,11 +379,14 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
   setNativeCursor(overlayState.visible ? overlayState.nativeCursor : fallbackCursor)
   if (overlayState.visible && point) showCursorOverlay(overlayState.assetUrl, point.clientX, point.clientY)
   else hideCursorOverlay()
+  if (context.windowFocused) state.cursorFocusRequested = false
+  requestFocusForCursorIfNeeded(overlayState.visible, context.windowFocused)
   return overlayState
 }
 
 const preservePetCursorStyle = () => {
   hideCursorOverlay()
+  state.cursorFocusRequested = false
   setNativeCursor('')
   return { visible: false, assetUrl: '', nativeCursor: state.nativeCursor }
 }
