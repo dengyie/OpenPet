@@ -5,6 +5,9 @@ const DEFAULT_AI_CONFIG = {
   model: 'gpt-4o-mini',
   apiKeyRef: 'ai.default',
   systemPrompt: 'You are a friendly desktop pet companion.',
+  memory: {
+    enabled: false
+  },
   behavior: {
     enabled: false,
     useTools: true,
@@ -37,6 +40,12 @@ const normalizeBehaviorConfig = (behavior = {}) => ({
   decisions: Array.isArray(behavior?.decisions) ? behavior.decisions : []
 })
 
+const normalizeMemoryConfig = (memory = {}) => ({
+  ...DEFAULT_AI_CONFIG.memory,
+  ...(isPlainObject(memory) ? memory : {}),
+  enabled: Boolean(memory?.enabled)
+})
+
 const normalizeConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
   baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
@@ -44,6 +53,7 @@ const normalizeConfig = (config = {}) => ({
   apiKeyRef: config.apiKeyRef || DEFAULT_AI_CONFIG.apiKeyRef,
   systemPrompt: config.systemPrompt ?? DEFAULT_AI_CONFIG.systemPrompt,
   enabled: Boolean(config.enabled),
+  memory: normalizeMemoryConfig(config.memory),
   behavior: normalizeBehaviorConfig(config.behavior)
 })
 

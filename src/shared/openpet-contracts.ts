@@ -104,6 +104,10 @@ export interface AiBehaviorConfig {
   decisions: AiBehaviorDecision[]
 }
 
+export interface AiMemoryConfig {
+  enabled: boolean
+}
+
 export interface AiConfigViewState {
   enabled: boolean
   provider: string
@@ -111,6 +115,7 @@ export interface AiConfigViewState {
   model: string
   apiKeyRef: string
   systemPrompt: string
+  memory: AiMemoryConfig
   behavior: AiBehaviorConfig
   hasApiKey: boolean
 }
