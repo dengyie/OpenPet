@@ -45,6 +45,22 @@ const sendError = (response, error) => {
   sendJson(response, statusCode, { ok: false, error: error.message || 'Creator Studio service failed' })
 }
 
+const createActionReview = (run) => {
+  const actionFrames = run.artifacts?.actionFrames
+  const action = Array.isArray(run.generationTask?.actions) ? run.generationTask.actions[0] : null
+  if (!actionFrames) return null
+  return {
+    actionId: actionFrames.actionId,
+    name: actionFrames.name || action?.name || actionFrames.actionId,
+    frameCount: actionFrames.frameCount || action?.frameCount || 0,
+    frameWidth: actionFrames.frameWidth || 0,
+    frameHeight: actionFrames.frameHeight || 0,
+    qa: actionFrames.qa || '',
+    triggerProposal: actionFrames.triggerProposal || action?.triggerProposal || { type: 'unbound' },
+    importStatus: run.importStatus || 'not-imported'
+  }
+}
+
 const handlePost = async ({ request, response, dataDir, url }) => {
   try {
     const body = await readJsonBody(request)
@@ -122,7 +138,8 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
         sendJson(response, 200, { ok: true, runId, logs: readRunLogs({ dataDir, runId }) })
         return
       }
-      sendJson(response, 200, { ok: true, run: readRun({ dataDir, runId }) })
+      const run = readRun({ dataDir, runId })
+      sendJson(response, 200, { ok: true, run, actionReview: createActionReview(run) })
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Run not found' })

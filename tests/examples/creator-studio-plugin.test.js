@@ -1373,20 +1373,58 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="prompt-input"/)
   assert.match(html, /id="task-preview"/)
   assert.match(html, /id="trigger-panel"/)
+  assert.match(html, /id="action-review"/)
+  assert.match(html, /action-frame-validation\.json/)
   assert.match(html, /id="run-logs"/)
   assert.equal(html.includes('apiKey'), false)
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
 })
 
 test('creator studio service exposes run detail and logs for dashboard clients', async () => {
-  const { appendRunLog, createRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { appendRunLog, createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-'))
   const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
   const run = createRun({
     dataDir,
-    input: { petName: 'Service Cat', prompt: 'Visible in dashboard', backend: 'fixture' },
+    input: {
+      petName: 'Service Cat',
+      prompt: 'Visible in dashboard',
+      backend: 'fixture',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击后害羞转圈',
+          frameCount: 8,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
     now: () => '2026-06-19T00:00:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir: path.join(dataDir, 'runs', run.runId, 'frames', 'actions', 'shy-spin'),
+          qa: path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json'),
+          frameCount: 8,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now: () => '2026-06-19T00:00:30.000Z'
   })
   appendRunLog({
     dataDir,
@@ -1406,6 +1444,10 @@ test('creator studio service exposes run detail and logs for dashboard clients',
 
     assert.equal(detail.ok, true)
     assert.equal(detail.run.runId, run.runId)
+    assert.equal(detail.actionReview.actionId, 'shy-spin')
+    assert.equal(detail.actionReview.frameCount, 8)
+    assert.equal(detail.actionReview.triggerProposal.type, 'click')
+    assert.match(detail.actionReview.qa, /action-frame-validation\.json$/)
     assert.equal(logs.ok, true)
     assert.deepEqual(logs.logs.map((entry) => entry.event), ['run.created'])
   } finally {

@@ -214,6 +214,10 @@
           <h2>QA</h2>
           <section id="qa-panel">No generated QA yet.</section>
         </section>
+        <section id="action-review">
+          <h2>Single Action Review</h2>
+          <section id="action-review-panel">Generated action frames and action-frame-validation.json will appear here before import.</section>
+        </section>
         <section>
           <h2>Run Logs</h2>
           <pre id="run-logs">No logs yet.</pre>
@@ -255,6 +259,8 @@
           $('task-preview').textContent = 'No task drafted yet.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
+          $('qa-panel').textContent = 'No generated QA yet.'
+          $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
           $('confirm-button').disabled = true
           $('generate-button').disabled = true
           return
@@ -276,7 +282,19 @@
         }
         $('confirm-button').disabled = Boolean(question) || run.taskStatus === 'confirmed'
         $('generate-button').disabled = Boolean(question)
-        $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
+        const actionFrames = run.artifacts?.actionFrames
+        if (actionFrames) {
+          $('qa-panel').textContent = `Frame QA written: ${actionFrames.qa || 'action-frame-validation.json'}`
+          $('action-review-panel').innerHTML = [
+            `<strong>${escapeHtml(actionFrames.name || actionFrames.actionId)}</strong>`,
+            `<p>Frames: ${escapeHtml(actionFrames.frameCount)} at ${escapeHtml(actionFrames.frameWidth)}x${escapeHtml(actionFrames.frameHeight)}</p>`,
+            `<p>QA: ${escapeHtml(actionFrames.qa || 'action-frame-validation.json')}</p>`,
+            `<p>Trigger proposal is review-only: ${escapeHtml((actionFrames.triggerProposal || action.triggerProposal).type)}</p>`
+          ].join('')
+        } else {
+          $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
+          $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+        }
       }
 
       const refreshLogs = async () => {
