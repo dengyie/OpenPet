@@ -1193,7 +1193,16 @@ test('creator studio example imports approved host-bridged local pet through hos
       generateImage: async ({ backend, output }) => {
         const targetPath = path.join(output.dataDir, output.dataRelativeDir, '0001.png')
         fs.mkdirSync(path.dirname(targetPath), { recursive: true })
-        fs.writeFileSync(targetPath, Buffer.from('host-generated-png'))
+        await sharp({
+          create: {
+            width: 96,
+            height: 112,
+            channels: 4,
+            background: { r: 20, g: 170, b: 120, alpha: 1 }
+          }
+        })
+          .png()
+          .toFile(targetPath)
         return {
           ok: true,
           backend: backend || 'local',
@@ -1226,6 +1235,10 @@ test('creator studio example imports approved host-bridged local pet through hos
   assert.equal(importResult.result.run.importStatus, 'imported')
   assert.equal(settingsService.get().petPacks.activePackId, 'local-sprout-cat')
   assert.equal(fs.existsSync(path.join(userPacksDir, 'local-sprout-cat', 'pet.json')), true)
+  assert.notEqual(
+    crypto.createHash('sha256').update(fs.readFileSync(path.join(userPacksDir, 'local-sprout-cat', 'spritesheet.webp'))).digest('hex'),
+    crypto.createHash('sha256').update(createMinimalWebp()).digest('hex')
+  )
 })
 
 test('declaration-only creator asset inspection bridge rejects missing permissions', async () => {

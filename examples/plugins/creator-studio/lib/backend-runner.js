@@ -3,9 +3,9 @@ const path = require('path')
 const { getBackendAdapter } = require('./backend-adapters')
 const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
 const { generateViaHostModelBridge } = require('./host-model-bridge')
+const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const {
   createCreatorStudioMetadata,
-  createMinimalWebp,
   sha256,
   writeZip
 } = require('./fake-hatch-pet')
@@ -17,7 +17,7 @@ const createBackendStatus = ({ backend, state, message = '', updatedAt }) => ({
   updatedAt
 })
 
-const writeHostGeneratedStandardOutputs = ({ dataDir, run, generationResult, now }) => {
+const writeHostGeneratedStandardOutputs = async ({ dataDir, run, generationResult, now }) => {
   const runDir = path.join(dataDir, 'runs', run.runId)
   const outputDir = path.join(runDir, 'outputs')
   const qaDir = path.join(runDir, 'qa')
@@ -26,8 +26,12 @@ const writeHostGeneratedStandardOutputs = ({ dataDir, run, generationResult, now
 
   fs.mkdirSync(outputDir, { recursive: true })
   fs.mkdirSync(qaDir, { recursive: true })
-  const spritesheetPath = path.join(outputDir, 'spritesheet.webp')
-  fs.writeFileSync(spritesheetPath, createMinimalWebp())
+  const atlas = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult,
+    outputDir,
+    qaDir
+  })
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: run.petId,
     displayName: run.input.petName,
@@ -40,13 +44,6 @@ const writeHostGeneratedStandardOutputs = ({ dataDir, run, generationResult, now
       model: generationResult.model,
       generatedAt: generationResult.generatedAt || now()
     }
-  }, null, 2)}\n`)
-  fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
-    ok: true,
-    width: 1536,
-    height: 1872,
-    visiblePixels: 6400,
-    warnings: ['Host-generated output is using placeholder spritesheet packaging.']
   }, null, 2)}\n`)
   if (creatorStudio) {
     fs.writeFileSync(path.join(qaDir, 'action-generation-task.json'), `${JSON.stringify({
@@ -62,14 +59,15 @@ const writeHostGeneratedStandardOutputs = ({ dataDir, run, generationResult, now
     outputDir,
     bundlePath,
     sha256: sha256(bundlePath),
-    qaPath: path.join(qaDir, 'atlas-validation.json'),
+    qaPath: atlas.atlasQaPath,
+    sourceQaPath: atlas.sourceQaPath,
     actionTaskQaPath: creatorStudio ? path.join(qaDir, 'action-generation-task.json') : ''
   }
 }
 
-const buildHostGeneratedRunOutput = ({ dataDir, run, generationResult, now }) => {
+const buildHostGeneratedRunOutput = async ({ dataDir, run, generationResult, now }) => {
   const completedAt = now()
-  const standardOutput = writeHostGeneratedStandardOutputs({ dataDir, run, generationResult, now })
+  const standardOutput = await writeHostGeneratedStandardOutputs({ dataDir, run, generationResult, now })
   const nextRun = {
     ...run,
     status: 'ready_for_review',
@@ -82,6 +80,7 @@ const buildHostGeneratedRunOutput = ({ dataDir, run, generationResult, now }) =>
       spritesheet: path.join(standardOutput.outputDir, 'spritesheet.webp'),
       bundle: standardOutput.bundlePath,
       qa: standardOutput.qaPath,
+      sourceImageQa: standardOutput.sourceQaPath,
       ...(standardOutput.actionTaskQaPath ? { actionTaskQa: standardOutput.actionTaskQaPath } : {}),
       generatedImage: generationResult
     },
