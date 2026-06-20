@@ -274,6 +274,7 @@ const setMousePassthrough = (passthrough) => {
 }
 
 const isPointInsideCurrentFrame = (clientX, clientY) => {
+  if (state.walking) return true
   if (state.drag) return true
   const layout = state.currentLayout
   if (!layout) return true
@@ -616,7 +617,10 @@ const onPointerUp = (event) => {
     nativeCursor: state.nativeCursor,
     clickAction: state.clickAction
   }, { actor: 'user', message: 'Pointer up' })
-  if (wasClick) setAction(state.clickAction)
+  if (wasClick) {
+    if (state.walking) toggleWalk()
+    else setAction(state.clickAction)
+  }
 }
 
 // ═══════════════════════════════════════════
