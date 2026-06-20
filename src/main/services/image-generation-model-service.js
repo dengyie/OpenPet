@@ -97,9 +97,27 @@ const ensureInsideDataDir = ({ dataDir, dataRelativeDir }) => {
   const root = path.resolve(String(dataDir || ''))
   const relativeDir = String(dataRelativeDir || '').trim()
   if (!root || !relativeDir) throw new Error('Image generation output must target the allowed data directory')
+  if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true })
   const targetDir = path.resolve(root, relativeDir)
   const relative = path.relative(root, targetDir)
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Image generation output must stay inside the allowed data directory')
+  }
+  const existingPath = fs.existsSync(targetDir)
+    ? targetDir
+    : (() => {
+        let currentPath = path.dirname(targetDir)
+        while (currentPath && !fs.existsSync(currentPath)) {
+          const nextPath = path.dirname(currentPath)
+          if (nextPath === currentPath) break
+          currentPath = nextPath
+        }
+        return currentPath
+      })()
+  const realRoot = fs.realpathSync.native(root)
+  const realExistingPath = fs.realpathSync.native(existingPath)
+  const realRelative = path.relative(realRoot, realExistingPath)
+  if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
     throw new Error('Image generation output must stay inside the allowed data directory')
   }
   return { root, relativeDir, targetDir }

@@ -51,6 +51,12 @@ const resolveGeneratedImagePath = ({ dataDir, generationResult }) => {
   if (!fs.existsSync(sourcePath)) {
     throw new Error('Generated image is missing')
   }
+  const realRoot = fs.realpathSync.native(root)
+  const realSourcePath = fs.realpathSync.native(sourcePath)
+  const realRelativeToRoot = path.relative(realRoot, realSourcePath)
+  if (realRelativeToRoot.startsWith('..') || path.isAbsolute(realRelativeToRoot)) {
+    throw new Error('Generated image path escaped the Creator Studio data directory')
+  }
   const size = fs.statSync(sourcePath).size
   if (size > MAX_SOURCE_BYTES) {
     throw new Error('Generated image is too large to process')

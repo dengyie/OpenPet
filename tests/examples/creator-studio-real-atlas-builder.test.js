@@ -134,6 +134,41 @@ test('real atlas builder rejects generated image paths outside data directory', 
   )
 })
 
+test('real atlas builder rejects generated image symlinks escaping data directory', async (t) => {
+  const dataDir = makeTempDataDir()
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-real-atlas-outside-'))
+  const outsidePath = path.join(outsideDir, 'outside.png')
+  await sharp({
+    create: {
+      width: 16,
+      height: 16,
+      channels: 4,
+      background: { r: 255, g: 120, b: 80, alpha: 1 }
+    }
+  })
+    .png()
+    .toFile(outsidePath)
+  const relativePath = 'runs/run-1/frames/base/escape.png'
+  const symlinkPath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(symlinkPath), { recursive: true })
+  try {
+    fs.symlinkSync(outsidePath, symlinkPath)
+  } catch (error) {
+    t.skip(`File symlinks are unavailable: ${error.message}`)
+    return
+  }
+
+  await assert.rejects(
+    buildRealAtlasFromGeneratedImage({
+      dataDir,
+      generationResult: createGenerationResult(relativePath),
+      outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
+      qaDir: path.join(dataDir, 'runs', 'run-1', 'qa')
+    }),
+    /Generated image path escaped/
+  )
+})
+
 test('real atlas builder rejects undecodable generated images', async () => {
   const dataDir = makeTempDataDir()
   const relativePath = 'runs/run-1/frames/base/not-an-image.png'

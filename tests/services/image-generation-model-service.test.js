@@ -391,6 +391,41 @@ test('image generation model service rejects output paths outside the allowed da
   )
 })
 
+test('image generation model service rejects output directory symlinks escaping the data directory', async (t) => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-outside-'))
+  const symlinkDir = path.join(dataDir, 'runs', 'symlink-output')
+  fs.mkdirSync(path.dirname(symlinkDir), { recursive: true })
+  try {
+    fs.symlinkSync(outsideDir, symlinkDir, 'dir')
+  } catch (error) {
+    t.skip(`Directory symlinks are unavailable: ${error.message}`)
+    return
+  }
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(),
+    secretService: createSecretService()
+  })
+
+  await assert.rejects(
+    () => service.generateImage({
+      backend: 'fixture',
+      prompt: 'no-op',
+      output: {
+        dataDir,
+        dataRelativeDir: 'runs/symlink-output'
+      },
+      constraints: {
+        width: 512,
+        height: 512,
+        transparent: true
+      }
+    }),
+    /allowed data directory/i
+  )
+  assert.equal(fs.existsSync(path.join(outsideDir, '0001.png')), false)
+})
+
 test('image generation model service records failed provider calls without leaking secrets or prompt text', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const logs = []
