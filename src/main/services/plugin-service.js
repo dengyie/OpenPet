@@ -763,7 +763,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     creatorAssetsInspectFrames: async (payload = {}) => {
       assertPermission(plugin.manifest, 'assets:inspect')
       if (!actionImportService?.inspectActionFrames) throw new Error('Creator asset inspection is not available')
-      const sourceDir = resolvePluginAssetPath(plugin.manifest, payload.relativePath)
+      const sourceDir = payload.dataRelativePath
+        ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
+        : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
       assertDirectoryHasNoSymlinks(sourceDir)
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets inspect-frames invoked' })
       const result = await actionImportService.inspectActionFrames({
@@ -777,7 +779,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       if (!actionImportService?.inspectActionFrames || !actionImportService?.importActionFrames) {
         throw new Error('Creator asset import is not available')
       }
-      const sourceDir = resolvePluginAssetPath(plugin.manifest, payload.relativePath)
+      const sourceDir = payload.dataRelativePath
+        ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
+        : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
       assertDirectoryHasNoSymlinks(sourceDir)
       const actionId = String(payload.actionId || '')
       const label = payload.label == null || payload.label === '' ? undefined : String(payload.label)

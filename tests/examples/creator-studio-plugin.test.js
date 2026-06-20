@@ -21,7 +21,7 @@ test('creator studio example manifest declares hybrid creator workflow entries',
 
   assert.equal(manifest.id, 'openpet.creator-studio')
   assert.equal(manifest.profile, 'hybrid')
-  assert.deepEqual(manifest.permissions, ['pet-pack:import', 'pet:say', 'model:image-generate'])
+  assert.deepEqual(manifest.permissions, ['pet-pack:import', 'pet:say', 'model:image-generate', 'assets:generate'])
   assert.deepEqual(manifest.commands.map((command) => command.id), [
     'create-run',
     'draft-task',
@@ -30,6 +30,7 @@ test('creator studio example manifest declares hybrid creator workflow entries',
     'run-step',
     'approve-run',
     'import-approved-pet',
+    'import-approved-action',
     'export-bundle'
   ])
   assert.equal(manifest.entries.services[0].id, 'studio')
@@ -820,13 +821,11 @@ test('creator studio run-step command uses host bridge for local backend generat
       }
     })
     const run = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.json.run.runId, 'run.json'), 'utf-8'))
-    const outputDir = path.join(dataDir, 'runs', created.json.run.runId, 'outputs')
-    const spritesheetPath = path.join(outputDir, 'spritesheet.webp')
-    const atlasQa = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.json.run.runId, 'qa', 'atlas-validation.json'), 'utf-8'))
-    const sourceQa = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.json.run.runId, 'qa', 'source-image-validation.json'), 'utf-8'))
-    const atlasStats = await sharp(spritesheetPath).ensureAlpha().raw().stats()
-    const generatedAtlasHash = crypto.createHash('sha256').update(fs.readFileSync(spritesheetPath)).digest('hex')
-    const fixtureAtlasHash = crypto.createHash('sha256').update(createMinimalWebp()).digest('hex')
+    const actionFrames = run.artifacts.actionFrames
+    const frameQa = JSON.parse(fs.readFileSync(actionFrames.qa, 'utf-8'))
+    const firstFramePath = path.join(actionFrames.framesDir, '0001.png')
+    const lastFramePath = path.join(actionFrames.framesDir, `${String(actionFrames.frameCount).padStart(4, '0')}.png`)
+    const firstFrameStats = await sharp(firstFramePath).ensureAlpha().raw().stats()
 
     assert.equal(created.status, 0)
     assert.equal(generated.status, 0)
@@ -836,11 +835,18 @@ test('creator studio run-step command uses host bridge for local backend generat
     assert.equal(run.status, 'ready_for_review')
     assert.equal(run.backendStatus.state, 'ready')
     assert.equal(run.artifacts.generatedImage.outputs[0].dataRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
-    assert.equal(atlasQa.sourceRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
-    assert.equal(sourceQa.visiblePixels > 0, true)
-    assert.equal(atlasQa.visiblePixels > 0, true)
-    assert.equal(atlasStats.channels[3].max > 0, true)
-    assert.notEqual(generatedAtlasHash, fixtureAtlasHash)
+    assert.equal(actionFrames.actionId, run.generationTask.actions[0].actionId)
+    assert.equal(actionFrames.name, '原地打滚')
+    assert.equal(actionFrames.frameCount, 12)
+    assert.equal(actionFrames.frameWidth, 192)
+    assert.equal(actionFrames.frameHeight, 208)
+    assert.equal(fs.existsSync(firstFramePath), true)
+    assert.equal(fs.existsSync(lastFramePath), true)
+    assert.equal(firstFrameStats.channels[3].max > 0, true)
+    assert.equal(frameQa.ok, true)
+    assert.equal(frameQa.sourceRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
+    assert.equal(frameQa.actionId, actionFrames.actionId)
+    assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
     assert.match(requests[0].payload.prompt, /OpenPet desktop pet sprite asset/)
     assert.match(requests[0].payload.prompt, /Canvas And Boundary Rules/)
     assert.match(requests[0].payload.prompt, /Action name: 原地打滚/)
@@ -850,10 +856,6 @@ test('creator studio run-step command uses host bridge for local backend generat
     assert.equal(run.artifacts.generatedImage.promptBuilder.version, 1)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.deepEqual(run.artifacts.generatedImage.promptBuilder.warnings, [])
-    const actionTaskQa = JSON.parse(fs.readFileSync(run.artifacts.actionTaskQa, 'utf-8'))
-    assert.equal(actionTaskQa.promptBuilder.version, 1)
-    assert.equal(actionTaskQa.promptBuilder.mode, 'single-action')
-    assert.equal(actionTaskQa.promptBuilder.actionId, run.generationTask.actions[0].actionId)
     assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-image-generate'])
   } finally {
     bridgeServer.closeAllConnections?.()
@@ -1155,6 +1157,103 @@ test('creator studio import command regenerates stale fixture output when approv
       '/creator/pet-pack/inspect-output',
       '/creator/pet-pack/import-output'
     ])
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio import-approved-action imports approved single-action frames through host bridge', async () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-action-'))
+  const framesDir = path.join(dataDir, 'runs/demo/frames/actions/shy-spin')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(framesDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 240, g: 120, b: 140, alpha: 1 }
+    }
+  }).png().toFile(path.join(framesDir, '0001.png'))
+  fs.writeFileSync(path.join(qaDir, 'action-frame-validation.json'), `${JSON.stringify({ ok: true, actionId: 'shy-spin' }, null, 2)}\n`)
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Action Import Cat',
+      petId: 'action-import-cat',
+      backend: 'cloud',
+      prompt: '点击害羞转圈',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击害羞转圈',
+          frameCount: 1,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    }
+  })
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir,
+          qa: path.join(qaDir, 'action-frame-validation.json'),
+          frameCount: 1,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now: () => '2026-06-20T00:01:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [{
+      path: '/creator/assets/import-frames',
+      handler: () => ({ body: { ok: true, result: { importedAction: { id: 'shy-spin' } } } })
+    }]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-action',
+      dataDir,
+      payload: { runId: run.runId },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir, runId: run.runId })
+
+    assert.equal(imported.status, 0)
+    assert.equal(imported.json.ok, true)
+    assert.equal(imported.json.run.status, 'imported')
+    assert.equal(imported.json.run.importedActionId, 'shy-spin')
+    assert.equal(imported.json.triggerProposal.type, 'click')
+    assert.equal(stored.importStatus, 'imported')
+    assert.equal(requests[0].url, '/creator/assets/import-frames')
+    assert.equal(requests[0].payload.dataRelativePath, 'runs/demo/frames/actions/shy-spin')
+    assert.equal(requests[0].payload.actionId, 'shy-spin')
+    assert.equal(requests[0].payload.label, '害羞转圈')
+    assert.equal(JSON.stringify(requests[0].payload).includes(dataDir), false)
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))

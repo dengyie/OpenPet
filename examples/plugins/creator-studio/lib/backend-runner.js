@@ -3,6 +3,7 @@ const path = require('path')
 const { getBackendAdapter } = require('./backend-adapters')
 const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
 const { generateViaHostModelBridge } = require('./host-model-bridge')
+const { buildActionFramesFromGeneratedImage } = require('./action-frame-builder')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const {
   createCreatorStudioMetadata,
@@ -75,6 +76,55 @@ const writeHostGeneratedStandardOutputs = async ({ dataDir, run, generationResul
   }
 }
 
+const isHostGeneratedSingleActionRun = (run) => (
+  run.generationTask?.mode === 'single-action' &&
+  Array.isArray(run.generationTask.actions) &&
+  run.generationTask.actions.length > 0
+)
+
+const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, now }) => {
+  const completedAt = now()
+  const action = run.generationTask.actions[0]
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const framesDir = path.join(runDir, 'frames', 'actions', action.actionId)
+  const qaDir = path.join(runDir, 'qa')
+  const actionFrames = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult,
+    action,
+    outputFramesDir: framesDir,
+    qaDir
+  })
+  const nextRun = {
+    ...run,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    updatedAt: completedAt,
+    artifacts: {
+      ...run.artifacts,
+      actionFrames: {
+        actionId: actionFrames.actionId,
+        name: action.name,
+        framesDir: actionFrames.framesDir,
+        qa: actionFrames.qaPath,
+        frameCount: actionFrames.frameCount,
+        frameWidth: actionFrames.frameWidth,
+        frameHeight: actionFrames.frameHeight,
+        triggerProposal: action.triggerProposal || { type: 'unbound' }
+      },
+      generatedImage: generationResult
+    },
+    reviewStatus: 'pending',
+    error: ''
+  }
+  return {
+    outputDir: framesDir,
+    bundlePath: '',
+    sha256: '',
+    run: nextRun
+  }
+}
+
 const buildHostGeneratedRunOutput = async ({ dataDir, run, generationResult, now }) => {
   const completedAt = now()
   const standardOutput = await writeHostGeneratedStandardOutputs({ dataDir, run, generationResult, now })
@@ -136,14 +186,15 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 
   try {
     assertTaskReadyForGeneration(run)
-    const output = backend === 'fixture'
-      ? await getBackendAdapter(backend).run({ dataDir, runId, now })
-      : await buildHostGeneratedRunOutput({
-          dataDir,
-          run,
-          generationResult: await generateViaHostModelBridge({ backend, run }),
-          now
-        })
+    let output
+    if (backend === 'fixture') {
+      output = await getBackendAdapter(backend).run({ dataDir, runId, now })
+    } else {
+      const generationResult = await generateViaHostModelBridge({ backend, run })
+      output = isHostGeneratedSingleActionRun(run)
+        ? await buildHostGeneratedActionOutput({ dataDir, run, generationResult, now })
+        : await buildHostGeneratedRunOutput({ dataDir, run, generationResult, now })
+    }
     const completedAt = now()
     const completedRun = {
       ...output.run,
