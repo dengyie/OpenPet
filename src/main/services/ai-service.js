@@ -337,7 +337,7 @@ const createAiService = ({
     return { ok: true, reply: result.reply }
   }
 
-  return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, testConnection }
+  return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, complete, testConnection }
 }
 
 module.exports = {
