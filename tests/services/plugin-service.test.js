@@ -1463,6 +1463,72 @@ test('declaration-only creator asset import bridge imports package-local frame f
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'cat_anime', 'animations.json'), 'utf-8')).actions[0].id, 'wave')
 })
 
+test('declaration-only creator asset import bridge imports generated data frame folders', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:generate']
+  })
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionImportService: createTestActionImportService(root),
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => spawned.length === 1)
+  const dataDir = spawned[0].options.env.OPENPET_DATA_DIR
+  const generatedFrames = path.join(dataDir, 'runs/demo/frames/actions/generated-wave')
+  fs.mkdirSync(generatedFrames, { recursive: true })
+  await sharp({
+    create: {
+      width: 8,
+      height: 8,
+      channels: 4,
+      background: { r: 0, g: 100, b: 255, alpha: 0.9 }
+    }
+  }).png().toFile(path.join(generatedFrames, '01_no_bg.png'))
+  await sharp({
+    create: {
+      width: 8,
+      height: 8,
+      channels: 4,
+      background: { r: 40, g: 120, b: 255, alpha: 0.9 }
+    }
+  }).png().toFile(path.join(generatedFrames, '02_no_bg.png'))
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const importResponse = await requestBridge(`${baseUrl}/creator/assets/import-frames`, {
+    method: 'POST',
+    token,
+    body: {
+      dataRelativePath: 'runs/demo/frames/actions/generated-wave',
+      actionId: 'generated-wave',
+      label: 'Generated Wave'
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(importResponse.status, 200)
+  assert.equal(importResponse.body.ok, true)
+  assert.equal(importResponse.body.importedAction.id, 'generated-wave')
+  assert.equal(importResponse.body.importedAction.label, 'Generated Wave')
+  assert.equal(fs.existsSync(path.join(root, 'cat_anime', 'flames', 'generated-wave', '01_no_bg.png')), true)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'cat_anime', 'animations.json'), 'utf-8')).actions[0].id, 'generated-wave')
+})
+
 test('declaration-only creator asset import bridge rejects missing generation permission', async () => {
   const spawned = []
   const child = createFakeServiceProcess()
