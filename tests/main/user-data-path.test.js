@@ -24,6 +24,29 @@ const createFakeApp = ({ appData, userData }) => {
 
 const createTempAppData = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-user-data-'))
 
+test('main configures legacy userData before requesting the single instance lock', () => {
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', '..', 'main.js'), 'utf8')
+  const configureIndex = mainSource.indexOf('configureUserDataPath({ app })')
+  const lockIndex = mainSource.indexOf('configureSingleInstanceLock({ app, getPetWindow })')
+
+  assert.notEqual(configureIndex, -1)
+  assert.notEqual(lockIndex, -1)
+  assert.ok(configureIndex < lockIndex)
+})
+
+test('main syncs bundled creator studio plugin before plugin services read pluginDir', () => {
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', '..', 'main.js'), 'utf8')
+  const syncIndex = mainSource.indexOf('syncBundledPlugins({')
+  const installIndex = mainSource.indexOf('createPluginInstallService({')
+  const serviceIndex = mainSource.indexOf('createPluginService({')
+
+  assert.notEqual(syncIndex, -1)
+  assert.notEqual(installIndex, -1)
+  assert.notEqual(serviceIndex, -1)
+  assert.ok(syncIndex < installIndex)
+  assert.ok(syncIndex < serviceIndex)
+})
+
 test('configureUserDataPath keeps OpenPet upgrades on the legacy ibot userData directory', () => {
   const appData = createTempAppData()
   const app = createFakeApp({

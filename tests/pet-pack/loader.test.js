@@ -66,7 +66,7 @@ test('loads and normalizes a pet pack manifest from a directory', () => {
   assert.equal(pack.manifest.actions[0].sprite, 'sprites/idle.png')
 })
 
-test('loads a Codex-compatible pet manifest from a directory', () => {
+test('loads a Codex-compatible pet manifest from a directory', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-codex-pet-'))
   fs.writeFileSync(path.join(root, 'spritesheet.webp'), createFixtureWebp())
   fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
@@ -110,6 +110,21 @@ test('loads a Codex-compatible pet manifest from a directory', () => {
     atlas: { columns: 8, rows: 9, width: 1536, height: 1872 },
     sprite: 'spritesheet.webp'
   })
+})
+
+test('rejects Codex pet atlases without decodable visible pixels', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-codex-pet-empty-atlas-'))
+  fs.writeFileSync(path.join(root, 'spritesheet.webp'), TRANSPARENT_FIXTURE_ATLAS_WEBP)
+  fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
+    id: 'codex-cat',
+    displayName: 'Codex Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }))
+
+  assert.throws(
+    () => loadPetPackFromDirectory(root),
+    /Codex pet atlas must contain visible pixels/
+  )
 })
 
 test('rejects Codex pet manifests with unsafe spritesheet paths', () => {

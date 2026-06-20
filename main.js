@@ -79,16 +79,16 @@ const bootstrapOpenPet = () => {
   })
   const petService = createPetService({ eventBus, settingsService, actionService })
   const secretService = createSecretService()
+  const appLogService = createAppLogService({
+    logDir: path.join(app.getPath('userData'), 'logs')
+  })
   const aiService = createAiService({ settingsService, secretService })
-  const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService })
+  const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
   const cursorAssetService = createCursorAssetService({
     cursorDir: path.join(app.getPath('userData'), 'cursors')
-  })
-  const appLogService = createAppLogService({
-    logDir: path.join(app.getPath('userData'), 'logs')
   })
   const petMovementPolicy = createPetMovementPolicy({ screen })
   try {
