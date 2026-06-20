@@ -317,6 +317,11 @@ const isPointInsidePetWindow = (clientX, clientY) => (
   clientY <= window.innerHeight
 )
 
+const isPetWindowFocused = () => {
+  if (typeof document.hasFocus !== 'function') return true
+  return document.hasFocus()
+}
+
 const moveCursorOverlay = (clientX, clientY) => {
   const hotspotX = Number.isFinite(Number(state.customCursor.hotspotX)) ? Number(state.customCursor.hotspotX) : 0
   const hotspotY = Number.isFinite(Number(state.customCursor.hotspotY)) ? Number(state.customCursor.hotspotY) : 0
@@ -341,6 +346,7 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
   const context = {
     insideFrame,
     insideCursorRegion,
+    windowFocused: isPetWindowFocused(),
     dragging: Boolean(state.drag),
     menuOpen: false
   }
@@ -374,6 +380,7 @@ const refreshMouseStateFromLastPoint = () => {
     cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
     cursorOverlayVisible: cursorState.visible,
     nativeCursor: state.nativeCursor,
+    windowFocused: isPetWindowFocused(),
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false
@@ -397,6 +404,7 @@ const updateMousePassthroughFromPoint = (event) => {
     cursorApplied: Boolean(cursorState.visible || state.nativeCursor),
     cursorOverlayVisible: cursorState.visible,
     nativeCursor: state.nativeCursor,
+    windowFocused: isPetWindowFocused(),
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false

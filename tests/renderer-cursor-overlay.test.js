@@ -72,6 +72,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
     document: {
       documentElement: { style: createStyle() },
       body: { style: createStyle() },
+      hasFocus: () => hasFocus,
       getElementById: (id) => elements[id],
       createElement: () => createElement()
     },

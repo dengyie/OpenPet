@@ -193,32 +193,6 @@ const bootstrapOpenPet = () => {
     },
     getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
   })
-  const recordLifecycleLog = (entry) => {
-    try {
-      appLogService.record(entry)
-    } catch (error) {
-      console.warn(`OpenPet lifecycle log unavailable: ${error.message}`)
-    }
-  }
-  app.on('before-quit', () => {
-    recordLifecycleLog({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.before-quit',
-      message: 'OpenPet app is preparing to quit'
-    })
-    pluginService.stopAllServices?.()
-  })
-  app.on('will-quit', () => {
-    recordLifecycleLog({
-      scope: 'app',
-      level: 'info',
-      actor: 'system',
-      event: 'app.will-quit',
-      message: 'OpenPet app will quit'
-    })
-  })
   catalogService = createCatalogService({
     settingsService,
     pluginInstallService,
@@ -226,7 +200,13 @@ const bootstrapOpenPet = () => {
     petPackService,
     catalogPath: path.join(__dirname, 'catalog', 'openpet-catalog.json')
   })
-  registerAppLifecycleLogs({ app, appLogService })
+  registerAppLifecycleLogs({
+    app,
+    appLogService,
+    onBeforeQuit: () => {
+      pluginService.stopAllServices?.()
+    }
+  })
   let localHttpConfig = petService.getSettings().localHttp
   if (localHttpConfig?.enabled) {
     const normalizedConfig = normalizeLocalHttpConfig(localHttpConfig, localHttpConfig)

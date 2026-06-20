@@ -163,7 +163,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       message: 'OpenPet quit requested',
       details: { source }
     })
-    app.quit()
+    appService.quit()
   }
 
   const getPendingActionFrameSelection = (selectionId) => {
