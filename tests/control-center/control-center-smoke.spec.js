@@ -147,6 +147,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://ai.example.test/v1')
     await page.getByRole('textbox', { name: 'Model', exact: true }).fill('openpet-test-model')
     await page.getByLabel('System Prompt').fill('Stay tiny, helpful, and local-first.')
+    await page.getByRole('switch', { name: 'Enable AI memory' }).click()
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(page.locator('.status-line')).toContainText('AI 配置已保存')
 
@@ -162,6 +163,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveValue('https://ai.example.test/v1')
     await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveValue('openpet-test-model')
     await expect(page.getByLabel('System Prompt')).toHaveValue('Stay tiny, helpful, and local-first.')
+    await expect(page.getByRole('switch', { name: 'Enable AI memory' })).toHaveAttribute('aria-checked', 'true')
     await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 

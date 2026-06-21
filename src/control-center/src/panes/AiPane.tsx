@@ -168,6 +168,18 @@ export function AiPane({
             onChange={(event) => onChange({ systemPrompt: event.target.value })}
           />
         </label>
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">长期记忆</div>
+            <div className="field-note">主回复不阻塞，后台自动抽取用户与宠物关系记忆</div>
+          </div>
+          <Toggle
+            ariaLabel="Enable AI memory"
+            checked={config.memory.enabled}
+            onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
+          />
+        </div>
       </div>
 
       <div className="section">

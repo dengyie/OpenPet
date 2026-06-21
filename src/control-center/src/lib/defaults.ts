@@ -61,6 +61,9 @@ export const defaultAiConfig = {
   model: 'gpt-4o-mini',
   apiKeyRef: 'ai.default',
   systemPrompt: 'You are a friendly desktop pet companion.',
+  memory: {
+    enabled: false
+  },
   behavior: {
     enabled: false,
     useTools: true,
@@ -198,6 +201,10 @@ export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | und
 export const cloneAiConfig = (config: Partial<AiConfigViewState> | null | undefined): AiConfigViewState => ({
   ...defaultAiConfig,
   ...(config || {}),
+  memory: {
+    ...defaultAiConfig.memory,
+    ...(config?.memory || {})
+  },
   behavior: cloneAiBehavior(config?.behavior)
 })
 

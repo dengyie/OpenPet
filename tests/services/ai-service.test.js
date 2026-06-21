@@ -41,6 +41,9 @@ test('ai service exposes config without secret values', () => {
     model: 'gpt-4o-mini',
     apiKeyRef: 'ai.default',
     systemPrompt: 'You are a friendly desktop pet companion.',
+    memory: {
+      enabled: false
+    },
     behavior: {
       enabled: false,
       useTools: true,
@@ -79,6 +82,24 @@ test('ai service saves config and api key separately', () => {
   assert.equal(settingsService.get().ai.systemPrompt, 'Be concise.')
   assert.deepEqual(secrets, [{ id: 'ai.default', value: 'sk-new', label: 'AI API Key' }])
   assert.deepEqual(keyResult, { apiKeyRef: 'ai.default', hasApiKey: true })
+})
+
+test('ai service persists automatic memory config through saveConfig', () => {
+  const settingsService = createSettingsService()
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  const saved = service.saveConfig({
+    memory: { enabled: true }
+  })
+
+  assert.equal(saved.memory.enabled, true)
+  assert.equal(settingsService.get().ai.memory.enabled, true)
 })
 
 test('ai service does not persist derived config fields', () => {

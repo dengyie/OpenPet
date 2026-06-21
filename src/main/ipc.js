@@ -141,7 +141,7 @@ const collectCustomCursorAssetPaths = (cursors = []) => (
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -597,11 +597,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.AI_GET_CONVERSATION, (_event, payload) => {
-    return aiService.getConversation(payload?.conversationId || payload)
+    const conversationId = payload?.conversationId || payload
+    return (aiTalkService || aiService).getConversation(conversationId)
   })
 
   ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => {
-    const result = await aiService.chat(payload)
+    const result = await (aiTalkService || aiService).chat(payload)
     petService.say({ text: result.reply, source: 'ai' })
     if (behaviorOrchestratorService?.getConfig?.().enabled) {
       const decision = behaviorOrchestratorService.evaluate({

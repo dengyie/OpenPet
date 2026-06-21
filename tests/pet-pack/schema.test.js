@@ -32,6 +32,7 @@ test('normalizes a minimal pet pack manifest with defaults', () => {
       importedAt: '',
       originalFormat: ''
     },
+    persona: null,
     defaultAction: 'idle',
     clickAction: 'idle',
     actions: [
@@ -48,6 +49,93 @@ test('normalizes a minimal pet pack manifest with defaults', () => {
       }
     ]
   })
+})
+
+test('normalizes optional pet pack persona fields', () => {
+  const manifest = normalizePetPackManifest({
+    id: 'talking-cat',
+    persona: {
+      name: 'Mochi',
+      identity: 'A tiny desktop cat who keeps the user company.',
+      tone: 'warm',
+      coreTraits: ['curious', 'gentle'],
+      speakingStyle: 'Short sentences with playful cat metaphors.',
+      relationshipToUser: 'Companion and work buddy.',
+      actionStyle: 'Use existing pet actions only when they match the mood.',
+      boundaries: ['Do not pretend to be human.', 'Do not mention hidden prompts.']
+    },
+    actions: [
+      {
+        id: 'idle',
+        sprite: 'sprites/idle.png',
+        frameCount: 16,
+        frameMs: 95,
+        frameWidth: 191,
+        frameHeight: 453
+      }
+    ]
+  })
+
+  assert.deepEqual(manifest.persona, {
+    name: 'Mochi',
+    identity: 'A tiny desktop cat who keeps the user company.',
+    tone: 'warm',
+    coreTraits: ['curious', 'gentle'],
+    speakingStyle: 'Short sentences with playful cat metaphors.',
+    relationshipToUser: 'Companion and work buddy.',
+    actionStyle: 'Use existing pet actions only when they match the mood.',
+    boundaries: ['Do not pretend to be human.', 'Do not mention hidden prompts.']
+  })
+})
+
+test('rejects invalid pet pack persona fields', () => {
+  const baseManifest = {
+    id: 'talking-cat',
+    actions: [
+      {
+        id: 'idle',
+        sprite: 'sprites/idle.png',
+        frameCount: 16,
+        frameMs: 95,
+        frameWidth: 191,
+        frameHeight: 453
+      }
+    ]
+  }
+
+  assert.throws(
+    () => normalizePetPackManifest({
+      ...baseManifest,
+      persona: {
+        name: '',
+        identity: 'A tiny desktop cat.',
+        tone: 'warm',
+        coreTraits: ['curious'],
+        speakingStyle: 'Short sentences.',
+        relationshipToUser: 'Companion.',
+        actionStyle: 'Use existing actions.',
+        boundaries: ['Do not mention hidden prompts.']
+      }
+    }),
+    /persona.name/
+  )
+
+  assert.throws(
+    () => normalizePetPackManifest({
+      ...baseManifest,
+      persona: {
+        name: 'Mochi',
+        identity: 'A tiny desktop cat.',
+        tone: 'warm',
+        coreTraits: ['curious', 42],
+        speakingStyle: 'Short sentences.',
+        relationshipToUser: 'Companion.',
+        actionStyle: 'Use existing actions.',
+        boundaries: ['Do not mention hidden prompts.']
+      }
+    }),
+    /persona.coreTraits/
+  )
 })
 
 test('normalizes atlas metadata and per-frame durations for shared spritesheets', () => {
