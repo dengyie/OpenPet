@@ -685,6 +685,70 @@ button {
   font-size: 12px;
 }
 
+.provider-summary {
+  border-top: 0;
+}
+
+.provider-summary-grid {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.provider-summary-grid span {
+  overflow-wrap: anywhere;
+}
+
+.provider-warning {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #f2d48c;
+  border-radius: 8px;
+  background: #fff7df;
+  color: #7a5600;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.provider-warning.error {
+  border-color: #f0b6b6;
+  background: #fff1f1;
+  color: #a33a3a;
+}
+
+.connection-result {
+  display: grid;
+  gap: 5px;
+  max-width: 720px;
+  padding: 12px 14px;
+  border: 1px solid #cfd6df;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.connection-result strong {
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.connection-result span {
+  overflow-wrap: anywhere;
+}
+
+.connection-result.ok {
+  border-color: #b7ddc3;
+  background: #f1fbf4;
+}
+
+.connection-result.error {
+  border-color: #f0b6b6;
+  background: #fff1f1;
+}
+
 .chat-panel {
   display: grid;
   gap: 12px;
