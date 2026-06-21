@@ -126,12 +126,12 @@ const listRuns = ({ dataDir }) => {
     })
 }
 
-const resolveRunId = ({ dataDir, runId, statuses = [], description = 'matching' }) => {
+const resolveRunId = ({ dataDir, runId, statuses = [], description = 'matching', filter = () => true }) => {
   const explicitRunId = String(runId || '').trim()
   if (explicitRunId) return explicitRunId
   const allowedStatuses = new Set(statuses.map((status) => String(status)))
   const run = listRuns({ dataDir }).find((candidate) => (
-    allowedStatuses.size === 0 || allowedStatuses.has(candidate.status)
+    (allowedStatuses.size === 0 || allowedStatuses.has(candidate.status)) && filter(candidate)
   ))
   if (!run?.runId) throw new Error(`No ${description} run found`)
   return run.runId

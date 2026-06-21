@@ -120,6 +120,25 @@ test('creator studio generation task validation rejects unsafe trigger proposals
   )
 })
 
+test('creator studio generation task validation clamps action frame count to builder limits', () => {
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  const task = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'currentPet',
+    actions: [{
+      actionId: 'many-frames',
+      name: 'Many Frames',
+      motionPrompt: 'Move around',
+      frameCount: 96,
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+
+  assert.equal(task.actions[0].frameCount, 32)
+})
+
 test('creator studio prompt builder creates an OpenPet full-pet prompt with runtime and boundary rules', () => {
   const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
   const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
@@ -498,6 +517,21 @@ test('creator studio run store resolves latest run by workflow status', () => {
     runId: oldRun.runId,
     statuses: ['ready_for_review']
   }), oldRun.runId)
+  assert.equal(resolveRunId({
+    dataDir,
+    statuses: ['ready_for_review'],
+    description: 'ready_for_review fixture run',
+    filter: (run) => run.runId === oldRun.runId
+  }), oldRun.runId)
+  assert.throws(
+    () => resolveRunId({
+      dataDir,
+      statuses: ['ready_for_review'],
+      description: 'ready_for_review imported',
+      filter: (run) => run.importStatus === 'imported'
+    }),
+    /No ready_for_review imported run found/
+  )
   assert.throws(
     () => resolveRunId({ dataDir, statuses: ['approved'], description: 'approved' }),
     /No approved run found/
@@ -1361,6 +1395,273 @@ test('creator studio commands infer latest run for generic plugin button flow', 
   assert.equal(approved.json.run.status, 'approved')
   assert.equal(exported.json.ok, true)
   assert.equal(fs.existsSync(exported.json.bundle.path), true)
+})
+
+test('creator studio export-bundle skips action-only runs when inferring latest run', () => {
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-export-filter-'))
+
+  const petRun = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Bundle Cat', prompt: 'A bundle cat' }
+  })
+  runCreatorCommand({
+    command: 'run-step',
+    dataDir,
+    payload: { runId: petRun.json.run.runId }
+  })
+  runCreatorCommand({
+    command: 'approve-run',
+    dataDir,
+    payload: { runId: petRun.json.run.runId }
+  })
+  const actionRun = createRun({
+    dataDir,
+    input: {
+      petName: 'Action Only Cat',
+      petId: 'action-only-cat',
+      backend: 'cloud',
+      prompt: '点击害羞转圈',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击害羞转圈',
+          frameCount: 8,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-20T00:00:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: actionRun.runId,
+    status: 'imported',
+    patch: {
+      importStatus: 'imported',
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          framesDir: path.join(dataDir, 'runs', actionRun.runId, 'frames', 'actions', 'shy-spin')
+        }
+      }
+    },
+    now: () => '2026-06-20T00:01:00.000Z'
+  })
+
+  const exported = runCreatorCommand({
+    command: 'export-bundle',
+    dataDir
+  })
+
+  assert.equal(exported.status, 0)
+  assert.equal(exported.json.ok, true)
+  assert.equal(fs.existsSync(exported.json.bundle.path), true)
+  assert.match(exported.json.message, new RegExp(petRun.json.run.runId))
+})
+
+test('creator studio import-approved-pet skips action-only runs when inferring latest run', async () => {
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-pet-filter-'))
+
+  const petRun = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: { petName: 'Import Pet Cat', prompt: 'A pet bundle cat' }
+  })
+  runCreatorCommand({
+    command: 'run-step',
+    dataDir,
+    payload: { runId: petRun.json.run.runId }
+  })
+  runCreatorCommand({
+    command: 'approve-run',
+    dataDir,
+    payload: { runId: petRun.json.run.runId }
+  })
+  const actionRun = createRun({
+    dataDir,
+    input: {
+      petName: 'Action Only Cat',
+      petId: 'action-only-cat',
+      backend: 'cloud',
+      prompt: '点击害羞转圈',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击害羞转圈',
+          frameCount: 8,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-20T00:00:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: actionRun.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          framesDir: path.join(dataDir, 'runs', actionRun.runId, 'frames', 'actions', 'shy-spin')
+        }
+      }
+    },
+    now: () => '2026-06-20T00:01:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [
+      {
+        path: '/creator/pet-pack/inspect-output',
+        handler: () => ({ body: { ok: true, inspection: { valid: true, selectionId: 'selection-1' } } })
+      },
+      {
+        path: '/creator/pet-pack/import-output',
+        handler: () => ({ body: { ok: true, imported: { pack: { id: 'import-pet-cat' } }, activated: { activePackId: 'import-pet-cat' } } })
+      }
+    ]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-pet',
+      dataDir,
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+
+    assert.equal(imported.status, 0)
+    assert.equal(imported.json.ok, true)
+    assert.equal(imported.json.run.runId, petRun.json.run.runId)
+    assert.equal(imported.json.run.importedPackId, 'import-pet-cat')
+    assert.deepEqual(requests.map((entry) => entry.url), [
+      '/creator/pet-pack/inspect-output',
+      '/creator/pet-pack/import-output'
+    ])
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio import-approved-action skips pet-pack runs when inferring latest run', async () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-action-filter-'))
+  const actionRun = createRun({
+    dataDir,
+    input: {
+      petName: 'Action Import Cat',
+      petId: 'action-import-cat',
+      backend: 'cloud',
+      prompt: '点击害羞转圈',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击害羞转圈',
+          frameCount: 1,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-20T00:00:00.000Z'
+  })
+  const framesDir = path.join(dataDir, 'runs', actionRun.runId, 'frames', 'actions', 'shy-spin')
+  fs.mkdirSync(framesDir, { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 240, g: 120, b: 140, alpha: 1 }
+    }
+  }).png().toFile(path.join(framesDir, '0001.png'))
+  updateRunStatus({
+    dataDir,
+    runId: actionRun.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir,
+          frameCount: 1,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now: () => '2026-06-20T00:01:00.000Z'
+  })
+  const petRun = createRun({
+    dataDir,
+    input: { petName: 'Approved Pet Cat', petId: 'approved-pet-cat', backend: 'fixture', prompt: 'A pet run' },
+    now: () => '2026-06-20T00:02:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: petRun.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      artifacts: { outputDir: path.join(dataDir, 'runs', petRun.runId, 'outputs') }
+    },
+    now: () => '2026-06-20T00:03:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [{
+      path: '/creator/assets/import-frames',
+      handler: () => ({ body: { ok: true, result: { importedAction: { id: 'shy-spin' } } } })
+    }]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-action',
+      dataDir,
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const storedActionRun = readRun({ dataDir, runId: actionRun.runId })
+
+    assert.equal(imported.status, 0)
+    assert.equal(imported.json.ok, true)
+    assert.equal(imported.json.run.runId, actionRun.runId)
+    assert.equal(storedActionRun.importStatus, 'imported')
+    assert.equal(requests[0].payload.dataRelativePath, `runs/${actionRun.runId}/frames/actions/shy-spin`)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 test('creator studio dashboard asset exists and service script is declared', () => {

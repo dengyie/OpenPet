@@ -10,7 +10,8 @@ runCommand(async (context) => {
     dataDir: process.env.OPENPET_DATA_DIR,
     runId: context.payload?.runId,
     statuses: ['approved', 'imported'],
-    description: 'approved or imported'
+    description: 'approved or imported pet bundle',
+    filter: (run) => Boolean(run.artifacts?.bundle)
   })
   const run = readRun({ dataDir: process.env.OPENPET_DATA_DIR, runId })
   const bundlePath = run.artifacts?.bundle

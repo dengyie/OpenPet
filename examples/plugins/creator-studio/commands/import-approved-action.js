@@ -26,7 +26,8 @@ runCommand(async (context) => {
     dataDir,
     runId: context.payload?.runId,
     statuses: ['approved'],
-    description: 'approved single-action'
+    description: 'approved single-action',
+    filter: (run) => run.generationTask?.mode === 'single-action' && Boolean(run.artifacts?.actionFrames)
   })
   const current = readRun({ dataDir, runId })
   if (current.status !== 'approved') throw new Error(`Run must be approved before action import: ${current.status}`)
