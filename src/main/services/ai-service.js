@@ -170,10 +170,45 @@ const createTimeoutController = (timeoutMs) => {
   }
 }
 
+const getConnectionErrorCode = (error) => {
+  if (error?.code) return error.code
+  if (/API key is not configured/i.test(error?.message || '')) return 'missing_api_key'
+  if (/Unsupported AI provider/i.test(error?.message || '')) return 'unsupported_provider'
+  if (/timed out/i.test(error?.message || '') || error?.name === 'AbortError') return 'timeout'
+  if (error?.status === 401) return 'unauthorized'
+  if (error?.status === 403) return 'forbidden'
+  if (error?.status === 429) return 'rate_limited'
+  if (Number(error?.status) >= 500) return 'provider_unavailable'
+  if (Number(error?.status) >= 400) return 'provider_error'
+  if (['TypeError', 'FetchError'].includes(error?.name)) return 'network_error'
+  return 'unknown_error'
+}
+
+const getConnectionErrorMessage = (code) => ({
+  missing_api_key: 'API Key 未配置，请先保存密钥。',
+  unsupported_provider: '当前 AI provider 暂不支持。',
+  timeout: '连接测试超时，请检查 Base URL、网络或本地服务状态。',
+  unauthorized: '认证失败，请检查 API Key 是否有效。',
+  forbidden: 'Provider 拒绝访问，请检查账号权限或模型权限。',
+  rate_limited: 'Provider 限流，请稍后再试或检查额度。',
+  provider_unavailable: 'Provider 服务暂不可用，请稍后再试。',
+  provider_error: 'Provider 返回错误，请检查 Base URL 和模型名称。',
+  network_error: '无法连接到 Provider，请检查 Base URL 和网络。',
+  unknown_error: '连接测试失败，请查看日志中的安全错误码。'
+}[code] || '连接测试失败。')
+
+const createSafeProviderError = (code, status) => {
+  const error = new Error(getConnectionErrorMessage(code))
+  error.code = code
+  if (status) error.status = status
+  return error
+}
+
 const createAiService = ({
   settingsService,
   secretService,
   fetchImpl = globalThis.fetch,
+  appLogService = null,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
   maxConversations = DEFAULT_MAX_CONVERSATIONS
@@ -186,6 +221,21 @@ const createAiService = ({
   const conversationQueues = new Map()
 
   const getRawConfig = () => normalizeConfig(settingsService.get().ai)
+
+  const recordAiSettingsLog = (event, level, message, details = {}) => {
+    try {
+      appLogService?.record?.({
+        scope: 'ai',
+        actor: 'user',
+        level,
+        event,
+        message,
+        details
+      })
+    } catch (_) {
+      // AI settings logging is diagnostic only and must not break settings actions.
+    }
+  }
 
   const enqueueConversation = (conversationId, task) => {
     if (!conversationId) return task()
@@ -309,8 +359,8 @@ const createAiService = ({
 
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
-      const message = data?.error?.message || `AI provider request failed with status ${response.status}`
-      throw new Error(message)
+      void data
+      throw createSafeProviderError(getConnectionErrorCode({ status: response.status }), response.status)
     }
     return parseChatResult(data)
   }
@@ -339,12 +389,49 @@ const createAiService = ({
   }
 
   const testConnection = async () => {
-    const result = await complete({
-      messages: [
-        { role: 'user', content: 'Reply with ok.' }
-      ]
-    })
-    return { ok: true, reply: result.reply }
+    const startedAt = Date.now()
+    const config = getRawConfig()
+    const hasApiKey = Boolean(secretService.getSecretValue(config.apiKeyRef))
+    const base = {
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      hasApiKey
+    }
+    recordAiSettingsLog('ai.settings.connection-test.started', 'info', 'AI provider connection test started', base)
+    try {
+      const result = await complete({
+        messages: [
+          { role: 'user', content: 'Reply with ok.' }
+        ]
+      })
+      const response = {
+        ok: true,
+        ...base,
+        elapsedMs: Date.now() - startedAt,
+        reply: result.reply
+      }
+      recordAiSettingsLog('ai.settings.connection-test.completed', 'info', 'AI provider connection test completed', {
+        ...base,
+        elapsedMs: response.elapsedMs
+      })
+      return response
+    } catch (error) {
+      const code = getConnectionErrorCode(error)
+      const response = {
+        ok: false,
+        ...base,
+        elapsedMs: Date.now() - startedAt,
+        code,
+        message: getConnectionErrorMessage(code)
+      }
+      recordAiSettingsLog('ai.settings.connection-test.failed', 'warn', 'AI provider connection test failed', {
+        ...base,
+        elapsedMs: response.elapsedMs,
+        errorCode: code
+      })
+      return response
+    }
   }
 
   return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, complete, testConnection }

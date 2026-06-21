@@ -81,7 +81,10 @@ const bootstrapOpenPet = () => {
   })
   const petService = createPetService({ eventBus, settingsService, actionService })
   const secretService = createSecretService()
-  const aiService = createAiService({ settingsService, secretService })
+  const appLogService = createAppLogService({
+    logDir: path.join(app.getPath('userData'), 'logs')
+  })
+  const aiService = createAiService({ settingsService, secretService, appLogService })
   const aiTalkStore = createAiTalkStore({ storePath: path.join(app.getPath('userData'), 'ai-talk-store.json') })
   const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService })
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService })
@@ -90,9 +93,6 @@ const bootstrapOpenPet = () => {
   const aboutService = createAboutService({ app, packageJson })
   const cursorAssetService = createCursorAssetService({
     cursorDir: path.join(app.getPath('userData'), 'cursors')
-  })
-  const appLogService = createAppLogService({
-    logDir: path.join(app.getPath('userData'), 'logs')
   })
   const petMovementPolicy = createPetMovementPolicy({ screen })
   try {

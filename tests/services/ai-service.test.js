@@ -628,7 +628,48 @@ test('ai service times out stalled provider requests', async () => {
   )
 })
 
+test('ai service chat redacts provider error bodies before throwing', async () => {
+  const leakedApiKey = 'sk-test-secret'
+  const leakedPrompt = 'hidden system prompt'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: leakedPrompt
+      }
+    }),
+    secretService: {
+      getSecretValue: () => leakedApiKey,
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({
+        error: {
+          message: `bad key ${leakedApiKey} with prompt ${leakedPrompt}`
+        }
+      })
+    })
+  })
+
+  await assert.rejects(
+    () => service.chat({ conversationId: 'control-center', message: 'Hi' }),
+    (error) => {
+      assert.equal(error.code, 'unauthorized')
+      assert.equal(error.message.includes(leakedApiKey), false)
+      assert.equal(error.message.includes(leakedPrompt), false)
+      return true
+    }
+  )
+})
+
 test('ai service testConnection validates provider response', async () => {
+  const logs = []
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
@@ -647,8 +688,97 @@ test('ai service testConnection validates provider response', async () => {
     fetchImpl: async () => ({
       ok: true,
       json: async () => ({ choices: [{ message: { content: 'ok' } }] })
-    })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
-  assert.deepEqual(await service.testConnection(), { ok: true, reply: 'ok' })
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.reply, 'ok')
+  assert.equal(result.provider, 'openai-compatible')
+  assert.equal(result.baseUrl, 'https://example.test/v1')
+  assert.equal(result.model, 'example-model')
+  assert.equal(result.hasApiKey, true)
+  assert.equal(typeof result.elapsedMs, 'number')
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'ai.settings.connection-test.started',
+    'ai.settings.connection-test.completed'
+  ])
+  assert.equal(logs[0].details.hasApiKey, true)
+  assert.equal(logs[1].details.model, 'example-model')
+})
+
+test('ai service testConnection returns safe missing-key failure metadata', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: false,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: 'hidden system prompt'
+      }
+    }),
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      throw new Error('fetch should not be called without an api key')
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'missing_api_key')
+  assert.equal(result.hasApiKey, false)
+  assert.match(result.message, /API Key/)
+  assert.equal(logs.at(-1).event, 'ai.settings.connection-test.failed')
+  assert.equal(logs.at(-1).details.errorCode, 'missing_api_key')
+})
+
+test('ai service testConnection redacts provider failure details from result and logs', async () => {
+  const logs = []
+  const leakedApiKey = 'sk-test-secret'
+  const leakedPrompt = 'hidden system prompt'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: false,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: leakedPrompt
+      }
+    }),
+    secretService: {
+      getSecretValue: () => leakedApiKey,
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({
+        error: {
+          message: `bad key ${leakedApiKey} with prompt ${leakedPrompt}`
+        }
+      })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const result = await service.testConnection()
+  const serialized = JSON.stringify({ result, logs })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'unauthorized')
+  assert.equal(result.message, '认证失败，请检查 API Key 是否有效。')
+  assert.equal(serialized.includes(leakedApiKey), false)
+  assert.equal(serialized.includes(leakedPrompt), false)
 })
