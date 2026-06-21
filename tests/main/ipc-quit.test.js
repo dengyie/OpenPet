@@ -142,6 +142,49 @@ test('pet renderer quit records user intent before quitting', () => {
   })
 })
 
+test('pet cursor focus request focuses the source pet window', () => {
+  const ipcMain = createIpcMainStub()
+  let focusCalls = 0
+  const petWindow = {
+    isFocused: () => false,
+    focus: () => { focusCalls += 1 },
+    webContents: {}
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petWindow,
+    appLogService: { record: (entry) => logs.push(entry) }
+  }))
+
+  ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: petWindow.webContents })
+
+  assert.equal(focusCalls, 1)
+})
+
+test('pet cursor focus request does not steal focus from an open context menu', () => {
+  const ipcMain = createIpcMainStub()
+  let focusCalls = 0
+  const petWindow = {
+    contextMenuWindow: {
+      isDestroyed: () => false
+    },
+    isFocused: () => false,
+    focus: () => { focusCalls += 1 },
+    webContents: {}
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petWindow,
+    appLogService: { record: () => {} }
+  }))
+
+  ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: petWindow.webContents })
+
+  assert.equal(focusCalls, 0)
+})
+
 test('pet context menu quit records menu source before quitting', async () => {
   const ipcMain = createIpcMainStub()
   const logs = []

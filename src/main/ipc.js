@@ -138,10 +138,14 @@ const collectCustomCursorAssetPaths = (cursors = []) => (
     .filter(Boolean)
 )
 
+const sanitizeDiagnosticText = (value) => String(value || '')
+  .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
+  .slice(0, 240)
+
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -260,6 +264,14 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
     if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
     else win.setIgnoreMouseEvents(false)
+  })
+
+  ipcMainService.on(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, (event) => {
+    const win = browserWindowService.fromWebContents(event.sender)
+    if (!win || typeof win.focus !== 'function') return
+    if (win.contextMenuWindow && !win.contextMenuWindow.isDestroyed?.()) return
+    if (typeof win.isFocused === 'function' && win.isFocused()) return
+    win.focus()
   })
 
   ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry = {}) => {
@@ -589,25 +601,95 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.AI_GET_CONVERSATION, (_event, payload) => {
-    return aiService.getConversation(payload?.conversationId || payload)
+    const conversationId = payload?.conversationId || payload
+    return (aiTalkService || aiService).getConversation(conversationId)
   })
 
   ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => {
-    const result = await aiService.chat(payload)
-    petService.say({ text: result.reply, source: 'ai' })
-    if (behaviorOrchestratorService?.getConfig?.().enabled) {
-      const decision = behaviorOrchestratorService.evaluate({
-        reply: result.reply,
-        behaviorIntent: result.behaviorIntent,
-        actions: petService.getAnimations()?.actions || []
+    const startedAt = Date.now()
+    const messageChars = typeof payload?.message === 'string' ? payload.message.trim().length : 0
+    const requestedConversationId = typeof payload?.conversationId === 'string' ? payload.conversationId.slice(0, 160) : ''
+    recordAppLog({
+      scope: 'ai-chat',
+      level: 'info',
+      actor: 'user',
+      event: 'ai-chat.ipc.received',
+      message: 'AI chat IPC request received',
+      details: {
+        requestedConversationId,
+        messageChars,
+        service: aiTalkService ? 'ai-talk' : 'ai'
+      }
+    })
+    try {
+      const result = await (aiTalkService || aiService).chat(payload)
+      petService.say({ text: result.reply, source: 'ai' })
+      if (behaviorOrchestratorService?.getConfig?.().enabled) {
+        const decision = behaviorOrchestratorService.evaluate({
+          reply: result.reply,
+          behaviorIntent: result.behaviorIntent,
+          actions: petService.getAnimations()?.actions || []
+        })
+        const behavior = executeBehaviorDecision(petService, decision)
+        const response = behavior?.matched && behavior.type === 'playAction'
+          ? { ...result, behavior, action: behavior }
+          : { ...result, behavior }
+        recordAppLog({
+          scope: 'ai-chat',
+          level: 'info',
+          actor: 'system',
+          event: 'ai-chat.ipc.completed',
+          message: 'AI chat IPC request completed',
+          details: {
+            requestedConversationId,
+            conversationId: result.conversationId || '',
+            elapsedMs: Date.now() - startedAt,
+            replyChars: String(result.reply || '').length,
+            messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+            behaviorMatched: Boolean(behavior?.matched),
+            actionId: behavior?.actionId || ''
+          }
+        })
+        return response
+      }
+      const action = triggerAiSemanticAction(petService, result.reply)
+      const response = action ? { ...result, action } : result
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'info',
+        actor: 'system',
+        event: 'ai-chat.ipc.completed',
+        message: 'AI chat IPC request completed',
+        details: {
+          requestedConversationId,
+          conversationId: result.conversationId || '',
+          elapsedMs: Date.now() - startedAt,
+          replyChars: String(result.reply || '').length,
+          messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+          actionId: action?.actionId || ''
+        }
       })
-      const behavior = executeBehaviorDecision(petService, decision)
-      return behavior?.matched && behavior.type === 'playAction'
-        ? { ...result, behavior, action: behavior }
-        : { ...result, behavior }
+      return response
+    } catch (error) {
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'error',
+        actor: 'system',
+        event: 'ai-chat.ipc.failed',
+        message: 'AI chat IPC request failed',
+        details: {
+          requestedConversationId,
+          elapsedMs: Date.now() - startedAt,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: error?.providerStatus
+            ? 'AI provider returned an error response'
+            : sanitizeDiagnosticText(error?.message),
+          providerStatus: error?.providerStatus || 0,
+          providerCode: error?.providerCode || ''
+        }
+      })
+      throw error
     }
-    const action = triggerAiSemanticAction(petService, result.reply)
-    return action ? { ...result, action } : result
   })
 
   ipcMainService.handle(IPC.AI_BEHAVIOR_GET, () => behaviorOrchestratorService.getConfig())

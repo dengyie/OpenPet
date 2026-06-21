@@ -54,8 +54,8 @@ const BUILTIN_CURSORS = Object.freeze([
         <ellipse cx="35" cy="18" rx="3.2" ry="4.2" fill="#ffd5df" stroke="#c65d6d" stroke-width="2"/>
       </svg>
     `,
-    hotspotX: 6,
-    hotspotY: 6
+    hotspotX: 24,
+    hotspotY: 24
   }),
   createBuiltinCursor({
     id: 'builtin-fish-blue',
@@ -67,8 +67,8 @@ const BUILTIN_CURSORS = Object.freeze([
         <circle cx="20.5" cy="22.5" r="1.7" fill="#2b6cb0"/>
       </svg>
     `,
-    hotspotX: 4,
-    hotspotY: 4
+    hotspotX: 24,
+    hotspotY: 24
   }),
   createBuiltinCursor({
     id: 'builtin-carrot',
@@ -80,8 +80,8 @@ const BUILTIN_CURSORS = Object.freeze([
         <path d="M19 20h11M17 25h11M15 30h10" stroke="#d96a10" stroke-width="2" stroke-linecap="round"/>
       </svg>
     `,
-    hotspotX: 4,
-    hotspotY: 4
+    hotspotX: 24,
+    hotspotY: 24
   }),
   createBuiltinCursor({
     id: 'builtin-magic-wand',
@@ -92,8 +92,8 @@ const BUILTIN_CURSORS = Object.freeze([
         <path d="m32 8 2.8 5.7 6.2.9-4.5 4.4 1.1 6.1-5.6-3-5.6 3 1.1-6.1-4.5-4.4 6.2-.9L32 8Z" fill="#ffd86b" stroke="#f59e0b" stroke-width="2"/>
       </svg>
     `,
-    hotspotX: 6,
-    hotspotY: 6
+    hotspotX: 24,
+    hotspotY: 24
   }),
   createBuiltinCursor({
     id: 'builtin-kitty',
@@ -107,8 +107,8 @@ const BUILTIN_CURSORS = Object.freeze([
         <path d="M14 28h-5M14 31H8M34 28h5M34 31h6" stroke="#9ca3af" stroke-width="1.8" stroke-linecap="round"/>
       </svg>
     `,
-    hotspotX: 5,
-    hotspotY: 5
+    hotspotX: 24,
+    hotspotY: 24
   })
 ])
 
@@ -126,6 +126,21 @@ const createDefaultRuntimeCursor = () => ({
 const normalizeNumber = (value, fallback = 0) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
+}
+
+const createCenteredHotspot = (width, height, fallbackX = 0, fallbackY = 0) => {
+  const normalizedWidth = normalizeNumber(width, 0)
+  const normalizedHeight = normalizeNumber(height, 0)
+  if (normalizedWidth <= 0 || normalizedHeight <= 0) {
+    return {
+      hotspotX: normalizeNumber(fallbackX, 0),
+      hotspotY: normalizeNumber(fallbackY, 0)
+    }
+  }
+  return {
+    hotspotX: Math.max(0, Math.floor(normalizedWidth / 2)),
+    hotspotY: Math.max(0, Math.floor(normalizedHeight / 2))
+  }
 }
 
 const normalizeRuntimeCursor = (cursor) => {
@@ -154,6 +169,9 @@ const normalizeCustomCursorRecord = (cursor) => {
   const name = typeof cursor.name === 'string' && cursor.name.trim()
     ? cursor.name.trim()
     : stripFileExtension(fileName) || '未命名指针'
+  const width = Math.max(0, normalizeNumber(cursor.width, 0))
+  const height = Math.max(0, normalizeNumber(cursor.height, 0))
+  const hotspot = createCenteredHotspot(width, height, cursor.hotspotX, cursor.hotspotY)
   return {
     id,
     type: 'custom',
@@ -161,11 +179,11 @@ const normalizeCustomCursorRecord = (cursor) => {
     assetPath: typeof cursor.assetPath === 'string' ? cursor.assetPath : '',
     assetUrl,
     fileName,
-    width: Math.max(0, normalizeNumber(cursor.width, 0)),
-    height: Math.max(0, normalizeNumber(cursor.height, 0)),
+    width,
+    height,
     byteSize: Math.max(0, normalizeNumber(cursor.byteSize, 0)),
-    hotspotX: normalizeNumber(cursor.hotspotX, 0),
-    hotspotY: normalizeNumber(cursor.hotspotY, 0),
+    hotspotX: hotspot.hotspotX,
+    hotspotY: hotspot.hotspotY,
     createdAt: typeof cursor.createdAt === 'string' && cursor.createdAt ? cursor.createdAt : new Date(0).toISOString()
   }
 }

@@ -45,6 +45,44 @@ const assertSafeRelativePath = (value, fieldName) => {
 
 const optionalString = (value) => (typeof value === 'string' ? value.trim() : '')
 
+const assertPersonaString = (persona, fieldName) => {
+  const value = persona?.[fieldName]
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`pet pack persona.${fieldName} must be a non-empty string`)
+  }
+  return value.trim()
+}
+
+const assertPersonaStringList = (persona, fieldName) => {
+  const value = persona?.[fieldName]
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`pet pack persona.${fieldName} must be a non-empty string array`)
+  }
+  return value.map((item, index) => {
+    if (typeof item !== 'string' || item.trim() === '') {
+      throw new Error(`pet pack persona.${fieldName}[${index}] must be a non-empty string`)
+    }
+    return item.trim()
+  })
+}
+
+const normalizePersona = (persona) => {
+  if (persona == null) return null
+  if (!persona || typeof persona !== 'object' || Array.isArray(persona)) {
+    throw new Error('pet pack persona must be an object')
+  }
+  return {
+    name: assertPersonaString(persona, 'name'),
+    identity: assertPersonaString(persona, 'identity'),
+    tone: assertPersonaString(persona, 'tone'),
+    coreTraits: assertPersonaStringList(persona, 'coreTraits'),
+    speakingStyle: assertPersonaString(persona, 'speakingStyle'),
+    relationshipToUser: assertPersonaString(persona, 'relationshipToUser'),
+    actionStyle: assertPersonaString(persona, 'actionStyle'),
+    boundaries: assertPersonaStringList(persona, 'boundaries')
+  }
+}
+
 const normalizeProvenance = (manifest = {}) => {
   const nested = manifest.provenance && typeof manifest.provenance === 'object' && !Array.isArray(manifest.provenance)
     ? manifest.provenance
@@ -131,10 +169,11 @@ const normalizePetPackManifest = (manifest) => {
     displayName: manifest.displayName || manifest.id,
     version: manifest.version || DEFAULT_VERSION,
     provenance: normalizeProvenance(manifest),
+    persona: normalizePersona(manifest.persona),
     defaultAction,
     clickAction,
     actions
   }
 }
 
-module.exports = { inferActionKind, normalizeAction, normalizePetPackManifest, normalizeProvenance }
+module.exports = { inferActionKind, normalizeAction, normalizePersona, normalizePetPackManifest, normalizeProvenance }

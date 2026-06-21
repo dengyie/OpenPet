@@ -99,6 +99,7 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     getConversation: () => [],
     chat: () => ({ reply: 'ok' })
   },
+  aiTalkService: null,
   behaviorOrchestratorService: {
     getConfig: () => ({ enabled: false }),
     saveConfig: (config) => config,
@@ -138,6 +139,74 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
   getMovementState: () => null,
   createSettingsWindow: () => {},
   dialogService
+})
+
+test('ai chat handler delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const sayCalls = []
+  const talkCalls = []
+  const appLogs = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    petService: {
+      ...createRequiredServices({
+        pluginInstallService: {},
+        pluginService: { listPlugins: () => [] },
+        dialogService: {}
+      }).petService,
+      say: (payload) => {
+        sayCalls.push(payload)
+        return payload
+      }
+    },
+    aiService: {
+      getConfig: () => ({}),
+      saveConfig: (config) => config,
+      saveApiKey: () => ({ ok: true }),
+      testConnection: () => ({ ok: true }),
+      getConversation: () => [],
+      chat: () => {
+        throw new Error('legacy ai service chat should not be called')
+      }
+    },
+    aiTalkService: {
+      getConversation: () => [{ role: 'assistant', content: 'hello' }],
+      chat: async (payload) => {
+        talkCalls.push(payload)
+        return { conversationId: 'control-center:legacy-cat:main', reply: 'talk reply', messages: [{ role: 'assistant', content: 'talk reply' }] }
+      }
+    },
+    appLogService: { record: (entry) => appLogs.push(entry) },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi', conversationId: 'ignored' })
+  const history = await ipcMain.handlers.get(IPC.AI_GET_CONVERSATION)(null, 'control-center')
+
+  assert.deepEqual(talkCalls, [{ message: 'hi', conversationId: 'ignored' }])
+  assert.deepEqual(sayCalls, [{ text: 'talk reply', source: 'ai' }])
+  assert.equal(result.reply, 'talk reply')
+  assert.equal(result.conversationId, 'control-center:legacy-cat:main')
+  assert.deepEqual(history, [{ role: 'assistant', content: 'hello' }])
+  assert.deepEqual(appLogs.map((entry) => entry.event), [
+    'ai-chat.ipc.received',
+    'ai-chat.ipc.completed'
+  ])
+  assert.equal(JSON.stringify(appLogs).includes('hi'), false)
+  assert.equal(appLogs[1].details.messageCount, 1)
 })
 
 test('service:get-status returns Control Center service status shape', async () => {

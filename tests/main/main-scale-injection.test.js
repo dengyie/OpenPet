@@ -18,6 +18,8 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
   let stopAllServicesCalls = 0
   let registeredIpcDependencies = null
   let registeredPluginDependencies = null
+  let createdAiTalkStorePath = null
+  let createdAiTalkDependencies = null
   let bundledPluginSyncDependencies = null
   const petWindow = {
     webContents: { on: () => {}, send: () => {} },
@@ -139,9 +141,21 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     }
 
     const serviceFactories = {
-      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [] }) },
+      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
       './src/main/services/secret-service': { createSecretService: () => ({}) },
-      './src/main/services/ai-service': { createAiService: () => ({}) },
+      './src/main/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
+      './src/main/services/ai-talk-store': {
+        createAiTalkStore: ({ storePath }) => {
+          createdAiTalkStorePath = storePath
+          return { id: 'ai-talk-store' }
+        }
+      },
+      './src/main/services/ai-talk-service': {
+        createAiTalkService: (dependencies) => {
+          createdAiTalkDependencies = dependencies
+          return { id: 'ai-talk-service' }
+        }
+      },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
       './src/main/services/plugin-service': {
         createPluginService: (dependencies) => {
@@ -159,6 +173,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
       './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
       './src/main/services/action-import-service': { createActionImportService: () => ({}) },
+      './src/main/services/cursor-asset-service': { createCursorAssetService: () => ({ repairCursor: async (cursor) => cursor || {} }) },
       './src/main/services/app-log-service': { createAppLogService: () => ({ record: (entry) => appLogs.push(entry), logPath: '/tmp/openpet-app.jsonl' }) },
       './src/main/services/about-service': { createAboutService: () => ({}) },
       './src/main/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
@@ -186,6 +201,10 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     assert.deepEqual(scaleCalls, [{ targetWindow: ipcWindow, scale: 0.5 }])
     assert.equal(animationReloadCalls.length, 1)
     assert.equal(animationReloadCalls[0].petWindow, petWindow)
+    assert.equal(createdAiTalkStorePath, path.join(__dirname, '..', '.tmp-main-scale-injection', 'ai-talk-store.json'))
+    assert.equal(createdAiTalkDependencies.aiService.id, 'ai-service')
+    assert.equal(createdAiTalkDependencies.aiTalkStore.id, 'ai-talk-store')
+    assert.equal(registeredIpcDependencies.aiTalkService.id, 'ai-talk-service')
     assert.equal(bundledPluginSyncDependencies.pluginDir, path.join(__dirname, '..', '.tmp-main-scale-injection', 'plugins'))
     assert.deepEqual(bundledPluginSyncDependencies.bundledPluginDirs, [path.resolve(__dirname, '../../examples/plugins/creator-studio')])
     assert.deepEqual(appLogs.map((entry) => entry.event), [
@@ -323,9 +342,11 @@ test('main still stops plugin services when lifecycle logging fails during quit'
     }
 
     const serviceFactories = {
-      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [] }) },
+      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
       './src/main/services/secret-service': { createSecretService: () => ({}) },
       './src/main/services/ai-service': { createAiService: () => ({}) },
+      './src/main/services/ai-talk-store': { createAiTalkStore: () => ({}) },
+      './src/main/services/ai-talk-service': { createAiTalkService: () => ({}) },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
       './src/main/services/plugin-service': { createPluginService: () => ({ stopAllServices: () => { stopAllServicesCalls += 1 } }) },
       './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
@@ -335,6 +356,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
       './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
       './src/main/services/action-import-service': { createActionImportService: () => ({}) },
+      './src/main/services/cursor-asset-service': { createCursorAssetService: () => ({ repairCursor: async (cursor) => cursor || {} }) },
       './src/main/services/app-log-service': { createAppLogService: () => ({ record: () => { throw new Error('disk full') }, logPath: '/tmp/openpet-app.jsonl' }) },
       './src/main/services/about-service': { createAboutService: () => ({}) },
       './src/main/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },

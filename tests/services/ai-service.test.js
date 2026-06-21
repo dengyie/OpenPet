@@ -41,6 +41,9 @@ test('ai service exposes config without secret values', () => {
     model: 'gpt-4o-mini',
     apiKeyRef: 'ai.default',
     systemPrompt: 'You are a friendly desktop pet companion.',
+    memory: {
+      enabled: false
+    },
     behavior: {
       enabled: false,
       useTools: true,
@@ -79,6 +82,24 @@ test('ai service saves config and api key separately', () => {
   assert.equal(settingsService.get().ai.systemPrompt, 'Be concise.')
   assert.deepEqual(secrets, [{ id: 'ai.default', value: 'sk-new', label: 'AI API Key' }])
   assert.deepEqual(keyResult, { apiKeyRef: 'ai.default', hasApiKey: true })
+})
+
+test('ai service persists automatic memory config through saveConfig', () => {
+  const settingsService = createSettingsService()
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  const saved = service.saveConfig({
+    memory: { enabled: true }
+  })
+
+  assert.equal(saved.memory.enabled, true)
+  assert.equal(settingsService.get().ai.memory.enabled, true)
 })
 
 test('ai service does not persist derived config fields', () => {
@@ -142,6 +163,50 @@ test('ai service sends openai-compatible chat completions requests', async () =>
       { role: 'user', content: 'Hi' }
     ]
   })
+})
+
+test('ai service records provider lifecycle without leaking secrets or prompt text', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test-secret',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: {
+          message: 'Bad request for hidden user prompt',
+          code: 'bad_request'
+        }
+      })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  await assert.rejects(
+    () => service.chat({ message: 'hidden user prompt' }),
+    /hidden user prompt/
+  )
+
+  const serializedLogs = JSON.stringify(logs)
+  assert.match(serializedLogs, /ai\.provider\.request\.started/)
+  assert.match(serializedLogs, /ai\.provider\.request\.failed/)
+  assert.equal(serializedLogs.includes('sk-test-secret'), false)
+  assert.equal(serializedLogs.includes('hidden user prompt'), false)
+  assert.equal(logs.at(-1).details.status, 400)
+  assert.equal(logs.at(-1).details.providerCode, 'bad_request')
 })
 
 test('ai service sends behavior tool definition and parses tool call intent', async () => {

@@ -67,6 +67,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
   }
   const callbacks = {}
   const logs = []
+  const focusRequests = []
   const context = {
     console,
     document: {
@@ -112,6 +113,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
         }),
         setViewport: () => {},
         setMousePassthrough: (passthrough) => logs.push({ event: 'pet:test:set-mouse-passthrough', passthrough }),
+        requestFocusForCursor: () => focusRequests.push({ event: 'pet:test:request-focus-for-cursor' }),
         recordAppLog: (entry) => logs.push(entry),
         onSettingsChanged: (callback) => { callbacks.settings = callback },
         onPetSay: () => {},
@@ -131,7 +133,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, elements, logs, context }
+  return { callbacks, elements, focusRequests, logs, context }
 }
 
 const dispatch = (element, eventName, event) => {
@@ -276,8 +278,8 @@ test('pointer down does not flash the active custom cursor back to the system cu
   assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
 })
 
-test('unfocused pet window keeps the DOM custom cursor visible over the pet frame', async () => {
-  const { callbacks, context, elements, logs } = await createRendererHarness({
+test('unfocused pet window requests focus and keeps the DOM custom cursor visible over the pet frame', async () => {
+  const { callbacks, context, elements, focusRequests, logs } = await createRendererHarness({
     insideFrame: true,
     hasFocus: false
   })
@@ -293,6 +295,35 @@ test('unfocused pet window keeps the DOM custom cursor visible over the pet fram
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
   assert.equal(logs.at(-1).details.nativeCursor, 'none')
   assert.equal(logs.at(-1).details.windowFocused, false)
+  assert.equal(focusRequests.length, 1)
+})
+
+test('unfocused pet window retries cursor focus after hover leaves and returns', async () => {
+  const { callbacks, elements, focusRequests } = await createRendererHarness({
+    insideFrame: true,
+    hasFocus: false
+  })
+
+  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
+  dispatch(elements.pet, 'pointermove', { clientX: 24, clientY: 88, screenX: 1024, screenY: 768 })
+  dispatch(elements.pet, 'pointerleave', { clientX: -1, clientY: -1, screenX: 999, screenY: 699 })
+  dispatch(elements.pet, 'pointermove', { clientX: 28, clientY: 92, screenX: 1028, screenY: 772 })
+
+  assert.equal(focusRequests.length, 2)
+})
+
+test('unfocused pet window does not request focus for transparent cursor padding', async () => {
+  const { callbacks, elements, focusRequests } = await createRendererHarness({
+    insideFrame: false,
+    insideCursorRegion: true,
+    hasFocus: false
+  })
+
+  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
+  dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 78, screenX: 1001, screenY: 778 })
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(focusRequests.length, 0)
 })
 
 test('pointer leave does not cancel passthrough while hovering transparent pet padding', async () => {

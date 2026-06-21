@@ -102,6 +102,7 @@ const showPetContextMenuWindow = ({
     if (closed) return
     closed = true
     removeParentListeners()
+    if (parentWindow?.contextMenuWindow === menuWindow) parentWindow.contextMenuWindow = null
     if (!menuWindow.isDestroyed()) menuWindow.close()
   }
   const menuWindow = new BrowserWindow({
@@ -125,6 +126,7 @@ const showPetContextMenuWindow = ({
       sandbox: true
     }
   })
+  if (parentWindow) parentWindow.contextMenuWindow = menuWindow
 
   menuWindow.webContents.on('will-navigate', (event, url) => {
     event.preventDefault()

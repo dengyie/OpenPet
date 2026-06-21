@@ -53,6 +53,24 @@ test('pet context menu window removes parent listeners when closed by blur', () 
   assert.equal(parentWindow.listenerCount('closed'), 0)
 })
 
+test('pet context menu window marks the parent while the menu is open', () => {
+  const parentWindow = new EventEmitter()
+  const menuWindow = showPetContextMenuWindow({
+    BrowserWindow: FakeMenuWindow,
+    parentWindow,
+    items: [{ label: '设置', click: () => {} }],
+    point: { x: 20, y: 30 },
+    size: { width: 112, height: 176 },
+    onSelect: () => {}
+  })
+
+  assert.equal(parentWindow.contextMenuWindow, menuWindow)
+
+  menuWindow.close()
+
+  assert.equal(parentWindow.contextMenuWindow, null)
+})
+
 test('pet context menu window prevents unexpected navigation without closing', () => {
   const parentWindow = new EventEmitter()
   let selected = false

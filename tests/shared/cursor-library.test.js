@@ -20,6 +20,31 @@ test('cursor library exposes the built-in picker catalog', () => {
   )
 })
 
+test('decorative built-in cursors use a centered visual hotspot', () => {
+  const decorativeIds = [
+    'builtin-paw-pink',
+    'builtin-fish-blue',
+    'builtin-carrot',
+    'builtin-magic-wand',
+    'builtin-kitty'
+  ]
+
+  for (const cursorId of decorativeIds) {
+    const cursor = BUILTIN_CURSORS.find((candidate) => candidate.id === cursorId)
+    assert.equal(cursor.width, 48)
+    assert.equal(cursor.height, 48)
+    assert.equal(cursor.hotspotX, 24)
+    assert.equal(cursor.hotspotY, 24)
+  }
+})
+
+test('arrow-like built-in cursor keeps its tip hotspot', () => {
+  const claw = BUILTIN_CURSORS.find((cursor) => cursor.id === 'builtin-claw-purple')
+
+  assert.equal(claw.hotspotX, 2)
+  assert.equal(claw.hotspotY, 2)
+})
+
 test('listCursorOptions returns system, built-ins, and custom cursors in order', () => {
   const options = listCursorOptions([{
     id: 'custom-lemon',
@@ -93,7 +118,7 @@ test('resolveSelectedCursor returns a disabled runtime cursor for system default
   assert.match(builtin.assetUrl, /^data:image\/svg\+xml/)
 })
 
-test('resolveSelectedCursor preserves custom cursor dimensions for runtime overlay alignment', () => {
+test('resolveSelectedCursor centers custom cursor hotspots for runtime overlay alignment', () => {
   const runtime = resolveSelectedCursor({
     selectedCursorId: 'cursor-large',
     customCursors: [{
@@ -118,7 +143,7 @@ test('resolveSelectedCursor preserves custom cursor dimensions for runtime overl
     fileName: 'large.png',
     width: 64,
     height: 40,
-    hotspotX: 9,
-    hotspotY: 11
+    hotspotX: 32,
+    hotspotY: 20
   })
 })

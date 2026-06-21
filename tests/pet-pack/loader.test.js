@@ -272,6 +272,7 @@ test('converts legacy animation config into a pet pack manifest', () => {
       importedAt: '',
       originalFormat: ''
     },
+    persona: null,
     defaultAction: 'bai_no_bg',
     clickAction: 'eat_no_bg',
     actions: [

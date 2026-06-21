@@ -119,7 +119,7 @@ export function PetPane({
   const scalePercent = Math.round(settings.scale * 100)
 
   return (
-    <section className="pane">
+    <section className="pane pet-pane">
       <header className="pane-header">
         <div>
           <h1>Pet</h1>
@@ -183,153 +183,163 @@ export function PetPane({
         </div>
 
         <div className="cursor-settings-block">
-          <div className="cursor-selection-header">
-            <h2>指针选择</h2>
-            <p>预览会模拟真实指针落点，方便你判断图片尺寸和视觉效果。</p>
-          </div>
+          <div className="cursor-settings-shell">
+            <div className="cursor-selection-header">
+              <h2>指针选择</h2>
+              <p>预览会模拟真实指针落点，方便你判断图片尺寸和视觉效果。</p>
+            </div>
 
-          <div className="cursor-options-row" role="list" aria-label="可选指针">
-            {cursorOptions.map((option) => {
-              const selected = settings.selectedCursorId === option.id
-              return (
+            <div className="cursor-options-rail">
+              <div className="cursor-options-row" role="list" aria-label="可选指针">
+                {cursorOptions.map((option) => {
+                  const selected = settings.selectedCursorId === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`cursor-option-card${selected ? ' selected' : ''}`}
+                      data-cursor-type={option.type}
+                      onClick={() => onSelectCursor(option.id)}
+                      disabled={saving}
+                    >
+                      <span className="cursor-card-preview">
+                        <span className="cursor-card-surface" />
+                        <img src={option.assetUrl} alt={`${option.name} 预览`} />
+                      </span>
+                      <span className="cursor-card-label">{option.name}</span>
+                      {selected ? (
+                        <span className="cursor-card-check" aria-hidden="true">
+                          <CheckIcon />
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+
                 <button
-                  key={option.id}
                   type="button"
-                  className={`cursor-option-card${selected ? ' selected' : ''}`}
-                  onClick={() => onSelectCursor(option.id)}
+                  className="cursor-option-card add-card"
+                  onClick={onImportCursor}
                   disabled={saving}
                 >
                   <span className="cursor-card-preview">
                     <span className="cursor-card-surface" />
-                    <img src={option.assetUrl} alt={`${option.name} 预览`} />
-                  </span>
-                  <span className="cursor-card-label">{option.name}</span>
-                  {selected ? (
-                    <span className="cursor-card-check" aria-hidden="true">
-                      <CheckIcon />
+                    <span className="cursor-card-add-icon" aria-hidden="true">
+                      <PlusIcon />
                     </span>
-                  ) : null}
-                </button>
-              )
-            })}
-
-            <button
-              type="button"
-              className="cursor-option-card add-card"
-              onClick={onImportCursor}
-              disabled={saving}
-            >
-              <span className="cursor-card-preview">
-                <span className="cursor-card-surface" />
-                <span className="cursor-card-add-icon" aria-hidden="true">
-                  <PlusIcon />
-                </span>
-              </span>
-              <span className="cursor-card-label">添加自定义</span>
-            </button>
-          </div>
-
-          <div className="cursor-library-panel">
-            <div className="cursor-library-header">
-              <div className="cursor-library-title">
-                <h3>我的自定义指针（可管理、编辑或删除）</h3>
-                <span className="cursor-library-title-icon" aria-hidden="true">
-                  <InfoIcon />
-                </span>
-              </div>
-              <div className="cursor-library-actions">
-                <button type="button" className="ghost accent" onClick={onImportCursor} disabled={saving}>
-                  <span className="button-icon" aria-hidden="true">
-                    <UploadIcon />
                   </span>
-                  上传指针
-                </button>
-                <button type="button" className="ghost" onClick={onToggleManageMode} disabled={saving}>
-                  {manageMode ? '完成' : '管理'}
+                  <span className="cursor-card-label">添加自定义</span>
                 </button>
               </div>
             </div>
 
-            {settings.customCursors.length ? (
-              <div className="cursor-library-list">
-                {settings.customCursors.map((cursor) => {
-                  const selected = settings.selectedCursorId === cursor.id
-                  const editing = editingCursorId === cursor.id
-                  return (
-                    <div key={cursor.id} className="cursor-library-row">
-                      <div className="cursor-library-preview">
-                        <span className="cursor-card-surface" />
-                        <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
-                      </div>
+            <div className="cursor-library-panel">
+              <div className="cursor-library-header">
+                <div className="cursor-library-title">
+                  <h3>我的自定义指针（可管理、编辑或删除）</h3>
+                  <span className="cursor-library-title-icon" aria-hidden="true">
+                    <InfoIcon />
+                  </span>
+                </div>
+                <div className="cursor-library-actions">
+                  <button type="button" className="ghost accent cursor-toolbar-button" onClick={onImportCursor} disabled={saving}>
+                    <span className="button-icon" aria-hidden="true">
+                      <UploadIcon />
+                    </span>
+                    上传指针
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost cursor-toolbar-button${manageMode ? ' accent' : ''}`}
+                    onClick={onToggleManageMode}
+                    disabled={saving}
+                  >
+                    {manageMode ? '完成管理' : '管理'}
+                  </button>
+                </div>
+              </div>
 
-                      <div className="cursor-library-main">
-                        {editing ? (
-                          <div className="cursor-edit-form">
-                            <input
-                              className="text-input"
-                              value={editingCursorName}
-                              onChange={(event) => onChangeEditingCursorName(event.target.value)}
-                              placeholder="指针名称"
-                              aria-label="指针名称"
-                            />
-                            <div className="inline-action">
-                              <button type="button" className="ghost" onClick={() => onReplaceCustomCursor(cursor.id)} disabled={saving}>
-                                替换图片
-                              </button>
-                              <button type="button" className="ghost" onClick={onCancelEditCursor} disabled={saving}>
-                                取消
-                              </button>
-                              <button type="button" className="primary" onClick={() => onSaveEditedCursor(cursor.id)} disabled={saving}>
-                                保存名称
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="cursor-library-name-row">
-                              <strong>{cursor.name}</strong>
-                              {selected ? <span className="cursor-usage-badge">使用中</span> : null}
-                            </div>
-                            <div className="cursor-library-meta">
-                              <span>尺寸：{formatCursorSize(cursor.width, cursor.height)}</span>
-                              <span>上传时间：{formatCursorTime(cursor.createdAt)}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      {manageMode && !editing ? (
-                        <div className="cursor-library-row-actions">
-                          <button type="button" className="ghost icon-button" onClick={() => onStartEditCursor(cursor.id)} disabled={saving}>
-                            <span className="button-icon" aria-hidden="true">
-                              <EditIcon />
-                            </span>
-                            编辑
-                          </button>
-                          <button type="button" className="ghost icon-button danger" onClick={() => onDeleteCustomCursor(cursor.id)} disabled={saving}>
-                            <span className="button-icon" aria-hidden="true">
-                              <TrashIcon />
-                            </span>
-                            删除
-                          </button>
+              {settings.customCursors.length ? (
+                <div className="cursor-library-list">
+                  {settings.customCursors.map((cursor) => {
+                    const selected = settings.selectedCursorId === cursor.id
+                    const editing = editingCursorId === cursor.id
+                    return (
+                      <div key={cursor.id} className="cursor-library-row">
+                        <div className="cursor-library-preview">
+                          <span className="cursor-card-surface" />
+                          <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
                         </div>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="cursor-library-empty">
-                还没有上传自定义指针，点击“添加自定义”或“上传指针”开始创建。
-              </div>
-            )}
-          </div>
 
-          <div className="cursor-guidance-note">
-            <span className="cursor-guidance-icon" aria-hidden="true">
-              <InfoIcon />
-            </span>
-            建议使用 32×32 / 64×64 PNG 或 WEBP 格式，透明背景，文件大小不超过 500KB。
+                        <div className="cursor-library-main">
+                          {editing ? (
+                            <div className="cursor-edit-form">
+                              <input
+                                className="text-input"
+                                value={editingCursorName}
+                                onChange={(event) => onChangeEditingCursorName(event.target.value)}
+                                placeholder="指针名称"
+                                aria-label="指针名称"
+                              />
+                              <div className="inline-action">
+                                <button type="button" className="ghost" onClick={() => onReplaceCustomCursor(cursor.id)} disabled={saving}>
+                                  替换图片
+                                </button>
+                                <button type="button" className="ghost" onClick={onCancelEditCursor} disabled={saving}>
+                                  取消
+                                </button>
+                                <button type="button" className="primary" onClick={() => onSaveEditedCursor(cursor.id)} disabled={saving}>
+                                  保存名称
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="cursor-library-name-row">
+                                <strong>{cursor.name}</strong>
+                                {selected ? <span className="cursor-usage-badge">使用中</span> : null}
+                              </div>
+                              <div className="cursor-library-meta">
+                                <span>尺寸：{formatCursorSize(cursor.width, cursor.height)}</span>
+                                <span>上传时间：{formatCursorTime(cursor.createdAt)}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {!editing && manageMode ? (
+                          <div className="cursor-library-row-actions">
+                            <button type="button" className="ghost icon-button cursor-row-action" onClick={() => onStartEditCursor(cursor.id)} disabled={saving}>
+                              <span className="button-icon" aria-hidden="true">
+                                <EditIcon />
+                              </span>
+                              编辑
+                            </button>
+                            <button type="button" className="ghost icon-button danger cursor-row-action" onClick={() => onDeleteCustomCursor(cursor.id)} disabled={saving}>
+                              <span className="button-icon" aria-hidden="true">
+                                <TrashIcon />
+                              </span>
+                              删除
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="cursor-library-empty">
+                  还没有上传自定义指针，点击“添加自定义”或“上传指针”开始创建。
+                </div>
+              )}
+            </div>
+
+            <div className="cursor-guidance-note">
+              <span className="cursor-guidance-icon" aria-hidden="true">
+                <InfoIcon />
+              </span>
+              建议使用 32×32 / 64×64 PNG 格式，透明背景，文件大小不超过 500KB。
+            </div>
           </div>
         </div>
 
