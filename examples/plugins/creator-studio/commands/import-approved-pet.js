@@ -32,7 +32,8 @@ runCommand(async (context) => {
     dataDir: process.env.OPENPET_DATA_DIR,
     runId: context.payload?.runId,
     statuses: ['approved'],
-    description: 'approved'
+    description: 'approved pet bundle',
+    filter: (run) => Boolean(run.artifacts?.outputDir)
   })
   const current = readRun({ dataDir: process.env.OPENPET_DATA_DIR, runId })
   if (current.status !== 'approved') throw new Error(`Run must be approved before import: ${current.status}`)

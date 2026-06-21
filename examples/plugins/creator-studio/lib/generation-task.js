@@ -5,13 +5,14 @@ const VALID_TARGET_PETS = new Set(['current', 'new'])
 const VALID_STYLE_SOURCES = new Set(['currentPet', 'referenceImage', 'textOnly'])
 const VALID_TRIGGER_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const SAFE_ACTION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
+const MAX_ACTION_FRAME_COUNT = 32
 
 const hashActionId = (value) => `action-${crypto.createHash('sha1').update(String(value || 'action')).digest('hex').slice(0, 8)}`
 
 const clampFrameCount = (value, fallback) => {
   const number = Number(value)
   if (!Number.isFinite(number)) return fallback
-  return Math.min(Math.max(Math.round(number), 1), 96)
+  return Math.min(Math.max(Math.round(number), 1), MAX_ACTION_FRAME_COUNT)
 }
 
 const normalizeTriggerProposal = (proposal = {}) => {
