@@ -96,6 +96,11 @@ button {
   display: grid;
   gap: 24px;
   width: 100%;
+  max-width: 860px;
+}
+
+.pet-pane {
+  width: 100%;
   max-width: 1480px;
 }
 

@@ -119,7 +119,7 @@ export function PetPane({
   const scalePercent = Math.round(settings.scale * 100)
 
   return (
-    <section className="pane">
+    <section className="pane pet-pane">
       <header className="pane-header">
         <div>
           <h1>Pet</h1>
@@ -248,8 +248,13 @@ export function PetPane({
                     </span>
                     上传指针
                   </button>
-                  <button type="button" className="ghost cursor-toolbar-button" onClick={onToggleManageMode} disabled={saving}>
-                    {manageMode ? '完成' : '管理'}
+                  <button
+                    type="button"
+                    className={`ghost cursor-toolbar-button${manageMode ? ' accent' : ''}`}
+                    onClick={onToggleManageMode}
+                    disabled={saving}
+                  >
+                    {manageMode ? '完成管理' : '管理'}
                   </button>
                 </div>
               </div>
@@ -302,8 +307,8 @@ export function PetPane({
                           )}
                         </div>
 
-                        {!editing ? (
-                          <div className={`cursor-library-row-actions${manageMode ? ' active' : ''}`}>
+                        {!editing && manageMode ? (
+                          <div className="cursor-library-row-actions">
                             <button type="button" className="ghost icon-button cursor-row-action" onClick={() => onStartEditCursor(cursor.id)} disabled={saving}>
                               <span className="button-icon" aria-hidden="true">
                                 <EditIcon />

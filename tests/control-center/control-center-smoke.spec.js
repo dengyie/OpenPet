@@ -100,12 +100,17 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.cursor-option-card.selected')).toContainText('demo-cursor')
     await expect(cursorLibraryPanel).toContainText('demo-cursor')
     await expect(cursorLibraryPanel).toContainText('使用中')
+    await expect(cursorLibraryPanel.getByRole('button', { name: '编辑' })).toBeHidden()
+    await expect(cursorLibraryPanel.getByRole('button', { name: '删除' })).toBeHidden()
 
     await page.getByRole('button', { name: '系统默认' }).click()
     await expect(page.locator('.cursor-option-card.selected')).toContainText('系统默认')
 
-    page.once('dialog', (dialog) => dialog.accept())
     await page.getByRole('button', { name: '管理' }).click()
+    await expect(cursorLibraryPanel.getByRole('button', { name: '完成管理' })).toBeVisible()
+    await expect(cursorLibraryPanel.getByRole('button', { name: '编辑' })).toBeVisible()
+    await expect(cursorLibraryPanel.getByRole('button', { name: '删除' })).toBeVisible()
+    page.once('dialog', (dialog) => dialog.accept())
     await page.getByRole('button', { name: '删除' }).click()
     await expect(cursorOptionCards).toHaveCount(8)
     await expect(page.locator('.cursor-library-empty')).toContainText('还没有上传自定义指针')
