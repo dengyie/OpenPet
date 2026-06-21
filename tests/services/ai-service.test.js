@@ -55,6 +55,27 @@ test('ai service exposes config without secret values', () => {
   })
 })
 
+test('ai service sanitizes credentialed baseUrl in public config', () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://user:pass@example.test/v1?token=secret#frag',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: 'Stay cheerful.'
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    }
+  })
+
+  assert.equal(service.getConfig().baseUrl, 'https://example.test/v1')
+})
+
 test('ai service saves config and api key separately', () => {
   const secrets = []
   const settingsService = createSettingsService()
@@ -746,12 +767,13 @@ test('ai service testConnection redacts provider failure details from result and
   const logs = []
   const leakedApiKey = 'sk-test-secret'
   const leakedPrompt = 'hidden system prompt'
+  const credentialedBaseUrl = 'https://user:pass@example.test/v1?token=secret#frag'
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
         enabled: false,
         provider: 'openai-compatible',
-        baseUrl: 'https://example.test/v1',
+        baseUrl: credentialedBaseUrl,
         model: 'example-model',
         apiKeyRef: 'ai.default',
         systemPrompt: leakedPrompt
@@ -779,6 +801,10 @@ test('ai service testConnection redacts provider failure details from result and
   assert.equal(result.ok, false)
   assert.equal(result.code, 'unauthorized')
   assert.equal(result.message, '认证失败，请检查 API Key 是否有效。')
+  assert.equal(result.baseUrl, 'https://example.test/v1')
   assert.equal(serialized.includes(leakedApiKey), false)
   assert.equal(serialized.includes(leakedPrompt), false)
+  assert.equal(serialized.includes(credentialedBaseUrl), false)
+  assert.equal(serialized.includes('user:pass'), false)
+  assert.equal(serialized.includes('token=secret'), false)
 })

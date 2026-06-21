@@ -170,6 +170,25 @@ const createTimeoutController = (timeoutMs) => {
   }
 }
 
+const sanitizeBaseUrlForDisplay = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    parsed.username = ''
+    parsed.password = ''
+    parsed.search = ''
+    parsed.hash = ''
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.origin}${normalizedPath === '/' ? '' : normalizedPath}`
+  } catch (_) {
+    return raw
+      .replace(/^([a-z]+:\/\/)([^/@]+)@/i, '$1')
+      .replace(/[?#].*$/, '')
+      .replace(/\/+$/, '')
+  }
+}
+
 const getConnectionErrorCode = (error) => {
   if (error?.code) return error.code
   if (/API key is not configured/i.test(error?.message || '')) return 'missing_api_key'
@@ -266,6 +285,7 @@ const createAiService = ({
     const config = getRawConfig()
     return {
       ...config,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
       hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef))
     }
   }
@@ -394,7 +414,7 @@ const createAiService = ({
     const hasApiKey = Boolean(secretService.getSecretValue(config.apiKeyRef))
     const base = {
       provider: config.provider,
-      baseUrl: config.baseUrl,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
       model: config.model,
       hasApiKey
     }

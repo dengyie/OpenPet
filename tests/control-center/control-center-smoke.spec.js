@@ -145,6 +145,10 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     await expect(page.locator('.provider-summary')).toContainText('当前已保存配置')
+    await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://user:pass@ai.example.test/v1?token=secret')
+    await expect(page.locator('.provider-warning.error')).toContainText('Base URL 不能包含用户名或密码')
+    await expect(page.getByRole('button', { name: '保存配置', exact: true })).toBeDisabled()
+
     await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://ai.example.test/v1')
     await page.getByRole('textbox', { name: 'Model', exact: true }).fill('openpet-test-model')
     await page.getByLabel('System Prompt').fill('Stay tiny, helpful, and local-first.')

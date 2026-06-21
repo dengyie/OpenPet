@@ -34,6 +34,8 @@ const validateProviderConfig = (config: AiConfigViewState): string => {
   try {
     const parsed = new URL(config.baseUrl.trim())
     if (!['http:', 'https:'].includes(parsed.protocol)) return 'Base URL 只支持 http 或 https'
+    if (parsed.username || parsed.password) return 'Base URL 不能包含用户名或密码，请把凭证放在 API Key 中'
+    if (parsed.search || parsed.hash) return 'Base URL 不能包含 query 或 hash，请仅保留 API 根路径'
   } catch (_) {
     return 'Base URL 不是有效 URL'
   }
