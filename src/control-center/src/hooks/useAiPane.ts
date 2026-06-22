@@ -16,6 +16,7 @@ import type {
   AiBehaviorConfig,
   AiBehaviorResult,
   AiBehaviorRule,
+  AiConnectionTestResult,
   AiConfigViewState,
   AiConnectionTestResult,
   AiPersonaDraftViewState,
@@ -198,12 +199,48 @@ export function useAiPane(activeTab = 'ai') {
   const onSave = async () => {
     setSaving(true)
     setStatus('')
+    setConnectionStatus('')
     try {
       await saveProviderConfigDraft()
       setConnectionTestResult(null)
       setStatus('AI 配置已保存')
     } catch (error) {
       setStatus(messageFromError(error, '保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveAndTest = async () => {
+    setSaving(true)
+    setStatus('')
+    setConnectionStatus('')
+    try {
+      validateAiConfigDraft(config)
+      let nextActiveConfig = activeConfig
+      if (hasUnsavedConfigChanges) {
+        nextActiveConfig = cloneAiConfig(await api.saveAiConfig(buildAiConfigSavePayload(config, activeConfig)))
+        setConfig(nextActiveConfig)
+        setActiveConfig(nextActiveConfig)
+        setStatus('AI 配置已保存')
+      }
+      if (hasUnsavedApiKeyDraft) {
+        const keyResult = await api.saveAiApiKey(apiKeyDraft)
+        nextActiveConfig = { ...nextActiveConfig, hasApiKey: keyResult.hasApiKey }
+        setConfig(nextActiveConfig)
+        setActiveConfig(nextActiveConfig)
+        setApiKeyDraft('')
+        setStatus(hasUnsavedConfigChanges ? 'AI 配置与 API Key 已保存' : 'API Key 已保存')
+      }
+      const result = await api.testAiConnection()
+      setConnectionStatus(formatConnectionStatus({
+        result,
+        hasUnsavedConfigChanges: false,
+        hasUnsavedApiKeyDraft: false
+      }))
+    } catch (error) {
+      const message = messageFromError(error, '保存并测试失败')
+      setConnectionStatus(message)
     } finally {
       setSaving(false)
     }
@@ -302,6 +339,7 @@ export function useAiPane(activeTab = 'ai') {
   const onSaveApiKey = async () => {
     setSaving(true)
     setStatus('')
+    setConnectionStatus('')
     try {
       await saveApiKeyDraft()
       setStatus('API Key 已保存')
@@ -380,7 +418,7 @@ export function useAiPane(activeTab = 'ai') {
       setConnectionTestResult(result)
       setStatus(formatConnectionTestStatus(result))
     } catch (error) {
-      setStatus(messageFromError(error, '连接失败'))
+      setConnectionStatus(messageFromError(error, '连接失败'))
     } finally {
       setSaving(false)
     }
@@ -515,6 +553,9 @@ export function useAiPane(activeTab = 'ai') {
     connectionTestResult,
     saving,
     status,
+    connectionStatus,
+    hasUnsavedConfigChanges,
+    hasUnsavedApiKeyDraft,
     apiKeyDraft,
     setApiKeyDraft,
     imageApiKeyDraft,

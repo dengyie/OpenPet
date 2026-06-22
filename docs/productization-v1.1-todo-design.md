@@ -1430,7 +1430,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 74 Plugin maintainer approval rehearsal | Completed; submission bundles can now receive separate maintainer approval artifacts and author rehearsal now points at that human review step explicitly. |
 | P1 | Phase 75 Plugin real-world submission rehearsal | Completed; an existing example plugin now has a local package-to-approval rehearsal archive without claiming external provenance. |
 | P1 | Phase 76 Plugin remote-source submission rehearsal | Completed; a public HTTPS archive example plugin snapshot now has remote-source provenance plus a local package-to-approval rehearsal archive without claiming independent public ecosystem trust. |
-| P1 | AI provider settings confirmation UX | Backlog; design in `docs/ai-provider-settings-ux-design.md`. Control Center should let users edit, save, confirm active values, and test API key/model/base URL without exposing secrets outside the main-process secret store. |
+| P1 | AI provider settings confirmation UX | Completed; Control Center AI pane now separates active config from unsaved drafts, supports save-and-test flow, and returns structured host-side connection diagnostics without exposing secrets outside the main-process secret store. |
 | P1 | Phase 45 TypeScript boundary expansion | Completed; preserve shared contracts as the migration gate for future UI and IPC work. |
 | P1 | Phase 47 TypeScript hook boundary migration | Completed; use typed Control Center hooks as the next UI boundary baseline. |
 | P1 | Phase 48 Control Center pane prop surfaces | Completed; use Pane props plus hook `satisfies` checks as the current renderer UI contract baseline. |

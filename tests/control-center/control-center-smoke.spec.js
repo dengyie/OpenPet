@@ -161,6 +161,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.provider-warning')).toContainText('未保存的 Provider 草稿')
     await page.getByRole('button', { name: '保存配置', exact: true }).click()
     await expect(page.locator('.status-line')).toContainText('AI 配置已保存')
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://ai.example.test/v1')
 
     const apiKeyInput = page.locator('.field-row', { hasText: 'API Key' }).locator('input[type="password"]')
     await apiKeyInput.fill('sk-demo-secret')
@@ -179,6 +180,22 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByLabel('Model')).toHaveValue('openpet-test-model')
     await expect(page.getByLabel('System Prompt')).toHaveValue('Stay tiny, helpful, and local-first.')
     await expect(page.locator('.field-row', { hasText: 'API Key' })).toContainText('已保存')
+  })
+
+  test('save and test uses the current AI drafts as one flow in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://combo.example.test/v1')
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('combo-test-model')
+    await page.getByPlaceholder('输入 API Key').fill('sk-combo-secret')
+
+    await page.getByRole('button', { name: '保存并测试配置' }).click()
+
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://combo.example.test/v1')
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('combo-test-model')
+    await expect(page.locator('.status-line').first()).toContainText('连接正常：openai-compatible · https://combo.example.test/v1 · combo-test-model')
+    await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 
   test('persists image generation config and supports key health actions in the demo API', async ({ page }) => {

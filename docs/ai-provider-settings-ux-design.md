@@ -1,7 +1,7 @@
 # AI Provider Settings UX Design
 
 > Date: 2026-06-22
-> Status: design-ready backlog
+> Status: implemented
 > Owner surface: Control Center AI pane + main-process AI services
 > Priority: P1
 
