@@ -801,7 +801,32 @@ test('creator studio run-step command uses host bridge for local backend generat
           })
           .catch((error) => {
             response.end(JSON.stringify({ ok: false, error: error.message }))
-          })
+        })
+        return
+      }
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            defaultBackend: 'local',
+            cloud: {
+              provider: 'openai',
+              baseUrl: 'https://api.openai.com/v1',
+              model: 'gpt-image-1',
+              apiKeyRef: 'secret:model.image.openai.apiKey',
+              hasApiKey: false,
+              apiKeyPreview: '',
+              apiKeyLabel: 'Image API Key'
+            },
+            local: {
+              endpoint: 'http://127.0.0.1:7860/generate',
+              healthUrl: 'http://127.0.0.1:7860/health',
+              model: 'local-custom-sprite-v2',
+              timeoutMs: 120000,
+              maxConcurrentJobs: 1
+            }
+          }
+        }))
         return
       }
       if (request.url.endsWith('/creator/model-health-check')) {
@@ -881,16 +906,24 @@ test('creator studio run-step command uses host bridge for local backend generat
     assert.equal(frameQa.sourceRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
     assert.equal(frameQa.actionId, actionFrames.actionId)
     assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
-    assert.match(requests[0].payload.prompt, /OpenPet desktop pet sprite asset/)
-    assert.match(requests[0].payload.prompt, /Canvas And Boundary Rules/)
-    assert.match(requests[0].payload.prompt, /Action name: 原地打滚/)
-    assert.match(requests[0].payload.prompt, /Loop policy: looping/)
-    assert.notEqual(requests[0].payload.prompt, '新增一个自定义动作：原地打滚，动作要循环，点击触发。')
-    assert.equal(requests[0].payload.prompt.includes('bridge-token'), false)
+    assert.match(requests[1].payload.prompt, /OpenPet desktop pet sprite asset/)
+    assert.match(requests[1].payload.prompt, /Canvas And Boundary Rules/)
+    assert.match(requests[1].payload.prompt, /Action name: 原地打滚/)
+    assert.match(requests[1].payload.prompt, /Loop policy: looping/)
+    assert.match(requests[1].payload.prompt, /Model: local-custom-sprite-v2/)
+    assert.notEqual(requests[1].payload.prompt, '新增一个自定义动作：原地打滚，动作要循环，点击触发。')
+    assert.equal(requests[1].payload.prompt.includes('bridge-token'), false)
+    assert.deepEqual(run.modelSnapshot, {
+      backend: 'local',
+      provider: 'local',
+      model: 'local-custom-sprite-v2',
+      endpointHost: '127.0.0.1:7860'
+    })
+    assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
     assert.equal(run.artifacts.generatedImage.promptBuilder.version, 1)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.deepEqual(run.artifacts.generatedImage.promptBuilder.warnings, [])
-    assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-image-generate'])
+    assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-settings', '/creator/model-image-generate'])
   } finally {
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
@@ -1675,6 +1708,7 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="task-preview"/)
   assert.match(html, /id="trigger-panel"/)
   assert.match(html, /id="action-review"/)
+  assert.match(html, /contact-sheet/)
   assert.match(html, /action-frame-validation\.json/)
   assert.match(html, /id="run-logs"/)
   assert.equal(html.includes('apiKey'), false)
@@ -1727,6 +1761,16 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     },
     now: () => '2026-06-19T00:00:30.000Z'
   })
+  const framesDir = path.join(dataDir, 'runs', run.runId, 'frames', 'actions', 'shy-spin')
+  fs.mkdirSync(framesDir, { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 120, g: 80, b: 220, alpha: 1 }
+    }
+  }).png().toFile(path.join(framesDir, '0001.png'))
   appendRunLog({
     dataDir,
     runId: run.runId,
@@ -1748,9 +1792,21 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     assert.equal(detail.actionReview.actionId, 'shy-spin')
     assert.equal(detail.actionReview.frameCount, 8)
     assert.equal(detail.actionReview.triggerProposal.type, 'click')
+    assert.equal(detail.actionReview.previewFrames.length, 8)
+    assert.equal(detail.actionReview.previewFrames[0].fileName, '0001.png')
+    assert.equal(detail.actionReview.previewFrames[0].url, `/api/runs/${encodeURIComponent(run.runId)}/action-frames/shy-spin/0001.png`)
     assert.match(detail.actionReview.qa, /action-frame-validation\.json$/)
     assert.equal(logs.ok, true)
     assert.deepEqual(logs.logs.map((entry) => entry.event), ['run.created'])
+
+    const frameResponse = await fetch(`http://127.0.0.1:${port}${detail.actionReview.previewFrames[0].url}`)
+    const frameBytes = Buffer.from(await frameResponse.arrayBuffer())
+    const invalidFrame = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/action-frames/shy-spin/not-a-frame.png`)
+
+    assert.equal(frameResponse.status, 200)
+    assert.equal(frameResponse.headers.get('content-type'), 'image/png')
+    assert.equal(frameBytes.slice(1, 4).toString('utf-8'), 'PNG')
+    assert.equal(invalidFrame.status, 404)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

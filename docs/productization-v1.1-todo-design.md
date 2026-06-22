@@ -1,7 +1,7 @@
 # OpenPet v1.1 TODO Design
 
-> Date: 2026-06-16
-> Baseline: Phase 64 completed locally
+> Date: 2026-06-23
+> Baseline: Phase 106 plus AI provider settings, image-generation model settings, and trigger proposal acceptance slices completed locally
 > Scope: Convert the remaining productization TODO into a phase-ready design for v1.1 work. This document does not upgrade platform support claims. Windows remains not release-ready until signed runtime smoke evidence passes.
 
 ## 1. Goal
@@ -40,7 +40,9 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - Legacy SDK plugin secrets policy remains conservative; target extension docs require honest disclosure for extension-managed secrets and data.
 - Plugin sandbox strategy has been evaluated against SES and Electron `utilityProcess`; current recommendation is to keep the existing runner for v1.1 while documenting limits.
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
-- AI provider configuration UX still needs a complete save/confirm/test flow for API key, model, and base URL changes; current editable fields are not enough for users to verify which values are active.
+- AI provider configuration UX now has a complete active/draft save/confirm/test flow for API key, model, and base URL changes, with structured sanitized diagnostics. Remaining AI settings work is mostly provider presets/model discovery and richer model-settings product polish.
+- Host image-generation model settings now exist for Creator Studio with `fixture` / `cloud` / `local` defaults, cloud API key storage through `SecretService`, local endpoint settings, health checks, and host-mediated image output writing. The remaining main UI work is a clearer first-class model settings surface and richer provider setup guidance.
+- Creator Studio trigger proposals can now be accepted through the host Actions path for reviewed `click`, `manual`, and `unbound` proposals. `random`, `state`, and `event` proposals remain pending until OpenPet defines a host-owned trigger-rule schema/editor.
 - Documentation still needs another consolidation pass after the v1.1 execution track stabilizes.
 
 ## 3. Non-Goals
@@ -1431,6 +1433,8 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 | P1 | Phase 75 Plugin real-world submission rehearsal | Completed; an existing example plugin now has a local package-to-approval rehearsal archive without claiming external provenance. |
 | P1 | Phase 76 Plugin remote-source submission rehearsal | Completed; a public HTTPS archive example plugin snapshot now has remote-source provenance plus a local package-to-approval rehearsal archive without claiming independent public ecosystem trust. |
 | P1 | AI provider settings confirmation UX | Completed; Control Center AI pane now separates active config from unsaved drafts, supports save-and-test flow, and returns structured host-side connection diagnostics without exposing secrets outside the main-process secret store. |
+| P1 | Image-generation model settings host slice | Completed; Control Center AI pane can configure the host-owned Creator Studio image-generation backend, store cloud keys through `SecretService`, check health, and keep provider calls/output writes inside `ImageGenerationModelService`. |
+| P1 | Action trigger proposal acceptance host slice | Completed; reviewed plugin proposals can be accepted through the Actions path, `click` applies `clickAction`, `manual`/`unbound` are acknowledged without mutation, and future host-rule types stay pending. |
 | P1 | Phase 45 TypeScript boundary expansion | Completed; preserve shared contracts as the migration gate for future UI and IPC work. |
 | P1 | Phase 47 TypeScript hook boundary migration | Completed; use typed Control Center hooks as the next UI boundary baseline. |
 | P1 | Phase 48 Control Center pane prop surfaces | Completed; use Pane props plus hook `satisfies` checks as the current renderer UI contract baseline. |

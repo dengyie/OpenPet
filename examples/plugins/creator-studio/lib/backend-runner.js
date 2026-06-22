@@ -53,6 +53,7 @@ const writeHostGeneratedStandardOutputs = async ({ dataDir, run, generationResul
     imageGeneration: {
       backend: generationResult.backend,
       model: generationResult.model,
+      ...(generationResult.modelSnapshot ? { modelSnapshot: generationResult.modelSnapshot } : {}),
       generatedAt: generationResult.generatedAt || now()
     }
   }, null, 2)}\n`)
@@ -114,6 +115,7 @@ const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, 
       },
       generatedImage: generationResult
     },
+    ...(generationResult.modelSnapshot ? { modelSnapshot: generationResult.modelSnapshot } : {}),
     reviewStatus: 'pending',
     error: ''
   }
@@ -144,6 +146,7 @@ const buildHostGeneratedRunOutput = async ({ dataDir, run, generationResult, now
       ...(standardOutput.actionTaskQaPath ? { actionTaskQa: standardOutput.actionTaskQaPath } : {}),
       generatedImage: generationResult
     },
+    ...(generationResult.modelSnapshot ? { modelSnapshot: generationResult.modelSnapshot } : {}),
     reviewStatus: 'pending',
     error: ''
   }

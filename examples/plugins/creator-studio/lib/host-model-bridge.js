@@ -8,6 +8,49 @@ const DEFAULT_CONSTRAINTS = {
   transparent: true
 }
 
+const safeUrlHost = (value) => {
+  try {
+    return new URL(String(value || '')).host
+  } catch (_) {
+    return ''
+  }
+}
+
+const readHostModelSettings = async () => {
+  try {
+    const response = await callBridge('/creator/model-settings')
+    return response.config || {}
+  } catch (_) {
+    return {}
+  }
+}
+
+const createModelSnapshot = ({ backend, settings }) => {
+  if (backend === 'cloud') {
+    const cloud = settings.cloud || {}
+    return {
+      backend: 'cloud',
+      provider: String(cloud.provider || 'cloud'),
+      model: String(cloud.model || ''),
+      baseUrlHost: safeUrlHost(cloud.baseUrl)
+    }
+  }
+  if (backend === 'local') {
+    const local = settings.local || {}
+    return {
+      backend: 'local',
+      provider: 'local',
+      model: String(local.model || ''),
+      endpointHost: safeUrlHost(local.endpoint)
+    }
+  }
+  return {
+    backend: backend || 'fixture',
+    provider: backend || 'fixture',
+    model: 'fixture-image'
+  }
+}
+
 const generateViaHostModelBridge = async ({ backend, run }) => {
   if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
     throw new BackendUnavailableError({
@@ -16,12 +59,12 @@ const generateViaHostModelBridge = async ({ backend, run }) => {
     })
   }
 
+  const settings = await readHostModelSettings()
+  const modelSnapshot = createModelSnapshot({ backend, settings })
   const promptBuild = buildOpenPetImagePrompt({
     run,
     backend,
-    model: backend === 'cloud'
-      ? run.input?.cloudModel
-      : run.input?.localModel
+    model: modelSnapshot.model
   })
   const response = await callBridge('/creator/model-image-generate', {
     backend,
@@ -34,6 +77,7 @@ const generateViaHostModelBridge = async ({ backend, run }) => {
 
   return {
     ...response.result,
+    modelSnapshot,
     promptBuilder: {
       version: promptBuild.promptBuilderVersion,
       mode: promptBuild.mode,

@@ -205,6 +205,8 @@ const extractCloudProviderBusinessError = (body) => {
   return message.slice(0, 240)
 }
 
+const isOptionalCloudModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
+
 const buildCloudGenerationPayload = ({ model, prompt, constraints }) => {
   const payload = {
     model,
@@ -374,14 +376,25 @@ const createImageGenerationModelService = ({
         })
         const status = response?.status || 'error'
         if (!response?.ok) {
+          if (isOptionalCloudModelsProbeStatus(status)) {
+            return completeHealth(
+              {
+                ok: true,
+                backend: 'cloud',
+                code: 'provider_reachable_models_unavailable',
+                message: 'Cloud provider is reachable, but the optional /models probe is unavailable'
+              },
+              { status, baseUrlHost: getUrlHost(config.cloud.baseUrl), modelsProbe: 'unavailable' }
+            )
+          }
           return completeHealth(
             { ok: false, backend: 'cloud', code: 'provider_unhealthy', message: `Cloud provider responded with HTTP ${status}` },
-            { status, baseUrlHost: getUrlHost(config.cloud.baseUrl) }
+            { status, baseUrlHost: getUrlHost(config.cloud.baseUrl), modelsProbe: 'failed' }
           )
         }
         return completeHealth(
           { ok: true, backend: 'cloud', code: 'provider_healthy', message: 'Cloud provider is reachable' },
-          { status, baseUrlHost: getUrlHost(config.cloud.baseUrl) }
+          { status, baseUrlHost: getUrlHost(config.cloud.baseUrl), modelsProbe: 'ok' }
         )
       }
 
