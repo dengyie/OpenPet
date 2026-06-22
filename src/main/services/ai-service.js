@@ -190,6 +190,67 @@ const createProviderError = ({ message, status, code }) => {
   return error
 }
 
+const sanitizeBaseUrlForDisplay = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    parsed.username = ''
+    parsed.password = ''
+    parsed.search = ''
+    parsed.hash = ''
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.origin}${normalizedPath === '/' ? '' : normalizedPath}`
+  } catch (_) {
+    return raw
+      .replace(/^([a-z]+:\/\/)([^/@]+)@/i, '$1')
+      .replace(/[?#].*$/, '')
+      .replace(/\/+$/, '')
+  }
+}
+
+const mergeConfigWithoutDisplayDowngrade = (currentConfig, partialConfig = {}) => {
+  if (!isPlainObject(partialConfig)) return { ...currentConfig }
+  const nextConfig = { ...currentConfig, ...partialConfig }
+  if (typeof partialConfig.baseUrl === 'string') {
+    const currentBaseUrl = typeof currentConfig?.baseUrl === 'string' ? currentConfig.baseUrl : ''
+    const incomingBaseUrl = partialConfig.baseUrl
+    if (
+      currentBaseUrl &&
+      sanitizeBaseUrlForDisplay(currentBaseUrl) === incomingBaseUrl.trim() &&
+      currentBaseUrl !== incomingBaseUrl.trim()
+    ) {
+      nextConfig.baseUrl = currentBaseUrl
+    }
+  }
+  return nextConfig
+}
+
+const classifyConnectionError = (error) => {
+  if (error?.message === 'AI API key is not configured') {
+    return { code: 'missing_api_key', message: 'AI API key is not configured' }
+  }
+  if (/^Unsupported AI provider:/.test(error?.message || '')) {
+    return { code: 'unsupported_provider', message: 'Unsupported AI provider' }
+  }
+  if (error?.message === 'fetch is not available') {
+    return { code: 'fetch_unavailable', message: 'Fetch is not available' }
+  }
+  if (error?.name === 'AbortError' || error?.message === 'AI provider request timed out') {
+    return { code: 'timeout', message: 'AI provider request timed out' }
+  }
+  if (error?.providerStatus) {
+    const status = Number(error.providerStatus) || 0
+    if (status === 401 || status === 403) return { code: 'auth_failed', message: 'AI provider rejected the API key' }
+    if (status === 404) return { code: 'model_or_endpoint_not_found', message: 'AI provider endpoint or model was not found' }
+    return { code: 'provider_http_error', message: `AI provider request failed with status ${status}` }
+  }
+  if (error?.message === 'AI provider returned an empty response') {
+    return { code: 'empty_response', message: 'AI provider returned an empty response' }
+  }
+  return { code: 'network_error', message: 'AI provider request failed' }
+}
+
 const createAiService = ({
   settingsService,
   secretService,
@@ -249,6 +310,7 @@ const createAiService = ({
     const config = getRawConfig()
     return {
       ...config,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
       hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef))
     }
   }
@@ -256,7 +318,7 @@ const createAiService = ({
   const saveConfig = (partialConfig) => {
     const settings = settingsService.get()
     const nextAi = {
-      ...normalizeConfig({ ...settings.ai, ...partialConfig }),
+      ...normalizeConfig(mergeConfigWithoutDisplayDowngrade(settings.ai, partialConfig)),
       conversations: getStoredConversations()
     }
     settingsService.save({ ...settings, ai: nextAi })
@@ -302,6 +364,76 @@ const createAiService = ({
       persistConversations(conversations)
     }
     return []
+  }
+
+  const testConnection = async () => {
+    const config = getRawConfig()
+    const hasApiKey = Boolean(secretService.getSecretValue(config.apiKeyRef))
+    const startedAt = Date.now()
+    const baseResult = {
+      provider: config.provider,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
+      model: config.model,
+      hasApiKey
+    }
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.connection-test.started',
+      message: 'AI provider connection test started',
+      details: baseResult
+    })
+    try {
+      const result = await complete({
+        messages: [
+          { role: 'user', content: 'Reply with ok.' }
+        ]
+      })
+      const response = {
+        ok: true,
+        ...baseResult,
+        elapsedMs: Date.now() - startedAt,
+        reply: String(result.reply || '').slice(0, 120),
+        code: 'ok',
+        message: 'AI provider connection test succeeded'
+      }
+      recordLog({
+        scope: 'ai-settings',
+        level: 'info',
+        event: 'ai.settings.connection-test.completed',
+        message: 'AI provider connection test completed',
+        details: {
+          ...baseResult,
+          elapsedMs: response.elapsedMs,
+          replyChars: response.reply.length
+        }
+      })
+      return response
+    } catch (error) {
+      const classified = classifyConnectionError(error)
+      const response = {
+        ok: false,
+        ...baseResult,
+        elapsedMs: Date.now() - startedAt,
+        code: classified.code,
+        message: classified.message
+      }
+      recordLog({
+        scope: 'ai-settings',
+        level: 'error',
+        event: 'ai.settings.connection-test.failed',
+        message: 'AI provider connection test failed',
+        details: {
+          ...baseResult,
+          elapsedMs: response.elapsedMs,
+          status: error?.providerStatus || 0,
+          providerCode: error?.providerCode || '',
+          code: classified.code,
+          message: classified.message
+        }
+      })
+      return response
+    }
   }
 
   const complete = async ({ messages, tools = [] }) => {
@@ -423,15 +555,6 @@ const createAiService = ({
       }
       return { conversationId: normalizedConversationId || undefined, reply: result.reply, behaviorIntent: result.behaviorIntent || undefined, messages: nextMessages }
     })
-  }
-
-  const testConnection = async () => {
-    const result = await complete({
-      messages: [
-        { role: 'user', content: 'Reply with ok.' }
-      ]
-    })
-    return { ok: true, reply: result.reply }
   }
 
   return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, complete, testConnection }

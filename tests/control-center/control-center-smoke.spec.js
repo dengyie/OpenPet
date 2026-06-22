@@ -149,19 +149,31 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
 
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://api.openai.com/v1')
+    await expect(page.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('当前没有未保存修改')
+
     await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://ai.example.test/v1')
     await page.getByRole('textbox', { name: 'Model', exact: true }).fill('openpet-test-model')
     await page.getByLabel('System Prompt').fill('Stay tiny, helpful, and local-first.')
     await page.getByRole('switch', { name: 'Enable AI memory' }).click()
+    await expect(page.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('配置草稿未保存')
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await expect(page.locator('.status-line')).toContainText('AI 配置已保存')
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://ai.example.test/v1')
 
     const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
     const apiKeyInput = page.getByPlaceholder('输入 API Key')
     await apiKeyInput.fill('sk-demo-secret')
+    await expect(apiKeyRow).toContainText('当前输入尚未保存')
+    await page.getByRole('button', { name: '测试当前已保存配置' }).click()
+    await expect(page.locator('.status-line').first()).toContainText('当前存在未保存修改；本次测试使用已保存配置。')
+    await expect(page.locator('.status-line').first()).toContainText('https://ai.example.test/v1')
+    await expect(page.locator('.status-line').first()).toContainText('openpet-test-model')
     await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
     await expect(page.locator('.status-line')).toContainText('API Key 已保存')
     await expect(apiKeyRow).toContainText('已保存')
+    await page.getByRole('button', { name: '测试当前已保存配置' }).click()
+    await expect(page.locator('.status-line').first()).toContainText('连接正常：openai-compatible · https://ai.example.test/v1 · openpet-test-model')
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
@@ -169,6 +181,22 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveValue('openpet-test-model')
     await expect(page.getByLabel('System Prompt')).toHaveValue('Stay tiny, helpful, and local-first.')
     await expect(page.getByRole('switch', { name: 'Enable AI memory' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
+  })
+
+  test('save and test uses the current AI drafts as one flow in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://combo.example.test/v1')
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('combo-test-model')
+    await page.getByPlaceholder('输入 API Key').fill('sk-combo-secret')
+
+    await page.getByRole('button', { name: '保存并测试配置' }).click()
+
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://combo.example.test/v1')
+    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('combo-test-model')
+    await expect(page.locator('.status-line').first()).toContainText('连接正常：openai-compatible · https://combo.example.test/v1 · combo-test-model')
     await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 

@@ -1,6 +1,7 @@
 import type {
   AiBehaviorConfig,
   AiBehaviorResult,
+  AiConnectionTestResult,
   AiConfigViewState,
   ChatMessage,
   ImageGenerationConfigViewState
@@ -10,10 +11,12 @@ import { defaultImageGenerationConfig } from '../lib/defaults'
 
 export interface AiPaneProps {
   config: AiConfigViewState
+  activeConfig: AiConfigViewState
   imageGenerationConfig: ImageGenerationConfigViewState
   onChange: (partial: Partial<AiConfigViewState>) => void
   onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
   onSave: () => void | Promise<void>
+  onSaveAndTest: () => void | Promise<void>
   onSaveApiKey: () => void | Promise<void>
   onTest: () => void | Promise<void>
   onSaveImageGeneration: () => void | Promise<void>
@@ -23,6 +26,9 @@ export interface AiPaneProps {
   onSendChat: () => void | Promise<void>
   saving: boolean
   status: string
+  connectionStatus: string
+  hasUnsavedConfigChanges: boolean
+  hasUnsavedApiKeyDraft: boolean
   apiKeyDraft: string
   setApiKeyDraft: (value: string) => void
   imageApiKeyDraft: string
@@ -50,10 +56,12 @@ export interface AiPaneProps {
 
 export function AiPane({
   config,
+  activeConfig,
   imageGenerationConfig = defaultImageGenerationConfig,
   onChange,
   onChangeImageGeneration,
   onSave,
+  onSaveAndTest,
   onSaveApiKey,
   onTest,
   onSaveImageGeneration,
@@ -63,6 +71,9 @@ export function AiPane({
   onSendChat,
   saving,
   status,
+  connectionStatus,
+  hasUnsavedConfigChanges,
+  hasUnsavedApiKeyDraft,
   apiKeyDraft,
   setApiKeyDraft,
   imageApiKeyDraft,
@@ -88,6 +99,11 @@ export function AiPane({
   onClearBehaviorDecisions
 }: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
+  const activeSummary = `${activeConfig.provider} · ${activeConfig.baseUrl} · ${activeConfig.model} · ${activeConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
+  const draftSummary = [
+    hasUnsavedConfigChanges ? '配置草稿未保存' : '',
+    hasUnsavedApiKeyDraft ? '密钥草稿未保存' : ''
+  ].filter(Boolean).join(' · ')
 
   return (
     <section className="pane">
@@ -97,8 +113,23 @@ export function AiPane({
           <p>聊天 Provider 与模型配置</p>
         </div>
         <div className="header-actions">
-          <button type="button" className="ghost" onClick={onTest} disabled={saving}>
+          <button
+            type="button"
+            className="ghost"
+            aria-label="测试当前已保存配置"
+            onClick={onTest}
+            disabled={saving}
+          >
             测试
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            aria-label="保存并测试配置"
+            onClick={onSaveAndTest}
+            disabled={saving}
+          >
+            保存并测试
           </button>
           <button type="button" className="primary" onClick={onSave} disabled={saving}>
             {saving ? '保存中' : '保存'}
@@ -107,6 +138,16 @@ export function AiPane({
       </header>
 
       <div className="section">
+        <div className="readonly-row">
+          <strong>当前生效配置</strong>
+          <span className="endpoint-text">{activeSummary}</span>
+        </div>
+
+        <div className="readonly-row">
+          <strong>草稿状态</strong>
+          <span>{draftSummary || '当前没有未保存修改'}</span>
+        </div>
+
         <div className="field-row">
           <div className="field-label">启用聊天</div>
           <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
@@ -144,7 +185,10 @@ export function AiPane({
         <div className="field-row">
           <div>
             <div className="field-label">API Key</div>
-            <div className="field-note">{config.hasApiKey ? '已保存' : '未保存'}</div>
+            <div className="field-note">
+              {config.hasApiKey ? '已保存' : '未保存'}
+              {hasUnsavedApiKeyDraft ? ' · 当前输入尚未保存' : ''}
+            </div>
           </div>
           <div className="inline-action">
             <input
@@ -182,6 +226,7 @@ export function AiPane({
         </div>
       </div>
 
+      {connectionStatus ? <div className="status-line">{connectionStatus}</div> : null}
       <div className="section">
         <div className="field-row">
           <div>
@@ -347,7 +392,13 @@ export function AiPane({
                 placeholder="输入一段 AI 回复"
                 onChange={(event) => setDryRunText(event.target.value)}
               />
-              <button type="button" className="ghost" onClick={onDryRunBehavior} disabled={!dryRunText.trim()}>
+              <button
+                type="button"
+                className="ghost"
+                aria-label="测试行为规则"
+                onClick={onDryRunBehavior}
+                disabled={!dryRunText.trim()}
+              >
                 测试
               </button>
               <button type="button" className="primary" onClick={onSaveBehavior} disabled={saving}>

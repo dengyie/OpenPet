@@ -122,6 +122,60 @@ test('ai service does not persist derived config fields', () => {
   assert.equal(Object.hasOwn(settingsService.get().ai, 'unexpectedField'), false)
 })
 
+test('ai service saveConfig preserves a richer stored baseUrl when a renderer sends the sanitized display value', () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: false,
+      provider: 'openai-compatible',
+      baseUrl: 'https://user:pass@example.test/v1?token=secret',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: 'You are a friendly desktop pet companion.'
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  service.saveConfig({
+    baseUrl: 'https://example.test/v1',
+    memory: { enabled: true }
+  })
+
+  assert.equal(settingsService.get().ai.baseUrl, 'https://user:pass@example.test/v1?token=secret')
+  assert.equal(settingsService.get().ai.memory.enabled, true)
+})
+
+test('ai service saveConfig persists a new baseUrl when the user actually changes it', () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: false,
+      provider: 'openai-compatible',
+      baseUrl: 'https://user:pass@example.test/v1?token=secret',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: 'You are a friendly desktop pet companion.'
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  service.saveConfig({
+    baseUrl: 'https://new-endpoint.example/v1'
+  })
+
+  assert.equal(settingsService.get().ai.baseUrl, 'https://new-endpoint.example/v1')
+})
+
 test('ai service sends openai-compatible chat completions requests', async () => {
   const requests = []
   const service = createAiService({
@@ -673,6 +727,7 @@ test('ai service times out stalled provider requests', async () => {
 })
 
 test('ai service testConnection validates provider response', async () => {
+  const logs = []
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
@@ -691,8 +746,96 @@ test('ai service testConnection validates provider response', async () => {
     fetchImpl: async () => ({
       ok: true,
       json: async () => ({ choices: [{ message: { content: 'ok' } }] })
-    })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
-  assert.deepEqual(await service.testConnection(), { ok: true, reply: 'ok' })
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.provider, 'openai-compatible')
+  assert.equal(result.baseUrl, 'https://example.test/v1')
+  assert.equal(result.model, 'example-model')
+  assert.equal(result.hasApiKey, true)
+  assert.equal(result.reply, 'ok')
+  assert.equal(result.code, 'ok')
+  assert.equal(result.message, 'AI provider connection test succeeded')
+  assert.equal(typeof result.elapsedMs, 'number')
+  assert.deepEqual(logs.map((entry) => entry.event).filter((event) => event.startsWith('ai.settings.')), [
+    'ai.settings.connection-test.started',
+    'ai.settings.connection-test.completed'
+  ])
+})
+
+test('ai service testConnection returns missing key failure metadata', async () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: false,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      throw new Error('provider should not be called without a key')
+    }
+  })
+
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.hasApiKey, false)
+  assert.equal(result.code, 'missing_api_key')
+  assert.equal(result.message, 'AI API key is not configured')
+})
+
+test('ai service testConnection logs provider failures without leaking secrets or prompt text', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: false,
+        provider: 'openai-compatible',
+        baseUrl: 'https://user:pass@example.test/v1?token=secret#frag',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: 'hidden system prompt'
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test-secret',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({
+        error: {
+          message: 'Rejected sk-test-secret hidden system prompt',
+          code: 'unauthorized'
+        }
+      })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const result = await service.testConnection()
+  const serializedLogs = JSON.stringify(logs)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.baseUrl, 'https://example.test/v1')
+  assert.equal(result.code, 'auth_failed')
+  assert.equal(result.message, 'AI provider rejected the API key')
+  assert.equal(serializedLogs.includes('sk-test-secret'), false)
+  assert.equal(serializedLogs.includes('hidden system prompt'), false)
+  assert.equal(serializedLogs.includes('user:pass'), false)
+  assert.equal(serializedLogs.includes('token=secret'), false)
+  assert.match(serializedLogs, /ai\.settings\.connection-test\.failed/)
 })
