@@ -180,6 +180,37 @@ test('action adapters package import and mutation results without leaking servic
     inspectionResult
   })
   assert.deepEqual(createActionsMutationResult(animations), { animations })
+  assert.deepEqual(createActionsMutationResult(animations, {
+    triggerProposal: {
+      ok: true,
+      applied: true,
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      code: 'applied',
+      message: 'Click trigger now uses action: wave',
+      acceptedAt: '2026-06-22T10:00:00.000Z',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action',
+      internal: 'ignore-me'
+    }
+  }), {
+    animations,
+    triggerProposal: {
+      ok: true,
+      applied: true,
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      code: 'applied',
+      message: 'Click trigger now uses action: wave',
+      acceptedAt: '2026-06-22T10:00:00.000Z',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action'
+    }
+  })
 })
 
 test('about adapters provide stable defaults for partial info and update checks', () => {

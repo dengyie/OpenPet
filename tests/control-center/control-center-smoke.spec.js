@@ -55,6 +55,18 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '更新状态' })).toContainText('Update feed is not configured.')
   })
 
+  test('applies an action trigger proposal through the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    await page.getByRole('button', { name: /Sleep/ }).click()
+    await page.locator('.readonly-row', { hasText: '触发建议' }).locator('select').selectOption('click')
+    await page.getByRole('button', { name: '应用触发建议' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('已应用 触发建议')
+    await expect(page.locator('.readonly-row', { hasText: '点击动作' }).locator('select')).toHaveValue('sleep')
+  })
+
   test('persists Pet settings in the demo API session', async ({ page }) => {
     await page.goto('/')
 

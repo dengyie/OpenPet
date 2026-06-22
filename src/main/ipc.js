@@ -450,6 +450,31 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.ACTIONS_SAVE_CONFIG, async (_event, payload) => {
+    if (payload?.triggerProposal) {
+      if (!actionService?.acceptTriggerProposal) throw new Error('Action trigger proposal acceptance is not available')
+      const triggerProposal = actionService.acceptTriggerProposal(payload.triggerProposal)
+      const animations = triggerProposal.applied
+        ? reloadAndSendAnimations(getPetWindow, petService)
+        : petService.getPreviewAnimations()
+      recordAppLog({
+        scope: 'actions',
+        level: 'info',
+        actor: 'user',
+        event: 'actions.trigger-proposal.accepted',
+        message: 'Action trigger proposal accepted',
+        details: {
+          actionId: triggerProposal.actionId,
+          type: triggerProposal.type,
+          binding: triggerProposal.binding,
+          applied: triggerProposal.applied,
+          code: triggerProposal.code,
+          sourcePluginId: triggerProposal.sourcePluginId || '',
+          sourceRunId: triggerProposal.sourceRunId || '',
+          sourceCommandId: triggerProposal.sourceCommandId || ''
+        }
+      })
+      return createActionsMutationResult(animations, { triggerProposal })
+    }
     await actionImportService.updateActionConfig(payload)
     reloadAndSendAnimations(getPetWindow, petService)
     return createActionsMutationResult(petService.getPreviewAnimations())

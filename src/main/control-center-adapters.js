@@ -21,6 +21,8 @@
  */
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
+const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
+const TRIGGER_PROPOSAL_RESULT_CODES = new Set(['applied', 'no_binding_required', 'pending_host_rule'])
 
 /**
  * @param {unknown} value
@@ -118,10 +120,32 @@ const createActionFrameImportResult = (result, animations) => ({
 })
 
 /**
+ * @param {Partial<import('../shared/openpet-contracts').ActionTriggerProposalAcceptanceResult>} proposal
+ * @returns {import('../shared/openpet-contracts').ActionTriggerProposalAcceptanceResult}
+ */
+const createTriggerProposalAcceptanceResult = (proposal = {}) => ({
+  ok: Boolean(proposal.ok),
+  applied: Boolean(proposal.applied),
+  actionId: typeof proposal.actionId === 'string' ? proposal.actionId : '',
+  type: typeof proposal.type === 'string' && TRIGGER_PROPOSAL_TYPES.has(proposal.type) ? proposal.type : 'unbound',
+  binding: typeof proposal.binding === 'string' ? proposal.binding : '',
+  code: typeof proposal.code === 'string' && TRIGGER_PROPOSAL_RESULT_CODES.has(proposal.code) ? proposal.code : 'pending_host_rule',
+  message: typeof proposal.message === 'string' ? proposal.message : '',
+  acceptedAt: typeof proposal.acceptedAt === 'string' ? proposal.acceptedAt : '',
+  ...(typeof proposal.sourcePluginId === 'string' ? { sourcePluginId: proposal.sourcePluginId } : {}),
+  ...(typeof proposal.sourceRunId === 'string' ? { sourceRunId: proposal.sourceRunId } : {}),
+  ...(typeof proposal.sourceCommandId === 'string' ? { sourceCommandId: proposal.sourceCommandId } : {})
+})
+
+/**
  * @param {ActionsConfigViewState} animations
+ * @param {Partial<{ triggerProposal: Partial<import('../shared/openpet-contracts').ActionTriggerProposalAcceptanceResult> }> | undefined} [result]
  * @returns {ActionsMutationResult}
  */
-const createActionsMutationResult = (animations) => ({ animations })
+const createActionsMutationResult = (animations, result) => ({
+  animations,
+  ...(result?.triggerProposal !== undefined ? { triggerProposal: createTriggerProposalAcceptanceResult(result.triggerProposal) } : {})
+})
 
 /**
  * @param {Partial<AboutUpdateInfo> | undefined} update

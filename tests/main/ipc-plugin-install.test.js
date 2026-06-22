@@ -128,6 +128,21 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     getInfo: () => ({}),
     checkForUpdates: () => ({ ok: true })
   },
+  actionService: {
+    acceptTriggerProposal: (proposal) => ({
+      ok: true,
+      applied: proposal.type === 'click',
+      actionId: proposal.actionId,
+      type: proposal.type,
+      binding: proposal.binding || '',
+      code: proposal.type === 'click' ? 'applied' : 'pending_host_rule',
+      message: proposal.type === 'click' ? 'applied' : 'pending',
+      acceptedAt: '2026-06-22T10:00:00.000Z',
+      sourcePluginId: proposal.sourcePluginId || '',
+      sourceRunId: proposal.sourceRunId || '',
+      sourceCommandId: proposal.sourceCommandId || ''
+    })
+  },
   actionImportService: {
     inspectActionFrames: () => ({ inspection: { valid: true } }),
     importActionFrames: () => ({ ok: true }),
@@ -544,6 +559,24 @@ test('action mutation handlers return contract-shaped results and refreshed anim
         return { ...animations, deletedActionId: actionId }
       }
     },
+    actionService: {
+      acceptTriggerProposal: (proposal) => {
+        calls.push(['trigger', proposal])
+        return {
+          ok: true,
+          applied: true,
+          actionId: proposal.actionId,
+          type: proposal.type,
+          binding: proposal.binding || '',
+          code: 'applied',
+          message: 'applied',
+          acceptedAt: '2026-06-22T10:00:00.000Z',
+          sourcePluginId: proposal.sourcePluginId || '',
+          sourceRunId: proposal.sourceRunId || '',
+          sourceCommandId: proposal.sourceCommandId || ''
+        }
+      }
+    },
     ipcMainService: ipcMain
   })
 
@@ -560,6 +593,16 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     label: 'Broken'
   })
   const saveResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, { defaultAction: 'idle', clickAction: 'wave' })
+  const triggerResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+    triggerProposal: {
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action'
+    }
+  })
   const deleteResult = await ipcMain.handlers.get(IPC.ACTIONS_DELETE)(null, { actionId: 'wave' })
 
   assert.deepEqual(importResult, {
@@ -571,8 +614,25 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   assert.equal(brokenImportResult.ok, false)
   assert.equal(brokenImportResult.inspectionResult.inspection.valid, false)
   assert.deepEqual(saveResult, { animations })
+  assert.deepEqual(triggerResult, {
+    animations,
+    triggerProposal: {
+      ok: true,
+      applied: true,
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      code: 'applied',
+      message: 'applied',
+      acceptedAt: '2026-06-22T10:00:00.000Z',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action'
+    }
+  })
   assert.deepEqual(deleteResult, { animations })
   assert.deepEqual(petWindowMessages.map((message) => message[0]), [
+    IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED
@@ -584,6 +644,14 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     ['inspect', sourceDir, 'broken'],
     ['inspect', sourceDir, 'broken'],
     ['save', { defaultAction: 'idle', clickAction: 'wave' }],
+    ['trigger', {
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action'
+    }],
     ['delete', 'wave']
   ])
 })

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
   PetPackInspectionResult,
@@ -37,6 +38,11 @@ export interface ActionsPaneProps {
   onExportPetPack: (packId: string) => void | Promise<void>
   onSetActivePetPack: (packId: string) => void | Promise<void>
   onRemovePetPack: (packId: string) => void | Promise<void>
+  onApplyTriggerProposal: () => void | Promise<void>
+  triggerProposalType: ActionTriggerProposalType
+  setTriggerProposalType: (value: ActionTriggerProposalType) => void
+  triggerProposalNotes: string
+  setTriggerProposalNotes: (value: string) => void
 }
 
 function ActionPreview({ action }: { action?: ActionEntry }) {
@@ -239,7 +245,12 @@ export function ActionsPane({
   onImportPetPack,
   onExportPetPack,
   onSetActivePetPack,
-  onRemovePetPack
+  onRemovePetPack,
+  onApplyTriggerProposal,
+  triggerProposalType,
+  setTriggerProposalType,
+  triggerProposalNotes,
+  setTriggerProposalNotes
 }: ActionsPaneProps) {
   const selectedAction = actionsConfig.actions.find((action) => action.id === selectedActionId)
     || actionsConfig.actions.find((action) => action.id === actionsConfig.defaultAction)
@@ -327,6 +338,38 @@ export function ActionsPane({
               <option value={action.id || ''} key={action.id || action.label}>{action.label || action.id}</option>
             ))}
           </select>
+        </div>
+
+        <div className="readonly-row">
+          <span>触发建议</span>
+          <select
+            className="text-input"
+            value={triggerProposalType}
+            onChange={(event) => setTriggerProposalType(event.target.value as ActionTriggerProposalType)}
+          >
+            <option value="click">点击</option>
+            <option value="manual">菜单</option>
+            <option value="random">随机</option>
+            <option value="state">状态</option>
+            <option value="event">事件</option>
+            <option value="unbound">不绑定</option>
+          </select>
+        </div>
+
+        <label className="field-row">
+          <span className="field-label">建议备注</span>
+          <input
+            className="text-input"
+            value={triggerProposalNotes}
+            placeholder={selectedAction?.id ? `目标动作 ${selectedAction.id}` : '选择动作后应用'}
+            onChange={(event) => setTriggerProposalNotes(event.target.value)}
+          />
+        </label>
+
+        <div className="inline-action">
+          <button type="button" className="ghost" onClick={onApplyTriggerProposal} disabled={working || !selectedAction?.id}>
+            应用触发建议
+          </button>
         </div>
       </div>
 

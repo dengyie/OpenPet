@@ -123,7 +123,16 @@ const normalizePersistedCreatorConfig = (config = {}) => ({
   actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : []
 })
 
-const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations = getLegacyPetAnimations, saveLegacyAnimations, projectRoot = path.join(__dirname, '..', '..', '..') }) => {
+const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
+const HOST_RULE_REQUIRED_TYPES = new Set(['random', 'state', 'event'])
+const MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH = 160
+
+const normalizeOptionalText = (value) => {
+  if (typeof value !== 'string') return ''
+  return value.slice(0, MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH)
+}
+
+const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations = getLegacyPetAnimations, saveLegacyAnimations, projectRoot = path.join(__dirname, '..', '..', '..'), now = () => new Date().toISOString() }) => {
   let cachedPetPack = null
   let legacyConfigOverride = null
 
@@ -271,7 +280,68 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     }
   }
 
-  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation }
+  const acceptTriggerProposal = (proposal = {}) => {
+    const actionId = normalizeActionId(proposal.actionId, 'trigger proposal action id')
+    const type = String(proposal.type || '')
+    if (!TRIGGER_PROPOSAL_TYPES.has(type)) {
+      throw new Error(`Unsupported trigger proposal type: ${type || 'unknown'}`)
+    }
+    if (!getMutableConfig().actions.some((action) => action.id === actionId)) {
+      throw new Error(`Trigger proposal action does not exist: ${actionId}`)
+    }
+
+    const baseResult = {
+      ok: true,
+      actionId,
+      type,
+      binding: String(proposal.binding || ''),
+      acceptedAt: now(),
+      sourcePluginId: normalizeOptionalText(proposal.sourcePluginId),
+      sourceRunId: normalizeOptionalText(proposal.sourceRunId),
+      sourceCommandId: normalizeOptionalText(proposal.sourceCommandId)
+    }
+
+    if (type === 'click') {
+      const binding = proposal.binding || 'clickAction'
+      if (binding !== 'clickAction') {
+        throw new Error(`Unsupported click trigger binding: ${binding}`)
+      }
+      applyCreatorActionMutation({ clickAction: actionId, actions: [] })
+      return {
+        ...baseResult,
+        applied: true,
+        binding: 'clickAction',
+        code: 'applied',
+        message: `Click trigger now uses action: ${actionId}`
+      }
+    }
+
+    if (type === 'manual' || type === 'unbound') {
+      return {
+        ...baseResult,
+        applied: false,
+        binding: '',
+        code: 'no_binding_required',
+        message: type === 'manual'
+          ? `Manual action is available without changing trigger bindings: ${actionId}`
+          : `Action remains imported without an automatic trigger: ${actionId}`
+      }
+    }
+
+    if (HOST_RULE_REQUIRED_TYPES.has(type)) {
+      return {
+        ...baseResult,
+        applied: false,
+        binding: '',
+        code: 'pending_host_rule',
+        message: `Trigger type ${type} requires a host trigger-rule editor before it can be applied.`
+      }
+    }
+
+    throw new Error(`Unsupported trigger proposal type: ${type}`)
+  }
+
+  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation, acceptTriggerProposal }
 }
 
 module.exports = { createActionService }

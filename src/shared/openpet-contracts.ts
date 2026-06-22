@@ -236,6 +236,32 @@ export interface ActionsConfigViewState {
   actions: ActionEntry[]
 }
 
+export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
+
+export interface ActionTriggerProposalAcceptanceRequest {
+  actionId: string
+  type: ActionTriggerProposalType
+  binding?: string
+  sourcePluginId?: string
+  sourceRunId?: string
+  sourceCommandId?: string
+  notes?: string
+}
+
+export interface ActionTriggerProposalAcceptanceResult {
+  ok: boolean
+  applied: boolean
+  actionId: string
+  type: ActionTriggerProposalType
+  binding: string
+  code: 'applied' | 'no_binding_required' | 'pending_host_rule'
+  message: string
+  acceptedAt: string
+  sourcePluginId?: string
+  sourceRunId?: string
+  sourceCommandId?: string
+}
+
 export interface OkResponse {
   ok: boolean
 }
@@ -306,12 +332,14 @@ export interface ActionFrameImportResult {
 }
 
 export interface ActionsSaveConfigRequest {
-  defaultAction: string
-  clickAction: string
+  defaultAction?: string
+  clickAction?: string
+  triggerProposal?: ActionTriggerProposalAcceptanceRequest
 }
 
 export interface ActionsMutationResult {
   animations: ActionsConfigViewState
+  triggerProposal?: ActionTriggerProposalAcceptanceResult
 }
 
 export interface BlocklistState {

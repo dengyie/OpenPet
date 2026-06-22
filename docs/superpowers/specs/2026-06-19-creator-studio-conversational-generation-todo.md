@@ -227,6 +227,13 @@ For `full-pet`, import through the approved pet-pack import bridge.
 - Add model settings UI and host model bridge from the model-settings backlog before real cloud/local generation.
 - Ensure API keys remain in host secret storage and are not exposed to ordinary plugins.
 
+Completed host slice:
+
+- OpenPet host now accepts reviewed action trigger proposals through the Actions configuration path.
+- `click` proposals can be applied to `clickAction` after validating the target action exists.
+- `manual` and `unbound` proposals are confirmed without mutating bindings.
+- `random`, `state`, and `event` proposals remain visible as pending host-rule work until the full trigger-rule schema/editor exists.
+
 ## TODO: Later Work
 
 - Model-assisted intent parsing once the host model bridge exists.
@@ -248,4 +255,3 @@ The first implementation is acceptable when:
 - the approved action imports through the host bridge;
 - trigger proposals are persisted and visible without being silently applied by the plugin;
 - the same task contract can represent a future full-pet run.
-

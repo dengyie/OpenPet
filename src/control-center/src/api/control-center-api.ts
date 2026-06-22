@@ -4,6 +4,7 @@ import type {
   ActionFrameInspectionResult,
   ActionFrameImportRequest,
   ActionFrameReinspectRequest,
+  ActionsConfigViewState,
   AiChatRequest,
   AiConfigViewState,
   AiPersona,
@@ -40,6 +41,7 @@ declare global {
 
 interface DemoState {
   settings: ControlCenterSettings
+  actionsConfig: ActionsConfigViewState
   aiConfig: AiConfigViewState
   aiPersonaOverrides: Record<string, AiPersonaOverride>
   imageGenerationConfig: ImageGenerationConfigViewState
@@ -80,6 +82,7 @@ const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult =>
 const demoStorageKey = 'openpet.controlCenter.demoState'
 
 const demoCatalogHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+const demoActionSpriteUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
 
 const demoPetPackPersonas: Record<string, AiPersona> = {
   'legacy-cat': {
@@ -467,6 +470,15 @@ const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus
 
 const createDefaultDemoState = (): DemoState => ({
   settings: cloneSettings(defaultSettings),
+  actionsConfig: cloneActionsConfig({
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8, sprite: demoActionSpriteUrl },
+      { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8, sprite: demoActionSpriteUrl },
+      { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8, sprite: demoActionSpriteUrl }
+    ]
+  }),
   aiConfig: cloneAiConfig({
     ...defaultAiConfig,
     behavior: {
@@ -504,6 +516,7 @@ const readDemoState = (): DemoState => {
     const state = JSON.parse(rawState)
     return {
       settings: cloneSettings(state.settings),
+      actionsConfig: cloneActionsConfig(state.actionsConfig || createDefaultDemoState().actionsConfig),
       aiConfig: cloneAiConfig(state.aiConfig),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
