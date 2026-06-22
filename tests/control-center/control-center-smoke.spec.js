@@ -278,6 +278,21 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('宠物人格 override 已清空')
     await expect(page.getByLabel('Tone')).toHaveValue('')
     await expect(page.locator('.json-preview').first()).toContainText('Tone: light, sunny, and attentive')
+
+    await page.getByLabel('生成说明').fill('更适合专注工作')
+    await page.getByRole('button', { name: '生成人格草稿' }).click()
+    await expect(page.locator('.status-line')).toContainText('宠物人格草稿已生成')
+    await expect(page.getByText('Generated Persona Draft')).toBeVisible()
+    await expect(page.locator('.json-preview', { hasText: 'generated from: 更适合专注工作' })).toBeVisible()
+    await expect(page.getByLabel('Tone')).toHaveValue('')
+
+    await page.getByRole('button', { name: '应用草稿' }).click()
+    await expect(page.locator('.status-line')).toContainText('宠物人格草稿已应用')
+    await expect(page.getByLabel('Tone')).toHaveValue('generated from: 更适合专注工作')
+
+    await page.reload()
+    await page.getByRole('button', { name: 'AI' }).click()
+    await expect(page.getByLabel('Tone')).toHaveValue('generated from: 更适合专注工作')
   })
 
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {

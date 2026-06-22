@@ -18,6 +18,7 @@ import type {
   AiBehaviorRule,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiPersonaDraftViewState,
   AiPersonaOverride,
   AiPersonaProfileViewState,
   ChatMessage,
@@ -103,6 +104,8 @@ export function useAiPane(activeTab = 'ai') {
   const [activeConfig, setActiveConfig] = useState<AiConfigViewState>(defaultAiConfig)
   const [personaProfile, setPersonaProfile] = useState<AiPersonaProfileViewState>(defaultAiPersonaProfile)
   const [personaDraft, setPersonaDraft] = useState(() => personaToDraft(defaultAiPersonaProfile.overridePersona))
+  const [personaGenerationInstruction, setPersonaGenerationInstruction] = useState('')
+  const [generatedPersonaDraft, setGeneratedPersonaDraft] = useState<AiPersonaDraftViewState | null>(null)
   const [imageGenerationConfig, setImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [imageApiKeyDraft, setImageApiKeyDraft] = useState('')
@@ -122,6 +125,7 @@ export function useAiPane(activeTab = 'ai') {
     const profile = cloneAiPersonaProfile(await api.getAiPersonaProfile())
     setPersonaProfile(profile)
     setPersonaDraft(personaToDraft(profile.overridePersona))
+    setGeneratedPersonaDraft((current) => (current?.petPackId === profile.petPackId ? current : null))
     return profile
   }
 
@@ -407,6 +411,7 @@ export function useAiPane(activeTab = 'ai') {
       const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride({}))
       setPersonaProfile(profile)
       setPersonaDraft(personaToDraft(profile.overridePersona))
+      setGeneratedPersonaDraft(null)
       setStatus('宠物人格 override 已清空')
     } catch (error) {
       setStatus(messageFromError(error, '宠物人格重置失败'))
@@ -422,9 +427,47 @@ export function useAiPane(activeTab = 'ai') {
       const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride(buildPersonaOverrideFromDraft(personaDraft)))
       setPersonaProfile(profile)
       setPersonaDraft(personaToDraft(profile.overridePersona))
+      setGeneratedPersonaDraft(null)
       setStatus('宠物人格 override 已保存')
     } catch (error) {
       setStatus(messageFromError(error, '宠物人格保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onGeneratePersonaDraft = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const draft = await api.generateAiPersonaDraft({ instruction: personaGenerationInstruction })
+      setGeneratedPersonaDraft(draft)
+      setStatus('宠物人格草稿已生成，确认后才会写入本地 override')
+    } catch (error) {
+      setGeneratedPersonaDraft(null)
+      setStatus(messageFromError(error, '宠物人格生成失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onApplyGeneratedPersonaDraft = async () => {
+    if (!generatedPersonaDraft) return
+    if (generatedPersonaDraft.petPackId !== personaProfile.petPackId) {
+      setGeneratedPersonaDraft(null)
+      setStatus('人格草稿已过期，请为当前宠物包重新生成')
+      return
+    }
+    setSaving(true)
+    setStatus('')
+    try {
+      const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride(generatedPersonaDraft.draftPersona))
+      setPersonaProfile(profile)
+      setPersonaDraft(personaToDraft(profile.overridePersona))
+      setGeneratedPersonaDraft(null)
+      setStatus('宠物人格草稿已应用')
+    } catch (error) {
+      setStatus(messageFromError(error, '应用人格草稿失败'))
     } finally {
       setSaving(false)
     }
@@ -474,6 +517,9 @@ export function useAiPane(activeTab = 'ai') {
     imageApiKeyDraft,
     setImageApiKeyDraft,
     onChangePersonaDraft,
+    personaGenerationInstruction,
+    setPersonaGenerationInstruction,
+    generatedPersonaDraft,
     chatDraft,
     setChatDraft,
     chatMessages,
@@ -506,6 +552,9 @@ export function useAiPane(activeTab = 'ai') {
     onSaveImageGeneration,
     onSavePersonaOverride,
     onResetPersonaOverride,
+    onGeneratePersonaDraft,
+    onApplyGeneratedPersonaDraft,
+    onDismissGeneratedPersonaDraft: () => setGeneratedPersonaDraft(null),
     onSaveBehavior,
     onSaveApiKey,
     onSaveImageGenerationApiKey,

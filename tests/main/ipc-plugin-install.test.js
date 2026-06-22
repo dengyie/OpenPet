@@ -212,6 +212,7 @@ test('ai chat handler delegates to ai talk service when available', async () => 
 test('ai persona profile IPC delegates to ai talk service when available', async () => {
   const ipcMain = createIpcMainStub()
   const saveCalls = []
+  const generateCalls = []
   const profile = {
     petPackId: 'legacy-cat',
     petPackDisplayName: 'Legacy Cat',
@@ -238,6 +239,15 @@ test('ai persona profile IPC delegates to ai talk service when available', async
     }),
     aiTalkService: {
       getPersonaProfile: () => profile,
+      generatePersonaDraft: (request) => {
+        generateCalls.push(request)
+        return {
+          petPackId: 'legacy-cat',
+          petPackDisplayName: 'Legacy Cat',
+          draftPersona: { tone: 'generated' },
+          compiledPersonaPrompt: '# Pet Persona\nTone: generated'
+        }
+      },
       savePersonaOverride: (override) => {
         saveCalls.push(override)
         return { ...profile, overridePersona: override, effectivePersona: { ...profile.effectivePersona, ...override } }
@@ -247,12 +257,15 @@ test('ai persona profile IPC delegates to ai talk service when available', async
   })
 
   const loaded = await ipcMain.handlers.get(IPC.AI_GET_PERSONA_PROFILE)()
+  const generated = await ipcMain.handlers.get(IPC.AI_GENERATE_PERSONA_DRAFT)(null, { instruction: 'make it calmer' })
   const saved = await ipcMain.handlers.get(IPC.AI_SAVE_PERSONA_OVERRIDE)(null, { tone: 'playful' })
 
   assert.equal(loaded.petPackId, 'legacy-cat')
   assert.equal(loaded.petPackDisplayName, 'Legacy Cat')
   assert.equal(loaded.effectivePersona.tone, 'sleepy')
   assert.match(loaded.compiledSystemPrompt, /# Global Instructions/)
+  assert.deepEqual(generateCalls, [{ instruction: 'make it calmer' }])
+  assert.equal(generated.draftPersona.tone, 'generated')
   assert.deepEqual(saveCalls, [{ tone: 'playful' }])
   assert.equal(saved.overridePersona.tone, 'playful')
 })

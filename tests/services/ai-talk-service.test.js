@@ -324,6 +324,48 @@ test('ai talk service saves persona override for the active pet pack and returns
   assert.deepEqual(store.getPersonaOverride('sprout-cat'), { tone: 'bouncy' })
 })
 
+test('ai talk service generates persona draft without persisting override', async () => {
+  const requests = []
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      complete: async (request) => {
+        requests.push(request)
+        return {
+          reply: '```json\n{"persona":{"tone":"brisk and encouraging","coreTraits":["focused","bright"],"boundaries":["Do not invent unavailable actions."]}}\n```'
+        }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({
+      id: 'mochi-cat',
+      displayName: 'Mochi Cat',
+      persona: {
+        name: 'Mochi',
+        identity: 'A tiny desktop cat.',
+        tone: 'warm',
+        coreTraits: ['curious'],
+        speakingStyle: 'Short sentences.',
+        relationshipToUser: 'Companion.',
+        actionStyle: 'Use existing actions.',
+        boundaries: ['Do not pretend to be human.']
+      }
+    })
+  })
+
+  const draft = await service.generatePersonaDraft({ instruction: '更适合专注工作' })
+
+  assert.equal(draft.petPackId, 'mochi-cat')
+  assert.equal(draft.petPackDisplayName, 'Mochi Cat')
+  assert.equal(draft.draftPersona.tone, 'brisk and encouraging')
+  assert.deepEqual(draft.draftPersona.coreTraits, ['focused', 'bright'])
+  assert.match(draft.compiledPersonaPrompt, /Tone: brisk and encouraging/)
+  assert.match(requests[0].messages[0].content, /strict JSON/)
+  assert.match(requests[0].messages[1].content, /更适合专注工作/)
+  assert.deepEqual(store.getPersonaOverride('mochi-cat'), {})
+})
+
 test('ai talk service preserves existing global system prompt as stable instruction', async () => {
   const requests = []
   const service = createAiTalkService({

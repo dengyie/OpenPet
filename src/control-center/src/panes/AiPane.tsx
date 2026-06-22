@@ -3,6 +3,7 @@ import type {
   AiBehaviorResult,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiPersonaDraftViewState,
   AiPersonaProfileViewState,
   ChatMessage,
   ImageGenerationConfigViewState
@@ -37,6 +38,9 @@ export interface AiPaneProps {
   onSaveImageGeneration: () => void | Promise<void>
   onSavePersonaOverride: () => void | Promise<void>
   onResetPersonaOverride: () => void | Promise<void>
+  onGeneratePersonaDraft: () => void | Promise<void>
+  onApplyGeneratedPersonaDraft: () => void | Promise<void>
+  onDismissGeneratedPersonaDraft: () => void | Promise<void>
   onSaveImageGenerationApiKey: () => void | Promise<void>
   onClearImageGenerationApiKey: () => void | Promise<void>
   onCheckImageGenerationHealth: () => void | Promise<void>
@@ -48,6 +52,9 @@ export interface AiPaneProps {
   imageApiKeyDraft: string
   setImageApiKeyDraft: (value: string) => void
   onChangePersonaDraft: (partial: Partial<AiPaneProps['personaDraft']>) => void
+  personaGenerationInstruction: string
+  setPersonaGenerationInstruction: (value: string) => void
+  generatedPersonaDraft: AiPersonaDraftViewState | null
   chatDraft: string
   setChatDraft: (value: string) => void
   chatMessages: ChatMessage[]
@@ -87,6 +94,9 @@ export function AiPane({
   onSaveImageGeneration,
   onSavePersonaOverride,
   onResetPersonaOverride,
+  onGeneratePersonaDraft,
+  onApplyGeneratedPersonaDraft,
+  onDismissGeneratedPersonaDraft,
   onSaveImageGenerationApiKey,
   onClearImageGenerationApiKey,
   onCheckImageGenerationHealth,
@@ -98,6 +108,9 @@ export function AiPane({
   imageApiKeyDraft,
   setImageApiKeyDraft,
   onChangePersonaDraft,
+  personaGenerationInstruction,
+  setPersonaGenerationInstruction,
+  generatedPersonaDraft,
   chatDraft,
   setChatDraft,
   chatMessages,
@@ -462,6 +475,41 @@ export function AiPane({
           <strong>Compiled System Prompt</strong>
           <pre className="json-preview">{personaProfile.compiledSystemPrompt || '暂无编译结果'}</pre>
         </div>
+
+        <label className="field-row tall">
+          <span className="field-label">生成说明</span>
+          <textarea
+            className="text-input textarea"
+            value={personaGenerationInstruction}
+            placeholder="例如：更活泼一点，但保持简短、可靠、适合工作陪伴"
+            onChange={(event) => setPersonaGenerationInstruction(event.target.value)}
+          />
+        </label>
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">人格生成草稿</div>
+            <div className="field-note">生成后先预览，确认后才写入本地 override</div>
+          </div>
+          <button type="button" className="ghost" onClick={onGeneratePersonaDraft} disabled={saving}>
+            生成人格草稿
+          </button>
+        </div>
+
+        {generatedPersonaDraft ? (
+          <div className="readonly-row">
+            <strong>Generated Persona Draft</strong>
+            <pre className="json-preview">{generatedPersonaDraft.compiledPersonaPrompt}</pre>
+            <div className="inline-action">
+              <button type="button" className="primary" onClick={onApplyGeneratedPersonaDraft} disabled={saving}>
+                应用草稿
+              </button>
+              <button type="button" className="ghost" onClick={onDismissGeneratedPersonaDraft} disabled={saving}>
+                放弃草稿
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}

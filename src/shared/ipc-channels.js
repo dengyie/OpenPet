@@ -49,6 +49,7 @@ const IPC = Object.freeze({
   AI_SAVE_API_KEY: 'ai:save-api-key',
   AI_TEST_CONNECTION: 'ai:test-connection',
   AI_GET_PERSONA_PROFILE: 'ai:get-persona-profile',
+  AI_GENERATE_PERSONA_DRAFT: 'ai:generate-persona-draft',
   AI_SAVE_PERSONA_OVERRIDE: 'ai:save-persona-override',
   IMAGE_GENERATION_GET_CONFIG: 'image-generation:get-config',
   IMAGE_GENERATION_SAVE_CONFIG: 'image-generation:save-config',

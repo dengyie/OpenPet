@@ -561,6 +561,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return aiTalkService.getPersonaProfile()
   })
 
+  ipcMainService.handle(IPC.AI_GENERATE_PERSONA_DRAFT, (_event, request) => {
+    if (!aiTalkService?.generatePersonaDraft) throw new Error('AI talk persona generation is not available')
+    return aiTalkService.generatePersonaDraft(request || {})
+  })
+
   ipcMainService.handle(IPC.AI_SAVE_PERSONA_OVERRIDE, (_event, override) => {
     if (!aiTalkService?.savePersonaOverride) throw new Error('AI talk persona overrides are not available')
     return aiTalkService.savePersonaOverride(override || {})

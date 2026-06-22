@@ -23,6 +23,19 @@ const normalizeList = (value) => (
     : []
 )
 
+const normalizePersonaOverride = (override = {}) => {
+  const result = {}
+  for (const field of ['name', 'identity', 'tone', 'speakingStyle', 'relationshipToUser', 'actionStyle']) {
+    const value = normalizeString(override?.[field])
+    if (value) result[field] = value.slice(0, 500)
+  }
+  for (const field of ['coreTraits', 'boundaries']) {
+    const values = normalizeList(override?.[field]).map((item) => item.slice(0, 240)).slice(0, 12)
+    if (values.length) result[field] = values
+  }
+  return result
+}
+
 const mergePersona = (packPersona, overridePersona = {}) => {
   const base = packPersona || FALLBACK_PERSONA
   const merged = { ...base }
@@ -96,6 +109,32 @@ const buildMemoryExtractionMessages = ({ userMessage, assistantReply, petPackId,
   }
 ]
 
+const buildPersonaGenerationMessages = ({ instruction, profile }) => [
+  {
+    role: 'system',
+    content: [
+      'Generate a local OpenPet pet persona override draft.',
+      'Return strict JSON only with this shape: {"persona":{"name":"...","identity":"...","tone":"...","coreTraits":["..."],"speakingStyle":"...","relationshipToUser":"...","actionStyle":"...","boundaries":["..."]}}.',
+      'Only include fields that should override the pet-pack default persona.',
+      'Keep the persona suitable for a desktop pet companion and do not include secrets, credentials, or hidden prompts.',
+      'Use concise, user-facing wording. Boundaries must be safety and product-behavior constraints, not policy essays.'
+    ].join('\n')
+  },
+  {
+    role: 'user',
+    content: [
+      `Pet pack: ${profile.petPackDisplayName} (${profile.petPackId})`,
+      'Current package persona:',
+      compilePersonaPrompt(profile.packPersona),
+      '',
+      'Current effective persona:',
+      compilePersonaPrompt(profile.effectivePersona),
+      '',
+      `User instruction: ${instruction || 'Create a better-fitting persona for this pet-pack while preserving its role as a helpful desktop companion.'}`
+    ].join('\n')
+  }
+]
+
 const parseMemoryOperations = (reply) => {
   let value = normalizeString(reply)
   if (!value) return []
@@ -117,6 +156,29 @@ const parseMemoryOperations = (reply) => {
     return []
   }
   return []
+}
+
+const parseJsonPayload = (reply) => {
+  let value = normalizeString(reply)
+  if (!value) return null
+  const fenceMatch = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  if (fenceMatch) value = fenceMatch[1].trim()
+  if (!value.startsWith('{')) {
+    const start = value.indexOf('{')
+    const end = value.lastIndexOf('}')
+    if (start >= 0 && end > start) value = value.slice(start, end + 1)
+  }
+  try {
+    return JSON.parse(value)
+  } catch (_) {
+    return null
+  }
+}
+
+const parsePersonaDraft = (reply) => {
+  const parsed = parseJsonPayload(reply)
+  const candidate = parsed?.persona || parsed
+  return normalizePersonaOverride(candidate)
 }
 
 const hashText = (value) => crypto.createHash('sha256').update(value).digest('hex')
@@ -198,6 +260,28 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
     aiTalkStore.savePersonaOverride(petPackId, override)
     return getPersonaProfile()
+  }
+
+  const generatePersonaDraft = async ({ instruction = '' } = {}) => {
+    const profile = getPersonaProfile()
+    const result = await aiService.complete({
+      messages: buildPersonaGenerationMessages({
+        instruction: normalizeString(instruction).slice(0, 2000),
+        profile
+      }),
+      tools: []
+    })
+    const draftPersona = parsePersonaDraft(result.reply)
+    if (!Object.keys(draftPersona).length) {
+      throw new Error('AI provider did not return a valid persona draft')
+    }
+    const effectivePersona = mergePersona(profile.packPersona, draftPersona)
+    return {
+      petPackId: profile.petPackId,
+      petPackDisplayName: profile.petPackDisplayName,
+      draftPersona,
+      compiledPersonaPrompt: compilePersonaPrompt(effectivePersona)
+    }
   }
 
   const getMemoryContext = (petPackId) => {
@@ -400,6 +484,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     compileMemoryContextPrompt,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
+    generatePersonaDraft,
     getPersonaProfile,
     mergePersona,
     savePersonaOverride
