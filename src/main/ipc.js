@@ -582,6 +582,16 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.AI_TEST_CONNECTION, () => aiService.testConnection())
 
+  ipcMainService.handle(IPC.AI_GET_PERSONA_PROFILE, () => {
+    if (!aiTalkService?.getPersonaProfile) throw new Error('AI talk persona profile is not available')
+    return aiTalkService.getPersonaProfile()
+  })
+
+  ipcMainService.handle(IPC.AI_SAVE_PERSONA_OVERRIDE, (_event, override) => {
+    if (!aiTalkService?.savePersonaOverride) throw new Error('AI talk persona overrides are not available')
+    return aiTalkService.savePersonaOverride(override || {})
+  })
+
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => imageGenerationModelService.getConfig())
 
   ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_CONFIG, (_event, config) => {

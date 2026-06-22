@@ -225,6 +225,46 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.field-row', { hasText: '图片 API Key' })).toContainText('未保存')
   })
 
+  test('persists pet persona override and follows the active pet-pack in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    await expect(page.getByText('Pet Persona Override')).toBeVisible()
+    await expect(page.locator('.field-note', { hasText: '当前激活宠物包' })).toContainText('Legacy Cat')
+    await expect(page.getByLabel('Tone')).toHaveAttribute('placeholder', 'warm and concise')
+
+    await page.getByLabel('Tone').fill('sleepy and affectionate')
+    await page.getByLabel('Core Traits').fill('loyal\nsoft-spoken')
+    await page.getByRole('button', { name: '保存人格 override' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('宠物人格 override 已保存')
+    await expect(page.locator('.json-preview').first()).toContainText('Tone: sleepy and affectionate')
+    await expect(page.locator('.json-preview').first()).toContainText('Core traits: loyal, soft-spoken')
+
+    await page.reload()
+    await page.getByRole('button', { name: 'AI' }).click()
+    await expect(page.getByLabel('Tone')).toHaveValue('sleepy and affectionate')
+    await expect(page.getByLabel('Core Traits')).toHaveValue('loyal\nsoft-spoken')
+
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('button', { name: '启用' }).filter({ hasText: /^启用$/ }).nth(0).click()
+    await expect(page.locator('.status-line')).toContainText('已启用 Citrus Cat')
+
+    await page.getByRole('button', { name: 'AI' }).click()
+    await expect(page.locator('.field-note', { hasText: '当前激活宠物包' })).toContainText('Citrus Cat')
+    await expect(page.getByLabel('Tone')).toHaveValue('')
+    await expect(page.getByLabel('Tone')).toHaveAttribute('placeholder', 'light, sunny, and attentive')
+
+    await page.getByLabel('Tone').fill('sparkly and kind')
+    await page.getByRole('button', { name: '保存人格 override' }).click()
+    await expect(page.locator('.json-preview').first()).toContainText('Tone: sparkly and kind')
+
+    await page.getByRole('button', { name: '清空 override' }).click()
+    await expect(page.locator('.status-line')).toContainText('宠物人格 override 已清空')
+    await expect(page.getByLabel('Tone')).toHaveValue('')
+    await expect(page.locator('.json-preview').first()).toContainText('Tone: light, sunny, and attentive')
+  })
+
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

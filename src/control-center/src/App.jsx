@@ -19,7 +19,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState('pet')
   const pet = usePetSettingsPane()
   const actions = useActionsPane()
-  const ai = useAiPane()
+  const ai = useAiPane(activeTab)
   const plugins = usePluginsPane()
   const catalog = useCatalogPane()
   const service = useServicePane()

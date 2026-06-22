@@ -3,6 +3,7 @@ import type {
   AiBehaviorResult,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiPersonaProfileViewState,
   ChatMessage,
   ImageGenerationConfigViewState
 } from '../../../shared/openpet-contracts'
@@ -13,6 +14,17 @@ export interface AiPaneProps {
   config: AiConfigViewState
   activeConfig: AiConfigViewState
   imageGenerationConfig: ImageGenerationConfigViewState
+  personaProfile: AiPersonaProfileViewState
+  personaDraft: {
+    name: string
+    identity: string
+    tone: string
+    speakingStyle: string
+    relationshipToUser: string
+    actionStyle: string
+    coreTraitsText: string
+    boundariesText: string
+  }
   providerConfigDirty: boolean
   providerConfigValidationError: string
   connectionTestResult: AiConnectionTestResult | null
@@ -23,6 +35,8 @@ export interface AiPaneProps {
   onSaveApiKey: () => void | Promise<void>
   onTest: () => void | Promise<void>
   onSaveImageGeneration: () => void | Promise<void>
+  onSavePersonaOverride: () => void | Promise<void>
+  onResetPersonaOverride: () => void | Promise<void>
   onSaveImageGenerationApiKey: () => void | Promise<void>
   onClearImageGenerationApiKey: () => void | Promise<void>
   onCheckImageGenerationHealth: () => void | Promise<void>
@@ -33,6 +47,7 @@ export interface AiPaneProps {
   setApiKeyDraft: (value: string) => void
   imageApiKeyDraft: string
   setImageApiKeyDraft: (value: string) => void
+  onChangePersonaDraft: (partial: Partial<AiPaneProps['personaDraft']>) => void
   chatDraft: string
   setChatDraft: (value: string) => void
   chatMessages: ChatMessage[]
@@ -58,6 +73,8 @@ export function AiPane({
   config,
   activeConfig,
   imageGenerationConfig = defaultImageGenerationConfig,
+  personaProfile,
+  personaDraft,
   providerConfigDirty,
   providerConfigValidationError,
   connectionTestResult,
@@ -68,6 +85,8 @@ export function AiPane({
   onSaveApiKey,
   onTest,
   onSaveImageGeneration,
+  onSavePersonaOverride,
+  onResetPersonaOverride,
   onSaveImageGenerationApiKey,
   onClearImageGenerationApiKey,
   onCheckImageGenerationHealth,
@@ -78,6 +97,7 @@ export function AiPane({
   setApiKeyDraft,
   imageApiKeyDraft,
   setImageApiKeyDraft,
+  onChangePersonaDraft,
   chatDraft,
   setChatDraft,
   chatMessages,
@@ -335,6 +355,113 @@ export function AiPane({
             })}
           />
         </label>
+      </div>
+
+      <div className="section">
+        <div className="field-row">
+          <div>
+            <div className="field-label">Pet Persona Override</div>
+            <div className="field-note">当前激活宠物包：{personaProfile.petPackDisplayName} · {personaProfile.petPackId}</div>
+          </div>
+          <div className="inline-action">
+            <button type="button" className="ghost" onClick={onResetPersonaOverride} disabled={saving}>
+              清空 override
+            </button>
+            <button type="button" className="primary" onClick={onSavePersonaOverride} disabled={saving}>
+              保存人格 override
+            </button>
+          </div>
+        </div>
+
+        <label className="field-row">
+          <span className="field-label">Name</span>
+          <input
+            className="text-input"
+            value={personaDraft.name}
+            placeholder={personaProfile.packPersona.name}
+            onChange={(event) => onChangePersonaDraft({ name: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row">
+          <span className="field-label">Identity</span>
+          <input
+            className="text-input"
+            value={personaDraft.identity}
+            placeholder={personaProfile.packPersona.identity}
+            onChange={(event) => onChangePersonaDraft({ identity: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row">
+          <span className="field-label">Tone</span>
+          <input
+            className="text-input"
+            value={personaDraft.tone}
+            placeholder={personaProfile.packPersona.tone}
+            onChange={(event) => onChangePersonaDraft({ tone: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row">
+          <span className="field-label">Speaking Style</span>
+          <input
+            className="text-input"
+            value={personaDraft.speakingStyle}
+            placeholder={personaProfile.packPersona.speakingStyle}
+            onChange={(event) => onChangePersonaDraft({ speakingStyle: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row">
+          <span className="field-label">Relationship</span>
+          <input
+            className="text-input"
+            value={personaDraft.relationshipToUser}
+            placeholder={personaProfile.packPersona.relationshipToUser}
+            onChange={(event) => onChangePersonaDraft({ relationshipToUser: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row">
+          <span className="field-label">Action Style</span>
+          <input
+            className="text-input"
+            value={personaDraft.actionStyle}
+            placeholder={personaProfile.packPersona.actionStyle}
+            onChange={(event) => onChangePersonaDraft({ actionStyle: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row tall">
+          <span className="field-label">Core Traits</span>
+          <textarea
+            className="text-input textarea"
+            value={personaDraft.coreTraitsText}
+            placeholder={personaProfile.packPersona.coreTraits.join('\n')}
+            onChange={(event) => onChangePersonaDraft({ coreTraitsText: event.target.value })}
+          />
+        </label>
+
+        <label className="field-row tall">
+          <span className="field-label">Boundaries</span>
+          <textarea
+            className="text-input textarea"
+            value={personaDraft.boundariesText}
+            placeholder={personaProfile.packPersona.boundaries.join('\n')}
+            onChange={(event) => onChangePersonaDraft({ boundariesText: event.target.value })}
+          />
+        </label>
+
+        <div className="readonly-row">
+          <strong>Compiled Persona Prompt</strong>
+          <pre className="json-preview">{personaProfile.compiledPersonaPrompt || '暂无编译结果'}</pre>
+        </div>
+
+        <div className="readonly-row">
+          <strong>Compiled System Prompt</strong>
+          <pre className="json-preview">{personaProfile.compiledSystemPrompt || '暂无编译结果'}</pre>
+        </div>
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}

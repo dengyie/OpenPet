@@ -172,6 +172,34 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     return { persona, systemPrompt, personaHash: hashText(systemPrompt) }
   }
 
+  const getPersonaProfile = () => {
+    const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : {}
+    const { manifest, petPackId } = resolveActivePack()
+    const packPersona = mergePersona(manifest.persona, {})
+    const overridePersona = typeof aiTalkStore.getPersonaOverride === 'function'
+      ? aiTalkStore.getPersonaOverride(petPackId)
+      : {}
+    const { persona, systemPrompt } = resolvePersona(manifest, petPackId)
+    return {
+      petPackId,
+      petPackDisplayName: normalizeString(manifest.displayName) || petPackId,
+      packPersona,
+      overridePersona,
+      effectivePersona: persona,
+      compiledPersonaPrompt: compilePersonaPrompt(persona),
+      compiledSystemPrompt: compileSystemPrompt({ personaPrompt: systemPrompt, globalPrompt: config.systemPrompt })
+    }
+  }
+
+  const savePersonaOverride = (override = {}) => {
+    const { petPackId } = resolveActivePack()
+    if (typeof aiTalkStore.savePersonaOverride !== 'function') {
+      throw new Error('AI talk persona overrides are not available')
+    }
+    aiTalkStore.savePersonaOverride(petPackId, override)
+    return getPersonaProfile()
+  }
+
   const getMemoryContext = (petPackId) => {
     if (typeof aiTalkStore.listMemories !== 'function') return []
     return aiTalkStore.listMemories({ petPackId, limit: MAX_MEMORY_CONTEXT_ITEMS })
@@ -372,7 +400,9 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     compileMemoryContextPrompt,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
-    mergePersona
+    getPersonaProfile,
+    mergePersona,
+    savePersonaOverride
   }
 }
 
