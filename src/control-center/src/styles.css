@@ -380,16 +380,16 @@ button {
 .cursor-card-preview img {
   position: relative;
   z-index: 1;
-  width: 38px;
-  height: 38px;
+  width: 10px;
+  height: 10px;
   object-fit: contain;
   pointer-events: none;
-  filter: drop-shadow(0 5px 8px rgba(53, 67, 97, 0.12));
+  filter: drop-shadow(0 2px 3px rgba(53, 67, 97, 0.14));
 }
 
 .cursor-option-card[data-cursor-type='builtin'] .cursor-card-preview img {
-  width: 36px;
-  height: 36px;
+  width: 9px;
+  height: 9px;
 }
 
 .cursor-card-add-icon {
