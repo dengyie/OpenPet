@@ -41,9 +41,6 @@ export function usePetSettingsPane() {
   const [settings, setSettings] = useState<ControlCenterSettings>(defaultSettings)
   const [originalSettings, setOriginalSettings] = useState<ControlCenterSettings>(defaultSettings)
   const [status, setStatus] = useState('')
-  const [manageMode, setManageMode] = useState(false)
-  const [editingCursorId, setEditingCursorId] = useState('')
-  const [editingCursorName, setEditingCursorName] = useState('')
   const originalRef = useRef<ControlCenterSettings>(defaultSettings)
 
   useEffect(() => {
@@ -107,9 +104,6 @@ export function usePetSettingsPane() {
   const onReset = () => {
     const restoredSettings = cloneSettings(originalRef.current)
     setSettings(restoredSettings)
-    setManageMode(false)
-    setEditingCursorId('')
-    setEditingCursorName('')
     setStatus('')
     api.previewScale(restoredSettings.scale)
   }
@@ -147,111 +141,15 @@ export function usePetSettingsPane() {
     }
   }
 
-  const onToggleManageMode = () => {
-    setManageMode((value) => !value)
-    if (editingCursorId) {
-      setEditingCursorId('')
-      setEditingCursorName('')
-    }
-  }
-
-  const onStartEditCursor = (cursorId: string) => {
-    const target = settings.customCursors.find((cursor) => cursor.id === cursorId)
-    if (!target) return
-    setManageMode(true)
-    setEditingCursorId(cursorId)
-    setEditingCursorName(target.name)
-  }
-
-  const onCancelEditCursor = () => {
-    setEditingCursorId('')
-    setEditingCursorName('')
-  }
-
-  const onSaveEditedCursor = async (cursorId: string) => {
-    const nextName = editingCursorName.trim()
-    if (!nextName) {
-      setStatus('指针名称不能为空')
-      return
-    }
-    const nextCustomCursors = normalizeCustomCursorRecords(
-      settings.customCursors.map((cursor) => (
-        cursor.id === cursorId ? { ...cursor, name: nextName } : cursor
-      ))
-    )
-    const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
-    setSettings(nextSettings)
-    setEditingCursorId('')
-    setEditingCursorName('')
-    await persistSettings(nextSettings, '指针名称已更新', '指针名称保存失败')
-  }
-
-  const onReplaceCustomCursor = async (cursorId: string) => {
-    const current = settings.customCursors.find((cursor) => cursor.id === cursorId)
-    if (!current) return
-    try {
-      const result = await api.importCursor()
-      if (result.canceled || !result.cursor) return
-      const nextCustomCursors = normalizeCustomCursorRecords(
-        settings.customCursors.map((cursor) => (
-          cursor.id === cursorId
-            ? {
-                ...result.cursor,
-                id: cursor.id,
-                name: editingCursorId === cursorId && editingCursorName.trim() ? editingCursorName.trim() : cursor.name,
-                createdAt: cursor.createdAt
-              }
-            : cursor
-        ))
-      )
-      const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
-      setSettings(nextSettings)
-      await persistSettings(nextSettings, '指针图片已替换', '指针图片替换失败')
-    } catch (error) {
-      setStatus(messageFromError(error, '指针图片替换失败'))
-    }
-  }
-
-  const onDeleteCustomCursor = async (cursorId: string) => {
-    const target = settings.customCursors.find((cursor) => cursor.id === cursorId)
-    if (!target) return
-    if (!window.confirm(`确认删除指针「${target.name}」吗？`)) return
-    const nextCustomCursors = settings.customCursors.filter((cursor) => cursor.id !== cursorId)
-    const nextSettings = applyCursorState(settings, {
-      selectedCursorId: settings.selectedCursorId === cursorId ? SYSTEM_CURSOR_ID : settings.selectedCursorId,
-      customCursors: nextCustomCursors
-    })
-    setSettings(nextSettings)
-    if (editingCursorId === cursorId) {
-      setEditingCursorId('')
-      setEditingCursorName('')
-    }
-    await persistSettings(
-      nextSettings,
-      settings.selectedCursorId === cursorId ? '指针已删除，并切回系统默认' : '指针已删除',
-      '删除自定义指针失败'
-    )
-  }
-
   const paneProps = {
     settings,
     originalSettings,
     status,
     saving,
     cursorOptions,
-    manageMode,
-    editingCursorId,
-    editingCursorName,
     onChange,
     onSelectCursor,
     onImportCursor,
-    onToggleManageMode,
-    onStartEditCursor,
-    onChangeEditingCursorName: setEditingCursorName,
-    onCancelEditCursor,
-    onSaveEditedCursor,
-    onReplaceCustomCursor,
-    onDeleteCustomCursor,
     onSave,
     onReset
   } satisfies PetPaneProps

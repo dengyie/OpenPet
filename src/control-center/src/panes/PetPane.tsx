@@ -1,4 +1,5 @@
 import type { ControlCenterSettings, CursorOption } from '../../../shared/openpet-contracts'
+import { SYSTEM_CURSOR_ID } from '../../../shared/cursor-library.ts'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { Toggle } from '../components/Toggle'
 import { bubbleDurationOptions, homeRadiusOptions, menuPositionOptions, speedOptions, walkDurationOptions } from '../constants'
@@ -9,39 +10,11 @@ export interface PetPaneProps {
   status: string
   saving: boolean
   cursorOptions: CursorOption[]
-  manageMode: boolean
-  editingCursorId: string
-  editingCursorName: string
   onChange: (partial: Partial<ControlCenterSettings>, previewScale?: boolean) => void
   onSelectCursor: (cursorId: string) => void | Promise<void>
   onImportCursor: () => void | Promise<void>
-  onToggleManageMode: () => void
-  onStartEditCursor: (cursorId: string) => void
-  onChangeEditingCursorName: (value: string) => void
-  onCancelEditCursor: () => void
-  onSaveEditedCursor: (cursorId: string) => void | Promise<void>
-  onReplaceCustomCursor: (cursorId: string) => void | Promise<void>
-  onDeleteCustomCursor: (cursorId: string) => void | Promise<void>
   onSave: () => void | Promise<void>
   onReset: () => void
-}
-
-const formatCursorSize = (width: number, height: number) => (
-  width > 0 && height > 0 ? `${width}×${height}` : '未知尺寸'
-)
-
-const formatCursorTime = (timestamp: string) => {
-  if (!timestamp || timestamp === 'builtin') return '内置指针'
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return '刚刚上传'
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(date).replace(/\//g, '-')
 }
 
 function CheckIcon() {
@@ -56,31 +29,6 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <path d="M10 4v12M4 10h12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function UploadIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M10 13V5m0 0L6.8 8.2M10 5l3.2 3.2M5 14.5v.7c0 1 .8 1.8 1.8 1.8h6.4c1 0 1.8-.8 1.8-1.8v-.7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function EditIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="m13.6 4.4 2 2a1 1 0 0 1 0 1.4l-7.8 7.8-3.4.6.6-3.4 7.8-7.8a1 1 0 0 1 1.4 0Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="m12.5 5.5 2 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M5.5 6.5v8a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-8M4 5h12M8 5V3.8c0-.4.3-.8.8-.8h2.4c.5 0 .8.4.8.8V5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -101,22 +49,13 @@ export function PetPane({
   onChange,
   onSelectCursor,
   onImportCursor,
-  onToggleManageMode,
-  onStartEditCursor,
-  onChangeEditingCursorName,
-  onCancelEditCursor,
-  onSaveEditedCursor,
-  onReplaceCustomCursor,
-  onDeleteCustomCursor,
   onSave,
   onReset,
   cursorOptions,
-  manageMode,
-  editingCursorId,
-  editingCursorName,
   saving
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
+  const visibleCursorOptions = cursorOptions.filter((option) => option.id !== SYSTEM_CURSOR_ID)
 
   return (
     <section className="pane pet-pane">
@@ -191,7 +130,7 @@ export function PetPane({
 
             <div className="cursor-options-rail">
               <div className="cursor-options-row" role="list" aria-label="可选指针">
-                {cursorOptions.map((option) => {
+                {visibleCursorOptions.map((option) => {
                   const selected = settings.selectedCursorId === option.id
                   return (
                     <button
@@ -231,107 +170,6 @@ export function PetPane({
                   <span className="cursor-card-label">添加自定义</span>
                 </button>
               </div>
-            </div>
-
-            <div className="cursor-library-panel">
-              <div className="cursor-library-header">
-                <div className="cursor-library-title">
-                  <h3>我的自定义指针（可管理、编辑或删除）</h3>
-                  <span className="cursor-library-title-icon" aria-hidden="true">
-                    <InfoIcon />
-                  </span>
-                </div>
-                <div className="cursor-library-actions">
-                  <button type="button" className="ghost accent cursor-toolbar-button" onClick={onImportCursor} disabled={saving}>
-                    <span className="button-icon" aria-hidden="true">
-                      <UploadIcon />
-                    </span>
-                    上传指针
-                  </button>
-                  <button
-                    type="button"
-                    className={`ghost cursor-toolbar-button${manageMode ? ' accent' : ''}`}
-                    onClick={onToggleManageMode}
-                    disabled={saving}
-                  >
-                    {manageMode ? '完成管理' : '管理'}
-                  </button>
-                </div>
-              </div>
-
-              {settings.customCursors.length ? (
-                <div className="cursor-library-list">
-                  {settings.customCursors.map((cursor) => {
-                    const selected = settings.selectedCursorId === cursor.id
-                    const editing = editingCursorId === cursor.id
-                    return (
-                      <div key={cursor.id} className="cursor-library-row">
-                        <div className="cursor-library-preview">
-                          <span className="cursor-card-surface" />
-                          <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
-                        </div>
-
-                        <div className="cursor-library-main">
-                          {editing ? (
-                            <div className="cursor-edit-form">
-                              <input
-                                className="text-input"
-                                value={editingCursorName}
-                                onChange={(event) => onChangeEditingCursorName(event.target.value)}
-                                placeholder="指针名称"
-                                aria-label="指针名称"
-                              />
-                              <div className="inline-action">
-                                <button type="button" className="ghost" onClick={() => onReplaceCustomCursor(cursor.id)} disabled={saving}>
-                                  替换图片
-                                </button>
-                                <button type="button" className="ghost" onClick={onCancelEditCursor} disabled={saving}>
-                                  取消
-                                </button>
-                                <button type="button" className="primary" onClick={() => onSaveEditedCursor(cursor.id)} disabled={saving}>
-                                  保存名称
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="cursor-library-name-row">
-                                <strong>{cursor.name}</strong>
-                                {selected ? <span className="cursor-usage-badge">使用中</span> : null}
-                              </div>
-                              <div className="cursor-library-meta">
-                                <span>尺寸：{formatCursorSize(cursor.width, cursor.height)}</span>
-                                <span>上传时间：{formatCursorTime(cursor.createdAt)}</span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        {!editing && manageMode ? (
-                          <div className="cursor-library-row-actions">
-                            <button type="button" className="ghost icon-button cursor-row-action" onClick={() => onStartEditCursor(cursor.id)} disabled={saving}>
-                              <span className="button-icon" aria-hidden="true">
-                                <EditIcon />
-                              </span>
-                              编辑
-                            </button>
-                            <button type="button" className="ghost icon-button danger cursor-row-action" onClick={() => onDeleteCustomCursor(cursor.id)} disabled={saving}>
-                              <span className="button-icon" aria-hidden="true">
-                                <TrashIcon />
-                              </span>
-                              删除
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="cursor-library-empty">
-                  还没有上传自定义指针，点击“添加自定义”或“上传指针”开始创建。
-                </div>
-              )}
             </div>
 
             <div className="cursor-guidance-note">
