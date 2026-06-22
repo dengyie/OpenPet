@@ -387,3 +387,168 @@ test('action service applies creator action mutations through pet pack persisten
   assert.equal(savedManifest.actions.find((action) => action.id === 'wave').label, 'Wave Updated')
   assert.equal(savedManifest.actions.find((action) => action.id === 'wave').sprite, 'sprites/wave.png')
 })
+
+test('action service accepts click trigger proposals by applying clickAction', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => '2026-06-22T10:00:00.000Z',
+    loadLegacyAnimations: () => savedConfig || ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const result = service.acceptTriggerProposal({
+    actionId: 'wave',
+    type: 'click',
+    binding: 'clickAction',
+    sourcePluginId: 'openpet.creator-studio',
+    sourceRunId: 'run-1',
+    sourceCommandId: 'import-approved-action'
+  })
+
+  assert.deepEqual(result, {
+    ok: true,
+    applied: true,
+    actionId: 'wave',
+    type: 'click',
+    binding: 'clickAction',
+    code: 'applied',
+    message: 'Click trigger now uses action: wave',
+    acceptedAt: '2026-06-22T10:00:00.000Z',
+    sourcePluginId: 'openpet.creator-studio',
+    sourceRunId: 'run-1',
+    sourceCommandId: 'import-approved-action'
+  })
+  assert.equal(savedConfig.clickAction, 'wave')
+  assert.equal(service.getConfig().clickAction, 'wave')
+})
+
+test('action service accepts review-only trigger proposals without mutating action bindings', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => '2026-06-22T10:01:00.000Z',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const manual = service.acceptTriggerProposal({ actionId: 'wave', type: 'manual' })
+  const state = service.acceptTriggerProposal({
+    actionId: 'wave',
+    type: 'state',
+    sourcePluginId: { id: 'object-source' },
+    sourceRunId: 'x'.repeat(200)
+  })
+
+  assert.equal(manual.applied, false)
+  assert.equal(manual.code, 'no_binding_required')
+  assert.equal(state.applied, false)
+  assert.equal(state.code, 'pending_host_rule')
+  assert.equal(state.sourcePluginId, '')
+  assert.equal(state.sourceRunId.length, 160)
+  assert.equal(savedConfig, null)
+  assert.equal(service.getConfig().clickAction, 'idle')
+})
+
+test('action service rejects unsafe trigger proposals before mutation', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: () => {
+      throw new Error('should not save invalid trigger proposal')
+    }
+  })
+
+  assert.throws(
+    () => service.acceptTriggerProposal({ actionId: '../wave', type: 'click' }),
+    /safe id/
+  )
+  assert.throws(
+    () => service.acceptTriggerProposal({ actionId: 'idle', type: 'shell' }),
+    /Unsupported trigger proposal type/
+  )
+  assert.throws(
+    () => service.acceptTriggerProposal({ actionId: 'missing', type: 'click' }),
+    /does not exist/
+  )
+  assert.throws(
+    () => service.acceptTriggerProposal({ actionId: 'idle', type: 'click', binding: 'defaultAction' }),
+    /Unsupported click trigger binding/
+  )
+})

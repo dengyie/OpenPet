@@ -3,6 +3,7 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
+  ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
   PetPackInspectionResult,
@@ -18,6 +19,8 @@ export function useActionsPane() {
   const [selectedActionId, setSelectedActionId] = useState('')
   const [importDraft, setImportDraft] = useState<ActionImportDraft>({ actionId: '', label: '' })
   const [importInspection, setImportInspection] = useState<CompletedActionFrameInspectionResult | null>(null)
+  const [triggerProposalType, setTriggerProposalType] = useState<ActionTriggerProposalType>('click')
+  const [triggerProposalNotes, setTriggerProposalNotes] = useState('')
   const [status, setStatus] = useState('')
   const [working, setWorking] = useState(false)
 
@@ -65,6 +68,35 @@ export function useActionsPane() {
       setStatus('动作配置已保存')
     } catch (error) {
       setStatus(messageFromError(error, '保存失败'))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const onApplyTriggerProposal = async () => {
+    const actionId = selectedActionId || actionsConfig.defaultAction || actionsConfig.actions[0]?.id || ''
+    if (!actionId) {
+      setStatus('请先选择一个动作')
+      return
+    }
+    setWorking(true)
+    setStatus('')
+    try {
+      const response = await api.saveActionsConfig({
+        triggerProposal: {
+          actionId,
+          type: triggerProposalType,
+          binding: triggerProposalType === 'click' ? 'clickAction' : undefined,
+          notes: triggerProposalNotes.trim() || undefined
+        }
+      })
+      setActionsConfig(cloneActionsConfig(response.animations))
+      const triggerProposal = response.triggerProposal
+      setStatus(triggerProposal
+        ? `${triggerProposal.applied ? '已应用' : '已确认'} 触发建议：${triggerProposal.message}`
+        : '触发建议已保存')
+    } catch (error) {
+      setStatus(messageFromError(error, '应用触发建议失败'))
     } finally {
       setWorking(false)
     }
@@ -282,7 +314,12 @@ export function useActionsPane() {
     onImportPetPack,
     onExportPetPack,
     onSetActivePetPack,
-    onRemovePetPack
+    onRemovePetPack,
+    onApplyTriggerProposal,
+    triggerProposalType,
+    setTriggerProposalType,
+    triggerProposalNotes,
+    setTriggerProposalNotes
   } satisfies ActionsPaneProps
 
   return { loading, paneProps }

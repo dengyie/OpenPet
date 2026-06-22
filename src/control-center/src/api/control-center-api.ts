@@ -1,10 +1,11 @@
-import { cloneAiConfig, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
   ActionFrameInspectionResult,
   ActionFrameImportRequest,
   ActionFrameReinspectRequest,
+  ActionsConfigViewState,
   AiChatRequest,
   AiConfigViewState,
   AiPersona,
@@ -42,6 +43,7 @@ declare global {
 
 interface DemoState {
   settings: ControlCenterSettings
+  actionsConfig: ActionsConfigViewState
   aiConfig: AiConfigViewState
   aiPersonaOverrides: Record<string, AiPersonaOverride>
   imageGenerationConfig: ImageGenerationConfigViewState
@@ -469,6 +471,7 @@ const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus
 
 const createDefaultDemoState = (): DemoState => ({
   settings: cloneSettings(defaultSettings),
+  actionsConfig: cloneActionsConfig(defaultActionsConfig),
   aiConfig: cloneAiConfig({
     ...defaultAiConfig,
     behavior: {
@@ -506,6 +509,7 @@ const readDemoState = (): DemoState => {
     const state = JSON.parse(rawState)
     return {
       settings: cloneSettings(state.settings),
+      actionsConfig: cloneActionsConfig(state.actionsConfig || defaultActionsConfig),
       aiConfig: cloneAiConfig(state.aiConfig),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
@@ -759,13 +763,55 @@ const demoApi: ControlCenterApi = {
       cursor
     }
   },
-  getActions: async () => defaultActionsConfig,
+  getActions: async () => cloneActionsConfig(demoState.actionsConfig),
   inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
   reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
   clearActionFrameSelection: async () => ({ ok: true }),
-  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: defaultActionsConfig }),
-  saveActionsConfig: async (config) => ({ animations: { ...defaultActionsConfig, ...config } }),
-  deleteAction: async () => ({ animations: defaultActionsConfig }),
+  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: cloneActionsConfig(demoState.actionsConfig) }),
+  saveActionsConfig: async (config) => {
+    const triggerProposal = config?.triggerProposal
+    if (triggerProposal?.type === 'click') {
+      demoState.actionsConfig = cloneActionsConfig({
+        ...demoState.actionsConfig,
+        clickAction: triggerProposal.actionId
+      })
+    } else if (!triggerProposal) {
+      demoState.actionsConfig = cloneActionsConfig({
+        ...demoState.actionsConfig,
+        ...config
+      })
+    }
+    writeDemoState()
+    const triggerCode = triggerProposal?.type === 'click'
+      ? 'applied'
+      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type) ? 'pending_host_rule' : 'no_binding_required')
+    const triggerMessage = triggerProposal?.type === 'click'
+      ? `Click trigger now uses action: ${triggerProposal.actionId}`
+      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)
+          ? `Trigger type ${triggerProposal.type} requires a host trigger-rule editor before it can be applied.`
+          : `Action trigger proposal accepted for ${triggerProposal?.actionId || ''}`)
+    return {
+      animations: cloneActionsConfig(demoState.actionsConfig),
+      ...(triggerProposal
+        ? {
+            triggerProposal: {
+              ok: true,
+              applied: triggerProposal.type === 'click',
+              actionId: triggerProposal.actionId,
+              type: triggerProposal.type,
+              binding: triggerProposal.type === 'click' ? 'clickAction' : '',
+              code: triggerCode,
+              message: triggerMessage,
+              acceptedAt: '2026-06-22T00:00:00.000Z',
+              sourcePluginId: triggerProposal.sourcePluginId,
+              sourceRunId: triggerProposal.sourceRunId,
+              sourceCommandId: triggerProposal.sourceCommandId
+            }
+          }
+        : {})
+    }
+  },
+  deleteAction: async () => ({ animations: cloneActionsConfig(demoState.actionsConfig) }),
   listPetPacks: async () => clonePetPacks(demoState.petPacks),
   inspectPetPackDirectory: async () => ({ canceled: true }),
   clearPetPackSelection: async () => ({ ok: true }),
@@ -782,7 +828,7 @@ const demoApi: ControlCenterApi = {
       pack: activePack,
       activePackId: demoState.petPacks.activePackId,
       petPacks: clonePetPacks(demoState.petPacks),
-      animations: defaultActionsConfig
+      animations: cloneActionsConfig(demoState.actionsConfig)
     }
   },
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),

@@ -254,6 +254,7 @@ const bootstrapOpenPet = () => {
     catalogService,
     localHttpService,
     aboutService,
+    actionService,
     actionImportService,
     cursorAssetService,
     appLogService,
