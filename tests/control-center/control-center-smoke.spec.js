@@ -164,6 +164,11 @@ test.describe('Control Center smoke', () => {
 
     const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
     const apiKeyInput = page.getByPlaceholder('输入 API Key')
+    await apiKeyInput.fill('   ')
+    await expect(apiKeyRow.getByRole('button', { name: '保存密钥' })).toBeDisabled()
+    await page.getByRole('button', { name: '保存并测试' }).click()
+    await expect(page.locator('.status-line')).toContainText('API Key 不能为空')
+
     await apiKeyInput.fill('sk-demo-secret')
     await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
     await expect(page.locator('.status-line')).toContainText('API Key 已保存')

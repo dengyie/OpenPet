@@ -184,7 +184,10 @@ export function useAiPane(activeTab = 'ai') {
 
   const saveApiKeyDraft = async () => {
     const key = apiKeyDraft.trim()
-    if (!key) return null
+    if (!key) {
+      if (apiKeyDraft) throw new Error('API Key 不能为空')
+      return null
+    }
     const result = await api.saveAiApiKey(key)
     setConfig((current) => ({ ...current, hasApiKey: result.hasApiKey }))
     setActiveConfig((current) => ({ ...current, hasApiKey: result.hasApiKey }))

@@ -133,6 +133,7 @@ export function AiPane({
 }: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
   const saveDisabled = saving || Boolean(providerConfigValidationError)
+  const apiKeyDraftReady = Boolean(apiKeyDraft.trim())
 
   return (
     <section className="pane">
@@ -226,7 +227,7 @@ export function AiPane({
               placeholder={config.hasApiKey ? '输入新密钥覆盖' : '输入 API Key'}
               onChange={(event) => setApiKeyDraft(event.target.value)}
             />
-            <button type="button" className="ghost" onClick={onSaveApiKey} disabled={!apiKeyDraft || saving}>
+            <button type="button" className="ghost" onClick={onSaveApiKey} disabled={!apiKeyDraftReady || saving}>
               保存密钥
             </button>
           </div>
