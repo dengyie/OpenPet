@@ -170,6 +170,25 @@ const createTimeoutController = (timeoutMs) => {
   }
 }
 
+const sanitizeBaseUrlForDisplay = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    parsed.username = ''
+    parsed.password = ''
+    parsed.search = ''
+    parsed.hash = ''
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.origin}${normalizedPath === '/' ? '' : normalizedPath}`
+  } catch (_) {
+    return raw
+      .replace(/^([a-z]+:\/\/)([^/@]+)@/i, '$1')
+      .replace(/[?#].*$/, '')
+      .replace(/\/+$/, '')
+  }
+}
+
 const normalizeEndpointForLog = (baseUrl) => {
   try {
     const url = new URL(String(baseUrl || ''))
@@ -183,11 +202,47 @@ const sanitizeDiagnosticText = (value) => String(value || '')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
   .slice(0, 240)
 
+const getSafeProviderErrorMessage = (status, code) => {
+  const normalizedStatus = Number(status) || 0
+  if (normalizedStatus === 401 || normalizedStatus === 403) return 'AI provider authentication failed'
+  if (normalizedStatus === 404) return 'AI provider endpoint or model was not found'
+  if (normalizedStatus === 429) return 'AI provider rate limit exceeded'
+  if (normalizedStatus >= 500) return 'AI provider is temporarily unavailable'
+  if (normalizedStatus >= 400) return 'AI provider returned an error response'
+  if (code) return `AI provider request failed: ${String(code).slice(0, 64)}`
+  return 'AI provider request failed'
+}
+
 const createProviderError = ({ message, status, code }) => {
-  const error = new Error(message)
+  const error = new Error(getSafeProviderErrorMessage(status, code))
   error.providerStatus = status
   error.providerCode = code || ''
   return error
+}
+
+const classifyConnectionError = (error) => {
+  if (error?.message === 'AI API key is not configured') {
+    return { code: 'missing_api_key', message: 'AI API key is not configured' }
+  }
+  if (/^Unsupported AI provider:/.test(error?.message || '')) {
+    return { code: 'unsupported_provider', message: 'Unsupported AI provider' }
+  }
+  if (error?.message === 'fetch is not available') {
+    return { code: 'fetch_unavailable', message: 'Fetch is not available' }
+  }
+  if (error?.name === 'AbortError' || error?.message === 'AI provider request timed out') {
+    return { code: 'timeout', message: 'AI provider request timed out' }
+  }
+  if (error?.providerStatus) {
+    const status = Number(error.providerStatus) || 0
+    if (status === 401 || status === 403) return { code: 'auth_failed', message: 'AI provider rejected the API key' }
+    if (status === 404) return { code: 'model_or_endpoint_not_found', message: 'AI provider endpoint or model was not found' }
+    return { code: 'provider_http_error', message: `AI provider request failed with status ${status}` }
+  }
+  if (error?.message === 'AI provider returned an empty response') {
+    return { code: 'empty_response', message: 'AI provider returned an empty response' }
+  }
+  return { code: 'network_error', message: 'AI provider request failed' }
 }
 
 const createAiService = ({
@@ -249,6 +304,7 @@ const createAiService = ({
     const config = getRawConfig()
     return {
       ...config,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
       hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef))
     }
   }
@@ -361,9 +417,8 @@ const createAiService = ({
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const message = data?.error?.message || `AI provider request failed with status ${response.status}`
         throw createProviderError({
-          message,
+          message: data?.error?.message || `AI provider request failed with status ${response.status}`,
           status: response.status,
           code: data?.error?.code
         })
@@ -426,12 +481,73 @@ const createAiService = ({
   }
 
   const testConnection = async () => {
-    const result = await complete({
-      messages: [
-        { role: 'user', content: 'Reply with ok.' }
-      ]
+    const config = getRawConfig()
+    const hasApiKey = Boolean(secretService.getSecretValue(config.apiKeyRef))
+    const startedAt = Date.now()
+    const baseResult = {
+      provider: config.provider,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
+      model: config.model,
+      hasApiKey
+    }
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.connection-test.started',
+      message: 'AI provider connection test started',
+      details: baseResult
     })
-    return { ok: true, reply: result.reply }
+    try {
+      const result = await complete({
+        messages: [
+          { role: 'user', content: 'Reply with ok.' }
+        ]
+      })
+      const response = {
+        ok: true,
+        ...baseResult,
+        elapsedMs: Date.now() - startedAt,
+        reply: String(result.reply || '').slice(0, 120),
+        code: 'ok',
+        message: 'AI provider connection test succeeded'
+      }
+      recordLog({
+        scope: 'ai-settings',
+        level: 'info',
+        event: 'ai.settings.connection-test.completed',
+        message: 'AI provider connection test completed',
+        details: {
+          ...baseResult,
+          elapsedMs: response.elapsedMs,
+          replyChars: response.reply.length
+        }
+      })
+      return response
+    } catch (error) {
+      const classified = classifyConnectionError(error)
+      const response = {
+        ok: false,
+        ...baseResult,
+        elapsedMs: Date.now() - startedAt,
+        code: classified.code,
+        message: classified.message
+      }
+      recordLog({
+        scope: 'ai-settings',
+        level: 'error',
+        event: 'ai.settings.connection-test.failed',
+        message: 'AI provider connection test failed',
+        details: {
+          ...baseResult,
+          elapsedMs: response.elapsedMs,
+          status: error?.providerStatus || 0,
+          providerCode: error?.providerCode || '',
+          code: classified.code,
+          message: classified.message
+        }
+      })
+      return response
+    }
   }
 
   return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, complete, testConnection }

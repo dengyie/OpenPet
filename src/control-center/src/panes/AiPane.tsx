@@ -2,6 +2,7 @@ import type {
   AiBehaviorConfig,
   AiBehaviorResult,
   AiConfigViewState,
+  AiConnectionTestResult,
   ChatMessage,
   ImageGenerationConfigViewState
 } from '../../../shared/openpet-contracts'
@@ -10,10 +11,15 @@ import { defaultImageGenerationConfig } from '../lib/defaults'
 
 export interface AiPaneProps {
   config: AiConfigViewState
+  activeConfig: AiConfigViewState
   imageGenerationConfig: ImageGenerationConfigViewState
+  providerConfigDirty: boolean
+  providerConfigValidationError: string
+  connectionTestResult: AiConnectionTestResult | null
   onChange: (partial: Partial<AiConfigViewState>) => void
   onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
   onSave: () => void | Promise<void>
+  onSaveAndTest: () => void | Promise<void>
   onSaveApiKey: () => void | Promise<void>
   onTest: () => void | Promise<void>
   onSaveImageGeneration: () => void | Promise<void>
@@ -50,10 +56,15 @@ export interface AiPaneProps {
 
 export function AiPane({
   config,
+  activeConfig,
   imageGenerationConfig = defaultImageGenerationConfig,
+  providerConfigDirty,
+  providerConfigValidationError,
+  connectionTestResult,
   onChange,
   onChangeImageGeneration,
   onSave,
+  onSaveAndTest,
   onSaveApiKey,
   onTest,
   onSaveImageGeneration,
@@ -88,6 +99,7 @@ export function AiPane({
   onClearBehaviorDecisions
 }: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
+  const saveDisabled = saving || Boolean(providerConfigValidationError)
 
   return (
     <section className="pane">
@@ -98,13 +110,40 @@ export function AiPane({
         </div>
         <div className="header-actions">
           <button type="button" className="ghost" onClick={onTest} disabled={saving}>
-            测试
+            测试当前已保存配置
           </button>
-          <button type="button" className="primary" onClick={onSave} disabled={saving}>
-            {saving ? '保存中' : '保存'}
+          <button type="button" className="ghost" onClick={onSaveAndTest} disabled={saveDisabled}>
+            保存并测试
+          </button>
+          <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
+            {saving ? '保存中' : '保存配置'}
           </button>
         </div>
       </header>
+
+      <div className="section provider-summary">
+        <div className="readonly-row">
+          <strong>当前已保存配置</strong>
+          <div className="provider-summary-grid">
+            <span>Provider: {activeConfig.provider}</span>
+            <span>Base URL: {activeConfig.baseUrl}</span>
+            <span>Model: {activeConfig.model}</span>
+            <span>Chat: {activeConfig.enabled ? '启用' : '关闭'}</span>
+          </div>
+        </div>
+        <div className="readonly-row">
+          <strong>密钥状态</strong>
+          <span>{activeConfig.hasApiKey ? 'API Key 已保存于主进程 SecretService' : 'API Key 未保存'}</span>
+        </div>
+        {providerConfigDirty ? (
+          <div className="provider-warning">
+            你有未保存的 Provider 草稿。点击“测试当前已保存配置”不会使用这些草稿；点击“保存并测试”会先保存再测试。
+          </div>
+        ) : null}
+        {providerConfigValidationError ? (
+          <div className="provider-warning error">{providerConfigValidationError}</div>
+        ) : null}
+      </div>
 
       <div className="section">
         <div className="field-row">
@@ -299,6 +338,19 @@ export function AiPane({
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}
+
+      {connectionTestResult ? (
+        <div className={`connection-result ${connectionTestResult.ok ? 'ok' : 'error'}`} aria-live="polite">
+          <strong>{connectionTestResult.ok ? '连接测试通过' : '连接测试失败'}</strong>
+          <span>Provider: {connectionTestResult.provider}</span>
+          <span>Base URL: {connectionTestResult.baseUrl}</span>
+          <span>Model: {connectionTestResult.model}</span>
+          <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
+          <span>耗时: {connectionTestResult.elapsedMs}ms</span>
+          {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
+          {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
+        </div>
+      ) : null}
 
       <div className="section">
         <div className="field-row">

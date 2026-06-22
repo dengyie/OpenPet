@@ -632,7 +632,17 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return { apiKeyRef: 'ai.default', hasApiKey: true }
   },
-  testAiConnection: async () => ({ ok: true, reply: 'ok' }),
+  testAiConnection: async () => ({
+    ok: true,
+    provider: demoState.aiConfig.provider,
+    baseUrl: demoState.aiConfig.baseUrl,
+    model: demoState.aiConfig.model,
+    hasApiKey: demoState.aiConfig.hasApiKey,
+    elapsedMs: 12,
+    reply: 'ok',
+    code: 'ok',
+    message: 'AI provider connection test succeeded'
+  }),
   getImageGenerationConfig: async () => cloneImageGenerationConfig(demoState.imageGenerationConfig),
   saveImageGenerationConfig: async (config) => {
     demoState.imageGenerationConfig = cloneImageGenerationConfig({

@@ -55,6 +55,27 @@ test('ai service exposes config without secret values', () => {
   })
 })
 
+test('ai service sanitizes credentialed baseUrl in public config', () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://user:pass@example.test/v1?token=secret#frag',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: 'Stay cheerful.'
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    }
+  })
+
+  assert.equal(service.getConfig().baseUrl, 'https://example.test/v1')
+})
+
 test('ai service saves config and api key separately', () => {
   const secrets = []
   const settingsService = createSettingsService()
@@ -197,7 +218,7 @@ test('ai service records provider lifecycle without leaking secrets or prompt te
 
   await assert.rejects(
     () => service.chat({ message: 'hidden user prompt' }),
-    /hidden user prompt/
+    /AI provider returned an error response/
   )
 
   const serializedLogs = JSON.stringify(logs)
@@ -207,6 +228,46 @@ test('ai service records provider lifecycle without leaking secrets or prompt te
   assert.equal(serializedLogs.includes('hidden user prompt'), false)
   assert.equal(logs.at(-1).details.status, 400)
   assert.equal(logs.at(-1).details.providerCode, 'bad_request')
+})
+
+test('ai service chat redacts provider error bodies before throwing', async () => {
+  const leakedApiKey = 'sk-test-secret'
+  const leakedPrompt = 'hidden system prompt'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: leakedPrompt
+      }
+    }),
+    secretService: {
+      getSecretValue: () => leakedApiKey,
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({
+        error: {
+          message: `bad key ${leakedApiKey} with prompt ${leakedPrompt}`
+        }
+      })
+    })
+  })
+
+  await assert.rejects(
+    () => service.chat({ conversationId: 'control-center', message: 'Hi' }),
+    (error) => {
+      assert.equal(error.providerStatus, 401)
+      assert.equal(error.message.includes(leakedApiKey), false)
+      assert.equal(error.message.includes(leakedPrompt), false)
+      return true
+    }
+  )
 })
 
 test('ai service sends behavior tool definition and parses tool call intent', async () => {
@@ -673,6 +734,7 @@ test('ai service times out stalled provider requests', async () => {
 })
 
 test('ai service testConnection validates provider response', async () => {
+  const logs = []
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
@@ -691,8 +753,97 @@ test('ai service testConnection validates provider response', async () => {
     fetchImpl: async () => ({
       ok: true,
       json: async () => ({ choices: [{ message: { content: 'ok' } }] })
-    })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
-  assert.deepEqual(await service.testConnection(), { ok: true, reply: 'ok' })
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.provider, 'openai-compatible')
+  assert.equal(result.baseUrl, 'https://example.test/v1')
+  assert.equal(result.model, 'example-model')
+  assert.equal(result.hasApiKey, true)
+  assert.equal(result.reply, 'ok')
+  assert.equal(result.code, 'ok')
+  assert.equal(typeof result.elapsedMs, 'number')
+  assert.deepEqual(logs.map((entry) => entry.event).filter((event) => event.startsWith('ai.settings.')), [
+    'ai.settings.connection-test.started',
+    'ai.settings.connection-test.completed'
+  ])
+})
+
+test('ai service testConnection returns missing key failure metadata', async () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      throw new Error('provider should not be called without a key')
+    }
+  })
+
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.hasApiKey, false)
+  assert.equal(result.code, 'missing_api_key')
+  assert.equal(result.message, 'AI API key is not configured')
+})
+
+test('ai service testConnection logs provider failures without leaking secrets or prompt text', async () => {
+  const logs = []
+  const credentialedBaseUrl = 'https://user:pass@example.test/v1?token=secret#frag'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: credentialedBaseUrl,
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: 'hidden system prompt'
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test-secret',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({
+        error: {
+          message: 'Rejected sk-test-secret hidden system prompt',
+          code: 'unauthorized'
+        }
+      })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const result = await service.testConnection()
+  const serializedLogs = JSON.stringify(logs)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'auth_failed')
+  assert.equal(result.message, 'AI provider rejected the API key')
+  assert.equal(result.baseUrl, 'https://example.test/v1')
+  assert.equal(serializedLogs.includes('sk-test-secret'), false)
+  assert.equal(serializedLogs.includes('hidden system prompt'), false)
+  assert.equal(serializedLogs.includes(credentialedBaseUrl), false)
+  assert.equal(serializedLogs.includes('user:pass'), false)
+  assert.equal(serializedLogs.includes('token=secret'), false)
+  assert.match(serializedLogs, /ai\.settings\.connection-test\.failed/)
 })

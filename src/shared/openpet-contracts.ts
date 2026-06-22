@@ -1679,7 +1679,14 @@ export interface AiSaveApiKeyResult {
 
 export interface AiConnectionTestResult {
   ok: boolean
-  reply: string
+  provider: string
+  baseUrl: string
+  model: string
+  hasApiKey: boolean
+  elapsedMs: number
+  reply?: string
+  code?: string
+  message?: string
 }
 
 export interface ImageGenerationCloudConfigViewState {

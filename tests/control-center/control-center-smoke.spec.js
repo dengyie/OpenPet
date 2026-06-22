@@ -174,7 +174,8 @@ test.describe('Control Center smoke', () => {
     await page.getByLabel('Model').fill('openpet-test-model')
     await page.getByLabel('System Prompt').fill('Stay tiny, helpful, and local-first.')
     await page.getByRole('switch', { name: 'Enable AI memory' }).click()
-    await page.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(page.locator('.provider-warning')).toContainText('未保存的 Provider 草稿')
+    await page.getByRole('button', { name: '保存配置', exact: true }).click()
     await expect(page.locator('.status-line')).toContainText('AI 配置已保存')
 
     const apiKeyInput = page.locator('.field-row', { hasText: 'API Key' }).locator('input[type="password"]')
@@ -183,6 +184,10 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('API Key 已保存')
     await expect(apiKeyInput).toHaveValue('')
     await expect(page.locator('.field-row', { hasText: 'API Key' })).toContainText('已保存')
+
+    await page.getByRole('button', { name: '保存并测试' }).click()
+    await expect(page.locator('.connection-result')).toContainText('连接测试通过')
+    await expect(page.locator('.connection-result')).toContainText('openpet-test-model')
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
