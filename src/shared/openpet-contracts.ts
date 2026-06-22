@@ -123,6 +123,38 @@ export interface AiMemoryConfig {
   enabled: boolean
 }
 
+export interface AiPersona {
+  name: string
+  identity: string
+  tone: string
+  coreTraits: string[]
+  speakingStyle: string
+  relationshipToUser: string
+  actionStyle: string
+  boundaries: string[]
+}
+
+export interface AiPersonaOverride {
+  name?: string
+  identity?: string
+  tone?: string
+  coreTraits?: string[]
+  speakingStyle?: string
+  relationshipToUser?: string
+  actionStyle?: string
+  boundaries?: string[]
+}
+
+export interface AiPersonaProfileViewState {
+  petPackId: string
+  petPackDisplayName: string
+  packPersona: AiPersona
+  overridePersona: AiPersonaOverride
+  effectivePersona: AiPersona
+  compiledPersonaPrompt: string
+  compiledSystemPrompt: string
+}
+
 export interface AiConfigViewState {
   enabled: boolean
   provider: string
@@ -2197,6 +2229,8 @@ export interface ControlCenterApi {
   saveAiConfig: (config: Partial<AiConfigViewState>) => Promise<AiConfigViewState>
   saveAiApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
   testAiConnection: () => Promise<AiConnectionTestResult>
+  getAiPersonaProfile: () => Promise<AiPersonaProfileViewState>
+  saveAiPersonaOverride: (override: AiPersonaOverride) => Promise<AiPersonaProfileViewState>
   getImageGenerationConfig: () => Promise<ImageGenerationConfigViewState>
   saveImageGenerationConfig: (config: Partial<ImageGenerationConfigViewState>) => Promise<ImageGenerationConfigViewState>
   saveImageGenerationApiKey: (apiKey: string) => Promise<ImageGenerationSaveApiKeyResult>

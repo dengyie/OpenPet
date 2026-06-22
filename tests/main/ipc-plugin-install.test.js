@@ -209,6 +209,54 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   assert.equal(appLogs[1].details.messageCount, 1)
 })
 
+test('ai persona profile IPC delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const saveCalls = []
+  const profile = {
+    petPackId: 'legacy-cat',
+    petPackDisplayName: 'Legacy Cat',
+    packPersona: { name: 'OpenPet', identity: 'pet', tone: 'warm', coreTraits: ['friendly'], speakingStyle: 'Short.', relationshipToUser: 'Companion.', actionStyle: 'Use actions.', boundaries: ['No secrets.'] },
+    overridePersona: { tone: 'sleepy' },
+    effectivePersona: { name: 'OpenPet', identity: 'pet', tone: 'sleepy', coreTraits: ['friendly'], speakingStyle: 'Short.', relationshipToUser: 'Companion.', actionStyle: 'Use actions.', boundaries: ['No secrets.'] },
+    compiledPersonaPrompt: '# Pet Persona\nTone: sleepy',
+    compiledSystemPrompt: '# Global Instructions\nTest\n\n# Pet Persona\nTone: sleepy'
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiTalkService: {
+      getPersonaProfile: () => profile,
+      savePersonaOverride: (override) => {
+        saveCalls.push(override)
+        return { ...profile, overridePersona: override, effectivePersona: { ...profile.effectivePersona, ...override } }
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const loaded = await ipcMain.handlers.get(IPC.AI_GET_PERSONA_PROFILE)()
+  const saved = await ipcMain.handlers.get(IPC.AI_SAVE_PERSONA_OVERRIDE)(null, { tone: 'playful' })
+
+  assert.equal(loaded.petPackId, 'legacy-cat')
+  assert.equal(loaded.petPackDisplayName, 'Legacy Cat')
+  assert.equal(loaded.effectivePersona.tone, 'sleepy')
+  assert.match(loaded.compiledSystemPrompt, /# Global Instructions/)
+  assert.deepEqual(saveCalls, [{ tone: 'playful' }])
+  assert.equal(saved.overridePersona.tone, 'playful')
+})
+
 test('service:get-status returns Control Center service status shape', async () => {
   const ipcMain = createIpcMainStub()
 

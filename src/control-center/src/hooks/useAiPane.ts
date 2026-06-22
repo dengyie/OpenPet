@@ -3,9 +3,11 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import {
   cloneAiBehavior,
   cloneAiConfig,
+  cloneAiPersonaProfile,
   cloneChatMessages,
   cloneImageGenerationConfig,
   defaultAiConfig,
+  defaultAiPersonaProfile,
   defaultImageGenerationConfig
 } from '../lib/defaults'
 import { downloadTextFile } from '../lib/download'
@@ -16,6 +18,8 @@ import type {
   AiBehaviorRule,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiPersonaOverride,
+  AiPersonaProfileViewState,
   ChatMessage,
   ImageGenerationConfigViewState
 } from '../../../shared/openpet-contracts'
@@ -58,11 +62,47 @@ const formatConnectionTestStatus = (result: AiConnectionTestResult) => (
     : `连接测试失败：${result.message || result.code || 'unknown'}`
 )
 
-export function useAiPane() {
+const personaFields = ['name', 'identity', 'tone', 'speakingStyle', 'relationshipToUser', 'actionStyle'] as const
+const personaListFields = ['coreTraits', 'boundaries'] as const
+
+const personaToDraft = (override: AiPersonaOverride) => ({
+  name: override.name || '',
+  identity: override.identity || '',
+  tone: override.tone || '',
+  speakingStyle: override.speakingStyle || '',
+  relationshipToUser: override.relationshipToUser || '',
+  actionStyle: override.actionStyle || '',
+  coreTraitsText: Array.isArray(override.coreTraits) ? override.coreTraits.join('\n') : '',
+  boundariesText: Array.isArray(override.boundaries) ? override.boundaries.join('\n') : ''
+})
+
+const normalizePersonaListText = (value: string) => (
+  value
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean)
+)
+
+const buildPersonaOverrideFromDraft = (draft: ReturnType<typeof personaToDraft>): AiPersonaOverride => {
+  const override: AiPersonaOverride = {}
+  for (const field of personaFields) {
+    const value = draft[field].trim()
+    if (value) override[field] = value
+  }
+  const coreTraits = normalizePersonaListText(draft.coreTraitsText)
+  const boundaries = normalizePersonaListText(draft.boundariesText)
+  if (coreTraits.length) override.coreTraits = coreTraits
+  if (boundaries.length) override.boundaries = boundaries
+  return override
+}
+
+export function useAiPane(activeTab = 'ai') {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [config, setConfig] = useState<AiConfigViewState>(defaultAiConfig)
   const [activeConfig, setActiveConfig] = useState<AiConfigViewState>(defaultAiConfig)
+  const [personaProfile, setPersonaProfile] = useState<AiPersonaProfileViewState>(defaultAiPersonaProfile)
+  const [personaDraft, setPersonaDraft] = useState(() => personaToDraft(defaultAiPersonaProfile.overridePersona))
   const [imageGenerationConfig, setImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [imageApiKeyDraft, setImageApiKeyDraft] = useState('')
@@ -78,18 +118,29 @@ export function useAiPane() {
   const [replayDraft, setReplayDraft] = useState('')
   const [replayResult, setReplayResult] = useState<AiBehaviorResult | null>(null)
 
+  const loadPersonaProfile = async () => {
+    const profile = cloneAiPersonaProfile(await api.getAiPersonaProfile())
+    setPersonaProfile(profile)
+    setPersonaDraft(personaToDraft(profile.overridePersona))
+    return profile
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
       api.getAiConfig(),
+      api.getAiPersonaProfile(),
       api.getImageGenerationConfig(),
       api.getAiConversation('control-center'),
       api.getAiBehavior()
-    ]).then(([loadedConfig, loadedImageGenerationConfig, loadedChatMessages, loadedBehavior]) => {
+    ]).then(([loadedConfig, loadedPersonaProfile, loadedImageGenerationConfig, loadedChatMessages, loadedBehavior]) => {
       if (!mounted) return
       const nextConfig = cloneAiConfig(loadedConfig)
       setConfig(nextConfig)
       setActiveConfig(nextConfig)
+      const nextPersonaProfile = cloneAiPersonaProfile(loadedPersonaProfile)
+      setPersonaProfile(nextPersonaProfile)
+      setPersonaDraft(personaToDraft(nextPersonaProfile.overridePersona))
       setImageGenerationConfig(cloneImageGenerationConfig(loadedImageGenerationConfig))
       setChatMessages(cloneChatMessages(loadedChatMessages))
       const nextBehavior = cloneAiBehavior(loadedBehavior || loadedConfig?.behavior)
@@ -103,6 +154,11 @@ export function useAiPane() {
     })
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'ai') return
+    void loadPersonaProfile().catch(() => {})
+  }, [activeTab])
 
   const saveProviderConfigDraft = async () => {
     const validationError = validateProviderConfig(config)
@@ -340,6 +396,40 @@ export function useAiPane() {
     }
   }
 
+  const onChangePersonaDraft = (partial: Partial<typeof personaDraft>) => {
+    setPersonaDraft((current) => ({ ...current, ...partial }))
+  }
+
+  const onResetPersonaOverride = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride({}))
+      setPersonaProfile(profile)
+      setPersonaDraft(personaToDraft(profile.overridePersona))
+      setStatus('宠物人格 override 已清空')
+    } catch (error) {
+      setStatus(messageFromError(error, '宠物人格重置失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSavePersonaOverride = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride(buildPersonaOverrideFromDraft(personaDraft)))
+      setPersonaProfile(profile)
+      setPersonaDraft(personaToDraft(profile.overridePersona))
+      setStatus('宠物人格 override 已保存')
+    } catch (error) {
+      setStatus(messageFromError(error, '宠物人格保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const onSendChat = async () => {
     const message = chatDraft.trim()
     if (!message || chatting) return
@@ -372,6 +462,8 @@ export function useAiPane() {
     config,
     activeConfig,
     imageGenerationConfig,
+    personaProfile,
+    personaDraft,
     providerConfigDirty: hasProviderConfigChanges(config, activeConfig),
     providerConfigValidationError: validateProviderConfig(config),
     connectionTestResult,
@@ -381,6 +473,7 @@ export function useAiPane() {
     setApiKeyDraft,
     imageApiKeyDraft,
     setImageApiKeyDraft,
+    onChangePersonaDraft,
     chatDraft,
     setChatDraft,
     chatMessages,
@@ -411,6 +504,8 @@ export function useAiPane() {
     onSave,
     onSaveAndTest,
     onSaveImageGeneration,
+    onSavePersonaOverride,
+    onResetPersonaOverride,
     onSaveBehavior,
     onSaveApiKey,
     onSaveImageGenerationApiKey,

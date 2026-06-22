@@ -237,6 +237,93 @@ test('ai talk service merges local persona override from store', async () => {
   assert.match(requests[0].messages[0].content, /Core traits: loyal, soft-spoken/)
 })
 
+test('ai talk service exposes current pet persona profile with compiled prompts', async () => {
+  const store = createStore()
+  store.savePersonaOverride('mochi-cat', {
+    tone: 'sleepy and affectionate',
+    boundaries: ['Stay gentle.', 'Do not invent actions.']
+  })
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        systemPrompt: 'Always answer in concise Chinese.',
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async () => ({ reply: 'ignored' })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({
+      id: 'mochi-cat',
+      displayName: 'Mochi Cat',
+      persona: {
+        name: 'Mochi',
+        identity: 'A tiny desktop cat.',
+        tone: 'warm',
+        coreTraits: ['curious'],
+        speakingStyle: 'Short sentences.',
+        relationshipToUser: 'Companion.',
+        actionStyle: 'Use existing actions.',
+        boundaries: ['Do not pretend to be human.']
+      }
+    })
+  })
+
+  const profile = service.getPersonaProfile()
+
+  assert.equal(profile.petPackId, 'mochi-cat')
+  assert.equal(profile.petPackDisplayName, 'Mochi Cat')
+  assert.equal(profile.packPersona.tone, 'warm')
+  assert.equal(profile.overridePersona.tone, 'sleepy and affectionate')
+  assert.equal(profile.effectivePersona.tone, 'sleepy and affectionate')
+  assert.deepEqual(profile.effectivePersona.boundaries, ['Stay gentle.', 'Do not invent actions.'])
+  assert.match(profile.compiledPersonaPrompt, /Tone: sleepy and affectionate/)
+  assert.match(profile.compiledSystemPrompt, /# Global Instructions/)
+  assert.match(profile.compiledSystemPrompt, /Always answer in concise Chinese\./)
+})
+
+test('ai talk service saves persona override for the active pet pack and returns updated profile', async () => {
+  let activePackId = 'legacy-cat'
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      complete: async () => ({ reply: 'ignored' })
+    },
+    aiTalkStore: store,
+    petPackService: {
+      getActivePetPack: () => ({
+        manifest: {
+          id: activePackId,
+          displayName: activePackId === 'legacy-cat' ? 'Legacy Cat' : 'Sprout Cat',
+          persona: {
+            name: activePackId === 'legacy-cat' ? 'Legacy' : 'Sprout',
+            identity: 'A desktop pet.',
+            tone: 'warm',
+            coreTraits: ['friendly'],
+            speakingStyle: 'Short replies.',
+            relationshipToUser: 'Companion.',
+            actionStyle: 'Use existing actions.',
+            boundaries: ['Do not pretend to be human.']
+          },
+          actions: []
+        }
+      })
+    }
+  })
+
+  const legacyProfile = service.savePersonaOverride({ tone: 'calm', coreTraits: ['steady'] })
+  activePackId = 'sprout-cat'
+  const sproutProfile = service.savePersonaOverride({ tone: 'bouncy' })
+
+  assert.equal(legacyProfile.petPackId, 'legacy-cat')
+  assert.equal(legacyProfile.overridePersona.tone, 'calm')
+  assert.deepEqual(store.getPersonaOverride('legacy-cat'), { tone: 'calm', coreTraits: ['steady'] })
+  assert.equal(sproutProfile.petPackId, 'sprout-cat')
+  assert.equal(sproutProfile.overridePersona.tone, 'bouncy')
+  assert.deepEqual(store.getPersonaOverride('sprout-cat'), { tone: 'bouncy' })
+})
+
 test('ai talk service preserves existing global system prompt as stable instruction', async () => {
   const requests = []
   const service = createAiTalkService({
