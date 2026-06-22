@@ -150,6 +150,48 @@ test('image generation model service reports missing cloud api key in health che
   assert.equal(logs[1].details.errorCode, 'missing_api_key')
 })
 
+test('image generation model service treats missing cloud models endpoint as reachable for custom image providers', async () => {
+  const requests = []
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService({
+      models: {
+        imageGeneration: {
+          defaultBackend: 'cloud',
+          cloud: {
+            provider: 'openai-compatible',
+            baseUrl: 'https://images.example.test/v1',
+            model: 'custom-image-model',
+            apiKeyRef: 'secret:model.image.openai.apiKey'
+          }
+        }
+      }
+    }),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-custom', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'health-custom-models-unavailable',
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({ error: { message: 'not found' } })
+      }
+    }
+  })
+
+  const result = await service.checkHealth({ backend: 'cloud' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.equal(requests[0].url, 'https://images.example.test/v1/models')
+  assert.equal(logs[1].event, 'imageGeneration.health.completed')
+  assert.equal(logs[1].details.modelsProbe, 'unavailable')
+  assert.equal(logs[1].details.status, 404)
+})
+
 test('image generation model service checks local endpoints through loopback-only health urls', async () => {
   const requests = []
   const logs = []

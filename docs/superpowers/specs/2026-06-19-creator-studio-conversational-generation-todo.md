@@ -1,7 +1,8 @@
 # Creator Studio Conversational Generation TODO
 
 Date: 2026-06-19
-Status: Approved direction, implementation TODO
+Last updated: 2026-06-23
+Status: Approved direction, partially implemented host support, remaining plugin TODO
 Scope: Creator Studio plugin extension for conversational full-pet and single-action generation
 
 ## Confirmed Product Direction
@@ -121,6 +122,13 @@ Host/Control Center responsibilities:
 - Validate trigger rules against available actions.
 - Apply click/default/random/state/event bindings through host-owned services.
 
+Implemented host support:
+
+- Reviewed proposals can be accepted through the Actions configuration path.
+- `click` proposals are validated against existing actions and applied to `clickAction`.
+- `manual` and `unbound` proposals are acknowledged without mutating trigger bindings.
+- `random`, `state`, and `event` proposals return a pending-host-rule result until a full trigger-rule schema/editor exists.
+
 ## Plugin Processing Pipeline
 
 ### 1. Intent Parsing
@@ -233,6 +241,13 @@ Completed host slice:
 - `click` proposals can be applied to `clickAction` after validating the target action exists.
 - `manual` and `unbound` proposals are confirmed without mutating bindings.
 - `random`, `state`, and `event` proposals remain visible as pending host-rule work until the full trigger-rule schema/editor exists.
+
+Remaining host/main UI request:
+
+- Add a trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals from Creator Studio and other plugins.
+- Define the durable trigger-rule schema for `random`, `state`, and `event` rules.
+- Add simulation/preview before applying non-click triggers.
+- Keep final trigger persistence host-owned; plugins should continue to propose rather than directly mutate rules.
 
 ## TODO: Later Work
 

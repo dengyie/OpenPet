@@ -1,25 +1,38 @@
 # OpenPet Model Settings Backlog
 
 Date: 2026-06-19
-Status: Backlog handoff for main UI / host work
+Last updated: 2026-06-23
+Status: Partially implemented; remaining backlog handoff for main UI / host polish
 Scope: Capabilities intentionally not implemented inside the Creator Studio plugin slice
 
 ## Goal
 
-OpenPet should eventually provide first-class model configuration that Creator Studio and other extensions can consume without each plugin inventing incompatible settings screens.
+OpenPet should provide first-class model configuration that Creator Studio and other extensions can consume without each plugin inventing incompatible settings screens.
 
-## Host / Main UI Responsibilities
+The first host slice is now implemented. OpenPet owns image-generation backend settings, cloud API key storage, local endpoint settings, model health checks, provider calls, output writing, and Creator Studio host bridge access. The remaining work is product/UI polish and broader provider ergonomics, not the initial security boundary.
 
-- Add a Control Center model settings surface for selecting default image-generation backend, provider, model name, base URL, and local endpoint.
+## Implemented Host Slice
+
+- Control Center AI pane exposes image-generation settings for `fixture`, `cloud`, and `local` backends.
+- `ImageGenerationModelService` stores non-secret settings in `settings.models.imageGeneration`.
+- Cloud API keys are stored through `SecretService` and renderer responses expose only `hasApiKey` / masked preview metadata.
+- Cloud provider calls are host-owned and write generated images under the allowed Creator Studio data directory.
+- Local generation uses loopback-only endpoint validation and health checks.
+- Host model bridge routes support non-secret model settings reads, model health checks, and bounded image-generation requests during explicit plugin execution.
+- Creator Studio can fail clearly when `cloud` or `local` is not configured instead of silently falling back to fixture.
+
+## Remaining Host / Main UI Responsibilities
+
+- Refine the current AI pane image-generation card into a clearer Control Center model settings surface for selecting default image-generation backend, provider, model name, base URL, and local endpoint.
 - Store API keys and provider secrets through `SecretService`; never expose raw secrets to renderers or ordinary plugin code.
-- Provide a safe host-mediated model bridge or documented local service contract for plugins that opt into host-managed generation.
-- Show provider health, local endpoint reachability, and actionable setup errors.
+- Preserve the safe host-mediated model bridge for plugins that opt into host-managed generation.
+- Improve provider health, local endpoint reachability, and actionable setup errors.
 - Keep global settings separate from plugin run state: OpenPet owns credentials and defaults, Creator Studio owns per-run prompt/artifact state.
-- Decide whether cloud generation is host-mediated, plugin-managed, or both. If both are supported, the UI must make that trust boundary visible.
+- Keep cloud generation host-mediated by default. If plugin-managed generation is later allowed, the UI must make that trust boundary visible.
 
 ## Main UI Feature Request
 
-Add a new Control Center model settings area, likely under the existing AI or Service surface, with these sections:
+Refine the current Control Center AI image-generation card, or move it into a dedicated model settings area, with these sections:
 
 - Default backend: `fixture`, `cloud`, or `local`.
 - Cloud provider: provider id, display name, base URL, model id, API key secret ref, and optional organization/project fields.
@@ -53,9 +66,9 @@ Recommended setting shape:
 
 Renderer must never receive raw API keys. It can receive booleans such as `hasApiKey` and masked labels such as `••••abcd`.
 
-## Host Model Bridge Request
+## Host Model Bridge Status
 
-Creator Studio can use either a future host bridge or a plugin-managed local service. If the host bridge is chosen, expose a short-lived command bridge route only during explicit plugin command execution:
+Creator Studio now uses the host-mediated model bridge during explicit plugin execution. The bridge should remain short-lived, token-gated, permission-gated, and JSON-only:
 
 - `GET /creator/model-settings`
 - `POST /creator/model-health-check`
@@ -111,11 +124,11 @@ Suggested response:
 
 ## Acceptance Criteria
 
-- A user can configure cloud and local image-generation defaults in Control Center.
-- A user can store, replace, and clear an API key without exposing it to renderer state.
-- A health check shows actionable status for missing key, invalid key, unreachable local endpoint, and healthy endpoint.
-- Creator Studio can read non-secret model availability and fail with a clear setup message when unavailable.
-- If host-mediated generation is implemented, Creator Studio can request one bounded image generation and receive host-owned output references.
+- A user can configure cloud and local image-generation defaults in Control Center. Implemented in the current AI pane; UI polish remains.
+- A user can store, replace, and clear an API key without exposing it to renderer state. Implemented through `SecretService`.
+- A health check shows actionable status for missing key, invalid key, unreachable local endpoint, and healthy endpoint. Implemented; message polish remains.
+- Creator Studio can read non-secret model availability and fail with a clear setup message when unavailable. Implemented.
+- Creator Studio can request one bounded host-mediated image generation and receive host-owned output references. Implemented.
 - Existing `fixture` backend remains available for tests and offline demos.
 
 ## Creator Studio Plugin Responsibilities
@@ -138,3 +151,14 @@ Creator Studio now has:
 - run list, run detail, and run log APIs in the Creator Studio service;
 - persisted `backendStatus` for idle, running, ready, failed, and not-configured states;
 - explicit `not_configured` failures for `cloud` and `local`, with no fixture fallback.
+- host-mediated model generation through OpenPet when configured;
+- OpenPet-specific prompt-builder design for desktop-pet-safe image generation prompts.
+
+## Remaining Backlog
+
+- Dedicated model settings navigation and copy, separate from chat provider settings if the AI pane becomes too dense.
+- Provider presets for common OpenAI-compatible image backends.
+- Optional model discovery where providers support `/models`.
+- Better per-provider compatibility hints, including models that do not support transparent `background` parameters.
+- User-visible generation cost/usage summaries when providers expose enough metadata.
+- Explicit trust copy if OpenPet later allows plugin-managed provider credentials in addition to host-managed generation.

@@ -5,6 +5,21 @@
 > Owner surface: Control Center AI pane + main-process AI services
 > Priority: P1
 
+## Implementation Update: 2026-06-23
+
+This design is implemented for the chat provider path:
+
+- `useAiPane` keeps an active provider snapshot separate from editable drafts.
+- `保存配置` validates Base URL and model before calling IPC.
+- `保存并测试` saves changed non-secret config, saves a pending API key draft when present, reloads the active view, and tests the saved provider.
+- `测试当前已保存配置` reports when unsaved drafts exist and still tests only the active saved config.
+- `AiService.testConnection()` returns structured `ok`, `provider`, sanitized `baseUrl`, `model`, `hasApiKey`, `elapsedMs`, `code`, and `message` fields.
+- Provider errors are classified into actionable failures such as auth, timeout, model/endpoint, empty response, and network/provider errors.
+- Credentialed Base URLs are sanitized for renderer display, and save logic protects against replacing a credentialed stored URL with a display-only downgraded URL.
+- Provider logs intentionally avoid API keys, Authorization headers, prompts, and raw provider response bodies.
+
+The same AI pane now also exposes host-owned Creator Studio image-generation settings. That surface belongs to `ImageGenerationModelService`, not `AiService`: it manages `fixture` / `cloud` / `local` backend settings, cloud API key storage, health checks, provider invocation, and generated output writes. Future UI work should likely split this into a clearer model-settings card, but the security boundary is already host-owned.
+
 ## 1. Background
 
 OpenPet now supports pet conversation through the Control Center AI pane. The current runtime boundary is sound:
@@ -518,6 +533,7 @@ Steps:
 
 - Provider presets for common OpenAI-compatible endpoints.
 - Per-provider model discovery from `/models` where supported.
+- Dedicated model-settings presentation for image generation, including clearer cloud/local trust copy and setup guidance.
 - Connection test history with last success/failure timestamp.
 - Separate persona prompt editor with pet-pack override preview.
 - Streaming chat response once the non-streaming provider settings flow is stable.

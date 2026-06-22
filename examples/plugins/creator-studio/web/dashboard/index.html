@@ -153,6 +153,42 @@
         gap: 14px;
       }
 
+      .contact-sheet {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .frame-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background:
+          linear-gradient(45deg, rgba(39, 63, 67, 0.08) 25%, transparent 25%),
+          linear-gradient(-45deg, rgba(39, 63, 67, 0.08) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, rgba(39, 63, 67, 0.08) 75%),
+          linear-gradient(-45deg, transparent 75%, rgba(39, 63, 67, 0.08) 75%),
+          #fffef8;
+        background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+        background-size: 16px 16px;
+        overflow: hidden;
+        padding: 6px;
+        text-align: center;
+      }
+
+      .frame-card img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 192 / 208;
+        object-fit: contain;
+      }
+
+      .frame-card span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
       @media (max-width: 820px) {
         main {
           padding: 20px;
@@ -226,7 +262,7 @@
     </main>
 
     <script>
-      const state = { run: null }
+      const state = { run: null, actionReview: null }
       const $ = (id) => document.getElementById(id)
 
       const setStatus = (message, kind = '') => {
@@ -252,6 +288,25 @@
         '"': '&quot;',
         "'": '&#39;'
       })[character])
+
+      const fetchRunDetail = async () => {
+        if (!state.run?.runId) return
+        const payload = await fetch(`/api/runs/${encodeURIComponent(state.run.runId)}`).then((response) => response.json())
+        if (!payload.ok) throw new Error(payload.error || 'Failed to load run detail')
+        state.run = payload.run
+        state.actionReview = payload.actionReview || null
+      }
+
+      const renderFramePreview = (review) => {
+        const frames = Array.isArray(review?.previewFrames) ? review.previewFrames : []
+        if (!frames.length) return '<p>No frame previews available yet.</p>'
+        return `<div class="contact-sheet">${frames.map((frame) => (
+          `<figure class="frame-card">` +
+          `<img alt="${escapeHtml(frame.fileName)}" src="${escapeHtml(frame.url)}">` +
+          `<span>${escapeHtml(frame.fileName)}</span>` +
+          `</figure>`
+        )).join('')}</div>`
+      }
 
       const renderRun = () => {
         const run = state.run
@@ -283,13 +338,15 @@
         $('confirm-button').disabled = Boolean(question) || run.taskStatus === 'confirmed'
         $('generate-button').disabled = Boolean(question)
         const actionFrames = run.artifacts?.actionFrames
+        const actionReview = state.actionReview
         if (actionFrames) {
           $('qa-panel').textContent = `Frame QA written: ${actionFrames.qa || 'action-frame-validation.json'}`
           $('action-review-panel').innerHTML = [
             `<strong>${escapeHtml(actionFrames.name || actionFrames.actionId)}</strong>`,
             `<p>Frames: ${escapeHtml(actionFrames.frameCount)} at ${escapeHtml(actionFrames.frameWidth)}x${escapeHtml(actionFrames.frameHeight)}</p>`,
             `<p>QA: ${escapeHtml(actionFrames.qa || 'action-frame-validation.json')}</p>`,
-            `<p>Trigger proposal is review-only: ${escapeHtml((actionFrames.triggerProposal || action.triggerProposal).type)}</p>`
+            `<p>Trigger proposal is review-only: ${escapeHtml((actionFrames.triggerProposal || action.triggerProposal).type)}</p>`,
+            renderFramePreview(actionReview)
           ].join('')
         } else {
           $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
@@ -312,6 +369,7 @@
             backend: $('backend-select').value
           })
           state.run = payload.run
+          state.actionReview = payload.actionReview || null
           renderRun()
           await refreshLogs()
           setStatus('Task drafted.', 'ok')
@@ -326,6 +384,7 @@
         try {
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/questions/trigger/answer`, { answer })
           state.run = payload.run
+          state.actionReview = payload.actionReview || null
           renderRun()
           await refreshLogs()
           setStatus('Question answered.', 'ok')
@@ -339,6 +398,7 @@
         try {
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/confirm`)
           state.run = payload.run
+          state.actionReview = payload.actionReview || null
           renderRun()
           await refreshLogs()
           setStatus('Task confirmed.', 'ok')
@@ -352,6 +412,8 @@
         try {
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/generate-action`)
           state.run = payload.run
+          state.actionReview = payload.actionReview || null
+          if (!state.actionReview) await fetchRunDetail()
           renderRun()
           await refreshLogs()
           setStatus(`Generated action output in ${payload.outputDir || 'run workspace'}.`, 'ok')
