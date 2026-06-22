@@ -3,6 +3,7 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
+  ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
@@ -21,6 +22,7 @@ export function useActionsPane() {
   const [importInspection, setImportInspection] = useState<CompletedActionFrameInspectionResult | null>(null)
   const [triggerProposalType, setTriggerProposalType] = useState<ActionTriggerProposalType>('click')
   const [triggerProposalNotes, setTriggerProposalNotes] = useState('')
+  const [lastTriggerProposalResult, setLastTriggerProposalResult] = useState<ActionTriggerProposalAcceptanceResult | null>(null)
   const [status, setStatus] = useState('')
   const [working, setWorking] = useState(false)
 
@@ -56,6 +58,21 @@ export function useActionsPane() {
     }
   }
 
+  const onSelectAction = (actionId: string) => {
+    setSelectedActionId(actionId)
+    setLastTriggerProposalResult(null)
+  }
+
+  const onChangeTriggerProposalType = (value: ActionTriggerProposalType) => {
+    setTriggerProposalType(value)
+    setLastTriggerProposalResult(null)
+  }
+
+  const onChangeTriggerProposalNotes = (value: string) => {
+    setTriggerProposalNotes(value)
+    setLastTriggerProposalResult(null)
+  }
+
   const onSaveConfig = async () => {
     setWorking(true)
     setStatus('')
@@ -81,6 +98,7 @@ export function useActionsPane() {
     }
     setWorking(true)
     setStatus('')
+    setLastTriggerProposalResult(null)
     try {
       const response = await api.saveActionsConfig({
         triggerProposal: {
@@ -92,6 +110,7 @@ export function useActionsPane() {
       })
       setActionsConfig(cloneActionsConfig(response.animations))
       const triggerProposal = response.triggerProposal
+      setLastTriggerProposalResult(triggerProposal || null)
       setStatus(triggerProposal
         ? `${triggerProposal.applied ? '已应用' : '已确认'} 触发建议：${triggerProposal.message}`
         : '触发建议已保存')
@@ -300,7 +319,7 @@ export function useActionsPane() {
     petPackInspection,
     status,
     working,
-    onSelectAction: setSelectedActionId,
+    onSelectAction,
     onChangeImportDraft,
     onChangeConfig: (partial: Partial<ActionsConfigViewState>) => setActionsConfig({ ...actionsConfig, ...partial }),
     onSaveConfig,
@@ -317,9 +336,10 @@ export function useActionsPane() {
     onRemovePetPack,
     onApplyTriggerProposal,
     triggerProposalType,
-    setTriggerProposalType,
+    setTriggerProposalType: onChangeTriggerProposalType,
     triggerProposalNotes,
-    setTriggerProposalNotes
+    setTriggerProposalNotes: onChangeTriggerProposalNotes,
+    lastTriggerProposalResult
   } satisfies ActionsPaneProps
 
   return { loading, paneProps }

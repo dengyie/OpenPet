@@ -60,11 +60,38 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Actions' }).click()
 
     await page.getByRole('button', { name: /Sleep/ }).click()
-    await page.locator('.readonly-row', { hasText: '触发建议' }).locator('select').selectOption('click')
-    await page.getByRole('button', { name: '应用触发建议' }).click()
+    const reviewCard = page.locator('[aria-label="触发建议审阅"]')
+    await expect(reviewCard).toContainText('目标动作：Sleep')
+    await expect(reviewCard).toContainText('接受后会立即把 clickAction 改成目标动作。')
+    await reviewCard.locator('select').selectOption('click')
+    await page.getByRole('button', { name: '应用点击触发' }).click()
 
     await expect(page.locator('.status-line')).toContainText('已应用 触发建议')
+    await expect(reviewCard).toContainText('最近结果：已应用')
+    await expect(reviewCard).toContainText('结果码：applied')
     await expect(page.locator('.readonly-row', { hasText: '点击动作' }).locator('select')).toHaveValue('sleep')
+
+    await reviewCard.locator('select').selectOption('manual')
+    await expect(reviewCard).not.toContainText('最近结果：已应用')
+  })
+
+  test('keeps host-rule trigger proposals pending in the Actions review UI', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    await page.getByRole('button', { name: /Sleep/ }).click()
+    const clickAction = page.locator('.readonly-row', { hasText: '点击动作' }).locator('select')
+    const beforeClickAction = await clickAction.inputValue()
+    const reviewCard = page.locator('[aria-label="触发建议审阅"]')
+
+    await reviewCard.locator('select').selectOption('state')
+    await expect(reviewCard).toContainText('状态条件和优先级必须由 host 统一校验和持久化。')
+    await page.getByRole('button', { name: '确认待规则' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('已确认 触发建议')
+    await expect(reviewCard).toContainText('最近结果：已确认')
+    await expect(reviewCard).toContainText('结果码：pending_host_rule')
+    await expect(clickAction).toHaveValue(beforeClickAction)
   })
 
   test('persists Pet settings in the demo API session', async ({ page }) => {

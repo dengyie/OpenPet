@@ -233,6 +233,86 @@ button {
   min-width: 0;
 }
 
+.trigger-review-card {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #cfd6df;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(235, 240, 247, 0.78)),
+    #ffffff;
+}
+
+.trigger-review-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trigger-review-header div,
+.trigger-review-copy,
+.trigger-result {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.trigger-review-header strong,
+.trigger-result strong {
+  color: #202124;
+  font-size: 14px;
+}
+
+.trigger-review-header span,
+.trigger-review-copy span,
+.trigger-result span {
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.trigger-review-copy strong {
+  display: inline-block;
+  min-width: 62px;
+  color: #202124;
+}
+
+.trigger-review-row {
+  min-height: 46px;
+  border-bottom: 1px solid rgba(207, 214, 223, 0.76);
+}
+
+.trigger-badge {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.trigger-badge.applied,
+.trigger-result.applied {
+  border: 1px solid rgba(22, 101, 52, 0.22);
+  background: rgba(220, 252, 231, 0.76);
+  color: #166534;
+}
+
+.trigger-badge.pending,
+.trigger-result.pending {
+  border: 1px solid rgba(146, 64, 14, 0.22);
+  background: rgba(254, 243, 199, 0.72);
+  color: #92400e;
+}
+
+.trigger-result {
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
 .button-icon {
   display: inline-flex;
   width: 16px;

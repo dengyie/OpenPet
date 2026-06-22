@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
@@ -43,6 +44,58 @@ export interface ActionsPaneProps {
   setTriggerProposalType: (value: ActionTriggerProposalType) => void
   triggerProposalNotes: string
   setTriggerProposalNotes: (value: string) => void
+  lastTriggerProposalResult: ActionTriggerProposalAcceptanceResult | null
+}
+
+const triggerProposalDetails: Record<ActionTriggerProposalType, {
+  label: string
+  summary: string
+  outcome: string
+  boundary: string
+  buttonLabel: string
+}> = {
+  click: {
+    label: '点击',
+    summary: '把选中的动作设为点击桌宠时播放的动作。',
+    outcome: '接受后会立即把 clickAction 改成目标动作。',
+    boundary: '只允许写入 host 拥有的 clickAction 绑定，不开放插件直接改配置。',
+    buttonLabel: '应用点击触发'
+  },
+  manual: {
+    label: '菜单',
+    summary: '动作保留在动作库和菜单里，由用户手动触发。',
+    outcome: '接受后只确认提案，不会修改默认动作或点击动作。',
+    boundary: '菜单可见性由动作导入结果决定，当前无需额外触发规则。',
+    buttonLabel: '确认菜单触发'
+  },
+  random: {
+    label: '随机',
+    summary: '建议作为随机/周期性行为使用。',
+    outcome: '接受后会标记为待主程序规则，不会立即生效。',
+    boundary: '随机频率、冷却和冲突处理需要后续 host trigger-rule schema。',
+    buttonLabel: '确认待规则'
+  },
+  state: {
+    label: '状态',
+    summary: '建议由 hover、idle、心情、靠近等运行状态触发。',
+    outcome: '接受后会标记为待主程序规则，不会立即生效。',
+    boundary: '状态条件和优先级必须由 host 统一校验和持久化。',
+    buttonLabel: '确认待规则'
+  },
+  event: {
+    label: '事件',
+    summary: '建议由插件事件、本地 API 事件或系统事件触发。',
+    outcome: '接受后会标记为待主程序规则，不会立即生效。',
+    boundary: '事件来源、权限和参数匹配需要 host 规则编辑器确认。',
+    buttonLabel: '确认待规则'
+  },
+  unbound: {
+    label: '不绑定',
+    summary: '动作导入后暂不配置自动触发。',
+    outcome: '接受后只确认提案，不会修改任何触发绑定。',
+    boundary: '用户之后仍可在 Actions 或未来规则编辑器里手动绑定。',
+    buttonLabel: '确认不绑定'
+  }
 }
 
 function ActionPreview({ action }: { action?: ActionEntry }) {
@@ -250,11 +303,14 @@ export function ActionsPane({
   triggerProposalType,
   setTriggerProposalType,
   triggerProposalNotes,
-  setTriggerProposalNotes
+  setTriggerProposalNotes,
+  lastTriggerProposalResult
 }: ActionsPaneProps) {
   const selectedAction = actionsConfig.actions.find((action) => action.id === selectedActionId)
     || actionsConfig.actions.find((action) => action.id === actionsConfig.defaultAction)
     || actionsConfig.actions[0]
+  const selectedActionLabel = selectedAction?.label || selectedAction?.id || '未选择'
+  const triggerDetails = triggerProposalDetails[triggerProposalType]
 
   return (
     <section className="pane">
@@ -340,36 +396,62 @@ export function ActionsPane({
           </select>
         </div>
 
-        <div className="readonly-row">
-          <span>触发建议</span>
-          <select
-            className="text-input"
-            value={triggerProposalType}
-            onChange={(event) => setTriggerProposalType(event.target.value as ActionTriggerProposalType)}
-          >
-            <option value="click">点击</option>
-            <option value="manual">菜单</option>
-            <option value="random">随机</option>
-            <option value="state">状态</option>
-            <option value="event">事件</option>
-            <option value="unbound">不绑定</option>
-          </select>
-        </div>
+        <div className="trigger-review-card" aria-label="触发建议审阅">
+          <div className="trigger-review-header">
+            <div>
+              <strong>触发建议审阅</strong>
+              <span>目标动作：{selectedActionLabel}</span>
+            </div>
+            <span className={triggerProposalType === 'click' ? 'trigger-badge applied' : 'trigger-badge pending'}>
+              {triggerDetails.label}
+            </span>
+          </div>
 
-        <label className="field-row">
-          <span className="field-label">建议备注</span>
-          <input
-            className="text-input"
-            value={triggerProposalNotes}
-            placeholder={selectedAction?.id ? `目标动作 ${selectedAction.id}` : '选择动作后应用'}
-            onChange={(event) => setTriggerProposalNotes(event.target.value)}
-          />
-        </label>
+          <div className="readonly-row trigger-review-row">
+            <span>建议类型</span>
+            <select
+              className="text-input"
+              value={triggerProposalType}
+              onChange={(event) => setTriggerProposalType(event.target.value as ActionTriggerProposalType)}
+            >
+              <option value="click">点击</option>
+              <option value="manual">菜单</option>
+              <option value="random">随机</option>
+              <option value="state">状态</option>
+              <option value="event">事件</option>
+              <option value="unbound">不绑定</option>
+            </select>
+          </div>
 
-        <div className="inline-action">
-          <button type="button" className="ghost" onClick={onApplyTriggerProposal} disabled={working || !selectedAction?.id}>
-            应用触发建议
-          </button>
+          <label className="field-row trigger-review-row">
+            <span className="field-label">建议备注</span>
+            <input
+              className="text-input"
+              value={triggerProposalNotes}
+              placeholder={selectedAction?.id ? `目标动作 ${selectedAction.id}` : '选择动作后应用'}
+              onChange={(event) => setTriggerProposalNotes(event.target.value)}
+            />
+          </label>
+
+          <div className="trigger-review-copy">
+            <span><strong>含义</strong>{triggerDetails.summary}</span>
+            <span><strong>接受结果</strong>{triggerDetails.outcome}</span>
+            <span><strong>边界</strong>{triggerDetails.boundary}</span>
+          </div>
+
+          {lastTriggerProposalResult ? (
+            <div className={lastTriggerProposalResult.applied ? 'trigger-result applied' : 'trigger-result pending'}>
+              <strong>{lastTriggerProposalResult.applied ? '最近结果：已应用' : '最近结果：已确认'}</strong>
+              <span>{lastTriggerProposalResult.message}</span>
+              <span>结果码：{lastTriggerProposalResult.code}</span>
+            </div>
+          ) : null}
+
+          <div className="inline-action">
+            <button type="button" className="ghost" onClick={onApplyTriggerProposal} disabled={working || !selectedAction?.id}>
+              {triggerDetails.buttonLabel}
+            </button>
+          </div>
         </div>
       </div>
 

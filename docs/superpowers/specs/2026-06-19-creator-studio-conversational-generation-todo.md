@@ -128,6 +128,7 @@ Implemented host support:
 - `click` proposals are validated against existing actions and applied to `clickAction`.
 - `manual` and `unbound` proposals are acknowledged without mutating trigger bindings.
 - `random`, `state`, and `event` proposals return a pending-host-rule result until a full trigger-rule schema/editor exists.
+- Control Center Actions now includes a trigger proposal review card that shows the target action, proposal type meaning, immediate effect, host-owned boundary, and last acceptance result before/after the user confirms a proposal.
 
 ## Plugin Processing Pipeline
 
@@ -241,10 +242,11 @@ Completed host slice:
 - `click` proposals can be applied to `clickAction` after validating the target action exists.
 - `manual` and `unbound` proposals are confirmed without mutating bindings.
 - `random`, `state`, and `event` proposals remain visible as pending host-rule work until the full trigger-rule schema/editor exists.
+- Actions UI now makes this distinction explicit: `click` is shown as an immediate `clickAction` mutation, while `random`, `state`, and `event` are shown as accepted-but-pending host-rule proposals.
 
 Remaining host/main UI request:
 
-- Add a trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals from Creator Studio and other plugins.
+- Add a persistent trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals submitted directly from Creator Studio and other plugins rather than manually choosing the current action/type.
 - Define the durable trigger-rule schema for `random`, `state`, and `event` rules.
 - Add simulation/preview before applying non-click triggers.
 - Keep final trigger persistence host-owned; plugins should continue to propose rather than directly mutate rules.
