@@ -89,6 +89,9 @@ textarea {
 }
 
 .messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 0;
   padding: 18px;
   overflow: auto;
@@ -110,6 +113,41 @@ textarea {
 .empty-state small {
   color: rgba(47, 33, 24, 0.64);
   line-height: 1.5;
+}
+
+.message {
+  display: grid;
+  gap: 5px;
+  max-width: 86%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 22px rgba(65, 45, 27, 0.08);
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #2f2118;
+  color: #fff8ef;
+}
+
+.message.assistant {
+  align-self: flex-start;
+}
+
+.message span {
+  color: currentColor;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.message p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .composer {

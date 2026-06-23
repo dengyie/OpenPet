@@ -19,6 +19,7 @@ export const IPC = Object.freeze({
   PET_CHAT_HIDE: 'pet-chat:hide',
   PET_CHAT_SET_ALWAYS_ON_TOP: 'pet-chat:set-always-on-top',
   PET_CHAT_OPEN_SETTINGS: 'pet-chat:open-settings',
+  PET_CHAT_SEND_MESSAGE: 'pet-chat:send-message',
   PET_CHAT_STATE_CHANGED: 'pet-chat:state-changed',
   SETTINGS_OPEN: 'settings:open',
   SETTINGS_GET: 'settings:get',
