@@ -358,6 +358,27 @@ button {
   overflow-wrap: anywhere;
 }
 
+.trigger-rule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.trigger-rule-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(207, 214, 223, 0.82);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.compact-toggle {
+  width: max-content;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+}
+
 .button-icon {
   display: inline-flex;
   width: 16px;

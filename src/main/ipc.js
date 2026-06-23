@@ -501,6 +501,37 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       })
       return createActionsMutationResult(animations, { triggerProposal })
     }
+    const hasActionConfigMutation = payload && (Object.prototype.hasOwnProperty.call(payload, 'defaultAction') || Object.prototype.hasOwnProperty.call(payload, 'clickAction'))
+    const hasTriggerRulesMutation = Array.isArray(payload?.triggerRules)
+
+    if (hasActionConfigMutation) {
+      await actionImportService.updateActionConfig(payload)
+      if (typeof actionService?.reload === 'function') {
+        actionService.reload()
+      }
+    }
+
+    if (hasTriggerRulesMutation) {
+      if (!actionService?.saveTriggerRules) throw new Error('Action trigger rule editor is not available')
+      const animations = actionService.saveTriggerRules(payload.triggerRules)
+      recordAppLog({
+        scope: 'actions',
+        level: 'info',
+        actor: 'user',
+        event: 'actions.trigger-rules.saved',
+        message: 'Action trigger rules saved',
+        details: { count: payload.triggerRules.length }
+      })
+      if (hasActionConfigMutation) {
+        reloadAndSendAnimations(getPetWindow, petService)
+      }
+      return createActionsMutationResult(animations)
+    }
+    if (hasActionConfigMutation) {
+      reloadAndSendAnimations(getPetWindow, petService)
+      return createActionsMutationResult(petService.getPreviewAnimations())
+    }
+
     await actionImportService.updateActionConfig(payload)
     reloadAndSendAnimations(getPetWindow, petService)
     return createActionsMutationResult(petService.getPreviewAnimations())

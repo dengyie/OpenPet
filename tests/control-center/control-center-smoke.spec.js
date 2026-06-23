@@ -85,13 +85,36 @@ test.describe('Control Center smoke', () => {
     const reviewCard = page.locator('[aria-label="触发建议审阅"]')
 
     await reviewCard.locator('select').selectOption('state')
-    await expect(reviewCard).toContainText('状态条件和优先级必须由 host 统一校验和持久化。')
-    await page.getByRole('button', { name: '确认待规则' }).click()
+    await expect(reviewCard).toContainText('状态条件由 host 统一校验和持久化')
+    await page.getByRole('button', { name: '创建规则草稿' }).click()
 
     await expect(page.locator('.status-line')).toContainText('已确认 触发建议')
     await expect(reviewCard).toContainText('最近结果：已确认')
-    await expect(reviewCard).toContainText('结果码：pending_host_rule')
+    await expect(reviewCard).toContainText('结果码：rule_created')
     await expect(clickAction).toHaveValue(beforeClickAction)
+    const rulesEditor = page.locator('[aria-label="触发规则编辑器"]')
+    await expect(rulesEditor).toContainText('state trigger for sleep')
+    await rulesEditor.getByRole('button', { name: '模拟预览' }).click()
+    await expect(rulesEditor).toContainText('本阶段只保存规则草稿')
+  })
+
+  test('saves click action changes together with trigger rules in the demo API session', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    const reviewCard = page.locator('[aria-label="触发建议审阅"]')
+    await reviewCard.locator('select').selectOption('state')
+    await page.getByRole('button', { name: '创建规则草稿' }).click()
+
+    const clickAction = page.locator('.readonly-row', { hasText: '点击动作' }).locator('select')
+    await clickAction.selectOption('sleep')
+    await page.getByRole('button', { name: '保存配置' }).click()
+    await expect(page.locator('.status-line')).toContainText('动作配置已保存')
+
+    await page.reload()
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await expect(page.locator('.readonly-row', { hasText: '点击动作' }).locator('select')).toHaveValue('sleep')
+    await expect(page.locator('[aria-label="触发规则编辑器"]')).toContainText('state trigger for idle')
   })
 
   test('reviews and rejects action trigger proposals from the inbox', async ({ page }) => {

@@ -20,6 +20,7 @@ test('action service returns legacy animation config as runtime actions', () => 
     defaultAction: 'idle',
     clickAction: 'eat',
     triggerProposalInbox: [],
+    triggerRules: [],
     actions: [
       {
         id: 'idle',
@@ -72,6 +73,7 @@ test('action service can expose the normalized pet pack while preserving animati
     defaultAction: 'idle',
     clickAction: 'eat',
     triggerProposalInbox: [],
+    triggerRules: [],
     actions: [
       { id: 'idle', sprite: 'file:///packs/cat/sprites/idle.png' },
       { id: 'eat', sprite: 'file:///packs/cat/sprites/eat.png' }
@@ -505,10 +507,13 @@ test('action service accepts review-only trigger proposals without mutating acti
   assert.equal(manual.applied, false)
   assert.equal(manual.code, 'no_binding_required')
   assert.equal(state.applied, false)
-  assert.equal(state.code, 'pending_host_rule')
+  assert.equal(state.code, 'rule_created')
+  assert.match(state.triggerRuleId, /^trigger-rule-/)
   assert.equal(state.sourcePluginId, '')
   assert.equal(state.sourceRunId.length, 160)
-  assert.equal(savedConfig, null)
+  assert.equal(savedConfig.triggerRules.length, 1)
+  assert.equal(savedConfig.triggerRules[0].type, 'state')
+  assert.equal(savedConfig.triggerRules[0].enabled, false)
   assert.equal(service.getConfig().clickAction, 'idle')
 })
 
@@ -615,6 +620,7 @@ test('action service persists trigger proposal inbox decisions', () => {
   assert.equal(rejected.proposal.status, 'rejected')
   assert.equal(rejected.proposal.decisionReason, 'Not wanted now')
   assert.equal(savedConfig.clickAction, 'wave')
+  assert.equal(savedConfig.triggerRules.length, 0)
   assert.deepEqual(savedConfig.triggerProposalInbox.map((proposal) => ({
     id: proposal.id,
     status: proposal.status,
@@ -627,5 +633,44 @@ test('action service persists trigger proposal inbox decisions', () => {
   assert.throws(
     () => service.acceptTriggerProposalItem(submittedClick.proposal.id),
     /already accepted/
+  )
+})
+
+test('action service validates and saves host trigger rules', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => savedConfig || ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        { id: 'idle', label: 'Idle', loop: true, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8, sprite: 'idle.png' },
+        { id: 'wave', label: 'Wave', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8, sprite: 'wave.png' }
+      ]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  service.saveTriggerRules([{
+    id: 'rule-wave-random',
+    type: 'random',
+    actionId: 'wave',
+    label: 'Wave sometimes',
+    enabled: true,
+    intervalMs: 1500,
+    probability: 1.5,
+    createdAt: '2026-06-23T00:00:00.000Z',
+    updatedAt: '2026-06-23T00:00:00.000Z'
+  }])
+
+  assert.equal(savedConfig.triggerRules[0].enabled, true)
+  assert.equal(savedConfig.triggerRules[0].intervalMs, 1500)
+  assert.equal(savedConfig.triggerRules[0].probability, 1)
+  assert.throws(
+    () => service.saveTriggerRules([{ id: 'bad-rule', type: 'event', actionId: 'missing' }]),
+    /action does not exist/
   )
 })

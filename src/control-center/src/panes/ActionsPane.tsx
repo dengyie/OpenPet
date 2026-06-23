@@ -3,6 +3,7 @@ import type {
   ActionEntry,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalInboxItem,
+  ActionTriggerRule,
   ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
@@ -78,23 +79,23 @@ const triggerProposalDetails: Record<ActionTriggerProposalType, {
   random: {
     label: '随机',
     summary: '建议作为随机/周期性行为使用。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '随机频率、冷却和冲突处理需要后续 host trigger-rule schema。',
-    buttonLabel: '确认待规则'
+    outcome: '接受后会创建一个停用的 host 随机规则草稿。',
+    boundary: '本阶段可保存和模拟预览规则；真实后台调度仍需后续运行时接入。',
+    buttonLabel: '创建规则草稿'
   },
   state: {
     label: '状态',
     summary: '建议由 hover、idle、心情、靠近等运行状态触发。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '状态条件和优先级必须由 host 统一校验和持久化。',
-    buttonLabel: '确认待规则'
+    outcome: '接受后会创建一个停用的 host 状态规则草稿。',
+    boundary: '状态条件由 host 统一校验和持久化；真实状态调度仍需后续运行时接入。',
+    buttonLabel: '创建规则草稿'
   },
   event: {
     label: '事件',
     summary: '建议由插件事件、本地 API 事件或系统事件触发。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '事件来源、权限和参数匹配需要 host 规则编辑器确认。',
-    buttonLabel: '确认待规则'
+    outcome: '接受后会创建一个停用的 host 事件规则草稿。',
+    boundary: '事件来源、权限和参数匹配由 host 持久化；真实事件调度仍需后续运行时接入。',
+    buttonLabel: '创建规则草稿'
   },
   unbound: {
     label: '不绑定',
@@ -207,6 +208,94 @@ function TriggerProposalInbox({
         </div>
       ) : (
         <div className="empty-chat">暂无来自 Creator Studio 或插件的触发建议。</div>
+      )}
+    </div>
+  )
+}
+
+const getTriggerRulePreview = (rule: ActionTriggerRule, actionLabel: string) => {
+  if (rule.type === 'random') {
+    return `每 ${Math.round((rule.intervalMs || 60000) / 1000)} 秒检查一次，以 ${Math.round((rule.probability ?? 0.2) * 100)}% 概率尝试播放 ${actionLabel}。`
+  }
+  if (rule.type === 'state') {
+    return `当 host 状态匹配 ${rule.state || 'idle'} 时，尝试播放 ${actionLabel}。`
+  }
+  return `当 host 收到事件 ${rule.eventName || 'openpet:event'} 时，尝试播放 ${actionLabel}。`
+}
+
+function TriggerRulesEditor({
+  rules,
+  actions,
+  working,
+  onChange
+}: {
+  rules: ActionTriggerRule[]
+  actions: ActionEntry[]
+  working: boolean
+  onChange: (rules: ActionTriggerRule[]) => void
+}) {
+  const [previewRuleId, setPreviewRuleId] = useState('')
+  const actionLabels = new Map(actions.map((action) => [action.id || '', action.label || action.id || '动作']))
+  const updateRule = (ruleId: string, partial: Partial<ActionTriggerRule>) => {
+    onChange(rules.map((rule) => rule.id === ruleId ? { ...rule, ...partial, updatedAt: new Date().toISOString() } : rule))
+  }
+
+  return (
+    <div className="trigger-review-card" aria-label="触发规则编辑器">
+      <div className="trigger-review-header">
+        <div>
+          <strong>触发规则</strong>
+          <span>{rules.length} 条 host-owned random/state/event 规则，启用后才会进入未来运行时调度范围。</span>
+        </div>
+        <span className={rules.some((rule) => rule.enabled) ? 'trigger-badge applied' : 'trigger-badge pending'}>
+          {rules.filter((rule) => rule.enabled).length} enabled
+        </span>
+      </div>
+
+      {rules.length ? (
+        <div className="trigger-rule-list">
+          {rules.map((rule) => {
+            const actionLabel = actionLabels.get(rule.actionId) || rule.actionId
+            const preview = getTriggerRulePreview(rule, actionLabel)
+            return (
+              <div className="trigger-rule-item" key={rule.id}>
+                <div className="trigger-review-header compact">
+                  <div>
+                    <strong>{rule.label}</strong>
+                    <span>{rule.type} · {rule.actionId} · {rule.id}</span>
+                  </div>
+                  <label className="toggle-row compact-toggle">
+                    <input
+                      type="checkbox"
+                      checked={rule.enabled}
+                      disabled={working}
+                      onChange={(event) => updateRule(rule.id, { enabled: event.target.checked })}
+                    />
+                    <span>{rule.enabled ? '启用' : '停用'}</span>
+                  </label>
+                </div>
+                <div className="trigger-review-copy">
+                  <span><strong>预览</strong>{preview}</span>
+                  {rule.sourceProposalId ? <span><strong>来源</strong>{rule.sourceProposalId}</span> : null}
+                </div>
+                <div className="inline-action">
+                  <button type="button" className="ghost" onClick={() => setPreviewRuleId(rule.id)} disabled={working}>
+                    模拟预览
+                  </button>
+                </div>
+                {previewRuleId === rule.id ? (
+                  <div className="trigger-result pending">
+                    <strong>模拟结果</strong>
+                    <span>{preview}</span>
+                    <span>本阶段只保存规则草稿，不启动真实后台调度。</span>
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="empty-chat">暂无 random/state/event 触发规则。接受对应 Inbox 建议后会生成规则草稿。</div>
       )}
     </div>
   )
@@ -525,6 +614,13 @@ export function ActionsPane({
           onChangeRejectReason={setTriggerProposalRejectReason}
           onAccept={onAcceptInboxTriggerProposal}
           onReject={onRejectInboxTriggerProposal}
+        />
+
+        <TriggerRulesEditor
+          rules={actionsConfig.triggerRules || []}
+          actions={actionsConfig.actions}
+          working={working}
+          onChange={(triggerRules) => onChangeConfig({ triggerRules })}
         />
 
         <div className="trigger-review-card" aria-label="触发建议审阅">

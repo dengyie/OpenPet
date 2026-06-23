@@ -588,6 +588,10 @@ test('action mutation handlers return contract-shaped results and refreshed anim
           sourceCommandId: proposal.sourceCommandId || ''
         }
       },
+      saveTriggerRules: (rules) => {
+        calls.push(['trigger-rules-save', rules])
+        return { ...animations, triggerRules: rules }
+      },
       acceptTriggerProposalItem: (proposalId) => {
         calls.push(['trigger-accept-inbox', proposalId])
         return {
@@ -656,6 +660,14 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     label: 'Broken'
   })
   const saveResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, { defaultAction: 'idle', clickAction: 'wave' })
+  const saveRulesResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+    triggerRules: [{ id: 'rule-1', type: 'random', actionId: 'wave', label: 'Wave sometimes', enabled: true, createdAt: 'now', updatedAt: 'now' }]
+  })
+  const saveCombinedResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+    defaultAction: 'wave',
+    clickAction: 'idle',
+    triggerRules: [{ id: 'rule-2', type: 'state', actionId: 'idle', label: 'Idle on state', enabled: false, createdAt: 'later', updatedAt: 'later' }]
+  })
   const triggerResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
     triggerProposal: {
       actionId: 'wave',
@@ -684,6 +696,8 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   assert.equal(brokenImportResult.ok, false)
   assert.equal(brokenImportResult.inspectionResult.inspection.valid, false)
   assert.deepEqual(saveResult, { animations })
+  assert.equal(saveRulesResult.animations.triggerRules[0].id, 'rule-1')
+  assert.equal(saveCombinedResult.animations.triggerRules[0].id, 'rule-2')
   assert.deepEqual(triggerResult, {
     animations,
     triggerProposal: {
@@ -713,6 +727,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
+    IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED
   ])
   assert.deepEqual(calls, [
@@ -722,6 +737,9 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     ['inspect', sourceDir, 'broken'],
     ['inspect', sourceDir, 'broken'],
     ['save', { defaultAction: 'idle', clickAction: 'wave' }],
+    ['trigger-rules-save', [{ id: 'rule-1', type: 'random', actionId: 'wave', label: 'Wave sometimes', enabled: true, createdAt: 'now', updatedAt: 'now' }]],
+    ['save', { defaultAction: 'wave', clickAction: 'idle', triggerRules: [{ id: 'rule-2', type: 'state', actionId: 'idle', label: 'Idle on state', enabled: false, createdAt: 'later', updatedAt: 'later' }] }],
+    ['trigger-rules-save', [{ id: 'rule-2', type: 'state', actionId: 'idle', label: 'Idle on state', enabled: false, createdAt: 'later', updatedAt: 'later' }]],
     ['trigger', {
       actionId: 'wave',
       type: 'click',

@@ -81,7 +81,8 @@ export function useActionsPane() {
     try {
       const response = await api.saveActionsConfig({
         defaultAction: actionsConfig.defaultAction,
-        clickAction: actionsConfig.clickAction
+        clickAction: actionsConfig.clickAction,
+        triggerRules: actionsConfig.triggerRules || []
       })
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus('动作配置已保存')

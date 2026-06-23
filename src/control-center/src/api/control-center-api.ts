@@ -152,24 +152,41 @@ const createDemoActionsConfig = (): ActionsConfigViewState => cloneActionsConfig
 
 const demoTriggerProposalNeedsHostRule = (type: string) => ['random', 'state', 'event'].includes(type)
 
+const createDemoTriggerRuleFromProposal = (proposal: ActionTriggerProposalAcceptanceRequest, sourceProposalId = '') => ({
+  id: `demo-trigger-rule-${Date.now().toString(36)}`,
+  type: proposal.type as 'random' | 'state' | 'event',
+  actionId: proposal.actionId,
+  label: `${proposal.type} trigger for ${proposal.actionId}`,
+  enabled: false,
+  ...(proposal.type === 'random' ? { intervalMs: 60000, probability: 0.2 } : {}),
+  ...(proposal.type === 'state' ? { state: 'idle' } : {}),
+  ...(proposal.type === 'event' ? { eventName: 'openpet:event' } : {}),
+  ...(sourceProposalId ? { sourceProposalId } : {}),
+  createdAt: '2026-06-22T00:00:00.000Z',
+  updatedAt: '2026-06-22T00:00:00.000Z'
+})
+
 const createDemoTriggerProposalResult = (
   proposal: ActionTriggerProposalAcceptanceRequest,
-  acceptedAt = '2026-06-22T00:00:00.000Z'
+  acceptedAt = '2026-06-22T00:00:00.000Z',
+  triggerRuleId = ''
 ): ActionTriggerProposalAcceptanceResult => {
   const applied = proposal.type === 'click'
+  const ruleCreated = demoTriggerProposalNeedsHostRule(proposal.type)
   return {
     ok: true,
     applied,
     actionId: proposal.actionId,
     type: proposal.type,
     binding: applied ? 'clickAction' : '',
-    code: applied ? 'applied' : (demoTriggerProposalNeedsHostRule(proposal.type) ? 'pending_host_rule' : 'no_binding_required'),
+    code: applied ? 'applied' : (ruleCreated ? 'rule_created' : 'no_binding_required'),
     message: applied
       ? `Click trigger now uses action: ${proposal.actionId}`
-      : (demoTriggerProposalNeedsHostRule(proposal.type)
-          ? `Trigger type ${proposal.type} requires a host trigger-rule editor before it can be applied.`
+      : (ruleCreated
+          ? `Trigger type ${proposal.type} created a disabled host trigger-rule draft.`
           : `Action trigger proposal accepted for ${proposal.actionId}`),
     acceptedAt,
+    ...(triggerRuleId ? { triggerRuleId } : {}),
     sourcePluginId: proposal.sourcePluginId,
     sourceRunId: proposal.sourceRunId,
     sourceCommandId: proposal.sourceCommandId
@@ -827,17 +844,32 @@ const demoApi: ControlCenterApi = {
         ...demoState.actionsConfig,
         clickAction: triggerProposal.actionId
       })
-    } else if (!triggerProposal) {
+    } else if (triggerProposal && demoTriggerProposalNeedsHostRule(triggerProposal.type)) {
+      const rule = createDemoTriggerRuleFromProposal(triggerProposal)
       demoState.actionsConfig = cloneActionsConfig({
         ...demoState.actionsConfig,
+        triggerRules: [rule, ...(demoState.actionsConfig.triggerRules || [])]
+      })
+    } else {
+      const nextConfig = {
+        ...demoState.actionsConfig,
         ...config
+      }
+      if (Array.isArray(config?.triggerRules)) {
+        nextConfig.triggerRules = config.triggerRules
+      }
+      demoState.actionsConfig = cloneActionsConfig({
+        ...nextConfig
       })
     }
     writeDemoState()
+    const triggerRuleId = triggerProposal && demoTriggerProposalNeedsHostRule(triggerProposal.type)
+      ? demoState.actionsConfig.triggerRules?.[0]?.id || ''
+      : ''
     return {
       animations: cloneActionsConfig(demoState.actionsConfig),
       ...(triggerProposal
-        ? { triggerProposal: createDemoTriggerProposalResult(triggerProposal) }
+        ? { triggerProposal: createDemoTriggerProposalResult(triggerProposal, '2026-06-22T00:00:00.000Z', triggerRuleId) }
         : {})
     }
   },
@@ -855,14 +887,17 @@ const demoApi: ControlCenterApi = {
     const item = inbox.find((proposal) => proposal.id === proposalId)
     if (!item) throw new Error(`Trigger proposal is not pending: ${proposalId}`)
     const triggerProposal = createDemoTriggerProposalResult(item)
-    const accepted = { ...item, status: 'accepted' as const, decidedAt: triggerProposal.acceptedAt, result: triggerProposal }
+    const rule = demoTriggerProposalNeedsHostRule(item.type) ? createDemoTriggerRuleFromProposal(item, item.id) : null
+    const triggerProposalWithRule = rule ? createDemoTriggerProposalResult(item, triggerProposal.acceptedAt, rule.id) : triggerProposal
+    const accepted = { ...item, status: 'accepted' as const, decidedAt: triggerProposalWithRule.acceptedAt, result: triggerProposalWithRule }
     demoState.actionsConfig = cloneActionsConfig({
       ...demoState.actionsConfig,
       ...(triggerProposal.applied ? { clickAction: triggerProposal.actionId } : {}),
+      ...(rule ? { triggerRules: [rule, ...(demoState.actionsConfig.triggerRules || [])] } : {}),
       triggerProposalInbox: inbox.map((proposal) => proposal.id === proposalId ? accepted : proposal)
     })
     writeDemoState()
-    return { proposal: accepted, triggerProposal, animations: cloneActionsConfig(demoState.actionsConfig) }
+    return { proposal: accepted, triggerProposal: triggerProposalWithRule, animations: cloneActionsConfig(demoState.actionsConfig) }
   },
   rejectActionTriggerProposal: async (proposalId, reason = '') => {
     const inbox = demoState.actionsConfig.triggerProposalInbox || []

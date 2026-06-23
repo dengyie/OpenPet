@@ -9,7 +9,8 @@ const emptyConfig = {
   defaultAction: '',
   clickAction: '',
   actions: [],
-  triggerProposalInbox: []
+  triggerProposalInbox: [],
+  triggerRules: []
 }
 
 const emptyPetPack = {
@@ -124,12 +125,16 @@ const normalizePersistedCreatorConfig = (config = {}) => ({
   actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
   triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
     ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
+    : [],
+  triggerRules: Array.isArray(config.triggerRules)
+    ? config.triggerRules.map(normalizeTriggerRule)
     : []
 })
 
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const HOST_RULE_REQUIRED_TYPES = new Set(['random', 'state', 'event'])
 const MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH = 160
+const DEFAULT_TRIGGER_RULE_INTERVAL_MS = 60000
 
 const normalizeOptionalText = (value) => {
   if (typeof value !== 'string') return ''
@@ -167,6 +172,43 @@ const normalizeTriggerProposalInboxItem = (item = {}) => ({
   ...(typeof item.decisionReason === 'string' ? { decisionReason: normalizeOptionalText(item.decisionReason) } : {}),
   ...(item.result && typeof item.result === 'object' ? { result: { ...item.result } } : {})
 })
+
+const normalizePositiveInteger = (value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(Math.max(Math.round(number), min), max)
+}
+
+const normalizeProbability = (value, fallback = 1) => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(Math.max(number, 0), 1)
+}
+
+const normalizeTriggerRule = (rule = {}, index = 0) => {
+  const type = String(rule.type || '')
+  if (!HOST_RULE_REQUIRED_TYPES.has(type)) throw new Error(`Trigger rule type is invalid: ${type || 'unknown'}`)
+  const actionId = normalizeActionId(rule.actionId, 'trigger rule action id')
+  const id = normalizeActionId(rule.id || `trigger-rule-${index + 1}`, 'trigger rule id')
+  const createdAt = typeof rule.createdAt === 'string' && rule.createdAt ? rule.createdAt : ''
+  const updatedAt = typeof rule.updatedAt === 'string' && rule.updatedAt ? rule.updatedAt : createdAt
+  return {
+    id,
+    type,
+    actionId,
+    label: normalizeOptionalText(rule.label) || `${type} trigger for ${actionId}`,
+    enabled: Boolean(rule.enabled),
+    ...(type === 'random' ? {
+      intervalMs: normalizePositiveInteger(rule.intervalMs, DEFAULT_TRIGGER_RULE_INTERVAL_MS, 1000, 24 * 60 * 60 * 1000),
+      probability: normalizeProbability(rule.probability, 0.2)
+    } : {}),
+    ...(type === 'state' ? { state: normalizeOptionalText(rule.state) || 'idle' } : {}),
+    ...(type === 'event' ? { eventName: normalizeOptionalText(rule.eventName) || 'openpet:event' } : {}),
+    ...(normalizeOptionalText(rule.sourceProposalId) ? { sourceProposalId: normalizeOptionalText(rule.sourceProposalId) } : {}),
+    createdAt,
+    updatedAt
+  }
+}
 
 const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations = getLegacyPetAnimations, saveLegacyAnimations, projectRoot = path.join(__dirname, '..', '..', '..'), now = () => new Date().toISOString(), createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}` }) => {
   let cachedPetPack = null
@@ -213,6 +255,9 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       })) : [],
       triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
         ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
+        : [],
+      triggerRules: Array.isArray(config.triggerRules)
+        ? config.triggerRules.map(normalizeTriggerRule)
         : []
     }
   }
@@ -226,6 +271,9 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
       triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
         ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
+        : [],
+      triggerRules: Array.isArray(config.triggerRules)
+        ? config.triggerRules.map(normalizeTriggerRule)
         : []
     }
   }
@@ -319,9 +367,40 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       defaultAction: validation.actions.defaultAction,
       clickAction: validation.actions.clickAction,
       actions: validation.actions.actions.map((action) => ({ ...action })),
-      triggerProposalInbox: current.triggerProposalInbox || []
+      triggerProposalInbox: current.triggerProposalInbox || [],
+      triggerRules: current.triggerRules || []
     }
     return persistMutableConfig(nextConfig)
+  }
+
+  const saveTriggerRules = (rules = []) => {
+    const current = getMutableConfig()
+    const actionIds = new Set(current.actions.map((action) => action.id))
+    const normalizedRules = (Array.isArray(rules) ? rules : []).map(normalizeTriggerRule)
+    const seenIds = new Set()
+    for (const rule of normalizedRules) {
+      if (seenIds.has(rule.id)) throw new Error(`Trigger rule id is duplicated: ${rule.id}`)
+      seenIds.add(rule.id)
+      if (!actionIds.has(rule.actionId)) throw new Error(`Trigger rule action does not exist: ${rule.actionId}`)
+    }
+    return persistMutableConfig({ ...current, triggerRules: normalizedRules })
+  }
+
+  const createTriggerRuleFromProposal = ({ proposal, proposalId = '' }) => {
+    const createdAt = now()
+    return normalizeTriggerRule({
+      id: `trigger-rule-${createId()}`,
+      type: proposal.type,
+      actionId: proposal.actionId,
+      label: `${proposal.type} trigger for ${proposal.actionId}`,
+      enabled: false,
+      ...(proposal.type === 'random' ? { intervalMs: DEFAULT_TRIGGER_RULE_INTERVAL_MS, probability: 0.2 } : {}),
+      ...(proposal.type === 'state' ? { state: 'idle' } : {}),
+      ...(proposal.type === 'event' ? { eventName: 'openpet:event' } : {}),
+      ...(proposalId ? { sourceProposalId: proposalId } : {}),
+      createdAt,
+      updatedAt: createdAt
+    })
   }
 
   const createTriggerProposalAcceptance = (proposal) => {
@@ -367,8 +446,8 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
         ...baseResult,
         applied: false,
         binding: '',
-        code: 'pending_host_rule',
-        message: `Trigger type ${proposal.type} requires a host trigger-rule editor before it can be applied.`
+        code: 'rule_created',
+        message: `Trigger type ${proposal.type} created a disabled host trigger-rule draft.`
       }
     }
 
@@ -384,6 +463,11 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     const result = createTriggerProposalAcceptance(normalizedProposal)
     if (result.applied && result.type === 'click') {
       applyCreatorActionMutation({ clickAction: actionId, actions: [] })
+    } else if (HOST_RULE_REQUIRED_TYPES.has(result.type)) {
+      const current = getMutableConfig()
+      const rule = createTriggerRuleFromProposal({ proposal: normalizedProposal })
+      result.triggerRuleId = rule.id
+      persistMutableConfig({ ...current, triggerRules: [rule, ...(current.triggerRules || [])] })
     }
     return result
   }
@@ -431,12 +515,17 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     }
     const result = createTriggerProposalAcceptance(item)
     const decidedAt = result.acceptedAt || now()
+    const rule = HOST_RULE_REQUIRED_TYPES.has(result.type)
+      ? createTriggerRuleFromProposal({ proposal: item, proposalId })
+      : null
+    if (rule) result.triggerRuleId = rule.id
     const nextItem = normalizeTriggerProposalInboxItem({ ...item, status: 'accepted', decidedAt, result })
     const nextInbox = current.triggerProposalInbox.map((candidate) => candidate.id === proposalId ? nextItem : candidate)
     const animations = persistMutableConfig({
       ...current,
       ...(result.applied && result.type === 'click' ? { clickAction: item.actionId } : {}),
-      triggerProposalInbox: nextInbox
+      triggerProposalInbox: nextInbox,
+      ...(rule ? { triggerRules: [rule, ...(current.triggerRules || [])] } : {})
     })
     return { proposal: nextItem, animations, triggerProposal: result }
   }
@@ -450,7 +539,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     }
   })
 
-  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation, acceptTriggerProposal, submitTriggerProposal, acceptTriggerProposalItem, rejectTriggerProposalItem }
+  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation, saveTriggerRules, acceptTriggerProposal, submitTriggerProposal, acceptTriggerProposalItem, rejectTriggerProposalItem }
 }
 
 module.exports = { createActionService }
