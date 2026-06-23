@@ -49,6 +49,24 @@ test.describe('Control Center smoke', () => {
     }
   })
 
+  test('keeps the AI settings page inside a narrow viewport without page-level right swipe', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 720 })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+    await expect(page.getByRole('heading', { name: 'AI' })).toBeVisible()
+
+    const metrics = await page.evaluate(() => ({
+      viewportWidth: document.documentElement.clientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      shellWidth: Math.ceil(document.querySelector('.shell')?.getBoundingClientRect().width || 0)
+    }))
+
+    expect(metrics.documentScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.shellWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+  })
+
   test('keeps key Pet and About interactions responsive', async ({ page }) => {
     await page.goto('/')
 
