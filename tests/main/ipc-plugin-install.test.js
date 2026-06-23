@@ -57,6 +57,8 @@ const createIpcMainStub = () => {
     handlers,
     listeners,
     handle(channel, handler) {
+      if (!channel) throw new Error('Attempted to register IPC handler without a channel')
+      if (handlers.has(channel)) throw new Error(`Attempted to register a second handler for ${channel}`)
       handlers.set(channel, handler)
     },
     on(channel, handler) {
