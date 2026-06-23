@@ -1,4 +1,4 @@
-import { cloneAiConfig, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
@@ -42,6 +42,7 @@ declare global {
 
 interface DemoState {
   settings: ControlCenterSettings
+  actionsConfig: import('../../../shared/openpet-contracts').ActionsConfigViewState
   aiConfig: AiConfigViewState
   aiPersonaOverrides: Record<string, AiPersonaOverride>
   imageGenerationConfig: ImageGenerationConfigViewState
@@ -77,6 +78,67 @@ const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult =>
     errors: [],
     warnings: []
   }
+})
+
+const createDemoActionSprite = (label: string, fill: string) => `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="10" fill="${fill}"/>
+  <text x="24" y="29" text-anchor="middle" font-size="12" font-family="Arial, sans-serif" fill="#ffffff">${label}</text>
+</svg>
+`)}`.trim()
+
+const createDemoActionsConfig = () => cloneActionsConfig({
+  defaultAction: 'idle',
+  clickAction: 'wave',
+  actions: [
+    {
+      id: 'idle',
+      label: '待机',
+      kind: 'idle',
+      loop: true,
+      frameCount: 1,
+      frameMs: 100,
+      frameWidth: 48,
+      frameHeight: 48,
+      sprite: createDemoActionSprite('待', '#1f2937'),
+      previewSprite: createDemoActionSprite('待', '#1f2937')
+    },
+    {
+      id: 'wave',
+      label: '挥手',
+      kind: 'greeting',
+      loop: false,
+      frameCount: 1,
+      frameMs: 100,
+      frameWidth: 48,
+      frameHeight: 48,
+      sprite: createDemoActionSprite('挥', '#0f766e'),
+      previewSprite: createDemoActionSprite('挥', '#0f766e')
+    },
+    {
+      id: 'sleep',
+      label: '打盹',
+      kind: 'idle',
+      loop: true,
+      frameCount: 1,
+      frameMs: 100,
+      frameWidth: 48,
+      frameHeight: 48,
+      sprite: createDemoActionSprite('盹', '#7c3aed'),
+      previewSprite: createDemoActionSprite('盹', '#7c3aed')
+    }
+  ],
+  triggerRules: [{
+    id: 'demo-rule-state-sleep',
+    type: 'state',
+    actionId: 'sleep',
+    label: 'state trigger for sleep',
+    enabled: false,
+    source: 'creator-proposal',
+    state: 'idle',
+    createdAt: '2026-06-23T00:00:00.000Z',
+    updatedAt: '2026-06-23T00:00:00.000Z'
+  }]
 })
 
 const demoStorageKey = 'openpet.controlCenter.demoState'
@@ -469,6 +531,7 @@ const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus
 
 const createDefaultDemoState = (): DemoState => ({
   settings: cloneSettings(defaultSettings),
+  actionsConfig: createDemoActionsConfig(),
   aiConfig: cloneAiConfig({
     ...defaultAiConfig,
     behavior: {
@@ -506,6 +569,7 @@ const readDemoState = (): DemoState => {
     const state = JSON.parse(rawState)
     return {
       settings: cloneSettings(state.settings),
+      actionsConfig: cloneActionsConfig(state.actionsConfig || createDemoActionsConfig()),
       aiConfig: cloneAiConfig(state.aiConfig),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
@@ -759,13 +823,64 @@ const demoApi: ControlCenterApi = {
       cursor
     }
   },
-  getActions: async () => defaultActionsConfig,
   inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
   reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
   clearActionFrameSelection: async () => ({ ok: true }),
-  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: defaultActionsConfig }),
-  saveActionsConfig: async (config) => ({ animations: { ...defaultActionsConfig, ...config } }),
-  deleteAction: async () => ({ animations: defaultActionsConfig }),
+  getActions: async () => cloneActionsConfig(demoState.actionsConfig),
+  importActionFrames: async ({ actionId, label } = {}) => {
+    const safeActionId = String(actionId || '').trim() || 'demo-action'
+    const nextAction = {
+      id: safeActionId,
+      label: String(label || safeActionId),
+      kind: 'custom',
+      loop: false,
+      frameCount: 1,
+      frameMs: 100,
+      frameWidth: 48,
+      frameHeight: 48,
+      sprite: createDemoActionSprite('新', '#b45309'),
+      previewSprite: createDemoActionSprite('新', '#b45309')
+    }
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      actions: [
+        ...demoState.actionsConfig.actions.filter((action) => action.id !== safeActionId),
+        nextAction
+      ]
+    })
+    writeDemoState()
+    return {
+      ok: true,
+      result: { importedAction: { id: safeActionId, label: nextAction.label } },
+      animations: cloneActionsConfig(demoState.actionsConfig)
+    }
+  },
+  saveActionsConfig: async (config) => {
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      ...config
+    })
+    writeDemoState()
+    return { animations: cloneActionsConfig(demoState.actionsConfig) }
+  },
+  deleteAction: async (actionId) => {
+    const remainingActions = demoState.actionsConfig.actions.filter((action) => action.id !== actionId)
+    const nextDefaultAction = remainingActions.some((action) => action.id === demoState.actionsConfig.defaultAction)
+      ? demoState.actionsConfig.defaultAction
+      : (remainingActions[0]?.id || '')
+    const nextClickAction = remainingActions.some((action) => action.id === demoState.actionsConfig.clickAction)
+      ? demoState.actionsConfig.clickAction
+      : nextDefaultAction
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      defaultAction: nextDefaultAction,
+      clickAction: nextClickAction,
+      actions: remainingActions,
+      triggerRules: demoState.actionsConfig.triggerRules.filter((rule) => rule.actionId !== actionId)
+    })
+    writeDemoState()
+    return { animations: cloneActionsConfig(demoState.actionsConfig) }
+  },
   listPetPacks: async () => clonePetPacks(demoState.petPacks),
   inspectPetPackDirectory: async () => ({ canceled: true }),
   clearPetPackSelection: async () => ({ ok: true }),
@@ -782,7 +897,7 @@ const demoApi: ControlCenterApi = {
       pack: activePack,
       activePackId: demoState.petPacks.activePackId,
       petPacks: clonePetPacks(demoState.petPacks),
-      animations: defaultActionsConfig
+      animations: cloneActionsConfig(demoState.actionsConfig)
     }
   },
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),

@@ -4,6 +4,8 @@ import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPack
 import { messageFromError } from '../lib/errors'
 import type {
   ActionsConfigViewState,
+  ActionTriggerRule,
+  ActionTriggerRuleType,
   CompletedActionFrameInspectionResult,
   PetPackInspectionResult,
   PetPacksViewState
@@ -59,7 +61,8 @@ export function useActionsPane() {
     try {
       const response = await api.saveActionsConfig({
         defaultAction: actionsConfig.defaultAction,
-        clickAction: actionsConfig.clickAction
+        clickAction: actionsConfig.clickAction,
+        triggerRules: actionsConfig.triggerRules || []
       })
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus('动作配置已保存')
@@ -259,6 +262,62 @@ export function useActionsPane() {
     }
   }
 
+  const updateTriggerRules = (updater: (rules: ActionTriggerRule[]) => ActionTriggerRule[]) => {
+    setActionsConfig((current) => ({
+      ...current,
+      triggerRules: updater(current.triggerRules || [])
+    }))
+    if (status) setStatus('')
+  }
+
+  const onAddTriggerRule = (type: ActionTriggerRuleType) => {
+    const actionId = selectedActionId || actionsConfig.defaultAction || actionsConfig.actions[0]?.id || ''
+    if (!actionId) {
+      setStatus('请先添加动作后再创建触发规则')
+      return
+    }
+    const now = new Date().toISOString()
+    const baseRule: ActionTriggerRule = {
+      id: `draft:${type}:${actionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      actionId,
+      label: `${type} trigger for ${actionId}`,
+      enabled: false,
+      source: 'user',
+      createdAt: now,
+      updatedAt: now
+    }
+    const nextRule = type === 'random'
+      ? { ...baseRule, intervalMs: 60000, probability: 0.2 }
+      : type === 'state'
+        ? { ...baseRule, state: 'idle' }
+        : { ...baseRule, eventName: 'openpet:event' }
+    updateTriggerRules((rules) => [...rules, nextRule])
+    setStatus(`已新增 ${type} 触发规则草稿`)
+  }
+
+  const onChangeTriggerRule = (ruleId: string, partial: Partial<ActionTriggerRule>) => {
+    updateTriggerRules((rules) => rules.map((rule) => (
+      rule.id === ruleId ? { ...rule, ...partial, updatedAt: new Date().toISOString() } : rule
+    )))
+  }
+
+  const onDeleteTriggerRule = (ruleId: string) => {
+    updateTriggerRules((rules) => rules.filter((rule) => rule.id !== ruleId))
+    setStatus('已删除触发规则草稿')
+  }
+
+  const onPreviewTriggerRule = (rule: ActionTriggerRule) => {
+    const action = actionsConfig.actions.find((item) => item.id === rule.actionId)
+    const target = action?.label || rule.actionId || '未绑定动作'
+    const detail = rule.type === 'random'
+      ? `${rule.intervalMs || 60000}ms / ${rule.probability ?? 0.2}`
+      : rule.type === 'state'
+        ? (rule.state || 'idle')
+        : (rule.eventName || 'openpet:event')
+    setStatus(`本阶段只保存规则草稿：${rule.label || rule.id} -> ${target}（${detail}）`)
+  }
+
   const paneProps = {
     actionsConfig,
     petPacks,
@@ -271,6 +330,10 @@ export function useActionsPane() {
     onSelectAction: setSelectedActionId,
     onChangeImportDraft,
     onChangeConfig: (partial: Partial<ActionsConfigViewState>) => setActionsConfig({ ...actionsConfig, ...partial }),
+    onAddTriggerRule,
+    onChangeTriggerRule,
+    onDeleteTriggerRule,
+    onPreviewTriggerRule,
     onSaveConfig,
     onInspect,
     onReinspect,

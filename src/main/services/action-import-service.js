@@ -68,6 +68,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       configPath,
       defaultAction: overrides.defaultAction ?? currentConfig.defaultAction,
       clickAction: overrides.clickAction ?? currentConfig.clickAction,
+      triggerRules: overrides.triggerRules ?? currentConfig.triggerRules,
       labels: getExistingLabels()
     })
   }
@@ -90,6 +91,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       configPath,
       defaultAction: readCurrentConfig().defaultAction,
       clickAction: readCurrentConfig().clickAction,
+      triggerRules: readCurrentConfig().triggerRules,
       labels: { ...getExistingLabels(), ...(label ? { [actionId]: label } : {}) }
     })
     const importedAction = config.actions.find((action) => action.id === actionId)
@@ -107,7 +109,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     return { actionId, folderName: path.basename(sourceDir || ''), inspection }
   }
 
-  const updateActionConfig = async ({ defaultAction, clickAction }) => regenerate({ defaultAction, clickAction })
+  const updateActionConfig = async ({ defaultAction, clickAction, triggerRules }) => regenerate({ defaultAction, clickAction, triggerRules })
 
   const deleteAction = async (actionId) => {
     if (!isSafeActionId(actionId)) throw new Error('Invalid action id')

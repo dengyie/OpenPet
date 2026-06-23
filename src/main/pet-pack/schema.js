@@ -148,6 +148,67 @@ const normalizeAction = (action) => {
   return normalized
 }
 
+const normalizePositiveInteger = (value, fieldName, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  if (value == null) return fallback
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < min || number > max) {
+    throw new Error(`pet pack ${fieldName} must be an integer between ${min} and ${max}`)
+  }
+  return number
+}
+
+const normalizeProbability = (value, fieldName, fallback = 0.2) => {
+  if (value == null) return fallback
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || number > 1) {
+    throw new Error(`pet pack ${fieldName} must be a number between 0 and 1`)
+  }
+  return number
+}
+
+const normalizeTriggerRuleText = (value, fallback) => {
+  const text = optionalString(value)
+  return text || fallback
+}
+
+const normalizeTriggerRule = (rule, actionIds) => {
+  const type = optionalString(rule?.type)
+  if (!['random', 'state', 'event'].includes(type)) {
+    throw new Error('pet pack triggerRules[].type must be random, state, or event')
+  }
+  assertSafeId(rule?.actionId, 'triggerRules[].actionId')
+  if (!actionIds.has(rule.actionId)) {
+    throw new Error(`pet pack triggerRules[].actionId does not exist: ${rule.actionId}`)
+  }
+  const normalized = {
+    id: normalizeTriggerRuleText(rule.id, `rule:${type}:${rule.actionId}`),
+    type,
+    actionId: rule.actionId,
+    label: normalizeTriggerRuleText(rule.label, `${type} trigger for ${rule.actionId}`),
+    enabled: Boolean(rule.enabled),
+    source: ['host', 'creator-proposal', 'user'].includes(rule.source) ? rule.source : 'host',
+    createdAt: normalizeTriggerRuleText(rule.createdAt, ''),
+    updatedAt: normalizeTriggerRuleText(rule.updatedAt, '')
+  }
+  if (type === 'random') {
+    normalized.intervalMs = normalizePositiveInteger(rule.intervalMs, 'triggerRules[].intervalMs', 60000, { min: 1000, max: 24 * 60 * 60 * 1000 })
+    normalized.probability = normalizeProbability(rule.probability, 'triggerRules[].probability', 0.2)
+  }
+  if (type === 'state') normalized.state = normalizeTriggerRuleText(rule.state, 'idle')
+  if (type === 'event') normalized.eventName = normalizeTriggerRuleText(rule.eventName, 'openpet:event')
+  return normalized
+}
+
+const normalizeTriggerRules = (rules, actionIds) => {
+  if (!Array.isArray(rules)) return []
+  const seen = new Set()
+  return rules.map((rule) => normalizeTriggerRule(rule, actionIds)).map((rule) => {
+    if (seen.has(rule.id)) throw new Error(`pet pack triggerRules[].id is duplicated: ${rule.id}`)
+    seen.add(rule.id)
+    return rule
+  })
+}
+
 const normalizePetPackManifest = (manifest) => {
   assertSafeId(manifest?.id, 'id')
 
@@ -162,6 +223,7 @@ const normalizePetPackManifest = (manifest) => {
   if (!actions.some((action) => action.id === clickAction)) {
     throw new Error(`pet pack clickAction does not exist: ${clickAction}`)
   }
+  const actionIds = new Set(actions.map((action) => action.id))
 
   return {
     schemaVersion: Number(manifest.schemaVersion || DEFAULT_SCHEMA_VERSION),
@@ -172,8 +234,9 @@ const normalizePetPackManifest = (manifest) => {
     persona: normalizePersona(manifest.persona),
     defaultAction,
     clickAction,
-    actions
+    actions,
+    triggerRules: normalizeTriggerRules(manifest.triggerRules, actionIds)
   }
 }
 
-module.exports = { inferActionKind, normalizeAction, normalizePersona, normalizePetPackManifest, normalizeProvenance }
+module.exports = { inferActionKind, normalizeAction, normalizePersona, normalizePetPackManifest, normalizeProvenance, normalizeTriggerRule }

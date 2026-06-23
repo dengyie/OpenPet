@@ -4,11 +4,14 @@ const { pathToFileURL } = require('url')
 
 const SAFE_ACTION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const SAFE_RELATIVE_SPRITE_PATTERN = /^[^/\\\0][^\\\0]*$/
+const TRIGGER_RULE_TYPES = new Set(['random', 'state', 'event'])
+const TRIGGER_RULE_SOURCES = new Set(['host', 'creator-proposal', 'user'])
 
 const emptyConfig = {
   defaultAction: '',
   clickAction: '',
-  actions: []
+  actions: [],
+  triggerRules: []
 }
 
 const emptyPetPack = {
@@ -120,18 +123,85 @@ const collectCreatorActionValidationErrors = (action = {}) => {
 const normalizePersistedCreatorConfig = (config = {}) => ({
   defaultAction: String(config.defaultAction || ''),
   clickAction: String(config.clickAction || ''),
-  actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : []
+  actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
+  triggerRules: Array.isArray(config.triggerRules) ? config.triggerRules.map((rule) => ({ ...rule })) : []
 })
+
+const normalizePositiveInteger = (value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < min || number > max) return fallback
+  return number
+}
+
+const normalizeProbability = (value, fallback = 0.2) => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.max(0, Math.min(1, number))
+}
+
+const normalizeRuleText = (value, fallback) => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text || fallback
+}
+
+const createRuleId = (type, actionId) => `rule:${type}:${actionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
+
+const normalizeTriggerRule = (rule = {}, actionIds = new Set(), { now = new Date().toISOString() } = {}) => {
+  const type = TRIGGER_RULE_TYPES.has(rule.type) ? rule.type : ''
+  if (!type) throw new Error('Trigger rule type must be random, state, or event')
+  const actionId = normalizeActionId(rule.actionId, 'trigger rule actionId')
+  if (actionIds.size && !actionIds.has(actionId)) throw new Error(`Trigger rule action does not exist: ${actionId}`)
+
+  const normalized = {
+    id: typeof rule.id === 'string' && rule.id.trim() ? rule.id.trim() : createRuleId(type, actionId),
+    type,
+    actionId,
+    label: normalizeRuleText(rule.label, `${type} trigger for ${actionId}`),
+    enabled: Boolean(rule.enabled),
+    source: TRIGGER_RULE_SOURCES.has(rule.source) ? rule.source : 'host',
+    createdAt: typeof rule.createdAt === 'string' && rule.createdAt ? rule.createdAt : now,
+    updatedAt: typeof rule.updatedAt === 'string' && rule.updatedAt ? rule.updatedAt : now
+  }
+
+  if (type === 'random') {
+    normalized.intervalMs = normalizePositiveInteger(rule.intervalMs, 60000, { min: 1000, max: 24 * 60 * 60 * 1000 })
+    normalized.probability = normalizeProbability(rule.probability, 0.2)
+  }
+  if (type === 'state') normalized.state = normalizeRuleText(rule.state ?? rule.binding, 'idle')
+  if (type === 'event') normalized.eventName = normalizeRuleText(rule.eventName ?? rule.binding, 'openpet:event')
+
+  return normalized
+}
+
+const normalizeTriggerRules = (rules = [], actionIds = new Set()) => {
+  if (!Array.isArray(rules)) return []
+  const seen = new Set()
+  return rules.map((rule) => normalizeTriggerRule(rule, actionIds)).filter((rule) => {
+    if (seen.has(rule.id)) throw new Error(`Trigger rule id is duplicated: ${rule.id}`)
+    seen.add(rule.id)
+    return true
+  })
+}
 
 const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations = getLegacyPetAnimations, saveLegacyAnimations, projectRoot = path.join(__dirname, '..', '..', '..') }) => {
   let cachedPetPack = null
   let legacyConfigOverride = null
+  let memoryConfigOverride = null
 
   const getPetPack = () => {
     if (cachedPetPack) return cachedPetPack
     try {
       if (loadPetPack) {
         cachedPetPack = loadPetPack()
+        if (memoryConfigOverride) {
+          cachedPetPack = {
+            ...cachedPetPack,
+            manifest: {
+              ...(cachedPetPack.manifest || {}),
+              ...memoryConfigOverride
+            }
+          }
+        }
         return cachedPetPack
       }
       if (petPackService) {
@@ -142,7 +212,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
         ...loadLegacyPetPack({
           id: 'legacy-cat',
           displayName: 'Legacy Cat',
-          getPetAnimations: () => legacyConfigOverride || loadLegacyAnimations()
+          getPetAnimations: () => memoryConfigOverride || legacyConfigOverride || loadLegacyAnimations()
         }),
         rootPath: projectRoot
       }
@@ -165,7 +235,8 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
         sprite: action.sprite
           ? pathToFileURL(path.join(spriteRoot, action.sprite)).toString()
           : ''
-      })) : []
+      })) : [],
+      triggerRules: normalizeTriggerRules(config.triggerRules, new Set((config.actions || []).map((action) => action.id).filter(Boolean)))
     }
   }
 
@@ -175,7 +246,8 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     return {
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
-      actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : []
+      actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
+      triggerRules: normalizeTriggerRules(config.triggerRules, new Set((config.actions || []).map((action) => action.id).filter(Boolean)))
     }
   }
 
@@ -253,7 +325,8 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     const nextConfig = {
       defaultAction: validation.actions.defaultAction,
       clickAction: validation.actions.clickAction,
-      actions: validation.actions.actions.map((action) => ({ ...action }))
+      actions: validation.actions.actions.map((action) => ({ ...action })),
+      triggerRules: current.triggerRules
     }
     if (typeof saveLegacyAnimations === 'function') {
       const persistedConfig = normalizePersistedCreatorConfig(nextConfig)
@@ -265,13 +338,77 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       petPackService.updateActivePetPackManifest(normalizePersistedCreatorConfig(nextConfig))
       return reload()
     }
+    memoryConfigOverride = normalizePersistedCreatorConfig(nextConfig)
+    cachedPetPack = null
     return {
       ...current,
       ...nextConfig
     }
   }
 
-  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation }
+  const saveConfig = ({ defaultAction, clickAction, triggerRules } = {}) => {
+    const current = getMutableConfig()
+    const nextDefaultAction = typeof defaultAction === 'string' ? defaultAction : current.defaultAction
+    const nextClickAction = typeof clickAction === 'string' ? clickAction : current.clickAction
+    const actionIds = new Set(current.actions.map((action) => action.id).filter(Boolean))
+    if (nextDefaultAction && !actionIds.has(nextDefaultAction)) {
+      throw new Error(`Creator defaultAction does not exist: ${nextDefaultAction}`)
+    }
+    if (nextClickAction && !actionIds.has(nextClickAction)) {
+      throw new Error(`Creator clickAction does not exist: ${nextClickAction}`)
+    }
+    const nextTriggerRules = triggerRules === undefined
+      ? current.triggerRules
+      : normalizeTriggerRules(triggerRules, actionIds).map((rule) => ({
+        ...rule,
+        updatedAt: new Date().toISOString()
+      }))
+    const nextConfig = {
+      defaultAction: nextDefaultAction,
+      clickAction: nextClickAction,
+      actions: current.actions.map((action) => ({ ...action })),
+      triggerRules: nextTriggerRules
+    }
+    if (typeof saveLegacyAnimations === 'function') {
+      const persistedConfig = normalizePersistedCreatorConfig(nextConfig)
+      legacyConfigOverride = persistedConfig
+      saveLegacyAnimations(persistedConfig)
+      return reload()
+    }
+    if (petPackService?.updateActivePetPackManifest) {
+      petPackService.updateActivePetPackManifest(normalizePersistedCreatorConfig(nextConfig))
+      return reload()
+    }
+    memoryConfigOverride = normalizePersistedCreatorConfig(nextConfig)
+    cachedPetPack = null
+    return nextConfig
+  }
+
+  const saveTriggerRules = (rules = []) => {
+    return saveConfig({ triggerRules: rules })
+  }
+
+  const createTriggerRuleFromProposal = ({ actionId, triggerProposal = {}, label = '' } = {}) => {
+    const current = getMutableConfig()
+    const actionIds = new Set(current.actions.map((action) => action.id).filter(Boolean))
+    const type = triggerProposal.type
+    if (!TRIGGER_RULE_TYPES.has(type)) throw new Error('Only random, state, and event trigger proposals can create host rules')
+    const rule = normalizeTriggerRule({
+      type,
+      actionId,
+      label: label || `${type} trigger for ${actionId}`,
+      enabled: false,
+      source: 'creator-proposal',
+      binding: triggerProposal.binding,
+      state: triggerProposal.state,
+      eventName: triggerProposal.eventName,
+      intervalMs: triggerProposal.intervalMs,
+      probability: triggerProposal.probability
+    }, actionIds)
+    return saveTriggerRules([...current.triggerRules, rule]).triggerRules.find((item) => item.id === rule.id) || rule
+  }
+
+  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation, saveConfig, saveTriggerRules, createTriggerRuleFromProposal }
 }
 
 module.exports = { createActionService }

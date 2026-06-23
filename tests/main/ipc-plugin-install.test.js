@@ -588,6 +588,45 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   ])
 })
 
+test('actions save config prefers action service and carries trigger rules', async () => {
+  const ipcMain = createIpcMainStub()
+  const animations = {
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    actions: [{ id: 'idle' }, { id: 'wave' }],
+    triggerRules: [{ id: 'rule-wave', type: 'state', actionId: 'wave', label: 'Wave on idle', enabled: false, source: 'user', state: 'idle' }]
+  }
+  const calls = []
+  const services = createRequiredServices({})
+  services.petService.getPreviewAnimations = () => animations
+
+  registerIpcHandlers({
+    ...services,
+    actionImportService: {
+      updateActionConfig: async () => {
+        throw new Error('fallback should not be used when actionService is present')
+      }
+    },
+    actionService: {
+      saveConfig: (payload) => {
+        calls.push(payload)
+        return animations
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const payload = {
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    triggerRules: animations.triggerRules
+  }
+  const saveResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, payload)
+
+  assert.deepEqual(saveResult, { animations })
+  assert.deepEqual(calls, [payload])
+})
+
 test('catalog blocklist handlers return catalog plus updated blocklist view result', async () => {
   const ipcMain = createIpcMainStub()
   const catalog = {

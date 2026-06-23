@@ -145,6 +145,26 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '中' })).toBeDisabled()
   })
 
+  test('edits and persists action trigger rule drafts in the demo API session', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Trigger Rules' })).toBeVisible()
+    await expect(page.getByText('state trigger for sleep')).toBeVisible()
+
+    const ruleRow = page.locator('.trigger-rule-row', { hasText: 'state trigger for sleep' })
+    await ruleRow.getByRole('switch', { name: 'Enable trigger rule state trigger for sleep' }).click()
+    await ruleRow.getByRole('button', { name: '模拟预览' }).click()
+    await expect(page.locator('.status-line')).toContainText('本阶段只保存规则草稿')
+
+    await page.getByRole('button', { name: '保存配置' }).click()
+    await expect(page.locator('.status-line')).toContainText('动作配置已保存')
+
+    await page.reload()
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await expect(page.locator('.trigger-rule-row', { hasText: 'state trigger for sleep' }).getByRole('switch')).toBeChecked()
+  })
+
   test('persists AI config and clears API key drafts with the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

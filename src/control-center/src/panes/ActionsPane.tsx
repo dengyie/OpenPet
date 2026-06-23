@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerRule,
+  ActionTriggerRuleType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
   PetPackInspectionResult,
@@ -25,6 +27,10 @@ export interface ActionsPaneProps {
   onSelectAction: (actionId: string) => void
   onChangeImportDraft: (partial: Partial<ActionImportDraft>, clearInspection?: boolean) => void
   onChangeConfig: (partial: Partial<ActionsConfigViewState>) => void
+  onAddTriggerRule: (type: ActionTriggerRuleType) => void
+  onChangeTriggerRule: (ruleId: string, partial: Partial<ActionTriggerRule>) => void
+  onDeleteTriggerRule: (ruleId: string) => void
+  onPreviewTriggerRule: (rule: ActionTriggerRule) => void
   onSaveConfig: () => void | Promise<void>
   onInspect: () => void | Promise<void>
   onReinspect: () => void | Promise<void>
@@ -37,6 +43,139 @@ export interface ActionsPaneProps {
   onExportPetPack: (packId: string) => void | Promise<void>
   onSetActivePetPack: (packId: string) => void | Promise<void>
   onRemovePetPack: (packId: string) => void | Promise<void>
+}
+
+const triggerTypeLabels: Record<ActionTriggerRuleType, string> = {
+  random: '随机',
+  state: '状态',
+  event: '事件'
+}
+
+function TriggerRuleEditor({
+  rule,
+  actions,
+  working,
+  onChange,
+  onDelete,
+  onPreview
+}: {
+  rule: ActionTriggerRule
+  actions: ActionEntry[]
+  working: boolean
+  onChange: (ruleId: string, partial: Partial<ActionTriggerRule>) => void
+  onDelete: (ruleId: string) => void
+  onPreview: (rule: ActionTriggerRule) => void
+}) {
+  const actionOptions = actions.filter((action) => action.id)
+  const ruleType = rule.type || 'state'
+  const actionLabel = actions.find((action) => action.id === rule.actionId)?.label || rule.actionId
+
+  return (
+    <div className="trigger-rule-row">
+      <div className="trigger-rule-header">
+        <label className="switch-row compact-switch">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label={`Enable trigger rule ${rule.label}`}
+            checked={Boolean(rule.enabled)}
+            disabled={working}
+            onChange={(event) => onChange(rule.id, { enabled: event.target.checked })}
+          />
+          <span>{rule.enabled ? '启用' : '停用'}</span>
+        </label>
+        <div className="trigger-rule-title">
+          <strong>{rule.label || `${triggerTypeLabels[ruleType]}触发`}</strong>
+          <span>{triggerTypeLabels[ruleType]} · {actionLabel || '未绑定动作'} · {rule.source}</span>
+        </div>
+        <div className="trigger-rule-actions">
+          <button type="button" className="ghost" disabled={working} onClick={() => onPreview(rule)}>模拟预览</button>
+          <button type="button" className="danger-text" disabled={working} onClick={() => onDelete(rule.id)}>删除</button>
+        </div>
+      </div>
+
+      <div className="trigger-rule-fields">
+        <label>
+          <span>名称</span>
+          <input
+            className="text-input"
+            value={rule.label || ''}
+            disabled={working}
+            onChange={(event) => onChange(rule.id, { label: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>动作</span>
+          <select
+            className="text-input"
+            value={rule.actionId || ''}
+            disabled={working}
+            onChange={(event) => onChange(rule.id, { actionId: event.target.value })}
+          >
+            {actionOptions.map((action) => (
+              <option value={action.id || ''} key={action.id}>{action.label || action.id}</option>
+            ))}
+          </select>
+        </label>
+
+        {ruleType === 'random' ? (
+          <>
+            <label>
+              <span>间隔 ms</span>
+              <input
+                className="text-input"
+                type="number"
+                min="1000"
+                step="1000"
+                value={rule.intervalMs ?? 60000}
+                disabled={working}
+                onChange={(event) => onChange(rule.id, { intervalMs: Number(event.target.value) })}
+              />
+            </label>
+            <label>
+              <span>概率</span>
+              <input
+                className="text-input"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                value={rule.probability ?? 0.2}
+                disabled={working}
+                onChange={(event) => onChange(rule.id, { probability: Number(event.target.value) })}
+              />
+            </label>
+          </>
+        ) : null}
+
+        {ruleType === 'state' ? (
+          <label>
+            <span>状态</span>
+            <input
+              className="text-input"
+              value={rule.state || ''}
+              placeholder="idle"
+              disabled={working}
+              onChange={(event) => onChange(rule.id, { state: event.target.value })}
+            />
+          </label>
+        ) : null}
+
+        {ruleType === 'event' ? (
+          <label>
+            <span>事件名</span>
+            <input
+              className="text-input"
+              value={rule.eventName || ''}
+              placeholder="openpet:event"
+              disabled={working}
+              onChange={(event) => onChange(rule.id, { eventName: event.target.value })}
+            />
+          </label>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function ActionPreview({ action }: { action?: ActionEntry }) {
@@ -228,6 +367,10 @@ export function ActionsPane({
   onSelectAction,
   onChangeImportDraft,
   onChangeConfig,
+  onAddTriggerRule,
+  onChangeTriggerRule,
+  onDeleteTriggerRule,
+  onPreviewTriggerRule,
   onSaveConfig,
   onInspect,
   onReinspect,
@@ -371,6 +514,36 @@ export function ActionsPane({
             </div>
             )
           })}
+        </div>
+      </div>
+
+      <div className="trigger-rules-panel">
+        <div className="plugin-log-header">
+          <div>
+            <h2>Trigger Rules</h2>
+            <span>保存非点击动作触发草稿，真实调度执行由后续运行时接入</span>
+          </div>
+          <div className="plugin-log-actions">
+            <button type="button" className="ghost" disabled={working || actionsConfig.actions.length === 0} onClick={() => onAddTriggerRule('random')}>新增随机</button>
+            <button type="button" className="ghost" disabled={working || actionsConfig.actions.length === 0} onClick={() => onAddTriggerRule('state')}>新增状态</button>
+            <button type="button" className="ghost" disabled={working || actionsConfig.actions.length === 0} onClick={() => onAddTriggerRule('event')}>新增事件</button>
+          </div>
+        </div>
+
+        <div className="trigger-rule-list">
+          {(actionsConfig.triggerRules || []).length === 0 ? (
+            <div className="empty-chat">暂无触发规则草稿</div>
+          ) : (actionsConfig.triggerRules || []).map((rule) => (
+            <TriggerRuleEditor
+              key={rule.id}
+              rule={rule}
+              actions={actionsConfig.actions}
+              working={working}
+              onChange={onChangeTriggerRule}
+              onDelete={onDeleteTriggerRule}
+              onPreview={onPreviewTriggerRule}
+            />
+          ))}
         </div>
       </div>
 

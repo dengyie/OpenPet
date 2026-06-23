@@ -168,6 +168,7 @@ const generateSpritesFromFrames = async ({
   labels = {},
   defaultAction,
   clickAction,
+  triggerRules = [],
   logger = console
 }) => {
   if (!fs.existsSync(framesRoot)) throw new Error(`Frames root not found: ${framesRoot}`)
@@ -195,7 +196,11 @@ const generateSpritesFromFrames = async ({
     || actions.find((action) => action.id !== nextDefaultAction)?.id
     || nextDefaultAction
 
-  const config = { defaultAction: nextDefaultAction, clickAction: nextClickAction, actions }
+  const actionIds = new Set(actions.map((action) => action.id))
+  const safeTriggerRules = Array.isArray(triggerRules)
+    ? triggerRules.filter((rule) => rule && actionIds.has(rule.actionId)).map((rule) => ({ ...rule }))
+    : []
+  const config = { defaultAction: nextDefaultAction, clickAction: nextClickAction, actions, triggerRules: safeTriggerRules }
   fs.mkdirSync(path.dirname(configPath), { recursive: true })
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
   return config

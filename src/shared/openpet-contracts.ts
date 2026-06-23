@@ -221,6 +221,24 @@ export interface ActionsConfigViewState {
   defaultAction: string
   clickAction: string
   actions: ActionEntry[]
+  triggerRules: ActionTriggerRule[]
+}
+
+export type ActionTriggerRuleType = 'random' | 'state' | 'event'
+
+export interface ActionTriggerRule {
+  id: string
+  type: ActionTriggerRuleType
+  actionId: string
+  label: string
+  enabled: boolean
+  source: 'host' | 'creator-proposal' | 'user'
+  intervalMs?: number
+  probability?: number
+  state?: string
+  eventName?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface OkResponse {
@@ -295,6 +313,7 @@ export interface ActionFrameImportResult {
 export interface ActionsSaveConfigRequest {
   defaultAction: string
   clickAction: string
+  triggerRules?: ActionTriggerRule[]
 }
 
 export interface ActionsMutationResult {

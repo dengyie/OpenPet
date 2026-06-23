@@ -42,7 +42,8 @@ test('action service returns legacy animation config as runtime actions', () => 
         frameHeight: 253,
         sprite: 'file:///app/openpet/sprites/eat.png'
       }
-    ]
+    ],
+    triggerRules: []
   })
   assert.deepEqual(service.listActions().map((action) => action.id), ['idle', 'eat'])
   assert.equal(service.getAction('eat').label, '喂食')
@@ -73,7 +74,8 @@ test('action service can expose the normalized pet pack while preserving animati
     actions: [
       { id: 'idle', sprite: 'file:///packs/cat/sprites/idle.png' },
       { id: 'eat', sprite: 'file:///packs/cat/sprites/eat.png' }
-    ]
+    ],
+    triggerRules: []
   })
 })
 
@@ -386,4 +388,83 @@ test('action service applies creator action mutations through pet pack persisten
   assert.equal(savedManifest.clickAction, 'wave')
   assert.equal(savedManifest.actions.find((action) => action.id === 'wave').label, 'Wave Updated')
   assert.equal(savedManifest.actions.find((action) => action.id === 'wave').sprite, 'sprites/wave.png')
+})
+
+test('action service persists trigger rules and rejects missing action bindings', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'wave',
+      actions: [
+        { id: 'idle', label: 'Idle', frameCount: 1, frameMs: 100, frameWidth: 48, frameHeight: 48, sprite: 'sprites/idle.png' },
+        { id: 'wave', label: 'Wave', frameCount: 1, frameMs: 100, frameWidth: 48, frameHeight: 48, sprite: 'sprites/wave.png' }
+      ]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const saved = service.saveTriggerRules([
+    {
+      id: 'rule-state-wave',
+      type: 'state',
+      actionId: 'wave',
+      label: 'Wave while idle',
+      enabled: true,
+      source: 'user',
+      state: 'idle',
+      createdAt: '2026-06-23T00:00:00.000Z',
+      updatedAt: '2026-06-23T00:00:00.000Z'
+    }
+  ])
+
+  assert.equal(saved.triggerRules.length, 1)
+  assert.equal(saved.triggerRules[0].actionId, 'wave')
+  assert.equal(saved.triggerRules[0].state, 'idle')
+  assert.equal(savedConfig.triggerRules[0].id, 'rule-state-wave')
+
+  assert.throws(
+    () => service.saveTriggerRules([{ id: 'bad', type: 'event', actionId: 'missing', eventName: 'openpet:test' }]),
+    /Trigger rule action does not exist: missing/
+  )
+})
+
+test('action service creates disabled creator proposal trigger rules for random state and event triggers', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'wave',
+      actions: [
+        { id: 'idle', label: 'Idle', frameCount: 1, frameMs: 100, frameWidth: 48, frameHeight: 48, sprite: 'sprites/idle.png' },
+        { id: 'wave', label: 'Wave', frameCount: 1, frameMs: 100, frameWidth: 48, frameHeight: 48, sprite: 'sprites/wave.png' }
+      ]
+    })
+  })
+
+  const randomRule = service.createTriggerRuleFromProposal({
+    actionId: 'wave',
+    triggerProposal: { type: 'random', intervalMs: 30000, probability: 0.5 },
+    label: 'Random wave'
+  })
+  const stateRule = service.createTriggerRuleFromProposal({
+    actionId: 'wave',
+    triggerProposal: { type: 'state', binding: 'happy' }
+  })
+  const eventRule = service.createTriggerRuleFromProposal({
+    actionId: 'wave',
+    triggerProposal: { type: 'event', binding: 'chat:positive' }
+  })
+
+  assert.equal(randomRule.enabled, false)
+  assert.equal(randomRule.source, 'creator-proposal')
+  assert.equal(randomRule.intervalMs, 30000)
+  assert.equal(randomRule.probability, 0.5)
+  assert.equal(stateRule.state, 'happy')
+  assert.equal(eventRule.eventName, 'chat:positive')
+  assert.deepEqual(service.getConfig().triggerRules.map((rule) => rule.type), ['random', 'state', 'event'])
 })

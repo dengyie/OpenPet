@@ -656,7 +656,8 @@ const createPetPackService = ({
       ...readJsonFile(path.join(targetDir, 'pet.json')),
       defaultAction: nextManifest.defaultAction ?? currentManifest.defaultAction,
       clickAction: nextManifest.clickAction ?? currentManifest.clickAction,
-      actions: nextActions
+      actions: nextActions,
+      triggerRules: Array.isArray(nextManifest.triggerRules) ? nextManifest.triggerRules : currentManifest.triggerRules
     }
     writeJsonFile(path.join(targetDir, 'pet.json'), manifest)
     return loadPetPackFromDirectory(targetDir).manifest

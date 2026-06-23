@@ -1055,6 +1055,81 @@ button {
   border-top: 1px solid #dde2e8;
 }
 
+.trigger-rules-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #dde2e8;
+}
+
+.trigger-rule-list {
+  display: grid;
+  border-top: 1px solid #dde2e8;
+}
+
+.trigger-rule-row {
+  display: grid;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid #dde2e8;
+}
+
+.trigger-rule-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.compact-switch {
+  min-width: 86px;
+}
+
+.trigger-rule-title {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trigger-rule-title strong {
+  color: #202124;
+  font-size: 14px;
+}
+
+.trigger-rule-title span {
+  color: #6b7280;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.trigger-rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trigger-rule-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.trigger-rule-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trigger-rule-fields label > span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.trigger-rule-fields .text-input {
+  width: 100%;
+}
+
 .pet-pack-preview,
 .pet-pack-row,
 .pet-pack-identity {
@@ -1728,6 +1803,15 @@ button {
 
   .pet-pack-actions {
     align-self: stretch;
+    justify-content: flex-start;
+  }
+
+  .trigger-rule-header {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .trigger-rule-actions {
     justify-content: flex-start;
   }
 
