@@ -492,6 +492,57 @@ test('ai talk service injects relevant memories as dynamic context without chang
   assert.match(requests[0].messages[1].content, /Mochi greets the user softly/)
 })
 
+test('ai talk service exposes and manages memory profile without reinjecting deleted memories', async () => {
+  const requests = []
+  const logs = []
+  const store = createStore()
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'global', text: 'User likes quiet morning planning.', tags: ['preference'], confidence: 0.8, importance: 0.7, reason: 'stable preference' },
+      { operation: 'create', scope: 'petPack', text: 'Mochi checks in softly before focus work.', tags: ['relationship'], confidence: 0.7, importance: 0.6, reason: 'relationship cue' }
+    ]
+  })
+  const globalMemoryId = created.applied.find((memory) => memory.scope === 'global').id
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true },
+        memory: { enabled: false }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: '轻轻陪你。' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', displayName: 'Mochi Cat' }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const profile = service.getMemoryProfile()
+  const afterDeleteProfile = service.deleteMemory(globalMemoryId)
+  await service.chat({ message: '准备开始工作' })
+  const afterClearProfile = service.clearPetPackMemories()
+  await service.chat({ message: '再开始一次' })
+
+  assert.equal(profile.petPackDisplayName, 'Mochi Cat')
+  assert.deepEqual(profile.globalMemories.map((memory) => memory.text), ['User likes quiet morning planning.'])
+  assert.deepEqual(profile.petPackMemories.map((memory) => memory.text), ['Mochi checks in softly before focus work.'])
+  assert.deepEqual(afterDeleteProfile.globalMemories, [])
+  assert.deepEqual(afterDeleteProfile.petPackMemories.map((memory) => memory.text), ['Mochi checks in softly before focus work.'])
+  assert.doesNotMatch(JSON.stringify(requests[0].messages), /User likes quiet morning planning/)
+  assert.match(JSON.stringify(requests[0].messages), /Mochi checks in softly before focus work/)
+  assert.deepEqual(afterClearProfile.petPackMemories, [])
+  assert.doesNotMatch(JSON.stringify(requests[1].messages), /Mochi checks in softly before focus work/)
+  assert.equal(JSON.stringify(logs).includes('User likes quiet morning planning'), false)
+  assert.match(JSON.stringify(logs), /ai-talk\.memory\.deleted/)
+  assert.match(JSON.stringify(logs), /ai-talk\.memory\.pet-pack-cleared/)
+})
+
 test('ai talk service accepts fenced json memory extraction replies', async () => {
   const store = createStore()
   const service = createAiTalkService({

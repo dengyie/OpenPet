@@ -404,6 +404,37 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByLabel('Tone')).toHaveValue('generated from: 更适合专注工作')
   })
 
+  test('manages AI long-term memories in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const memorySection = await expandAiSection(page, '长期记忆')
+    await expect(memorySection).toContainText('Legacy Cat · legacy-cat')
+    await expect(memorySection).toContainText('User prefers concise Chinese replies during focused work.')
+    await expect(memorySection).toContainText('Legacy Cat should greet the user softly before focus sessions.')
+
+    await memorySection.getByRole('button', { name: '删除记忆 demo-memory-global-style' }).click()
+    await expect(page.locator('.status-line')).toContainText('长期记忆已删除')
+    await expect(memorySection).not.toContainText('User prefers concise Chinese replies during focused work.')
+    await expect(memorySection).toContainText('Legacy Cat should greet the user softly before focus sessions.')
+
+    page.once('dialog', (dialog) => dialog.accept())
+    await memorySection.getByRole('button', { name: '清空当前宠物记忆' }).click()
+    await expect(page.locator('.status-line')).toContainText('当前宠物关系记忆已清空')
+    await expect(memorySection).not.toContainText('Legacy Cat should greet the user softly before focus sessions.')
+    await expect(memorySection).toContainText('暂无当前宠物关系记忆')
+
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('button', { name: '启用' }).filter({ hasText: /^启用$/ }).nth(0).click()
+    await expect(page.locator('.status-line')).toContainText('已启用 Citrus Cat')
+
+    await page.getByRole('button', { name: 'AI' }).click()
+    const citrusMemorySection = await expandAiSection(page, '长期记忆')
+    await expect(citrusMemorySection).toContainText('Citrus Cat · citrus-cat')
+    await expect(citrusMemorySection).toContainText('Citrus likes cheerful check-ins after the user finishes a task.')
+    await expect(citrusMemorySection).not.toContainText('Legacy Cat should greet the user softly before focus sessions.')
+  })
+
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

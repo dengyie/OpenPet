@@ -287,6 +287,63 @@ test('ai persona profile IPC delegates to ai talk service when available', async
   assert.equal(saved.overridePersona.tone, 'playful')
 })
 
+test('ai memory management IPC delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const profile = {
+    petPackId: 'legacy-cat',
+    petPackDisplayName: 'Legacy Cat',
+    globalMemories: [{ id: 'memory-global', scope: 'global', petPackId: '', text: 'User likes focus.', tags: [], confidence: 0.8, importance: 0.7, sourceConversationId: '', sourceMessageIds: [], createdAt: '', updatedAt: '', lastUsedAt: '', lastEvidenceAt: '', useCount: 0, status: 'active', supersedes: '', reason: '' }],
+    petPackMemories: [{ id: 'memory-pack', scope: 'petPack', petPackId: 'legacy-cat', text: 'Legacy likes greetings.', tags: [], confidence: 0.7, importance: 0.6, sourceConversationId: '', sourceMessageIds: [], createdAt: '', updatedAt: '', lastUsedAt: '', lastEvidenceAt: '', useCount: 0, status: 'active', supersedes: '', reason: '' }],
+    recentJobs: []
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiTalkService: {
+      getMemoryProfile: () => {
+        calls.push(['getMemoryProfile'])
+        return profile
+      },
+      deleteMemory: (memoryId) => {
+        calls.push(['deleteMemory', memoryId])
+        return { ...profile, globalMemories: [] }
+      },
+      clearPetPackMemories: () => {
+        calls.push(['clearPetPackMemories'])
+        return { ...profile, petPackMemories: [] }
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const loaded = await ipcMain.handlers.get(IPC.AI_GET_MEMORY_PROFILE)()
+  const afterDelete = await ipcMain.handlers.get(IPC.AI_DELETE_MEMORY)(null, { memoryId: 'memory-global' })
+  const afterClear = await ipcMain.handlers.get(IPC.AI_CLEAR_PET_PACK_MEMORIES)()
+
+  assert.equal(loaded.petPackId, 'legacy-cat')
+  assert.equal(loaded.globalMemories[0].text, 'User likes focus.')
+  assert.deepEqual(afterDelete.globalMemories, [])
+  assert.deepEqual(afterClear.petPackMemories, [])
+  assert.deepEqual(calls, [
+    ['getMemoryProfile'],
+    ['deleteMemory', 'memory-global'],
+    ['clearPetPackMemories']
+  ])
+})
+
 test('ai provider settings IPC delegates config save key save and connection test', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []

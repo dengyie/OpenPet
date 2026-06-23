@@ -1,4 +1,4 @@
-import { cloneActionsConfig, cloneAiConfig, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
@@ -8,6 +8,9 @@ import type {
   ActionsConfigViewState,
   AiChatRequest,
   AiConfigViewState,
+  AiMemoryItemViewState,
+  AiMemoryJobViewState,
+  AiMemoryProfileViewState,
   AiPersona,
   AiPersonaOverride,
   AiPersonaProfileViewState,
@@ -46,6 +49,8 @@ interface DemoState {
   actionsConfig: ActionsConfigViewState
   aiConfig: AiConfigViewState
   aiPersonaOverrides: Record<string, AiPersonaOverride>
+  aiMemories: AiMemoryItemViewState[]
+  aiMemoryJobs: AiMemoryJobViewState[]
   imageGenerationConfig: ImageGenerationConfigViewState
   petPacks: PetPacksViewState
   serviceStatus: ServiceStatusViewState
@@ -217,6 +222,39 @@ const createDemoPersonaProfile = (
     effectivePersona,
     compiledPersonaPrompt,
     compiledSystemPrompt: compileDemoSystemPrompt(compiledPersonaPrompt, aiConfig.systemPrompt)
+  })
+}
+
+const createDemoMemory = (partial: Partial<AiMemoryItemViewState>): AiMemoryItemViewState => ({
+  id: partial.id || `demo-memory-${Date.now()}`,
+  scope: partial.scope === 'petPack' ? 'petPack' : 'global',
+  petPackId: partial.scope === 'petPack' ? (partial.petPackId || 'legacy-cat') : '',
+  text: partial.text || '',
+  tags: Array.isArray(partial.tags) ? partial.tags : [],
+  confidence: Number.isFinite(Number(partial.confidence)) ? Number(partial.confidence) : 0.6,
+  importance: Number.isFinite(Number(partial.importance)) ? Number(partial.importance) : 0.5,
+  sourceConversationId: partial.sourceConversationId || '',
+  sourceMessageIds: Array.isArray(partial.sourceMessageIds) ? partial.sourceMessageIds : [],
+  createdAt: partial.createdAt || '2026-06-24T00:00:00.000Z',
+  updatedAt: partial.updatedAt || '2026-06-24T00:00:00.000Z',
+  lastUsedAt: partial.lastUsedAt || '',
+  lastEvidenceAt: partial.lastEvidenceAt || partial.updatedAt || '2026-06-24T00:00:00.000Z',
+  useCount: Number.isFinite(Number(partial.useCount)) ? Number(partial.useCount) : 0,
+  status: partial.status === 'deleted' || partial.status === 'superseded' ? partial.status : 'active',
+  supersedes: partial.supersedes || '',
+  reason: partial.reason || ''
+})
+
+const createDemoMemoryProfile = (petPacks: PetPacksViewState): AiMemoryProfileViewState => {
+  const activePack = petPacks.packs.find((pack) => pack.id === petPacks.activePackId) || petPacks.packs[0]
+  const petPackId = activePack?.id || defaultAiMemoryProfile.petPackId
+  const activeMemories = demoState.aiMemories.filter((memory) => memory.status === 'active')
+  return cloneAiMemoryProfile({
+    petPackId,
+    petPackDisplayName: activePack?.displayName || petPackId,
+    globalMemories: activeMemories.filter((memory) => memory.scope === 'global'),
+    petPackMemories: activeMemories.filter((memory) => memory.scope === 'petPack' && memory.petPackId === petPackId),
+    recentJobs: demoState.aiMemoryJobs.filter((job) => job.petPackId === petPackId).slice(0, 5)
   })
 }
 
@@ -503,6 +541,38 @@ const createDefaultDemoState = (): DemoState => ({
     }
   }),
   aiPersonaOverrides: {},
+  aiMemories: [
+    createDemoMemory({
+      id: 'demo-memory-global-style',
+      scope: 'global',
+      text: 'User prefers concise Chinese replies during focused work.',
+      tags: ['preference', 'language'],
+      confidence: 0.86,
+      importance: 0.72,
+      reason: 'Demo durable user preference'
+    }),
+    createDemoMemory({
+      id: 'demo-memory-legacy-relationship',
+      scope: 'petPack',
+      petPackId: 'legacy-cat',
+      text: 'Legacy Cat should greet the user softly before focus sessions.',
+      tags: ['relationship', 'focus'],
+      confidence: 0.78,
+      importance: 0.64,
+      reason: 'Demo pet-pack relationship memory'
+    }),
+    createDemoMemory({
+      id: 'demo-memory-citrus-relationship',
+      scope: 'petPack',
+      petPackId: 'citrus-cat',
+      text: 'Citrus likes cheerful check-ins after the user finishes a task.',
+      tags: ['relationship', 'celebration'],
+      confidence: 0.74,
+      importance: 0.58,
+      reason: 'Demo pet-pack relationship memory'
+    })
+  ],
+  aiMemoryJobs: [],
   imageGenerationConfig: cloneImageGenerationConfig(defaultImageGenerationConfig),
   petPacks: createDemoPetPacks(),
   serviceStatus: createDemoServiceStatus(),
@@ -526,6 +596,8 @@ const readDemoState = (): DemoState => {
       ),
       aiConfig: cloneAiConfig(state.aiConfig),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
+      aiMemories: Array.isArray(state.aiMemories) ? state.aiMemories.map(createDemoMemory) : createDefaultDemoState().aiMemories,
+      aiMemoryJobs: Array.isArray(state.aiMemoryJobs) ? state.aiMemoryJobs : [],
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
       petPacks: normalizeDemoPetPacks(state.petPacks),
       serviceStatus: cloneServiceStatus(state.serviceStatus),
@@ -902,6 +974,26 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return createDemoPersonaProfile(demoState.petPacks, demoState.aiConfig, demoState.aiPersonaOverrides)
   },
+  getAiMemoryProfile: async () => createDemoMemoryProfile(demoState.petPacks),
+  deleteAiMemory: async (memoryId) => {
+    demoState.aiMemories = demoState.aiMemories.map((memory) => (
+      memory.id === memoryId
+        ? createDemoMemory({ ...memory, status: 'deleted', updatedAt: new Date().toISOString() })
+        : memory
+    ))
+    writeDemoState()
+    return createDemoMemoryProfile(demoState.petPacks)
+  },
+  clearAiPetPackMemories: async () => {
+    const activePackId = demoState.petPacks.activePackId
+    demoState.aiMemories = demoState.aiMemories.map((memory) => (
+      memory.scope === 'petPack' && memory.petPackId === activePackId
+        ? createDemoMemory({ ...memory, status: 'deleted', updatedAt: new Date().toISOString() })
+        : memory
+    ))
+    writeDemoState()
+    return createDemoMemoryProfile(demoState.petPacks)
+  },
   getImageGenerationConfig: async () => cloneImageGenerationConfig(demoState.imageGenerationConfig),
   saveImageGenerationConfig: async (config) => {
     demoState.imageGenerationConfig = cloneImageGenerationConfig({
@@ -993,6 +1085,39 @@ const demoApi: ControlCenterApi = {
         ].slice(0, 50)
       }
     })
+    if (demoState.aiConfig.memory.enabled) {
+      const timestamp = new Date().toISOString()
+      demoState.aiMemories = [
+        createDemoMemory({
+          id: `demo-memory-chat-${Date.now()}`,
+          scope: 'petPack',
+          petPackId: activePack?.id || 'legacy-cat',
+          text: `${personaProfile.effectivePersona.name} recently discussed: ${String(message || '').slice(0, 120)}`,
+          tags: ['demo-chat'],
+          confidence: 0.62,
+          importance: 0.42,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          lastEvidenceAt: timestamp,
+          reason: 'Demo chat memory extraction'
+        }),
+        ...demoState.aiMemories
+      ]
+      demoState.aiMemoryJobs = [
+        {
+          id: `demo-memory-job-${Date.now()}`,
+          petPackId: activePack?.id || 'legacy-cat',
+          conversationId: `control-center:${activePack?.id || 'legacy-cat'}:main`,
+          status: 'completed',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          errorCode: '',
+          appliedCount: 1,
+          filteredCount: 0
+        },
+        ...demoState.aiMemoryJobs
+      ].slice(0, 20)
+    }
     writeDemoState()
     return {
       reply: `${personaProfile.effectivePersona.name}: ${message}`,
