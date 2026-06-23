@@ -79,6 +79,34 @@ const toDataRelativePath = ({ dataDir, targetPath }) => {
   return relative.split(path.sep).join('/')
 }
 
+const toPublicLogString = ({ dataDir, value }) => {
+  const text = String(value || '')
+  if (!dataDir || !text) return text
+  if (path.isAbsolute(text)) {
+    const relative = toDataRelativePath({ dataDir, targetPath: text })
+    if (relative) return relative
+  }
+  const normalizedRoot = path.resolve(String(dataDir)).split(path.sep).join('/')
+  const normalizedText = text.replace(/\\/g, '/')
+  return normalizedText.includes(normalizedRoot)
+    ? normalizedText.split(normalizedRoot).join('OPENPET_DATA_DIR')
+    : text
+}
+
+const createPublicLogValue = ({ dataDir, value }) => {
+  if (typeof value === 'string') return toPublicLogString({ dataDir, value })
+  if (Array.isArray(value)) return value.map((entry) => createPublicLogValue({ dataDir, value: entry }))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+      key,
+      createPublicLogValue({ dataDir, value: entry })
+    ]))
+  }
+  return value
+}
+
+const createPublicLogEntry = ({ dataDir, entry }) => createPublicLogValue({ dataDir, value: entry })
+
 const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
   const publicArtifacts = {}
   if (artifacts.outputDir) publicArtifacts.outputDir = toDataRelativePath({ dataDir, targetPath: artifacts.outputDir })
@@ -301,7 +329,11 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
     const runId = decodeURIComponent(runMatch[1])
     try {
       if (runMatch[2] === '/logs') {
-        sendJson(response, 200, { ok: true, runId, logs: readRunLogs({ dataDir, runId }) })
+        sendJson(response, 200, {
+          ok: true,
+          runId,
+          logs: readRunLogs({ dataDir, runId }).map((entry) => createPublicLogEntry({ dataDir, entry }))
+        })
         return
       }
       const run = readRun({ dataDir, runId })

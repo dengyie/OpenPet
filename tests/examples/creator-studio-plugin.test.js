@@ -1894,12 +1894,20 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     }
   }).png().toFile(path.join(sourceDir, '0001.png'))
   fs.writeFileSync(path.join(framesDir, '0001.png'), Buffer.from('broken-frame'))
+  const qaPath = path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json')
   appendRunLog({
     dataDir,
     runId: run.runId,
     level: 'info',
     event: 'run.created',
-    message: 'Run created',
+    message: `Run created in ${framesDir}`,
+    data: {
+      outputDir: framesDir,
+      nested: {
+        qaPath,
+        samples: [framesDir, 42]
+      }
+    },
     now: () => '2026-06-19T00:01:00.000Z'
   })
   const server = createCreatorStudioServer({ dataDir, dashboardPath })
@@ -1929,6 +1937,11 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     assert.equal(JSON.stringify(detail).includes(dataDir), false)
     assert.equal(logs.ok, true)
     assert.deepEqual(logs.logs.map((entry) => entry.event), ['run.created'])
+    assert.equal(JSON.stringify(logs).includes(dataDir), false)
+    assert.equal(logs.logs[0].message, `Run created in OPENPET_DATA_DIR/runs/${run.runId}/frames/actions/shy-spin`)
+    assert.equal(logs.logs[0].data.outputDir, `runs/${run.runId}/frames/actions/shy-spin`)
+    assert.equal(logs.logs[0].data.nested.qaPath, `runs/${run.runId}/qa/action-frame-validation.json`)
+    assert.deepEqual(logs.logs[0].data.nested.samples, [`runs/${run.runId}/frames/actions/shy-spin`, 42])
 
     const invalidFrame = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/action-frames/shy-spin/not-a-frame.png`)
 
