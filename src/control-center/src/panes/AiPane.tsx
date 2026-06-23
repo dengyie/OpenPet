@@ -13,6 +13,27 @@ import type {
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
 
+const imageProviderPresets = [
+  {
+    id: 'openai',
+    title: 'OpenAI 官方',
+    description: '使用官方 OpenAI 图片接口；API Key 保存在主进程。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'local-openai-compatible',
+    title: '本地/代理 OpenAI-compatible',
+    description: '适合本机网关、反代或局域网模型服务；本地和云端共用同一套 Provider 配置。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  }
+] as const
+
 const CollapsibleAiSection = ({
   title,
   note,
@@ -462,6 +483,28 @@ export function AiPane({
             <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
           </div>
 
+          <div className="field-row tall">
+            <div>
+              <div className="field-label">图片 Provider 预设</div>
+              <div className="field-note">预设只填充 Base URL / Model / 超时；不会读取或覆盖 API Key。</div>
+            </div>
+            <div className="provider-preset-grid">
+              {imageProviderPresets.map((preset) => (
+                <button
+                  type="button"
+                  key={preset.id}
+                  className="provider-preset-card"
+                  onClick={() => applyImageProviderPreset(preset)}
+                  disabled={saving}
+                >
+                  <strong>{preset.title}</strong>
+                  <span>{preset.description}</span>
+                  <code>{preset.baseUrl}</code>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {imageProviderValidationError ? (
             <div className="provider-warning error">{imageProviderValidationError}</div>
           ) : null}
@@ -490,6 +533,38 @@ export function AiPane({
               className="text-input"
               value={imageGenerationConfig.model}
               onChange={(event) => onChangeImageGeneration({ model: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row">
+            <div>
+              <div className="field-label">图片 Timeout</div>
+              <div className="field-note">Provider 生成请求的最长等待时间，单位毫秒。</div>
+            </div>
+            <input
+              aria-label="图片 Timeout MS"
+              className="text-input"
+              type="number"
+              min={1000}
+              step={1000}
+              value={imageGenerationConfig.timeoutMs}
+              onChange={(event) => onChangeImageGeneration({ timeoutMs: Number(event.target.value) })}
+            />
+          </label>
+
+          <label className="field-row">
+            <div>
+              <div className="field-label">图片最大并发</div>
+              <div className="field-note">当前建议保持 1，避免桌宠生成任务互相抢占。</div>
+            </div>
+            <input
+              aria-label="图片最大并发"
+              className="text-input"
+              type="number"
+              min={1}
+              step={1}
+              value={imageGenerationConfig.maxConcurrentJobs}
+              onChange={(event) => onChangeImageGeneration({ maxConcurrentJobs: Number(event.target.value) })}
             />
           </label>
 

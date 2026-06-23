@@ -265,8 +265,16 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByLabel('本地 Health URL')).toHaveCount(0)
     await expect(page.getByLabel('本地模型')).toHaveCount(0)
 
+    await imageProviderSection.getByRole('button', { name: /本地\/代理 OpenAI-compatible/ }).click()
+    await expect(page.getByLabel('图片 Base URL')).toHaveValue('http://127.0.0.1:8317/v1')
+    await expect(page.getByLabel('图片 Model')).toHaveValue('gpt-image-2')
+    await expect(page.getByLabel('图片 Timeout MS')).toHaveValue('120000')
+    await expect(page.getByLabel('图片最大并发')).toHaveValue('1')
+
     await page.getByLabel('图片 Base URL').fill('https://image.example.test/v1')
     await page.getByLabel('图片 Model').fill('openpet-image-test')
+    await page.getByLabel('图片 Timeout MS').fill('90000')
+    await page.getByLabel('图片最大并发').fill('2')
     await expect(page.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片配置草稿未保存')
     await page.getByRole('button', { name: '检查图片健康' }).click()
     await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('请先保存图片配置')
@@ -301,6 +309,8 @@ test.describe('Control Center smoke', () => {
     await expandAiSection(page, '图片 Provider')
     await expect(page.getByLabel('图片 Base URL')).toHaveValue('https://image.example.test/v1')
     await expect(page.getByLabel('图片 Model')).toHaveValue('openpet-image-test')
+    await expect(page.getByLabel('图片 Timeout MS')).toHaveValue('90000')
+    await expect(page.getByLabel('图片最大并发')).toHaveValue('2')
     await expect(page.locator('.field-row', { hasText: '图片 API Key' })).toContainText('未保存')
   })
 
