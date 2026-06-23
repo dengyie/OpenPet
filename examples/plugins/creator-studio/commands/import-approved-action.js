@@ -20,6 +20,36 @@ const toDataRelativePath = ({ dataDir, targetPath }) => {
   return relative.replace(/\\/g, '/')
 }
 
+const readJsonFile = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+
+const validateActionFrameQa = ({ dataDir, actionFrames }) => {
+  if (!actionFrames?.qa || !fs.existsSync(actionFrames.qa)) {
+    throw new Error('Approved run is missing action frame QA')
+  }
+  toDataRelativePath({ dataDir, targetPath: actionFrames.qa })
+  const qa = readJsonFile(actionFrames.qa)
+  const frameCount = Number(actionFrames.frameCount)
+  if (qa.ok !== true) throw new Error('Action frame QA must pass before import')
+  if (qa.actionId !== actionFrames.actionId) throw new Error('Action frame QA actionId does not match generated action')
+  if (!Number.isInteger(frameCount) || frameCount < 1) throw new Error('Generated action frame count is invalid')
+  if (Number(qa.frameCount) !== frameCount) throw new Error('Action frame QA frameCount does not match generated action')
+  if (Number(qa.frameWidth) !== Number(actionFrames.frameWidth)) {
+    throw new Error('Action frame QA frameWidth does not match generated action')
+  }
+  if (Number(qa.frameHeight) !== Number(actionFrames.frameHeight)) {
+    throw new Error('Action frame QA frameHeight does not match generated action')
+  }
+  const frames = Array.isArray(qa.frames) ? qa.frames : []
+  if (frames.length !== frameCount) throw new Error('Action frame QA is incomplete')
+  frames.forEach((frame, index) => {
+    const expectedFileName = `${String(index + 1).padStart(4, '0')}.png`
+    if (frame?.fileName !== expectedFileName || Number(frame.visiblePixels) < 1) {
+      throw new Error('Action frame QA is incomplete')
+    }
+  })
+  return qa
+}
+
 runCommand(async (context) => {
   const dataDir = process.env.OPENPET_DATA_DIR
   const runId = resolveRunId({
@@ -36,6 +66,7 @@ runCommand(async (context) => {
   if (!actionFrames?.framesDir || !actionFrames?.actionId) {
     throw new Error('Approved run does not contain generated action frames')
   }
+  validateActionFrameQa({ dataDir, actionFrames })
 
   const imported = await callBridge('/creator/assets/import-frames', {
     dataRelativePath: toDataRelativePath({ dataDir, targetPath: actionFrames.framesDir }),

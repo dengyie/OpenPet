@@ -1,8 +1,9 @@
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
-const { listRuns, readRun, readRunLogs } = require('../lib/run-store')
+const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = require('../lib/run-store')
 const { runGenerationStep } = require('../lib/backend-runner')
+const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun } = require('../lib/task-workflow')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
@@ -68,6 +69,48 @@ const assertPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   return target
 }
 
+const toDataRelativePath = ({ dataDir, targetPath }) => {
+  if (!dataDir || !targetPath) return ''
+  const root = path.resolve(String(dataDir))
+  const rawTarget = String(targetPath)
+  const target = path.isAbsolute(rawTarget) ? path.resolve(rawTarget) : path.resolve(root, rawTarget)
+  const relative = path.relative(root, target)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return ''
+  return relative.split(path.sep).join('/')
+}
+
+const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
+  const publicArtifacts = {}
+  if (artifacts.outputDir) publicArtifacts.outputDir = toDataRelativePath({ dataDir, targetPath: artifacts.outputDir })
+  if (artifacts.petJson) publicArtifacts.petJson = toDataRelativePath({ dataDir, targetPath: artifacts.petJson })
+  if (artifacts.spritesheet) publicArtifacts.spritesheet = toDataRelativePath({ dataDir, targetPath: artifacts.spritesheet })
+  if (artifacts.bundle) publicArtifacts.bundle = toDataRelativePath({ dataDir, targetPath: artifacts.bundle })
+  if (artifacts.qa) publicArtifacts.qa = toDataRelativePath({ dataDir, targetPath: artifacts.qa })
+  if (artifacts.sourceImageQa) {
+    publicArtifacts.sourceImageQa = toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa })
+  }
+  if (artifacts.actionTaskQa) {
+    publicArtifacts.actionTaskQa = toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa })
+  }
+  if (artifacts.actionFrames) {
+    publicArtifacts.actionFrames = {
+      actionId: artifacts.actionFrames.actionId,
+      name: artifacts.actionFrames.name,
+      qa: toDataRelativePath({ dataDir, targetPath: artifacts.actionFrames.qa }),
+      frameCount: artifacts.actionFrames.frameCount,
+      frameWidth: artifacts.actionFrames.frameWidth,
+      frameHeight: artifacts.actionFrames.frameHeight,
+      triggerProposal: artifacts.actionFrames.triggerProposal || { type: 'unbound' }
+    }
+  }
+  return publicArtifacts
+}
+
+const createPublicRun = ({ dataDir, run }) => ({
+  ...run,
+  artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} })
+})
+
 const getActionFramePath = ({ dataDir, run, actionId, fileName }) => {
   const actionFrames = run.artifacts?.actionFrames
   if (!actionFrames || actionFrames.actionId !== actionId) throw new Error('Action frame preview is not available')
@@ -86,7 +129,7 @@ const getActionFramePath = ({ dataDir, run, actionId, fileName }) => {
   return framePath
 }
 
-const createActionReview = (run) => {
+const createActionReview = ({ dataDir, run }) => {
   const actionFrames = run.artifacts?.actionFrames
   const action = Array.isArray(run.generationTask?.actions) ? run.generationTask.actions[0] : null
   if (!actionFrames) return null
@@ -107,7 +150,7 @@ const createActionReview = (run) => {
     frameCount,
     frameWidth: actionFrames.frameWidth || 0,
     frameHeight: actionFrames.frameHeight || 0,
-    qa: actionFrames.qa || '',
+    qa: toDataRelativePath({ dataDir, targetPath: actionFrames.qa }),
     previewFrames,
     triggerProposal: actionFrames.triggerProposal || action?.triggerProposal || { type: 'unbound' },
     importStatus: run.importStatus || 'not-imported'
@@ -118,32 +161,41 @@ const handlePost = async ({ request, response, dataDir, url }) => {
   try {
     const body = await readJsonBody(request)
     if (url.pathname === '/api/tasks/draft') {
-      sendJson(response, 200, { ok: true, ...draftTaskRun({ dataDir, payload: body }) })
+      const output = draftTaskRun({ dataDir, payload: body })
+      sendJson(response, 200, {
+        ok: true,
+        ...output,
+        run: createPublicRun({ dataDir, run: output.run })
+      })
       return true
     }
 
     const answerMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/questions\/([^/]+)\/answer$/)
     if (answerMatch) {
+      const output = answerTaskQuestion({
+        dataDir,
+        runId: decodeURIComponent(answerMatch[1]),
+        questionId: decodeURIComponent(answerMatch[2]),
+        answer: body.answer
+      })
       sendJson(response, 200, {
         ok: true,
-        ...answerTaskQuestion({
-          dataDir,
-          runId: decodeURIComponent(answerMatch[1]),
-          questionId: decodeURIComponent(answerMatch[2]),
-          answer: body.answer
-        })
+        ...output,
+        run: createPublicRun({ dataDir, run: output.run })
       })
       return true
     }
 
     const confirmMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/confirm$/)
     if (confirmMatch) {
+      const output = confirmTaskRun({
+        dataDir,
+        runId: decodeURIComponent(confirmMatch[1])
+      })
       sendJson(response, 200, {
         ok: true,
-        ...confirmTaskRun({
-          dataDir,
-          runId: decodeURIComponent(confirmMatch[1])
-        })
+        ...output,
+        run: createPublicRun({ dataDir, run: output.run })
       })
       return true
     }
@@ -156,9 +208,69 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       })
       sendJson(response, 200, {
         ok: true,
-        run: output.run,
-        actionReview: createActionReview(output.run),
-        outputDir: output.outputDir || ''
+        run: createPublicRun({ dataDir, run: output.run }),
+        actionReview: createActionReview({ dataDir, run: output.run }),
+        outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
+      })
+      return true
+    }
+
+    const repairFrameMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/action-frames\/([^/]+)\/([^/]+)\/repair$/)
+    if (repairFrameMatch) {
+      const runId = decodeURIComponent(repairFrameMatch[1])
+      const actionId = decodeURIComponent(repairFrameMatch[2])
+      const fileName = decodeURIComponent(repairFrameMatch[3])
+      const run = readRun({ dataDir, runId })
+      const actionFrames = run.artifacts?.actionFrames
+      const action = Array.isArray(run.generationTask?.actions)
+        ? run.generationTask.actions.find((candidate) => candidate.actionId === actionId)
+        : null
+      if (run.status !== 'ready_for_review') {
+        throw new Error(`Action frame repair requires a reviewable run: ${run.status}`)
+      }
+      if (!actionFrames || actionFrames.actionId !== actionId || !action) {
+        throw new Error('Action frame repair is not available')
+      }
+      if (!run.artifacts?.generatedImage) {
+        throw new Error('Action frame repair requires generated image provenance')
+      }
+      const repair = await repairActionFrameFromGeneratedImage({
+        dataDir,
+        generationResult: run.artifacts.generatedImage,
+        action,
+        outputFramesDir: actionFrames.framesDir,
+        qaDir: actionFrames.qa ? path.dirname(actionFrames.qa) : path.join(dataDir, 'runs', runId, 'qa'),
+        fileName
+      })
+      const nextRun = updateRunStatus({
+        dataDir,
+        runId,
+        status: run.status,
+        patch: {
+          currentStep: 'review'
+        }
+      })
+      appendRunLog({
+        dataDir,
+        runId,
+        level: 'info',
+        event: 'action-frame.repaired',
+        message: `Repaired action frame ${fileName}`,
+        data: {
+          actionId,
+          fileName
+        }
+      })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run: nextRun }),
+        actionReview: createActionReview({ dataDir, run: nextRun }),
+        repair: {
+          actionId: repair.actionId,
+          fileName: repair.fileName,
+          frameIndex: repair.frameIndex,
+          qa: toDataRelativePath({ dataDir, targetPath: repair.qaPath })
+        }
       })
       return true
     }
@@ -180,7 +292,7 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
     if (await handlePost({ request, response, dataDir, url })) return
   }
   if (url.pathname === '/api/runs') {
-    sendJson(response, 200, { ok: true, runs: listRuns({ dataDir }) })
+    sendJson(response, 200, { ok: true, runs: listRuns({ dataDir }).map((run) => createPublicRun({ dataDir, run })) })
     return
   }
 
@@ -193,7 +305,11 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
         return
       }
       const run = readRun({ dataDir, runId })
-      sendJson(response, 200, { ok: true, run, actionReview: createActionReview(run) })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run }),
+        actionReview: createActionReview({ dataDir, run })
+      })
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Run not found' })
