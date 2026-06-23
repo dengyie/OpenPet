@@ -269,6 +269,9 @@ const createImageGenerationModelService = ({
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
 
+  let activeProviderJobs = 0
+  const queuedProviderJobs = []
+
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
   const getProviderTimeoutMs = (config) => Math.max(1, Number(cloudGenerationTimeoutMs ?? providerGenerationTimeoutMs ?? config.timeoutMs ?? PROVIDER_GENERATION_TIMEOUT_MS) || PROVIDER_GENERATION_TIMEOUT_MS)
 
@@ -282,6 +285,75 @@ const createImageGenerationModelService = ({
     } catch (_) {
       // Diagnostics must never break the creator workflow.
     }
+  }
+
+  const createProviderJobRelease = () => {
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      activeProviderJobs = Math.max(0, activeProviderJobs - 1)
+      drainProviderQueue()
+    }
+  }
+
+  const getMaxConcurrentJobs = (config) => Math.max(1, Number(config?.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs) || DEFAULT_CONFIG.maxConcurrentJobs)
+
+  function drainProviderQueue () {
+    while (queuedProviderJobs.length) {
+      const next = queuedProviderJobs[0]
+      if (activeProviderJobs >= next.maxConcurrentJobs) return
+      queuedProviderJobs.shift()
+      activeProviderJobs += 1
+      next.resolve(createProviderJobRelease())
+    }
+  }
+
+  const acquireProviderJobSlot = async ({ config, requestId }) => {
+    const maxConcurrentJobs = getMaxConcurrentJobs(config)
+    if (!queuedProviderJobs.length && activeProviderJobs < maxConcurrentJobs) {
+      activeProviderJobs += 1
+      return createProviderJobRelease()
+    }
+
+    const queuedAtMs = nowMs()
+    recordLog({
+      level: 'info',
+      event: 'imageGeneration.provider.queue.waiting',
+      message: 'Image Provider request is waiting for a concurrency slot',
+      details: {
+        requestId,
+        provider: config.provider,
+        model: config.model,
+        activeProviderJobs,
+        queuedProviderJobs: queuedProviderJobs.length + 1,
+        maxConcurrentJobs
+      }
+    })
+
+    return await new Promise((resolve) => {
+      queuedProviderJobs.push({
+        maxConcurrentJobs,
+        resolve: (release) => {
+          recordLog({
+            level: 'info',
+            event: 'imageGeneration.provider.queue.acquired',
+            message: 'Image Provider request acquired a concurrency slot',
+            details: {
+              requestId,
+              provider: config.provider,
+              model: config.model,
+              waitMs: nowMs() - queuedAtMs,
+              activeProviderJobs,
+              queuedProviderJobs: queuedProviderJobs.length,
+              maxConcurrentJobs
+            }
+          })
+          resolve(release)
+        }
+      })
+      drainProviderQueue()
+    })
   }
 
   const saveStoredConfig = (config) => {
@@ -638,7 +710,9 @@ const createImageGenerationModelService = ({
       }
     })
 
+    let releaseProviderJobSlot = null
     try {
+      releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId })
       const result = await generateProviderImage({ config, prompt, targetDir, relativeDir, constraints, requestId })
       recordLog({
         level: 'info',
@@ -667,6 +741,8 @@ const createImageGenerationModelService = ({
         }
       })
       throw error
+    } finally {
+      releaseProviderJobSlot?.()
     }
   }
 

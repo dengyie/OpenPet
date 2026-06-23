@@ -54,6 +54,16 @@ const providerSettings = (overrides = {}) => ({
   }
 })
 
+const waitForTurn = () => new Promise((resolve) => setImmediate(resolve))
+
+const waitForRequestCount = async (requests, expectedCount) => {
+  for (let index = 0; index < 20; index += 1) {
+    if (requests.length >= expectedCount) return
+    await waitForTurn()
+  }
+  assert.fail(`Timed out waiting for ${expectedCount} provider request(s); saw ${requests.length}`)
+}
+
 test('image generation model service exposes a renderer-safe unified provider config view and migrates legacy cloud config', () => {
   const service = createImageGenerationModelService({
     settingsService: createSettingsService({
@@ -413,6 +423,84 @@ test('image generation model service uses a gpt-image-2 compatible generation pa
   assert.equal(logs[0].details.requestedTransparent, true)
   assert.equal(logs[1].details.backgroundMode, 'omitted')
   assert.equal(logs[1].details.requestedTransparent, true)
+})
+
+test('image generation model service enforces provider maxConcurrentJobs by queueing requests', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const requests = []
+  const logs = []
+  let releaseFirstRequest
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ maxConcurrentJobs: 1 })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: (() => {
+      const ids = ['img-run-queue-1', 'img-run-queue-2']
+      return () => ids.shift() || 'img-run-queue-extra'
+    })(),
+    fetchImpl: async (url, options) => {
+      const requestIndex = requests.length + 1
+      requests.push({ url, options })
+      if (requestIndex === 1) {
+        await new Promise((resolve) => {
+          releaseFirstRequest = resolve
+        })
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            { b64_json: Buffer.from(`fake-image-${requestIndex}`).toString('base64') }
+          ]
+        })
+      }
+    }
+  })
+
+  const first = service.generateImage({
+    prompt: 'first queued custom pet prompt',
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/concurrency/first/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  })
+  await waitForRequestCount(requests, 1)
+
+  const second = service.generateImage({
+    prompt: 'second queued custom pet prompt',
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/concurrency/second/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  })
+  await waitForTurn()
+  await waitForTurn()
+
+  assert.equal(requests.length, 1)
+  assert.equal(logs.some((entry) => entry.event === 'imageGeneration.provider.queue.waiting' && entry.details.requestId === 'img-run-queue-2'), true)
+
+  releaseFirstRequest()
+  const results = await Promise.all([first, second])
+
+  assert.equal(requests.length, 2)
+  assert.equal(results[0].ok, true)
+  assert.equal(results[1].ok, true)
+  assert.equal(logs.some((entry) => entry.event === 'imageGeneration.provider.queue.acquired' && entry.details.requestId === 'img-run-queue-2'), true)
+  assert.equal(JSON.stringify(logs).includes('sk-test-1234'), false)
+  assert.equal(JSON.stringify(logs).includes('queued custom pet prompt'), false)
 })
 
 test('image generation model service rejects output paths outside the allowed data directory', async () => {
