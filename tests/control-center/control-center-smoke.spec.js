@@ -189,7 +189,37 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '大' })).toHaveClass(/active/)
   })
 
-  test('turning grounded off disables home in the demo API session', async ({ page }) => {
+  test('Home and activity range controls enable their movement prerequisites from the default state', async ({ page }) => {
+    await page.goto('/')
+
+    const grounded = page.getByRole('switch', { name: 'Enable grounded mode' })
+    const home = page.getByRole('switch', { name: 'Enable home anchor' })
+    const largeRadius = page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '大' })
+
+    await expect(grounded).toHaveAttribute('aria-checked', 'false')
+    await expect(home).toHaveAttribute('aria-checked', 'false')
+    await expect(home).toBeEnabled()
+    await home.click()
+    await expect(grounded).toHaveAttribute('aria-checked', 'true')
+    await expect(home).toHaveAttribute('aria-checked', 'true')
+
+    await page.getByRole('switch', { name: 'Enable grounded mode' }).click()
+    await expect(grounded).toHaveAttribute('aria-checked', 'false')
+    await expect(home).toHaveAttribute('aria-checked', 'false')
+    await expect(largeRadius).toBeEnabled()
+    await largeRadius.click()
+    await expect(grounded).toHaveAttribute('aria-checked', 'true')
+    await expect(home).toHaveAttribute('aria-checked', 'true')
+    await expect(largeRadius).toHaveClass(/active/)
+
+    await page.getByRole('button', { name: '保存', exact: true }).click()
+    await page.reload()
+    await expect(page.getByRole('switch', { name: 'Enable grounded mode' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByRole('switch', { name: 'Enable home anchor' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '大' })).toHaveClass(/active/)
+  })
+
+  test('turning grounded off clears home in the demo API session', async ({ page }) => {
     await page.goto('/')
 
     const grounded = page.getByRole('switch', { name: 'Enable grounded mode' })
@@ -199,9 +229,8 @@ test.describe('Control Center smoke', () => {
     await home.click()
     await grounded.click()
 
-    await expect(home).toBeDisabled()
     await expect(home).toHaveAttribute('aria-checked', 'false')
-    await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '中' })).toBeDisabled()
+    await expect(page.getByRole('group', { name: '活动范围' }).getByRole('button', { name: '中' })).toHaveClass(/active/)
   })
 
   test('persists AI config and clears API key drafts with the demo API', async ({ page }) => {
