@@ -47,7 +47,7 @@ const createElement = (id = '') => ({
   closest() { return null }
 })
 
-const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true } = {}) => {
+const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true, hasFocus = true } = {}) => {
   const frameResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const cursorRegionResults = insideCursorRegion === undefined
     ? null
@@ -113,9 +113,8 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
         }),
         setViewport: () => {},
         setMousePassthrough: (passthrough) => logs.push({ event: 'pet:test:set-mouse-passthrough', passthrough }),
-        requestFocusForCursor: () => focusRequests.push({ event: 'pet:test:request-focus-for-cursor' }),
         recordAppLog: (entry) => logs.push(entry),
-        requestFocusForCursor: () => { focusForCursorRequests += 1 },
+        requestFocusForCursor: () => focusRequests.push({ event: 'pet:test:request-focus-for-cursor' }),
         onSettingsChanged: (callback) => { callbacks.settings = callback },
         onPetSay: () => {},
         onPetAction: () => {},

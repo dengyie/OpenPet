@@ -194,7 +194,6 @@ const createUpdateCheckView = (result = {}) => ({
 module.exports = {
   createActionFrameImportResult,
   createActionsMutationResult,
-  createTriggerProposalInboxItem,
   createAboutInfoView,
   createAboutUpdateInfo,
   createCatalogBlocklistResult,

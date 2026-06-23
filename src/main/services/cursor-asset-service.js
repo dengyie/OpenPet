@@ -3,8 +3,14 @@ const fs = require('fs')
 const path = require('path')
 const { pathToFileURL } = require('url')
 const sharp = require('sharp')
+const {
+  CUSTOM_CURSOR_MAX_BYTES,
+  createDefaultRuntimeCursor,
+  normalizeRuntimeCursor,
+  stripFileExtension
+} = require('../../shared/cursor-library')
 
-const SUPPORTED_CURSOR_EXTENSIONS = new Set(['.png', '.webp', '.cur'])
+const SUPPORTED_CURSOR_EXTENSIONS = new Set(['.png', '.webp'])
 const BROWSER_SAFE_CURSOR_SIZE = 64
 
 const createDefaultCursorSettings = () => createDefaultRuntimeCursor()
@@ -13,9 +19,7 @@ const normalizeCustomCursor = (cursor) => normalizeRuntimeCursor(cursor)
 
 const isBitmapCursor = (filePath) => ['.png', '.webp'].includes(path.extname(filePath || '').toLowerCase())
 
-const isHotspotWithinBounds = (cursor, dimensions) => {
-  const hotspotX = Number(cursor?.hotspotX)
-  const hotspotY = Number(cursor?.hotspotY)
+const createCenteredHotspot = (dimensions) => {
   const width = Number(dimensions?.width)
   const height = Number(dimensions?.height)
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -64,22 +68,30 @@ const createCursorAssetService = ({ cursorDir }) => {
 
     const sourceBuffer = fs.readFileSync(sourcePath)
     const hash = crypto.createHash('sha256').update(sourceBuffer).digest('hex').slice(0, 16)
-    if (ext === '.cur') {
-      fs.mkdirSync(cursorDir, { recursive: true })
-      const assetPath = path.join(cursorDir, `${hash}${ext}`)
-      fs.copyFileSync(sourcePath, assetPath)
-      return {
-        enabled: true,
-        assetPath,
-        assetUrl: pathToFileURL(assetPath).href,
-        fileName: path.basename(sourcePath)
-      }
-    }
-    return writeBrowserSafeBitmap({
+    const repaired = await writeBrowserSafeBitmap({
       sourceBuffer,
       hash,
       originalFileName: path.basename(sourcePath)
     })
+    const metadata = await sharp(repaired.assetPath).metadata()
+    const repairedStat = fs.statSync(repaired.assetPath)
+    const hotspot = createCenteredHotspot(metadata)
+
+    return {
+      id: `cursor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'custom',
+      name: stripFileExtension(path.basename(sourcePath)) || '未命名指针',
+      enabled: true,
+      assetPath: repaired.assetPath,
+      assetUrl: repaired.assetUrl,
+      fileName: repaired.fileName,
+      width: Number(metadata.width || 0),
+      height: Number(metadata.height || 0),
+      byteSize: Number(repairedStat.size || 0),
+      hotspotX: hotspot.hotspotX,
+      hotspotY: hotspot.hotspotY,
+      createdAt: new Date().toISOString()
+    }
   }
 
   const repairCursor = async (cursor) => {
@@ -104,8 +116,13 @@ const createCursorAssetService = ({ cursorDir }) => {
     const repairedMetadata = await sharp(repaired.assetPath).metadata()
     const repairedHotspot = createCenteredHotspot(repairedMetadata)
     return {
-      ...repaired,
-      enabled: normalized.enabled
+      ...normalized,
+      assetPath: repaired.assetPath,
+      assetUrl: repaired.assetUrl,
+      fileName: repaired.fileName || normalized.fileName,
+      width: Number(repairedMetadata.width || metadataPatch.width || 0),
+      height: Number(repairedMetadata.height || metadataPatch.height || 0),
+      ...repairedHotspot
     }
   }
 

@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   ControlCenterSettings,
   CustomCursorSettings,
+  ImageGenerationConfigViewState,
   PetPacksViewState,
   ServiceLogEntry,
   ServiceStatusViewState,
@@ -29,7 +30,11 @@ export const defaultCustomCursor = {
   enabled: false,
   assetPath: '',
   assetUrl: '',
-  fileName: ''
+  fileName: '',
+  width: 0,
+  height: 0,
+  hotspotX: 0,
+  hotspotY: 0
 } satisfies CustomCursorSettings
 
 export const defaultSettings = {
@@ -47,8 +52,7 @@ export const defaultSettings = {
     enabled: false,
     radius: 'medium',
     hasAnchor: false
-  },
-  customCursor: defaultCustomCursor
+  }
 } satisfies ControlCenterSettings
 
 export const defaultAiConfig = {
@@ -135,8 +139,7 @@ export const defaultServiceStatus = {
 export const defaultActionsConfig = {
   defaultAction: '',
   clickAction: '',
-  actions: [],
-  triggerProposalInbox: []
+  actions: []
 } satisfies ActionsConfigViewState
 
 export const defaultPetPacks = {
@@ -195,11 +198,9 @@ export const defaultUpdateCheck = {
   message: ''
 } satisfies UpdateCheckViewState
 
-export const cloneCustomCursor = (cursor: Partial<CustomCursorSettings> | null | undefined): CustomCursorSettings => ({
-  ...defaultCustomCursor,
-  ...(cursor || {}),
-  enabled: Boolean(cursor?.enabled && cursor?.assetUrl)
-})
+export const cloneCustomCursor = (cursor: Partial<CustomCursorSettings> | null | undefined): CustomCursorSettings => (
+  normalizeRuntimeCursor(cursor) as CustomCursorSettings
+)
 
 export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | undefined): ControlCenterSettings => ({
   ...defaultSettings,
@@ -208,11 +209,8 @@ export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | 
   home: {
     ...defaultSettings.home,
     ...(settings?.home || {})
-  },
-  customCursor: cloneCustomCursor(settings?.customCursor)
+  }
 })
-
-export const cloneCustomCursor = (cursor: Partial<ControlCenterSettings['customCursor']> | null | undefined): ControlCenterSettings['customCursor'] => normalizeRuntimeCursor(cursor)
 
 export const cloneAiBehavior = (behavior: Partial<AiBehaviorConfig> | null | undefined): AiBehaviorConfig => ({
   ...defaultAiConfig.behavior,
@@ -290,8 +288,7 @@ export const cloneServiceLogs = (logs: Array<Partial<ServiceLogEntry> & { path?:
 export const cloneActionsConfig = (config: Partial<ActionsConfigViewState> | null | undefined): ActionsConfigViewState => ({
   ...defaultActionsConfig,
   ...(config || {}),
-  actions: Array.isArray(config?.actions) ? config.actions : [],
-  triggerProposalInbox: Array.isArray(config?.triggerProposalInbox) ? config.triggerProposalInbox : []
+  actions: Array.isArray(config?.actions) ? config.actions : []
 })
 
 export const clonePetPacks = (petPacks: Partial<PetPacksViewState> | null | undefined): PetPacksViewState => ({

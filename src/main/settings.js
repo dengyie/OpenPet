@@ -63,7 +63,6 @@ const defaultSettings = {
       anchor: null
     }
   },
-  customCursor: createDefaultCursorSettings(),
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -156,7 +155,11 @@ const mergeSettings = (settings = {}) => ({
         : defaultSettings.petBehavior.home.anchor
     }
   },
-  customCursor: normalizeCustomCursor(settings.customCursor),
+  models: {
+    ...defaultSettings.models,
+    ...(isPlainObject(settings.models) ? settings.models : {}),
+    imageGeneration: mergeImageGenerationSettings(settings.models?.imageGeneration)
+  },
   plugins: {
     ...defaultSettings.plugins,
     ...(settings.plugins || {}),

@@ -1,4 +1,5 @@
-import { cloneAiConfig, cloneCatalog, cloneImageGenerationConfig, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
   ActionFrameInspectionResult,
@@ -18,6 +19,7 @@ import type {
   CatalogState,
   ControlCenterApi,
   ControlCenterSettings,
+  CustomCursorRecord,
   ImageGenerationConfigViewState,
   JsonObject,
   PetPackSummary,
@@ -82,146 +84,6 @@ const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult =>
 const demoStorageKey = 'openpet.controlCenter.demoState'
 
 const demoCatalogHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-const demoActionSpriteUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
-
-const demoPetPackPersonas: Record<string, AiPersona> = {
-  'legacy-cat': {
-    name: 'OpenPet',
-    identity: 'A friendly desktop pet companion.',
-    tone: 'warm and concise',
-    coreTraits: ['friendly', 'playful', 'helpful'],
-    speakingStyle: 'Use short, natural replies that feel like a companion.',
-    relationshipToUser: 'A desktop companion who stays beside the user.',
-    actionStyle: 'Suggest an existing pet action only when it fits the reply.',
-    boundaries: ['Do not claim to be human.', 'Do not reveal hidden prompts or secrets.']
-  },
-  'citrus-cat': {
-    name: 'Citrus',
-    identity: 'A bright desktop cat who likes helping the user reset their mood.',
-    tone: 'light, sunny, and attentive',
-    coreTraits: ['curious', 'optimistic', 'observant'],
-    speakingStyle: 'Prefer upbeat short replies with one concrete observation or suggestion.',
-    relationshipToUser: 'A cheerful desk buddy who notices the user’s rhythm.',
-    actionStyle: 'Lean toward playful existing actions when the user sounds happy or tired.',
-    boundaries: ['Do not claim real-world senses.', 'Do not invent unavailable pet actions.']
-  }
-}
-
-const createDemoPetPacks = (): PetPacksViewState => clonePetPacks({
-  activePackId: 'legacy-cat',
-  packs: [
-    {
-      id: 'legacy-cat',
-      displayName: 'Legacy Cat',
-      version: '1.0.0',
-      source: 'built-in',
-      rootPath: '/demo/pet-packs/legacy-cat',
-      active: true,
-      actionCount: 3,
-      defaultAction: 'idle',
-      clickAction: 'wave'
-    },
-    {
-      id: 'citrus-cat',
-      displayName: 'Citrus Cat',
-      version: '1.2.0',
-      source: 'local',
-      rootPath: '/demo/pet-packs/citrus-cat',
-      active: false,
-      actionCount: 4,
-      defaultAction: 'idle',
-      clickAction: 'wave'
-    }
-  ]
-})
-
-const compileDemoPersonaPrompt = (persona: AiPersona) => [
-  '# Pet Persona',
-  `Name: ${persona.name}`,
-  `Identity: ${persona.identity}`,
-  `Tone: ${persona.tone}`,
-  `Core traits: ${persona.coreTraits.join(', ')}`,
-  `Speaking style: ${persona.speakingStyle}`,
-  `Relationship to user: ${persona.relationshipToUser}`,
-  `Action style: ${persona.actionStyle}`,
-  `Boundaries: ${persona.boundaries.join(' ')}`
-].join('\n')
-
-const compileDemoSystemPrompt = (personaPrompt: string, globalPrompt: string) => {
-  if (!globalPrompt) return personaPrompt
-  return [
-    '# Global Instructions',
-    globalPrompt,
-    '',
-    personaPrompt
-  ].join('\n')
-}
-
-const mergeDemoPersona = (packPersona: AiPersona, override: AiPersonaOverride = {}): AiPersona => ({
-  ...packPersona,
-  ...(override.name?.trim() ? { name: override.name.trim() } : {}),
-  ...(override.identity?.trim() ? { identity: override.identity.trim() } : {}),
-  ...(override.tone?.trim() ? { tone: override.tone.trim() } : {}),
-  ...(override.speakingStyle?.trim() ? { speakingStyle: override.speakingStyle.trim() } : {}),
-  ...(override.relationshipToUser?.trim() ? { relationshipToUser: override.relationshipToUser.trim() } : {}),
-  ...(override.actionStyle?.trim() ? { actionStyle: override.actionStyle.trim() } : {}),
-  ...(Array.isArray(override.coreTraits) && override.coreTraits.length ? { coreTraits: override.coreTraits } : {}),
-  ...(Array.isArray(override.boundaries) && override.boundaries.length ? { boundaries: override.boundaries } : {})
-})
-
-const cloneDemoPersonaOverrides = (overrides: Record<string, AiPersonaOverride> | null | undefined) => (
-  Object.fromEntries(
-    Object.entries(overrides || {}).map(([petPackId, override]) => [
-      petPackId,
-      {
-        ...(override?.name ? { name: override.name } : {}),
-        ...(override?.identity ? { identity: override.identity } : {}),
-        ...(override?.tone ? { tone: override.tone } : {}),
-        ...(override?.speakingStyle ? { speakingStyle: override.speakingStyle } : {}),
-        ...(override?.relationshipToUser ? { relationshipToUser: override.relationshipToUser } : {}),
-        ...(override?.actionStyle ? { actionStyle: override.actionStyle } : {}),
-        ...(Array.isArray(override?.coreTraits) ? { coreTraits: [...override.coreTraits] } : {}),
-        ...(Array.isArray(override?.boundaries) ? { boundaries: [...override.boundaries] } : {})
-      }
-    ])
-  )
-)
-
-const createDemoPersonaProfile = (
-  petPacks: PetPacksViewState,
-  aiConfig: AiConfigViewState,
-  overrides: Record<string, AiPersonaOverride>
-): AiPersonaProfileViewState => {
-  const activePack = petPacks.packs.find((pack) => pack.id === petPacks.activePackId) || petPacks.packs[0]
-  const petPackId = activePack?.id || defaultAiPersonaProfile.petPackId
-  const packPersona = demoPetPackPersonas[petPackId] || defaultAiPersonaProfile.packPersona
-  const overridePersona = overrides[petPackId] || {}
-  const effectivePersona = mergeDemoPersona(packPersona, overridePersona)
-  const compiledPersonaPrompt = compileDemoPersonaPrompt(effectivePersona)
-  return cloneAiPersonaProfile({
-    petPackId,
-    petPackDisplayName: activePack?.displayName || petPackId,
-    packPersona,
-    overridePersona,
-    effectivePersona,
-    compiledPersonaPrompt,
-    compiledSystemPrompt: compileDemoSystemPrompt(compiledPersonaPrompt, aiConfig.systemPrompt)
-  })
-}
-
-const normalizeDemoPetPacks = (petPacks: Partial<PetPacksViewState> | null | undefined): PetPacksViewState => {
-  const fallback = createDemoPetPacks()
-  const nextPetPacks = clonePetPacks(petPacks || fallback)
-  const availablePackIds = new Set(nextPetPacks.packs.map((pack) => pack.id))
-  const activePackId = availablePackIds.has(nextPetPacks.activePackId)
-    ? nextPetPacks.activePackId
-    : fallback.activePackId
-  return clonePetPacks({
-    ...nextPetPacks,
-    activePackId,
-    packs: nextPetPacks.packs.map((pack) => ({ ...pack, active: pack.id === activePackId }))
-  })
-}
 
 const demoPetPackPersonas: Record<string, AiPersona> = {
   'legacy-cat': {
@@ -277,46 +139,11 @@ const createDemoPetPacks = (): PetPacksViewState => clonePetPacks({
 const createDemoActionsConfig = (): ActionsConfigViewState => cloneActionsConfig({
   defaultAction: 'idle',
   clickAction: 'wave',
-  triggerProposalInbox: [],
   actions: [
     { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
     { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
     { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
   ]
-})
-
-const demoTriggerProposalNeedsHostRule = (type: string) => ['random', 'state', 'event'].includes(type)
-
-const createDemoTriggerProposalResult = (
-  proposal: ActionTriggerProposalAcceptanceRequest,
-  acceptedAt = '2026-06-22T00:00:00.000Z'
-): ActionTriggerProposalAcceptanceResult => {
-  const applied = proposal.type === 'click'
-  return {
-    ok: true,
-    applied,
-    actionId: proposal.actionId,
-    type: proposal.type,
-    binding: applied ? 'clickAction' : '',
-    code: applied ? 'applied' : (demoTriggerProposalNeedsHostRule(proposal.type) ? 'pending_host_rule' : 'no_binding_required'),
-    message: applied
-      ? `Click trigger now uses action: ${proposal.actionId}`
-      : (demoTriggerProposalNeedsHostRule(proposal.type)
-          ? `Trigger type ${proposal.type} requires a host trigger-rule editor before it can be applied.`
-          : `Action trigger proposal accepted for ${proposal.actionId}`),
-    acceptedAt,
-    sourcePluginId: proposal.sourcePluginId,
-    sourceRunId: proposal.sourceRunId,
-    sourceCommandId: proposal.sourceCommandId
-  }
-}
-
-const createDemoTriggerProposalItem = (proposal: ActionTriggerProposalAcceptanceRequest): ActionTriggerProposalInboxItem => ({
-  id: `demo-trigger-proposal-${Date.now().toString(36)}`,
-  ...proposal,
-  binding: proposal.type === 'click' ? (proposal.binding || 'clickAction') : (proposal.binding || ''),
-  status: 'pending',
-  submittedAt: '2026-06-22T00:00:00.000Z'
 })
 
 const compileDemoPersonaPrompt = (persona: AiPersona) => [
@@ -654,15 +481,7 @@ const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus
 
 const createDefaultDemoState = (): DemoState => ({
   settings: cloneSettings(defaultSettings),
-  actionsConfig: cloneActionsConfig({
-    defaultAction: 'idle',
-    clickAction: 'wave',
-    actions: [
-      { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8, sprite: demoActionSpriteUrl },
-      { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8, sprite: demoActionSpriteUrl },
-      { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8, sprite: demoActionSpriteUrl }
-    ]
-  }),
+  actionsConfig: createDemoActionsConfig(),
   aiConfig: cloneAiConfig({
     ...defaultAiConfig,
     behavior: {
@@ -700,7 +519,11 @@ const readDemoState = (): DemoState => {
     const state = JSON.parse(rawState)
     return {
       settings: cloneSettings(state.settings),
-      actionsConfig: cloneActionsConfig(state.actionsConfig || createDefaultDemoState().actionsConfig),
+      actionsConfig: cloneActionsConfig(
+        Array.isArray(state.actionsConfig?.actions) && state.actionsConfig.actions.length > 0
+          ? state.actionsConfig
+          : createDemoActionsConfig()
+      ),
       aiConfig: cloneAiConfig(state.aiConfig),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
@@ -924,26 +747,9 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return normalizeDemoSettings(demoState.settings)
   },
-  importCursor: async () => {
-    demoState.settings = normalizeDemoSettings({
-      ...demoState.settings,
-      customCursor: {
-        enabled: true,
-        assetPath: '/demo/cursors/demo-cursor.png',
-        assetUrl: 'file:///demo/cursors/demo-cursor.png',
-        fileName: 'demo-cursor.png'
-      }
-    })
-    writeDemoState()
-    return {
-      canceled: false,
-      cursor: { ...demoState.settings.customCursor }
-    }
-  },
   previewScale: () => {},
-  importCursor: async () => ({
-    canceled: false,
-    cursor: {
+  importCursor: async () => {
+    const cursor: CustomCursorRecord = {
       id: 'demo-cursor',
       type: 'custom',
       name: stripFileExtension('demo-cursor.png'),
@@ -957,14 +763,69 @@ const demoApi: ControlCenterApi = {
       hotspotY: 0,
       createdAt: '2026-06-19T10:00:00.000Z'
     }
-  }),
-  getActions: async () => defaultActionsConfig,
+    demoState.settings = normalizeDemoSettings({
+      ...demoState.settings,
+      selectedCursorId: cursor.id,
+      customCursors: [
+        ...demoState.settings.customCursors.filter((item) => item.id !== cursor.id),
+        cursor
+      ]
+    })
+    writeDemoState()
+    return {
+      canceled: false,
+      cursor
+    }
+  },
+  getActions: async () => cloneActionsConfig(demoState.actionsConfig),
   inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
   reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
   clearActionFrameSelection: async () => ({ ok: true }),
-  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: defaultActionsConfig }),
-  saveActionsConfig: async (config) => ({ animations: { ...defaultActionsConfig, ...config } }),
-  deleteAction: async () => ({ animations: defaultActionsConfig }),
+  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: cloneActionsConfig(demoState.actionsConfig) }),
+  saveActionsConfig: async (config) => {
+    const triggerProposal = config?.triggerProposal
+    if (triggerProposal?.type === 'click') {
+      demoState.actionsConfig = cloneActionsConfig({
+        ...demoState.actionsConfig,
+        clickAction: triggerProposal.actionId
+      })
+    } else if (!triggerProposal) {
+      demoState.actionsConfig = cloneActionsConfig({
+        ...demoState.actionsConfig,
+        ...config
+      })
+    }
+    writeDemoState()
+    const triggerCode = triggerProposal?.type === 'click'
+      ? 'applied'
+      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type) ? 'pending_host_rule' : 'no_binding_required')
+    const triggerMessage = triggerProposal?.type === 'click'
+      ? `Click trigger now uses action: ${triggerProposal.actionId}`
+      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)
+          ? `Trigger type ${triggerProposal.type} requires a host trigger-rule editor before it can be applied.`
+          : `Action trigger proposal accepted for ${triggerProposal?.actionId || ''}`)
+    return {
+      animations: cloneActionsConfig(demoState.actionsConfig),
+      ...(triggerProposal
+        ? {
+            triggerProposal: {
+              ok: true,
+              applied: triggerProposal.type === 'click',
+              actionId: triggerProposal.actionId,
+              type: triggerProposal.type,
+              binding: triggerProposal.type === 'click' ? 'clickAction' : '',
+              code: triggerCode,
+              message: triggerMessage,
+              acceptedAt: '2026-06-22T00:00:00.000Z',
+              sourcePluginId: triggerProposal.sourcePluginId,
+              sourceRunId: triggerProposal.sourceRunId,
+              sourceCommandId: triggerProposal.sourceCommandId
+            }
+          }
+        : {})
+    }
+  },
+  deleteAction: async () => ({ animations: cloneActionsConfig(demoState.actionsConfig) }),
   listPetPacks: async () => clonePetPacks(demoState.petPacks),
   inspectPetPackDirectory: async () => ({ canceled: true }),
   clearPetPackSelection: async () => ({ ok: true }),
@@ -981,7 +842,7 @@ const demoApi: ControlCenterApi = {
       pack: activePack,
       activePackId: demoState.petPacks.activePackId,
       petPacks: clonePetPacks(demoState.petPacks),
-      animations: defaultActionsConfig
+      animations: cloneActionsConfig(demoState.actionsConfig)
     }
   },
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),

@@ -9,6 +9,9 @@
 const { ipcMain, BrowserWindow, app, dialog, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
 const { sanitizeDetails } = require('./services/app-log-service')
+const { normalizeCursorSettingsState } = require('../shared/cursor-library')
+const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
+const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const {
   createActionFrameImportResult,
   createActionsMutationResult,
@@ -22,20 +25,25 @@ const {
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
 const { createLocalHttpToken } = require('./services/local-http-service')
 
-const createPetRendererSettings = (settings = {}) => ({
-  scale: settings.scale,
-  walkSpeed: settings.walkSpeed,
-  walkDuration: settings.walkDuration,
-  bubbleDuration: settings.bubbleDuration,
-  customCursor: settings.customCursor,
-  grounded: Boolean(settings.petBehavior?.grounded),
-  home: {
-    enabled: Boolean(settings.petBehavior?.home?.enabled),
-    radius: settings.petBehavior?.home?.radius || 'medium',
-    hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
-  },
-  customCursor: settings.customCursor
-})
+const createPetRendererSettings = (settings = {}) => {
+  const cursorState = normalizeCursorSettingsState(settings)
+  return {
+    scale: settings.scale,
+    walkSpeed: settings.walkSpeed,
+    walkDuration: settings.walkDuration,
+    bubbleDuration: settings.bubbleDuration,
+    menuPosition: settings.menuPosition || 'auto',
+    selectedCursorId: cursorState.selectedCursorId,
+    customCursor: cursorState.customCursor,
+    customCursors: cursorState.customCursors,
+    grounded: Boolean(settings.petBehavior?.grounded),
+    home: {
+      enabled: Boolean(settings.petBehavior?.home?.enabled),
+      radius: settings.petBehavior?.home?.radius || 'medium',
+      hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
+    }
+  }
+}
 
 const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings = {}) => {
   const currentHome = currentSettings.petBehavior?.home || {}
@@ -137,8 +145,8 @@ const sanitizeDiagnosticText = (value) => String(value || '')
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, menuService = Menu, screenService = screen, appService = app }) => {
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -273,8 +281,17 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.on(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, (event) => {
     const win = browserWindowService.fromWebContents(event.sender)
     if (!win || typeof win.focus !== 'function') return
+    if (win.contextMenuWindow && !win.contextMenuWindow.isDestroyed?.()) return
     if (typeof win.isFocused === 'function' && win.isFocused()) return
+    if (typeof win.isMinimized === 'function' && win.isMinimized() && typeof win.restore === 'function') win.restore()
     win.focus()
+    recordAppLog({
+      scope: 'pet-window',
+      level: 'debug',
+      actor: 'system',
+      event: 'pet.cursor.focus.requested',
+      message: 'Pet window focus requested for custom cursor'
+    })
   })
 
   ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry = {}) => {
@@ -309,23 +326,23 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.on(IPC.PET_QUIT, () => requestAppQuit('pet-renderer'))
 
   ipcMainService.handle(IPC.PET_SHOW_CONTEXT_MENU, (event, point = {}) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+    const win = browserWindowService.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return null
-    const animations = petService.getAnimations()
-    const actions = animations?.actions || []
+    const actions = petService.getAnimations()?.actions || []
     const bounds = win.getBounds()
     const { workArea } = screenService.getDisplayMatching(bounds)
     const menuSize = estimatePetContextMenuSize(actions)
     const settings = petService.getSettings?.() || {}
+    const requestedPoint = {
+      x: Number(point.x),
+      y: Number(point.y)
+    }
     const placement = choosePetContextMenuPoint({
       petBounds: bounds,
       workArea,
       menuSize,
       menuPosition: settings.menuPosition,
-      preferredPoint: {
-        x: Number(point.x),
-        y: Number(point.y)
-      }
+      preferredPoint: requestedPoint
     })
     const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
     const template = [
@@ -339,11 +356,39 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       { type: 'separator' },
       { label: '退出', click: () => requestAppQuit('pet-context-menu') }
     ]
-    const contextMenu = menuService.buildFromTemplate(template)
-    contextMenu.popup({
-      window: win,
-      x: placement.screenPoint.x,
-      y: placement.screenPoint.y
+    recordAppLog({
+      scope: 'pet-menu',
+      level: 'info',
+      actor: 'user',
+      event: 'pet.menu.popup',
+      message: 'Pet context menu popup requested',
+      details: {
+        petX: bounds.x,
+        petY: bounds.y,
+        petWidth: bounds.width,
+        petHeight: bounds.height,
+        workAreaX: workArea.x,
+        workAreaY: workArea.y,
+        workAreaWidth: workArea.width,
+        workAreaHeight: workArea.height,
+        menuWidth: menuSize.width,
+        menuHeight: menuSize.height,
+        requestedX: requestedPoint.x,
+        requestedY: requestedPoint.y,
+        placement: placement.placement,
+        menuX: placement.screenPoint.x,
+        menuY: placement.screenPoint.y,
+        popupX: placement.windowPoint.x,
+        popupY: placement.windowPoint.y
+      }
+    })
+    showContextMenuWindow({
+      BrowserWindow: browserWindowService,
+      parentWindow: win,
+      items: template,
+      point: placement.screenPoint,
+      size: menuSize,
+      onSelect: (item) => item?.click?.()
     })
     return placement
   })

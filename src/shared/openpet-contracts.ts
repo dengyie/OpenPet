@@ -16,46 +16,6 @@ export interface ControlCenterSettings {
   customCursors: CustomCursorRecord[]
   grounded: boolean
   home: ControlCenterPetHomeSettings
-  customCursor: CustomCursorSettings
-}
-
-export interface CustomCursorSettings {
-  enabled: boolean
-  assetPath: string
-  assetUrl: string
-  fileName: string
-  width: number
-  height: number
-  hotspotX: number
-  hotspotY: number
-}
-
-export type CursorOptionType = 'system' | 'builtin' | 'custom'
-
-export interface CursorOption {
-  id: string
-  type: CursorOptionType
-  name: string
-  assetPath: string
-  assetUrl: string
-  fileName: string
-  width: number
-  height: number
-  byteSize: number
-  hotspotX: number
-  hotspotY: number
-  createdAt: string
-}
-
-export interface CustomCursorRecord extends CursorOption {
-  type: 'custom'
-}
-
-export interface ImportedCursorAsset extends CustomCursorRecord {}
-
-export interface CursorImportResult {
-  canceled: boolean
-  cursor?: ImportedCursorAsset
 }
 
 export interface CustomCursorSettings {
@@ -103,18 +63,6 @@ export interface ControlCenterPetHomeSettings {
   enabled: boolean
   radius: PetHomeRadius
   hasAnchor: boolean
-}
-
-export interface CustomCursorSettings {
-  enabled: boolean
-  assetPath: string
-  assetUrl: string
-  fileName: string
-}
-
-export interface CursorImportResult {
-  canceled: boolean
-  cursor?: CustomCursorSettings
 }
 
 export interface AiBehaviorRule {
@@ -273,55 +221,6 @@ export interface ActionsConfigViewState {
   defaultAction: string
   clickAction: string
   actions: ActionEntry[]
-  triggerProposalInbox?: ActionTriggerProposalInboxItem[]
-}
-
-export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
-
-export interface ActionTriggerProposalAcceptanceRequest {
-  actionId: string
-  type: ActionTriggerProposalType
-  binding?: string
-  sourcePluginId?: string
-  sourceRunId?: string
-  sourceCommandId?: string
-  notes?: string
-}
-
-export interface ActionTriggerProposalAcceptanceResult {
-  ok: boolean
-  applied: boolean
-  actionId: string
-  type: ActionTriggerProposalType
-  binding: string
-  code: 'applied' | 'no_binding_required' | 'pending_host_rule'
-  message: string
-  acceptedAt: string
-  sourcePluginId?: string
-  sourceRunId?: string
-  sourceCommandId?: string
-}
-
-export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected'
-
-export interface ActionTriggerProposalInboxItem extends ActionTriggerProposalAcceptanceRequest {
-  id: string
-  status: ActionTriggerProposalInboxStatus
-  submittedAt: string
-  decidedAt?: string
-  decisionReason?: string
-  result?: ActionTriggerProposalAcceptanceResult
-}
-
-export interface ActionTriggerProposalSubmitResult {
-  proposal: ActionTriggerProposalInboxItem
-  animations: ActionsConfigViewState
-}
-
-export interface ActionTriggerProposalDecisionResult {
-  proposal: ActionTriggerProposalInboxItem
-  animations: ActionsConfigViewState
-  triggerProposal?: ActionTriggerProposalAcceptanceResult
 }
 
 export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
@@ -2329,9 +2228,6 @@ export interface ControlCenterApi {
   clearActionFrameSelection: (payload: ActionFrameClearRequest) => Promise<OkResponse>
   importActionFrames: (payload?: ActionFrameImportRequest) => Promise<ActionFrameImportResult>
   saveActionsConfig: (payload: ActionsSaveConfigRequest) => Promise<ActionsMutationResult>
-  submitActionTriggerProposal: (payload: ActionTriggerProposalAcceptanceRequest) => Promise<ActionTriggerProposalSubmitResult>
-  acceptActionTriggerProposal: (proposalId: string) => Promise<ActionTriggerProposalDecisionResult>
-  rejectActionTriggerProposal: (proposalId: string, reason?: string) => Promise<ActionTriggerProposalDecisionResult>
   deleteAction: (actionId: string) => Promise<ActionsMutationResult>
   listPetPacks: () => Promise<PetPacksViewState>
   inspectPetPackDirectory: () => Promise<PetPackInspectionResult>

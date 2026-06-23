@@ -16,6 +16,7 @@
 const pet = document.getElementById('pet')       // 主容器，承载所有指针事件
 const catEl = document.getElementById('cat')     // 小猫元素，精灵图渲染目标
 const bubble = document.getElementById('bubble') // 头顶气泡
+const menu = document.getElementById('menu')     // 右键菜单容器
 const cursorOverlay = document.getElementById('custom-cursor-overlay') || {
   style: {},
   classList: { add() {}, remove() {}, contains() { return false } },
@@ -83,52 +84,6 @@ state.scale = PET_BASE_SCALE
 
 const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
 const normalizePetScale = (scale) => Math.max((Number(scale) || 1) * PET_BASE_SCALE, Number.EPSILON)
-const logPetEvent = (event, details = {}, { level = 'debug', actor = 'system', message = event } = {}) => {
-  window.petAPI.recordAppLog?.({
-    level,
-    actor,
-    event,
-    message,
-    details: {
-      action: state.action,
-      frameIndex: state.frameIndex,
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-      scale: state.scale,
-      ...details
-    }
-  })
-}
-
-const createPointDetails = (event) => ({
-  clientX: roundNumber(event.clientX),
-  clientY: roundNumber(event.clientY),
-  screenX: roundNumber(event.screenX),
-  screenY: roundNumber(event.screenY)
-})
-
-const maybeLogMouseDiagnostic = (event, diagnostic) => {
-  const now = Date.now()
-  const previous = state.lastMouseDiagnostic
-  const changed = !previous ||
-    previous.insideFrame !== diagnostic.insideFrame ||
-    previous.insideCursorRegion !== diagnostic.insideCursorRegion ||
-    previous.passthrough !== diagnostic.passthrough ||
-    previous.cursorApplied !== diagnostic.cursorApplied ||
-    previous.cursorOverlayVisible !== diagnostic.cursorOverlayVisible ||
-    previous.dragging !== diagnostic.dragging ||
-    previous.menuOpen !== diagnostic.menuOpen
-  if (!changed && now - state.lastMouseDiagnosticAt < 1000) return
-  state.lastMouseDiagnosticAt = now
-  state.lastMouseDiagnostic = diagnostic
-  logPetEvent('pet.pointer.diagnostic', {
-    ...createPointDetails(event),
-    ...diagnostic
-  }, { actor: 'user', message: 'Pointer hitbox diagnostic' })
-}
-
-const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
-
 const logPetEvent = (event, details = {}, { level = 'debug', actor = 'system', message = event } = {}) => {
   window.petAPI.recordAppLog?.({
     level,
@@ -321,7 +276,7 @@ const setMousePassthrough = (passthrough) => {
 }
 
 const isPointInsideCurrentFrame = (clientX, clientY) => {
-  if (state.drag || menu.classList.contains('open')) return true
+  if (state.drag || state.walking) return true
   const animation = state.animations[state.action]
   const layout = state.currentLayout
   if (!animation || !layout) return true
@@ -484,6 +439,31 @@ const updateMousePassthroughFromPoint = (event) => {
     customCursorEnabled: Boolean(state.customCursor.enabled),
     dragging: Boolean(state.drag),
     menuOpen: false
+  })
+}
+
+const clearPointerHoverState = (event = {}) => {
+  state.lastPointerPoint = null
+  state.cursorFocusRequested = false
+  hideCursorOverlay()
+  setNativeCursor('')
+  maybeLogMouseDiagnostic({
+    clientX: event.clientX ?? -1,
+    clientY: event.clientY ?? -1,
+    screenX: event.screenX ?? -1,
+    screenY: event.screenY ?? -1
+  }, {
+    insideFrame: false,
+    insideCursorRegion: false,
+    insideWindow: false,
+    passthrough: true,
+    cursorApplied: false,
+    cursorOverlayVisible: false,
+    nativeCursor: '',
+    windowFocused: isPetWindowFocused(),
+    customCursorEnabled: Boolean(state.customCursor.enabled),
+    dragging: Boolean(state.drag),
+    menuOpen: menu.classList.contains('open')
   })
 }
 
@@ -820,16 +800,7 @@ const showContextMenu = (event) => {
   event.preventDefault()
   setMousePassthrough(false)
   applyPetCursorStyle(false)
-  menu.classList.add('open')
-  const menuViewport = applyMenuViewport()
-  logPetEvent('pet.menu.opened', {
-    menuWidth: Math.round(menu.getBoundingClientRect().width),
-    menuHeight: Math.round(menu.getBoundingClientRect().height),
-    viewportWidth: menuViewport?.viewport.width,
-    viewportHeight: menuViewport?.viewport.height,
-    windowWidth: menuViewport?.windowSize.width,
-    windowHeight: menuViewport?.windowSize.height
-  }, { level: 'info', actor: 'user', message: 'Pet menu opened' })
+  window.petAPI.showContextMenu?.({ x: event.clientX, y: event.clientY })
 }
 
 const runMenuCommand = (payload) => {

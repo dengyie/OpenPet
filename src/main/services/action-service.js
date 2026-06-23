@@ -136,6 +136,22 @@ const normalizeOptionalText = (value) => {
   return value.slice(0, MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH)
 }
 
+const normalizeTriggerProposalInboxItem = (item = {}) => {
+  const actionId = typeof item.actionId === 'string' ? item.actionId : ''
+  const type = typeof item.type === 'string' && TRIGGER_PROPOSAL_TYPES.has(item.type) ? item.type : 'unbound'
+  return {
+    id: normalizeOptionalText(item.id || `${type}:${actionId}`),
+    actionId: normalizeOptionalText(actionId),
+    type,
+    binding: normalizeOptionalText(item.binding),
+    sourcePluginId: normalizeOptionalText(item.sourcePluginId),
+    sourceRunId: normalizeOptionalText(item.sourceRunId),
+    sourceCommandId: normalizeOptionalText(item.sourceCommandId),
+    message: normalizeOptionalText(item.message),
+    createdAt: normalizeOptionalText(item.createdAt)
+  }
+}
+
 const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations = getLegacyPetAnimations, saveLegacyAnimations, projectRoot = path.join(__dirname, '..', '..', '..'), now = () => new Date().toISOString() }) => {
   let cachedPetPack = null
   let legacyConfigOverride = null

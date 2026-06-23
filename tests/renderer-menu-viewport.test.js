@@ -53,6 +53,7 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
     pet: createElement('pet'),
     cat: createElement('cat'),
     bubble: createElement('bubble'),
+    menu: createElement('menu', { width: 180, height: 260 }),
     'custom-cursor-overlay': createElement('custom-cursor-overlay')
   }
   const context = {
@@ -111,69 +112,15 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
   return { callbacks, contextMenuRequests, elements, logs, mousePassthroughCalls, viewportCalls }
 }
 
-test('right-click delegates menu display without resizing the pet viewport', async () => {
-  const { contextMenuRequests, elements, viewportCalls } = await createRendererHarness()
+test('right-click delegates menu placement to the main-process menu', async () => {
+  const { contextMenuRequests, elements, mousePassthroughCalls, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)
   let prevented = false
 
-  dispatch(elements.pet, 'contextmenu', {
+  await dispatch(elements.pet, 'contextmenu', {
     clientX: 12,
     clientY: 18,
     preventDefault() { prevented = true }
-  })
-
-  const menuViewport = viewportCalls.at(-1)
-  assert.notDeepEqual(menuViewport, initialViewport)
-  assert.equal(menuViewport.scale, initialViewport.scale)
-  assert.equal((menuViewport.width + menuViewport.padding * 2) * menuViewport.scale >= 204, true)
-  assert.equal((menuViewport.height + menuViewport.padding * 2) * menuViewport.scale >= 284, true)
-  assert.equal(px(elements.cat.style.left) > px(elements.cat.style.width), true)
-  assert.equal(elements.cat.style.bottom, initialViewport.padding * initialViewport.scale + 'px')
-})
-
-test('opening the menu places it away from the pet instead of covering it', async () => {
-  const { elements, viewportCalls } = await createRendererHarness()
-
-  await dispatch(elements.pet, 'contextmenu', { preventDefault() {} })
-
-  const menuViewport = viewportCalls.at(-1)
-  const windowWidth = (menuViewport.width + menuViewport.padding * 2) * menuViewport.scale
-  const windowHeight = (menuViewport.height + menuViewport.padding * 2) * menuViewport.scale
-  const menuRect = {
-    left: px(elements.menu.style.left),
-    top: px(elements.menu.style.top),
-    right: px(elements.menu.style.left) + 180,
-    bottom: px(elements.menu.style.top) + 260
-  }
-  const catRect = {
-    left: px(elements.cat.style.left),
-    top: windowHeight - px(elements.cat.style.bottom) - 50,
-    right: px(elements.cat.style.left) + 50,
-    bottom: windowHeight - px(elements.cat.style.bottom)
-  }
-
-  assert.equal(Number.isFinite(menuRect.left), true)
-  assert.equal(Number.isFinite(menuRect.top), true)
-  assert.equal(menuRect.left >= 12, true)
-  assert.equal(menuRect.top >= 12, true)
-  assert.equal(menuRect.right <= windowWidth - 12, true)
-  assert.equal(rectsOverlap(menuRect, catRect), false)
-})
-
-test('clicking outside the open menu closes it without starting a pet drag', async () => {
-  const { elements, getBoundsCalls, viewportCalls } = await createRendererHarness()
-  const initialViewport = viewportCalls.at(-1)
-
-  await dispatch(elements.pet, 'contextmenu', { preventDefault() {} })
-  await dispatch(elements.pet, 'pointerdown', {
-    button: 0,
-    target: elements.pet,
-    preventDefault() {},
-    pointerId: 1,
-    clientX: 8,
-    clientY: 8,
-    screenX: 8,
-    screenY: 8
   })
 
   assert.equal(prevented, true)
@@ -208,7 +155,21 @@ test('pet viewport reserves top chrome space for the speech bubble', async () =>
   const { elements, viewportCalls } = await createRendererHarness()
   const initialViewport = viewportCalls.at(-1)
 
-  dispatch(elements.pet, 'contextmenu', { clientX: 12, clientY: 18, preventDefault() {} })
+  assert.equal(initialViewport.topInset, 64)
+  assert.equal(elements.cat.style.bottom, '4px')
+})
+
+test('menu blur leaves the current action viewport intact', async () => {
+  const { callbacks, elements, viewportCalls } = await createRendererHarness()
+  const initialViewport = viewportCalls.at(-1)
+  const initialCatLeft = elements.cat.style.left
+  const initialCatBottom = elements.cat.style.bottom
+
+  await dispatch(elements.pet, 'contextmenu', {
+    clientX: 14,
+    clientY: 16,
+    preventDefault() {}
+  })
   callbacks.blur()
 
   assert.deepEqual(viewportCalls.at(-1), initialViewport)
@@ -216,27 +177,6 @@ test('pet viewport reserves top chrome space for the speech bubble', async () =>
   assert.equal(elements.cat.style.bottom, initialCatBottom)
 })
 
-test('single-click stops an active walk without waiting for the walk timer', async () => {
-  const { elements, logs } = await createRendererHarness()
-
-  await dispatch(elements.pet, 'dblclick')
-  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
-  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
-
-  const walkStates = logs
-    .filter((entry) => entry.event === 'pet.walk.toggled')
-    .map((entry) => entry.details.walking)
-  assert.deepEqual(walkStates, [true, false])
-})
-
-test('walking keeps mouse handling enabled so the context menu remains reachable', async () => {
-  const { elements, mousePassthroughCalls } = await createRendererHarness({ insideFrame: false })
-
-  await dispatch(elements.pet, 'dblclick')
-  await dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 1, screenX: 1001, screenY: 701 })
-
-  assert.deepEqual(mousePassthroughCalls, [])
-})
 
 test('single-click stops an active walk without waiting for the walk timer', async () => {
   const { elements, logs } = await createRendererHarness()
