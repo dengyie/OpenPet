@@ -163,7 +163,7 @@ const normalizePetPackManifest = (manifest) => {
     throw new Error(`pet pack clickAction does not exist: ${clickAction}`)
   }
 
-  return {
+  const normalized = {
     schemaVersion: Number(manifest.schemaVersion || DEFAULT_SCHEMA_VERSION),
     id: manifest.id,
     displayName: manifest.displayName || manifest.id,
@@ -174,6 +174,10 @@ const normalizePetPackManifest = (manifest) => {
     clickAction,
     actions
   }
+  if (Array.isArray(manifest.triggerProposalInbox)) {
+    normalized.triggerProposalInbox = manifest.triggerProposalInbox.map((proposal) => ({ ...proposal }))
+  }
+  return normalized
 }
 
 module.exports = { inferActionKind, normalizeAction, normalizePersona, normalizePetPackManifest, normalizeProvenance }

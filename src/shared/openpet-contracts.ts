@@ -221,6 +221,7 @@ export interface ActionsConfigViewState {
   defaultAction: string
   clickAction: string
   actions: ActionEntry[]
+  triggerProposalInbox?: ActionTriggerProposalInboxItem[]
 }
 
 export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
@@ -247,6 +248,28 @@ export interface ActionTriggerProposalAcceptanceResult {
   sourcePluginId?: string
   sourceRunId?: string
   sourceCommandId?: string
+}
+
+export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected'
+
+export interface ActionTriggerProposalInboxItem extends ActionTriggerProposalAcceptanceRequest {
+  id: string
+  status: ActionTriggerProposalInboxStatus
+  submittedAt: string
+  decidedAt?: string
+  decisionReason?: string
+  result?: ActionTriggerProposalAcceptanceResult
+}
+
+export interface ActionTriggerProposalSubmitResult {
+  proposal: ActionTriggerProposalInboxItem
+  animations: ActionsConfigViewState
+}
+
+export interface ActionTriggerProposalDecisionResult {
+  proposal: ActionTriggerProposalInboxItem
+  animations: ActionsConfigViewState
+  triggerProposal?: ActionTriggerProposalAcceptanceResult
 }
 
 export interface OkResponse {
@@ -327,6 +350,7 @@ export interface ActionsSaveConfigRequest {
 export interface ActionsMutationResult {
   animations: ActionsConfigViewState
   triggerProposal?: ActionTriggerProposalAcceptanceResult
+  proposal?: ActionTriggerProposalInboxItem
 }
 
 export interface BlocklistState {
@@ -2243,6 +2267,9 @@ export interface ControlCenterApi {
   clearActionFrameSelection: (payload: ActionFrameClearRequest) => Promise<OkResponse>
   importActionFrames: (payload?: ActionFrameImportRequest) => Promise<ActionFrameImportResult>
   saveActionsConfig: (payload: ActionsSaveConfigRequest) => Promise<ActionsMutationResult>
+  submitActionTriggerProposal: (payload: ActionTriggerProposalAcceptanceRequest) => Promise<ActionTriggerProposalSubmitResult>
+  acceptActionTriggerProposal: (proposalId: string) => Promise<ActionTriggerProposalDecisionResult>
+  rejectActionTriggerProposal: (proposalId: string, reason?: string) => Promise<ActionTriggerProposalDecisionResult>
   deleteAction: (actionId: string) => Promise<ActionsMutationResult>
   listPetPacks: () => Promise<PetPacksViewState>
   inspectPetPackDirectory: () => Promise<PetPackInspectionResult>

@@ -506,6 +506,68 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return createActionsMutationResult(petService.getPreviewAnimations())
   })
 
+  ipcMainService.handle(IPC.ACTIONS_SUBMIT_TRIGGER_PROPOSAL, async (_event, payload) => {
+    if (!actionService?.submitTriggerProposal) throw new Error('Action trigger proposal inbox is not available')
+    const result = actionService.submitTriggerProposal(payload)
+    recordAppLog({
+      scope: 'actions',
+      level: 'info',
+      actor: 'plugin',
+      event: 'actions.trigger-proposal.submitted',
+      message: 'Action trigger proposal submitted',
+      details: {
+        proposalId: result.proposal.id,
+        actionId: result.proposal.actionId,
+        type: result.proposal.type,
+        sourcePluginId: result.proposal.sourcePluginId || '',
+        sourceRunId: result.proposal.sourceRunId || '',
+        sourceCommandId: result.proposal.sourceCommandId || ''
+      }
+    })
+    return createActionsMutationResult(result.animations, { proposal: result.proposal })
+  })
+
+  ipcMainService.handle(IPC.ACTIONS_ACCEPT_TRIGGER_PROPOSAL, async (_event, payload) => {
+    if (!actionService?.acceptTriggerProposalItem) throw new Error('Action trigger proposal inbox is not available')
+    const result = actionService.acceptTriggerProposalItem(payload?.proposalId)
+    const animations = result.triggerProposal?.applied
+      ? reloadAndSendAnimations(getPetWindow, petService)
+      : result.animations
+    recordAppLog({
+      scope: 'actions',
+      level: 'info',
+      actor: 'user',
+      event: 'actions.trigger-proposal.inbox.accepted',
+      message: 'Action trigger proposal accepted from inbox',
+      details: {
+        proposalId: result.proposal.id,
+        actionId: result.proposal.actionId,
+        type: result.proposal.type,
+        applied: Boolean(result.triggerProposal?.applied),
+        code: result.triggerProposal?.code || ''
+      }
+    })
+    return createActionsMutationResult(animations, { proposal: result.proposal, triggerProposal: result.triggerProposal })
+  })
+
+  ipcMainService.handle(IPC.ACTIONS_REJECT_TRIGGER_PROPOSAL, async (_event, payload) => {
+    if (!actionService?.rejectTriggerProposalItem) throw new Error('Action trigger proposal inbox is not available')
+    const result = actionService.rejectTriggerProposalItem(payload?.proposalId, payload?.reason)
+    recordAppLog({
+      scope: 'actions',
+      level: 'info',
+      actor: 'user',
+      event: 'actions.trigger-proposal.inbox.rejected',
+      message: 'Action trigger proposal rejected from inbox',
+      details: {
+        proposalId: result.proposal.id,
+        actionId: result.proposal.actionId,
+        type: result.proposal.type
+      }
+    })
+    return createActionsMutationResult(result.animations, { proposal: result.proposal })
+  })
+
   ipcMainService.handle(IPC.ACTIONS_DELETE, async (_event, payload) => {
     await actionImportService.deleteAction(payload.actionId)
     reloadAndSendAnimations(getPetWindow, petService)

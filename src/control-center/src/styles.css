@@ -252,6 +252,11 @@ button {
   gap: 16px;
 }
 
+.trigger-review-header.compact {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(207, 214, 223, 0.76);
+}
+
 .trigger-review-header div,
 .trigger-review-copy,
 .trigger-result {
@@ -311,6 +316,46 @@ button {
 .trigger-result {
   padding: 10px 12px;
   border-radius: 10px;
+}
+
+.trigger-inbox-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.trigger-inbox-list,
+.trigger-inbox-detail {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.trigger-inbox-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(207, 214, 223, 0.82);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #202124;
+  text-align: left;
+}
+
+.trigger-inbox-item.selected {
+  border-color: #1f2937;
+  box-shadow: inset 3px 0 0 #1f2937;
+}
+
+.trigger-inbox-item strong {
+  font-size: 13px;
+}
+
+.trigger-inbox-item span {
+  color: #4b5563;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .button-icon {
@@ -1461,6 +1506,10 @@ button {
 
   .trigger-review-header {
     display: grid;
+  }
+
+  .trigger-inbox-grid {
+    grid-template-columns: 1fr;
   }
 
   .cursor-preview-card {

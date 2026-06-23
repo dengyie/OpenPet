@@ -125,10 +125,11 @@ Host/Control Center responsibilities:
 Implemented host support:
 
 - Reviewed proposals can be accepted through the Actions configuration path.
+- Proposals can be persisted in the host-owned Actions trigger proposal inbox and reviewed later.
 - `click` proposals are validated against existing actions and applied to `clickAction`.
 - `manual` and `unbound` proposals are acknowledged without mutating trigger bindings.
 - `random`, `state`, and `event` proposals return a pending-host-rule result until a full trigger-rule schema/editor exists.
-- Control Center Actions now includes a trigger proposal review card that shows the target action, proposal type meaning, immediate effect, host-owned boundary, and last acceptance result before/after the user confirms a proposal.
+- Control Center Actions now includes a persistent trigger proposal inbox/editor for accept/reject decisions, plus the existing manual trigger proposal review card that shows the target action, proposal type meaning, immediate effect, host-owned boundary, and last acceptance result before/after the user confirms a proposal.
 
 ## Plugin Processing Pipeline
 
@@ -246,10 +247,15 @@ Completed host slice:
 
 Remaining host/main UI request:
 
-- Add a persistent trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals submitted directly from Creator Studio and other plugins rather than manually choosing the current action/type.
 - Define the durable trigger-rule schema for `random`, `state`, and `event` rules.
 - Add simulation/preview before applying non-click triggers.
 - Keep final trigger persistence host-owned; plugins should continue to propose rather than directly mutate rules.
+
+Completed host/main UI request:
+
+- Added a persistent trigger proposal inbox/editor in Control Center so users can review, accept, or reject proposals submitted directly from Creator Studio and other plugins rather than manually choosing the current action/type.
+- Inbox items are stored on the host-owned active action config/pet-pack boundary, include source metadata, and preserve accepted/rejected decisions for review.
+- `click` inbox acceptance applies `clickAction`; `manual`/`unbound` acknowledge without config mutation; `random`/`state`/`event` remain accepted-but-pending until the durable trigger-rule schema exists.
 
 ## TODO: Later Work
 

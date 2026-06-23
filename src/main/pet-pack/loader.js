@@ -41,7 +41,8 @@ const loadLegacyPetPack = ({ id = 'legacy-cat', displayName = 'Legacy Cat', getP
     displayName,
     defaultAction: config.defaultAction,
     clickAction: config.clickAction,
-    actions: Array.isArray(config.actions) ? config.actions.map(withLegacyActionDefaults) : []
+    actions: Array.isArray(config.actions) ? config.actions.map(withLegacyActionDefaults) : [],
+    ...(Array.isArray(config.triggerProposalInbox) ? { triggerProposalInbox: config.triggerProposalInbox } : {})
   })
 
   return {
@@ -62,7 +63,8 @@ const getLegacyPetAnimations = ({ configPath = LEGACY_ANIMATIONS_PATH } = {}) =>
     return {
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
-      actions: Array.isArray(config.actions) ? config.actions : []
+      actions: Array.isArray(config.actions) ? config.actions : [],
+      ...(Array.isArray(config.triggerProposalInbox) ? { triggerProposalInbox: config.triggerProposalInbox } : {})
     }
   } catch (error) {
     console.error('Failed to load legacy animations config:', error)

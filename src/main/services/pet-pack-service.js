@@ -656,7 +656,10 @@ const createPetPackService = ({
       ...readJsonFile(path.join(targetDir, 'pet.json')),
       defaultAction: nextManifest.defaultAction ?? currentManifest.defaultAction,
       clickAction: nextManifest.clickAction ?? currentManifest.clickAction,
-      actions: nextActions
+      actions: nextActions,
+      ...(nextManifest.triggerProposalInbox !== undefined
+        ? { triggerProposalInbox: Array.isArray(nextManifest.triggerProposalInbox) ? nextManifest.triggerProposalInbox : [] }
+        : {})
     }
     writeJsonFile(path.join(targetDir, 'pet.json'), manifest)
     return loadPetPackFromDirectory(targetDir).manifest

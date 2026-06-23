@@ -94,6 +94,50 @@ test.describe('Control Center smoke', () => {
     await expect(clickAction).toHaveValue(beforeClickAction)
   })
 
+  test('reviews and rejects action trigger proposals from the inbox', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        actionsConfig: {
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
+            { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+            { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
+          ],
+          triggerProposalInbox: [{
+            id: 'demo-proposal-1',
+            actionId: 'sleep',
+            type: 'state',
+            binding: '',
+            sourcePluginId: 'openpet.creator-studio',
+            sourceRunId: 'demo-run-1',
+            notes: 'Use when the pet feels sleepy.',
+            status: 'pending',
+            submittedAt: '2026-06-22T00:00:00.000Z'
+          }]
+        }
+      }))
+    })
+    await page.reload()
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    const inbox = page.locator('[aria-label="触发建议 Inbox"]')
+    await expect(inbox).toContainText('1 个待处理')
+    await expect(inbox).toContainText('sleep')
+    await expect(inbox).toContainText('openpet.creator-studio')
+    await expect(inbox).toContainText('Use when the pet feels sleepy.')
+
+    await inbox.getByPlaceholder('可选').fill('需要等规则编辑器')
+    await inbox.getByRole('button', { name: '拒绝建议' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('已拒绝 Inbox 触发建议')
+    await expect(inbox).toContainText('0 个待处理')
+    await expect(inbox).toContainText('rejected')
+    await expect(inbox).toContainText('需要等规则编辑器')
+  })
+
   test('persists Pet settings in the demo API session', async ({ page }) => {
     await page.goto('/')
 

@@ -42,7 +42,7 @@ The v1.1 TODO is no longer about proving the platform can exist. It is about mak
 - AI behavior orchestration has a Control Center decision viewer, replay, redacted diagnostics export, and clear-history controls.
 - AI provider configuration UX now has a complete active/draft save/confirm/test flow for API key, model, and base URL changes, with structured sanitized diagnostics. Remaining AI settings work is mostly provider presets/model discovery and richer model-settings product polish.
 - Host image-generation model settings now exist for Creator Studio with `fixture` / `cloud` / `local` defaults, cloud API key storage through `SecretService`, local endpoint settings, health checks, and host-mediated image output writing. The remaining main UI work is a clearer first-class model settings surface and richer provider setup guidance.
-- Creator Studio trigger proposals can now be accepted through the host Actions path for reviewed `click`, `manual`, and `unbound` proposals. `random`, `state`, and `event` proposals remain pending until OpenPet defines a host-owned trigger-rule schema/editor.
+- Creator Studio trigger proposals can now be submitted into a host-owned Actions inbox, reviewed later, accepted, or rejected. `click` proposals apply `clickAction`; `manual` and `unbound` acknowledge without binding changes; `random`, `state`, and `event` proposals remain accepted-but-pending until OpenPet defines a durable trigger-rule schema/editor.
 - Documentation still needs another consolidation pass after the v1.1 execution track stabilizes.
 
 ## 3. Non-Goals

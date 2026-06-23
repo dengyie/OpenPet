@@ -560,6 +560,18 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       }
     },
     actionService: {
+      submitTriggerProposal: (proposal) => {
+        calls.push(['trigger-submit', proposal])
+        return {
+          proposal: {
+            id: 'proposal-1',
+            ...proposal,
+            status: 'pending',
+            submittedAt: '2026-06-22T10:00:00.000Z'
+          },
+          animations
+        }
+      },
       acceptTriggerProposal: (proposal) => {
         calls.push(['trigger', proposal])
         return {
@@ -574,6 +586,57 @@ test('action mutation handlers return contract-shaped results and refreshed anim
           sourcePluginId: proposal.sourcePluginId || '',
           sourceRunId: proposal.sourceRunId || '',
           sourceCommandId: proposal.sourceCommandId || ''
+        }
+      },
+      acceptTriggerProposalItem: (proposalId) => {
+        calls.push(['trigger-accept-inbox', proposalId])
+        return {
+          proposal: {
+            id: proposalId,
+            actionId: 'wave',
+            type: 'click',
+            binding: 'clickAction',
+            status: 'accepted',
+            submittedAt: '2026-06-22T09:00:00.000Z',
+            decidedAt: '2026-06-22T10:00:00.000Z',
+            result: {
+              ok: true,
+              applied: true,
+              actionId: 'wave',
+              type: 'click',
+              binding: 'clickAction',
+              code: 'applied',
+              message: 'applied',
+              acceptedAt: '2026-06-22T10:00:00.000Z'
+            }
+          },
+          triggerProposal: {
+            ok: true,
+            applied: true,
+            actionId: 'wave',
+            type: 'click',
+            binding: 'clickAction',
+            code: 'applied',
+            message: 'applied',
+            acceptedAt: '2026-06-22T10:00:00.000Z'
+          },
+          animations
+        }
+      },
+      rejectTriggerProposalItem: (proposalId, reason) => {
+        calls.push(['trigger-reject-inbox', proposalId, reason])
+        return {
+          proposal: {
+            id: proposalId,
+            actionId: 'wave',
+            type: 'state',
+            binding: '',
+            status: 'rejected',
+            submittedAt: '2026-06-22T09:00:00.000Z',
+            decidedAt: '2026-06-22T10:00:00.000Z',
+            decisionReason: reason
+          },
+          animations
         }
       }
     },
@@ -603,6 +666,13 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceCommandId: 'import-approved-action'
     }
   })
+  const submitTriggerResult = await ipcMain.handlers.get(IPC.ACTIONS_SUBMIT_TRIGGER_PROPOSAL)(null, {
+    actionId: 'wave',
+    type: 'state',
+    sourcePluginId: 'openpet.creator-studio'
+  })
+  const acceptInboxResult = await ipcMain.handlers.get(IPC.ACTIONS_ACCEPT_TRIGGER_PROPOSAL)(null, { proposalId: 'proposal-1' })
+  const rejectInboxResult = await ipcMain.handlers.get(IPC.ACTIONS_REJECT_TRIGGER_PROPOSAL)(null, { proposalId: 'proposal-2', reason: 'not now' })
   const deleteResult = await ipcMain.handlers.get(IPC.ACTIONS_DELETE)(null, { actionId: 'wave' })
 
   assert.deepEqual(importResult, {
@@ -630,8 +700,16 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceCommandId: 'import-approved-action'
     }
   })
+  assert.equal(submitTriggerResult.proposal.id, 'proposal-1')
+  assert.equal(submitTriggerResult.proposal.status, 'pending')
+  assert.equal(submitTriggerResult.proposal.type, 'state')
+  assert.equal(acceptInboxResult.proposal.status, 'accepted')
+  assert.equal(acceptInboxResult.triggerProposal.code, 'applied')
+  assert.equal(rejectInboxResult.proposal.status, 'rejected')
+  assert.equal(rejectInboxResult.proposal.decisionReason, 'not now')
   assert.deepEqual(deleteResult, { animations })
   assert.deepEqual(petWindowMessages.map((message) => message[0]), [
+    IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
@@ -652,6 +730,13 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceRunId: 'run-1',
       sourceCommandId: 'import-approved-action'
     }],
+    ['trigger-submit', {
+      actionId: 'wave',
+      type: 'state',
+      sourcePluginId: 'openpet.creator-studio'
+    }],
+    ['trigger-accept-inbox', 'proposal-1'],
+    ['trigger-reject-inbox', 'proposal-2', 'not now'],
     ['delete', 'wave']
   ])
 })
