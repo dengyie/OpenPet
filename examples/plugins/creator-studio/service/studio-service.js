@@ -114,6 +114,25 @@ const createActionReview = (run) => {
   }
 }
 
+const createRunSummary = (run) => {
+  const action = Array.isArray(run.generationTask?.actions) ? run.generationTask.actions[0] : null
+  const prompt = String(run.input?.originalPrompt || run.input?.prompt || '')
+  return {
+    runId: run.runId,
+    petName: run.input?.petName || run.petId || 'Creator Studio Pet',
+    status: run.status || 'draft',
+    taskStatus: run.taskStatus || 'not_started',
+    currentStep: run.currentStep || 'draft',
+    backend: run.backend || run.input?.backend || 'fixture',
+    updatedAt: run.updatedAt || run.createdAt || '',
+    mode: run.generationTask?.mode || '',
+    actionName: action?.name || '',
+    triggerType: action?.triggerProposal?.type || '',
+    promptSnippet: prompt.length > 96 ? `${prompt.slice(0, 93)}...` : prompt,
+    hasActionReview: Boolean(run.artifacts?.actionFrames)
+  }
+}
+
 const handlePost = async ({ request, response, dataDir, url }) => {
   try {
     const body = await readJsonBody(request)
@@ -180,7 +199,8 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
     if (await handlePost({ request, response, dataDir, url })) return
   }
   if (url.pathname === '/api/runs') {
-    sendJson(response, 200, { ok: true, runs: listRuns({ dataDir }) })
+    const runSummaries = listRuns({ dataDir }).map(createRunSummary)
+    sendJson(response, 200, { ok: true, runs: runSummaries, runSummaries })
     return
   }
 
@@ -243,6 +263,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  createRunSummary,
   createCreatorStudioServer,
   startCreatorStudioService
 }

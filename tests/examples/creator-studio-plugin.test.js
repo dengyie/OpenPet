@@ -1785,8 +1785,22 @@ test('creator studio service exposes run detail and logs for dashboard clients',
 
   try {
     const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
+    const list = await fetch(`http://127.0.0.1:${port}/api/runs`).then((response) => response.json())
     const logs = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/logs`).then((response) => response.json())
 
+    assert.equal(list.ok, true)
+    assert.deepEqual(list.runs, list.runSummaries)
+    assert.equal(list.runs[0].runId, run.runId)
+    assert.equal(list.runs[0].petName, 'Service Cat')
+    assert.equal(list.runs[0].status, 'ready_for_review')
+    assert.equal(list.runs[0].taskStatus, 'ready_for_confirmation')
+    assert.equal(list.runs[0].backend, 'fixture')
+    assert.equal(list.runs[0].mode, 'single-action')
+    assert.equal(list.runs[0].actionName, '害羞转圈')
+    assert.equal(list.runs[0].triggerType, 'click')
+    assert.equal(list.runs[0].hasActionReview, true)
+    assert.equal(Object.hasOwn(list.runs[0], 'artifacts'), false)
+    assert.equal(JSON.stringify(list.runs).includes(dataDir), false)
     assert.equal(detail.ok, true)
     assert.equal(detail.run.runId, run.runId)
     assert.equal(detail.actionReview.actionId, 'shy-spin')
