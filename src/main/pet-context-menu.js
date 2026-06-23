@@ -18,12 +18,12 @@ const MENU_POSITION_ALIASES = {
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
-const estimatePetContextMenuSize = (actions = []) => {
+const estimatePetContextMenuSize = (actions = [], { extraItemCount = 0 } = {}) => {
   const longestLabel = actions.reduce((length, action) => {
     return Math.max(length, String(action?.label || '').length)
   }, 0)
   const width = clamp(84 + longestLabel * 8, MENU_MIN_WIDTH, MENU_MAX_WIDTH)
-  const itemCount = actions.length + 3
+  const itemCount = actions.length + 3 + Math.max(0, Number(extraItemCount) || 0)
   const height = MENU_VERTICAL_PADDING + itemCount * MENU_ROW_HEIGHT + 2 * MENU_DIVIDER_HEIGHT
   return { width, height }
 }
