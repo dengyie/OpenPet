@@ -56,6 +56,14 @@ export function PetPane({
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
   const visibleCursorOptions = cursorOptions.filter((option) => option.id !== SYSTEM_CURSOR_ID)
+  const updateHomeEnabled = (enabled: boolean) => onChange({
+    grounded: enabled ? true : settings.grounded,
+    home: { ...settings.home, enabled }
+  })
+  const updateHomeRadius = (radius: ControlCenterSettings['home']['radius']) => onChange({
+    grounded: true,
+    home: { ...settings.home, enabled: true, radius }
+  })
 
   return (
     <section className="pane pet-pane">
@@ -204,10 +212,7 @@ export function PetPane({
           <Toggle
             ariaLabel="Enable home anchor"
             checked={settings.home.enabled}
-            disabled={!settings.grounded}
-            onChange={(enabled) => onChange({
-              home: { ...settings.home, enabled }
-            })}
+            onChange={updateHomeEnabled}
           />
         </div>
 
@@ -215,10 +220,7 @@ export function PetPane({
           label="活动范围"
           value={settings.home.radius}
           options={homeRadiusOptions}
-          disabled={!settings.home.enabled}
-          onChange={(radius) => onChange({
-            home: { ...settings.home, radius: String(radius) as ControlCenterSettings['home']['radius'] }
-          })}
+          onChange={(radius) => updateHomeRadius(String(radius) as ControlCenterSettings['home']['radius'])}
         />
       </div>
 
