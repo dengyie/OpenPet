@@ -289,6 +289,70 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     return aiTalkStore.listMemories({ petPackId, limit: MAX_MEMORY_CONTEXT_ITEMS })
   }
 
+  const listRecentMemoryJobs = (petPackId) => {
+    if (typeof aiTalkStore.getState !== 'function') return []
+    const state = aiTalkStore.getState()
+    return Object.values(state.memoryJobs || {})
+      .filter((job) => !petPackId || job?.petPackId === petPackId)
+      .sort((a, b) => String(b?.updatedAt || b?.createdAt || '').localeCompare(String(a?.updatedAt || a?.createdAt || '')))
+      .slice(0, 5)
+      .map((job) => ({
+        id: normalizeString(job?.id),
+        petPackId: normalizeString(job?.petPackId),
+        conversationId: normalizeString(job?.conversationId),
+        status: normalizeString(job?.status) || 'unknown',
+        createdAt: normalizeString(job?.createdAt),
+        updatedAt: normalizeString(job?.updatedAt),
+        errorCode: normalizeString(job?.errorCode),
+        appliedCount: Number.isFinite(Number(job?.appliedCount)) ? Number(job.appliedCount) : 0,
+        filteredCount: Number.isFinite(Number(job?.filteredCount)) ? Number(job.filteredCount) : 0
+      }))
+  }
+
+  const getMemoryProfile = () => {
+    const { manifest, petPackId } = resolveActivePack()
+    if (typeof aiTalkStore.listMemories !== 'function') throw new Error('AI talk memories are not available')
+    return {
+      petPackId,
+      petPackDisplayName: normalizeString(manifest.displayName) || petPackId,
+      globalMemories: aiTalkStore.listMemories({ petPackId, scope: 'global', limit: 0 }),
+      petPackMemories: aiTalkStore.listMemories({ petPackId, scope: 'petPack', limit: 0 }),
+      recentJobs: listRecentMemoryJobs(petPackId)
+    }
+  }
+
+  const deleteMemory = (memoryId) => {
+    if (typeof aiTalkStore.deleteMemory !== 'function') throw new Error('AI talk memory deletion is not available')
+    const deleted = aiTalkStore.deleteMemory(memoryId)
+    recordLog({
+      level: deleted ? 'info' : 'warn',
+      event: deleted ? 'ai-talk.memory.deleted' : 'ai-talk.memory.delete-missed',
+      message: deleted ? 'AI talk memory deleted' : 'AI talk memory delete target was not found',
+      details: {
+        memoryId: normalizeString(memoryId).slice(0, 160),
+        scope: deleted?.scope || '',
+        petPackId: deleted?.petPackId || ''
+      }
+    })
+    return getMemoryProfile()
+  }
+
+  const clearPetPackMemories = () => {
+    const { petPackId } = resolveActivePack()
+    if (typeof aiTalkStore.clearPetPackMemories !== 'function') throw new Error('AI talk memory clearing is not available')
+    const result = aiTalkStore.clearPetPackMemories(petPackId)
+    recordLog({
+      level: 'info',
+      event: 'ai-talk.memory.pet-pack-cleared',
+      message: 'AI talk pet-pack memories cleared',
+      details: {
+        petPackId,
+        deletedCount: result.deletedCount
+      }
+    })
+    return getMemoryProfile()
+  }
+
   const scheduleMemoryExtraction = ({ config, petPackId, conversationPublicId, sourceMessages, userMessage, assistantReply, persona }) => {
     if (config.memory?.enabled !== true || typeof aiTalkStore.applyMemoryOperations !== 'function') return
     const job = typeof aiTalkStore.createMemoryJob === 'function'
@@ -482,9 +546,12 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     chat,
     compilePersonaPrompt,
     compileMemoryContextPrompt,
+    clearPetPackMemories,
+    deleteMemory,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
     generatePersonaDraft,
+    getMemoryProfile,
     getPersonaProfile,
     mergePersona,
     savePersonaOverride

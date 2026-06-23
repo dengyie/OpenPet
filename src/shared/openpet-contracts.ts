@@ -110,6 +110,49 @@ export interface AiMemoryConfig {
   enabled: boolean
 }
 
+export type AiMemoryScope = 'global' | 'petPack'
+export type AiMemoryStatus = 'active' | 'superseded' | 'deleted'
+
+export interface AiMemoryItemViewState {
+  id: string
+  scope: AiMemoryScope
+  petPackId: string
+  text: string
+  tags: string[]
+  confidence: number
+  importance: number
+  sourceConversationId: string
+  sourceMessageIds: string[]
+  createdAt: string
+  updatedAt: string
+  lastUsedAt: string
+  lastEvidenceAt: string
+  useCount: number
+  status: AiMemoryStatus
+  supersedes: string
+  reason: string
+}
+
+export interface AiMemoryJobViewState {
+  id: string
+  petPackId: string
+  conversationId: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  errorCode: string
+  appliedCount: number
+  filteredCount: number
+}
+
+export interface AiMemoryProfileViewState {
+  petPackId: string
+  petPackDisplayName: string
+  globalMemories: AiMemoryItemViewState[]
+  petPackMemories: AiMemoryItemViewState[]
+  recentJobs: AiMemoryJobViewState[]
+}
+
 export interface AiPersona {
   name: string
   identity: string
@@ -2244,6 +2287,9 @@ export interface ControlCenterApi {
   getAiPersonaProfile: () => Promise<AiPersonaProfileViewState>
   generateAiPersonaDraft: (request?: AiPersonaGenerateRequest) => Promise<AiPersonaDraftViewState>
   saveAiPersonaOverride: (override: AiPersonaOverride) => Promise<AiPersonaProfileViewState>
+  getAiMemoryProfile: () => Promise<AiMemoryProfileViewState>
+  deleteAiMemory: (memoryId: string) => Promise<AiMemoryProfileViewState>
+  clearAiPetPackMemories: () => Promise<AiMemoryProfileViewState>
   getImageGenerationConfig: () => Promise<ImageGenerationConfigViewState>
   saveImageGenerationConfig: (config: Partial<ImageGenerationConfigViewState>) => Promise<ImageGenerationConfigViewState>
   saveImageGenerationApiKey: (apiKey: string) => Promise<ImageGenerationSaveApiKeyResult>

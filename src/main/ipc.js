@@ -704,6 +704,21 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return aiTalkService.savePersonaOverride(override || {})
   })
 
+  ipcMainService.handle(IPC.AI_GET_MEMORY_PROFILE, () => {
+    if (!aiTalkService?.getMemoryProfile) throw new Error('AI talk memories are not available')
+    return aiTalkService.getMemoryProfile()
+  })
+
+  ipcMainService.handle(IPC.AI_DELETE_MEMORY, (_event, payload) => {
+    if (!aiTalkService?.deleteMemory) throw new Error('AI talk memory deletion is not available')
+    return aiTalkService.deleteMemory(payload?.memoryId || payload)
+  })
+
+  ipcMainService.handle(IPC.AI_CLEAR_PET_PACK_MEMORIES, () => {
+    if (!aiTalkService?.clearPetPackMemories) throw new Error('AI talk memory clearing is not available')
+    return aiTalkService.clearPetPackMemories()
+  })
+
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => imageGenerationModelService.getConfig())
 
   ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_CONFIG, (_event, config) => {
