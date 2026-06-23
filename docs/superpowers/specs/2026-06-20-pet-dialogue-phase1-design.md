@@ -1,142 +1,129 @@
-# OpenPet Pet Dialogue Phase 1 Design
+# OpenPet AI Talk 开发文档
 
-Date: 2026-06-20
-Status: Draft approved for implementation planning
-Reference studied: AstrBotDevs/AstrBot commit `0a0c677`
+日期：2026-06-24
+基线：`main@6f2a5c0` (`fix(window): raise existing settings window`)
+状态：基于最新 main 重新整理，作为后续 AI Talk 开发入口文档
 
-## Goal
+## 目标
 
-Phase 1 delivers pet dialogue in Control Center / AI. The feature follows the active pet-pack automatically, gives each pet-pack its own persona and main conversation, lets the model produce natural language replies and action suggestions, and adds automatic long-term memory extraction.
+AI Talk 的目标是把 OpenPet 从“AI 配置 + 简单聊天”升级成可持续演进的宠物对话系统。系统需要支持当前激活 pet-pack 的独立人格、独立主会话、长期记忆、动作建议、可诊断日志，并且为后续桌面浮窗聊天、流式回复、多会话 UI、向量检索和插件扩展预留边界。
 
-The implementation should borrow AstrBot's mature separation of persona, session, conversation, dynamic context, tools, and provider runner, while staying lightweight for OpenPet's Electron local-first runtime.
+当前 main 已经落地核心编排骨架：`AiTalkService`、`AiTalkStore`、`pet.json.persona` schema、Control Center 人格 override UI、人格草稿生成、后台记忆抽取、AI provider 日志。本文档不再把这些写成“计划新建”，而是以它们为当前架构事实继续规划。
 
-## Non-Goals
+## 非目标
 
-- No desktop floating chat entry in Phase 1.
-- No streaming response in Phase 1, but the data model and service API must reserve `responseMode`.
-- No multi-conversation UI in Phase 1.
-- No vector or embedding-based memory retrieval in Phase 1.
-- No third-party AI Talk plugin API in Phase 1.
-- No LLM summary compression of old chat history in Phase 1.
-- No writing user persona overrides back into `pet.json`.
+- 本阶段不做桌面浮窗聊天入口。
+- 本阶段不做流式回复，但 `responseMode` 已在 conversation 数据中预留。
+- 本阶段不做多会话列表 UI，内部只使用每个 pet-pack 的 `main` conversation。
+- 本阶段不做 embedding 或向量库。
+- 本阶段不开放第三方 AI Talk 插件 API。
+- 本阶段不做 LLM 历史摘要压缩。
+- 本阶段不把本地 persona override 写回 pet-pack 文件。
 
-## AstrBot-Inspired Design Principles
+## AstrBot 参考原则
 
-AstrBot's conversation stack separates responsibilities that OpenPet should not collapse into a single `chat()` function:
+OpenPet 继续参考 AstrBot 的成熟分层，但不照搬其 Python/DB/多平台复杂度：
 
-- Session and conversation are distinct. A session identifies an entry context, while a conversation owns history, title, persona selection, and usage metadata.
-- Persona is stable prompt material. Runtime facts, time, retrieved memory, and other dynamic context should not be appended into the stable system prompt each round.
-- Tools are capability boundaries. The model may suggest or call capabilities, but the host validates and executes them.
-- Context management is explicit. AstrBot uses turn limits, token guards, and optional LLM compression. OpenPet Phase 1 should keep the exact recent turns and compensate with long-term memory retrieval.
-- Traceability matters. The chain should expose which persona, tools, memories, model, and action decisions were used without leaking secrets by default.
+- `session` 和 `conversation` 分离：入口场景负责定位会话，conversation 负责历史、persona hash、上下文策略。
+- 稳定 persona 和动态上下文分离：pet persona 编译进稳定 system prompt，长期记忆作为动态上下文单独注入。
+- 工具是能力边界：模型只建议动作，host 负责校验当前 pet-pack 是否具备动作并执行。
+- 请求链路可观测：provider 请求、talk 编排、IPC、memory job 都要有脱敏结构化日志。
+- 长期记忆自动抽取但不能阻塞主回复，失败只进入诊断链路。
 
-## Architecture
+## 当前主进程架构
 
-### AiTalkService
+`main.js` 现在按以下顺序组装核心依赖：
 
-`AiTalkService` becomes the main orchestration layer for dialogue. It owns:
+1. `SettingsService` 持久化普通设置。
+2. `PetPackService` 管理 active pet-pack。
+3. `ActionService` 和 `PetService` 提供宠物动作与状态唯一入口。
+4. `SecretService` 保存 AI/API key。
+5. `AppLogService` 写入本地日志。
+6. `AiService` 作为 OpenAI-compatible provider client。
+7. `AiTalkStore` 使用 `userData/ai-talk-store.json` 保存 talk 数据。
+8. `AiTalkService` 编排会话、人格、记忆、provider 请求。
+9. `PluginService` 接收 `aiService` 与 `aiTalkService`，但 AI Talk 第三方扩展 API 仍未开放。
+10. `registerIpcHandlers()` 注入 `aiTalkService`，AI IPC 优先走 talk 编排。
 
-- resolving the active pet-pack talk session;
-- resolving or creating the current pet-pack main conversation;
-- merging `pet.json.persona` with local field-level persona override;
-- compiling structured persona into a stable system prompt;
-- selecting recent conversation history for request context;
-- retrieving a small set of relevant global and pet-pack memories;
-- providing the `openpet_behavior` action tool schema;
-- calling `AiService` as provider client;
-- saving messages and traces;
-- splitting long assistant replies into pet bubble segments;
-- scheduling non-blocking memory extraction jobs;
-- returning validated action suggestions for execution through `PetService`.
+`PetService` 仍是宠物状态唯一入口。所有 `say`、`playAction`、`setEvent` 都不能绕过它。
+
+## 当前 AI 服务边界
 
 ### AiService
 
-`AiService` should be reduced to an OpenAI-compatible provider client:
+文件：`src/main/services/ai-service.js`
 
-- reads provider settings and API key references;
-- sends non-streaming chat completion requests in Phase 1;
-- handles timeouts and provider errors;
-- parses assistant text and tool calls;
-- later supports streaming behind the same provider boundary.
+职责已经收敛到 provider client：
 
-It should not own persona, memory, pet-pack conversation routing, or action execution.
+- 读取 `settings.ai` provider 配置。
+- 通过 `SecretService` 读取 API key。
+- 发送 `/chat/completions` 非流式请求。
+- 解析 assistant reply 和 `openpet_behavior` tool call。
+- 记录 `ai-provider`、`ai-settings` 脱敏日志。
+- 提供兼容旧路径的 `chat/getConversation/clearConversation`。
+
+注意：`AiService.getConfig()` 返回给 renderer 的 `baseUrl` 是展示安全版本，会去掉用户名、密码、query、hash。保存时通过 `mergeConfigWithoutDisplayDowngrade()` 避免展示安全版本覆盖真实已保存 URL。
+
+### AiTalkService
+
+文件：`src/main/services/ai-talk-service.js`
+
+职责是 AI Talk 主编排：
+
+- 解析当前 active pet-pack。
+- 读取并合并 pack persona 与本地 override。
+- 编译 persona prompt 和 global system prompt。
+- 确保 `control-center:{petPackId}:main` 会话存在。
+- 读取最近 `MAX_CONTEXT_MESSAGES = 20` 条历史。
+- 读取最多 `MAX_MEMORY_CONTEXT_ITEMS = 8` 条长期记忆作为动态上下文。
+- 按配置注入 `openpet_behavior` tool。
+- 调用 `AiService.complete()`。
+- 将 user/assistant message 写入 `AiTalkStore`。
+- 非阻塞调度 memory extraction job。
+- 记录 `ai-talk.chat.*` 与 `ai-talk.memory.*` 脱敏日志。
+
+`AiTalkService.chat()` 当前忽略 renderer 传入的普通 `conversationId`，以 active pet-pack 和 entrypoint 自动定位主会话。`getConversation('control-center')` 也会回落到当前 active pet-pack 的 main conversation，这是为了兼容旧 UI 调用。
 
 ### AiTalkStore
 
-Dialogue state moves out of `settings.json` into an independent local store, `ai-talk-store.json`, written atomically and normalized on load.
+文件：`src/main/services/ai-talk-store.js`
 
-`settings.ai` remains for provider and feature configuration:
+本地数据文件：`userData/ai-talk-store.json`
 
-- enabled;
-- provider;
-- baseUrl;
-- model;
-- apiKeyRef;
-- behavior config;
-- automatic memory toggle;
-- future model role overrides.
+当前 schema version 为 `1`，顶层包含：
 
-`ai-talk-store.json` owns:
+- `sessions`;
+- `conversations`;
+- `messages`;
+- `personaOverrides`;
+- `memories`;
+- `memoryJobs`;
+- `traces`.
 
-- sessions;
-- conversations;
-- messages;
-- personaOverrides;
-- memories;
-- memoryJobs;
-- traces;
-- schema version and migration metadata.
+写入采用临时文件 + rename 的原子写入方式。读取到损坏 JSON 时，会备份为 `ai-talk-store.json.corrupt-*` 并返回安全空状态。
 
-### PetService
+## 当前数据模型
 
-`PetService` remains the only source of truth for pet state. Dialogue code may request speech or action, but final execution still goes through:
+### Session
 
-- `petService.say()`;
-- `petService.playAction()`;
-- `petService.setEvent()`.
+`sessionId = {entrypoint}:{petPackId}`
 
-### IPC
+Phase 1 默认 entrypoint 是 `control-center`。例如：
 
-IPC should call `AiTalkService.chat()` rather than assembling dialogue behavior directly. IPC may execute the returned host-validated speech/action through `PetService`, but should not build prompts, inspect memories, or mutate conversation history itself.
+```text
+control-center:legacy-cat
+control-center:mochi-cat
+```
 
-## Pet-Pack Persona
+### Conversation
 
-`pet.json.persona` is optional for backward compatibility. If missing, OpenPet uses a built-in fallback persona. If present, it is strictly normalized.
+当前每个 session 只有一个 `main` conversation，完整 key 为：
 
-Phase 1 persona fields:
+```text
+{sessionId}:main
+```
 
-- `name`;
-- `identity`;
-- `tone`;
-- `coreTraits`;
-- `speakingStyle`;
-- `relationshipToUser`;
-- `actionStyle`;
-- `boundaries`.
-
-The effective persona is:
-
-`compiledPersona = fieldMerge(packDefaultPersona, localPersonaOverride || {})`
-
-Local overrides are stored in `ai-talk-store.json`, not in the pet-pack manifest.
-
-Control Center should show the persona source:
-
-- package default persona;
-- local override;
-- built-in fallback persona.
-
-Persona generation is explicit: user enters generate-persona mode, model produces a draft, UI previews it, and only user confirmation writes a local override.
-
-## Session And Conversation Model
-
-Phase 1 uses an AstrBot-style internal model while keeping UI simple.
-
-`sessionId = control-center:{activePackId}`
-
-Each active pet-pack gets one default main conversation in Phase 1. Internally the conversation may use `main` or a generated UUID, but the store must keep room for multiple conversations later.
-
-Conversation metadata should include:
+conversation 字段包括：
 
 - `id`;
 - `sessionId`;
@@ -149,24 +136,43 @@ Conversation metadata should include:
 - `summaryUpdatedAt`;
 - `contextPolicy`;
 - `createdAt`;
-- `updatedAt`;
+- `updatedAt`.
 
-The full transcript is stored locally, but each model request only receives recent exact history according to `contextPolicy`.
+`responseMode` 当前固定为 `complete`，为后续 stream 预留。
 
-## Memory Model
+### Message
 
-Phase 1 supports two memory scopes:
+当前只持久化 `user` 和 `assistant` 两类消息。每条 message 最长 8000 字符。system prompt、memory context、tool schema 不进入 transcript。
 
-- global user memory;
-- pet-pack relationship memory.
+### Persona
 
-Automatic memory extraction runs in the background after the main reply is returned. It must not block the user-facing response or pet action.
+`pet.json.persona` 已成为可选字段。若存在，`src/main/pet-pack/schema.js` 会严格校验：
 
-Each memory item should include:
+- `name`;
+- `identity`;
+- `tone`;
+- `coreTraits`;
+- `speakingStyle`;
+- `relationshipToUser`;
+- `actionStyle`;
+- `boundaries`.
+
+若 pet-pack 没有 persona，`AiTalkService` 使用内置 `FALLBACK_PERSONA`。
+
+本地 override 按 pet-pack 存在 `AiTalkStore.personaOverrides` 中。合并方式是字段级覆盖，不修改 pet-pack 文件。
+
+### Memory
+
+长期记忆分两类：
+
+- `global`：稳定用户事实和偏好。
+- `petPack`：当前宠物与用户的关系记忆。
+
+memory 字段包括：
 
 - `id`;
-- `scope`: `global` or `petPack`;
-- `petPackId`, required for pet-pack memory;
+- `scope`;
+- `petPackId`;
 - `text`;
 - `tags`;
 - `confidence`;
@@ -178,224 +184,342 @@ Each memory item should include:
 - `lastUsedAt`;
 - `lastEvidenceAt`;
 - `useCount`;
-- `status`: `active`, `superseded`, or `deleted`;
+- `status`;
 - `supersedes`;
-- `reason`;
+- `reason`.
 
-The memory extractor returns candidate operations:
+当前支持的记忆操作：
 
 - `create`;
 - `update`;
 - `reinforce`;
 - `ignore`.
 
-The host applies conservative upsert rules. The model cannot physically delete memory. Conflicts should mark old memory as `superseded`, preserving auditability.
+host 不允许模型物理删除记忆。敏感候选会被过滤，只在 `traces.filteredMemoryCandidates` 中记录 operation、scope、reason，不保存原文。
 
-## Memory Retrieval
+## 当前请求流程
 
-Phase 1 does not use embeddings. It uses lightweight relevance scoring based on:
+1. Control Center AI 页发送 `IPC.AI_CHAT`。
+2. `ipc.js` 记录 `ai-chat.ipc.received`。
+3. IPC 调用 `aiTalkService.chat(payload)`，如果服务不存在才 fallback 到旧 `aiService.chat()`。
+4. `AiTalkService` 解析 active pet-pack。
+5. `AiTalkService` 合并 persona override，计算 `personaHash`。
+6. `AiTalkStore.ensureMainConversation()` 创建或更新 `control-center:{petPackId}:main`。
+7. `AiTalkService` 读取历史、记忆、behavior 配置，组装 provider messages。
+8. `AiService.complete()` 调用 OpenAI-compatible provider。
+9. `AiTalkStore.appendMessages()` 保存 user/assistant transcript。
+10. `AiTalkService` 立即返回 reply，并后台启动 memory extraction。
+11. IPC 调用 `petService.say({ text: result.reply, source: 'ai' })`。
+12. 如果 behavior orchestrator 启用，IPC 用 `behaviorOrchestratorService.evaluate()` 校验并执行动作。
+13. IPC 记录 `ai-chat.ipc.completed` 或 `ai-chat.ipc.failed`。
 
-- current user message;
-- recent dialogue text;
-- current `petPackId`;
-- memory tags;
-- confidence;
-- importance;
-- recency and usage.
+## 当前 Control Center 能力
 
-Each request injects only a small top set, typically 5 to 8 items, as temporary dynamic context. Retrieved memory must not be compiled into the stable persona system prompt.
+文件：
 
-## Sensitive Memory Filtering
+- `src/control-center/src/hooks/useAiPane.ts`
+- `src/control-center/src/panes/AiPane.tsx`
+- `src/control-center/src/api/control-center-api.ts`
+- `src/shared/openpet-contracts.ts`
 
-Because memory is automatic, Phase 1 must include conservative host-side filtering. The system should not save:
+已实现能力：
 
-- API keys, tokens, passwords, or one-time codes;
-- complete addresses;
-- identity card, bank card, or similar high-risk identifiers;
-- detailed medical or financial information;
-- third-party private information;
-- obviously transient jokes or one-off statements.
+- 聊天 provider 配置保存和连接测试。
+- API key 保存。
+- `memory.enabled` 开关。
+- 图片 provider 配置与健康检查。
+- 当前 active pet-pack persona profile 获取。
+- persona override 编辑、保存、清空。
+- persona generation draft 生成、预览、应用或放弃。
+- 编译后 persona prompt 和 system prompt 预览。
+- AI 聊天。
+- behavior 配置、dry run、replay、诊断导出。
 
-Filtered candidates are recorded in diagnostic trace without storing the sensitive text by default.
+当前限制：
 
-## Action Orchestration
+- renderer 仍以兼容方式调用 `getAiConversation('control-center')` 和 `chat({ conversationId: 'control-center' })`；实际会话隔离由主进程根据 active pet-pack 完成。
+- AI 页没有长期记忆列表、删除、清空、恢复或导出 UI。
+- active pet-pack 切换后的聊天消息刷新仍依赖进入 AI tab 或重新加载相关 profile 的路径，后续应补显式刷新机制。
 
-Phase 1 continues to use the existing `openpet_behavior` tool-call approach, aligned with AstrBot's tool boundary model.
+## 当前日志与诊断
 
-Tool parameters should support:
+已有日志范围：
+
+- `ai-provider`: provider 请求开始、完成、失败。
+- `ai-settings`: provider 连接测试开始、完成、失败。
+- `ai-talk`: chat 开始、完成、失败，memory extraction 调度、完成、失败。
+- `ai-chat`: IPC 收到、完成、失败。
+- `behavior`: behavior orchestrator 已有决策与导出能力。
+
+默认日志不记录完整 prompt、完整用户消息、API key 或 provider 原始错误正文。错误日志会按 `providerStatus/providerCode` 做脱敏分类。
+
+## 当前测试覆盖
+
+已有相关测试：
+
+- `tests/services/ai-service.test.js`
+- `tests/services/ai-talk-service.test.js`
+- `tests/services/ai-talk-store.test.js`
+- `tests/pet-pack/schema.test.js`
+- `tests/control-center/control-center-smoke.spec.js`
+- `tests/shared/openpet-contracts-type-fixture.ts`
+
+核心覆盖点：
+
+- pet-pack persona 编译进入稳定 system prompt。
+- 不同 pet-pack 的 main conversation 隔离。
+- AI disabled 时不调用 provider。
+- behavior tool 仍可传给 provider。
+- talk lifecycle 日志不泄漏用户 prompt。
+- persona override 按 pet-pack 保存和合并。
+- persona generation 只产出草稿，不直接持久化。
+- memory extraction 非阻塞。
+- memory 作为动态上下文注入，不污染 persona prompt。
+- fenced JSON memory extraction 可解析。
+- store 原子持久化、损坏备份、memory upsert、敏感过滤。
+
+推荐验证命令：
+
+```bash
+npm run test:core
+npm run test:core:all
+npm run check:syntax
+```
+
+## 已落地但需要继续打磨的点
+
+### 1. Memory Retrieval 仍是排序，不是相关性检索
+
+当前 `AiTalkStore.listMemories()` 按 `importance + confidence` 和 `updatedAt` 排序返回 top N，没有基于当前 user message 或最近对话做关键词打分。后续应在 `AiTalkService.getMemoryContext()` 前加入轻量 scorer。
+
+建议 Phase Next：
+
+- 输入：当前 user message、最近 N 条 history、petPackId。
+- 候选：active global memory + active petPack memory。
+- 分数：tag 命中、文本 token 命中、scope、importance、confidence、recency、useCount。
+- 输出：top 5 到 8 条，并更新 `lastUsedAt/useCount`。
+
+### 2. AI Memory 管理 UI 缺失
+
+当前只有 `memory.enabled` 开关，没有记忆列表和删除能力。
+
+需要补齐 IPC/API：
+
+- list global memories；
+- list current pet-pack memories；
+- delete memory；
+- clear current pet-pack memories；
+- optionally export redacted memory diagnostics。
+
+Control Center UI 需要展示：
+
+- 全局用户记忆；
+- 当前宠物关系记忆；
+- memory job 最近状态；
+- 被过滤候选数量；
+- 删除/清空操作。
+
+### 3. Action Tool Schema 仍是旧版
+
+当前 `getBehaviorToolDefinition()` 只支持：
 
 - `intent`;
 - `actionId`;
 - `confidence`;
-- `bubbleText`;
-- `reason`;
-- `displayMode`.
+- `bubbleText`.
 
-Only actions from the current active pet-pack are valid. The host must validate action existence before executing through `PetService`.
+旧设计里计划扩展的 `reason`、`displayMode` 尚未实现。当前 provider 也没有拿到当前 pet-pack action 白名单的结构化描述，只能靠 host 后置校验。
 
-The natural-language assistant reply remains the primary chat text. `bubbleText` is only a fallback if the provider returns an action tool call without assistant text.
+后续建议：
 
-## Reply Display
+- 在 `AiTalkService` 根据 `petService.getAnimations()` 或 `ActionService` 生成 action candidates。
+- tool schema 增加 `reason`、`displayMode`。
+- system/dynamic context 中明确“只能建议当前候选 actionId”。
+- behavior orchestrator 继续作为最终 host validation。
 
-The transcript stores the full assistant reply. The pet bubble can split long replies into multiple segments automatically.
+### 4. Pet Bubble 分段未进入 Talk 层
 
-Bubble segmentation is display behavior, not transcript mutation.
+当前 `AiTalkService` 返回完整 reply，IPC 直接调用 `petService.say()`。若要“自动拆分多段气泡”，应在 `AiTalkService` 或单独 display helper 中生成 `bubbleSegments`，但 transcript 仍保存完整 assistant reply。
 
-## Trace And Diagnostics
+建议字段：
 
-Phase 1 records default redacted structured traces:
+```text
+reply: string
+bubbleSegments: string[]
+```
+
+IPC 可以按段调用 `PetService.say()`，或由 `PetService` 支持队列显示。
+
+### 5. 旧 `settings.ai.conversations` 迁移未完成
+
+`AiService` 仍保留旧 conversation store 兼容逻辑，但 AI Talk 主链路已经使用 `ai-talk-store.json`。需要决定是否迁移旧 `settings.ai.conversations.control-center` 到 `control-center:{activePackId}:main`。
+
+建议只做一次性保守迁移：
+
+- 仅当 `ai-talk-store.json` 没有任何 messages 时迁移。
+- 默认迁移到当前 active pet-pack。
+- 迁移后保留旧 settings 字段，暂不删除。
+- 记录 `ai-talk.migration.legacy-conversations` 日志。
+
+### 6. Trace Store 未形成可导出诊断
+
+`AiTalkStore.traces` 目前主要用于 filtered memory candidates。完整 AI Talk trace 仍在 app logs 中。后续可以将每次 chat 的 redacted trace 写入 store，供 UI 导出。
+
+建议 trace 字段：
 
 - `traceId`;
 - `petPackId`;
 - `conversationId`;
 - `personaHash`;
+- `messagesCount`;
 - `memoryIdsInjected`;
-- `actionCandidates`;
-- `chosenAction`;
+- `toolsCount`;
 - `provider`;
 - `model`;
 - `latencyMs`;
-- `tokenUsage`;
-- `memoryJobStatus`;
+- `replyChars`;
+- `hasBehaviorIntent`;
+- `memoryJobId`;
 - `errorCode`.
 
-Default logs must not include API keys, full prompts, full memory text, or full private transcript content.
+### 7. Active Pet-Pack 切换刷新需要显式机制
 
-Control Center should provide a diagnostic export. A future detailed diagnostic mode may include prompt and response content, but it must be explicit and warn that private data may be included.
+目前 persona profile 会在进入 AI tab 时刷新，但 pet-pack 切换后 AI 页聊天记录和 persona 草稿是否即时切换，依赖当前 hook 生命周期。后续主页面应在 pet-pack activePackId 变化时通知 AI pane 刷新：
 
-## Control Center Phase 1 UX
+- reload persona profile；
+- reload current conversation；
+- clear expired generated persona draft；
+- keep unsaved provider config draft unchanged。
 
-The AI pane follows the current active pet-pack automatically.
+## 下一轮推荐开发阶段
 
-Required UI capabilities:
+### Phase A: Memory Management Surface
 
-- chat with the current pet;
-- show current pet-pack identity and persona source;
-- edit local persona override fields;
-- generate persona draft and confirm apply;
-- list global user memories;
-- list current pet-pack memories;
-- delete individual memories;
-- clear current pet-pack memory;
-- pause or resume automatic memory;
-- export redacted diagnostics.
+目标：让自动记忆可见、可删、可清空。
 
-The UI should not expose multi-conversation management in Phase 1.
+范围：
 
-## Data Flow
+- `AiTalkStore` 增加 list/delete/clear memory API。
+- `AiTalkService` 暴露 memory profile。
+- IPC 增加 memory 管理 channel。
+- Control Center AI 页展示全局记忆与当前宠物记忆。
+- 测试覆盖 store/service/ipc/UI 基础路径。
 
-1. User sends a message in Control Center / AI.
-2. IPC calls `AiTalkService.chat({ message, entrypoint: 'control-center' })`.
-3. `AiTalkService` resolves active pet-pack, session, main conversation, effective persona, recent history, relevant memory, and available action list.
-4. `AiTalkService` builds a stable system prompt from persona and dynamic context from retrieved memory.
-5. `AiService` sends the OpenAI-compatible non-streaming chat completion request with the `openpet_behavior` tool when enabled.
-6. `AiTalkService` parses provider output, persists user and assistant messages, validates action suggestion, records trace, and schedules memory extraction.
-7. IPC displays assistant text through `PetService.say()` and executes validated action through `PetService.playAction()` when applicable.
-8. Background memory extraction classifies new facts into global or pet-pack memory, filters sensitive candidates, applies conservative upsert, and updates memory job trace.
+验收：
 
-## Failure Handling
+- 开启 memory 后后台抽取成功，AI 页可见。
+- 删除单条记忆后不会再注入 prompt。
+- 清空当前宠物记忆不影响 global memory。
+- 敏感过滤仍不保存原文。
 
-- Provider failure returns a user-visible chat error and records redacted trace.
-- Missing API key keeps current AI disabled behavior.
-- Missing pet-pack persona falls back to built-in persona.
-- Invalid or unknown action suggestion is ignored or downgraded to speech only.
-- Memory extraction failure never fails the chat response.
-- Store write failure should surface as an app-level diagnostic error and preserve in-memory response where possible.
-- Corrupt store should be backed up and normalized to a safe empty store.
+### Phase B: Relevant Memory Scoring
 
-## Phase Plan
+目标：让注入记忆和当前对话更相关。
 
-### Phase 1: Talk Agent Core
+范围：
 
-Deliver:
+- `AiTalkService` 添加轻量 scorer。
+- `AiTalkStore` 支持标记 memory used。
+- 日志记录 memory ids 和 score，不记录原文。
+- 测试覆盖 tag/text/scope/importance/recency 排序。
 
-- `AiTalkService`;
-- `AiTalkStore`;
-- pet-pack `persona` normalization;
-- per-pet-pack main conversation;
-- persona compiler;
-- recent-history context policy;
-- fallback persona.
+验收：
 
-Validation:
+- 当前问题相关记忆优先注入。
+- 其他 pet-pack 关系记忆不会串入当前宠物。
+- `lastUsedAt/useCount` 正确更新。
 
-- core tests for store normalization and atomic persistence;
-- tests for pet-pack conversation isolation;
-- tests for persona field merge and hash stability;
-- old pet-pack manifests still load.
+### Phase C: Action Tool Upgrade
 
-### Phase 2: Control Center AI UX
+目标：让模型动作建议更可控，减少无效动作。
 
-Deliver:
+范围：
 
-- current pet-pack chat UI wiring;
-- persona source display;
-- local override editor;
-- persona generation draft/confirm flow;
-- memory list basics;
-- diagnostic export entry.
+- 扩展 `openpet_behavior` schema。
+- 将当前 pet-pack action candidates 注入动态上下文或 tool schema 描述。
+- host 继续校验 actionId。
+- behavior diagnostics 记录 tool intent、reason、host validation result。
 
-Validation:
+验收：
 
-- UI state follows active pet-pack;
-- switching pet-pack isolates chat and persona;
-- override writes local store only.
+- 模型只能触发当前 pet-pack 已有动作。
+- 无效 actionId 被安全降级为纯回复。
+- behavior replay 仍可复现决策。
 
-### Phase 3: Memory And Action Orchestration
+### Phase D: Bubble Segmentation And UX Polish
 
-Deliver:
+目标：让宠物回复更像桌宠，而不是整段 AI 消息。
 
-- non-blocking memory extraction jobs;
-- global and pet-pack memory classification;
-- sensitive memory filtering;
-- lightweight memory retrieval injection;
-- `openpet_behavior` schema expansion;
-- action whitelist validation.
+范围：
 
-Validation:
+- 增加 reply segmentation helper。
+- transcript 保存完整 reply。
+- UI/IPC/PetService 支持分段气泡显示。
+- 增加过长回复保护。
 
-- chat reply is returned even when memory extraction fails;
-- extracted memory is scoped correctly;
-- sensitive candidates are filtered;
-- only current pet-pack actions can execute.
+验收：
 
-### Phase 4: Production Hardening
+- 长回复分段显示。
+- transcript 不丢内容。
+- 动作执行时机不会和多段气泡冲突。
 
-Deliver:
+### Phase E: Legacy Migration And Diagnostics Export
 
-- redacted structured trace;
-- migrations from existing `settings.ai.conversations`;
-- robust error handling;
-- diagnostic export;
-- regression coverage and smoke checklist.
+目标：稳定升级路径和问题定位能力。
 
-Validation:
+范围：
 
-- `npm run test:core:all`;
-- targeted AI provider mock tests;
-- syntax check;
-- manual AI chat smoke with configured provider if available.
+- 一次性迁移旧 `settings.ai.conversations`。
+- AI Talk redacted trace store。
+- Control Center 导出 AI Talk 诊断。
+- 文档补充 manual smoke checklist。
+
+验收：
+
+- 旧用户升级后不丢早期 control-center 对话。
+- 诊断导出不含 API key、完整 prompt、完整 memory text。
+- provider/chat/memory/action 关键链路可通过 trace 串起来。
 
 ## Backlog
 
-- Desktop floating pet chat using the same `AiTalkService`.
-- Streaming reply support.
-- Multi-conversation UI per pet-pack.
-- Vector or embedding-based memory retrieval.
-- LLM history summary compression.
-- Third-party AI Talk plugin extension API with explicit permissions.
-- Advanced model-role settings for memory, persona generation, and action planning.
-- User-configurable privacy rules for automatic memory.
+- 桌面浮窗聊天入口。
+- 流式回复和取消生成。
+- 多 conversation UI。
+- LLM 历史摘要压缩。
+- embedding/vector memory retrieval。
+- AI Talk 插件扩展点。
+- 记忆隐私策略高级配置。
+- 记忆候选人工确认模式。
+- 独立 memory/persona/action planning 模型角色配置。
 
-## Acceptance Criteria
+## 开发约束
 
-- Control Center / AI can chat with the currently active pet-pack.
-- Each pet-pack has isolated main conversation history.
-- Each pet-pack can provide optional default `pet.json.persona`.
-- User persona override is local and field-merged.
-- Long-term memory is automatically extracted in the background.
-- Global and pet-pack relationship memories are stored separately.
-- Relevant memory is injected as temporary context, not stable persona prompt.
-- Current pet-pack actions can be suggested by the model and host-validated before execution.
-- Memory extraction and action failure do not break chat response.
-- Default diagnostics are useful and redacted.
+- 不绕过 `PetService` 执行宠物状态变更。
+- 不把 API key 暴露给 renderer 或普通插件。
+- 不把完整 prompt、完整记忆、API key 写入默认日志。
+- 不把本地 persona override 写回 pet-pack 文件。
+- 不修改现有 `cat_anime/` material 结构。
+- 新增设置必须可通过 Control Center 操作。
+- 每个阶段至少补 `tests/services` 或 `tests/control-center` 对应回归。
+
+## 快速入口
+
+主要代码：
+
+- `main.js`
+- `src/main/services/ai-service.js`
+- `src/main/services/ai-talk-service.js`
+- `src/main/services/ai-talk-store.js`
+- `src/main/pet-pack/schema.js`
+- `src/main/ipc.js`
+- `src/control-center/src/hooks/useAiPane.ts`
+- `src/control-center/src/panes/AiPane.tsx`
+- `src/shared/openpet-contracts.ts`
+
+主要测试：
+
+- `tests/services/ai-service.test.js`
+- `tests/services/ai-talk-service.test.js`
+- `tests/services/ai-talk-store.test.js`
+- `tests/pet-pack/schema.test.js`
+- `tests/control-center/control-center-smoke.spec.js`
