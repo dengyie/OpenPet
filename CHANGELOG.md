@@ -2,6 +2,34 @@
 
 OpenPet release records. Dates use Asia/Shanghai local time.
 
+## v1.0.1-rc.3 - 2026-06-24
+
+### Added
+
+- Expanded Creator Studio workflows with prompt planning, image-backed atlas generation, frame repair, approval, dashboard review, and generated pet/action import flows.
+- Added AI talk memory, persona draft/override flows, and clearer OpenAI-compatible provider setup guidance.
+- Added richer plugin runtime controls for declaration commands, dashboards, setup entries, services, bridge routes, periodic health checks, logs, storage stats, and cleanup evidence.
+- Added release, plugin submission, community-source, Windows smoke, and packaged runtime evidence tooling.
+
+### Fixed
+
+- Stabilized custom cursor rendering, hotspot repair, focus behavior, and edge handling in transparent pet windows.
+- Fixed pet viewport anchoring, scale preview jitter, walking interaction controls, context menu focus, and settings window stacking.
+- Hardened AI provider save/test flows, image-generation failure reporting, Creator Studio imports, transparent atlas rejection, and plugin bridge diagnostics.
+- Prevented narrow Control Center viewport overflow.
+
+### Changed
+
+- Split plugin service support logic into focused discovery, JSON, log, network, and local runner modules while preserving the public `PluginService` API.
+- Refreshed README files for the current release-candidate platform shape and GitHub project presentation.
+- Kept the release track macOS-first while continuing to build Windows packaging and smoke-evidence infrastructure.
+
+### Validation
+
+- `npm run check:syntax`: passed.
+- `npm test`: 923/923 Node tests passed.
+- `OPENPET_CONTROL_CENTER_PORT=5175 npm run test:control-center`: 20/20 Playwright UI tests passed.
+
 ## v1.0.1-rc.2 - 2026-06-16
 
 ### Added

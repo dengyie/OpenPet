@@ -4,10 +4,10 @@
 
 一个带 Control Center、AI 聊天、插件、宠物包和本地 Agent API 的 Electron 桌面宠物平台。
 
-[![Tests](https://img.shields.io/badge/tests-614%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-core%20%2B%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-1.0.1--rc.3-blue.svg)](./package.json)
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
@@ -15,15 +15,18 @@
 
 OpenPet 会把一只小宠物放在你的桌面上。它能走动、说话、播放动作、切换宠物包，也可以通过 AI 回复触发行为，并通过面向开发者的本地扩展生态继续成长。
 
+当前项目已经进入 release-candidate 桌面平台阶段，而不是一个简单 demo：它包含 Electron service layer、React Control Center、内置宠物包、OpenAI-compatible AI 设置、本地扩展运行时控制、loopback-only 自动化 API 和发布证据工具。
+
 当前发布轨道优先验证 macOS。Windows 的打包和证据工具已经在仓库里，但在真实签名安装包和冒烟报告归档前，不声明 Windows release-ready。
 
 ## 能做什么
 
 - 透明桌宠窗口，支持拖拽、散步、动作播放和气泡对话。
-- React + Vite Control Center，覆盖 Pet、Actions、AI、Plugins、Catalog、Service、About。
+- React + Vite Control Center，覆盖 Pet、Actions、AI、Plugins、Catalog、Service、About，并优化了窄窗口布局。
 - Pet pack runtime，兼容 legacy cat、动作帧文件夹、`.codex-pet.zip`，以及 `pet.json` + `spritesheet.webp` 的 Codex pet atlas。
 - 内置 `doro`、`duodong`、`chispa` 三个只读宠物包。
-- OpenAI 兼容聊天，API Key 只保存在主进程 secret store。
+- OpenAI-compatible 聊天和图片 Provider 配置，API Key 只保存在主进程 secret store。
+- Creator Studio 工作流，支持 prompt 规划、基于图片的 atlas 生成、帧修复、审批、dashboard review，以及宠物/动作导入。
 - 面向开发者的本地扩展模型，当前兼容 legacy SDK，并支持显式 command、dashboard、service 控制、creator-tools 动作、pack manifest、包内资产、用户批准 picker 资产桥接、cleanup evidence tooling、校验、日志、catalog 安装和卸载流程。
 - 可选的本地 HTTP / MCP API，仅 loopback，默认关闭。
 - 渐进式 TypeScript 迁移基线，已覆盖共享 contracts 和 Control Center API facade。
@@ -72,6 +75,9 @@ src/main/services/
                                       |-> AiService
                                       |-> PluginService
                                       |-> LocalHttpService / MCP
+
+src/main/services/plugin-*.js
+  插件发现、JSON/storage/log/network helper，以及本地 runner 边界模块
 
 src/control-center/
   Electron 内嵌的 React + Vite 控制台
@@ -151,15 +157,15 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 
 ## 验证基线
 
-当前本地基线：
+当前 release-candidate 基线：
 
 ```bash
-npm run test:core            # 468/468 core Node tests
-npm run test:tools           # 340/340 tool/release Node tests
-npm test                     # 808/808 Node tests
-npm run test:control-center  # 15/15 Playwright tests
+npm run check:syntax         # Node 语法 + typecheck + Control Center build
+npm run test:core            # 核心运行时 Node 回归
+npm run test:tools           # 发布、证据、脚手架和维护工具测试
+npm test                     # 完整 Node native test suite
+npm run test:control-center  # Playwright UI 回归基线
 npm run typecheck            # TypeScript no-emit checks
-npm run check:syntax         # syntax + typecheck + Control Center build
 ```
 
 ## 许可证

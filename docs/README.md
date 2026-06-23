@@ -21,6 +21,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
 | Creator Studio and model-generation backlog | [`superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md`](./superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md), [`superpowers/specs/2026-06-19-openpet-model-settings-backlog.md`](./superpowers/specs/2026-06-19-openpet-model-settings-backlog.md), [`superpowers/specs/2026-06-20-openpet-creator-prompt-builder-design.md`](./superpowers/specs/2026-06-20-openpet-creator-prompt-builder-design.md) |
 | Desktop release evidence | [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md) |
+| Release notes | [`release-notes/`](./release-notes/) |
 | MCP usage and compatibility | [`mcp-usage.md`](./mcp-usage.md), [`mcp-compatibility.md`](./mcp-compatibility.md) |
 
 ## Planning Docs
@@ -37,6 +38,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
 - [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports.
+- [`release-notes/`](./release-notes/) stores GitHub Release body drafts.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 
 Historical documents are intentionally retained. When facts conflict, prefer current live docs in this order:

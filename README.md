@@ -4,10 +4,10 @@
 
 An Electron desktop pet platform with a visual Control Center, AI chat, plugins, pet packs, and local agent APIs.
 
-[![Tests](https://img.shields.io/badge/tests-614%20node%20%2B%2010%20ui-success)](./tests)
+[![Tests](https://img.shields.io/badge/tests-core%20%2B%20ui-success)](./tests)
 [![Build](https://img.shields.io/badge/build-passing-success)](./package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.1--rc.2-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-1.0.1--rc.3-blue.svg)](./package.json)
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
@@ -15,15 +15,18 @@ An Electron desktop pet platform with a visual Control Center, AI chat, plugins,
 
 OpenPet puts a small animated pet on your desktop and gives it a real platform behind the scenes. The pet can walk, speak, play actions, switch character packs, react to AI replies, and grow through a developer-first local extension ecosystem.
 
+The project is currently a release-candidate desktop platform rather than a toy demo: it has a real Electron service layer, a React Control Center, bundled pet packs, OpenAI-compatible AI settings, local extension runtime controls, loopback-only automation APIs, and release evidence tooling.
+
 The current release track is macOS-first. Windows build and validation tooling exists, but Windows is not advertised as release-ready until signed installer evidence and real smoke reports are archived.
 
 ## What You Get
 
 - Transparent desktop pet window with drag, walking, actions, and speech bubbles.
-- React + Vite Control Center for Pet, Actions, AI, Plugins, Catalog, Service, and About settings.
+- React + Vite Control Center for Pet, Actions, AI, Plugins, Catalog, Service, and About settings, including compact narrow-window layouts.
 - Pet pack runtime with legacy cat support, folder import, `.codex-pet.zip` import, and native `pet.json` + `spritesheet.webp` Codex pet atlases.
 - Three bundled built-in pets: `doro`, `duodong`, and `chispa`.
-- OpenAI-compatible chat with API keys kept in the main process secret store.
+- OpenAI-compatible chat and image-provider configuration with API keys kept in the main process secret store.
+- Creator Studio workflows for prompt planning, image-backed atlas generation, frame repair, approval, dashboard review, and pet/action import.
 - Developer-first local extension model with current legacy SDK compatibility, explicit command/dashboard/service controls, creator-tools action, pack-manifest, package-local asset, user-approved picker asset bridges, cleanup evidence tooling, validation, logs, catalog install, and uninstall flow.
 - Optional loopback-only HTTP and MCP endpoints for local tools and agents.
 - Gradual TypeScript migration baseline covering shared contracts and the Control Center API facade.
@@ -72,6 +75,9 @@ src/main/services/
                                       |-> AiService
                                       |-> PluginService
                                       |-> LocalHttpService / MCP
+
+src/main/services/plugin-*.js
+  plugin discovery, JSON/storage/log/network helpers, and local runner boundary modules
 
 src/control-center/
   React + Vite UI embedded in Electron
@@ -152,15 +158,15 @@ Use `docs/README.md` instead of browsing every file under `docs/`; historical ph
 
 ## Validation Baseline
 
-Current local baseline:
+Current release-candidate baseline:
 
 ```bash
-npm run test:core            # 468/468 core Node tests
-npm run test:tools           # 340/340 tool/release Node tests
-npm test                     # 808/808 Node tests
-npm run test:control-center  # 15/15 Playwright tests
+npm run check:syntax         # Node syntax + typecheck + Control Center build
+npm run test:core            # core Node runtime regression suite
+npm run test:tools           # release, evidence, scaffold, and maintenance tooling tests
+npm test                     # full Node native test suite
+npm run test:control-center  # Playwright UI regression baseline
 npm run typecheck            # TypeScript no-emit checks
-npm run check:syntax         # syntax + typecheck + Control Center build
 ```
 
 ## License
