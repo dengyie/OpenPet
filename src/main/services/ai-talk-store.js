@@ -347,13 +347,15 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     return { applied, filtered }
   }
 
-  const listMemories = ({ petPackId, limit = 8 } = {}) => {
+  const listMemories = ({ petPackId, scope = '', limit = 8 } = {}) => {
     const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
+    const scopeFilter = MEMORY_SCOPES.has(scope) ? scope : ''
     const max = Math.max(0, Number(limit) || 0)
     const memories = Object.values(state.memories)
       .map(normalizeExistingMemory)
       .filter((memory) => (
         memory.status === 'active' &&
+        (!scopeFilter || memory.scope === scopeFilter) &&
         (memory.scope === 'global' || (memory.scope === 'petPack' && memory.petPackId === packId))
       ))
       .sort((a, b) => {
@@ -363,6 +365,37 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
         return String(b.updatedAt).localeCompare(String(a.updatedAt))
       })
     return clone(max ? memories.slice(0, max) : memories)
+  }
+
+  const deleteMemory = (memoryId) => {
+    const id = typeof memoryId === 'string' ? memoryId.trim() : ''
+    if (!id || !state.memories[id]) return null
+    state.memories[id] = normalizeExistingMemory({
+      ...state.memories[id],
+      status: 'deleted',
+      updatedAt: now()
+    })
+    persist()
+    return clone(state.memories[id])
+  }
+
+  const clearPetPackMemories = (petPackId) => {
+    const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
+    if (!packId) throw new Error('petPackId is required')
+    const timestamp = now()
+    let deletedCount = 0
+    for (const [id, candidate] of Object.entries(state.memories)) {
+      const memory = normalizeExistingMemory(candidate)
+      if (memory.status !== 'active' || memory.scope !== 'petPack' || memory.petPackId !== packId) continue
+      state.memories[id] = normalizeExistingMemory({
+        ...memory,
+        status: 'deleted',
+        updatedAt: timestamp
+      })
+      deletedCount += 1
+    }
+    if (deletedCount > 0) persist()
+    return { petPackId: packId, deletedCount }
   }
 
   const createMemoryJob = ({ petPackId, conversationId } = {}) => {
@@ -398,6 +431,8 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     appendMessages,
     applyMemoryOperations,
     createMemoryJob,
+    clearPetPackMemories,
+    deleteMemory,
     ensureMainConversation,
     finishMemoryJob,
     getMessages,

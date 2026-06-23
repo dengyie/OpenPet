@@ -3,6 +3,8 @@ import type {
   ActionsConfigViewState,
   AiBehaviorConfig,
   AiConfigViewState,
+  AiMemoryItemViewState,
+  AiMemoryProfileViewState,
   AiPersonaProfileViewState,
   BlocklistState,
   CatalogState,
@@ -102,6 +104,14 @@ export const defaultAiPersonaProfile = {
   compiledPersonaPrompt: '',
   compiledSystemPrompt: ''
 } satisfies AiPersonaProfileViewState
+
+export const defaultAiMemoryProfile = {
+  petPackId: 'legacy-cat',
+  petPackDisplayName: 'Legacy Cat',
+  globalMemories: [],
+  petPackMemories: [],
+  recentJobs: []
+} satisfies AiMemoryProfileViewState
 
 export const defaultImageGenerationConfig = {
   provider: 'openai-compatible',
@@ -249,6 +259,44 @@ export const cloneAiPersonaProfile = (profile: Partial<AiPersonaProfileViewState
     coreTraits: Array.isArray(profile?.effectivePersona?.coreTraits) ? profile.effectivePersona.coreTraits : defaultAiPersonaProfile.effectivePersona.coreTraits,
     boundaries: Array.isArray(profile?.effectivePersona?.boundaries) ? profile.effectivePersona.boundaries : defaultAiPersonaProfile.effectivePersona.boundaries
   }
+})
+
+const cloneAiMemoryItem = (memory: Partial<AiMemoryItemViewState> | null | undefined): AiMemoryItemViewState => ({
+  id: memory?.id || '',
+  scope: memory?.scope === 'petPack' ? 'petPack' : 'global',
+  petPackId: memory?.petPackId || '',
+  text: memory?.text || '',
+  tags: Array.isArray(memory?.tags) ? memory.tags : [],
+  confidence: Number.isFinite(Number(memory?.confidence)) ? Number(memory?.confidence) : 0,
+  importance: Number.isFinite(Number(memory?.importance)) ? Number(memory?.importance) : 0,
+  sourceConversationId: memory?.sourceConversationId || '',
+  sourceMessageIds: Array.isArray(memory?.sourceMessageIds) ? memory.sourceMessageIds : [],
+  createdAt: memory?.createdAt || '',
+  updatedAt: memory?.updatedAt || '',
+  lastUsedAt: memory?.lastUsedAt || '',
+  lastEvidenceAt: memory?.lastEvidenceAt || '',
+  useCount: Number.isFinite(Number(memory?.useCount)) ? Number(memory?.useCount) : 0,
+  status: memory?.status === 'deleted' || memory?.status === 'superseded' ? memory.status : 'active',
+  supersedes: memory?.supersedes || '',
+  reason: memory?.reason || ''
+})
+
+export const cloneAiMemoryProfile = (profile: Partial<AiMemoryProfileViewState> | null | undefined): AiMemoryProfileViewState => ({
+  ...defaultAiMemoryProfile,
+  ...(profile || {}),
+  globalMemories: (Array.isArray(profile?.globalMemories) ? profile.globalMemories : []).map(cloneAiMemoryItem),
+  petPackMemories: (Array.isArray(profile?.petPackMemories) ? profile.petPackMemories : []).map(cloneAiMemoryItem),
+  recentJobs: (Array.isArray(profile?.recentJobs) ? profile.recentJobs : []).map((job) => ({
+    id: job?.id || '',
+    petPackId: job?.petPackId || '',
+    conversationId: job?.conversationId || '',
+    status: job?.status || 'unknown',
+    createdAt: job?.createdAt || '',
+    updatedAt: job?.updatedAt || '',
+    errorCode: job?.errorCode || '',
+    appliedCount: Number.isFinite(Number(job?.appliedCount)) ? Number(job?.appliedCount) : 0,
+    filteredCount: Number.isFinite(Number(job?.filteredCount)) ? Number(job?.filteredCount) : 0
+  }))
 })
 
 export const cloneImageGenerationConfig = (

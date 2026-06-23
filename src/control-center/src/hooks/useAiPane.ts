@@ -3,10 +3,12 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import {
   cloneAiBehavior,
   cloneAiConfig,
+  cloneAiMemoryProfile,
   cloneAiPersonaProfile,
   cloneChatMessages,
   cloneImageGenerationConfig,
   defaultAiConfig,
+  defaultAiMemoryProfile,
   defaultAiPersonaProfile,
   defaultImageGenerationConfig
 } from '../lib/defaults'
@@ -25,6 +27,7 @@ import type {
   AiBehaviorRule,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiMemoryProfileViewState,
   AiPersonaDraftViewState,
   AiPersonaOverride,
   AiPersonaProfileViewState,
@@ -182,6 +185,7 @@ export function useAiPane(activeTab = 'ai') {
   const [config, setConfig] = useState<AiConfigViewState>(defaultAiConfig)
   const [activeConfig, setActiveConfig] = useState<AiConfigViewState>(defaultAiConfig)
   const [personaProfile, setPersonaProfile] = useState<AiPersonaProfileViewState>(defaultAiPersonaProfile)
+  const [memoryProfile, setMemoryProfile] = useState<AiMemoryProfileViewState>(defaultAiMemoryProfile)
   const [personaDraft, setPersonaDraft] = useState(() => personaToDraft(defaultAiPersonaProfile.overridePersona))
   const [personaGenerationInstruction, setPersonaGenerationInstruction] = useState('')
   const [generatedPersonaDraft, setGeneratedPersonaDraft] = useState<AiPersonaDraftViewState | null>(null)
@@ -211,15 +215,22 @@ export function useAiPane(activeTab = 'ai') {
     return profile
   }
 
+  const loadMemoryProfile = async () => {
+    const profile = cloneAiMemoryProfile(await api.getAiMemoryProfile())
+    setMemoryProfile(profile)
+    return profile
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
       api.getAiConfig(),
       api.getAiPersonaProfile(),
+      api.getAiMemoryProfile(),
       api.getImageGenerationConfig(),
       api.getAiConversation('control-center'),
       api.getAiBehavior()
-    ]).then(([loadedConfig, loadedPersonaProfile, loadedImageGenerationConfig, loadedChatMessages, loadedBehavior]) => {
+    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedChatMessages, loadedBehavior]) => {
       if (!mounted) return
       const nextConfig = cloneAiConfig(loadedConfig)
       setConfig(nextConfig)
@@ -227,6 +238,7 @@ export function useAiPane(activeTab = 'ai') {
       const nextPersonaProfile = cloneAiPersonaProfile(loadedPersonaProfile)
       setPersonaProfile(nextPersonaProfile)
       setPersonaDraft(personaToDraft(nextPersonaProfile.overridePersona))
+      setMemoryProfile(cloneAiMemoryProfile(loadedMemoryProfile))
       const nextImageGenerationConfig = cloneImageGenerationConfig(loadedImageGenerationConfig)
       setImageGenerationConfig(nextImageGenerationConfig)
       setActiveImageGenerationConfig(nextImageGenerationConfig)
@@ -246,6 +258,7 @@ export function useAiPane(activeTab = 'ai') {
   useEffect(() => {
     if (activeTab !== 'ai') return
     void loadPersonaProfile().catch(() => {})
+    void loadMemoryProfile().catch(() => {})
   }, [activeTab])
 
   const saveProviderConfigDraft = async () => {
@@ -558,6 +571,46 @@ export function useAiPane(activeTab = 'ai') {
     }
   }
 
+  const onRefreshMemoryProfile = async () => {
+    setStatus('长期记忆刷新中')
+    try {
+      await loadMemoryProfile()
+      setStatus('长期记忆已刷新')
+    } catch (error) {
+      setStatus(messageFromError(error, '长期记忆刷新失败'))
+    }
+  }
+
+  const onDeleteMemory = async (memoryId: string) => {
+    if (!memoryId) return
+    setSaving(true)
+    setStatus('删除长期记忆中')
+    try {
+      const profile = cloneAiMemoryProfile(await api.deleteAiMemory(memoryId))
+      setMemoryProfile(profile)
+      setStatus('长期记忆已删除')
+    } catch (error) {
+      setStatus(messageFromError(error, '长期记忆删除失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onClearPetPackMemories = async () => {
+    if (!window.confirm(`清空 ${memoryProfile.petPackDisplayName} 的宠物关系记忆？全局用户记忆不会被清空。`)) return
+    setSaving(true)
+    setStatus('清空当前宠物关系记忆中')
+    try {
+      const profile = cloneAiMemoryProfile(await api.clearAiPetPackMemories())
+      setMemoryProfile(profile)
+      setStatus('当前宠物关系记忆已清空')
+    } catch (error) {
+      setStatus(messageFromError(error, '清空宠物关系记忆失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const onSendChat = async () => {
     const message = chatDraft.trim()
     if (!message || chatting) return
@@ -579,6 +632,7 @@ export function useAiPane(activeTab = 'ai') {
       const nextBehavior = cloneAiBehavior(await api.getAiBehavior())
       setBehavior(nextBehavior)
       setConfig((current) => ({ ...current, behavior: nextBehavior }))
+      void loadMemoryProfile().catch(() => {})
     } catch (error) {
       setStatus(messageFromError(error, '发送失败'))
     } finally {
@@ -592,6 +646,7 @@ export function useAiPane(activeTab = 'ai') {
     imageGenerationConfig,
     activeImageGenerationConfig,
     personaProfile,
+    memoryProfile,
     personaDraft,
     providerConfigDirty: hasProviderConfigChanges(config, activeConfig),
     providerConfigChanges: getProviderConfigChanges(config, activeConfig),
@@ -650,6 +705,9 @@ export function useAiPane(activeTab = 'ai') {
     onReplayBehaviorDecision,
     onExportBehaviorDiagnostics,
     onClearBehaviorDecisions,
+    onRefreshMemoryProfile,
+    onDeleteMemory,
+    onClearPetPackMemories,
     onSendChat
   } satisfies AiPaneProps
 

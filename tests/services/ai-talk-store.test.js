@@ -140,6 +140,58 @@ test('ai talk store upserts active global and pet-pack memories conservatively',
   assert.equal(reloaded.listMemories({ petPackId: 'mochi-cat' }).length, 2)
 })
 
+test('ai talk store soft deletes a memory and excludes it from active lists', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })
+  const result = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'global', text: 'User likes quiet morning planning.', tags: ['preference'], confidence: 0.8, importance: 0.7, reason: 'stable preference' }
+    ]
+  })
+  const memoryId = result.applied[0].id
+
+  const deleted = store.deleteMemory(memoryId)
+
+  assert.equal(deleted.id, memoryId)
+  assert.equal(deleted.status, 'deleted')
+  assert.equal(store.listMemories({ petPackId: 'mochi-cat' }).length, 0)
+  assert.equal(store.getState().memories[memoryId].status, 'deleted')
+  assert.equal(createAiTalkStore({ storePath }).listMemories({ petPackId: 'mochi-cat' }).length, 0)
+})
+
+test('ai talk store clears only active memories for the requested pet pack', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'global', text: 'User prefers concise replies.', confidence: 0.8, importance: 0.7 },
+      { operation: 'create', scope: 'petPack', text: 'Mochi remembers quiet starts.', confidence: 0.7, importance: 0.6 }
+    ]
+  })
+  store.applyMemoryOperations({
+    petPackId: 'sprout-cat',
+    conversationId: 'control-center:sprout-cat:main',
+    messageIds: ['m2'],
+    operations: [
+      { operation: 'create', scope: 'petPack', text: 'Sprout remembers upbeat breaks.', confidence: 0.7, importance: 0.6 }
+    ]
+  })
+
+  const result = store.clearPetPackMemories('mochi-cat')
+
+  assert.deepEqual(result, { petPackId: 'mochi-cat', deletedCount: 1 })
+  assert.deepEqual(store.listMemories({ petPackId: 'mochi-cat' }).map((memory) => memory.text), ['User prefers concise replies.'])
+  assert.deepEqual(store.listMemories({ petPackId: 'sprout-cat' }).map((memory) => memory.text), [
+    'User prefers concise replies.',
+    'Sprout remembers upbeat breaks.'
+  ])
+})
+
 test('ai talk store filters sensitive memory candidates without storing raw secret text', () => {
   const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
 

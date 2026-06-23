@@ -4,6 +4,8 @@ import type {
   AiBehaviorResult,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiMemoryItemViewState,
+  AiMemoryProfileViewState,
   AiPersonaDraftViewState,
   AiPersonaProfileViewState,
   ChatMessage,
@@ -58,12 +60,66 @@ const CollapsibleAiSection = ({
   </details>
 )
 
+const formatMemoryScore = (value: number) => `${Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100)}%`
+
+const MemoryList = ({
+  title,
+  memories,
+  emptyText,
+  saving,
+  onDeleteMemory
+}: {
+  title: string
+  memories: AiMemoryItemViewState[]
+  emptyText: string
+  saving: boolean
+  onDeleteMemory: (memoryId: string) => void | Promise<void>
+}) => (
+  <div className="memory-column">
+    <div className="memory-column-header">
+      <strong>{title}</strong>
+      <span>{memories.length} 条</span>
+    </div>
+    <div className="memory-list">
+      {memories.length === 0 ? (
+        <div className="empty-chat">{emptyText}</div>
+      ) : memories.map((memory) => (
+        <article className="memory-row" key={memory.id} data-testid={`ai-memory-${memory.id}`}>
+          <div className="memory-row-main">
+            <p>{memory.text}</p>
+            <div className="memory-meta">
+              <span>importance {formatMemoryScore(memory.importance)}</span>
+              <span>confidence {formatMemoryScore(memory.confidence)}</span>
+              {memory.updatedAt ? <span>{memory.updatedAt}</span> : null}
+            </div>
+            {memory.tags.length ? (
+              <div className="memory-tags">
+                {memory.tags.map((tag) => <span key={tag}>{tag}</span>)}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="danger-text"
+            aria-label={`删除记忆 ${memory.id}`}
+            onClick={() => onDeleteMemory(memory.id)}
+            disabled={saving}
+          >
+            删除
+          </button>
+        </article>
+      ))}
+    </div>
+  </div>
+)
+
 export interface AiPaneProps {
   config: AiConfigViewState
   activeConfig: AiConfigViewState
   imageGenerationConfig: ImageGenerationConfigViewState
   activeImageGenerationConfig: ImageGenerationConfigViewState
   personaProfile: AiPersonaProfileViewState
+  memoryProfile: AiMemoryProfileViewState
   personaDraft: {
     name: string
     identity: string
@@ -129,6 +185,9 @@ export interface AiPaneProps {
   onReplayBehaviorDecision: () => void | Promise<void>
   onExportBehaviorDiagnostics: () => void | Promise<void>
   onClearBehaviorDecisions: () => void | Promise<void>
+  onRefreshMemoryProfile: () => void | Promise<void>
+  onDeleteMemory: (memoryId: string) => void | Promise<void>
+  onClearPetPackMemories: () => void | Promise<void>
 }
 
 export function AiPane({
@@ -137,6 +196,7 @@ export function AiPane({
   imageGenerationConfig = defaultImageGenerationConfig,
   activeImageGenerationConfig = defaultImageGenerationConfig,
   personaProfile,
+  memoryProfile,
   personaDraft,
   providerConfigDirty,
   providerConfigChanges,
@@ -192,9 +252,13 @@ export function AiPane({
   replayResult,
   onReplayBehaviorDecision,
   onExportBehaviorDiagnostics,
-  onClearBehaviorDecisions
+  onClearBehaviorDecisions,
+  onRefreshMemoryProfile,
+  onDeleteMemory,
+  onClearPetPackMemories
 }: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
+  const latestMemoryJob = memoryProfile.recentJobs[0]
   const saveDisabled = saving || Boolean(providerConfigValidationError)
   const imageSaveDisabled = saving || Boolean(imageProviderValidationError)
   const apiKeyDraftReady = Boolean(apiKeyDraft.trim())
@@ -348,6 +412,52 @@ export function AiPane({
           <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
             {saving ? '保存中' : '保存聊天 Provider'}
           </button>
+        </div>
+      </CollapsibleAiSection>
+
+      <CollapsibleAiSection title="长期记忆" note="查看和管理自动抽取的用户与宠物关系记忆" defaultOpen>
+        <div className="section memory-section" data-testid="ai-memory-profile">
+          <div className="field-row">
+            <div>
+              <div className="field-label">当前宠物包</div>
+              <div className="field-note">{memoryProfile.petPackDisplayName} · {memoryProfile.petPackId}</div>
+            </div>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onRefreshMemoryProfile} disabled={saving}>
+                刷新记忆
+              </button>
+              <button type="button" className="danger-text" onClick={onClearPetPackMemories} disabled={saving || memoryProfile.petPackMemories.length === 0}>
+                清空当前宠物记忆
+              </button>
+            </div>
+          </div>
+
+          <div className="memory-grid">
+            <MemoryList
+              title="全局用户记忆"
+              memories={memoryProfile.globalMemories}
+              emptyText="暂无全局用户记忆"
+              saving={saving}
+              onDeleteMemory={onDeleteMemory}
+            />
+            <MemoryList
+              title="当前宠物关系记忆"
+              memories={memoryProfile.petPackMemories}
+              emptyText="暂无当前宠物关系记忆"
+              saving={saving}
+              onDeleteMemory={onDeleteMemory}
+            />
+          </div>
+
+          <div className="readonly-row">
+            <strong>最近记忆任务</strong>
+            {latestMemoryJob ? (
+              <span>
+                {latestMemoryJob.status} · applied {latestMemoryJob.appliedCount} · filtered {latestMemoryJob.filteredCount}
+                {latestMemoryJob.errorCode ? ` · ${latestMemoryJob.errorCode}` : ''}
+              </span>
+            ) : <span>暂无后台抽取任务</span>}
+          </div>
         </div>
       </CollapsibleAiSection>
 
