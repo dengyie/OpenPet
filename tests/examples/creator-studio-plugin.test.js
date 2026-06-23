@@ -745,6 +745,76 @@ const runCreatorCommandAsync = ({ command, dataDir, payload = {}, config = {}, e
   child.stdin.end(createCommandInput({ command, payload, config }))
 })
 
+const createStoredSingleActionRun = async ({
+  dataDir,
+  status = 'ready_for_review',
+  qa = createActionFrameQa(),
+  now = () => '2026-06-20T00:00:00.000Z'
+} = {}) => {
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Action QA Cat',
+      petId: 'action-qa-cat',
+      backend: 'cloud',
+      prompt: '点击害羞转圈',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击害羞转圈',
+          frameCount: 1,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now
+  })
+  const framesDir = path.join(dataDir, 'runs', run.runId, 'frames', 'actions', 'shy-spin')
+  const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  fs.mkdirSync(framesDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 240, g: 120, b: 140, alpha: 1 }
+    }
+  }).png().toFile(path.join(framesDir, '0001.png'))
+  const qaPath = path.join(qaDir, 'action-frame-validation.json')
+  fs.writeFileSync(qaPath, `${JSON.stringify(qa, null, 2)}\n`)
+
+  const storedRun = updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status,
+    patch: {
+      reviewStatus: status === 'approved' ? 'approved' : 'pending',
+      currentStep: status === 'approved' ? 'approved' : 'review',
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir,
+          qa: qaPath,
+          frameCount: 1,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now
+  })
+
+  return { run: storedRun, framesDir, qaPath }
+}
+
 test('creator studio run-step command fails unavailable local backend with persisted run state', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-command-'))
 
@@ -1421,6 +1491,76 @@ test('creator studio import-approved-action rejects failed action frame QA befor
     assert.equal(imported.status, 1)
     assert.equal(imported.json.ok, false)
     assert.match(imported.json.error, /QA must pass/)
+    assert.equal(stored.importStatus, 'not-imported')
+    assert.equal(requests.length, 0)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio action frame QA gate rejects mismatched metadata before approval and import', async () => {
+  const { readRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const invalidQa = createActionFrameQa({ frameWidth: 191 })
+  const serviceDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-qa-gate-service-'))
+  const importDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-qa-gate-import-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const serviceRun = await createStoredSingleActionRun({
+    dataDir: serviceDataDir,
+    status: 'ready_for_review',
+    qa: invalidQa
+  })
+  const importRun = await createStoredSingleActionRun({
+    dataDir: importDataDir,
+    status: 'approved',
+    qa: invalidQa
+  })
+
+  const service = createCreatorStudioServer({ dataDir: serviceDataDir, dashboardPath })
+  await new Promise((resolve) => service.listen(0, '127.0.0.1', resolve))
+  const servicePort = service.address().port
+  try {
+    const response = await fetch(`http://127.0.0.1:${servicePort}/api/runs/${serviceRun.run.runId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    })
+    const body = await response.json()
+    const stored = readRun({ dataDir: serviceDataDir, runId: serviceRun.run.runId })
+
+    assert.equal(response.status, 400)
+    assert.equal(body.ok, false)
+    assert.match(body.error, /frameWidth does not match/)
+    assert.equal(stored.status, 'ready_for_review')
+  } finally {
+    await new Promise((resolve) => service.close(resolve))
+  }
+
+  const { server, requests } = createBridgeServer({
+    routes: [{
+      path: '/creator/assets/import-frames',
+      handler: () => ({ body: { ok: true, result: { importedAction: { id: 'shy-spin' } } } })
+    }]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-action',
+      dataDir: importDataDir,
+      payload: { runId: importRun.run.runId },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir: importDataDir, runId: importRun.run.runId })
+
+    assert.equal(imported.status, 1)
+    assert.equal(imported.json.ok, false)
+    assert.match(imported.json.error, /frameWidth does not match/)
     assert.equal(stored.importStatus, 'not-imported')
     assert.equal(requests.length, 0)
   } finally {
