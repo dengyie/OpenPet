@@ -16,6 +16,34 @@ const settingsPath = path.join(app.getPath('userData'), 'settings.json')
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
+const hasLegacyImageGenerationShape = (imageGeneration) => (
+  isPlainObject(imageGeneration) && (
+    Object.hasOwn(imageGeneration, 'defaultBackend') ||
+    isPlainObject(imageGeneration.cloud) ||
+    isPlainObject(imageGeneration.local)
+  )
+)
+
+const hasFlatImageGenerationShape = (imageGeneration) => (
+  isPlainObject(imageGeneration) && (
+    Object.hasOwn(imageGeneration, 'provider') ||
+    Object.hasOwn(imageGeneration, 'baseUrl') ||
+    Object.hasOwn(imageGeneration, 'model') ||
+    Object.hasOwn(imageGeneration, 'apiKeyRef')
+  )
+)
+
+const mergeImageGenerationSettings = (imageGeneration) => {
+  if (!isPlainObject(imageGeneration)) return { ...defaultSettings.models.imageGeneration }
+  if (hasLegacyImageGenerationShape(imageGeneration) && !hasFlatImageGenerationShape(imageGeneration)) {
+    return { ...imageGeneration }
+  }
+  return {
+    ...defaultSettings.models.imageGeneration,
+    ...imageGeneration
+  }
+}
+
 // 所有可配置项的默认值。新增设置项时只需在此处添加。
 const defaultSettings = {
   scale: 1.0,            // 宠物缩放比例（1.0 = 100%）
@@ -35,6 +63,7 @@ const defaultSettings = {
       anchor: null
     }
   },
+  customCursor: createDefaultCursorSettings(),
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -56,22 +85,14 @@ const defaultSettings = {
   },
   models: {
     imageGeneration: {
-      defaultBackend: 'fixture',
-      cloud: {
-        provider: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-image-1',
-        apiKeyRef: 'secret:model.image.openai.apiKey',
-        organization: '',
-        project: ''
-      },
-      local: {
-        endpoint: 'http://127.0.0.1:7860/generate',
-        healthUrl: 'http://127.0.0.1:7860/health',
-        model: 'local-pet-sprite',
-        timeoutMs: 120000,
-        maxConcurrentJobs: 1
-      }
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-image-2',
+      apiKeyRef: 'secret:model.image.openai.apiKey',
+      organization: '',
+      project: '',
+      timeoutMs: 120000,
+      maxConcurrentJobs: 1
     }
   },
   plugins: {
@@ -135,22 +156,7 @@ const mergeSettings = (settings = {}) => ({
         : defaultSettings.petBehavior.home.anchor
     }
   },
-  models: {
-    ...defaultSettings.models,
-    ...(isPlainObject(settings.models) ? settings.models : {}),
-    imageGeneration: {
-      ...defaultSettings.models.imageGeneration,
-      ...(isPlainObject(settings.models?.imageGeneration) ? settings.models.imageGeneration : {}),
-      cloud: {
-        ...defaultSettings.models.imageGeneration.cloud,
-        ...(isPlainObject(settings.models?.imageGeneration?.cloud) ? settings.models.imageGeneration.cloud : {})
-      },
-      local: {
-        ...defaultSettings.models.imageGeneration.local,
-        ...(isPlainObject(settings.models?.imageGeneration?.local) ? settings.models.imageGeneration.local : {})
-      }
-    }
-  },
+  customCursor: normalizeCustomCursor(settings.customCursor),
   plugins: {
     ...defaultSettings.plugins,
     ...(settings.plugins || {}),

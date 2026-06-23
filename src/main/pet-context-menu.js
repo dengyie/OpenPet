@@ -19,22 +19,44 @@ const MENU_POSITION_ALIASES = {
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 const estimatePetContextMenuSize = (actions = []) => {
-  const longestLabel = actions.reduce((length, action) => (
-    Math.max(length, String(action?.label || '').length)
-  ), 0)
+  const longestLabel = actions.reduce((length, action) => {
+    return Math.max(length, String(action?.label || '').length)
+  }, 0)
   const width = clamp(84 + longestLabel * 8, MENU_MIN_WIDTH, MENU_MAX_WIDTH)
   const itemCount = actions.length + 3
   const height = MENU_VERTICAL_PADDING + itemCount * MENU_ROW_HEIGHT + 2 * MENU_DIVIDER_HEIGHT
   return { width, height }
 }
 
-const createCandidate = ({ petBounds, menuSize, preferredPoint, placement }) => {
+const createCandidate = ({ petBounds, workArea, menuSize, preferredPoint, placement }) => {
   const centeredY = petBounds.y + preferredPoint.y - Math.round(menuSize.height / 2)
   const centeredX = petBounds.x + preferredPoint.x - Math.round(menuSize.width / 2)
-  if (placement === 'right') return { placement, x: petBounds.x + petBounds.width + MENU_GAP, y: centeredY }
-  if (placement === 'left') return { placement, x: petBounds.x - menuSize.width - MENU_GAP, y: centeredY }
-  if (placement === 'above') return { placement, x: centeredX, y: petBounds.y - menuSize.height - MENU_GAP }
-  return { placement, x: centeredX, y: petBounds.y + petBounds.height + MENU_GAP }
+  if (placement === 'right') {
+    return {
+      placement,
+      x: petBounds.x + petBounds.width + MENU_GAP,
+      y: centeredY
+    }
+  }
+  if (placement === 'left') {
+    return {
+      placement,
+      x: petBounds.x - menuSize.width - MENU_GAP,
+      y: centeredY
+    }
+  }
+  if (placement === 'above') {
+    return {
+      placement,
+      x: centeredX,
+      y: petBounds.y - menuSize.height - MENU_GAP
+    }
+  }
+  return {
+    placement,
+    x: centeredX,
+    y: petBounds.y + petBounds.height + MENU_GAP
+  }
 }
 
 const fitsWorkArea = ({ x, y }, workArea, menuSize) => (
@@ -56,13 +78,19 @@ const getPlacementOrder = (menuPosition) => {
 }
 
 const fitsPrimaryAxis = (candidate, workArea, menuSize) => {
-  if (candidate.placement === 'right') return candidate.x + menuSize.width <= workArea.x + workArea.width - MENU_MARGIN
-  if (candidate.placement === 'left') return candidate.x >= workArea.x + MENU_MARGIN
-  if (candidate.placement === 'above') return candidate.y >= workArea.y + MENU_MARGIN
+  if (candidate.placement === 'right') {
+    return candidate.x + menuSize.width <= workArea.x + workArea.width - MENU_MARGIN
+  }
+  if (candidate.placement === 'left') {
+    return candidate.x >= workArea.x + MENU_MARGIN
+  }
+  if (candidate.placement === 'above') {
+    return candidate.y >= workArea.y + MENU_MARGIN
+  }
   return candidate.y + menuSize.height <= workArea.y + workArea.height - MENU_MARGIN
 }
 
-const clampNearPet = ({ candidate, petBounds, workArea, menuSize }) => {
+const clampCrossAxisNearPet = ({ candidate, petBounds, workArea, menuSize }) => {
   const minX = workArea.x + MENU_MARGIN
   const minY = workArea.y + MENU_MARGIN
   const maxX = workArea.x + workArea.width - menuSize.width - MENU_MARGIN
@@ -99,6 +127,7 @@ const choosePetContextMenuPoint = ({ petBounds, workArea, menuSize, preferredPoi
   const placements = getPlacementOrder(menuPosition)
   const candidates = placements.map((placement) => createCandidate({
     petBounds,
+    workArea,
     menuSize,
     preferredPoint: safePreferredPoint,
     placement
@@ -110,7 +139,7 @@ const choosePetContextMenuPoint = ({ petBounds, workArea, menuSize, preferredPoi
     || candidates.find((candidate) => fitsWorkArea(candidate, workArea, menuSize))
     || candidates.find((candidate) => fitsPrimaryAxis(candidate, workArea, menuSize))
     || candidates[0]
-  const screenPoint = clampNearPet({ candidate: chosen, petBounds, workArea, menuSize })
+  const screenPoint = clampCrossAxisNearPet({ candidate: chosen, petBounds, workArea, menuSize })
   return {
     placement: chosen.placement,
     screenPoint,

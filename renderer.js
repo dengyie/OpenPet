@@ -127,6 +127,52 @@ const maybeLogMouseDiagnostic = (event, diagnostic) => {
   }, { actor: 'user', message: 'Pointer hitbox diagnostic' })
 }
 
+const roundNumber = (value) => Math.round((Number(value) || 0) * 100) / 100
+
+const logPetEvent = (event, details = {}, { level = 'debug', actor = 'system', message = event } = {}) => {
+  window.petAPI.recordAppLog?.({
+    level,
+    actor,
+    event,
+    message,
+    details: {
+      action: state.action,
+      frameIndex: state.frameIndex,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      scale: state.scale,
+      ...details
+    }
+  })
+}
+
+const createPointDetails = (event) => ({
+  clientX: roundNumber(event.clientX),
+  clientY: roundNumber(event.clientY),
+  screenX: roundNumber(event.screenX),
+  screenY: roundNumber(event.screenY)
+})
+
+const maybeLogMouseDiagnostic = (event, diagnostic) => {
+  const now = Date.now()
+  const previous = state.lastMouseDiagnostic
+  const changed = !previous ||
+    previous.insideFrame !== diagnostic.insideFrame ||
+    previous.insideCursorRegion !== diagnostic.insideCursorRegion ||
+    previous.passthrough !== diagnostic.passthrough ||
+    previous.cursorApplied !== diagnostic.cursorApplied ||
+    previous.cursorOverlayVisible !== diagnostic.cursorOverlayVisible ||
+    previous.dragging !== diagnostic.dragging ||
+    previous.menuOpen !== diagnostic.menuOpen
+  if (!changed && now - state.lastMouseDiagnosticAt < 1000) return
+  state.lastMouseDiagnosticAt = now
+  state.lastMouseDiagnostic = diagnostic
+  logPetEvent('pet.pointer.diagnostic', {
+    ...createPointDetails(event),
+    ...diagnostic
+  }, { actor: 'user', message: 'Pointer hitbox diagnostic' })
+}
+
 // ═══════════════════════════════════════════
 // 2. 气泡 — 在小猫头顶显示文字，定时消失
 // ═══════════════════════════════════════════
@@ -275,13 +321,15 @@ const setMousePassthrough = (passthrough) => {
 }
 
 const isPointInsideCurrentFrame = (clientX, clientY) => {
-  if (state.walking) return true
-  if (state.drag) return true
+  if (state.drag || menu.classList.contains('open')) return true
+  const animation = state.animations[state.action]
   const layout = state.currentLayout
-  if (!layout) return true
+  if (!animation || !layout) return true
 
-  const hitbox = petHitbox.getViewportHitbox({
+  const hitbox = petHitbox.getFrameHitbox({
+    animation,
     layout,
+    frameIndex: state.frameIndex,
     windowHeight: window.innerHeight,
     scale: state.scale
   })
@@ -375,8 +423,7 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
     menuOpen: false
   }
   const overlayState = cursorStyle.resolvePetCursorOverlayState(state.customCursor, context)
-  const fallbackCursor = cursorStyle.resolvePetCursorStyle(state.customCursor, context)
-  setNativeCursor(overlayState.visible ? overlayState.nativeCursor : fallbackCursor)
+  setNativeCursor(overlayState.visible ? overlayState.nativeCursor : '')
   if (overlayState.visible && point) showCursorOverlay(overlayState.assetUrl, point.clientX, point.clientY)
   else hideCursorOverlay()
   if (context.windowFocused) state.cursorFocusRequested = false
@@ -385,6 +432,7 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
 }
 
 const preservePetCursorStyle = () => {
+  state.customCursorFocusRequested = false
   hideCursorOverlay()
   state.cursorFocusRequested = false
   setNativeCursor('')
@@ -439,29 +487,6 @@ const updateMousePassthroughFromPoint = (event) => {
   })
 }
 
-const clearPointerHoverState = (event = {}) => {
-  state.lastPointerPoint = null
-  state.cursorFocusRequested = false
-  hideCursorOverlay()
-  setNativeCursor('')
-  maybeLogMouseDiagnostic({
-    clientX: event.clientX ?? -1,
-    clientY: event.clientY ?? -1,
-    screenX: event.screenX ?? -1,
-    screenY: event.screenY ?? -1
-  }, {
-    insideFrame: false,
-    insideCursorRegion: false,
-    passthrough: state.mousePassthrough,
-    cursorApplied: Boolean(state.nativeCursor),
-    cursorOverlayVisible: false,
-    nativeCursor: state.nativeCursor,
-    windowFocused: isPetWindowFocused(),
-    customCursorEnabled: Boolean(state.customCursor.enabled),
-    dragging: Boolean(state.drag),
-    menuOpen: false
-  })
-}
 /**
  * 切换到指定动作，启动帧播放定时器。
  * — 动作无 sprite 时静默返回（防御性编程）。
@@ -660,6 +685,130 @@ const onPointerUp = (event) => {
 // 6. 右键菜单 — 主进程原生菜单 + 命令分发
 // ═══════════════════════════════════════════
 
+/**
+ * 根据动作列表构建菜单 DOM：
+ *   动作按钮 … | 分隔线 | 散步 设置 | 分隔线 | 退出
+ */
+const renderMenu = (actions) => {
+  menu.textContent = ''
+  actions.forEach((a) => {
+    const b = document.createElement('button')
+    b.type = 'button'; b.dataset.action = a.id; b.textContent = a.label
+    menu.appendChild(b)
+  })
+  const mkDiv = () => { const d = document.createElement('div'); d.className = 'divider'; menu.appendChild(d) }
+  const mkBtn = (label, action) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.action = action; b.textContent = label; menu.appendChild(b) }
+  mkDiv(); mkBtn('散步', 'walk'); mkBtn('设置', 'settings'); mkDiv(); mkBtn('退出', 'quit')
+}
+
+const MENU_EDGE_MARGIN = 12
+const MENU_PET_GAP = 12
+
+const rectsOverlap = (a, b) => (
+  a.left < b.right &&
+  a.right > b.left &&
+  a.top < b.bottom &&
+  a.bottom > b.top
+)
+
+const getCatRectForWindow = (layout, windowSize) => {
+  if (!layout?.dims) return null
+  const width = Math.max(1, Math.round(layout.dims.width * state.scale))
+  const height = Math.max(1, Math.round(layout.dims.height * state.scale))
+  const left = layout.catLeft
+  const bottom = layout.catBottom
+  return {
+    left,
+    top: windowSize.height - bottom - height,
+    right: left + width,
+    bottom: windowSize.height - bottom,
+    width,
+    height
+  }
+}
+
+const clampMenuPosition = (candidate, menuSize, windowSize) => ({
+  left: Math.min(Math.max(MENU_EDGE_MARGIN, Math.round(candidate.left)), Math.max(MENU_EDGE_MARGIN, windowSize.width - menuSize.width - MENU_EDGE_MARGIN)),
+  top: Math.min(Math.max(MENU_EDGE_MARGIN, Math.round(candidate.top)), Math.max(MENU_EDGE_MARGIN, windowSize.height - menuSize.height - MENU_EDGE_MARGIN))
+})
+
+const chooseMenuPosition = (menuSize, windowSize) => {
+  const catRect = getCatRectForWindow(state.currentLayout, windowSize)
+  if (!catRect) return { left: windowSize.width - menuSize.width - MENU_EDGE_MARGIN, top: windowSize.height - menuSize.height - MENU_EDGE_MARGIN }
+  const verticalCenterTop = catRect.top + (catRect.height - menuSize.height) / 2
+  const horizontalCenterLeft = catRect.left + (catRect.width - menuSize.width) / 2
+  const candidates = [
+    { left: catRect.right + MENU_PET_GAP, top: verticalCenterTop },
+    { left: catRect.left - menuSize.width - MENU_PET_GAP, top: verticalCenterTop },
+    { left: horizontalCenterLeft, top: catRect.top - menuSize.height - MENU_PET_GAP },
+    { left: horizontalCenterLeft, top: catRect.bottom + MENU_PET_GAP },
+    { left: windowSize.width - menuSize.width - MENU_EDGE_MARGIN, top: MENU_EDGE_MARGIN },
+    { left: MENU_EDGE_MARGIN, top: MENU_EDGE_MARGIN }
+  ]
+  for (const candidate of candidates) {
+    const position = clampMenuPosition(candidate, menuSize, windowSize)
+    const menuRect = {
+      left: position.left,
+      top: position.top,
+      right: position.left + menuSize.width,
+      bottom: position.top + menuSize.height
+    }
+    if (!rectsOverlap(menuRect, catRect)) return position
+  }
+  return clampMenuPosition(candidates[0], menuSize, windowSize)
+}
+
+const getMenuViewport = () => {
+  if (!state.currentLayout?.viewport) return null
+  const menuRect = menu.getBoundingClientRect()
+  const menuSize = {
+    width: Math.ceil(menuRect.width),
+    height: Math.ceil(menuRect.height)
+  }
+  const currentSize = getScaledViewportSize(state.currentLayout.viewport)
+  const catSize = {
+    width: Math.max(1, Math.round(state.currentLayout.dims.width * state.scale)),
+    height: Math.max(1, Math.round(state.currentLayout.dims.height * state.scale))
+  }
+  const targetWidth = Math.max(currentSize.width, Math.ceil(catSize.width + (menuSize.width + MENU_PET_GAP + MENU_EDGE_MARGIN) * 2))
+  const targetHeight = Math.max(currentSize.height, Math.ceil(menuSize.height + MENU_EDGE_MARGIN * 2))
+  const scale = Math.max(state.scale, Number.EPSILON)
+  return {
+    width: Math.ceil(targetWidth / scale),
+    height: Math.ceil(targetHeight / scale),
+    padding: 0,
+    scale
+  }
+}
+
+const applyMenuViewport = () => {
+  const viewport = getMenuViewport()
+  if (!viewport) return null
+  const windowSize = getScaledViewportSize(viewport)
+  applyCatPositionForWindowWidth(state.currentLayout, windowSize.width)
+  const menuRect = menu.getBoundingClientRect()
+  const menuPosition = chooseMenuPosition({
+    width: Math.ceil(menuRect.width),
+    height: Math.ceil(menuRect.height)
+  }, windowSize)
+  menu.style.left = menuPosition.left + 'px'
+  menu.style.top = menuPosition.top + 'px'
+  menu.style.right = 'auto'
+  menu.style.bottom = 'auto'
+  window.petAPI.setViewport?.(viewport)
+  return { viewport, windowSize }
+}
+
+const restoreActionViewport = () => {
+  if (!state.currentLayout?.viewport) return
+  menu.style.left = ''
+  menu.style.top = ''
+  menu.style.right = ''
+  menu.style.bottom = ''
+  applyCatPositionForWindowWidth(state.currentLayout, getScaledViewportSize(state.currentLayout.viewport).width)
+  window.petAPI.setViewport?.(state.currentLayout.viewport)
+}
+
 const applyAnimationsConfig = ({ actions, defaultAction, clickAction }) => {
   state.defaultAction = defaultAction
   state.clickAction = clickAction
@@ -671,7 +820,16 @@ const showContextMenu = (event) => {
   event.preventDefault()
   setMousePassthrough(false)
   applyPetCursorStyle(false)
-  window.petAPI.showContextMenu?.({ x: event.clientX, y: event.clientY })
+  menu.classList.add('open')
+  const menuViewport = applyMenuViewport()
+  logPetEvent('pet.menu.opened', {
+    menuWidth: Math.round(menu.getBoundingClientRect().width),
+    menuHeight: Math.round(menu.getBoundingClientRect().height),
+    viewportWidth: menuViewport?.viewport.width,
+    viewportHeight: menuViewport?.viewport.height,
+    windowWidth: menuViewport?.windowSize.width,
+    windowHeight: menuViewport?.windowSize.height
+  }, { level: 'info', actor: 'user', message: 'Pet menu opened' })
 }
 
 const runMenuCommand = (payload) => {

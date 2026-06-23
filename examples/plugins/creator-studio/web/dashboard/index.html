@@ -189,38 +189,6 @@
         font-weight: 700;
       }
 
-      .run-list {
-        display: grid;
-        gap: 8px;
-      }
-
-      .run-button {
-        width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        background: rgba(255, 250, 240, 0.8);
-        color: var(--ink);
-        padding: 10px;
-        text-align: left;
-      }
-
-      .run-button.active {
-        border-color: var(--accent);
-        box-shadow: inset 4px 0 0 var(--accent);
-      }
-
-      .run-title {
-        display: block;
-        font-weight: 800;
-      }
-
-      .run-meta {
-        display: block;
-        margin-top: 3px;
-        color: var(--muted);
-        font-size: 12px;
-      }
-
       @media (max-width: 820px) {
         main {
           padding: 20px;
@@ -263,10 +231,6 @@
 
         <aside class="panel stack">
           <section>
-            <h2>Recent Runs</h2>
-            <section id="run-list">No runs yet.</section>
-          </section>
-          <section>
             <h2>Task Preview</h2>
             <section id="task-preview">No task drafted yet.</section>
           </section>
@@ -298,7 +262,7 @@
     </main>
 
     <script>
-      const state = { run: null, actionReview: null, runSummaries: [] }
+      const state = { run: null, actionReview: null }
       const $ = (id) => document.getElementById(id)
 
       const setStatus = (message, kind = '') => {
@@ -331,21 +295,6 @@
         if (!payload.ok) throw new Error(payload.error || 'Failed to load run detail')
         state.run = payload.run
         state.actionReview = payload.actionReview || null
-      }
-
-      const loadRunList = async () => {
-        const payload = await fetch('/api/runs').then((response) => response.json())
-        if (!payload.ok) throw new Error(payload.error || 'Failed to load runs')
-        state.runSummaries = payload.runSummaries || payload.runs || []
-        renderRunList()
-      }
-
-      const selectRun = async (runId) => {
-        state.run = { runId }
-        await fetchRunDetail()
-        renderRun()
-        renderRunList()
-        await refreshLogs()
       }
 
       const renderFramePreview = (review) => {
@@ -405,24 +354,6 @@
         }
       }
 
-      const renderRunList = () => {
-        const runs = Array.isArray(state.runSummaries) ? state.runSummaries : []
-        if (!runs.length) {
-          $('run-list').textContent = 'No runs yet.'
-          return
-        }
-        $('run-list').innerHTML = `<div class="run-list">${runs.map((run) => {
-          const title = run.actionName || run.petName || run.runId
-          const meta = [run.status, run.taskStatus, run.backend].filter(Boolean).join(' / ')
-          const active = run.runId === state.run?.runId ? ' active' : ''
-          return `<button class="run-button${active}" data-run-id="${escapeHtml(run.runId)}">` +
-            `<span class="run-title">${escapeHtml(title)}</span>` +
-            `<span class="run-meta">${escapeHtml(meta)}</span>` +
-            `<span class="run-meta">${escapeHtml(run.promptSnippet || run.updatedAt || '')}</span>` +
-            `</button>`
-        }).join('')}</div>`
-      }
-
       const refreshLogs = async () => {
         if (!state.run?.runId) return
         const payload = await fetch(`/api/runs/${encodeURIComponent(state.run.runId)}/logs`).then((response) => response.json())
@@ -439,7 +370,6 @@
           })
           state.run = payload.run
           state.actionReview = payload.actionReview || null
-          await loadRunList()
           renderRun()
           await refreshLogs()
           setStatus('Task drafted.', 'ok')
@@ -455,7 +385,6 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/questions/trigger/answer`, { answer })
           state.run = payload.run
           state.actionReview = payload.actionReview || null
-          await loadRunList()
           renderRun()
           await refreshLogs()
           setStatus('Question answered.', 'ok')
@@ -470,7 +399,6 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/confirm`)
           state.run = payload.run
           state.actionReview = payload.actionReview || null
-          await loadRunList()
           renderRun()
           await refreshLogs()
           setStatus('Task confirmed.', 'ok')
@@ -486,7 +414,6 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           if (!state.actionReview) await fetchRunDetail()
-          await loadRunList()
           renderRun()
           await refreshLogs()
           setStatus(`Generated action output in ${payload.outputDir || 'run workspace'}.`, 'ok')
@@ -494,19 +421,6 @@
           setStatus(error.message, 'error')
         }
       })
-
-      $('run-list').addEventListener('click', async (event) => {
-        const runId = event.target?.closest?.('[data-run-id]')?.dataset?.runId
-        if (!runId) return
-        try {
-          await selectRun(runId)
-          setStatus(`Loaded run ${runId}.`, 'ok')
-        } catch (error) {
-          setStatus(error.message, 'error')
-        }
-      })
-
-      loadRunList().catch((error) => setStatus(error.message, 'error'))
     </script>
   </body>
 </html>

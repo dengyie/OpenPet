@@ -590,39 +590,31 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
     petService: createBridgeAwarePetService(),
     imageGenerationModelService: {
       getConfig: () => ({
-        defaultBackend: 'cloud',
-        cloud: {
-          provider: 'openai',
-          baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-image-1',
-          apiKeyRef: 'secret:model.image.openai.apiKey',
-          hasApiKey: true,
-          apiKeyPreview: '••••1234',
-          apiKeyLabel: 'Image API Key'
-        },
-        local: {
-          endpoint: 'http://127.0.0.1:7860/generate',
-          healthUrl: 'http://127.0.0.1:7860/health',
-          model: 'local-pet-sprite',
-          timeoutMs: 120000,
-          maxConcurrentJobs: 1
-        }
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-image-2',
+        apiKeyRef: 'secret:model.image.openai.apiKey',
+        timeoutMs: 120000,
+        maxConcurrentJobs: 1,
+        hasApiKey: true,
+        apiKeyPreview: '••••1234',
+        apiKeyLabel: 'Image API Key'
       }),
       checkHealth: async (payload) => {
         bridgeCalls.push(['checkHealth', payload])
         return {
           ok: true,
-          backend: payload?.backend || 'cloud',
+          provider: 'openai-compatible',
           code: 'provider_healthy',
-          message: 'Cloud provider is reachable'
+          message: 'Image Provider is reachable'
         }
       },
       generateImage: async (payload) => {
         bridgeCalls.push(['generateImage', payload])
         return {
           ok: true,
-          backend: payload.backend || 'cloud',
-          model: 'gpt-image-1',
+          provider: 'openai-compatible',
+          model: 'gpt-image-2',
           generatedAt: '2026-06-19T00:00:00.000Z',
           outputs: [{
             dataRelativePath: `${payload.output.dataRelativeDir}/0001.png`,
@@ -655,7 +647,6 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
     method: 'POST',
     token,
     body: {
-      backend: 'local',
       prompt: 'small mint helper cat, transparent background',
       output: {
         dataDir: '/tmp/should-be-ignored',
@@ -675,20 +666,20 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
 
   assert.equal(settingsResponse.status, 200)
   assert.equal(settingsResponse.body.ok, true)
-  assert.equal(settingsResponse.body.config.defaultBackend, 'cloud')
-  assert.equal(settingsResponse.body.config.cloud.apiKeyPreview, '••••1234')
+  assert.equal(settingsResponse.body.config.provider, 'openai-compatible')
+  assert.equal(settingsResponse.body.config.apiKeyPreview, '••••1234')
 
   assert.equal(healthResponse.status, 200)
   assert.equal(healthResponse.body.ok, true)
-  assert.equal(healthResponse.body.result.backend, 'local')
+  assert.equal(healthResponse.body.result.provider, 'openai-compatible')
 
   assert.equal(generateResponse.status, 200)
   assert.equal(generateResponse.body.ok, true)
   assert.equal(generateResponse.body.result.outputs[0].dataRelativePath, 'runs/demo-run/frames/base/0001.png')
 
-  assert.deepEqual(bridgeCalls[0], ['checkHealth', { backend: 'local' }])
+  assert.deepEqual(bridgeCalls[0], ['checkHealth', {}])
   assert.equal(bridgeCalls[1][0], 'generateImage')
-  assert.equal(bridgeCalls[1][1].backend, 'local')
+  assert.equal(Object.hasOwn(bridgeCalls[1][1], 'backend'), false)
   assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
   assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
 })
@@ -1166,31 +1157,23 @@ test('creator studio example imports approved host-bridged local pet through hos
     petPackService,
     imageGenerationModelService: {
       getConfig: () => ({
-        defaultBackend: 'local',
-        cloud: {
-          provider: 'openai',
-          baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-image-1',
-          apiKeyRef: 'secret:model.image.openai.apiKey',
-          hasApiKey: false,
-          apiKeyPreview: '',
-          apiKeyLabel: 'Image API Key'
-        },
-        local: {
-          endpoint: 'http://127.0.0.1:7860/generate',
-          healthUrl: 'http://127.0.0.1:7860/health',
-          model: 'local-pet-sprite',
-          timeoutMs: 120000,
-          maxConcurrentJobs: 1
-        }
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:7860/v1',
+        model: 'local-pet-sprite',
+        apiKeyRef: 'secret:model.image.openai.apiKey',
+        timeoutMs: 120000,
+        maxConcurrentJobs: 1,
+        hasApiKey: true,
+        apiKeyPreview: '••••test',
+        apiKeyLabel: 'Image API Key'
       }),
-      checkHealth: async ({ backend } = {}) => ({
+      checkHealth: async () => ({
         ok: true,
-        backend: backend || 'local',
-        code: 'endpoint_healthy',
-        message: 'Local endpoint is reachable'
+        provider: 'openai-compatible',
+        code: 'provider_healthy',
+        message: 'Image Provider is reachable'
       }),
-      generateImage: async ({ backend, output }) => {
+      generateImage: async ({ output }) => {
         const targetPath = path.join(output.dataDir, output.dataRelativeDir, '0001.png')
         fs.mkdirSync(path.dirname(targetPath), { recursive: true })
         await sharp({
@@ -1205,7 +1188,7 @@ test('creator studio example imports approved host-bridged local pet through hos
           .toFile(targetPath)
         return {
           ok: true,
-          backend: backend || 'local',
+          provider: 'openai-compatible',
           model: 'local-pet-sprite',
           generatedAt: '2026-06-19T00:00:00.000Z',
           outputs: [{

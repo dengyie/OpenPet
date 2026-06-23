@@ -855,20 +855,21 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-settings read invoked' })
       return { ok: true, config: imageGenerationModelService.getConfig() }
     },
-    creatorModelHealthCheck: async (payload = {}) => {
+    creatorModelHealthCheck: async () => {
       assertPermission(plugin.manifest, 'model:image-generate')
       if (!imageGenerationModelService?.checkHealth) throw new Error('Creator model health check is not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-health-check invoked' })
-      return { ok: true, result: await imageGenerationModelService.checkHealth(payload) }
+      return { ok: true, result: await imageGenerationModelService.checkHealth({}) }
     },
     creatorModelImageGenerate: async (payload = {}) => {
       assertPermission(plugin.manifest, 'model:image-generate')
       if (!imageGenerationModelService?.generateImage) throw new Error('Creator model image generation is not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-image-generate invoked' })
+      const { backend: _ignoredBackend, ...providerPayload } = payload
       return {
         ok: true,
         result: await imageGenerationModelService.generateImage({
-          ...payload,
+          ...providerPayload,
           output: {
             ...(payload.output || {}),
             dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir

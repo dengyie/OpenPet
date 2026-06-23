@@ -143,6 +143,60 @@ test('ai service does not persist derived config fields', () => {
   assert.equal(Object.hasOwn(settingsService.get().ai, 'unexpectedField'), false)
 })
 
+test('ai service saveConfig preserves a richer stored baseUrl when a renderer sends the sanitized display value', () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: false,
+      provider: 'openai-compatible',
+      baseUrl: 'https://user:pass@example.test/v1?token=secret',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: 'You are a friendly desktop pet companion.'
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  service.saveConfig({
+    baseUrl: 'https://example.test/v1',
+    memory: { enabled: true }
+  })
+
+  assert.equal(settingsService.get().ai.baseUrl, 'https://user:pass@example.test/v1?token=secret')
+  assert.equal(settingsService.get().ai.memory.enabled, true)
+})
+
+test('ai service saveConfig persists a new baseUrl when the user actually changes it', () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: false,
+      provider: 'openai-compatible',
+      baseUrl: 'https://user:pass@example.test/v1?token=secret',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: 'You are a friendly desktop pet companion.'
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  service.saveConfig({
+    baseUrl: 'https://new-endpoint.example/v1'
+  })
+
+  assert.equal(settingsService.get().ai.baseUrl, 'https://new-endpoint.example/v1')
+})
+
 test('ai service sends openai-compatible chat completions requests', async () => {
   const requests = []
   const service = createAiService({

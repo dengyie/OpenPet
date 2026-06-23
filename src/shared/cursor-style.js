@@ -18,16 +18,13 @@
   }
 
   const resolvePetCursorStyle = (cursor, context = {}) => {
-    if (!cursor || !cursor.enabled || !cursor.assetUrl || context.menuOpen) return ''
-    if (!context.insideFrame) return ''
     return ''
   }
 
   const resolvePetCursorOverlayState = (cursor, context = {}) => {
-    if (!cursor || !cursor.enabled || !cursor.assetUrl || context.menuOpen) {
+    if (!cursor || !cursor.enabled || !cursor.assetUrl || !context.insideFrame || context.menuOpen) {
       return { visible: false, assetUrl: '', nativeCursor: '' }
     }
-    if (!context.insideFrame) return { visible: false, assetUrl: '', nativeCursor: '' }
     return { visible: true, assetUrl: cursor.assetUrl, nativeCursor: 'none' }
   }
 

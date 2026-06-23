@@ -168,6 +168,69 @@ button {
   max-width: 620px;
 }
 
+.ai-section {
+  display: grid;
+  border-top: 1px solid #dde2e8;
+}
+
+.ai-section[open] {
+  padding-bottom: 8px;
+}
+
+.ai-section-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+  padding: 14px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ai-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-section-summary h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.ai-section-summary p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.ai-section-caret {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #cfd6df;
+  border-radius: 7px;
+  color: #374151;
+  transition: transform 160ms ease;
+}
+
+.ai-section[open] .ai-section-caret {
+  transform: rotate(180deg);
+}
+
+.ai-section-body {
+  display: grid;
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
 .field-row,
 .readonly-row {
   display: grid;
@@ -233,6 +296,52 @@ button {
   min-width: 0;
 }
 
+.provider-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  width: min(620px, 100%);
+}
+
+.provider-preset-card {
+  display: grid;
+  gap: 7px;
+  min-height: 118px;
+  padding: 14px;
+  border: 1px solid #cfd6df;
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(238, 244, 250, 0.88)),
+    #ffffff;
+  color: #202124;
+  text-align: left;
+  cursor: pointer;
+}
+
+.provider-preset-card:hover:not(:disabled),
+.provider-preset-card:focus-visible:not(:disabled) {
+  border-color: #1f2937;
+  box-shadow: 0 10px 22px rgba(31, 41, 55, 0.10);
+  outline: none;
+}
+
+.provider-preset-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.provider-preset-card span {
+  color: #5f6875;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.provider-preset-card code {
+  overflow-wrap: anywhere;
+  color: #374151;
+  font-size: 12px;
+}
+
 .trigger-review-card {
   display: grid;
   gap: 14px;
@@ -250,11 +359,6 @@ button {
   align-items: start;
   justify-content: space-between;
   gap: 16px;
-}
-
-.trigger-review-header.compact {
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(207, 214, 223, 0.76);
 }
 
 .trigger-review-header div,
@@ -316,46 +420,6 @@ button {
 .trigger-result {
   padding: 10px 12px;
   border-radius: 10px;
-}
-
-.trigger-inbox-grid {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1fr);
-  gap: 12px;
-}
-
-.trigger-inbox-list,
-.trigger-inbox-detail {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.trigger-inbox-item {
-  display: grid;
-  gap: 3px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid rgba(207, 214, 223, 0.82);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  color: #202124;
-  text-align: left;
-}
-
-.trigger-inbox-item.selected {
-  border-color: #1f2937;
-  box-shadow: inset 3px 0 0 #1f2937;
-}
-
-.trigger-inbox-item strong {
-  font-size: 13px;
-}
-
-.trigger-inbox-item span {
-  color: #4b5563;
-  font-size: 12px;
-  overflow-wrap: anywhere;
 }
 
 .button-icon {

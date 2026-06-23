@@ -144,9 +144,13 @@ test('pet renderer quit records user intent before quitting', () => {
 
 test('pet cursor focus request focuses the source pet window', () => {
   const ipcMain = createIpcMainStub()
+  const logs = []
+  let restoreCalls = 0
   let focusCalls = 0
   const petWindow = {
-    isFocused: () => false,
+    isDestroyed: () => false,
+    isMinimized: () => true,
+    restore: () => { restoreCalls += 1 },
     focus: () => { focusCalls += 1 },
     webContents: {}
   }
@@ -159,7 +163,15 @@ test('pet cursor focus request focuses the source pet window', () => {
 
   ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: petWindow.webContents })
 
+  assert.equal(restoreCalls, 1)
   assert.equal(focusCalls, 1)
+  assert.deepEqual(logs.at(-1), {
+    scope: 'pet-window',
+    level: 'debug',
+    actor: 'system',
+    event: 'pet.cursor.focus.requested',
+    message: 'Pet window focus requested for custom cursor'
+  })
 })
 
 test('pet cursor focus request does not steal focus from an open context menu', () => {
@@ -169,7 +181,8 @@ test('pet cursor focus request does not steal focus from an open context menu', 
     contextMenuWindow: {
       isDestroyed: () => false
     },
-    isFocused: () => false,
+    isDestroyed: () => false,
+    isMinimized: () => false,
     focus: () => { focusCalls += 1 },
     webContents: {}
   }

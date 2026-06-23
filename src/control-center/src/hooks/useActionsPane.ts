@@ -23,8 +23,6 @@ export function useActionsPane() {
   const [triggerProposalType, setTriggerProposalType] = useState<ActionTriggerProposalType>('click')
   const [triggerProposalNotes, setTriggerProposalNotes] = useState('')
   const [lastTriggerProposalResult, setLastTriggerProposalResult] = useState<ActionTriggerProposalAcceptanceResult | null>(null)
-  const [selectedTriggerProposalId, setSelectedTriggerProposalId] = useState('')
-  const [triggerProposalRejectReason, setTriggerProposalRejectReason] = useState('')
   const [status, setStatus] = useState('')
   const [working, setWorking] = useState(false)
 
@@ -118,44 +116,6 @@ export function useActionsPane() {
         : '触发建议已保存')
     } catch (error) {
       setStatus(messageFromError(error, '应用触发建议失败'))
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  const onAcceptInboxTriggerProposal = async (proposalId: string) => {
-    if (!proposalId) return
-    setWorking(true)
-    setStatus('')
-    setLastTriggerProposalResult(null)
-    try {
-      const response = await api.acceptActionTriggerProposal(proposalId)
-      setActionsConfig(cloneActionsConfig(response.animations))
-      setSelectedTriggerProposalId(response.proposal?.id || proposalId)
-      const triggerProposal = response.triggerProposal || response.proposal?.result || null
-      setLastTriggerProposalResult(triggerProposal)
-      setStatus(triggerProposal
-        ? `${triggerProposal.applied ? '已应用' : '已确认'} Inbox 触发建议：${triggerProposal.message}`
-        : 'Inbox 触发建议已确认')
-    } catch (error) {
-      setStatus(messageFromError(error, '接受 Inbox 触发建议失败'))
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  const onRejectInboxTriggerProposal = async (proposalId: string) => {
-    if (!proposalId) return
-    setWorking(true)
-    setStatus('')
-    try {
-      const response = await api.rejectActionTriggerProposal(proposalId, triggerProposalRejectReason.trim() || undefined)
-      setActionsConfig(cloneActionsConfig(response.animations))
-      setSelectedTriggerProposalId(response.proposal?.id || proposalId)
-      setTriggerProposalRejectReason('')
-      setStatus('已拒绝 Inbox 触发建议')
-    } catch (error) {
-      setStatus(messageFromError(error, '拒绝 Inbox 触发建议失败'))
     } finally {
       setWorking(false)
     }
@@ -379,13 +339,7 @@ export function useActionsPane() {
     setTriggerProposalType: onChangeTriggerProposalType,
     triggerProposalNotes,
     setTriggerProposalNotes: onChangeTriggerProposalNotes,
-    lastTriggerProposalResult,
-    selectedTriggerProposalId,
-    setSelectedTriggerProposalId,
-    triggerProposalRejectReason,
-    setTriggerProposalRejectReason,
-    onAcceptInboxTriggerProposal,
-    onRejectInboxTriggerProposal
+    lastTriggerProposalResult
   } satisfies ActionsPaneProps
 
   return { loading, paneProps }

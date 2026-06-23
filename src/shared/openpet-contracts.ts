@@ -16,6 +16,46 @@ export interface ControlCenterSettings {
   customCursors: CustomCursorRecord[]
   grounded: boolean
   home: ControlCenterPetHomeSettings
+  customCursor: CustomCursorSettings
+}
+
+export interface CustomCursorSettings {
+  enabled: boolean
+  assetPath: string
+  assetUrl: string
+  fileName: string
+  width: number
+  height: number
+  hotspotX: number
+  hotspotY: number
+}
+
+export type CursorOptionType = 'system' | 'builtin' | 'custom'
+
+export interface CursorOption {
+  id: string
+  type: CursorOptionType
+  name: string
+  assetPath: string
+  assetUrl: string
+  fileName: string
+  width: number
+  height: number
+  byteSize: number
+  hotspotX: number
+  hotspotY: number
+  createdAt: string
+}
+
+export interface CustomCursorRecord extends CursorOption {
+  type: 'custom'
+}
+
+export interface ImportedCursorAsset extends CustomCursorRecord {}
+
+export interface CursorImportResult {
+  canceled: boolean
+  cursor?: ImportedCursorAsset
 }
 
 export interface CustomCursorSettings {
@@ -63,6 +103,18 @@ export interface ControlCenterPetHomeSettings {
   enabled: boolean
   radius: PetHomeRadius
   hasAnchor: boolean
+}
+
+export interface CustomCursorSettings {
+  enabled: boolean
+  assetPath: string
+  assetUrl: string
+  fileName: string
+}
+
+export interface CursorImportResult {
+  canceled: boolean
+  cursor?: CustomCursorSettings
 }
 
 export interface AiBehaviorRule {
@@ -272,6 +324,32 @@ export interface ActionTriggerProposalDecisionResult {
   triggerProposal?: ActionTriggerProposalAcceptanceResult
 }
 
+export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
+
+export interface ActionTriggerProposalAcceptanceRequest {
+  actionId: string
+  type: ActionTriggerProposalType
+  binding?: string
+  sourcePluginId?: string
+  sourceRunId?: string
+  sourceCommandId?: string
+  notes?: string
+}
+
+export interface ActionTriggerProposalAcceptanceResult {
+  ok: boolean
+  applied: boolean
+  actionId: string
+  type: ActionTriggerProposalType
+  binding: string
+  code: 'applied' | 'no_binding_required' | 'pending_host_rule'
+  message: string
+  acceptedAt: string
+  sourcePluginId?: string
+  sourceRunId?: string
+  sourceCommandId?: string
+}
+
 export interface OkResponse {
   ok: boolean
 }
@@ -350,7 +428,6 @@ export interface ActionsSaveConfigRequest {
 export interface ActionsMutationResult {
   animations: ActionsConfigViewState
   triggerProposal?: ActionTriggerProposalAcceptanceResult
-  proposal?: ActionTriggerProposalInboxItem
 }
 
 export interface BlocklistState {
@@ -1771,30 +1848,18 @@ export interface AiConnectionTestResult {
   message?: string
 }
 
-export interface ImageGenerationCloudConfigViewState {
+export interface ImageGenerationConfigViewState {
   provider: string
   baseUrl: string
   model: string
   apiKeyRef: string
   organization: string
   project: string
+  timeoutMs: number
+  maxConcurrentJobs: number
   hasApiKey: boolean
   apiKeyPreview: string
   apiKeyLabel: string
-}
-
-export interface ImageGenerationLocalConfigViewState {
-  endpoint: string
-  healthUrl: string
-  model: string
-  timeoutMs: number
-  maxConcurrentJobs: number
-}
-
-export interface ImageGenerationConfigViewState {
-  defaultBackend: 'fixture' | 'cloud' | 'local'
-  cloud: ImageGenerationCloudConfigViewState
-  local: ImageGenerationLocalConfigViewState
 }
 
 export interface ImageGenerationSaveApiKeyResult {
@@ -1805,14 +1870,12 @@ export interface ImageGenerationSaveApiKeyResult {
 
 export interface ImageGenerationHealthCheckResult {
   ok: boolean
-  backend: 'fixture' | 'cloud' | 'local'
+  provider: string
   code: string
   message: string
 }
 
-export interface ImageGenerationHealthCheckRequest {
-  backend?: 'fixture' | 'cloud' | 'local'
-}
+export type ImageGenerationHealthCheckRequest = Record<string, never>
 
 export interface ImageGenerationOutputRef {
   dataRelativePath: string
@@ -1821,7 +1884,6 @@ export interface ImageGenerationOutputRef {
 }
 
 export interface ImageGenerationRequest {
-  backend?: 'fixture' | 'cloud' | 'local'
   prompt: string
   output: {
     dataDir?: string
@@ -1836,7 +1898,7 @@ export interface ImageGenerationRequest {
 
 export interface ImageGenerationResult {
   ok: boolean
-  backend: 'fixture' | 'cloud' | 'local'
+  provider: string
   model: string
   generatedAt?: string
   outputs: ImageGenerationOutputRef[]

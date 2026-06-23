@@ -3,73 +3,100 @@ const fs = require('fs')
 const path = require('path')
 
 const DEFAULT_CONFIG = {
-  defaultBackend: 'fixture',
-  cloud: {
-    provider: 'openai',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-image-1',
-    apiKeyRef: 'secret:model.image.openai.apiKey',
-    organization: '',
-    project: ''
-  },
-  local: {
-    endpoint: 'http://127.0.0.1:7860/generate',
-    healthUrl: 'http://127.0.0.1:7860/health',
-    model: 'local-pet-sprite',
-    timeoutMs: 120000,
-    maxConcurrentJobs: 1
-  }
+  provider: 'openai-compatible',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-image-2',
+  apiKeyRef: 'secret:model.image.openai.apiKey',
+  organization: '',
+  project: '',
+  timeoutMs: 120000,
+  maxConcurrentJobs: 1
 }
 
-const CLOUD_GENERATION_TIMEOUT_MS = 120000
-
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+const PROVIDER_GENERATION_TIMEOUT_MS = 120000
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
 const normalizeBaseUrl = (value, fallback) => String(value || fallback || '').trim().replace(/\/+$/, '')
 
-const normalizeConfig = (config = {}) => ({
-  defaultBackend: ['fixture', 'cloud', 'local'].includes(config?.defaultBackend) ? config.defaultBackend : DEFAULT_CONFIG.defaultBackend,
-  cloud: {
-    ...DEFAULT_CONFIG.cloud,
-    ...(isPlainObject(config.cloud) ? config.cloud : {}),
-    provider: String(config?.cloud?.provider || DEFAULT_CONFIG.cloud.provider).trim() || DEFAULT_CONFIG.cloud.provider,
-    baseUrl: normalizeBaseUrl(config?.cloud?.baseUrl, DEFAULT_CONFIG.cloud.baseUrl),
-    model: String(config?.cloud?.model || DEFAULT_CONFIG.cloud.model).trim() || DEFAULT_CONFIG.cloud.model,
-    apiKeyRef: String(config?.cloud?.apiKeyRef || DEFAULT_CONFIG.cloud.apiKeyRef).trim() || DEFAULT_CONFIG.cloud.apiKeyRef,
-    organization: String(config?.cloud?.organization || '').trim(),
-    project: String(config?.cloud?.project || '').trim()
-  },
-  local: {
-    ...DEFAULT_CONFIG.local,
-    ...(isPlainObject(config.local) ? config.local : {}),
-    endpoint: String(config?.local?.endpoint || DEFAULT_CONFIG.local.endpoint).trim() || DEFAULT_CONFIG.local.endpoint,
-    healthUrl: String(config?.local?.healthUrl || DEFAULT_CONFIG.local.healthUrl).trim() || DEFAULT_CONFIG.local.healthUrl,
-    model: String(config?.local?.model || DEFAULT_CONFIG.local.model).trim() || DEFAULT_CONFIG.local.model,
-    timeoutMs: Math.max(1000, Number(config?.local?.timeoutMs ?? DEFAULT_CONFIG.local.timeoutMs) || DEFAULT_CONFIG.local.timeoutMs),
-    maxConcurrentJobs: Math.max(1, Number(config?.local?.maxConcurrentJobs ?? DEFAULT_CONFIG.local.maxConcurrentJobs) || DEFAULT_CONFIG.local.maxConcurrentJobs)
-  }
-})
+const normalizeImageApiKeyRef = (value, fallback = DEFAULT_CONFIG.apiKeyRef) => {
+  const candidate = String(value || '').trim()
+  if (/^secret:model\.image\.[A-Za-z0-9._:-]+$/.test(candidate)) return candidate
+  return fallback
+}
 
-const toPersistedConfig = (config = {}) => normalizeConfig({
-  defaultBackend: config.defaultBackend,
-  cloud: {
-    provider: config?.cloud?.provider,
-    baseUrl: config?.cloud?.baseUrl,
-    model: config?.cloud?.model,
-    apiKeyRef: config?.cloud?.apiKeyRef,
-    organization: config?.cloud?.organization,
-    project: config?.cloud?.project
-  },
-  local: {
-    endpoint: config?.local?.endpoint,
-    healthUrl: config?.local?.healthUrl,
-    model: config?.local?.model,
-    timeoutMs: config?.local?.timeoutMs,
-    maxConcurrentJobs: config?.local?.maxConcurrentJobs
+const hasLegacyProviderConfig = (config = {}) => (
+  Object.hasOwn(config, 'defaultBackend') ||
+  isPlainObject(config.cloud) ||
+  isPlainObject(config.local)
+)
+
+const flatConfigLooksDefault = (config = {}) => (
+  String(config?.provider || DEFAULT_CONFIG.provider).trim() === DEFAULT_CONFIG.provider &&
+  normalizeBaseUrl(config?.baseUrl, DEFAULT_CONFIG.baseUrl) === DEFAULT_CONFIG.baseUrl &&
+  String(config?.model || DEFAULT_CONFIG.model).trim() === DEFAULT_CONFIG.model &&
+  normalizeImageApiKeyRef(config?.apiKeyRef) === DEFAULT_CONFIG.apiKeyRef &&
+  Number(config?.timeoutMs ?? DEFAULT_CONFIG.timeoutMs) === DEFAULT_CONFIG.timeoutMs &&
+  Number(config?.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs) === DEFAULT_CONFIG.maxConcurrentJobs
+)
+
+const pickLegacyProviderConfig = (config = {}) => {
+  const legacyBackend = ['cloud', 'local'].includes(config?.defaultBackend) ? config.defaultBackend : 'cloud'
+  const legacyCloud = isPlainObject(config.cloud) ? config.cloud : {}
+  const legacyLocal = isPlainObject(config.local) ? config.local : {}
+  if (legacyBackend === 'local') {
+    return {
+      provider: legacyLocal.provider || 'openai-compatible',
+      baseUrl: legacyLocal.baseUrl || legacyLocal.endpoint || DEFAULT_CONFIG.baseUrl,
+      model: legacyLocal.model || DEFAULT_CONFIG.model,
+      apiKeyRef: normalizeImageApiKeyRef(legacyLocal.apiKeyRef || legacyCloud.apiKeyRef),
+      organization: legacyLocal.organization || legacyCloud.organization || '',
+      project: legacyLocal.project || legacyCloud.project || '',
+      timeoutMs: legacyLocal.timeoutMs,
+      maxConcurrentJobs: legacyLocal.maxConcurrentJobs
+    }
   }
-})
+  return {
+    provider: legacyCloud.provider || 'openai-compatible',
+    baseUrl: legacyCloud.baseUrl || DEFAULT_CONFIG.baseUrl,
+    model: legacyCloud.model || DEFAULT_CONFIG.model,
+    apiKeyRef: normalizeImageApiKeyRef(legacyCloud.apiKeyRef),
+    organization: legacyCloud.organization || '',
+    project: legacyCloud.project || '',
+    timeoutMs: legacyCloud.timeoutMs || config.timeoutMs,
+    maxConcurrentJobs: legacyCloud.maxConcurrentJobs || config.maxConcurrentJobs
+  }
+}
+
+const normalizeConfig = (config = {}) => {
+  const legacy = pickLegacyProviderConfig(config)
+  const preferLegacy = hasLegacyProviderConfig(config) && flatConfigLooksDefault(config)
+  return {
+    ...DEFAULT_CONFIG,
+    provider: String(preferLegacy ? legacy.provider : (config?.provider || legacy.provider || DEFAULT_CONFIG.provider)).trim() || DEFAULT_CONFIG.provider,
+    baseUrl: normalizeBaseUrl(preferLegacy ? legacy.baseUrl : (config?.baseUrl || legacy.baseUrl), DEFAULT_CONFIG.baseUrl),
+    model: String(preferLegacy ? legacy.model : (config?.model || legacy.model || DEFAULT_CONFIG.model)).trim() || DEFAULT_CONFIG.model,
+    apiKeyRef: normalizeImageApiKeyRef(preferLegacy ? legacy.apiKeyRef : (config?.apiKeyRef || legacy.apiKeyRef)),
+    organization: String(config?.organization || legacy.organization || '').trim(),
+    project: String(config?.project || legacy.project || '').trim(),
+    timeoutMs: Math.max(1000, Number(preferLegacy ? legacy.timeoutMs : (config?.timeoutMs ?? legacy.timeoutMs ?? DEFAULT_CONFIG.timeoutMs)) || DEFAULT_CONFIG.timeoutMs),
+    maxConcurrentJobs: Math.max(1, Number(preferLegacy ? legacy.maxConcurrentJobs : (config?.maxConcurrentJobs ?? legacy.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs)) || DEFAULT_CONFIG.maxConcurrentJobs)
+  }
+}
+
+const toPersistedConfig = (config = {}) => {
+  const normalized = normalizeConfig(config)
+  return {
+    provider: normalized.provider,
+    baseUrl: normalized.baseUrl,
+    model: normalized.model,
+    apiKeyRef: normalized.apiKeyRef,
+    organization: normalized.organization,
+    project: normalized.project,
+    timeoutMs: normalized.timeoutMs,
+    maxConcurrentJobs: normalized.maxConcurrentJobs
+  }
+}
 
 const maskSecret = (value) => {
   const text = String(value || '').trim()
@@ -77,20 +104,23 @@ const maskSecret = (value) => {
   return `••••${text.slice(-4)}`
 }
 
-const assertLoopbackUrl = (value, fieldName) => {
+const assertProviderBaseUrl = (value) => {
   let parsed
   try {
     parsed = new URL(String(value || ''))
   } catch (_) {
-    throw new Error(`${fieldName} must be a valid URL`)
+    throw new Error('Image Provider Base URL must be a valid URL')
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error(`${fieldName} must use HTTP or HTTPS`)
+    throw new Error('Image Provider Base URL must use HTTP or HTTPS')
   }
-  if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
-    throw new Error(`${fieldName} must use a loopback host`)
+  if (parsed.username || parsed.password) {
+    throw new Error('Image Provider Base URL must not include credentials')
   }
-  return parsed.toString()
+  if (parsed.search || parsed.hash) {
+    throw new Error('Image Provider Base URL must not include query or hash')
+  }
+  return parsed.toString().replace(/\/+$/, '')
 }
 
 const ensureInsideDataDir = ({ dataDir, dataRelativeDir }) => {
@@ -137,14 +167,14 @@ const writeOutputPng = ({ targetDir, index, bytes }) => {
   return { outputPath, fileName }
 }
 
-const decodeRequiredBase64Image = ({ value, backend, fieldName }) => {
+const decodeRequiredBase64Image = ({ value, fieldName }) => {
   const encoded = String(value || '').trim()
   if (!encoded) {
-    throw new Error(`${backend} image generation returned an output with missing image bytes (${fieldName})`)
+    throw new Error(`Image Provider returned an output with missing image bytes (${fieldName})`)
   }
   const bytes = Buffer.from(encoded, 'base64')
   if (!bytes.length) {
-    throw new Error(`${backend} image generation returned an output with missing image bytes (${fieldName})`)
+    throw new Error(`Image Provider returned an output with missing image bytes (${fieldName})`)
   }
   return bytes
 }
@@ -197,7 +227,7 @@ const getErrorMessage = async (response) => {
   }
 }
 
-const extractCloudProviderBusinessError = (body) => {
+const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
   if (Array.isArray(body.data)) return ''
   const message = String(body.error?.message || body.message || body.msg || '').trim()
@@ -205,9 +235,9 @@ const extractCloudProviderBusinessError = (body) => {
   return message.slice(0, 240)
 }
 
-const isOptionalCloudModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
+const isOptionalModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
 
-const buildCloudGenerationPayload = ({ model, prompt, constraints }) => {
+const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
   const payload = {
     model,
     prompt,
@@ -220,7 +250,7 @@ const buildCloudGenerationPayload = ({ model, prompt, constraints }) => {
   return payload
 }
 
-const getCloudGenerationBackgroundMode = ({ model, constraints }) => {
+const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
   if (model === 'gpt-image-2') return 'omitted'
   return constraints.transparent ? 'transparent' : 'white'
 }
@@ -233,12 +263,17 @@ const createImageGenerationModelService = ({
   nowMs = () => Date.now(),
   appLogService,
   idFactory = () => crypto.randomUUID(),
-  cloudGenerationTimeoutMs = CLOUD_GENERATION_TIMEOUT_MS
+  providerGenerationTimeoutMs,
+  cloudGenerationTimeoutMs
 } = {}) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
 
+  let activeProviderJobs = 0
+  const queuedProviderJobs = []
+
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
+  const getProviderTimeoutMs = (config) => Math.max(1, Number(cloudGenerationTimeoutMs ?? providerGenerationTimeoutMs ?? config.timeoutMs ?? PROVIDER_GENERATION_TIMEOUT_MS) || PROVIDER_GENERATION_TIMEOUT_MS)
 
   const recordLog = (entry) => {
     try {
@@ -250,6 +285,75 @@ const createImageGenerationModelService = ({
     } catch (_) {
       // Diagnostics must never break the creator workflow.
     }
+  }
+
+  const createProviderJobRelease = () => {
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      activeProviderJobs = Math.max(0, activeProviderJobs - 1)
+      drainProviderQueue()
+    }
+  }
+
+  const getMaxConcurrentJobs = (config) => Math.max(1, Number(config?.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs) || DEFAULT_CONFIG.maxConcurrentJobs)
+
+  function drainProviderQueue () {
+    while (queuedProviderJobs.length) {
+      const next = queuedProviderJobs[0]
+      if (activeProviderJobs >= next.maxConcurrentJobs) return
+      queuedProviderJobs.shift()
+      activeProviderJobs += 1
+      next.resolve(createProviderJobRelease())
+    }
+  }
+
+  const acquireProviderJobSlot = async ({ config, requestId }) => {
+    const maxConcurrentJobs = getMaxConcurrentJobs(config)
+    if (!queuedProviderJobs.length && activeProviderJobs < maxConcurrentJobs) {
+      activeProviderJobs += 1
+      return createProviderJobRelease()
+    }
+
+    const queuedAtMs = nowMs()
+    recordLog({
+      level: 'info',
+      event: 'imageGeneration.provider.queue.waiting',
+      message: 'Image Provider request is waiting for a concurrency slot',
+      details: {
+        requestId,
+        provider: config.provider,
+        model: config.model,
+        activeProviderJobs,
+        queuedProviderJobs: queuedProviderJobs.length + 1,
+        maxConcurrentJobs
+      }
+    })
+
+    return await new Promise((resolve) => {
+      queuedProviderJobs.push({
+        maxConcurrentJobs,
+        resolve: (release) => {
+          recordLog({
+            level: 'info',
+            event: 'imageGeneration.provider.queue.acquired',
+            message: 'Image Provider request acquired a concurrency slot',
+            details: {
+              requestId,
+              provider: config.provider,
+              model: config.model,
+              waitMs: nowMs() - queuedAtMs,
+              activeProviderJobs,
+              queuedProviderJobs: queuedProviderJobs.length,
+              maxConcurrentJobs
+            }
+          })
+          resolve(release)
+        }
+      })
+      drainProviderQueue()
+    })
   }
 
   const saveStoredConfig = (config) => {
@@ -265,15 +369,12 @@ const createImageGenerationModelService = ({
 
   const getConfig = () => {
     const config = getStoredConfig()
-    const secretValue = secretService.getSecretValue(config.cloud.apiKeyRef)
+    const secretValue = secretService.getSecretValue(config.apiKeyRef)
     return {
       ...config,
-      cloud: {
-        ...config.cloud,
-        hasApiKey: Boolean(secretValue),
-        apiKeyPreview: maskSecret(secretValue),
-        apiKeyLabel: 'Image API Key'
-      }
+      hasApiKey: Boolean(secretValue),
+      apiKeyPreview: maskSecret(secretValue),
+      apiKeyLabel: 'Image API Key'
     }
   }
 
@@ -282,62 +383,52 @@ const createImageGenerationModelService = ({
     const next = toPersistedConfig({
       ...current,
       ...(isPlainObject(partialConfig) ? partialConfig : {}),
-      cloud: {
-        ...current.cloud,
-        ...(isPlainObject(partialConfig.cloud) ? partialConfig.cloud : {})
-      },
-      local: {
-        ...current.local,
-        ...(isPlainObject(partialConfig.local) ? partialConfig.local : {})
-      }
+      apiKeyRef: current.apiKeyRef
     })
+    next.baseUrl = assertProviderBaseUrl(next.baseUrl)
     saveStoredConfig(next)
     return getConfig()
   }
 
-  const saveCloudApiKey = (apiKey) => {
+  const saveProviderApiKey = (apiKey) => {
     const config = getStoredConfig()
     secretService.setSecret({
-      id: config.cloud.apiKeyRef,
+      id: config.apiKeyRef,
       value: String(apiKey || ''),
       label: 'Image API Key'
     })
     const saved = getConfig()
     return {
-      apiKeyRef: saved.cloud.apiKeyRef,
-      hasApiKey: saved.cloud.hasApiKey,
-      apiKeyPreview: saved.cloud.apiKeyPreview
+      apiKeyRef: saved.apiKeyRef,
+      hasApiKey: saved.hasApiKey,
+      apiKeyPreview: saved.apiKeyPreview
     }
   }
 
-  const clearCloudApiKey = () => {
+  const clearProviderApiKey = () => {
     const config = getStoredConfig()
-    secretService.deleteSecret(config.cloud.apiKeyRef)
+    secretService.deleteSecret(config.apiKeyRef)
     return {
-      apiKeyRef: config.cloud.apiKeyRef,
+      apiKeyRef: config.apiKeyRef,
       hasApiKey: false,
       apiKeyPreview: ''
     }
   }
 
-  const checkHealth = async ({ backend } = {}) => {
+  const checkHealth = async () => {
     const config = getStoredConfig()
-    const targetBackend = backend || config.defaultBackend
     const requestId = idFactory()
     const startedMs = nowMs()
-    const healthModel = targetBackend === 'cloud'
-      ? config.cloud.model
-      : targetBackend === 'local'
-        ? config.local.model
-        : 'fixture-image'
+    const baseUrl = assertProviderBaseUrl(config.baseUrl)
     recordLog({
       level: 'info',
       event: 'imageGeneration.health.started',
-      message: 'Image generation health check started',
+      message: 'Image Provider health check started',
       details: {
         requestId,
-        backend: targetBackend,
-        model: healthModel
+        provider: config.provider,
+        model: config.model,
+        baseUrlHost: getUrlHost(baseUrl)
       }
     })
 
@@ -345,11 +436,12 @@ const createImageGenerationModelService = ({
       recordLog({
         level: result.ok ? 'info' : 'error',
         event: result.ok ? 'imageGeneration.health.completed' : 'imageGeneration.health.failed',
-        message: result.ok ? 'Image generation health check completed' : 'Image generation health check failed',
+        message: result.ok ? 'Image Provider health check completed' : 'Image Provider health check failed',
         details: {
           requestId,
-          backend: targetBackend,
-          model: healthModel,
+          provider: config.provider,
+          model: config.model,
+          baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: result.ok ? '' : result.code,
           ...extraDetails
@@ -359,73 +451,48 @@ const createImageGenerationModelService = ({
     }
 
     try {
-      if (targetBackend === 'fixture') {
-        return completeHealth({ ok: true, backend: 'fixture', code: 'fixture_ready', message: 'Fixture backend is available' })
+      const apiKey = secretService.getSecretValue(config.apiKeyRef)
+      if (!apiKey) {
+        return completeHealth({ ok: false, provider: config.provider, code: 'missing_api_key', message: 'Image generation API key is missing' })
       }
-
-      if (targetBackend === 'cloud') {
-        const apiKey = secretService.getSecretValue(config.cloud.apiKeyRef)
-        if (!apiKey) {
-          return completeHealth({ ok: false, backend: 'cloud', code: 'missing_api_key', message: 'Cloud image generation API key is missing' })
+      const response = await fetchImpl(`${baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`
         }
-        const response = await fetchImpl(`${config.cloud.baseUrl}/models`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${apiKey}`
-          }
-        })
-        const status = response?.status || 'error'
-        if (!response?.ok) {
-          if (isOptionalCloudModelsProbeStatus(status)) {
-            return completeHealth(
-              {
-                ok: true,
-                backend: 'cloud',
-                code: 'provider_reachable_models_unavailable',
-                message: 'Cloud provider is reachable, but the optional /models probe is unavailable'
-              },
-              { status, baseUrlHost: getUrlHost(config.cloud.baseUrl), modelsProbe: 'unavailable' }
-            )
-          }
+      })
+      const status = response?.status || 'error'
+      if (!response?.ok) {
+        if (isOptionalModelsProbeStatus(status)) {
           return completeHealth(
-            { ok: false, backend: 'cloud', code: 'provider_unhealthy', message: `Cloud provider responded with HTTP ${status}` },
-            { status, baseUrlHost: getUrlHost(config.cloud.baseUrl), modelsProbe: 'failed' }
+            {
+              ok: true,
+              provider: config.provider,
+              code: 'provider_reachable_models_unavailable',
+              message: 'Image Provider is reachable, but the optional /models probe is unavailable'
+            },
+            { status, modelsProbe: 'unavailable' }
           )
         }
         return completeHealth(
-          { ok: true, backend: 'cloud', code: 'provider_healthy', message: 'Cloud provider is reachable' },
-          { status, baseUrlHost: getUrlHost(config.cloud.baseUrl), modelsProbe: 'ok' }
+          { ok: false, provider: config.provider, code: 'provider_unhealthy', message: `Image Provider responded with HTTP ${status}` },
+          { status, modelsProbe: 'failed' }
         )
       }
-
-      if (targetBackend === 'local') {
-        const healthUrl = assertLoopbackUrl(config.local.healthUrl, 'Local health URL')
-        const endpoint = assertLoopbackUrl(config.local.endpoint, 'Local endpoint URL')
-        void endpoint
-        const response = await fetchImpl(healthUrl, { method: 'GET' })
-        const status = response?.status || 'error'
-        if (!response?.ok) {
-          return completeHealth(
-            { ok: false, backend: 'local', code: 'endpoint_unhealthy', message: `Local endpoint responded with HTTP ${status}` },
-            { status, baseUrlHost: getUrlHost(healthUrl) }
-          )
-        }
-        return completeHealth(
-          { ok: true, backend: 'local', code: 'endpoint_healthy', message: 'Local endpoint is reachable' },
-          { status, baseUrlHost: getUrlHost(healthUrl) }
-        )
-      }
-
-      throw new Error(`Unsupported image generation backend: ${targetBackend}`)
+      return completeHealth(
+        { ok: true, provider: config.provider, code: 'provider_healthy', message: 'Image Provider is reachable' },
+        { status, modelsProbe: 'ok' }
+      )
     } catch (error) {
       recordLog({
         level: 'error',
         event: 'imageGeneration.health.failed',
-        message: 'Image generation health check failed',
+        message: 'Image Provider health check failed',
         details: {
           requestId,
-          backend: targetBackend,
-          model: healthModel,
+          provider: config.provider,
+          model: config.model,
+          baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: 'health_check_error',
           errorMessage: String(error?.message || error).slice(0, 240)
@@ -435,42 +502,22 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateFixtureImage = ({ targetDir, relativeDir, requestId }) => {
-    const bytes = Buffer.from('fixture-image')
-    const { outputPath, fileName } = writeOutputPng({ targetDir, index: 1, bytes })
-    return {
-      ok: true,
-      requestId,
-      backend: 'fixture',
-      model: 'fixture-image',
-      generatedAt: now().toISOString(),
-      outputs: [{
-        dataRelativePath: path.posix.join(relativeDir.replace(/\\/g, '/'), fileName),
-        mimeType: 'image/png',
-        sha256: sha256File(outputPath)
-      }],
-      usage: {
-        estimatedCostUsd: 0
-      }
-    }
-  }
-
-  const generateCloudImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId }) => {
-    const apiKey = secretService.getSecretValue(config.cloud.apiKeyRef)
-    if (!apiKey) throw new Error('Cloud image generation API key is missing')
+  const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId }) => {
+    const apiKey = secretService.getSecretValue(config.apiKeyRef)
+    if (!apiKey) throw new Error('Image generation API key is missing')
+    const baseUrl = assertProviderBaseUrl(config.baseUrl)
     const providerStartMs = nowMs()
-    const timeoutMs = cloudGenerationTimeoutMs
-    const backgroundMode = getCloudGenerationBackgroundMode({ model: config.cloud.model, constraints })
+    const timeoutMs = getProviderTimeoutMs(config)
+    const backgroundMode = getProviderGenerationBackgroundMode({ model: config.model, constraints })
     recordLog({
       level: 'info',
       event: 'imageGeneration.provider.request.started',
-      message: 'Cloud image provider request started',
+      message: 'Image Provider request started',
       details: {
         requestId,
-        backend: 'cloud',
-        provider: config.cloud.provider,
-        model: config.cloud.model,
-        baseUrlHost: getUrlHost(config.cloud.baseUrl),
+        provider: config.provider,
+        model: config.model,
+        baseUrlHost: getUrlHost(baseUrl),
         width: constraints.width,
         height: constraints.height,
         requestedTransparent: Boolean(constraints.transparent),
@@ -482,17 +529,17 @@ const createImageGenerationModelService = ({
     try {
       response = await fetchWithTimeout({
         fetchImpl,
-        url: `${config.cloud.baseUrl}/images/generations`,
+        url: `${baseUrl}/images/generations`,
         timeoutMs,
-        timeoutMessage: `Cloud image generation timed out after ${timeoutMs}ms`,
+        timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
         options: {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(buildCloudGenerationPayload({
-            model: config.cloud.model,
+          body: JSON.stringify(buildProviderGenerationPayload({
+            model: config.model,
             prompt,
             constraints
           }))
@@ -502,13 +549,12 @@ const createImageGenerationModelService = ({
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
-        message: 'Cloud image provider request failed',
+        message: 'Image Provider request failed',
         details: {
           requestId,
-          backend: 'cloud',
-          provider: config.cloud.provider,
-          model: config.cloud.model,
-          baseUrlHost: getUrlHost(config.cloud.baseUrl),
+          provider: config.provider,
+          model: config.model,
+          baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - providerStartMs,
           timeoutMs,
           errorCode: /timed out/i.test(String(error?.message || '')) ? 'provider_timeout' : 'provider_request_error',
@@ -523,36 +569,34 @@ const createImageGenerationModelService = ({
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
-        message: 'Cloud image provider request failed',
+        message: 'Image Provider request failed',
         details: {
           requestId,
-          backend: 'cloud',
-          provider: config.cloud.provider,
-          model: config.cloud.model,
-          baseUrlHost: getUrlHost(config.cloud.baseUrl),
+          provider: config.provider,
+          model: config.model,
+          baseUrlHost: getUrlHost(baseUrl),
           status,
           durationMs: nowMs() - providerStartMs,
           errorCode: 'provider_http_error',
           errorMessage
         }
       })
-      throw new Error(`Cloud image generation failed with HTTP ${status}`)
+      throw new Error(`Image Provider generation failed with HTTP ${status}`)
     }
     const body = await response.json()
     const items = Array.isArray(body?.data) ? body.data : []
     if (!items.length) {
-      const businessError = extractCloudProviderBusinessError(body)
+      const businessError = extractProviderBusinessError(body)
       if (businessError) {
         recordLog({
           level: 'error',
           event: 'imageGeneration.provider.request.failed',
-          message: 'Cloud image provider returned a business error',
+          message: 'Image Provider returned a business error',
           details: {
             requestId,
-            backend: 'cloud',
-            provider: config.cloud.provider,
-            model: config.cloud.model,
-            baseUrlHost: getUrlHost(config.cloud.baseUrl),
+            provider: config.provider,
+            model: config.model,
+            baseUrlHost: getUrlHost(baseUrl),
             status: response.status || 200,
             durationMs: nowMs() - providerStartMs,
             outputCount: 0,
@@ -565,21 +609,20 @@ const createImageGenerationModelService = ({
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
-        message: 'Cloud image provider returned no outputs',
+        message: 'Image Provider returned no outputs',
         details: {
           requestId,
-          backend: 'cloud',
-          provider: config.cloud.provider,
-          model: config.cloud.model,
-          baseUrlHost: getUrlHost(config.cloud.baseUrl),
+          provider: config.provider,
+          model: config.model,
+          baseUrlHost: getUrlHost(baseUrl),
           status: response.status || 200,
           durationMs: nowMs() - providerStartMs,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
-          errorMessage: 'Cloud image generation returned no outputs'
+          errorMessage: 'Image Provider generation returned no outputs'
         }
       })
-      throw new Error('Cloud image generation returned no outputs')
+      throw new Error('Image Provider generation returned no outputs')
     }
 
     let outputs
@@ -587,7 +630,6 @@ const createImageGenerationModelService = ({
       outputs = items.map((item, index) => {
         const bytes = decodeRequiredBase64Image({
           value: item?.b64_json,
-          backend: 'Cloud',
           fieldName: 'b64_json'
         })
         const { outputPath, fileName } = writeOutputPng({ targetDir, index: index + 1, bytes })
@@ -601,13 +643,12 @@ const createImageGenerationModelService = ({
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
-        message: 'Cloud image provider returned invalid image bytes',
+        message: 'Image Provider returned invalid image bytes',
         details: {
           requestId,
-          backend: 'cloud',
-          provider: config.cloud.provider,
-          model: config.cloud.model,
-          baseUrlHost: getUrlHost(config.cloud.baseUrl),
+          provider: config.provider,
+          model: config.model,
+          baseUrlHost: getUrlHost(baseUrl),
           status: response.status || 200,
           durationMs: nowMs() - providerStartMs,
           outputCount: 0,
@@ -621,13 +662,12 @@ const createImageGenerationModelService = ({
     recordLog({
       level: 'info',
       event: 'imageGeneration.provider.request.completed',
-      message: 'Cloud image provider request completed',
+      message: 'Image Provider request completed',
       details: {
         requestId,
-        backend: 'cloud',
-        provider: config.cloud.provider,
-        model: config.cloud.model,
-        baseUrlHost: getUrlHost(config.cloud.baseUrl),
+        provider: config.provider,
+        model: config.model,
+        baseUrlHost: getUrlHost(baseUrl),
         status: response.status || 200,
         durationMs: nowMs() - providerStartMs,
         outputCount: outputs.length
@@ -637,8 +677,8 @@ const createImageGenerationModelService = ({
     return {
       ok: true,
       requestId,
-      backend: 'cloud',
-      model: config.cloud.model,
+      provider: config.provider,
+      model: config.model,
       generatedAt: now().toISOString(),
       outputs,
       usage: {
@@ -647,191 +687,14 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateLocalImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId }) => {
-    const endpoint = assertLoopbackUrl(config.local.endpoint, 'Local endpoint URL')
-    const providerStartMs = nowMs()
-    const timeoutMs = config.local.timeoutMs
-    recordLog({
-      level: 'info',
-      event: 'imageGeneration.provider.request.started',
-      message: 'Local image provider request started',
-      details: {
-        requestId,
-        backend: 'local',
-        provider: 'local',
-        model: config.local.model,
-        baseUrlHost: getUrlHost(endpoint),
-        width: constraints.width,
-        height: constraints.height,
-        requestedTransparent: Boolean(constraints.transparent),
-        timeoutMs
-      }
-    })
-    let response
-    try {
-      response = await fetchWithTimeout({
-        fetchImpl,
-        url: endpoint,
-        timeoutMs,
-        timeoutMessage: `Local image generation timed out after ${timeoutMs}ms`,
-        options: {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            prompt,
-            model: config.local.model,
-            width: constraints.width,
-            height: constraints.height,
-            transparent: Boolean(constraints.transparent)
-          })
-        }
-      })
-    } catch (error) {
-      recordLog({
-        level: 'error',
-        event: 'imageGeneration.provider.request.failed',
-        message: 'Local image provider request failed',
-        details: {
-          requestId,
-          backend: 'local',
-          provider: 'local',
-          model: config.local.model,
-          baseUrlHost: getUrlHost(endpoint),
-          durationMs: nowMs() - providerStartMs,
-          timeoutMs,
-          errorCode: /timed out/i.test(String(error?.message || '')) ? 'endpoint_timeout' : 'endpoint_request_error',
-          errorMessage: String(error?.message || error).slice(0, 240)
-        }
-      })
-      throw error
-    }
-    if (!response?.ok) {
-      recordLog({
-        level: 'error',
-        event: 'imageGeneration.provider.request.failed',
-        message: 'Local image provider request failed',
-        details: {
-          requestId,
-          backend: 'local',
-          provider: 'local',
-          model: config.local.model,
-          baseUrlHost: getUrlHost(endpoint),
-          status: response?.status || 'error',
-          durationMs: nowMs() - providerStartMs,
-          timeoutMs,
-          errorCode: 'endpoint_http_error',
-          errorMessage: `Local image generation failed with HTTP ${response?.status || 'error'}`
-        }
-      })
-      throw new Error(`Local image generation failed with HTTP ${response?.status || 'error'}`)
-    }
-    const body = await response.json()
-    const items = Array.isArray(body?.outputs) ? body.outputs : []
-    if (!items.length) {
-      recordLog({
-        level: 'error',
-        event: 'imageGeneration.provider.request.failed',
-        message: 'Local image provider returned no outputs',
-        details: {
-          requestId,
-          backend: 'local',
-          provider: 'local',
-          model: config.local.model,
-          baseUrlHost: getUrlHost(endpoint),
-          status: response.status || 200,
-          durationMs: nowMs() - providerStartMs,
-          timeoutMs,
-          outputCount: 0,
-          errorCode: 'endpoint_invalid_response',
-          errorMessage: 'Local image generation returned no outputs'
-        }
-      })
-      throw new Error('Local image generation returned no outputs')
-    }
-
-    let outputs
-    try {
-      outputs = items.map((item, index) => {
-        const bytes = decodeRequiredBase64Image({
-          value: item?.b64,
-          backend: 'Local',
-          fieldName: 'b64'
-        })
-        const { outputPath, fileName } = writeOutputPng({ targetDir, index: index + 1, bytes })
-        return {
-          dataRelativePath: path.posix.join(relativeDir.replace(/\\/g, '/'), fileName),
-          mimeType: 'image/png',
-          sha256: sha256File(outputPath)
-        }
-      })
-    } catch (error) {
-      recordLog({
-        level: 'error',
-        event: 'imageGeneration.provider.request.failed',
-        message: 'Local image provider returned invalid image bytes',
-        details: {
-          requestId,
-          backend: 'local',
-          provider: 'local',
-          model: config.local.model,
-          baseUrlHost: getUrlHost(endpoint),
-          status: response.status || 200,
-          durationMs: nowMs() - providerStartMs,
-          timeoutMs,
-          outputCount: 0,
-          errorCode: 'endpoint_invalid_response',
-          errorMessage: String(error?.message || error).slice(0, 240)
-        }
-      })
-      throw error
-    }
-
-    recordLog({
-      level: 'info',
-      event: 'imageGeneration.provider.request.completed',
-      message: 'Local image provider request completed',
-      details: {
-        requestId,
-        backend: 'local',
-        provider: 'local',
-        model: config.local.model,
-        baseUrlHost: getUrlHost(endpoint),
-        status: response.status || 200,
-        durationMs: nowMs() - providerStartMs,
-        timeoutMs,
-        outputCount: outputs.length
-      }
-    })
-
-    return {
-      ok: true,
-      requestId,
-      backend: 'local',
-      model: config.local.model,
-      generatedAt: now().toISOString(),
-      outputs,
-      usage: {
-        estimatedCostUsd: 0
-      }
-    }
-  }
-
-  const generateImage = async ({ backend, prompt, output, constraints }) => {
+  const generateImage = async ({ prompt, output, constraints }) => {
     const config = getStoredConfig()
-    const selectedBackend = backend || config.defaultBackend
     const requestId = idFactory()
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({
       dataDir: output?.dataDir,
       dataRelativeDir: output?.dataRelativeDir
     })
-    const model = selectedBackend === 'cloud'
-      ? config.cloud.model
-      : selectedBackend === 'local'
-        ? config.local.model
-        : 'fixture-image'
 
     recordLog({
       level: 'info',
@@ -839,33 +702,26 @@ const createImageGenerationModelService = ({
       message: 'Image generation request started',
       details: {
         requestId,
-        backend: selectedBackend,
-        model,
+        provider: config.provider,
+        model: config.model,
         width: constraints?.width,
         height: constraints?.height,
         requestedTransparent: Boolean(constraints?.transparent)
       }
     })
 
+    let releaseProviderJobSlot = null
     try {
-      let result
-      if (selectedBackend === 'fixture') {
-        result = generateFixtureImage({ targetDir, relativeDir, requestId })
-      } else if (selectedBackend === 'cloud') {
-        result = await generateCloudImage({ config, prompt, targetDir, relativeDir, constraints, requestId })
-      } else if (selectedBackend === 'local') {
-        result = await generateLocalImage({ config, prompt, targetDir, relativeDir, constraints, requestId })
-      } else {
-        throw new Error(`Unsupported image generation backend: ${selectedBackend}`)
-      }
+      releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId })
+      const result = await generateProviderImage({ config, prompt, targetDir, relativeDir, constraints, requestId })
       recordLog({
         level: 'info',
         event: 'imageGeneration.request.completed',
         message: 'Image generation request completed',
         details: {
           requestId,
-          backend: selectedBackend,
-          model,
+          provider: config.provider,
+          model: config.model,
           durationMs: nowMs() - startedMs,
           outputCount: result.outputs?.length || 0
         }
@@ -878,21 +734,25 @@ const createImageGenerationModelService = ({
         message: 'Image generation request failed',
         details: {
           requestId,
-          backend: selectedBackend,
-          model,
+          provider: config.provider,
+          model: config.model,
           durationMs: nowMs() - startedMs,
           errorMessage: String(error?.message || error).slice(0, 240)
         }
       })
       throw error
+    } finally {
+      releaseProviderJobSlot?.()
     }
   }
 
   return {
     getConfig,
     saveConfig,
-    saveCloudApiKey,
-    clearCloudApiKey,
+    saveProviderApiKey,
+    clearProviderApiKey,
+    saveCloudApiKey: saveProviderApiKey,
+    clearCloudApiKey: clearProviderApiKey,
     checkHealth,
     generateImage
   }

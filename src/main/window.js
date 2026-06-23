@@ -75,8 +75,11 @@ const resizeWindowAroundBottomCenter = (petWindow, targetWidth, targetHeight) =>
     width: targetWidth,
     height: targetHeight
   }
-  petWindow[RESIZE_ANCHOR] = { ...anchor, lastAppliedBounds: nextBounds }
-  petWindow.setBounds(nextBounds)
+  if (typeof petWindow.setContentBounds === 'function') {
+    petWindow.setContentBounds(nextBounds)
+  } else {
+    petWindow.setBounds(nextBounds)
+  }
 }
 
 const applyWindowScale = (petWindow, scale) => {

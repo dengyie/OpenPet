@@ -46,6 +46,27 @@ test('mergeSettings preserves ai automatic memory config', () => {
   assert.deepEqual(settings.ai.memory, { enabled: true })
 })
 
+test('mergeSettings preserves legacy image generation config without injecting flat defaults', () => {
+  const settings = mergeSettings({
+    models: {
+      imageGeneration: {
+        defaultBackend: 'local',
+        local: {
+          endpoint: 'http://127.0.0.1:7860/v1',
+          model: 'local-openai-compatible-image',
+          timeoutMs: 90000,
+          maxConcurrentJobs: 2
+        }
+      }
+    }
+  })
+
+  assert.equal(settings.models.imageGeneration.defaultBackend, 'local')
+  assert.equal(settings.models.imageGeneration.local.endpoint, 'http://127.0.0.1:7860/v1')
+  assert.equal(Object.hasOwn(settings.models.imageGeneration, 'baseUrl'), false)
+  assert.equal(Object.hasOwn(settings.models.imageGeneration, 'provider'), false)
+})
+
 test('mergeSettings migrates a legacy hosted custom cursor into the new cursor library state', () => {
   const settings = mergeSettings({
     customCursor: {

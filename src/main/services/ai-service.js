@@ -312,7 +312,7 @@ const createAiService = ({
   const saveConfig = (partialConfig) => {
     const settings = settingsService.get()
     const nextAi = {
-      ...normalizeConfig({ ...settings.ai, ...partialConfig }),
+      ...normalizeConfig(mergeConfigWithoutDisplayDowngrade(settings.ai, partialConfig)),
       conversations: getStoredConversations()
     }
     settingsService.save({ ...settings, ai: nextAi })
@@ -358,6 +358,76 @@ const createAiService = ({
       persistConversations(conversations)
     }
     return []
+  }
+
+  const testConnection = async () => {
+    const config = getRawConfig()
+    const hasApiKey = Boolean(secretService.getSecretValue(config.apiKeyRef))
+    const startedAt = Date.now()
+    const baseResult = {
+      provider: config.provider,
+      baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
+      model: config.model,
+      hasApiKey
+    }
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.connection-test.started',
+      message: 'AI provider connection test started',
+      details: baseResult
+    })
+    try {
+      const result = await complete({
+        messages: [
+          { role: 'user', content: 'Reply with ok.' }
+        ]
+      })
+      const response = {
+        ok: true,
+        ...baseResult,
+        elapsedMs: Date.now() - startedAt,
+        reply: String(result.reply || '').slice(0, 120),
+        code: 'ok',
+        message: 'AI provider connection test succeeded'
+      }
+      recordLog({
+        scope: 'ai-settings',
+        level: 'info',
+        event: 'ai.settings.connection-test.completed',
+        message: 'AI provider connection test completed',
+        details: {
+          ...baseResult,
+          elapsedMs: response.elapsedMs,
+          replyChars: response.reply.length
+        }
+      })
+      return response
+    } catch (error) {
+      const classified = classifyConnectionError(error)
+      const response = {
+        ok: false,
+        ...baseResult,
+        elapsedMs: Date.now() - startedAt,
+        code: classified.code,
+        message: classified.message
+      }
+      recordLog({
+        scope: 'ai-settings',
+        level: 'error',
+        event: 'ai.settings.connection-test.failed',
+        message: 'AI provider connection test failed',
+        details: {
+          ...baseResult,
+          elapsedMs: response.elapsedMs,
+          status: error?.providerStatus || 0,
+          providerCode: error?.providerCode || '',
+          code: classified.code,
+          message: classified.message
+        }
+      })
+      return response
+    }
   }
 
   const complete = async ({ messages, tools = [] }) => {

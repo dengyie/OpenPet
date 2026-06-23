@@ -220,6 +220,27 @@ export function PetPane({
             home: { ...settings.home, radius: String(radius) as ControlCenterSettings['home']['radius'] }
           })}
         />
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">自定义鼠标指针</div>
+            <div className="field-note">{cursorLabel}</div>
+          </div>
+          <div className="inline-action">
+            <Toggle
+              ariaLabel="启用自定义鼠标指针"
+              checked={Boolean(settings.customCursor.enabled && hasCustomCursor)}
+              disabled={!hasCustomCursor || saving}
+              onChange={(enabled) => onChange({ customCursor: { ...settings.customCursor, enabled } })}
+            />
+            <button type="button" className="ghost" onClick={onImportCursor} disabled={saving}>
+              选择图片
+            </button>
+            <button type="button" className="ghost" onClick={onClearCursor} disabled={saving || !hasCustomCursor}>
+              清除
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="status-line">

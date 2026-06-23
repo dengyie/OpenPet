@@ -45,7 +45,6 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
           getAllWindows: () => [petWindow]
         },
         dialog: {},
-        screen: { on: () => {} },
         shell: { openExternal: () => {} }
       }
     }
@@ -551,18 +550,15 @@ test('main persists repaired cursor metadata even when the asset path is unchang
     require(mainPath)
     await flushAsync()
 
-    const repairedSettings = savedSettings.find((settings) => settings.customCursor?.width === 64)
-    assert.ok(repairedSettings)
-    assert.equal(repairedSettings.customCursor.height, 64)
-    assert.equal(repairedSettings.customCursor.hotspotX, 13)
-    assert.equal(repairedSettings.customCursor.hotspotY, 8)
-    assert.equal(repairedSettings.customCursors[0].width, 64)
-    assert.equal(repairedSettings.customCursors[0].height, 64)
-    assert.equal(repairedSettings.customCursors[0].hotspotX, 13)
-    assert.equal(repairedSettings.customCursors[0].hotspotY, 8)
-    assert.equal(repairedSettings.customCursors[1].assetPath, '/tmp/other-cursor.png')
-    assert.equal(repairedSettings.customCursors[1].width, 0)
-    assert.equal(repairedSettings.customCursors[1].hotspotX, 0)
+    assert.equal(savedSettings.length, 1)
+    assert.equal(savedSettings[0].customCursor.width, 64)
+    assert.equal(savedSettings[0].customCursor.height, 64)
+    assert.equal(savedSettings[0].customCursor.hotspotX, 13)
+    assert.equal(savedSettings[0].customCursor.hotspotY, 8)
+    assert.equal(savedSettings[0].customCursors[0].width, 64)
+    assert.equal(savedSettings[0].customCursors[0].height, 64)
+    assert.equal(savedSettings[0].customCursors[0].hotspotX, 13)
+    assert.equal(savedSettings[0].customCursors[0].hotspotY, 8)
     assert.equal(appLogs.some((entry) => entry.event === 'settings.cursor.asset.repaired'), true)
   } finally {
     Module._load = originalLoad

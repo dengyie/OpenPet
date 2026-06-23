@@ -20,19 +20,17 @@ test('createCustomCursorCss builds a CSS cursor from the hosted asset URL', () =
   )
 })
 
-test('resolvePetCursorStyle does not rely on CSS image cursors for pet hover rendering', () => {
+test('resolvePetCursorStyle no longer applies CSS image cursors in the pet renderer', () => {
   const cursor = { enabled: true, assetUrl: 'file:///tmp/openpet/cursor.webp', hotspotX: 3, hotspotY: 5 }
 
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: false, menuOpen: false }), '')
-  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, windowFocused: true, dragging: false, menuOpen: false }), '')
-  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, windowFocused: false, dragging: false, menuOpen: false }), '')
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: false, insideCursorRegion: true, dragging: false, menuOpen: false }), '')
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, insideCursorRegion: false, dragging: false, menuOpen: false }), '')
-  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, windowFocused: false, dragging: true, menuOpen: false }), '')
+  assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: true, menuOpen: false }), '')
   assert.equal(resolvePetCursorStyle(cursor, { insideFrame: true, dragging: false, menuOpen: true }), '')
 })
 
-test('resolvePetCursorOverlayState shows DOM cursor overlay only inside clickable pet frame', () => {
+test('resolvePetCursorOverlayState shows DOM cursor overlay inside the active pet frame', () => {
   const cursor = { enabled: true, assetUrl: 'file:///tmp/openpet/cursor.webp' }
 
   assert.deepEqual(

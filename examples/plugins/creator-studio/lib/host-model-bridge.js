@@ -26,22 +26,12 @@ const readHostModelSettings = async () => {
 }
 
 const createModelSnapshot = ({ backend, settings }) => {
-  if (backend === 'cloud') {
-    const cloud = settings.cloud || {}
+  if (backend !== 'fixture') {
     return {
-      backend: 'cloud',
-      provider: String(cloud.provider || 'cloud'),
-      model: String(cloud.model || ''),
-      baseUrlHost: safeUrlHost(cloud.baseUrl)
-    }
-  }
-  if (backend === 'local') {
-    const local = settings.local || {}
-    return {
-      backend: 'local',
-      provider: 'local',
-      model: String(local.model || ''),
-      endpointHost: safeUrlHost(local.endpoint)
+      backend: backend || 'provider',
+      provider: String(settings.provider || 'openai-compatible'),
+      model: String(settings.model || ''),
+      baseUrlHost: safeUrlHost(settings.baseUrl)
     }
   }
   return {
@@ -67,7 +57,6 @@ const generateViaHostModelBridge = async ({ backend, run }) => {
     model: modelSnapshot.model
   })
   const response = await callBridge('/creator/model-image-generate', {
-    backend,
     prompt: promptBuild.prompt,
     output: {
       dataRelativeDir: `runs/${run.runId}/frames/base`

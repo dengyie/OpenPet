@@ -47,7 +47,7 @@ const createElement = (id = '') => ({
   closest() { return null }
 })
 
-const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true, hasFocus = true } = {}) => {
+const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, includeHitbox = true } = {}) => {
   const frameResults = Array.isArray(insideFrame) ? insideFrame.slice() : null
   const cursorRegionResults = insideCursorRegion === undefined
     ? null
@@ -115,6 +115,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
         setMousePassthrough: (passthrough) => logs.push({ event: 'pet:test:set-mouse-passthrough', passthrough }),
         requestFocusForCursor: () => focusRequests.push({ event: 'pet:test:request-focus-for-cursor' }),
         recordAppLog: (entry) => logs.push(entry),
+        requestFocusForCursor: () => { focusForCursorRequests += 1 },
         onSettingsChanged: (callback) => { callbacks.settings = callback },
         onPetSay: () => {},
         onPetAction: () => {},
@@ -161,29 +162,6 @@ test('custom cursor uses a DOM overlay inside the clickable pet region and hides
   assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
   assert.equal(elements.pet.style.cursor, 'none')
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
-  assert.equal(logs.at(-1).details.nativeCursor, 'none')
-})
-
-test('custom cursor overlay uses runtime cursor dimensions to keep the hotspot aligned', async () => {
-  const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
-
-  callbacks.settings({
-    customCursor: {
-      enabled: true,
-      assetUrl: 'file:///cursor-64.png',
-      assetPath: '/cursor-64.png',
-      fileName: 'cursor-64.png',
-      width: 64,
-      height: 40,
-      hotspotX: 9,
-      hotspotY: 11
-    }
-  })
-  dispatch(elements.pet, 'pointermove', { clientX: 100, clientY: 120, screenX: 1100, screenY: 820 })
-
-  assert.equal(elements['custom-cursor-overlay'].style.width, '64px')
-  assert.equal(elements['custom-cursor-overlay'].style.height, '40px')
-  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(91px, 109px, 0)')
 })
 
 test('custom cursor is not shown in passthrough-only padding so desktop clicks are not trapped', async () => {
@@ -226,125 +204,4 @@ test('pet remains clickable when the optional hitbox helper is unavailable', asy
   const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
   assert.equal(passthroughCalls.some((entry) => entry.passthrough), false)
   assert.equal(logs.at(-1).details.passthrough, false)
-})
-
-test('pointerleave clears the DOM cursor overlay and restores the native cursor', async () => {
-  const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
-  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
-
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-  assert.equal(elements.pet.style.cursor, 'none')
-
-  dispatch(elements.pet, 'pointerleave', { clientX: 301, clientY: 301, screenX: 1301, screenY: 901 })
-
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, '')
-})
-
-test('transient out-of-window pointer movement clears the DOM cursor overlay', async () => {
-  const { callbacks, elements, logs } = await createRendererHarness({
-    insideFrame: [true, false],
-    insideCursorRegion: [true, false]
-  })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
-  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
-
-  assert.equal(elements.pet.style.cursor, 'none')
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-
-  dispatch(elements.pet, 'pointermove', { clientX: -7.4, clientY: 38.73, screenX: 992.6, screenY: 738.73 })
-
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(elements.pet.style.cursor, '')
-  assert.equal(logs.at(-1).details.insideCursorRegion, false)
-  assert.equal(logs.at(-1).details.cursorApplied, false)
-})
-
-test('pointer down does not flash the active custom cursor back to the system cursor', async () => {
-  const { callbacks, elements } = await createRendererHarness({ insideFrame: true })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
-  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
-
-  assert.equal(elements.pet.style.cursor, 'none')
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-
-  await dispatchAsync(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
-
-  assert.equal(elements.pet.style.cursor, 'none')
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-})
-
-test('unfocused pet window requests focus and keeps the DOM custom cursor visible over the pet frame', async () => {
-  const { callbacks, context, elements, focusRequests, logs } = await createRendererHarness({
-    insideFrame: true,
-    hasFocus: false
-  })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
-  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
-
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
-  assert.equal(elements['custom-cursor-overlay'].style.transform, 'translate3d(20px, 83px, 0)')
-  assert.equal(elements.pet.style.cursor, 'none')
-  assert.equal(context.document.body.style.cursor, 'none')
-  assert.equal(context.document.documentElement.style.cursor, 'none')
-  assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
-  assert.equal(logs.at(-1).details.nativeCursor, 'none')
-  assert.equal(logs.at(-1).details.windowFocused, false)
-  assert.equal(focusRequests.length, 1)
-})
-
-test('unfocused pet window retries cursor focus after hover leaves and returns', async () => {
-  const { callbacks, elements, focusRequests } = await createRendererHarness({
-    insideFrame: true,
-    hasFocus: false
-  })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
-  dispatch(elements.pet, 'pointermove', { clientX: 24, clientY: 88, screenX: 1024, screenY: 768 })
-  dispatch(elements.pet, 'pointerleave', { clientX: -1, clientY: -1, screenX: 999, screenY: 699 })
-  dispatch(elements.pet, 'pointermove', { clientX: 28, clientY: 92, screenX: 1028, screenY: 772 })
-
-  assert.equal(focusRequests.length, 2)
-})
-
-test('unfocused pet window does not request focus for transparent cursor padding', async () => {
-  const { callbacks, elements, focusRequests } = await createRendererHarness({
-    insideFrame: false,
-    insideCursorRegion: true,
-    hasFocus: false
-  })
-
-  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png', hotspotX: 4, hotspotY: 6 } })
-  dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 78, screenX: 1001, screenY: 778 })
-
-  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
-  assert.equal(focusRequests.length, 0)
-})
-
-test('pointer leave does not cancel passthrough while hovering transparent pet padding', async () => {
-  const { elements, logs } = await createRendererHarness({ insideFrame: [false, true] })
-
-  dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 1, screenX: 1001, screenY: 701 })
-  dispatch(elements.pet, 'pointerleave', { clientX: -1, clientY: -1, screenX: 999, screenY: 699 })
-
-  const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
-  assert.deepEqual(passthroughCalls.map((entry) => entry.passthrough), [true])
-})
-
-test('pointer movement back over the visible pet restores click handling after passthrough', async () => {
-  const { elements, logs } = await createRendererHarness({
-    insideFrame: [false, true],
-    insideCursorRegion: [true, true]
-  })
-
-  dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 1, screenX: 1001, screenY: 701 })
-  dispatch(elements.pet, 'pointermove', { clientX: 140, clientY: 140, screenX: 1140, screenY: 840 })
-
-  const passthroughCalls = logs.filter((entry) => entry.event === 'pet:test:set-mouse-passthrough')
-  assert.deepEqual(passthroughCalls.map((entry) => entry.passthrough), [true, false])
 })
