@@ -13,6 +13,7 @@ const path = require('path')
 const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
 const { applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow } = require('./src/main/window')
+const { createPetChatWindowManager } = require('./src/main/pet-chat-window')
 const { createPetRendererSettings, normalizeLocalHttpConfig, reloadAndSendAnimations, registerIpcHandlers } = require('./src/main/ipc')
 const { configureUserDataPath } = require('./src/main/user-data-path')
 const { createEventBus } = require('./src/main/services/event-bus')
@@ -93,6 +94,15 @@ const bootstrapOpenPet = () => {
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
   const petMovementPolicy = createPetMovementPolicy({ screen })
+  const petChatWindowService = createPetChatWindowManager({
+    getPetWindow,
+    settingsService,
+    appLogService,
+    BrowserWindow,
+    screen,
+    app,
+    createSettingsWindow: () => createSettingsWindow(petWindow)
+  })
   try {
     console.log(`OpenPet app log: ${appLogService.logPath}`)
   } catch (error) {
@@ -267,6 +277,7 @@ const bootstrapOpenPet = () => {
     clampToWorkArea,
     getMovementState,
     createSettingsWindow: () => createSettingsWindow(petWindow),
+    petChatWindowService,
     petMovementPolicy
   })
 

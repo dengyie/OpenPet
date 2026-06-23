@@ -146,7 +146,7 @@ const sanitizeDiagnosticText = (value) => String(value || '')
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -331,7 +331,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const actions = petService.getAnimations()?.actions || []
     const bounds = win.getBounds()
     const { workArea } = screenService.getDisplayMatching(bounds)
-    const menuSize = estimatePetContextMenuSize(actions)
+    const menuSize = estimatePetContextMenuSize(actions, { extraItemCount: petChatWindowService ? 1 : 0 })
     const settings = petService.getSettings?.() || {}
     const requestedPoint = {
       x: Number(point.x),
@@ -352,6 +352,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       })),
       { type: 'separator' },
       { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
+      ...(petChatWindowService ? [{ label: '和宠物聊天', click: () => petChatWindowService.open?.() }] : []),
       { label: '设置', click: () => createSettingsWindow(win) },
       { type: 'separator' },
       { label: '退出', click: () => requestAppQuit('pet-context-menu') }
@@ -396,6 +397,27 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 右键菜单"设置"：打开设置面板
   ipcMainService.on(IPC.SETTINGS_OPEN, () => {
     createSettingsWindow(getPetWindow())
+  })
+
+  ipcMainService.handle(IPC.PET_CHAT_GET_STATE, () => {
+    if (!petChatWindowService?.getState) return { available: false }
+    return { available: true, ...petChatWindowService.getState() }
+  })
+
+  ipcMainService.on(IPC.PET_CHAT_HIDE, () => {
+    petChatWindowService?.hide?.({ source: 'pet-chat-renderer' })
+  })
+
+  ipcMainService.handle(IPC.PET_CHAT_SET_ALWAYS_ON_TOP, (_event, payload) => {
+    if (!petChatWindowService?.setAlwaysOnTop) return { available: false }
+    return {
+      available: true,
+      ...petChatWindowService.setAlwaysOnTop(Boolean(payload?.alwaysOnTop))
+    }
+  })
+
+  ipcMainService.on(IPC.PET_CHAT_OPEN_SETTINGS, () => {
+    petChatWindowService?.openSettings?.()
   })
 
   // 设置面板启动时读取当前设置

@@ -91,4 +91,8 @@ test('estimatePetContextMenuSize scales with action count but keeps stable bound
     { label: '待机' },
     { label: '超长动作名称测试' }
   ]), { width: 148, height: 176 })
+  assert.deepEqual(estimatePetContextMenuSize([
+    { label: '待机' },
+    { label: '超长动作名称测试' }
+  ], { extraItemCount: 1 }), { width: 148, height: 206 })
 })

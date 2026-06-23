@@ -63,6 +63,11 @@ const defaultSettings = {
       anchor: null
     }
   },
+  desktopChat: {
+    bounds: null,
+    hasUserBounds: false,
+    alwaysOnTop: true
+  },
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -154,6 +159,15 @@ const mergeSettings = (settings = {}) => ({
         ? settings.petBehavior.home.anchor
         : defaultSettings.petBehavior.home.anchor
     }
+  },
+  desktopChat: {
+    ...defaultSettings.desktopChat,
+    ...(isPlainObject(settings.desktopChat) ? settings.desktopChat : {}),
+    bounds: isPlainObject(settings.desktopChat?.bounds)
+      ? settings.desktopChat.bounds
+      : defaultSettings.desktopChat.bounds,
+    hasUserBounds: Boolean(settings.desktopChat?.hasUserBounds),
+    alwaysOnTop: settings.desktopChat?.alwaysOnTop !== false
   },
   models: {
     ...defaultSettings.models,
