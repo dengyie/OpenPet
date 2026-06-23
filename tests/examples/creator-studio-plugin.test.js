@@ -12,6 +12,27 @@ const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema'
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/creator-studio')
+const createActionFrameQa = ({
+  actionId = 'shy-spin',
+  frameCount = 1,
+  frameWidth = 192,
+  frameHeight = 208,
+  ok = true,
+  visiblePixels = 192 * 208
+} = {}) => ({
+  ok,
+  actionId,
+  frameCount,
+  frameWidth,
+  frameHeight,
+  frames: Array.from({ length: frameCount }, (_entry, index) => ({
+    fileName: `${String(index + 1).padStart(4, '0')}.png`,
+    width: frameWidth,
+    height: frameHeight,
+    visiblePixels
+  })),
+  warnings: []
+})
 
 test('creator studio example manifest declares hybrid creator workflow entries', () => {
   const manifest = normalizePluginManifest(
@@ -1229,7 +1250,10 @@ test('creator studio import-approved-action imports approved single-action frame
       background: { r: 240, g: 120, b: 140, alpha: 1 }
     }
   }).png().toFile(path.join(framesDir, '0001.png'))
-  fs.writeFileSync(path.join(qaDir, 'action-frame-validation.json'), `${JSON.stringify({ ok: true, actionId: 'shy-spin' }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'action-frame-validation.json'),
+    `${JSON.stringify(createActionFrameQa(), null, 2)}\n`
+  )
   const run = createRun({
     dataDir,
     input: {
@@ -1305,6 +1329,100 @@ test('creator studio import-approved-action imports approved single-action frame
     assert.equal(requests[0].payload.actionId, 'shy-spin')
     assert.equal(requests[0].payload.label, '害羞转圈')
     assert.equal(JSON.stringify(requests[0].payload).includes(dataDir), false)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio import-approved-action rejects failed action frame QA before bridge import', async () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-action-qa-'))
+  const framesDir = path.join(dataDir, 'runs/demo/frames/actions/shy-spin')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(framesDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 240, g: 120, b: 140, alpha: 1 }
+    }
+  }).png().toFile(path.join(framesDir, '0001.png'))
+  fs.writeFileSync(
+    path.join(qaDir, 'action-frame-validation.json'),
+    `${JSON.stringify(createActionFrameQa({ ok: false }), null, 2)}\n`
+  )
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Action Import QA Cat',
+      petId: 'action-import-qa-cat',
+      backend: 'cloud',
+      prompt: '点击害羞转圈',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击害羞转圈',
+          frameCount: 1,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    }
+  })
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      artifacts: {
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir,
+          qa: path.join(qaDir, 'action-frame-validation.json'),
+          frameCount: 1,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now: () => '2026-06-20T00:01:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [{
+      path: '/creator/assets/import-frames',
+      handler: () => ({ body: { ok: true, result: { importedAction: { id: 'shy-spin' } } } })
+    }]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-action',
+      dataDir,
+      payload: { runId: run.runId },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir, runId: run.runId })
+
+    assert.equal(imported.status, 1)
+    assert.equal(imported.json.ok, false)
+    assert.match(imported.json.error, /QA must pass/)
+    assert.equal(stored.importStatus, 'not-imported')
+    assert.equal(requests.length, 0)
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
@@ -1604,7 +1722,9 @@ test('creator studio import-approved-action skips pet-pack runs when inferring l
     now: () => '2026-06-20T00:00:00.000Z'
   })
   const framesDir = path.join(dataDir, 'runs', actionRun.runId, 'frames', 'actions', 'shy-spin')
+  const qaDir = path.join(dataDir, 'runs', actionRun.runId, 'qa')
   fs.mkdirSync(framesDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
   await sharp({
     create: {
       width: 192,
@@ -1613,6 +1733,10 @@ test('creator studio import-approved-action skips pet-pack runs when inferring l
       background: { r: 240, g: 120, b: 140, alpha: 1 }
     }
   }).png().toFile(path.join(framesDir, '0001.png'))
+  fs.writeFileSync(
+    path.join(qaDir, 'action-frame-validation.json'),
+    `${JSON.stringify(createActionFrameQa(), null, 2)}\n`
+  )
   updateRunStatus({
     dataDir,
     runId: actionRun.runId,
@@ -1625,6 +1749,7 @@ test('creator studio import-approved-action skips pet-pack runs when inferring l
           actionId: 'shy-spin',
           name: '害羞转圈',
           framesDir,
+          qa: path.join(qaDir, 'action-frame-validation.json'),
           frameCount: 1,
           frameWidth: 192,
           frameHeight: 208,
@@ -1692,6 +1817,13 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="task-preview"/)
   assert.match(html, /id="trigger-panel"/)
   assert.match(html, /id="action-review"/)
+  assert.match(html, /id="run-select"/)
+  assert.match(html, /id="reload-runs-button"/)
+  assert.match(html, /id="approve-button"/)
+  assert.match(html, /Import Approved Action/)
+  assert.match(html, /fetch\('\/api\/runs'\)/)
+  assert.match(html, /DOMContentLoaded/)
+  assert.match(html, /Loaded latest run/)
   assert.match(html, /contact-sheet/)
   assert.match(html, /action-frame-validation\.json/)
   assert.match(html, /id="run-logs"/)
@@ -1731,6 +1863,17 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     status: 'ready_for_review',
     patch: {
       artifacts: {
+        generatedImage: {
+          ok: true,
+          backend: 'fixture',
+          model: 'fixture-image',
+          generatedAt: '2026-06-19T00:00:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: 'service-source-sha'
+          }]
+        },
         actionFrames: {
           actionId: 'shy-spin',
           name: '害羞转圈',
@@ -1745,7 +1888,9 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     },
     now: () => '2026-06-19T00:00:30.000Z'
   })
+  const sourceDir = path.join(dataDir, 'runs', run.runId, 'frames', 'base')
   const framesDir = path.join(dataDir, 'runs', run.runId, 'frames', 'actions', 'shy-spin')
+  fs.mkdirSync(sourceDir, { recursive: true })
   fs.mkdirSync(framesDir, { recursive: true })
   await sharp({
     create: {
@@ -1754,13 +1899,22 @@ test('creator studio service exposes run detail and logs for dashboard clients',
       channels: 4,
       background: { r: 120, g: 80, b: 220, alpha: 1 }
     }
-  }).png().toFile(path.join(framesDir, '0001.png'))
+  }).png().toFile(path.join(sourceDir, '0001.png'))
+  fs.writeFileSync(path.join(framesDir, '0001.png'), Buffer.from('broken-frame'))
+  const qaPath = path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json')
   appendRunLog({
     dataDir,
     runId: run.runId,
     level: 'info',
     event: 'run.created',
-    message: 'Run created',
+    message: `Run created in ${framesDir}`,
+    data: {
+      outputDir: framesDir,
+      nested: {
+        qaPath,
+        samples: [framesDir, 42]
+      }
+    },
     now: () => '2026-06-19T00:01:00.000Z'
   })
   const server = createCreatorStudioServer({ dataDir, dashboardPath })
@@ -1768,9 +1922,13 @@ test('creator studio service exposes run detail and logs for dashboard clients',
   const port = server.address().port
 
   try {
+    const runs = await fetch(`http://127.0.0.1:${port}/api/runs`).then((response) => response.json())
     const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
     const logs = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/logs`).then((response) => response.json())
 
+    assert.equal(runs.ok, true)
+    assert.equal(runs.runs[0].artifacts.actionFrames.framesDir, undefined)
+    assert.equal(JSON.stringify(runs).includes(dataDir), false)
     assert.equal(detail.ok, true)
     assert.equal(detail.run.runId, run.runId)
     assert.equal(detail.actionReview.actionId, 'shy-spin')
@@ -1779,18 +1937,73 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     assert.equal(detail.actionReview.previewFrames.length, 8)
     assert.equal(detail.actionReview.previewFrames[0].fileName, '0001.png')
     assert.equal(detail.actionReview.previewFrames[0].url, `/api/runs/${encodeURIComponent(run.runId)}/action-frames/shy-spin/0001.png`)
-    assert.match(detail.actionReview.qa, /action-frame-validation\.json$/)
+    assert.equal(detail.actionReview.qa, `runs/${run.runId}/qa/action-frame-validation.json`)
+    assert.equal(detail.run.artifacts.actionFrames.framesDir, undefined)
+    assert.equal(detail.run.artifacts.actionFrames.qa, `runs/${run.runId}/qa/action-frame-validation.json`)
+    assert.equal(detail.run.artifacts.generatedImage, undefined)
+    assert.equal(JSON.stringify(detail).includes(dataDir), false)
     assert.equal(logs.ok, true)
     assert.deepEqual(logs.logs.map((entry) => entry.event), ['run.created'])
+    assert.equal(JSON.stringify(logs).includes(dataDir), false)
+    assert.equal(logs.logs[0].message, `Run created in OPENPET_DATA_DIR/runs/${run.runId}/frames/actions/shy-spin`)
+    assert.equal(logs.logs[0].data.outputDir, `runs/${run.runId}/frames/actions/shy-spin`)
+    assert.equal(logs.logs[0].data.nested.qaPath, `runs/${run.runId}/qa/action-frame-validation.json`)
+    assert.deepEqual(logs.logs[0].data.nested.samples, [`runs/${run.runId}/frames/actions/shy-spin`, 42])
 
-    const frameResponse = await fetch(`http://127.0.0.1:${port}${detail.actionReview.previewFrames[0].url}`)
-    const frameBytes = Buffer.from(await frameResponse.arrayBuffer())
     const invalidFrame = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/action-frames/shy-spin/not-a-frame.png`)
 
+    assert.equal(invalidFrame.status, 404)
+
+    const repaired = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/action-frames/shy-spin/0001.png/repair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    }).then((response) => response.json())
+    const frameResponse = await fetch(`http://127.0.0.1:${port}${detail.actionReview.previewFrames[0].url}`)
+    const frameBytes = Buffer.from(await frameResponse.arrayBuffer())
+    const repairedQa = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json'), 'utf-8'))
+    const logsAfterRepair = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/logs`).then((response) => response.json())
+    const failedApprovalResponse = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    })
+    const failedApproval = await failedApprovalResponse.json()
+    for (let index = 2; index <= 8; index += 1) {
+      fs.copyFileSync(path.join(framesDir, '0001.png'), path.join(framesDir, `${String(index).padStart(4, '0')}.png`))
+    }
+    fs.writeFileSync(qaPath, `${JSON.stringify(createActionFrameQa({
+      actionId: 'shy-spin',
+      frameCount: 8
+    }), null, 2)}\n`)
+    const actionApproved = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    }).then((response) => response.json())
+    const logsAfterApprove = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/logs`).then((response) => response.json())
+
+    assert.equal(repaired.ok, true)
     assert.equal(frameResponse.status, 200)
     assert.equal(frameResponse.headers.get('content-type'), 'image/png')
     assert.equal(frameBytes.slice(1, 4).toString('utf-8'), 'PNG')
-    assert.equal(invalidFrame.status, 404)
+    assert.equal(repaired.repair.fileName, '0001.png')
+    assert.equal(repaired.repair.qa, `runs/${run.runId}/qa/action-frame-validation.json`)
+    assert.equal(repaired.actionReview.previewFrames[0].fileName, '0001.png')
+    assert.equal(JSON.stringify(repaired).includes(dataDir), false)
+    assert.equal(repairedQa.frames[0].visiblePixels > 0, true)
+    assert.equal(repairedQa.repairs[0].fileName, '0001.png')
+    assert.deepEqual(logsAfterRepair.logs.map((entry) => entry.event), ['run.created', 'action-frame.repaired'])
+    assert.equal(failedApprovalResponse.status, 400)
+    assert.equal(failedApproval.ok, false)
+    assert.match(failedApproval.error, /QA must pass/)
+    assert.equal(actionApproved.ok, true)
+    assert.equal(actionApproved.run.status, 'approved')
+    assert.equal(actionApproved.importCommand, 'import-approved-action')
+    assert.equal(actionApproved.actionReview.importStatus, 'not-imported')
+    assert.equal(actionApproved.run.artifacts.actionFrames.framesDir, undefined)
+    assert.equal(JSON.stringify(actionApproved).includes(dataDir), false)
+    assert.deepEqual(logsAfterApprove.logs.map((entry) => entry.event), ['run.created', 'action-frame.repaired', 'run.approved'])
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }
@@ -1803,6 +2016,14 @@ test('creator studio service exposes task review routes for dashboard clients', 
   const server = createCreatorStudioServer({ dataDir, dashboardPath })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
+  const postJsonResponse = async (pathname, body = {}) => {
+    const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    return { response, body: await response.json() }
+  }
   const postJson = (pathname, body = {}) => fetch(`http://127.0.0.1:${port}${pathname}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1814,15 +2035,21 @@ test('creator studio service exposes task review routes for dashboard clients', 
       prompt: '新增一个自定义动作：原地打滚，动作要循环。',
       backend: 'fixture'
     })
+    const earlyApproval = await postJsonResponse(`/api/runs/${draft.run.runId}/approve`)
     const answered = await postJson(`/api/runs/${draft.run.runId}/questions/trigger/answer`, {
       answer: 'click'
     })
     const confirmed = await postJson(`/api/runs/${draft.run.runId}/confirm`)
     const generated = await postJson(`/api/runs/${draft.run.runId}/generate-action`)
+    const approved = await postJson(`/api/runs/${draft.run.runId}/approve`)
+    const logs = await fetch(`http://127.0.0.1:${port}/api/runs/${draft.run.runId}/logs`).then((response) => response.json())
 
     assert.equal(draft.ok, true)
     assert.equal(draft.run.taskStatus, 'needs_input')
     assert.equal(draft.run.generationTask.questions[0].id, 'trigger')
+    assert.equal(earlyApproval.response.status, 400)
+    assert.equal(earlyApproval.body.ok, false)
+    assert.match(earlyApproval.body.error, /ready_for_review/)
     assert.equal(answered.ok, true)
     assert.equal(answered.run.taskStatus, 'ready_for_confirmation')
     assert.equal(answered.run.generationTask.questions.length, 0)
@@ -1831,7 +2058,17 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(generated.ok, true)
     assert.equal(generated.run.status, 'ready_for_review')
     assert.equal(generated.run.artifacts.actionTaskQa.endsWith('action-generation-task.json'), true)
-    assert.equal(fs.existsSync(generated.run.artifacts.actionTaskQa), true)
+    assert.equal(fs.existsSync(path.join(dataDir, generated.run.artifacts.actionTaskQa)), true)
+    assert.equal(JSON.stringify(generated).includes(dataDir), false)
+    assert.equal(approved.ok, true)
+    assert.equal(approved.run.status, 'approved')
+    assert.equal(approved.run.reviewStatus, 'approved')
+    assert.equal(approved.run.currentStep, 'approved')
+    assert.equal(approved.run.artifacts.generatedImage, undefined)
+    assert.equal(approved.importCommand, 'import-approved-pet')
+    assert.equal(approved.actionReview, null)
+    assert.equal(JSON.stringify(approved).includes(dataDir), false)
+    assert.equal(logs.logs.at(-1).event, 'run.approved')
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

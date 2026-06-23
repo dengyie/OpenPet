@@ -1,8 +1,9 @@
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
-const { listRuns, readRun, readRunLogs } = require('../lib/run-store')
+const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = require('../lib/run-store')
 const { runGenerationStep } = require('../lib/backend-runner')
+const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun } = require('../lib/task-workflow')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
@@ -46,7 +47,7 @@ const readJsonBody = (request, maxBytes = 64 * 1024) => new Promise((resolve, re
 })
 
 const sendError = (response, error) => {
-  const statusCode = /valid JSON|too large|invalid|remaining questions|not pending|required/i.test(error.message || '')
+  const statusCode = /valid JSON|too large|invalid|remaining questions|not pending|required|requires|must/i.test(error.message || '')
     ? 400
     : 500
   sendJson(response, statusCode, { ok: false, error: error.message || 'Creator Studio service failed' })
@@ -68,6 +69,76 @@ const assertPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   return target
 }
 
+const toDataRelativePath = ({ dataDir, targetPath }) => {
+  if (!dataDir || !targetPath) return ''
+  const root = path.resolve(String(dataDir))
+  const rawTarget = String(targetPath)
+  const target = path.isAbsolute(rawTarget) ? path.resolve(rawTarget) : path.resolve(root, rawTarget)
+  const relative = path.relative(root, target)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return ''
+  return relative.split(path.sep).join('/')
+}
+
+const toPublicLogString = ({ dataDir, value }) => {
+  const text = String(value || '')
+  if (!dataDir || !text) return text
+  if (path.isAbsolute(text)) {
+    const relative = toDataRelativePath({ dataDir, targetPath: text })
+    if (relative) return relative
+  }
+  const normalizedRoot = path.resolve(String(dataDir)).split(path.sep).join('/')
+  const normalizedText = text.replace(/\\/g, '/')
+  return normalizedText.includes(normalizedRoot)
+    ? normalizedText.split(normalizedRoot).join('OPENPET_DATA_DIR')
+    : text
+}
+
+const createPublicLogValue = ({ dataDir, value }) => {
+  if (typeof value === 'string') return toPublicLogString({ dataDir, value })
+  if (Array.isArray(value)) return value.map((entry) => createPublicLogValue({ dataDir, value: entry }))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+      key,
+      createPublicLogValue({ dataDir, value: entry })
+    ]))
+  }
+  return value
+}
+
+const createPublicLogEntry = ({ dataDir, entry }) => createPublicLogValue({ dataDir, value: entry })
+
+const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
+  const publicArtifacts = {}
+  if (artifacts.outputDir) publicArtifacts.outputDir = toDataRelativePath({ dataDir, targetPath: artifacts.outputDir })
+  if (artifacts.petJson) publicArtifacts.petJson = toDataRelativePath({ dataDir, targetPath: artifacts.petJson })
+  if (artifacts.spritesheet) publicArtifacts.spritesheet = toDataRelativePath({ dataDir, targetPath: artifacts.spritesheet })
+  if (artifacts.bundle) publicArtifacts.bundle = toDataRelativePath({ dataDir, targetPath: artifacts.bundle })
+  if (artifacts.qa) publicArtifacts.qa = toDataRelativePath({ dataDir, targetPath: artifacts.qa })
+  if (artifacts.sourceImageQa) {
+    publicArtifacts.sourceImageQa = toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa })
+  }
+  if (artifacts.actionTaskQa) {
+    publicArtifacts.actionTaskQa = toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa })
+  }
+  if (artifacts.actionFrames) {
+    publicArtifacts.actionFrames = {
+      actionId: artifacts.actionFrames.actionId,
+      name: artifacts.actionFrames.name,
+      qa: toDataRelativePath({ dataDir, targetPath: artifacts.actionFrames.qa }),
+      frameCount: artifacts.actionFrames.frameCount,
+      frameWidth: artifacts.actionFrames.frameWidth,
+      frameHeight: artifacts.actionFrames.frameHeight,
+      triggerProposal: artifacts.actionFrames.triggerProposal || { type: 'unbound' }
+    }
+  }
+  return publicArtifacts
+}
+
+const createPublicRun = ({ dataDir, run }) => ({
+  ...run,
+  artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} })
+})
+
 const getActionFramePath = ({ dataDir, run, actionId, fileName }) => {
   const actionFrames = run.artifacts?.actionFrames
   if (!actionFrames || actionFrames.actionId !== actionId) throw new Error('Action frame preview is not available')
@@ -86,7 +157,7 @@ const getActionFramePath = ({ dataDir, run, actionId, fileName }) => {
   return framePath
 }
 
-const createActionReview = (run) => {
+const createActionReview = ({ dataDir, run }) => {
   const actionFrames = run.artifacts?.actionFrames
   const action = Array.isArray(run.generationTask?.actions) ? run.generationTask.actions[0] : null
   if (!actionFrames) return null
@@ -107,43 +178,90 @@ const createActionReview = (run) => {
     frameCount,
     frameWidth: actionFrames.frameWidth || 0,
     frameHeight: actionFrames.frameHeight || 0,
-    qa: actionFrames.qa || '',
+    qa: toDataRelativePath({ dataDir, targetPath: actionFrames.qa }),
     previewFrames,
     triggerProposal: actionFrames.triggerProposal || action?.triggerProposal || { type: 'unbound' },
     importStatus: run.importStatus || 'not-imported'
   }
 }
 
+const assertActionFrameQaPassed = ({ dataDir, actionFrames }) => {
+  if (!actionFrames) return
+  if (!actionFrames.qa) throw new Error('Action frame QA must pass before approval')
+  const qaPath = assertPathInsideDataDir({
+    dataDir,
+    targetPath: actionFrames.qa,
+    label: 'Action frame QA'
+  })
+  if (!fs.existsSync(qaPath)) throw new Error('Action frame QA must pass before approval')
+  let qa
+  try {
+    qa = JSON.parse(fs.readFileSync(qaPath, 'utf-8'))
+  } catch (_) {
+    throw new Error('Action frame QA must be valid JSON before approval')
+  }
+  if (qa.ok !== true) throw new Error('Action frame QA must pass before approval')
+  if (qa.actionId !== actionFrames.actionId) throw new Error('Action frame QA actionId must match before approval')
+  if (Number(qa.frameCount) !== Number(actionFrames.frameCount)) {
+    throw new Error('Action frame QA frameCount must match before approval')
+  }
+  if (Number(qa.frameWidth) !== Number(actionFrames.frameWidth)) {
+    throw new Error('Action frame QA frameWidth must match before approval')
+  }
+  if (Number(qa.frameHeight) !== Number(actionFrames.frameHeight)) {
+    throw new Error('Action frame QA frameHeight must match before approval')
+  }
+  const frames = Array.isArray(qa.frames) ? qa.frames : []
+  if (frames.length !== Number(actionFrames.frameCount)) {
+    throw new Error('Action frame QA frames must be complete before approval')
+  }
+  frames.forEach((frame, index) => {
+    const expectedFileName = `${String(index + 1).padStart(4, '0')}.png`
+    if (frame?.fileName !== expectedFileName || Number(frame.visiblePixels) < 1) {
+      throw new Error('Action frame QA frames must be complete before approval')
+    }
+  })
+}
+
 const handlePost = async ({ request, response, dataDir, url }) => {
   try {
     const body = await readJsonBody(request)
     if (url.pathname === '/api/tasks/draft') {
-      sendJson(response, 200, { ok: true, ...draftTaskRun({ dataDir, payload: body }) })
+      const output = draftTaskRun({ dataDir, payload: body })
+      sendJson(response, 200, {
+        ok: true,
+        ...output,
+        run: createPublicRun({ dataDir, run: output.run })
+      })
       return true
     }
 
     const answerMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/questions\/([^/]+)\/answer$/)
     if (answerMatch) {
+      const output = answerTaskQuestion({
+        dataDir,
+        runId: decodeURIComponent(answerMatch[1]),
+        questionId: decodeURIComponent(answerMatch[2]),
+        answer: body.answer
+      })
       sendJson(response, 200, {
         ok: true,
-        ...answerTaskQuestion({
-          dataDir,
-          runId: decodeURIComponent(answerMatch[1]),
-          questionId: decodeURIComponent(answerMatch[2]),
-          answer: body.answer
-        })
+        ...output,
+        run: createPublicRun({ dataDir, run: output.run })
       })
       return true
     }
 
     const confirmMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/confirm$/)
     if (confirmMatch) {
+      const output = confirmTaskRun({
+        dataDir,
+        runId: decodeURIComponent(confirmMatch[1])
+      })
       sendJson(response, 200, {
         ok: true,
-        ...confirmTaskRun({
-          dataDir,
-          runId: decodeURIComponent(confirmMatch[1])
-        })
+        ...output,
+        run: createPublicRun({ dataDir, run: output.run })
       })
       return true
     }
@@ -156,9 +274,100 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       })
       sendJson(response, 200, {
         ok: true,
-        run: output.run,
-        actionReview: createActionReview(output.run),
-        outputDir: output.outputDir || ''
+        run: createPublicRun({ dataDir, run: output.run }),
+        actionReview: createActionReview({ dataDir, run: output.run }),
+        outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
+      })
+      return true
+    }
+
+    const approveMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/approve$/)
+    if (approveMatch) {
+      const runId = decodeURIComponent(approveMatch[1])
+      const current = readRun({ dataDir, runId })
+      if (current.status !== 'ready_for_review') {
+        throw new Error(`Run must be ready_for_review before approval: ${current.status}`)
+      }
+      assertActionFrameQaPassed({ dataDir, actionFrames: current.artifacts?.actionFrames })
+      const run = updateRunStatus({
+        dataDir,
+        runId,
+        status: 'approved',
+        patch: { reviewStatus: 'approved', currentStep: 'approved' }
+      })
+      appendRunLog({
+        dataDir,
+        runId,
+        level: 'info',
+        event: 'run.approved',
+        message: `Approved run ${runId}`,
+        data: { runId }
+      })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run }),
+        actionReview: createActionReview({ dataDir, run }),
+        importCommand: run.artifacts?.actionFrames ? 'import-approved-action' : 'import-approved-pet'
+      })
+      return true
+    }
+
+    const repairFrameMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/action-frames\/([^/]+)\/([^/]+)\/repair$/)
+    if (repairFrameMatch) {
+      const runId = decodeURIComponent(repairFrameMatch[1])
+      const actionId = decodeURIComponent(repairFrameMatch[2])
+      const fileName = decodeURIComponent(repairFrameMatch[3])
+      const run = readRun({ dataDir, runId })
+      const actionFrames = run.artifacts?.actionFrames
+      const action = Array.isArray(run.generationTask?.actions)
+        ? run.generationTask.actions.find((candidate) => candidate.actionId === actionId)
+        : null
+      if (run.status !== 'ready_for_review') {
+        throw new Error(`Action frame repair requires a reviewable run: ${run.status}`)
+      }
+      if (!actionFrames || actionFrames.actionId !== actionId || !action) {
+        throw new Error('Action frame repair is not available')
+      }
+      if (!run.artifacts?.generatedImage) {
+        throw new Error('Action frame repair requires generated image provenance')
+      }
+      const repair = await repairActionFrameFromGeneratedImage({
+        dataDir,
+        generationResult: run.artifacts.generatedImage,
+        action,
+        outputFramesDir: actionFrames.framesDir,
+        qaDir: actionFrames.qa ? path.dirname(actionFrames.qa) : path.join(dataDir, 'runs', runId, 'qa'),
+        fileName
+      })
+      const nextRun = updateRunStatus({
+        dataDir,
+        runId,
+        status: run.status,
+        patch: {
+          currentStep: 'review'
+        }
+      })
+      appendRunLog({
+        dataDir,
+        runId,
+        level: 'info',
+        event: 'action-frame.repaired',
+        message: `Repaired action frame ${fileName}`,
+        data: {
+          actionId,
+          fileName
+        }
+      })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run: nextRun }),
+        actionReview: createActionReview({ dataDir, run: nextRun }),
+        repair: {
+          actionId: repair.actionId,
+          fileName: repair.fileName,
+          frameIndex: repair.frameIndex,
+          qa: toDataRelativePath({ dataDir, targetPath: repair.qaPath })
+        }
       })
       return true
     }
@@ -180,7 +389,7 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
     if (await handlePost({ request, response, dataDir, url })) return
   }
   if (url.pathname === '/api/runs') {
-    sendJson(response, 200, { ok: true, runs: listRuns({ dataDir }) })
+    sendJson(response, 200, { ok: true, runs: listRuns({ dataDir }).map((run) => createPublicRun({ dataDir, run })) })
     return
   }
 
@@ -189,11 +398,19 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
     const runId = decodeURIComponent(runMatch[1])
     try {
       if (runMatch[2] === '/logs') {
-        sendJson(response, 200, { ok: true, runId, logs: readRunLogs({ dataDir, runId }) })
+        sendJson(response, 200, {
+          ok: true,
+          runId,
+          logs: readRunLogs({ dataDir, runId }).map((entry) => createPublicLogEntry({ dataDir, entry }))
+        })
         return
       }
       const run = readRun({ dataDir, runId })
-      sendJson(response, 200, { ok: true, run, actionReview: createActionReview(run) })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run }),
+        actionReview: createActionReview({ dataDir, run })
+      })
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Run not found' })

@@ -104,6 +104,13 @@
         margin-top: 14px;
       }
 
+      .run-picker {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: end;
+      }
+
       button {
         border: 0;
         border-radius: 999px;
@@ -153,6 +160,19 @@
         gap: 14px;
       }
 
+      .handoff {
+        border: 1px dashed rgba(39, 63, 67, 0.45);
+        border-radius: 14px;
+        background: rgba(237, 243, 238, 0.72);
+        color: var(--ink);
+        padding: 12px;
+      }
+
+      .handoff strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
       .contact-sheet {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -184,9 +204,17 @@
       }
 
       .frame-card span {
+        display: block;
         color: var(--muted);
         font-size: 11px;
         font-weight: 700;
+      }
+
+      .frame-card button {
+        margin-top: 6px;
+        padding: 6px 10px;
+        width: 100%;
+        font-size: 11px;
       }
 
       @media (max-width: 820px) {
@@ -221,10 +249,20 @@
               <option value="local">local</option>
             </select>
           </div>
+          <div class="run-picker">
+            <div>
+              <label for="run-select">Recent runs</label>
+              <select id="run-select" disabled>
+                <option value="">No runs yet</option>
+              </select>
+            </div>
+            <button id="reload-runs-button" class="secondary" type="button">Reload</button>
+          </div>
           <div class="actions">
             <button id="draft-button">Draft task</button>
             <button id="confirm-button" class="secondary" disabled>Confirm task</button>
             <button id="generate-button" class="secondary" disabled>Generate action</button>
+            <button id="approve-button" class="secondary" disabled>Approve run</button>
           </div>
           <p id="status-line" class="status">Ready.</p>
         </section>
@@ -241,6 +279,10 @@
           <section>
             <h2>Trigger Proposal</h2>
             <section id="trigger-panel">No trigger proposal yet.</section>
+          </section>
+          <section>
+            <h2>Import Handoff</h2>
+            <section id="import-handoff-panel">Generate and approve an action to unlock host-owned import.</section>
           </section>
         </aside>
       </div>
@@ -262,7 +304,7 @@
     </main>
 
     <script>
-      const state = { run: null, actionReview: null }
+      const state = { run: null, actionReview: null, runs: [] }
       const $ = (id) => document.getElementById(id)
 
       const setStatus = (message, kind = '') => {
@@ -289,21 +331,57 @@
         "'": '&#39;'
       })[character])
 
-      const fetchRunDetail = async () => {
-        if (!state.run?.runId) return
-        const payload = await fetch(`/api/runs/${encodeURIComponent(state.run.runId)}`).then((response) => response.json())
+      const formatRunLabel = (run) => {
+        const action = Array.isArray(run?.generationTask?.actions) ? run.generationTask.actions[0] : null
+        const name = action?.name || run?.input?.petName || run?.petId || run?.runId || 'Run'
+        return `${run?.status || 'unknown'} - ${name} - ${run?.runId || ''}`
+      }
+
+      const renderRunList = () => {
+        const runs = Array.isArray(state.runs) ? state.runs : []
+        $('run-select').disabled = runs.length === 0
+        $('run-select').innerHTML = runs.length
+          ? runs.map((run) => (
+            `<option value="${escapeHtml(run.runId)}" ${run.runId === state.run?.runId ? 'selected' : ''}>${escapeHtml(formatRunLabel(run))}</option>`
+          )).join('')
+          : '<option value="">No runs yet</option>'
+      }
+
+      const refreshRunList = async () => {
+        const payload = await fetch('/api/runs').then((response) => response.json())
+        if (!payload.ok) throw new Error(payload.error || 'Failed to load run list')
+        state.runs = Array.isArray(payload.runs) ? payload.runs : []
+        renderRunList()
+        return state.runs
+      }
+
+      const fetchRunDetail = async (runId = state.run?.runId) => {
+        if (!runId) return
+        const payload = await fetch(`/api/runs/${encodeURIComponent(runId)}`).then((response) => response.json())
         if (!payload.ok) throw new Error(payload.error || 'Failed to load run detail')
         state.run = payload.run
         state.actionReview = payload.actionReview || null
+        renderRunList()
       }
+
+      const loadRun = async (runId, statusMessage = '') => {
+        if (!runId) return
+        await fetchRunDetail(runId)
+        renderRun()
+        await refreshLogs()
+        if (statusMessage) setStatus(statusMessage, 'ok')
+      }
+
+      const frameSrc = (frame) => `${frame.url}${frame.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(state.run?.updatedAt || '')}`
 
       const renderFramePreview = (review) => {
         const frames = Array.isArray(review?.previewFrames) ? review.previewFrames : []
         if (!frames.length) return '<p>No frame previews available yet.</p>'
         return `<div class="contact-sheet">${frames.map((frame) => (
           `<figure class="frame-card">` +
-          `<img alt="${escapeHtml(frame.fileName)}" src="${escapeHtml(frame.url)}">` +
+          `<img alt="${escapeHtml(frame.fileName)}" src="${escapeHtml(frameSrc(frame))}">` +
           `<span>${escapeHtml(frame.fileName)}</span>` +
+          `<button type="button" class="secondary" data-repair-frame="${escapeHtml(frame.fileName)}">Repair</button>` +
           `</figure>`
         )).join('')}</div>`
       }
@@ -316,8 +394,11 @@
           $('trigger-panel').textContent = 'No trigger proposal yet.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+          $('import-handoff-panel').textContent = 'Generate and approve an action to unlock host-owned import.'
+          $('run-logs').textContent = 'No logs yet.'
           $('confirm-button').disabled = true
           $('generate-button').disabled = true
+          $('approve-button').disabled = true
           return
         }
         const action = run.generationTask.actions[0]
@@ -336,7 +417,8 @@
           $('question-panel').textContent = 'No pending question.'
         }
         $('confirm-button').disabled = Boolean(question) || run.taskStatus === 'confirmed'
-        $('generate-button').disabled = Boolean(question)
+        $('generate-button').disabled = Boolean(question) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status)
+        $('approve-button').disabled = run.status !== 'ready_for_review'
         const actionFrames = run.artifacts?.actionFrames
         const actionReview = state.actionReview
         if (actionFrames) {
@@ -346,11 +428,39 @@
             `<p>Frames: ${escapeHtml(actionFrames.frameCount)} at ${escapeHtml(actionFrames.frameWidth)}x${escapeHtml(actionFrames.frameHeight)}</p>`,
             `<p>QA: ${escapeHtml(actionFrames.qa || 'action-frame-validation.json')}</p>`,
             `<p>Trigger proposal is review-only: ${escapeHtml((actionFrames.triggerProposal || action.triggerProposal).type)}</p>`,
+            `<p>Review status: ${escapeHtml(run.reviewStatus || 'pending')} / Import status: ${escapeHtml(run.importStatus || 'not-imported')}</p>`,
             renderFramePreview(actionReview)
           ].join('')
+          if (run.status === 'approved') {
+            $('import-handoff-panel').innerHTML = [
+              '<div class="handoff">',
+              '<strong>Approved. Ready for host-owned import.</strong>',
+              '<p>Run the Creator Studio command <code>Import Approved Action</code> from Control Center → Plugins. The dashboard service cannot import directly because the OpenPet bridge token is only issued to command runs.</p>',
+              '</div>'
+            ].join('')
+          } else if (run.status === 'imported') {
+            $('import-handoff-panel').innerHTML = [
+              '<div class="handoff">',
+              `<strong>Imported action: ${escapeHtml(run.importedActionId || actionFrames.actionId)}</strong>`,
+              '<p>The action frames have been handed to OpenPet through the host import bridge.</p>',
+              '</div>'
+            ].join('')
+          } else {
+            $('import-handoff-panel').textContent = 'Review the generated frames, repair any bad frame, then approve the action.'
+          }
         } else {
           $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+          if (run.status === 'approved') {
+            $('import-handoff-panel').innerHTML = [
+              '<div class="handoff">',
+              '<strong>Approved pet-pack output.</strong>',
+              '<p>No action frame folder is available for action import. Use the Creator Studio command <code>Import Approved Pet</code>, or generate with a cloud/local provider to create action frames for <code>Import Approved Action</code>.</p>',
+              '</div>'
+            ].join('')
+          } else {
+            $('import-handoff-panel').textContent = 'Generate action frames before action import handoff.'
+          }
         }
       }
 
@@ -372,6 +482,7 @@
           state.actionReview = payload.actionReview || null
           renderRun()
           await refreshLogs()
+          await refreshRunList()
           setStatus('Task drafted.', 'ok')
         } catch (error) {
           setStatus(error.message, 'error')
@@ -387,7 +498,25 @@
           state.actionReview = payload.actionReview || null
           renderRun()
           await refreshLogs()
+          await refreshRunList()
           setStatus('Question answered.', 'ok')
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      $('action-review-panel').addEventListener('click', async (event) => {
+        const fileName = event.target?.dataset?.repairFrame
+        const actionId = state.actionReview?.actionId
+        if (!fileName || !state.run?.runId || !actionId) return
+        try {
+          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/action-frames/${encodeURIComponent(actionId)}/${encodeURIComponent(fileName)}/repair`)
+          state.run = payload.run
+          state.actionReview = payload.actionReview || null
+          renderRun()
+          await refreshLogs()
+          await refreshRunList()
+          setStatus(`Repaired ${fileName}.`, 'ok')
         } catch (error) {
           setStatus(error.message, 'error')
         }
@@ -401,6 +530,7 @@
           state.actionReview = payload.actionReview || null
           renderRun()
           await refreshLogs()
+          await refreshRunList()
           setStatus('Task confirmed.', 'ok')
         } catch (error) {
           setStatus(error.message, 'error')
@@ -416,7 +546,56 @@
           if (!state.actionReview) await fetchRunDetail()
           renderRun()
           await refreshLogs()
+          await refreshRunList()
           setStatus(`Generated action output in ${payload.outputDir || 'run workspace'}.`, 'ok')
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      $('approve-button').addEventListener('click', async () => {
+        if (!state.run?.runId) return
+        try {
+          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/approve`)
+          state.run = payload.run
+          state.actionReview = payload.actionReview || null
+          renderRun()
+          await refreshLogs()
+          await refreshRunList()
+          setStatus(`Run approved. Use the ${payload.importCommand || 'import'} plugin command for host-owned import.`, 'ok')
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      $('run-select').addEventListener('change', async (event) => {
+        const runId = event.target?.value
+        if (!runId) return
+        try {
+          await loadRun(runId, `Loaded run ${runId}.`)
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      $('reload-runs-button').addEventListener('click', async () => {
+        try {
+          const runs = await refreshRunList()
+          const runId = state.run?.runId || runs[0]?.runId
+          if (runId) await loadRun(runId, 'Runs refreshed.')
+          else {
+            renderRun()
+            setStatus('No runs yet.', 'ok')
+          }
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          const runs = await refreshRunList()
+          if (runs[0]?.runId) await loadRun(runs[0].runId, 'Loaded latest run.')
         } catch (error) {
           setStatus(error.message, 'error')
         }

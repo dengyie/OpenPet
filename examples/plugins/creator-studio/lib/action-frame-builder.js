@@ -22,6 +22,24 @@ const normalizeFrameCount = (value) => {
   return count
 }
 
+const normalizeFrameIndex = ({ fileName, frameCount }) => {
+  const match = String(fileName || '').match(/^(\d{4})\.png$/)
+  if (!match) throw new Error('Creator Studio action frame fileName is invalid')
+  const frameIndex = Number(match[1]) - 1
+  if (!Number.isInteger(frameIndex) || frameIndex < 0 || frameIndex >= frameCount) {
+    throw new Error('Creator Studio action frame fileName is outside the action frame range')
+  }
+  return frameIndex
+}
+
+const isCompleteFrameEvidence = ({ frames, frameCount }) => Array.from({ length: frameCount }, (_entry, index) => {
+  const frame = frames[index]
+  return frame?.fileName === `${String(index + 1).padStart(4, '0')}.png` &&
+    Number(frame.width) === FRAME_WIDTH &&
+    Number(frame.height) === FRAME_HEIGHT &&
+    Number(frame.visiblePixels) > 0
+}).every(Boolean)
+
 const writeJson = (filePath, value) => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
@@ -198,6 +216,95 @@ const buildActionFramesFromGeneratedImage = async ({
   }
 }
 
+const repairActionFrameFromGeneratedImage = async ({
+  dataDir,
+  generationResult,
+  action,
+  outputFramesDir,
+  qaDir,
+  fileName,
+  now = () => new Date().toISOString()
+}) => {
+  const actionId = String(action?.actionId || '').trim()
+  assertSafeActionId(actionId)
+  const frameCount = normalizeFrameCount(action?.frameCount || 16)
+  const frameIndex = normalizeFrameIndex({ fileName, frameCount })
+  const { sourcePath, sourceRelativePath } = resolveGeneratedImagePath({ dataDir, generationResult })
+  const safeOutputFramesDir = assertWritablePathInsideDataDir({
+    dataDir,
+    targetPath: outputFramesDir,
+    label: 'action frames output directory'
+  })
+  const safeQaDir = assertWritablePathInsideDataDir({
+    dataDir,
+    targetPath: qaDir,
+    label: 'action QA directory'
+  })
+
+  fs.mkdirSync(safeOutputFramesDir, { recursive: true })
+  fs.mkdirSync(safeQaDir, { recursive: true })
+  const baseFrame = await createBaseFrame(sourcePath)
+  const framePath = path.join(safeOutputFramesDir, fileName)
+  fs.writeFileSync(framePath, await createFrameVariant({ baseFrame, index: frameIndex, frameCount }))
+  const frame = {
+    fileName,
+    width: FRAME_WIDTH,
+    height: FRAME_HEIGHT,
+    visiblePixels: await countVisiblePixels(framePath),
+    repairedAt: now()
+  }
+
+  const qaPath = path.join(safeQaDir, 'action-frame-validation.json')
+  const currentQa = fs.existsSync(qaPath)
+    ? JSON.parse(fs.readFileSync(qaPath, 'utf-8'))
+    : {
+        ok: true,
+        actionId,
+        name: String(action?.name || actionId),
+        sourceRelativePath,
+        frameCount,
+        frameWidth: FRAME_WIDTH,
+        frameHeight: FRAME_HEIGHT,
+        loop: Boolean(action?.loop),
+        triggerProposal: action?.triggerProposal || { type: 'unbound' },
+        frames: [],
+        warnings: []
+  }
+  const frames = Array.isArray(currentQa.frames) ? currentQa.frames.slice() : []
+  frames[frameIndex] = frame
+  const qaComplete = isCompleteFrameEvidence({ frames, frameCount })
+  const warnings = Array.isArray(currentQa.warnings) ? currentQa.warnings.slice() : []
+  const incompleteWarning = 'Action frame QA is incomplete after repair.'
+  const nextWarnings = qaComplete
+    ? warnings.filter((warning) => warning !== incompleteWarning)
+    : [...new Set([...warnings, incompleteWarning])]
+  writeJson(qaPath, {
+    ...currentQa,
+    ok: qaComplete,
+    actionId,
+    sourceRelativePath: currentQa.sourceRelativePath || sourceRelativePath,
+    frameCount,
+    frameWidth: FRAME_WIDTH,
+    frameHeight: FRAME_HEIGHT,
+    frames,
+    warnings: nextWarnings,
+    repairs: [
+      ...(Array.isArray(currentQa.repairs) ? currentQa.repairs : []),
+      { fileName, repairedAt: frame.repairedAt }
+    ]
+  })
+
+  return {
+    actionId,
+    fileName,
+    frameIndex,
+    frame,
+    framePath,
+    qaPath
+  }
+}
+
 module.exports = {
-  buildActionFramesFromGeneratedImage
+  buildActionFramesFromGeneratedImage,
+  repairActionFrameFromGeneratedImage
 }
