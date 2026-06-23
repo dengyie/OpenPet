@@ -83,7 +83,6 @@ export interface AiPaneProps {
   onChange: (partial: Partial<AiConfigViewState>) => void
   onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
   onSave: () => void | Promise<void>
-  onSaveAndTest: () => void | Promise<void>
   onSaveApiKey: () => void | Promise<void>
   onTest: () => void | Promise<void>
   onSaveImageGeneration: () => void | Promise<void>
@@ -148,7 +147,6 @@ export function AiPane({
   onChange,
   onChangeImageGeneration,
   onSave,
-  onSaveAndTest,
   onSaveApiKey,
   onTest,
   onSaveImageGeneration,
@@ -223,18 +221,6 @@ export function AiPane({
       </header>
 
       <CollapsibleAiSection title="聊天 Provider" note="OpenAI-compatible 聊天模型配置" defaultOpen>
-        <div className="section-actions">
-          <button type="button" className="ghost" onClick={onTest} disabled={saving}>
-            测试已保存配置
-          </button>
-          <button type="button" className="ghost" onClick={onSaveAndTest} disabled={saveDisabled}>
-            保存并测试聊天 Provider
-          </button>
-          <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
-            {saving ? '保存中' : '保存聊天 Provider'}
-          </button>
-        </div>
-
         <div className="section provider-summary" data-testid="ai-provider-summary">
           <div className="readonly-row">
             <strong>当前生效配置</strong>
@@ -250,7 +236,7 @@ export function AiPane({
             <div className="provider-warning" data-testid="ai-provider-dirty-warning">
               <strong>未保存修改：</strong> {providerConfigChanges.join(' / ') || 'Provider 草稿'}
               <br />
-              你有未保存的 Provider 草稿。点击“测试已保存配置”不会使用这些草稿；点击“保存并测试聊天 Provider”会先保存再测试。
+              你有未保存的 Provider 草稿。点击“保存聊天 Provider”只保存配置；点击“测试已保存配置”只测试当前已保存配置，不会偷用草稿。
             </div>
           ) : null}
           {providerConfigValidationError ? (
@@ -330,6 +316,38 @@ export function AiPane({
               onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
             />
           </div>
+        </div>
+
+        {(connectionStatus || connectionTestResult) ? (
+          <div
+            className={`provider-feedback ${connectionTestResult ? (connectionTestResult.ok ? 'ok' : 'error') : ''}`}
+            data-testid="ai-provider-feedback"
+            aria-live="polite"
+          >
+            <strong>聊天 Provider 状态</strong>
+            {connectionStatus ? <span>{connectionStatus}</span> : null}
+            {connectionTestResult ? (
+              <div className="connection-result" data-testid="ai-connection-result">
+                <strong>{connectionTestResult.ok ? '连接测试通过' : '连接测试失败'}</strong>
+                <span>Provider: {connectionTestResult.provider}</span>
+                <span>Base URL: {connectionTestResult.baseUrl}</span>
+                <span>Model: {connectionTestResult.model}</span>
+                <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
+                <span>耗时: {connectionTestResult.elapsedMs}ms</span>
+                {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
+                {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="section-actions provider-actions-bottom">
+          <button type="button" className="ghost" onClick={onTest} disabled={saving}>
+            测试已保存配置
+          </button>
+          <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
+            {saving ? '保存中' : '保存聊天 Provider'}
+          </button>
         </div>
       </CollapsibleAiSection>
 
@@ -616,21 +634,6 @@ export function AiPane({
       </CollapsibleAiSection>
 
       {status ? <div className="status-line" data-testid="ai-status-line">{status}</div> : null}
-
-      {connectionStatus ? <div className="status-line">{connectionStatus}</div> : null}
-
-      {connectionTestResult ? (
-        <div className={`connection-result ${connectionTestResult.ok ? 'ok' : 'error'}`} data-testid="ai-connection-result" aria-live="polite">
-          <strong>{connectionTestResult.ok ? '连接测试通过' : '连接测试失败'}</strong>
-          <span>Provider: {connectionTestResult.provider}</span>
-          <span>Base URL: {connectionTestResult.baseUrl}</span>
-          <span>Model: {connectionTestResult.model}</span>
-          <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
-          <span>耗时: {connectionTestResult.elapsedMs}ms</span>
-          {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
-          {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
-        </div>
-      ) : null}
 
       <CollapsibleAiSection title="Behavior" note="AI 回复到宠物动作的编排与诊断">
         <div className="section">

@@ -207,35 +207,34 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('switch', { name: 'Enable AI memory' }).click()
     await expect(page.getByTestId('ai-provider-dirty-warning')).toContainText('未保存的 Provider 草稿')
     await expect(page.getByTestId('ai-provider-dirty-warning')).toContainText('Base URL / Model / System Prompt / 长期记忆')
+    await expect(chatProviderSection.getByRole('button', { name: '保存并测试聊天 Provider' })).toHaveCount(0)
+
     const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
     const apiKeyInput = page.getByPlaceholder('输入 API Key')
     await apiKeyInput.fill('   ')
-    await chatProviderSection.getByRole('button', { name: '保存并测试聊天 Provider' }).click()
-    await expect(page.getByTestId('ai-status-line')).toContainText('保存并测试中止：API Key 保存失败：API Key 不能为空')
+    await expect(apiKeyRow.getByRole('button', { name: '保存密钥' })).toBeDisabled()
+
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前存在未保存修改')
+    await expect(page.getByTestId('ai-connection-result')).toContainText('gpt-4o-mini')
     await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('https://ai.example.test/v1')
-    await apiKeyInput.fill('')
 
     await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
-    await expect(page.getByTestId('ai-status-line')).toContainText('AI 配置已保存：Base URL / Model / System Prompt / 长期记忆')
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('AI 配置已保存：Base URL / Model / System Prompt / 长期记忆')
     await expect(page.getByTestId('ai-provider-active-summary')).toContainText('OpenAI compatible · https://ai.example.test/v1 · openpet-test-model')
 
     await apiKeyInput.fill('   ')
     await expect(apiKeyRow.getByRole('button', { name: '保存密钥' })).toBeDisabled()
-    await chatProviderSection.getByRole('button', { name: '保存并测试聊天 Provider' }).click()
-    await expect(page.getByTestId('ai-status-line')).toContainText('API Key 不能为空')
 
     await apiKeyInput.fill('sk-demo-secret')
     await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
-    await expect(page.getByTestId('ai-status-line')).toContainText('API Key 已保存')
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('API Key 已保存')
     await expect(apiKeyRow).toContainText('已保存')
 
-    await chatProviderSection.getByRole('button', { name: '保存并测试聊天 Provider' }).click()
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('连接正常')
     await expect(page.getByTestId('ai-connection-result')).toContainText('连接测试通过')
     await expect(page.getByTestId('ai-connection-result')).toContainText('openpet-test-model')
-    await expect(page.getByTestId('ai-status-line')).toContainText('连接测试通过：OpenAI compatible · https://ai.example.test/v1 · openpet-test-model')
-
-    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
-    await expect(page.locator('.status-line', { hasText: '连接正常' })).toContainText('openpet-test-model')
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
@@ -247,7 +246,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 
-  test('save and test uses the current AI drafts as one flow in the demo API', async ({ page }) => {
+  test('AI provider save and test stay separate in the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
     const chatProviderSection = await expandAiSection(page, '聊天 Provider')
@@ -256,11 +255,17 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('textbox', { name: 'Model', exact: true }).fill('combo-test-model')
     await page.getByPlaceholder('输入 API Key').fill('sk-combo-secret')
 
-    await chatProviderSection.getByRole('button', { name: '保存并测试聊天 Provider' }).click()
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
+    await expect(page.getByTestId('ai-provider-feedback')).not.toContainText('combo-test-model')
+    await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('https://combo.example.test/v1')
+
+    await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+    await page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) }).getByRole('button', { name: '保存密钥' }).click()
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
 
     await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://combo.example.test/v1')
     await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('combo-test-model')
-    await expect(page.locator('.status-line', { hasText: '连接正常' })).toContainText('openai-compatible · https://combo.example.test/v1 · combo-test-model')
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('openai-compatible · https://combo.example.test/v1 · combo-test-model')
     await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 

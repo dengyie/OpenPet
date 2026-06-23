@@ -231,6 +231,10 @@ button {
   padding: 0 0 12px;
 }
 
+.provider-actions-bottom {
+  padding: 14px 0 0;
+}
+
 .field-row,
 .readonly-row {
   display: grid;
@@ -739,12 +743,42 @@ button {
   color: #b91c1c;
 }
 
+.provider-feedback {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #64748b;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.provider-feedback > strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.provider-feedback.ok {
+  border-color: #bbf7d0;
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.provider-feedback.error {
+  border-color: #fecaca;
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
 .connection-result {
   display: grid;
   gap: 5px;
-  padding: 12px 0;
-  border-top: 1px solid #dde2e8;
-  border-bottom: 1px solid #dde2e8;
+  padding: 8px 0 0;
+  border-top: 1px solid rgba(100, 116, 139, 0.25);
   color: #4b5563;
   font-size: 12px;
 }

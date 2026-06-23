@@ -14,7 +14,6 @@ import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
 import {
   formatActiveProviderSummary,
-  formatConnectionTestStatus,
   getProviderConfigChanges,
   hasProviderConfigChanges,
   normalizeProviderBaseUrl,
@@ -39,11 +38,6 @@ const parseBehaviorRules = (rulesText: string): AiBehaviorRule[] => {
   const parsed: unknown = JSON.parse(rulesText || '[]')
   if (!Array.isArray(parsed)) throw new Error('Behavior rules must be a JSON array')
   return parsed as AiBehaviorRule[]
-}
-
-const formatStepError = (error: unknown, context: string) => {
-  const message = messageFromError(error, context)
-  return message === context ? context : `${context}：${message}`
 }
 
 const personaFields = ['name', 'identity', 'tone', 'speakingStyle', 'relationshipToUser', 'actionStyle'] as const
@@ -284,13 +278,13 @@ export function useAiPane(activeTab = 'ai') {
   const onSave = async () => {
     setSaving(true)
     setStatus('')
-    setConnectionStatus('')
+    setConnectionStatus('保存聊天 Provider 中')
     try {
       const { changedFields } = await saveProviderConfigDraft()
       setConnectionTestResult(null)
-      setStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
+      setConnectionStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
     } catch (error) {
-      setStatus(messageFromError(error, '保存失败'))
+      setConnectionStatus(messageFromError(error, '保存失败'))
     } finally {
       setSaving(false)
     }
@@ -393,16 +387,16 @@ export function useAiPane(activeTab = 'ai') {
   const onSaveApiKey = async () => {
     setSaving(true)
     setStatus('')
-    setConnectionStatus('')
+    setConnectionStatus('保存 API Key 中')
     try {
       const result = await saveApiKeyDraft()
       if (!result) {
-        setStatus('API Key 未修改')
+        setConnectionStatus('API Key 未修改')
       } else {
-        setStatus(result.updatedAt ? `API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'API Key 已保存')
+        setConnectionStatus(result.updatedAt ? `API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'API Key 已保存')
       }
     } catch (error) {
-      setStatus(messageFromError(error, '保存失败'))
+      setConnectionStatus(messageFromError(error, '保存失败'))
     } finally {
       setSaving(false)
     }
@@ -486,59 +480,6 @@ export function useAiPane(activeTab = 'ai') {
     } catch (error) {
       setConnectionTestResult(null)
       setConnectionStatus(messageFromError(error, '连接失败'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const onSaveAndTest = async () => {
-    setSaving(true)
-    setStatus('')
-    setConnectionStatus('保存并测试中')
-    setConnectionTestResult(null)
-    try {
-      const keyDraft = apiKeyDraft.trim()
-      if ((apiKeyDraft && !keyDraft) || (!keyDraft && !activeConfig.hasApiKey)) {
-        setStatus(formatStepError(new Error('API Key 不能为空'), '保存并测试中止：API Key 保存失败'))
-        setConnectionStatus('')
-        return
-      }
-
-      let keyResult: Awaited<ReturnType<typeof saveApiKeyDraft>> = null
-      try {
-        keyResult = await saveApiKeyDraft()
-      } catch (error) {
-        setStatus(formatStepError(error, '保存并测试中止：API Key 保存失败'))
-        setConnectionStatus('')
-        return
-      }
-
-      let changedFields: string[] = []
-      try {
-        ({ changedFields } = await saveProviderConfigDraft())
-      } catch (error) {
-        const prefix = keyResult ? 'API Key 已保存，但 ' : ''
-        setStatus(`${prefix}${formatStepError(error, '配置保存失败')}`)
-        setConnectionStatus('')
-        return
-      }
-
-      const result = await api.testAiConnection()
-      setConnectionTestResult(result)
-      setConnectionStatus(formatConnectionStatus({
-        result,
-        hasUnsavedConfigChanges: false,
-        hasUnsavedApiKeyDraft: false
-      }))
-      const savedParts = [
-        changedFields.length ? `配置：${changedFields.join(' / ')}` : '',
-        keyResult ? 'API Key：已保存' : ''
-      ].filter(Boolean)
-      const prefix = savedParts.length ? `${savedParts.join('；')}。` : ''
-      setStatus(`${prefix}${formatConnectionTestStatus(result)}`)
-    } catch (error) {
-      setStatus(formatStepError(error, '配置已保存，但连接测试失败'))
-      setConnectionStatus('')
     } finally {
       setSaving(false)
     }
@@ -693,7 +634,6 @@ export function useAiPane(activeTab = 'ai') {
       ...partial
     })),
     onSave,
-    onSaveAndTest,
     onSaveImageGeneration,
     onSavePersonaOverride,
     onResetPersonaOverride,
