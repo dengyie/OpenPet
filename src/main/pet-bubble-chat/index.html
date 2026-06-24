@@ -17,7 +17,12 @@
           </div>
         </header>
         <p id="message-text">...</p>
-        <div class="mini-input-placeholder" aria-hidden="true">迷你回复输入将在下一阶段接入</div>
+        <p class="last-user-message" id="last-user-message" hidden></p>
+        <p class="error-message" id="error-message" hidden></p>
+        <form class="mini-input-form" id="mini-input-form">
+          <textarea id="mini-input" rows="1" placeholder="回复宠物..." aria-label="回复宠物"></textarea>
+          <button type="submit" id="send-button">发送</button>
+        </form>
       </div>
     </main>
     <script src="./renderer.js"></script>

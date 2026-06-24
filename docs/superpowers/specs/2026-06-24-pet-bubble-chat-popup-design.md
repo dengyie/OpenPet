@@ -2,7 +2,7 @@
 
 日期：2026-06-24
 基线：`main@a317ec5` (`feat(chat): unify pet chat surfaces`)
-状态：设计冻结，待实现
+状态：设计冻结，作为后续 BubbleChat milestone 的开发入口
 
 ## Milestone 执行契约
 
@@ -91,6 +91,59 @@ OpenPet 现在已有三类与宠物说话相关的能力：
 - 非 AI 来源的 `petService.say()` 进入独立 pet utterance log。
 - AI Talk 构造上下文时读取最近少量 pet utterance，作为带来源标记的 recent pet activity。
 - pet utterance 不直接写入主 chat messages，不触发长期记忆抽取。
+
+## 本轮模块划分结论
+
+本轮新增能力不是把现有聊天功能再做一遍，而是把 OpenPet 的对话体验拆成三层，各层只承担自己擅长的交互重量：
+
+1. 普通宠物气泡：继续留在宠物透明窗口内，作为最短、最轻的反馈层，只展示 `petService.say()` 的即时文本，不承担输入、复制、历史、AI 请求或复杂状态。
+2. 头顶轻聊天 BubbleChatWindow：新增独立 Electron `BrowserWindow`，锚定宠物上方，默认 popup；承接所有 `petService.say()` 的可读展示和快速回复。它比普通气泡重一点，可以选中文本、复制、定格、折叠输入，但不显示完整历史。
+3. 完整桌面聊天窗：继续作为重聊天入口，承载完整历史、较长对话、后续流式回复、多会话和更完整的聊天控制。BubbleChatWindow 需要能复用同一条 AI Talk 主会话，而不是另开一套聊天系统。
+
+最终边界：
+
+- `PetService` 仍是宠物状态与发声唯一入口，所有宠物说话都必须从 `petService.say()` 进入。
+- `ipc.js` 是主分发点，负责把一次 say 同时送到普通宠物气泡、轻聊天 popup、完整聊天状态和 pet utterance log。
+- `AiTalkService` 是对话智能核心，BubbleChatWindow 只通过主进程 IPC 复用它，不直连 provider。
+- `PetBubbleChatWindowManager` 是轻聊天窗口唯一状态源，负责 popup 生命周期、定位、TTL、pin/interacting、发送中/错误 UI 状态。
+- Control Center 的 Pet 页只提供开关和基础行为设置，不承载轻聊天运行时状态。
+
+## 用户交互模型
+
+### 默认 popup
+
+BubbleChatWindow 默认不常驻。有新宠物发言时自动出现；没有用户操作时按消息长度自动隐藏。隐藏只隐藏窗口，不销毁实例，下一次消息复用窗口。
+
+### 用户操作后定格
+
+以下行为会让 popup 定格，避免用户正读、正复制或正输入时窗口突然消失：
+
+- 鼠标进入窗口；
+- 点击卡片或操作按钮；
+- 选中文本；
+- 聚焦迷你输入框；
+- 输入框存在草稿；
+- 消息正在发送；
+- 发送失败，需要保留错误提示。
+
+一期通过 Esc、关闭按钮、发送成功后的空草稿状态恢复自动隐藏。点击外部自动 unpin 放入 backlog，避免先把桌面焦点问题做复杂。
+
+### 迷你输入框
+
+迷你输入框默认折叠，只露出轻量入口。hover、click、focus 或开始输入后展开。Enter 发送，Shift+Enter 换行，Esc 优先收起/清空草稿，空草稿时隐藏 popup。
+
+发送成功后：
+
+- 用户消息和助手回复写入当前 active pet-pack 的 AI Talk 主会话；
+- 助手回复继续通过 `petService.say({ source: 'ai' })` 触发普通气泡和 BubbleChatWindow；
+- Control Center AI 页和完整桌面聊天窗读取同一条 `control-center:{petPackId}:main` 会话历史。
+
+发送失败后：
+
+- popup 保持可见；
+- 输入框保留或恢复用户草稿；
+- UI 展示脱敏错误；
+- 日志只记录错误分类、字符数和耗时，不记录用户原文。
 
 ## 当前架构事实
 

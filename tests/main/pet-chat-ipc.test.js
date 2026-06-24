@@ -287,6 +287,123 @@ test('pet bubble chat IPC delegates state, hide, pin and interaction updates', a
   ])
 })
 
+test('pet bubble chat send reuses shared AI Talk conversation and updates popup state', async () => {
+  const prompt = 'bubble secret prompt'
+  const reply = 'bubble reply'
+  const talkCalls = []
+  const popupStates = []
+  const logs = []
+  let conversationMessages = []
+  const ipcMain = registerPetChatHandlers({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        hasApiKey: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5'
+      })
+    },
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      getConversation: () => conversationMessages,
+      chat: async (payload) => {
+        talkCalls.push(payload)
+        conversationMessages = [
+          { id: 'u1', role: 'user', content: prompt, createdAt: '2026-06-24T00:00:00.000Z' },
+          { id: 'a1', role: 'assistant', content: reply, createdAt: '2026-06-24T00:00:01.000Z' }
+        ]
+        return {
+          conversationId: 'control-center:legacy-cat:main',
+          reply,
+          messages: conversationMessages
+        }
+      }
+    },
+    petBubbleChatWindowService: {
+      setSendingState: (state) => {
+        popupStates.push(state)
+        return { visible: true, ...state }
+      },
+      showMessage: () => ({ visible: true })
+    },
+    petChatWindowService: {
+      getState: () => ({ alwaysOnTop: true, visible: false, hasWindow: true }),
+      sendStateChanged: () => {}
+    },
+    appLogService: {
+      record: (entry) => logs.push(entry)
+    }
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE)(null, { message: prompt })
+
+  assert.deepEqual(talkCalls, [{ message: prompt, entrypoint: 'control-center' }])
+  assert.equal(result.conversationId, 'control-center:legacy-cat:main')
+  assert.equal(result.reply, reply)
+  assert.deepEqual(result.state, {
+    visible: true,
+    sending: false,
+    lastUserMessage: { text: prompt },
+    error: ''
+  })
+  assert.deepEqual(popupStates, [
+    { sending: true, lastUserMessage: { text: prompt } },
+    { sending: false, lastUserMessage: { text: prompt }, error: '' }
+  ])
+  assert.equal(JSON.stringify(logs).includes(prompt), false)
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'pet-bubble-chat.message.started',
+    'ai-chat.ipc.received',
+    'ai-chat.ipc.completed',
+    'pet-bubble-chat.message.completed'
+  ])
+})
+
+test('pet bubble chat send records recoverable popup error without provider call when not ready', async () => {
+  const popupStates = []
+  const logs = []
+  let chatCalls = 0
+  const ipcMain = registerPetChatHandlers({
+    aiService: {
+      getConfig: () => ({ enabled: true, hasApiKey: false })
+    },
+    aiTalkService: {
+      getConversation: () => [],
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      chat: async () => {
+        chatCalls += 1
+        return { reply: 'should not happen' }
+      }
+    },
+    petBubbleChatWindowService: {
+      setSendingState: (state) => {
+        popupStates.push(state)
+        return { visible: true, ...state }
+      }
+    },
+    appLogService: {
+      record: (entry) => logs.push(entry)
+    }
+  })
+
+  await assert.rejects(
+    () => ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE)(null, { message: 'hi' }),
+    /保存 AI API Key/
+  )
+
+  assert.equal(chatCalls, 0)
+  assert.deepEqual(popupStates, [{
+    sending: false,
+    lastUserMessage: { text: 'hi' },
+    error: '请先在 Control Center 保存 AI API Key'
+  }])
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'pet-bubble-chat.message.started',
+    'pet-bubble-chat.message.failed'
+  ])
+})
+
 test('pet chat send stops before provider call when chat provider is not ready', async () => {
   let chatCalls = 0
   const logs = []
