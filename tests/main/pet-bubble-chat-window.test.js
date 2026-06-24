@@ -61,9 +61,11 @@ test('resolveBubbleBounds anchors above pet and flips below when needed', () => 
   })
 
   assert.equal(above.placement, 'above')
-  assert.equal(above.y, 136)
+  assert.equal(above.y, 32)
+  assert.equal(above.height, 260)
   assert.equal(below.placement, 'below')
   assert.equal(below.y, 148)
+  assert.equal(below.height, 260)
   assert.ok(below.x >= 8)
 })
 
@@ -102,6 +104,8 @@ test('pet bubble chat manager shows latest message and auto hides when idle', ()
 
     assert.equal(instances.length, 1)
     assert.equal(instances[0].visible, true)
+    assert.equal(instances[0].options.height, 260)
+    assert.equal(instances[0].bounds.height, 260)
     assert.equal(state.message.text, 'hello there')
     assert.equal(timers.at(-1).delay, 3000)
     assert.equal(instances[0].sent.at(-1).channel, IPC.PET_BUBBLE_CHAT_STATE_CHANGED)
