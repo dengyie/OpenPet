@@ -30,8 +30,11 @@ body {
 
 .bubble-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-height: 206px;
+  height: 244px;
+  max-height: 244px;
   padding: 12px 14px 13px;
   border: 1px solid rgba(70, 44, 22, 0.14);
   border-radius: 18px;
@@ -102,7 +105,9 @@ button[aria-pressed="true"] {
 
 #message-text {
   display: -webkit-box;
-  max-height: 64px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   margin: 0;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -116,6 +121,7 @@ button[aria-pressed="true"] {
 
 .last-user-message,
 .error-message {
+  flex: 0 0 auto;
   margin: 8px 0 0;
   padding: 6px 9px;
   border-radius: 12px;
@@ -131,6 +137,7 @@ button[aria-pressed="true"] {
 }
 
 .mini-input-form {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 7px;
