@@ -294,6 +294,17 @@ const createPetBubbleChatWindowManager = ({
   const showMessage = (payload = {}) => {
     const settings = getSettings()
     if (!settings.enabled || !settings.autoPopup) {
+      recordLog({
+        level: 'info',
+        event: 'pet-bubble-chat.message.skipped',
+        message: 'Pet bubble chat message skipped by settings',
+        details: {
+          enabled: Boolean(settings.enabled),
+          autoPopup: Boolean(settings.autoPopup),
+          source: String(payload?.source || '').slice(0, 120),
+          textChars: String(payload?.text || '').length
+        }
+      })
       if (state.visible) hide({ source: 'settings-disabled' })
       return getState()
     }

@@ -223,10 +223,12 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   assert.deepEqual(history, [{ role: 'assistant', content: 'hello' }])
   assert.deepEqual(appLogs.map((entry) => entry.event), [
     'ai-chat.ipc.received',
+    'ai-chat.bubble.dispatching',
+    'ai-chat.bubble.dispatched',
     'ai-chat.ipc.completed'
   ])
-  assert.equal(JSON.stringify(appLogs).includes('hi'), false)
-  assert.equal(appLogs[1].details.messageCount, 1)
+  assert.equal(appLogs.some((entry) => JSON.stringify(entry.details || {}).includes('hi')), false)
+  assert.equal(appLogs.at(-1).details.messageCount, 1)
 })
 
 test('ai persona profile IPC delegates to ai talk service when available', async () => {

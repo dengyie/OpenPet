@@ -4,6 +4,8 @@ const Module = require('module')
 
 const ipcPath = require.resolve('../../src/main/ipc')
 const { IPC } = require('../../src/shared/ipc-channels')
+const { createEventBus } = require('../../src/main/services/event-bus')
+const { createPetService } = require('../../src/main/services/pet-service')
 
 const loadIpcWithElectron = (electronStub) => {
   delete require.cache[ipcPath]
@@ -190,9 +192,82 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
   assert.deepEqual(logs.map((entry) => entry.event), [
     'pet-chat.message.started',
     'ai-chat.ipc.received',
+    'ai-chat.bubble.dispatching',
+    'ai-chat.bubble.dispatched',
     'ai-chat.ipc.completed',
     'pet-chat.message.completed'
   ])
+})
+
+test('pet chat send emits through PetService so the floating bubble window is displayed', async () => {
+  const prompt = 'hello'
+  const reply = 'Floating bubble reply should be visible above the desktop pet.'
+  const bubbleChatMessages = []
+  const sentToPetWindow = []
+  const eventBus = createEventBus()
+  const settingsService = {
+    get: () => ({ localHttp: {}, menuPosition: 'auto', petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }),
+    save: (settings) => settings,
+    preview: (settings) => settings
+  }
+  const actionService = {
+    getConfig: () => ({ actions: [] }),
+    getPreviewConfig: () => ({ actions: [] }),
+    getAction: () => null,
+    reload: () => ({ actions: [] })
+  }
+  const petService = createPetService({ eventBus, settingsService, actionService })
+  const ipcMain = registerPetChatHandlers({
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      webContents: {
+        send: (channel, payload) => sentToPetWindow.push({ channel, payload })
+      }
+    }),
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        hasApiKey: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5'
+      })
+    },
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      getConversation: () => [],
+      chat: async () => ({
+        conversationId: 'control-center:legacy-cat:main',
+        reply,
+        messages: [{ id: 'a1', role: 'assistant', content: reply, createdAt: '2026-06-24T00:00:01.000Z' }]
+      })
+    },
+    petService,
+    petPackService: {
+      getActivePack: () => ({ id: 'legacy-cat', displayName: 'Legacy Cat' })
+    },
+    petChatWindowService: {
+      getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true })
+    },
+    petBubbleChatWindowService: {
+      showMessage: (payload) => {
+        bubbleChatMessages.push(payload)
+        return { visible: true, hasWindow: true, message: payload }
+      },
+      syncToPetWindow: () => ({ visible: true, hasWindow: true })
+    }
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: prompt })
+
+  assert.equal(result.bubble.text, reply)
+  assert.equal(bubbleChatMessages.length, 1)
+  assert.equal(bubbleChatMessages[0].text, reply)
+  assert.equal(bubbleChatMessages[0].source, 'ai')
+  assert.equal(bubbleChatMessages[0].petPackId, 'legacy-cat')
+  assert.equal(sentToPetWindow.length, 1)
+  assert.equal(sentToPetWindow[0].channel, IPC.PET_SAY)
+  assert.equal(sentToPetWindow[0].payload.text, reply)
 })
 
 test('pet chat state tracks latest pet bubble from say events', async () => {
@@ -437,6 +512,8 @@ test('pet bubble chat send reuses shared AI Talk conversation and updates popup 
   assert.deepEqual(logs.map((entry) => entry.event), [
     'pet-bubble-chat.message.started',
     'ai-chat.ipc.received',
+    'ai-chat.bubble.dispatching',
+    'ai-chat.bubble.dispatched',
     'ai-chat.ipc.completed',
     'pet-bubble-chat.message.completed'
   ])

@@ -359,7 +359,32 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       const result = await (aiTalkService || aiService).chat(requestPayload)
       const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent)
       const bubble = bubbleText ? capturePetBubble({ text: bubbleText, source: 'ai' }, { notify: false }) : lastPetBubble
-      if (bubbleText) petService.say({ text: bubbleText, source: 'ai' })
+      if (bubbleText) {
+        recordAppLog({
+          scope: 'ai-chat',
+          level: 'info',
+          actor: 'system',
+          event: 'ai-chat.bubble.dispatching',
+          message: 'AI chat bubble dispatching to pet service',
+          details: {
+            source,
+            textChars: bubbleText.length
+          }
+        })
+        const sayResult = petService.say({ text: bubbleText, source: 'ai' })
+        recordAppLog({
+          scope: 'ai-chat',
+          level: 'info',
+          actor: 'system',
+          event: 'ai-chat.bubble.dispatched',
+          message: 'AI chat bubble dispatched to pet service',
+          details: {
+            source,
+            textChars: String(sayResult?.text || '').length,
+            hasTtl: Number.isFinite(Number(sayResult?.ttlMs))
+          }
+        })
+      }
       if (behaviorOrchestratorService?.getConfig?.().enabled) {
         const decision = behaviorOrchestratorService.evaluate({
           reply: result.reply,
