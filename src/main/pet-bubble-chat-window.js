@@ -10,8 +10,8 @@ const MAX_BUBBLE_WIDTH = 380
 const MAX_BUBBLE_HEIGHT = 280
 const BUBBLE_GAP = 8
 const WORK_AREA_MARGIN = 8
-const MIN_TTL_MS = 2200
-const MAX_TTL_MS = 15000
+const MIN_TTL_MS = 6000
+const MAX_TTL_MS = 30000
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -25,9 +25,9 @@ const normalizeBubbleChatSettings = (settings = {}) => ({
 const calculateBubbleTtlMs = ({ text = '', ttlMs = 0 } = {}) => {
   const requested = Number(ttlMs)
   if (Number.isFinite(requested) && requested > 0) return clamp(Math.round(requested), MIN_TTL_MS, MAX_TTL_MS)
-  const base = 2600
-  const perChar = 70
-  return clamp(base + Math.min(String(text || '').length, 120) * perChar, 3200, 12000)
+  const base = 5200
+  const perChar = 85
+  return clamp(base + Math.min(String(text || '').length, 180) * perChar, MIN_TTL_MS, 24000)
 }
 
 const normalizePetBounds = (bounds) => {
@@ -68,15 +68,42 @@ const resolveBubbleBounds = ({ petBounds, workArea, width = DEFAULT_BUBBLE_WIDTH
   const minY = area.y + WORK_AREA_MARGIN
   const maxY = Math.max(minY, area.y + area.height - resolvedHeight - WORK_AREA_MARGIN)
   const preferredX = anchor.x + Math.round((anchor.width - resolvedWidth) / 2)
+  const preferredY = anchor.y + Math.round((anchor.height - resolvedHeight) / 2)
   const aboveY = anchor.y - resolvedHeight - BUBBLE_GAP
   const belowY = anchor.y + anchor.height + BUBBLE_GAP
-  const canFitAbove = aboveY >= minY
+  const leftX = anchor.x - resolvedWidth - BUBBLE_GAP
+  const rightX = anchor.x + anchor.width + BUBBLE_GAP
+  const centeredX = Math.round(clamp(preferredX, minX, maxX))
+  const centeredY = Math.round(clamp(preferredY, minY, maxY))
+  const candidates = [
+    { placement: 'above', x: centeredX, y: aboveY, fits: aboveY >= minY },
+    { placement: 'below', x: centeredX, y: belowY, fits: belowY <= maxY },
+    { placement: 'right', x: rightX, y: centeredY, fits: rightX <= maxX },
+    { placement: 'left', x: leftX, y: centeredY, fits: leftX >= minX }
+  ]
+  const candidate = candidates.find((item) => item.fits)
+  if (candidate) {
+    return {
+      x: Math.round(candidate.x),
+      y: Math.round(candidate.y),
+      width: resolvedWidth,
+      height: resolvedHeight,
+      placement: candidate.placement
+    }
+  }
+
+  const availableSpaces = [
+    { placement: 'above', space: Math.max(0, anchor.y - BUBBLE_GAP - minY), x: centeredX, y: aboveY },
+    { placement: 'below', space: Math.max(0, maxY - belowY), x: centeredX, y: belowY },
+    { placement: 'right', space: Math.max(0, maxX - rightX), x: rightX, y: centeredY },
+    { placement: 'left', space: Math.max(0, leftX - minX), x: leftX, y: centeredY }
+  ].sort((a, b) => b.space - a.space)[0]
   return {
-    x: Math.round(clamp(preferredX, minX, maxX)),
-    y: Math.round(clamp(canFitAbove ? aboveY : belowY, minY, maxY)),
+    x: Math.round(clamp(availableSpaces.x, minX, maxX)),
+    y: Math.round(clamp(availableSpaces.y, minY, maxY)),
     width: resolvedWidth,
     height: resolvedHeight,
-    placement: canFitAbove ? 'above' : 'below'
+    placement: availableSpaces.placement
   }
 }
 
@@ -325,7 +352,7 @@ const createPetBubbleChatWindowManager = ({
       sending: Boolean(sending),
       lastUserMessage: normalizedUserMessage?.text ? normalizedUserMessage : null,
       error: String(error || '').slice(0, 240),
-      interacting: Boolean(sending) || state.interacting
+      interacting: Boolean(sending) || Boolean(error) || state.interacting
     })
     scheduleAutoHide()
     return getState()
