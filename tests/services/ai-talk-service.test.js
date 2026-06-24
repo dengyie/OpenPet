@@ -24,6 +24,14 @@ const createPetPackService = (pack) => ({
   })
 })
 
+const waitForRequestCount = async (requests, count) => {
+  for (let index = 0; index < 20; index += 1) {
+    if (requests.length >= count) return
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  throw new Error(`Timed out waiting for ${count} AI requests`)
+}
+
 test('ai talk service compiles pet pack persona into stable system prompt', async () => {
   const requests = []
   const store = createStore()
@@ -125,6 +133,65 @@ test('ai talk service rejects chat when ai config is disabled', async () => {
     () => service.chat({ message: 'Hi' }),
     /AI chat is disabled/
   )
+})
+
+test('ai talk service rejects oversized chat messages before provider calls', async () => {
+  let providerCalls = 0
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      complete: async () => {
+        providerCalls += 1
+        return { reply: 'provider should not be called' }
+      }
+    },
+    aiTalkStore: createStore(),
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  await assert.rejects(
+    () => service.chat({ message: 'x'.repeat(4001) }),
+    /AI chat message is too long/
+  )
+  assert.equal(providerCalls, 0)
+})
+
+test('ai talk service serializes concurrent messages for the same main conversation', async () => {
+  const requests = []
+  let releaseFirst
+  const firstCanFinish = new Promise((resolve) => {
+    releaseFirst = resolve
+  })
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      complete: async (request) => {
+        requests.push(request)
+        const userMessage = request.messages.at(-1).content
+        if (userMessage === 'first') {
+          await firstCanFinish
+          return { reply: 'reply one' }
+        }
+        return { reply: 'reply two' }
+      }
+    },
+    aiTalkStore: createStore(),
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const first = service.chat({ message: 'first' })
+  await waitForRequestCount(requests, 1)
+  const second = service.chat({ message: 'second' })
+  await new Promise((resolve) => setImmediate(resolve))
+  releaseFirst()
+  await Promise.all([first, second])
+
+  assert.deepEqual(requests[1].messages.map((message) => message.content), [
+    requests[1].messages[0].content,
+    'first',
+    'reply one',
+    'second'
+  ])
 })
 
 test('ai talk service preserves existing behavior tool request when enabled', async () => {

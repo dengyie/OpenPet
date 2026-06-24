@@ -205,6 +205,56 @@ test('pet context menu opens a positioned menu window and sends action commands 
   }])
 })
 
+test('pet context menu exposes desktop chat entry when chat window service is available', async () => {
+  const ipcMain = createIpcMainStub()
+  const petWindow = {
+    isDestroyed: () => false,
+    getBounds: () => ({ x: 500, y: 240, width: 150, height: 150 }),
+    webContents: {
+      send: () => {}
+    }
+  }
+  let openChatCalls = 0
+  let menuWindowRequest = null
+  const browserWindowService = {
+    fromWebContents: () => petWindow
+  }
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: browserWindowService,
+    app: { quit: () => {} },
+    dialog: {},
+    Menu: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices(),
+    getPetWindow: () => petWindow,
+    ipcMainService: ipcMain,
+    petChatWindowService: {
+      open: () => { openChatCalls += 1 }
+    },
+    showContextMenuWindow: (request) => {
+      menuWindowRequest = request
+    }
+  })
+
+  await ipcMain.handlers.get(IPC.PET_SHOW_CONTEXT_MENU)({
+    sender: petWindow.webContents
+  }, { x: 70, y: 80 })
+
+  const chatItem = menuWindowRequest.items.find((item) => item.label === '和宠物聊天')
+  assert.ok(chatItem)
+  assert.equal(menuWindowRequest.size.height, 206)
+
+  menuWindowRequest.onSelect(chatItem)
+
+  assert.equal(openChatCalls, 1)
+})
+
 test('pet quit records the user intent before quitting the app', () => {
   const ipcMain = createIpcMainStub()
   const logs = []

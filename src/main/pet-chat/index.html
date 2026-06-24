@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenPet Chat</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="chat-shell">
+    <header class="titlebar">
+      <div class="title-copy">
+        <strong>和宠物聊天</strong>
+        <span id="window-status">准备中</span>
+      </div>
+      <div class="window-actions">
+        <button type="button" id="settings-button" title="打开设置">设置</button>
+        <button type="button" id="topmost-button" title="切换置顶">置顶</button>
+        <button type="button" id="close-button" title="隐藏">关闭</button>
+      </div>
+    </header>
+    <section class="messages" id="messages" aria-live="polite">
+      <article class="empty-state">
+        <span>喵，聊天面板已经就位。</span>
+        <small>这里会显示当前宠物包的主会话历史。</small>
+      </article>
+    </section>
+    <footer class="composer">
+      <textarea id="chat-input" rows="2" placeholder="输入消息，Enter 发送，Shift+Enter 换行" disabled></textarea>
+      <button type="button" id="send-button" disabled>发送</button>
+    </footer>
+  </main>
+  <script src="./renderer.js"></script>
+</body>
+</html>

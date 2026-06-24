@@ -1,0 +1,191 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: #2f2118;
+  background: #fff8ef;
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+.chat-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(101, 72, 45, 0.18);
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 197, 104, 0.38), transparent 30%),
+    linear-gradient(145deg, #fff8ef 0%, #f8e6cf 100%);
+  box-shadow: 0 22px 52px rgba(65, 45, 27, 0.22);
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 54px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid rgba(101, 72, 45, 0.12);
+  -webkit-app-region: drag;
+}
+
+.title-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title-copy strong {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.title-copy span {
+  overflow: hidden;
+  color: rgba(47, 33, 24, 0.62);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.window-actions {
+  display: flex;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.window-actions button,
+.composer button {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(94, 64, 35, 0.1);
+  color: #3d291d;
+  cursor: default;
+}
+
+.window-actions button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.window-actions button.active {
+  background: #2f2118;
+  color: #fff8ef;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+}
+
+.empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px dashed rgba(101, 72, 45, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.empty-state span {
+  font-weight: 700;
+}
+
+.empty-state small {
+  color: rgba(47, 33, 24, 0.64);
+  line-height: 1.5;
+}
+
+.message {
+  display: grid;
+  gap: 5px;
+  max-width: 86%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 22px rgba(65, 45, 27, 0.08);
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #2f2118;
+  color: #fff8ef;
+}
+
+.message.assistant {
+  align-self: flex-start;
+}
+
+.message span {
+  color: currentColor;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.message p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid rgba(101, 72, 45, 0.12);
+  background: rgba(255, 248, 239, 0.84);
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 42px;
+  max-height: 110px;
+  resize: none;
+  border: 1px solid rgba(101, 72, 45, 0.18);
+  border-radius: 14px;
+  padding: 10px 12px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+}
+
+.composer textarea:disabled {
+  color: rgba(47, 33, 24, 0.42);
+}
+
+.composer button {
+  align-self: end;
+  min-width: 62px;
+  min-height: 42px;
+  padding: 0 16px;
+  background: #2f2118;
+  color: #fff8ef;
+}
+
+.composer button:disabled {
+  background: rgba(94, 64, 35, 0.16);
+  color: rgba(47, 33, 24, 0.46);
+}

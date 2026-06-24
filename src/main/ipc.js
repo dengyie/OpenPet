@@ -25,6 +25,9 @@ const {
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
 const { createLocalHttpToken } = require('./services/local-http-service')
 
+const MAX_PET_BUBBLE_CHARS = 80
+const MAX_PET_CHAT_MESSAGES = 100
+
 const createPetRendererSettings = (settings = {}) => {
   const cursorState = normalizeCursorSettingsState(settings)
   return {
@@ -142,11 +145,32 @@ const sanitizeDiagnosticText = (value) => String(value || '')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
   .slice(0, 240)
 
+const normalizeMessageText = (value) => String(value || '').trim().replace(/\s+/g, ' ')
+
+const createPetBubbleText = (reply, behaviorIntent) => {
+  const preferred = normalizeMessageText(behaviorIntent?.bubbleText)
+  const text = preferred || normalizeMessageText(reply)
+  if (text.length <= MAX_PET_BUBBLE_CHARS) return text
+  return `${text.slice(0, MAX_PET_BUBBLE_CHARS - 3)}...`
+}
+
+const sanitizeChatMessages = (messages = []) => (
+  (Array.isArray(messages) ? messages : [])
+    .filter((message) => ['user', 'assistant'].includes(message?.role) && typeof message?.content === 'string')
+    .slice(-MAX_PET_CHAT_MESSAGES)
+    .map((message) => ({
+      id: typeof message.id === 'string' ? message.id : '',
+      role: message.role,
+      content: message.content,
+      createdAt: typeof message.createdAt === 'string' ? message.createdAt : ''
+    }))
+)
+
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -167,6 +191,52 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
   }
 
+  const getPetChatState = () => {
+    const windowState = petChatWindowService?.getState?.() || {}
+    const config = aiService?.getConfig?.() || {}
+    let profile = {}
+    let messages = []
+    try {
+      profile = aiTalkService?.getPersonaProfile?.() || {}
+    } catch (_) {
+      profile = {}
+    }
+    try {
+      messages = (aiTalkService || aiService)?.getConversation?.('') || []
+    } catch (_) {
+      messages = []
+    }
+    const enabled = Boolean(config.enabled)
+    const hasApiKey = Boolean(config.hasApiKey)
+    const ready = enabled && hasApiKey
+    return {
+      available: Boolean(petChatWindowService),
+      ...windowState,
+      petPack: {
+        id: profile.petPackId || '',
+        displayName: profile.petPackDisplayName || profile.petPackId || ''
+      },
+      ai: {
+        enabled,
+        hasApiKey,
+        ready,
+        provider: config.provider || '',
+        baseUrl: config.baseUrl || '',
+        model: config.model || '',
+        reason: ready
+          ? ''
+          : (enabled ? '请先在 Control Center 保存 AI API Key' : '请先在 Control Center 启用 AI Provider')
+      },
+      messages: sanitizeChatMessages(messages)
+    }
+  }
+
+  const assertPetChatReady = () => {
+    const config = aiService?.getConfig?.() || {}
+    if (!config.enabled) throw new Error('请先在 Control Center 启用 AI Provider')
+    if (!config.hasApiKey) throw new Error('请先在 Control Center 保存 AI API Key')
+  }
+
   const requestAppQuit = (source) => {
     recordAppLog({
       scope: 'app',
@@ -177,6 +247,103 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       details: { source }
     })
     appService.quit()
+  }
+
+  const runAiChatRequest = async (payload, { source = 'control-center', entrypoint } = {}) => {
+    const requestPayload = entrypoint && !payload?.entrypoint
+      ? { ...payload, entrypoint }
+      : payload
+    const startedAt = Date.now()
+    const messageChars = typeof requestPayload?.message === 'string' ? requestPayload.message.trim().length : 0
+    const requestedConversationId = typeof requestPayload?.conversationId === 'string' ? requestPayload.conversationId.slice(0, 160) : ''
+    recordAppLog({
+      scope: 'ai-chat',
+      level: 'info',
+      actor: 'user',
+      event: 'ai-chat.ipc.received',
+      message: 'AI chat IPC request received',
+      details: {
+        source,
+        requestedConversationId,
+        messageChars,
+        service: aiTalkService ? 'ai-talk' : 'ai'
+      }
+    })
+    try {
+      const result = await (aiTalkService || aiService).chat(requestPayload)
+      const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent)
+      if (bubbleText) petService.say({ text: bubbleText, source: 'ai' })
+      if (behaviorOrchestratorService?.getConfig?.().enabled) {
+        const decision = behaviorOrchestratorService.evaluate({
+          reply: result.reply,
+          behaviorIntent: result.behaviorIntent,
+          actions: petService.getAnimations()?.actions || []
+        })
+        const behavior = executeBehaviorDecision(petService, decision)
+        const response = behavior?.matched && behavior.type === 'playAction'
+          ? { ...result, behavior, action: behavior }
+          : { ...result, behavior }
+        recordAppLog({
+          scope: 'ai-chat',
+          level: 'info',
+          actor: 'system',
+          event: 'ai-chat.ipc.completed',
+          message: 'AI chat IPC request completed',
+          details: {
+            source,
+            requestedConversationId,
+            conversationId: result.conversationId || '',
+            elapsedMs: Date.now() - startedAt,
+            replyChars: String(result.reply || '').length,
+            bubbleChars: bubbleText.length,
+            messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+            behaviorMatched: Boolean(behavior?.matched),
+            actionId: behavior?.actionId || ''
+          }
+        })
+        return response
+      }
+      const action = triggerAiSemanticAction(petService, result.reply)
+      const response = action ? { ...result, action } : result
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'info',
+        actor: 'system',
+        event: 'ai-chat.ipc.completed',
+        message: 'AI chat IPC request completed',
+        details: {
+          source,
+          requestedConversationId,
+          conversationId: result.conversationId || '',
+          elapsedMs: Date.now() - startedAt,
+          replyChars: String(result.reply || '').length,
+          bubbleChars: bubbleText.length,
+          messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+          actionId: action?.actionId || ''
+        }
+      })
+      return response
+    } catch (error) {
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'error',
+        actor: 'system',
+        event: 'ai-chat.ipc.failed',
+        message: 'AI chat IPC request failed',
+        details: {
+          source,
+          requestedConversationId,
+          elapsedMs: Date.now() - startedAt,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: error?.providerStatus
+            ? 'AI provider returned an error response'
+            : sanitizeDiagnosticText(error?.message),
+          providerStatus: error?.providerStatus || 0,
+          providerCode: error?.providerCode || ''
+        }
+      })
+      throw error
+    }
   }
 
   const getPendingActionFrameSelection = (selectionId) => {
@@ -331,7 +498,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const actions = petService.getAnimations()?.actions || []
     const bounds = win.getBounds()
     const { workArea } = screenService.getDisplayMatching(bounds)
-    const menuSize = estimatePetContextMenuSize(actions)
+    const menuSize = estimatePetContextMenuSize(actions, { extraItemCount: petChatWindowService ? 1 : 0 })
     const settings = petService.getSettings?.() || {}
     const requestedPoint = {
       x: Number(point.x),
@@ -352,6 +519,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       })),
       { type: 'separator' },
       { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
+      ...(petChatWindowService ? [{ label: '和宠物聊天', click: () => petChatWindowService.open?.() }] : []),
       { label: '设置', click: () => createSettingsWindow(win) },
       { type: 'separator' },
       { label: '退出', click: () => requestAppQuit('pet-context-menu') }
@@ -396,6 +564,77 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   // 右键菜单"设置"：打开设置面板
   ipcMainService.on(IPC.SETTINGS_OPEN, () => {
     createSettingsWindow(getPetWindow())
+  })
+
+  ipcMainService.handle(IPC.PET_CHAT_GET_STATE, () => {
+    return getPetChatState()
+  })
+
+  ipcMainService.on(IPC.PET_CHAT_HIDE, () => {
+    petChatWindowService?.hide?.({ source: 'pet-chat-renderer' })
+  })
+
+  ipcMainService.handle(IPC.PET_CHAT_SET_ALWAYS_ON_TOP, (_event, payload) => {
+    if (!petChatWindowService?.setAlwaysOnTop) return { available: false }
+    petChatWindowService.setAlwaysOnTop(Boolean(payload?.alwaysOnTop))
+    return getPetChatState()
+  })
+
+  ipcMainService.on(IPC.PET_CHAT_OPEN_SETTINGS, () => {
+    petChatWindowService?.openSettings?.()
+  })
+
+  ipcMainService.handle(IPC.PET_CHAT_SEND_MESSAGE, async (_event, payload = {}) => {
+    const startedAt = Date.now()
+    const message = typeof payload?.message === 'string' ? payload.message.trim() : ''
+    recordAppLog({
+      scope: 'pet-chat',
+      level: 'info',
+      actor: 'user',
+      event: 'pet-chat.message.started',
+      message: 'Desktop pet chat message started',
+      details: {
+        messageChars: message.length
+      }
+    })
+    try {
+      assertPetChatReady()
+      const result = await runAiChatRequest({ message, entrypoint: 'control-center' }, { source: 'pet-chat' })
+      const state = getPetChatState()
+      recordAppLog({
+        scope: 'pet-chat',
+        level: 'info',
+        actor: 'system',
+        event: 'pet-chat.message.completed',
+        message: 'Desktop pet chat message completed',
+        details: {
+          elapsedMs: Date.now() - startedAt,
+          conversationId: result.conversationId || '',
+          messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+          replyChars: String(result.reply || '').length,
+          actionId: result.action?.actionId || result.behavior?.actionId || ''
+        }
+      })
+      return { ...result, state }
+    } catch (error) {
+      recordAppLog({
+        scope: 'pet-chat',
+        level: 'error',
+        actor: 'system',
+        event: 'pet-chat.message.failed',
+        message: 'Desktop pet chat message failed',
+        details: {
+          elapsedMs: Date.now() - startedAt,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: error?.providerStatus
+            ? 'AI provider returned an error response'
+            : sanitizeDiagnosticText(error?.message),
+          providerStatus: error?.providerStatus || 0,
+          providerCode: error?.providerCode || ''
+        }
+      })
+      throw error
+    }
   })
 
   // 设置面板启动时读取当前设置
@@ -742,92 +981,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return (aiTalkService || aiService).getConversation(conversationId)
   })
 
-  ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => {
-    const startedAt = Date.now()
-    const messageChars = typeof payload?.message === 'string' ? payload.message.trim().length : 0
-    const requestedConversationId = typeof payload?.conversationId === 'string' ? payload.conversationId.slice(0, 160) : ''
-    recordAppLog({
-      scope: 'ai-chat',
-      level: 'info',
-      actor: 'user',
-      event: 'ai-chat.ipc.received',
-      message: 'AI chat IPC request received',
-      details: {
-        requestedConversationId,
-        messageChars,
-        service: aiTalkService ? 'ai-talk' : 'ai'
-      }
-    })
-    try {
-      const result = await (aiTalkService || aiService).chat(payload)
-      petService.say({ text: result.reply, source: 'ai' })
-      if (behaviorOrchestratorService?.getConfig?.().enabled) {
-        const decision = behaviorOrchestratorService.evaluate({
-          reply: result.reply,
-          behaviorIntent: result.behaviorIntent,
-          actions: petService.getAnimations()?.actions || []
-        })
-        const behavior = executeBehaviorDecision(petService, decision)
-        const response = behavior?.matched && behavior.type === 'playAction'
-          ? { ...result, behavior, action: behavior }
-          : { ...result, behavior }
-        recordAppLog({
-          scope: 'ai-chat',
-          level: 'info',
-          actor: 'system',
-          event: 'ai-chat.ipc.completed',
-          message: 'AI chat IPC request completed',
-          details: {
-            requestedConversationId,
-            conversationId: result.conversationId || '',
-            elapsedMs: Date.now() - startedAt,
-            replyChars: String(result.reply || '').length,
-            messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
-            behaviorMatched: Boolean(behavior?.matched),
-            actionId: behavior?.actionId || ''
-          }
-        })
-        return response
-      }
-      const action = triggerAiSemanticAction(petService, result.reply)
-      const response = action ? { ...result, action } : result
-      recordAppLog({
-        scope: 'ai-chat',
-        level: 'info',
-        actor: 'system',
-        event: 'ai-chat.ipc.completed',
-        message: 'AI chat IPC request completed',
-        details: {
-          requestedConversationId,
-          conversationId: result.conversationId || '',
-          elapsedMs: Date.now() - startedAt,
-          replyChars: String(result.reply || '').length,
-          messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
-          actionId: action?.actionId || ''
-        }
-      })
-      return response
-    } catch (error) {
-      recordAppLog({
-        scope: 'ai-chat',
-        level: 'error',
-        actor: 'system',
-        event: 'ai-chat.ipc.failed',
-        message: 'AI chat IPC request failed',
-        details: {
-          requestedConversationId,
-          elapsedMs: Date.now() - startedAt,
-          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
-          errorMessage: error?.providerStatus
-            ? 'AI provider returned an error response'
-            : sanitizeDiagnosticText(error?.message),
-          providerStatus: error?.providerStatus || 0,
-          providerCode: error?.providerCode || ''
-        }
-      })
-      throw error
-    }
-  })
+  ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => runAiChatRequest(payload, { source: 'control-center' }))
 
   ipcMainService.handle(IPC.AI_BEHAVIOR_GET, () => behaviorOrchestratorService.getConfig())
 
