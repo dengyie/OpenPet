@@ -264,17 +264,40 @@ export interface ActionsConfigViewState {
   defaultAction: string
   clickAction: string
   actions: ActionEntry[]
+  triggerProposalInbox: ActionTriggerProposalInboxItem[]
 }
 
 export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
+export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected' | 'applied' | 'pending-host-rule'
+
+export interface ActionTriggerProposalInboxItem {
+  id: string
+  actionId: string
+  type: ActionTriggerProposalType
+  binding: string
+  sourcePluginId: string
+  sourceRunId: string
+  sourceCommandId: string
+  message: string
+  status: ActionTriggerProposalInboxStatus
+  resultCode: string
+  resultMessage: string
+  rejectionReason: string
+  createdAt: string
+  updatedAt: string
+  acceptedAt: string
+  rejectedAt: string
+}
 
 export interface ActionTriggerProposalAcceptanceRequest {
   actionId: string
   type: ActionTriggerProposalType
+  id?: string
   binding?: string
   sourcePluginId?: string
   sourceRunId?: string
   sourceCommandId?: string
+  message?: string
   notes?: string
 }
 
@@ -369,6 +392,7 @@ export interface ActionsSaveConfigRequest {
 
 export interface ActionsMutationResult {
   animations: ActionsConfigViewState
+  proposal?: ActionTriggerProposalInboxItem
   triggerProposal?: ActionTriggerProposalAcceptanceResult
 }
 
@@ -2312,6 +2336,9 @@ export interface ControlCenterApi {
   clearActionFrameSelection: (payload: ActionFrameClearRequest) => Promise<OkResponse>
   importActionFrames: (payload?: ActionFrameImportRequest) => Promise<ActionFrameImportResult>
   saveActionsConfig: (payload: ActionsSaveConfigRequest) => Promise<ActionsMutationResult>
+  submitActionTriggerProposal: (payload: ActionTriggerProposalAcceptanceRequest) => Promise<ActionsMutationResult>
+  acceptActionTriggerProposal: (proposalId: string) => Promise<ActionsMutationResult>
+  rejectActionTriggerProposal: (proposalId: string, reason?: string) => Promise<ActionsMutationResult>
   deleteAction: (actionId: string) => Promise<ActionsMutationResult>
   listPetPacks: () => Promise<PetPacksViewState>
   inspectPetPackDirectory: () => Promise<PetPackInspectionResult>

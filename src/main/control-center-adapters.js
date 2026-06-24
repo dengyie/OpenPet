@@ -22,6 +22,7 @@
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
+const TRIGGER_PROPOSAL_STATUSES = new Set(['pending', 'accepted', 'rejected', 'applied', 'pending-host-rule'])
 const TRIGGER_PROPOSAL_RESULT_CODES = new Set(['applied', 'no_binding_required', 'pending_host_rule'])
 
 /**
@@ -138,12 +139,39 @@ const createTriggerProposalAcceptanceResult = (proposal = {}) => ({
 })
 
 /**
+ * @param {Partial<import('../shared/openpet-contracts').ActionTriggerProposalInboxItem>} proposal
+ * @returns {import('../shared/openpet-contracts').ActionTriggerProposalInboxItem}
+ */
+const createTriggerProposalInboxItem = (proposal = {}) => ({
+  id: typeof proposal.id === 'string' ? proposal.id : '',
+  actionId: typeof proposal.actionId === 'string' ? proposal.actionId : '',
+  type: typeof proposal.type === 'string' && TRIGGER_PROPOSAL_TYPES.has(proposal.type) ? proposal.type : 'unbound',
+  binding: typeof proposal.binding === 'string' ? proposal.binding : '',
+  sourcePluginId: typeof proposal.sourcePluginId === 'string' ? proposal.sourcePluginId : '',
+  sourceRunId: typeof proposal.sourceRunId === 'string' ? proposal.sourceRunId : '',
+  sourceCommandId: typeof proposal.sourceCommandId === 'string' ? proposal.sourceCommandId : '',
+  message: typeof proposal.message === 'string' ? proposal.message : '',
+  status: typeof proposal.status === 'string' && TRIGGER_PROPOSAL_STATUSES.has(proposal.status) ? proposal.status : 'pending',
+  resultCode: typeof proposal.resultCode === 'string' ? proposal.resultCode : '',
+  resultMessage: typeof proposal.resultMessage === 'string' ? proposal.resultMessage : '',
+  rejectionReason: typeof proposal.rejectionReason === 'string' ? proposal.rejectionReason : '',
+  createdAt: typeof proposal.createdAt === 'string' ? proposal.createdAt : '',
+  updatedAt: typeof proposal.updatedAt === 'string' ? proposal.updatedAt : '',
+  acceptedAt: typeof proposal.acceptedAt === 'string' ? proposal.acceptedAt : '',
+  rejectedAt: typeof proposal.rejectedAt === 'string' ? proposal.rejectedAt : ''
+})
+
+/**
  * @param {ActionsConfigViewState} animations
- * @param {Partial<{ triggerProposal: Partial<import('../shared/openpet-contracts').ActionTriggerProposalAcceptanceResult> }> | undefined} [result]
+ * @param {Partial<{
+ *   proposal: Partial<import('../shared/openpet-contracts').ActionTriggerProposalInboxItem>,
+ *   triggerProposal: Partial<import('../shared/openpet-contracts').ActionTriggerProposalAcceptanceResult>
+ * }> | undefined} [result]
  * @returns {ActionsMutationResult}
  */
 const createActionsMutationResult = (animations, result) => ({
   animations,
+  ...(result?.proposal !== undefined ? { proposal: createTriggerProposalInboxItem(result.proposal) } : {}),
   ...(result?.triggerProposal !== undefined ? { triggerProposal: createTriggerProposalAcceptanceResult(result.triggerProposal) } : {})
 })
 

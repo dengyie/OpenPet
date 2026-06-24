@@ -125,6 +125,35 @@ test('action import service updates default and click actions without dropping a
   assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).defaultAction, 'wave')
 })
 
+test('action import service preserves trigger proposal inbox while regenerating config', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-trigger-inbox-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+  const current = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    ...current,
+    triggerProposalInbox: [{
+      id: 'proposal:click:wave:test',
+      actionId: 'wave',
+      type: 'click',
+      status: 'pending'
+    }]
+  }, null, 2)}\n`, 'utf-8')
+
+  const result = await service.updateActionConfig({
+    defaultAction: 'wave',
+    clickAction: 'idle'
+  })
+
+  assert.equal(result.triggerProposalInbox[0].id, 'proposal:click:wave:test')
+  assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerProposalInbox[0].actionId, 'wave')
+})
+
 test('action import service preserves custom labels after regenerating config', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-label-'))
   const sourceDir = path.join(root, 'source-wave')
