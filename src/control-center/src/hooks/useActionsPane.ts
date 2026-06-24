@@ -121,6 +121,44 @@ export function useActionsPane() {
     }
   }
 
+  const onAcceptTriggerProposal = async (proposalId: string) => {
+    if (!proposalId) return
+    setWorking(true)
+    setStatus('')
+    setLastTriggerProposalResult(null)
+    try {
+      const response = await api.acceptActionTriggerProposal(proposalId)
+      setActionsConfig(cloneActionsConfig(response.animations))
+      setLastTriggerProposalResult(response.triggerProposal || null)
+      const proposal = response.proposal
+      const actionLabel = proposal?.actionId || proposalId
+      const outcome = proposal?.status === 'applied'
+        ? '已应用'
+        : (proposal?.status === 'pending-host-rule' ? '已标记待规则' : '已接受')
+      setStatus(`${outcome}触发提案：${actionLabel}`)
+    } catch (error) {
+      setStatus(messageFromError(error, '接受触发提案失败'))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const onRejectTriggerProposal = async (proposalId: string) => {
+    if (!proposalId) return
+    const reason = window.prompt('拒绝原因（可选）', '') || ''
+    setWorking(true)
+    setStatus('')
+    try {
+      const response = await api.rejectActionTriggerProposal(proposalId, reason.trim())
+      setActionsConfig(cloneActionsConfig(response.animations))
+      setStatus(`已拒绝触发提案：${response.proposal?.actionId || proposalId}`)
+    } catch (error) {
+      setStatus(messageFromError(error, '拒绝触发提案失败'))
+    } finally {
+      setWorking(false)
+    }
+  }
+
   const onInspect = async () => {
     setWorking(true)
     setStatus('')
@@ -335,6 +373,8 @@ export function useActionsPane() {
     onSetActivePetPack,
     onRemovePetPack,
     onApplyTriggerProposal,
+    onAcceptTriggerProposal,
+    onRejectTriggerProposal,
     triggerProposalType,
     setTriggerProposalType: onChangeTriggerProposalType,
     triggerProposalNotes,
