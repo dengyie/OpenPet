@@ -14,6 +14,7 @@ const FALLBACK_PERSONA = Object.freeze({
 
 const MAX_CONTEXT_MESSAGES = 20
 const MAX_MEMORY_CONTEXT_ITEMS = 8
+const MAX_USER_MESSAGE_CHARS = 4000
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '')
 
@@ -224,6 +225,18 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
   }
 
   const pendingMemoryJobs = new Set()
+  const conversationQueues = new Map()
+
+  const enqueueConversation = (conversationKey, task) => {
+    if (!conversationKey) return task()
+    const previous = conversationQueues.get(conversationKey) || Promise.resolve()
+    const queued = previous.catch(() => {}).then(task)
+    const marker = queued.catch(() => {}).finally(() => {
+      if (conversationQueues.get(conversationKey) === marker) conversationQueues.delete(conversationKey)
+    })
+    conversationQueues.set(conversationKey, marker)
+    return queued
+  }
 
   const resolvePersona = (manifest, petPackId) => {
     const override = typeof aiTalkStore.getPersonaOverride === 'function'
@@ -449,6 +462,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
     try {
       if (!content) throw new Error('AI chat message is empty')
+      if (content.length > MAX_USER_MESSAGE_CHARS) throw new Error('AI chat message is too long')
       const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
       if (!config.enabled) throw new Error('AI chat is disabled')
       const { manifest, petPackId } = resolveActivePack()
@@ -458,70 +472,73 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         petPackId,
         personaHash
       })
-      const history = aiTalkStore.getMessages(sessionId, conversationId)
-      const userMessage = { role: 'user', content }
-      const memoryContext = getMemoryContext(petPackId)
-      const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
-      const messages = [
-        { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
-        ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
-        ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
-        userMessage
-      ]
-      const tools = config.behavior?.enabled && config.behavior?.useTools !== false
-        ? [getBehaviorToolDefinition()]
-        : []
-      Object.assign(diagnostics, {
-        petPackId,
-        conversationId: `${sessionId}:${conversationId}`,
-        historyCount: history.length,
-        messagesCount: messages.length,
-        memoryContextCount: memoryContext.length,
-        toolsCount: tools.length,
-        memoryEnabled: config.memory?.enabled === true,
-        behaviorEnabled: config.behavior?.enabled === true
-      })
-      recordLog({
-        level: 'info',
-        event: 'ai-talk.chat.started',
-        message: 'AI talk chat started',
-        details: diagnostics
-      })
-      const result = await aiService.complete({ messages, tools })
-      const reply = normalizeString(result.reply)
-      if (!reply) throw new Error('AI provider returned an empty response')
-      const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [
-        userMessage,
-        { role: 'assistant', content: reply }
-      ])
-      const sourceMessages = nextMessages.slice(-2)
-      scheduleMemoryExtraction({
-        config,
-        petPackId,
-        conversationPublicId: `${sessionId}:${conversationId}`,
-        sourceMessages,
-        userMessage: content,
-        assistantReply: reply,
-        persona
-      })
-      recordLog({
-        level: 'info',
-        event: 'ai-talk.chat.completed',
-        message: 'AI talk chat completed',
-        details: {
-          ...diagnostics,
-          elapsedMs: Date.now() - startedAt,
-          replyChars: reply.length,
-          persistedMessageCount: nextMessages.length,
-          hasBehaviorIntent: Boolean(result.behaviorIntent)
+      const conversationPublicId = `${sessionId}:${conversationId}`
+      return await enqueueConversation(conversationPublicId, async () => {
+        const history = aiTalkStore.getMessages(sessionId, conversationId)
+        const userMessage = { role: 'user', content }
+        const memoryContext = getMemoryContext(petPackId)
+        const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
+        const messages = [
+          { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
+          ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
+          ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
+          userMessage
+        ]
+        const tools = config.behavior?.enabled && config.behavior?.useTools !== false
+          ? [getBehaviorToolDefinition()]
+          : []
+        Object.assign(diagnostics, {
+          petPackId,
+          conversationId: conversationPublicId,
+          historyCount: history.length,
+          messagesCount: messages.length,
+          memoryContextCount: memoryContext.length,
+          toolsCount: tools.length,
+          memoryEnabled: config.memory?.enabled === true,
+          behaviorEnabled: config.behavior?.enabled === true
+        })
+        recordLog({
+          level: 'info',
+          event: 'ai-talk.chat.started',
+          message: 'AI talk chat started',
+          details: diagnostics
+        })
+        const result = await aiService.complete({ messages, tools })
+        const reply = normalizeString(result.reply)
+        if (!reply) throw new Error('AI provider returned an empty response')
+        const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [
+          userMessage,
+          { role: 'assistant', content: reply }
+        ])
+        const sourceMessages = nextMessages.slice(-2)
+        scheduleMemoryExtraction({
+          config,
+          petPackId,
+          conversationPublicId,
+          sourceMessages,
+          userMessage: content,
+          assistantReply: reply,
+          persona
+        })
+        recordLog({
+          level: 'info',
+          event: 'ai-talk.chat.completed',
+          message: 'AI talk chat completed',
+          details: {
+            ...diagnostics,
+            elapsedMs: Date.now() - startedAt,
+            replyChars: reply.length,
+            persistedMessageCount: nextMessages.length,
+            hasBehaviorIntent: Boolean(result.behaviorIntent)
+          }
+        })
+        return {
+          conversationId: conversationPublicId,
+          reply,
+          behaviorIntent: result.behaviorIntent || undefined,
+          messages: nextMessages
         }
       })
-      return {
-        conversationId: `${sessionId}:${conversationId}`,
-        reply,
-        behaviorIntent: result.behaviorIntent || undefined,
-        messages: nextMessages
-      }
     } catch (error) {
       recordLog({
         level: 'error',
