@@ -49,7 +49,7 @@ const defaultSettings = {
   scale: 1.0,            // 宠物缩放比例（1.0 = 100%）
   walkSpeed: 2,          // 散步速度（px/frame，可选 1/2/3）
   walkDuration: 15000,   // 散步自动停止时长（ms）
-  bubbleDuration: 1300,  // 气泡显示时长（ms）
+  bubbleDuration: 6000,  // 气泡显示时长（ms）
   menuPosition: 'auto',  // 右键菜单相对宠物位置：auto/right/left/above/below
   autoStart: false,      // 是否开机自启
   selectedCursorId: SYSTEM_CURSOR_ID,

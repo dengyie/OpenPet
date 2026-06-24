@@ -861,7 +861,7 @@ const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: ''
   demoState.petChatBubble = {
     text: reply.slice(0, 80),
     source: 'ai',
-    ttlMs: 1300,
+    ttlMs: 6000,
     updatedAt: timestamp
   }
   if (demoState.aiConfig.memory.enabled) {

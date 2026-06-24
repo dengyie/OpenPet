@@ -26,6 +26,7 @@ const cursorOverlay = document.getElementById('custom-cursor-overlay') || {
 const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px），超出按比例缩小
 const PET_BASE_SCALE = 0.5                       // UI 100% 对应旧版视觉大小的 50%
 const BUBBLE_TOP_INSET = 64                      // 给头顶聊天气泡预留窗口空间，避免被宠物裁剪或覆盖。
+const MIN_INLINE_BUBBLE_DURATION = 4000          // 兼容旧配置，避免 1 秒级气泡闪退到不可读。
 const cursorStyle = {
   resolvePetCursorStyle: () => '',
   resolvePetCursorOverlayState: () => ({ visible: false, assetUrl: '', nativeCursor: '' }),
@@ -79,7 +80,7 @@ const state = {
 
   // ── 气泡 ──
   bubbleTimer: 0,        // setTimeout id，到期后隐藏气泡
-  bubbleDuration: 1300   // 气泡显示时长 ms（由设置同步）
+  bubbleDuration: 6000   // 气泡显示时长 ms（由设置同步）
 }
 state.scale = PET_BASE_SCALE
 
@@ -139,10 +140,11 @@ const maybeLogMouseDiagnostic = (event, diagnostic) => {
  * @param {number} [duration] 显示时长 ms，默认取 state.bubbleDuration
  */
 const say = (text, duration = state.bubbleDuration) => {
+  const displayDuration = Math.max(MIN_INLINE_BUBBLE_DURATION, Number(duration) || state.bubbleDuration)
   window.clearTimeout(state.bubbleTimer)
   bubble.textContent = text
   bubble.classList.add('show')
-  state.bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), duration)
+  state.bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), displayDuration)
 }
 
 // ═══════════════════════════════════════════

@@ -68,7 +68,7 @@ const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings
     scale: Number(nextSettings.scale ?? currentSettings.scale ?? 1),
     walkSpeed: Number(nextSettings.walkSpeed ?? currentSettings.walkSpeed ?? 2),
     walkDuration: Number(nextSettings.walkDuration ?? currentSettings.walkDuration ?? 15000),
-    bubbleDuration: Number(nextSettings.bubbleDuration ?? currentSettings.bubbleDuration ?? 1300),
+    bubbleDuration: Number(nextSettings.bubbleDuration ?? currentSettings.bubbleDuration ?? 6000),
     menuPosition: nextSettings.menuPosition || currentSettings.menuPosition || 'auto',
     autoStart: Boolean(nextSettings.autoStart ?? currentSettings.autoStart),
     selectedCursorId: cursorState.selectedCursorId,
