@@ -606,6 +606,119 @@ test('ai talk service injects relevant memories as dynamic context without chang
   assert.match(requests[0].messages[1].content, /Mochi greets the user softly/)
 })
 
+test('ai talk service ranks memory context by current relevance and marks injected memories as used', async () => {
+  const requests = []
+  const store = createStore()
+  const operations = []
+  for (let index = 0; index < 85; index += 1) {
+    operations.push({
+      operation: 'create',
+      scope: 'global',
+      text: `User likes archive topic ${index}.`,
+      tags: ['archive'],
+      confidence: 1,
+      importance: 1,
+      reason: 'high confidence but unrelated'
+    })
+  }
+  operations.push({
+    operation: 'create',
+    scope: 'global',
+    text: 'User wants help with focus sprint planning.',
+    tags: ['focus', 'planning'],
+    confidence: 0.4,
+    importance: 0.3,
+    reason: 'directly relevant to focus sessions'
+  })
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations
+  })
+  const relevantId = created.applied.at(-1).id
+
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true },
+        memory: { enabled: false }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: '我会帮你把专注冲刺拆小。' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat' })
+  })
+
+  await service.chat({ message: 'Can you help with my focus sprint plan now?' })
+
+  const memoryPrompt = requests[0].messages.find((message) => message.content.includes('# Relevant Memories')).content
+  assert.match(memoryPrompt, /^# Relevant Memories\n1\. \[global user\] User wants help with focus sprint planning/m)
+  assert.equal((memoryPrompt.match(/^\d+\. /gm) || []).length, 8)
+  const state = store.getState()
+  assert.equal(state.memories[relevantId].useCount, 1)
+  assert.equal(state.memories[relevantId].lastUsedAt, '2026-06-20T00:00:00.000Z')
+  assert.ok(Object.values(state.memories).some((memory) => (
+    memory.text.startsWith('User likes archive topic') && memory.useCount === 0
+  )))
+})
+
+test('ai talk service ranks Chinese memory text without requiring whitespace tokenization', async () => {
+  const requests = []
+  const store = createStore()
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      {
+        operation: 'create',
+        scope: 'global',
+        text: 'User likes unrelated opera trivia.',
+        tags: ['opera'],
+        confidence: 1,
+        importance: 1,
+        reason: 'high confidence but unrelated'
+      },
+      {
+        operation: 'create',
+        scope: 'global',
+        text: '用户喜欢茉莉花茶，工作前喝会更安心。',
+        tags: ['茉莉花茶', 'preference'],
+        confidence: 0.4,
+        importance: 0.4,
+        reason: 'directly relevant Chinese preference'
+      }
+    ]
+  })
+  const teaMemoryId = created.applied.at(-1).id
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true },
+        memory: { enabled: false }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: '先喝口茶，我陪你进入专注。' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat' })
+  })
+
+  await service.chat({ message: '今天想喝茉莉花茶，然后准备专注一下' })
+
+  const memoryPrompt = requests[0].messages.find((message) => message.content.includes('# Relevant Memories')).content
+  assert.match(memoryPrompt, /^# Relevant Memories\n1\. \[global user\] 用户喜欢茉莉花茶/m)
+  assert.equal(store.getState().memories[teaMemoryId].useCount, 1)
+})
+
 test('ai talk service exposes and manages memory profile without reinjecting deleted memories', async () => {
   const requests = []
   const logs = []

@@ -140,6 +140,35 @@ test('ai talk store upserts active global and pet-pack memories conservatively',
   assert.equal(reloaded.listMemories({ petPackId: 'mochi-cat' }).length, 2)
 })
 
+test('ai talk store marks injected memories as used without changing inactive memories', () => {
+  const storePath = createTempStorePath()
+  let currentNow = '2026-06-20T00:00:00.000Z'
+  const store = createAiTalkStore({ storePath, now: () => currentNow })
+
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'global', text: 'User likes focus sprints.', tags: ['focus'], confidence: 0.8, importance: 0.7 },
+      { operation: 'create', scope: 'petPack', text: 'Mochi uses soft check-ins.', tags: ['relationship'], confidence: 0.8, importance: 0.6 }
+    ]
+  })
+  const usedId = created.applied[0].id
+  const deletedId = created.applied[1].id
+  store.deleteMemory(deletedId)
+
+  currentNow = '2026-06-20T00:05:00.000Z'
+  const result = store.markMemoriesUsed([usedId, usedId, deletedId, 'missing'])
+
+  assert.equal(result.updatedCount, 1)
+  assert.equal(result.memories[0].id, usedId)
+  assert.equal(result.memories[0].useCount, 1)
+  assert.equal(result.memories[0].lastUsedAt, '2026-06-20T00:05:00.000Z')
+  assert.equal(store.getState().memories[deletedId].useCount, 0)
+  assert.equal(createAiTalkStore({ storePath }).getState().memories[usedId].useCount, 1)
+})
+
 test('ai talk store soft deletes a memory and excludes it from active lists', () => {
   const storePath = createTempStorePath()
   const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })

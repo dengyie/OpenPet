@@ -14,6 +14,7 @@ const FALLBACK_PERSONA = Object.freeze({
 
 const MAX_CONTEXT_MESSAGES = 20
 const MAX_MEMORY_CONTEXT_ITEMS = 8
+const MAX_MEMORY_RELEVANCE_HISTORY_MESSAGES = 6
 const MAX_USER_MESSAGE_CHARS = 4000
 const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
 const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
@@ -25,6 +26,12 @@ const normalizeList = (value) => (
     ? value.map(normalizeString).filter(Boolean)
     : []
 )
+
+const normalizeScore = (value, fallback = 0.5) => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(1, Math.max(0, number))
+}
 
 const normalizePersonaOverride = (override = {}) => {
   const result = {}
@@ -205,6 +212,104 @@ const getRecentMessages = (messages, limit = MAX_CONTEXT_MESSAGES) => {
   return messages.slice(messages.length - limit)
 }
 
+const tokenizeForMemoryRelevance = (value) => {
+  const text = String(value || '').toLowerCase()
+  const wordTokens = text.match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) || []
+  const cjkTokens = []
+  const cjkSequences = text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]{2,}/gu) || []
+  for (const sequence of cjkSequences) {
+    for (const size of [2, 3, 4]) {
+      for (let index = 0; index <= sequence.length - size; index += 1) {
+        cjkTokens.push(sequence.slice(index, index + size))
+      }
+    }
+  }
+  return Array.from(new Set(
+    [...wordTokens, ...cjkTokens]
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2)
+  )).slice(0, 120)
+}
+
+const timestampValue = (value) => {
+  const parsed = Date.parse(String(value || ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const countTokenMatches = (haystack, tokens) => {
+  if (!haystack || !tokens.length) return 0
+  return tokens.reduce((count, token) => count + (haystack.includes(token) ? 1 : 0), 0)
+}
+
+const scoreMemoryRelevance = ({ memory, userTokens, historyTokens, queryText, minTimestamp, maxTimestamp }) => {
+  const text = normalizeString(memory.text).toLowerCase()
+  const tags = normalizeList(memory.tags).map((tag) => tag.toLowerCase())
+  const tagText = tags.join(' ')
+  const haystack = `${text} ${tagText} ${normalizeString(memory.reason).toLowerCase()}`
+  const directMatches = countTokenMatches(haystack, userTokens)
+  const historyMatches = countTokenMatches(haystack, historyTokens)
+  const tagMatches = tags.reduce((count, tag) => (
+    count + (tag && queryText.includes(tag) ? 1 : 0)
+  ), 0)
+  const updatedAt = Math.max(
+    timestampValue(memory.lastEvidenceAt),
+    timestampValue(memory.updatedAt),
+    timestampValue(memory.createdAt)
+  )
+  const recency = maxTimestamp > minTimestamp
+    ? (updatedAt - minTimestamp) / (maxTimestamp - minTimestamp)
+    : (updatedAt ? 0.5 : 0)
+  return (
+    directMatches * 3 +
+    tagMatches * 2 +
+    historyMatches * 1.2 +
+    (memory.scope === 'petPack' ? 0.3 : 0) +
+    normalizeScore(memory.importance, 0.5) * 1.5 +
+    normalizeScore(memory.confidence, 0.5) * 1.2 +
+    Math.min(10, Math.max(0, Number(memory.useCount) || 0)) * 0.08 +
+    recency * 0.8
+  )
+}
+
+const rankMemoryContext = ({ memories = [], userMessage = '', history = [] } = {}) => {
+  const candidates = Array.isArray(memories) ? memories.filter((memory) => memory?.id && memory?.text) : []
+  if (!candidates.length) return []
+  const recentHistory = getRecentMessages(history, MAX_MEMORY_RELEVANCE_HISTORY_MESSAGES)
+  const userTokens = tokenizeForMemoryRelevance(userMessage)
+  const historyTokens = tokenizeForMemoryRelevance(recentHistory.map((message) => message.content).join(' '))
+  const queryText = `${normalizeString(userMessage)} ${recentHistory.map((message) => normalizeString(message.content)).join(' ')}`.toLowerCase()
+  const timestamps = candidates.map((memory) => Math.max(
+    timestampValue(memory.lastEvidenceAt),
+    timestampValue(memory.updatedAt),
+    timestampValue(memory.createdAt)
+  )).filter(Boolean)
+  const minTimestamp = timestamps.length ? Math.min(...timestamps) : 0
+  const maxTimestamp = timestamps.length ? Math.max(...timestamps) : 0
+  return candidates
+    .map((memory, index) => ({
+      memory,
+      index,
+      score: scoreMemoryRelevance({
+        memory,
+        userTokens,
+        historyTokens,
+        queryText,
+        minTimestamp,
+        maxTimestamp
+      })
+    }))
+    .sort((left, right) => {
+      if (left.score !== right.score) return right.score - left.score
+      const importanceDelta = normalizeScore(right.memory.importance) - normalizeScore(left.memory.importance)
+      if (importanceDelta !== 0) return importanceDelta
+      const confidenceDelta = normalizeScore(right.memory.confidence) - normalizeScore(left.memory.confidence)
+      if (confidenceDelta !== 0) return confidenceDelta
+      return left.index - right.index
+    })
+    .slice(0, MAX_MEMORY_CONTEXT_ITEMS)
+    .map((entry) => entry.memory)
+}
+
 const sanitizeDiagnosticText = (value) => String(value || '')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
   .slice(0, 240)
@@ -313,9 +418,41 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
   }
 
-  const getMemoryContext = (petPackId) => {
+  const getMemoryContext = ({ petPackId, userMessage, history }) => {
     if (typeof aiTalkStore.listMemories !== 'function') return []
-    return aiTalkStore.listMemories({ petPackId, limit: MAX_MEMORY_CONTEXT_ITEMS })
+    const candidates = aiTalkStore.listMemories({ petPackId, limit: 0 })
+    return rankMemoryContext({ memories: candidates, userMessage, history })
+  }
+
+  const markMemoryContextUsed = ({ petPackId, conversationId, memories }) => {
+    if (!Array.isArray(memories) || !memories.length || typeof aiTalkStore.markMemoriesUsed !== 'function') return
+    try {
+      const result = aiTalkStore.markMemoriesUsed(memories.map((memory) => memory.id))
+      if (result.updatedCount > 0) {
+        recordLog({
+          level: 'info',
+          event: 'ai-talk.memory.context-used',
+          message: 'AI talk injected memories marked as used',
+          details: {
+            petPackId,
+            conversationId,
+            memoryCount: result.updatedCount
+          }
+        })
+      }
+    } catch (error) {
+      recordLog({
+        level: 'warn',
+        event: 'ai-talk.memory.context-used.failed',
+        message: 'AI talk failed to mark injected memories as used',
+        details: {
+          petPackId,
+          conversationId,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: sanitizeDiagnosticText(error?.message)
+        }
+      })
+    }
   }
 
   const getRecentPetActivity = (petPackId) => {
@@ -510,7 +647,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       return await enqueueConversation(conversationPublicId, async () => {
         const history = aiTalkStore.getMessages(sessionId, conversationId)
         const userMessage = { role: 'user', content }
-        const memoryContext = getMemoryContext(petPackId)
+        const memoryContext = getMemoryContext({ petPackId, userMessage: content, history })
         const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
         const recentPetActivity = getRecentPetActivity(petPackId)
         const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
@@ -560,6 +697,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           userMessage,
           { role: 'assistant', content: reply }
         ])
+        markMemoryContextUsed({ petPackId, conversationId: conversationPublicId, memories: memoryContext })
         const sourceMessages = nextMessages.slice(-2)
         scheduleMemoryExtraction({
           config,

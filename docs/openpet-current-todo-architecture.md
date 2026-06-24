@@ -19,7 +19,7 @@ This is not a promise to implement every item in one milestone. It is a map for 
 - P3: longer-term platform direction.
 - Manual-required: needs real provider accounts, signed artifacts, notarization, Windows machines, production credentials, or human review.
 
-Current P0 status: no known startup/build blocker in this TODO pass. The highest-risk current gap is the half-wired trigger proposal inbox surface, but it is not yet the primary UI path.
+Current P0 status: no known startup/build blocker in this TODO pass. Trigger proposal inbox closure is now landed; remaining work is P1 product polish or Manual-required release/provider evidence.
 
 ## Current Code Architecture
 
@@ -41,7 +41,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The highest
 
 - Chat provider UX has separate `保存聊天 Provider` and `测试已保存配置` actions. Saving does not require a successful test, and testing uses the active saved config.
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
-- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, memory profile UI, delete memory, and clear current pet-pack memories.
+- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-ranked memory injection with use tracking, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` create host-owned durable trigger rules.
@@ -88,13 +88,12 @@ Current state:
 - Each pet-pack has an isolated `control-center:{petPackId}:main` conversation.
 - Persona is layered as pet-pack default plus local override, then compiled into system prompt.
 - Memory is automatically extracted in the background and injected as dynamic context without blocking the main reply.
+- Memory injection is relevance-ranked by current user message, recent history, tags, scope, importance, confidence, recency, and use count; injected memories update `lastUsedAt` and `useCount`.
 - Memory profile UI can show global and pet-pack memories, delete one memory, and clear current pet-pack relationship memories.
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
 
 P1 work:
 
-- Add relevant memory scoring before injection. Score by current user message, recent history, tags, scope, importance, confidence, recency, and use count.
-- Mark injected memories as used by updating `lastUsedAt` and `useCount`.
 - Upgrade the action tool schema with `reason`, `displayMode`, and a current-pet action candidate whitelist.
 - Add reply bubble segmentation while keeping the full assistant reply in transcript.
 - Add explicit active pet-pack refresh signals so AI pane and desktop chat reload persona, history, memory profile, and chat state when the active pack changes.
