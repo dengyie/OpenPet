@@ -186,6 +186,7 @@ export interface AiPaneProps {
   replayResult: AiBehaviorResult | null
   onReplayBehaviorDecision: () => void | Promise<void>
   onExportBehaviorDiagnostics: () => void | Promise<void>
+  onExportAiTalkTraceDiagnostics: () => void | Promise<void>
   onClearBehaviorDecisions: () => void | Promise<void>
   onRefreshMemoryProfile: () => void | Promise<void>
   onDeleteMemory: (memoryId: string) => void | Promise<void>
@@ -256,6 +257,7 @@ export function AiPane({
   replayResult,
   onReplayBehaviorDecision,
   onExportBehaviorDiagnostics,
+  onExportAiTalkTraceDiagnostics,
   onClearBehaviorDecisions,
   onRefreshMemoryProfile,
   onDeleteMemory,
@@ -430,6 +432,9 @@ export function AiPane({
             <div className="inline-action">
               <button type="button" className="ghost" onClick={onRefreshMemoryProfile} disabled={saving}>
                 刷新记忆
+              </button>
+              <button type="button" className="ghost" onClick={onExportAiTalkTraceDiagnostics}>
+                导出 AI Talk Trace
               </button>
               <button type="button" className="danger-text" onClick={onClearPetPackMemories} disabled={saving || memoryProfile.petPackMemories.length === 0}>
                 清空当前宠物记忆

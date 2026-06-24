@@ -29,6 +29,7 @@ const IPC = {
   PET_PACKS_IMPORT: 'pet-packs:import',
   PET_PACKS_EXPORT: 'pet-packs:export',
   PET_PACKS_SET_ACTIVE: 'pet-packs:set-active',
+  PET_PACKS_ACTIVE_CHANGED: 'pet-packs:active-changed',
   PET_PACKS_REMOVE: 'pet-packs:remove',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
@@ -47,6 +48,7 @@ const IPC = {
   IMAGE_GENERATION_CHECK_HEALTH: 'image-generation:check-health',
   AI_GET_CONVERSATION: 'ai:get-conversation',
   AI_CHAT: 'ai:chat',
+  AI_EXPORT_TRACE_DIAGNOSTICS: 'ai:export-trace-diagnostics',
   AI_BEHAVIOR_GET: 'ai-behavior:get',
   AI_BEHAVIOR_SAVE: 'ai-behavior:save',
   AI_BEHAVIOR_DRY_RUN: 'ai-behavior:dry-run',
@@ -115,6 +117,12 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   importPetPack: (selectionId) => ipcRenderer.invoke(IPC.PET_PACKS_IMPORT, { selectionId }),
   exportPetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_EXPORT, { packId }),
   setActivePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_SET_ACTIVE, { packId }),
+  onActivePetPackChanged: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    const handler = (_event, payload) => listener(payload)
+    ipcRenderer.on(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
+  },
   removePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_REMOVE, { packId }),
   getAiConfig: () => ipcRenderer.invoke(IPC.AI_GET_CONFIG),
   saveAiConfig: (config) => ipcRenderer.invoke(IPC.AI_SAVE_CONFIG, config),
@@ -133,6 +141,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   checkImageGenerationHealth: (payload) => ipcRenderer.invoke(IPC.IMAGE_GENERATION_CHECK_HEALTH, payload),
   getAiConversation: (conversationId) => ipcRenderer.invoke(IPC.AI_GET_CONVERSATION, { conversationId }),
   chat: (payload) => ipcRenderer.invoke(IPC.AI_CHAT, payload),
+  exportAiTalkTraceDiagnostics: () => ipcRenderer.invoke(IPC.AI_EXPORT_TRACE_DIAGNOSTICS),
   getPetChatState: () => ipcRenderer.invoke(IPC.PET_CHAT_GET_STATE),
   openPetChatWindow: () => ipcRenderer.invoke(IPC.PET_CHAT_OPEN),
   sendPetChatMessage: (payload) => ipcRenderer.invoke(IPC.PET_CHAT_SEND_MESSAGE, { ...(payload || {}), source: 'control-center' }),

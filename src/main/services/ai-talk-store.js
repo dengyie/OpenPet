@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 
 const SCHEMA_VERSION = 1
 const DEFAULT_CONTEXT_POLICY = Object.freeze({
@@ -17,6 +18,7 @@ const MAX_PET_UTTERANCE_TEXT_CHARS = 1000
 const MAX_PET_UTTERANCES_PER_PACK = 100
 const DEFAULT_RECENT_PET_UTTERANCE_LIMIT = 6
 const DEFAULT_RECENT_PET_UTTERANCE_CHARS = 1200
+const MAX_TRACE_ITEMS = 50
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -129,6 +131,8 @@ const createSessionId = ({ entrypoint, petPackId }) => `${entrypoint || 'control
 
 const createMessageId = ({ sessionId, conversationId, index }) => `${sessionId}:${conversationId}:message:${index + 1}`
 
+const hashText = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex')
+
 const normalizeMemoryTextKey = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()
 
 const hasSensitiveMemoryText = (text) => {
@@ -188,6 +192,37 @@ const normalizePersonaOverride = (override) => {
     }
   }
   return result
+}
+
+const summarizeMessage = (message) => ({
+  id: typeof message?.id === 'string' ? message.id : '',
+  role: MESSAGE_ROLES.has(message?.role) ? message.role : 'user',
+  contentChars: typeof message?.content === 'string' ? message.content.length : 0,
+  contentSha256: hashText(message?.content || ''),
+  createdAt: typeof message?.createdAt === 'string' ? message.createdAt : ''
+})
+
+const summarizeMemory = (memory) => {
+  const normalized = isPlainObject(memory) ? memory : {}
+  const text = typeof normalized.text === 'string' ? normalized.text : ''
+  return {
+    id: typeof normalized.id === 'string' ? normalized.id : '',
+    scope: MEMORY_SCOPES.has(normalized.scope) ? normalized.scope : 'global',
+    petPackId: typeof normalized.petPackId === 'string' ? normalized.petPackId : '',
+    textChars: text.length,
+    textSha256: hashText(text),
+    tags: normalizeMemoryTags(normalized.tags),
+    confidence: normalizeScore(normalized.confidence),
+    importance: normalizeScore(normalized.importance),
+    sourceConversationId: typeof normalized.sourceConversationId === 'string' ? normalized.sourceConversationId : '',
+    sourceMessageIds: Array.isArray(normalized.sourceMessageIds) ? normalized.sourceMessageIds.filter((id) => typeof id === 'string' && id) : [],
+    status: MEMORY_STATUSES.has(normalized.status) ? normalized.status : 'active',
+    useCount: Math.max(0, Number(normalized.useCount) || 0),
+    createdAt: typeof normalized.createdAt === 'string' ? normalized.createdAt : '',
+    updatedAt: typeof normalized.updatedAt === 'string' ? normalized.updatedAt : '',
+    lastUsedAt: typeof normalized.lastUsedAt === 'string' ? normalized.lastUsedAt : '',
+    lastEvidenceAt: typeof normalized.lastEvidenceAt === 'string' ? normalized.lastEvidenceAt : ''
+  }
 }
 
 const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } = {}) => {
@@ -533,6 +568,152 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     return clone(state.memoryJobs[jobId])
   }
 
+  const migrateLegacyConversation = ({
+    entrypoint = 'control-center',
+    petPackId = 'legacy-cat',
+    personaHash = '',
+    messages = []
+  } = {}) => {
+    const normalizedMessages = normalizeMessages(messages)
+    if (!normalizedMessages.length) {
+      return { migrated: false, skipped: true, reason: 'no legacy messages', messageCount: 0 }
+    }
+    const { sessionId, conversationId } = ensureMainConversation({ entrypoint, petPackId, personaHash })
+    const conversationKey = `${sessionId}:${conversationId}`
+    const current = state.messages[conversationKey] || []
+    if (current.length > 0) {
+      return {
+        migrated: false,
+        skipped: true,
+        reason: 'target conversation already has messages',
+        sessionId,
+        conversationId,
+        messageCount: current.length
+      }
+    }
+    const timestamp = now()
+    state.messages[conversationKey] = normalizedMessages.map((message, index) => ({
+      ...message,
+      id: message.id || createMessageId({ sessionId, conversationId, index }),
+      createdAt: message.createdAt || timestamp
+    }))
+    state.conversations[conversationKey] = {
+      ...state.conversations[conversationKey],
+      updatedAt: timestamp
+    }
+    state.sessions[sessionId] = {
+      ...state.sessions[sessionId],
+      updatedAt: timestamp
+    }
+    persist()
+    return {
+      migrated: true,
+      skipped: false,
+      reason: '',
+      sessionId,
+      conversationId,
+      messageCount: state.messages[conversationKey].length
+    }
+  }
+
+  const exportTraceDiagnostics = ({ provider = {}, behaviorDecisions = [] } = {}) => {
+    const conversations = Object.entries(state.conversations || {})
+      .map(([conversationKey, conversation]) => {
+        const messages = normalizeMessages(state.messages[conversationKey] || [])
+        return {
+          key: conversationKey,
+          id: typeof conversation?.id === 'string' ? conversation.id : '',
+          sessionId: typeof conversation?.sessionId === 'string' ? conversation.sessionId : '',
+          petPackId: typeof conversation?.petPackId === 'string' ? conversation.petPackId : '',
+          personaPackId: typeof conversation?.personaPackId === 'string' ? conversation.personaPackId : '',
+          personaHash: typeof conversation?.personaHash === 'string' ? conversation.personaHash : '',
+          responseMode: typeof conversation?.responseMode === 'string' ? conversation.responseMode : '',
+          messageCount: messages.length,
+          messages: messages.map(summarizeMessage).slice(-MAX_TRACE_ITEMS),
+          createdAt: typeof conversation?.createdAt === 'string' ? conversation.createdAt : '',
+          updatedAt: typeof conversation?.updatedAt === 'string' ? conversation.updatedAt : ''
+        }
+      })
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      .slice(0, MAX_TRACE_ITEMS)
+    const memories = Object.values(state.memories || {})
+      .map(summarizeMemory)
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+      .slice(0, MAX_TRACE_ITEMS)
+    const memoryJobs = Object.values(state.memoryJobs || {})
+      .map((job) => ({
+        id: typeof job?.id === 'string' ? job.id : '',
+        petPackId: typeof job?.petPackId === 'string' ? job.petPackId : '',
+        conversationId: typeof job?.conversationId === 'string' ? job.conversationId : '',
+        status: typeof job?.status === 'string' ? job.status : '',
+        errorCode: typeof job?.errorCode === 'string' ? job.errorCode : '',
+        appliedCount: Number.isFinite(Number(job?.appliedCount)) ? Number(job.appliedCount) : 0,
+        filteredCount: Number.isFinite(Number(job?.filteredCount)) ? Number(job.filteredCount) : 0,
+        createdAt: typeof job?.createdAt === 'string' ? job.createdAt : '',
+        updatedAt: typeof job?.updatedAt === 'string' ? job.updatedAt : ''
+      }))
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+      .slice(0, MAX_TRACE_ITEMS)
+    const traces = Object.values(state.traces || {})
+      .map((trace) => ({
+        id: typeof trace?.id === 'string' ? trace.id : '',
+        petPackId: typeof trace?.petPackId === 'string' ? trace.petPackId : '',
+        conversationId: typeof trace?.conversationId === 'string' ? trace.conversationId : '',
+        filteredMemoryCandidates: Array.isArray(trace?.filteredMemoryCandidates)
+          ? trace.filteredMemoryCandidates.map((candidate) => ({
+              operation: typeof candidate?.operation === 'string' ? candidate.operation : '',
+              scope: typeof candidate?.scope === 'string' ? candidate.scope : '',
+              reason: typeof candidate?.reason === 'string' ? candidate.reason : ''
+            }))
+          : [],
+        createdAt: typeof trace?.createdAt === 'string' ? trace.createdAt : ''
+      }))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, MAX_TRACE_ITEMS)
+    return JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: now(),
+      redaction: {
+        messages: 'content omitted; contentChars and contentSha256 retained',
+        memories: 'text omitted; textChars and textSha256 retained',
+        provider: 'api keys and credentials omitted by provider view contract',
+        behavior: 'decision replay payloads omitted'
+      },
+      provider: {
+        enabled: Boolean(provider.enabled),
+        provider: typeof provider.provider === 'string' ? provider.provider : '',
+        baseUrl: typeof provider.baseUrl === 'string' ? provider.baseUrl : '',
+        model: typeof provider.model === 'string' ? provider.model : '',
+        hasApiKey: Boolean(provider.hasApiKey),
+        memoryEnabled: Boolean(provider.memory?.enabled),
+        behaviorEnabled: Boolean(provider.behavior?.enabled)
+      },
+      conversations,
+      memories,
+      memoryJobs,
+      traces,
+      behaviorDecisions: (Array.isArray(behaviorDecisions) ? behaviorDecisions : [])
+        .slice(0, MAX_TRACE_ITEMS)
+        .map(({ replay: _replay, ...decision }) => ({
+          id: Number.isFinite(Number(decision?.id)) ? Number(decision.id) : 0,
+          timestamp: typeof decision?.timestamp === 'string' ? decision.timestamp : '',
+          matched: Boolean(decision?.matched),
+          type: typeof decision?.type === 'string' ? decision.type : '',
+          ruleId: typeof decision?.ruleId === 'string' ? decision.ruleId : '',
+          reason: typeof decision?.reason === 'string' ? decision.reason : '',
+          actionId: typeof decision?.actionId === 'string' ? decision.actionId : '',
+          intent: typeof decision?.intent === 'string' ? decision.intent : '',
+          providerReason: typeof decision?.providerReason === 'string' ? decision.providerReason : '',
+          displayMode: typeof decision?.displayMode === 'string' ? decision.displayMode : '',
+          inputSummary: typeof decision?.inputSummary === 'string' ? decision.inputSummary : '',
+          cooldown: Boolean(decision?.cooldown),
+          fallback: Boolean(decision?.fallback),
+          blockedReason: typeof decision?.blockedReason === 'string' ? decision.blockedReason : '',
+          replayRedacted: true
+        }))
+    }, null, 2)
+  }
+
   return {
     appendMessages,
     applyMemoryOperations,
@@ -544,9 +725,11 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     getMessages,
     getPersonaOverride,
     getState,
+    exportTraceDiagnostics,
     listRecentPetUtterances,
     listMemories,
     markMemoriesUsed,
+    migrateLegacyConversation,
     persist,
     recordPetUtterance,
     clearPetUtterances,

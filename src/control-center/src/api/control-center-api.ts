@@ -1212,6 +1212,7 @@ const demoApi: ControlCenterApi = {
       animations: cloneActionsConfig(demoState.actionsConfig)
     }
   },
+  onActivePetPackChanged: () => () => {},
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),
   getAiConfig: async () => cloneAiConfig(demoState.aiConfig),
   saveAiConfig: async (config) => {
@@ -1353,6 +1354,54 @@ const demoApi: ControlCenterApi = {
   },
   getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
   chat: sendDemoPetChatMessage,
+  exportAiTalkTraceDiagnostics: async () => JSON.stringify({
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    redaction: {
+      messages: 'content omitted; contentChars and contentSha256 retained',
+      memories: 'text omitted; textChars and textSha256 retained',
+      provider: 'api keys and credentials omitted by provider view contract',
+      behavior: 'decision replay payloads omitted'
+    },
+    provider: {
+      enabled: demoState.aiConfig.enabled,
+      provider: demoState.aiConfig.provider,
+      baseUrl: demoState.aiConfig.baseUrl,
+      model: demoState.aiConfig.model,
+      hasApiKey: demoState.aiConfig.hasApiKey,
+      memoryEnabled: demoState.aiConfig.memory.enabled,
+      behaviorEnabled: demoState.aiConfig.behavior.enabled
+    },
+    conversations: [{
+      key: `control-center:${demoState.petPacks.activePackId}:main`,
+      petPackId: demoState.petPacks.activePackId,
+      messageCount: demoState.petChatMessages.length,
+      messages: demoState.petChatMessages.map((message, index) => ({
+        id: `demo-message-${index + 1}`,
+        role: message.role,
+        contentChars: message.content.length,
+        contentSha256: `demo-sha256-${index + 1}`,
+        createdAt: ''
+      }))
+    }],
+    memories: demoState.aiMemories.map((memory) => ({
+      id: memory.id,
+      scope: memory.scope,
+      petPackId: memory.petPackId,
+      textChars: memory.text.length,
+      textSha256: `demo-memory-sha256-${memory.id}`,
+      tags: memory.tags,
+      confidence: memory.confidence,
+      importance: memory.importance,
+      status: memory.status
+    })),
+    memoryJobs: demoState.aiMemoryJobs,
+    traces: [],
+    behaviorDecisions: demoState.aiConfig.behavior.decisions.map(({ replay: _replay, ...decision }) => ({
+      ...decision,
+      replayRedacted: true
+    }))
+  }, null, 2),
   getPetChatState: async () => createDemoPetChatState(),
   openPetChatWindow: async () => createDemoPetChatState(),
   sendPetChatMessage: sendDemoPetChatMessage,

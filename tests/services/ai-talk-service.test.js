@@ -837,3 +837,70 @@ test('ai talk service accepts fenced json memory extraction replies', async () =
 
   assert.deepEqual(store.listMemories({ petPackId: 'legacy-cat' }).map((memory) => memory.text), ['User likes quiet focus music.'])
 })
+
+test('ai talk service migrates legacy control-center conversation before reading current main chat', () => {
+  const store = createStore()
+  const logs = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      getConversation: (conversationId) => (
+        conversationId === 'control-center'
+          ? [
+              { role: 'user', content: 'old hello' },
+              { role: 'assistant', content: 'old reply' }
+            ]
+          : []
+      )
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const messages = service.getConversation('')
+  const secondRead = service.getConversation('')
+
+  assert.deepEqual(messages.map((message) => message.content), ['old hello', 'old reply'])
+  assert.deepEqual(secondRead.map((message) => message.content), ['old hello', 'old reply'])
+  assert.equal(logs.filter((entry) => entry.event === 'ai-talk.legacy-conversation.migrated').length, 1)
+})
+
+test('ai talk service exports redacted diagnostics with provider and behavior links', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        hasApiKey: true,
+        behavior: { enabled: true, useTools: true },
+        memory: { enabled: true }
+      }),
+      complete: async () => ({ reply: 'trace raw assistant reply' })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  await service.chat({ message: 'trace raw user prompt' })
+  const exported = JSON.parse(service.exportTraceDiagnostics({
+    behaviorDecisions: [
+      { id: 3, timestamp: '2026-06-20T00:00:00.000Z', matched: true, reason: 'matched provider actionId', actionId: 'wave', replay: { reply: 'raw replay' } }
+    ]
+  }))
+  const raw = JSON.stringify(exported)
+
+  assert.equal(exported.provider.model, 'gpt-5.5')
+  assert.equal(exported.provider.hasApiKey, true)
+  assert.equal(exported.provider.memoryEnabled, true)
+  assert.equal(exported.provider.behaviorEnabled, true)
+  assert.equal(exported.conversations[0].petPackId, 'legacy-cat')
+  assert.equal(exported.behaviorDecisions[0].id, 3)
+  assert.equal(exported.behaviorDecisions[0].replayRedacted, true)
+  assert.equal(raw.includes('trace raw user prompt'), false)
+  assert.equal(raw.includes('trace raw assistant reply'), false)
+  assert.equal(raw.includes('raw replay'), false)
+})

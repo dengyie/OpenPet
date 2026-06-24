@@ -306,6 +306,17 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     petChatWindowService?.sendStateChanged?.(state)
   }
 
+  const notifyActivePetPackChanged = (event, payload = {}) => {
+    const state = getPetChatState()
+    notifyPetChatStateChanged(state)
+    event?.sender?.send?.(IPC.PET_PACKS_ACTIVE_CHANGED, {
+      activePackId: payload.activePackId || state.petPack.id || '',
+      pack: payload.pack || null,
+      petChatState: state
+    })
+    return state
+  }
+
   const capturePetBubble = (payload = {}, { notify = true } = {}) => {
     const bubble = normalizePetBubble(payload)
     if (!bubble) return lastPetBubble
@@ -1104,11 +1115,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return { canceled: false, ...petPackService.exportPack(payload.packId, selected.filePaths[0]) }
   })
 
-  ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (_event, payload) => {
+  ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (event, payload) => {
     const result = petPackService.setActivePack(payload.packId)
     reloadAndSendAnimations(getPetWindow, petService)
     const animations = petService.getPreviewAnimations()
     const petPacks = petPackService.listPacks()
+    notifyActivePetPackChanged(event, result)
     return createPetPackMutationResult(result, petPacks, animations)
   })
 
@@ -1218,6 +1230,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => runAiChatRequest(payload, { source: 'control-center' }))
+
+  ipcMainService.handle(IPC.AI_EXPORT_TRACE_DIAGNOSTICS, () => {
+    if (!aiTalkService?.exportTraceDiagnostics) throw new Error('AI talk trace diagnostics are not available')
+    return aiTalkService.exportTraceDiagnostics({
+      behaviorDecisions: behaviorOrchestratorService.getConfig?.().decisions || []
+    })
+  })
 
   ipcMainService.handle(IPC.AI_BEHAVIOR_GET, () => behaviorOrchestratorService.getConfig())
 

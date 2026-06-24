@@ -250,3 +250,83 @@ test('ai talk store filters sensitive memory candidates without storing raw secr
     [{ operation: 'create', scope: 'global', reason: 'sensitive' }]
   ])
 })
+
+test('ai talk store migrates legacy conversation only when target main conversation is empty', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
+
+  const migrated = store.migrateLegacyConversation({
+    petPackId: 'legacy-cat',
+    personaHash: 'persona-hash',
+    messages: [
+      { role: 'user', content: 'legacy hello' },
+      { role: 'assistant', content: 'legacy reply' }
+    ]
+  })
+  const skipped = store.migrateLegacyConversation({
+    petPackId: 'legacy-cat',
+    personaHash: 'persona-hash',
+    messages: [
+      { role: 'user', content: 'should not overwrite' }
+    ]
+  })
+
+  assert.equal(migrated.migrated, true)
+  assert.equal(migrated.messageCount, 2)
+  assert.equal(skipped.migrated, false)
+  assert.equal(skipped.reason, 'target conversation already has messages')
+  assert.deepEqual(store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), [
+    'legacy hello',
+    'legacy reply'
+  ])
+})
+
+test('ai talk store exports redacted trace diagnostics without raw message or memory text', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
+  const { sessionId, conversationId } = store.ensureMainConversation({ petPackId: 'mochi-cat', personaHash: 'hash-a' })
+  store.appendMessages(sessionId, conversationId, [
+    { role: 'user', content: 'secret chat phrase sk-cpa-raw-message' },
+    { role: 'assistant', content: 'assistant raw reply' }
+  ])
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'global', text: 'User likes trace-safe exports.', tags: ['trace'], confidence: 0.8, importance: 0.7 }
+    ]
+  })
+
+  const exported = JSON.parse(store.exportTraceDiagnostics({
+    provider: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5',
+      hasApiKey: true,
+      memory: { enabled: true },
+      behavior: { enabled: true }
+    },
+    behaviorDecisions: [
+      {
+        id: 1,
+        timestamp: '2026-06-20T00:00:00.000Z',
+        matched: true,
+        type: 'playAction',
+        reason: 'matched provider actionId',
+        actionId: 'wave',
+        replay: { reply: 'raw behavior replay text' }
+      }
+    ]
+  }))
+  const raw = JSON.stringify(exported)
+
+  assert.equal(exported.provider.hasApiKey, true)
+  assert.equal(exported.conversations[0].messageCount, 2)
+  assert.equal(exported.conversations[0].messages[0].contentChars, 'secret chat phrase sk-cpa-raw-message'.length)
+  assert.equal(exported.memories[0].textChars, 'User likes trace-safe exports.'.length)
+  assert.equal(exported.behaviorDecisions[0].replayRedacted, true)
+  assert.equal(raw.includes('secret chat phrase'), false)
+  assert.equal(raw.includes('assistant raw reply'), false)
+  assert.equal(raw.includes('User likes trace-safe exports.'), false)
+  assert.equal(raw.includes('raw behavior replay text'), false)
+})

@@ -560,6 +560,42 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
   }
 
+  const migrateLegacyConversationIfNeeded = ({ manifest, petPackId, personaHash } = {}) => {
+    if (typeof aiTalkStore.migrateLegacyConversation !== 'function' || typeof aiService.getConversation !== 'function') {
+      return { migrated: false, skipped: true, reason: 'legacy migration unavailable', messageCount: 0 }
+    }
+    const packId = normalizeString(petPackId) || normalizeString(manifest?.id) || 'legacy-cat'
+    const legacyMessages = aiService.getConversation('control-center')
+    const result = aiTalkStore.migrateLegacyConversation({
+      entrypoint: 'control-center',
+      petPackId: packId,
+      personaHash,
+      messages: legacyMessages
+    })
+    if (result.migrated) {
+      recordLog({
+        level: 'info',
+        event: 'ai-talk.legacy-conversation.migrated',
+        message: 'AI talk legacy conversation migrated into pet-pack store',
+        details: {
+          petPackId: packId,
+          sessionId: result.sessionId || '',
+          conversationId: result.conversationId || '',
+          messageCount: result.messageCount
+        }
+      })
+    }
+    return result
+  }
+
+  const exportTraceDiagnostics = ({ behaviorDecisions = [] } = {}) => {
+    if (typeof aiTalkStore.exportTraceDiagnostics !== 'function') {
+      throw new Error('AI talk trace diagnostics are not available')
+    }
+    const provider = typeof aiService.getConfig === 'function' ? aiService.getConfig() : {}
+    return aiTalkStore.exportTraceDiagnostics({ provider, behaviorDecisions })
+  }
+
   const deleteMemory = (memoryId) => {
     if (typeof aiTalkStore.deleteMemory !== 'function') throw new Error('AI talk memory deletion is not available')
     const deleted = aiTalkStore.deleteMemory(memoryId)
@@ -671,6 +707,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     if (parsed) return aiTalkStore.getMessages(parsed.sessionId, parsed.conversationId)
     const { manifest, petPackId } = resolveActivePack()
     const { personaHash } = resolvePersona(manifest, petPackId)
+    migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
     const { sessionId, conversationId: mainConversationId } = aiTalkStore.ensureMainConversation({
       entrypoint: 'control-center',
       petPackId,
@@ -693,6 +730,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       if (!config.enabled) throw new Error('AI chat is disabled')
       const { manifest, petPackId } = resolveActivePack()
       const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
+      migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
       const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({
         entrypoint,
         petPackId,
@@ -812,6 +850,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     compileMemoryContextPrompt,
     clearPetPackMemories,
     deleteMemory,
+    exportTraceDiagnostics,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
     generatePersonaDraft,

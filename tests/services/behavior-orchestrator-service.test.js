@@ -113,6 +113,31 @@ test('behavior orchestrator preserves provider behavior reason and display mode 
   assert.equal(JSON.stringify(exported).includes('做得漂亮'), false)
 })
 
+test('behavior orchestrator omits invalid provider display metadata from normalized decisions', () => {
+  const service = createBehaviorOrchestratorService({
+    settingsService: createSettingsService()
+  })
+
+  service.evaluate({
+    reply: 'Great work.',
+    behaviorIntent: {
+      intent: 'success',
+      actionId: 'done',
+      confidence: 0.9,
+      bubbleText: 'Nice!',
+      reason: '   ',
+      displayMode: 'fullscreen'
+    },
+    actions
+  })
+
+  const stored = service.getConfig().decisions[0]
+  assert.equal(Object.hasOwn(stored, 'providerReason'), false)
+  assert.equal(Object.hasOwn(stored, 'displayMode'), false)
+  assert.equal(Object.hasOwn(stored.replay.behaviorIntent, 'reason'), false)
+  assert.equal(Object.hasOwn(stored.replay.behaviorIntent, 'displayMode'), false)
+})
+
 test('behavior orchestrator skips matching rules with unavailable actions', () => {
   const service = createBehaviorOrchestratorService({
     settingsService: createSettingsService({

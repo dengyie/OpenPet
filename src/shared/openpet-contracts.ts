@@ -165,6 +165,26 @@ export interface AiMemoryProfileViewState {
   recentJobs: AiMemoryJobViewState[]
 }
 
+export interface AiTalkTraceDiagnosticsExport {
+  schemaVersion: number
+  exportedAt: string
+  redaction: JsonObject
+  provider: {
+    enabled: boolean
+    provider: string
+    baseUrl: string
+    model: string
+    hasApiKey: boolean
+    memoryEnabled: boolean
+    behaviorEnabled: boolean
+  }
+  conversations: JsonObject[]
+  memories: JsonObject[]
+  memoryJobs: JsonObject[]
+  traces: JsonObject[]
+  behaviorDecisions: JsonObject[]
+}
+
 export interface AiPersona {
   name: string
   identity: string
@@ -534,6 +554,12 @@ export interface PetPackMutationResult {
   activePackId?: string
   petPacks: PetPacksViewState
   animations?: ActionsConfigViewState
+}
+
+export interface ActivePetPackChangedEvent {
+  activePackId: string
+  pack?: PetPackSummary | null
+  petChatState?: PetChatStateViewState
 }
 
 export interface CompletedPetPackExportResult {
@@ -2406,6 +2432,7 @@ export interface ControlCenterApi {
   importPetPack: (selectionId: string) => Promise<PetPackMutationResult>
   exportPetPack: (packId: string) => Promise<PetPackExportResult>
   setActivePetPack: (packId: string) => Promise<PetPackMutationResult>
+  onActivePetPackChanged?: (listener: (event: ActivePetPackChangedEvent) => void) => () => void
   removePetPack: (packId: string) => Promise<PetPackMutationResult>
   getAiConfig: () => Promise<AiConfigViewState>
   saveAiConfig: (config: Partial<AiConfigViewState>) => Promise<AiConfigViewState>
@@ -2424,6 +2451,7 @@ export interface ControlCenterApi {
   checkImageGenerationHealth: (payload?: ImageGenerationHealthCheckRequest) => Promise<ImageGenerationHealthCheckResult>
   getAiConversation: (conversationId: string) => Promise<ChatMessage[]>
   chat: (payload: AiChatRequest) => Promise<AiChatResponse>
+  exportAiTalkTraceDiagnostics: () => Promise<string>
   getPetChatState: () => Promise<PetChatStateViewState>
   openPetChatWindow: () => Promise<PetChatStateViewState>
   sendPetChatMessage: (payload: AiChatRequest) => Promise<AiChatResponse>

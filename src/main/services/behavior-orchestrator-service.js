@@ -59,16 +59,22 @@ const summarizeInput = ({ reply = '', behaviorIntent = null } = {}) => {
   return parts.join(' · ')
 }
 
+const normalizeReplayBehaviorIntent = (behaviorIntent) => {
+  if (!isPlainObject(behaviorIntent)) return null
+  const providerFields = getProviderBehaviorFields(behaviorIntent)
+  return {
+    intent: String(behaviorIntent.intent || '').slice(0, 120),
+    actionId: String(behaviorIntent.actionId || '').slice(0, 120),
+    bubbleText: String(behaviorIntent.bubbleText || '').slice(0, MAX_RULE_TEXT_CHARS),
+    confidence: Number(behaviorIntent.confidence || 0),
+    ...(providerFields.providerReason ? { reason: providerFields.providerReason } : {}),
+    ...(providerFields.displayMode ? { displayMode: providerFields.displayMode } : {})
+  }
+}
+
 const normalizeReplayInput = (replay = {}) => ({
   reply: String(replay.reply || '').slice(0, MAX_REPLAY_REPLY_CHARS),
-  behaviorIntent: isPlainObject(replay.behaviorIntent) ? {
-    intent: String(replay.behaviorIntent.intent || '').slice(0, 120),
-    actionId: String(replay.behaviorIntent.actionId || '').slice(0, 120),
-    bubbleText: String(replay.behaviorIntent.bubbleText || '').slice(0, MAX_RULE_TEXT_CHARS),
-    confidence: Number(replay.behaviorIntent.confidence || 0),
-    reason: sanitizeDecisionText(replay.behaviorIntent.reason),
-    displayMode: normalizeDisplayMode(replay.behaviorIntent.displayMode)
-  } : null
+  behaviorIntent: normalizeReplayBehaviorIntent(replay.behaviorIntent)
 })
 
 const normalizeRule = (rule = {}, index = 0) => ({
@@ -110,8 +116,7 @@ const normalizeDecision = (decision = {}, index = 0) => ({
   cooldown: Boolean(decision.cooldown),
   fallback: Boolean(decision.fallback),
   blockedReason: String(decision.blockedReason || ''),
-  providerReason: sanitizeDecisionText(decision.providerReason),
-  displayMode: normalizeDisplayMode(decision.displayMode),
+  ...getDecisionProviderFields(decision),
   replay: normalizeReplayInput(decision.replay)
 })
 

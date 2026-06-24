@@ -234,6 +234,36 @@ export function useAiPane(activeTab = 'ai') {
 
   const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
 
+  const loadBehavior = async () => {
+    const nextBehavior = cloneAiBehavior(await api.getAiBehavior())
+    setBehavior(nextBehavior)
+    setBehaviorRulesText(JSON.stringify(nextBehavior.rules || [], null, 2))
+    setConfig((current) => ({ ...current, behavior: nextBehavior }))
+    return nextBehavior
+  }
+
+  const refreshActivePetPackAiContext = async (reason = 'refresh') => {
+    const [profile, memory, state, nextBehavior] = await Promise.all([
+      api.getAiPersonaProfile(),
+      api.getAiMemoryProfile(),
+      api.getPetChatState(),
+      api.getAiBehavior()
+    ])
+    const nextPersonaProfile = cloneAiPersonaProfile(profile)
+    setPersonaProfile(nextPersonaProfile)
+    setPersonaDraft(personaToDraft(nextPersonaProfile.overridePersona))
+    setGeneratedPersonaDraft((current) => (current?.petPackId === nextPersonaProfile.petPackId ? current : null))
+    setMemoryProfile(cloneAiMemoryProfile(memory))
+    applyPetChatState(state)
+    const behaviorConfig = cloneAiBehavior(nextBehavior)
+    setBehavior(behaviorConfig)
+    setBehaviorRulesText(JSON.stringify(behaviorConfig.rules || [], null, 2))
+    setConfig((current) => ({ ...current, behavior: behaviorConfig }))
+    if (reason === 'active-pet-pack-changed') {
+      setStatus(`已切换到 ${nextPersonaProfile.petPackDisplayName || nextPersonaProfile.petPackId} 的 AI 上下文`)
+    }
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
@@ -270,10 +300,18 @@ export function useAiPane(activeTab = 'ai') {
 
   useEffect(() => {
     if (activeTab !== 'ai') return
-    void loadPersonaProfile().catch(() => {})
-    void loadMemoryProfile().catch(() => {})
-    void loadPetChatState().catch(() => {})
+    void refreshActivePetPackAiContext('tab-active').catch(() => {})
   }, [activeTab])
+
+  useEffect(() => {
+    if (typeof api.onActivePetPackChanged !== 'function') return undefined
+    return api.onActivePetPackChanged((event) => {
+      if (event?.petChatState) applyPetChatState(event.petChatState)
+      void refreshActivePetPackAiContext('active-pet-pack-changed').catch((error) => {
+        setStatus(messageFromError(error, '刷新当前宠物 AI 上下文失败'))
+      })
+    })
+  }, [])
 
   const saveProviderConfigDraft = async () => {
     const validationError = validateProviderConfig(config)
@@ -401,9 +439,7 @@ export function useAiPane(activeTab = 'ai') {
     setStatus('')
     try {
       await api.clearAiBehaviorDecisions()
-      const nextBehavior = cloneAiBehavior(await api.getAiBehavior())
-      setBehavior(nextBehavior)
-      setConfig({ ...config, behavior: nextBehavior })
+      await loadBehavior()
       setReplayResult(null)
       setDryRunResult(null)
       setStatus('Behavior 决策已清空')
@@ -657,9 +693,7 @@ export function useAiPane(activeTab = 'ai') {
           ? `动作触发失败：${result.action.error}`
           : `已触发动作：${result.action.label || result.action.actionId}`)
       }
-      const nextBehavior = cloneAiBehavior(await api.getAiBehavior())
-      setBehavior(nextBehavior)
-      setConfig((current) => ({ ...current, behavior: nextBehavior }))
+      await loadBehavior()
       void loadMemoryProfile().catch(() => {})
     } catch (error) {
       setStatus(messageFromError(error, '发送失败'))
@@ -675,6 +709,17 @@ export function useAiPane(activeTab = 'ai') {
       setStatus('已打开桌面聊天框')
     } catch (error) {
       setStatus(messageFromError(error, '打开桌面聊天框失败'))
+    }
+  }
+
+  const onExportAiTalkTraceDiagnostics = async () => {
+    setStatus('')
+    try {
+      const content = await api.exportAiTalkTraceDiagnostics()
+      downloadTextFile('openpet-ai-talk-trace-diagnostics.json', content, 'application/json;charset=utf-8')
+      setStatus('AI Talk Trace 已导出')
+    } catch (error) {
+      setStatus(messageFromError(error, 'AI Talk Trace 导出失败'))
     }
   }
 
@@ -743,6 +788,7 @@ export function useAiPane(activeTab = 'ai') {
     onDryRunBehavior,
     onReplayBehaviorDecision,
     onExportBehaviorDiagnostics,
+    onExportAiTalkTraceDiagnostics,
     onClearBehaviorDecisions,
     onRefreshMemoryProfile,
     onDeleteMemory,
