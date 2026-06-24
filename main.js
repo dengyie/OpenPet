@@ -25,6 +25,7 @@ const { createSecretService } = require('./src/main/services/secret-service')
 const { createAiService } = require('./src/main/services/ai-service')
 const { createAiTalkStore } = require('./src/main/services/ai-talk-store')
 const { createAiTalkService } = require('./src/main/services/ai-talk-service')
+const { createPetUtteranceLogService } = require('./src/main/services/pet-utterance-log-service')
 const { createImageGenerationModelService } = require('./src/main/services/image-generation-model-service')
 const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
@@ -88,7 +89,8 @@ const bootstrapOpenPet = () => {
   })
   const aiService = createAiService({ settingsService, secretService, appLogService })
   const aiTalkStore = createAiTalkStore({ storePath: path.join(app.getPath('userData'), 'ai-talk-store.json') })
-  const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService })
+  const petUtteranceLogService = createPetUtteranceLogService({ aiTalkStore, appLogService })
+  const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService })
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
@@ -260,6 +262,7 @@ const bootstrapOpenPet = () => {
     petPackService,
     aiService,
     aiTalkService,
+    petUtteranceLogService,
     imageGenerationModelService,
     behaviorOrchestratorService,
     pluginService,

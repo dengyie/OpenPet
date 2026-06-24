@@ -214,6 +214,53 @@ test('ai talk service preserves existing behavior tool request when enabled', as
   assert.deepEqual(result.behaviorIntent, { intent: 'greet', confidence: 0.8 })
 })
 
+test('ai talk service injects recent pet activity without polluting transcript or memory extraction', async () => {
+  const requests = []
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        memory: { enabled: true },
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return requests.length === 1
+          ? { reply: 'I noticed the weather ping.' }
+          : { reply: '{"memories":[{"operation":"ignore"}]}' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' }),
+    petUtteranceLogService: {
+      listRecent: () => [
+        {
+          id: 'u1',
+          petPackId: 'legacy-cat',
+          text: '今天可能会下雨',
+          source: 'plugin:weather',
+          ttlMs: 1800,
+          createdAt: '2026-06-24T00:00:00.000Z'
+        }
+      ]
+    }
+  })
+
+  const result = await service.chat({ message: '它刚才说什么？' })
+  await service.flushMemoryJobs()
+
+  assert.equal(result.reply, 'I noticed the weather ping.')
+  assert.match(requests[0].messages[1].content, /Recent pet activity outside the main chat/)
+  assert.match(requests[0].messages[1].content, /\[plugin:weather\] 今天可能会下雨/)
+  assert.deepEqual(store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), [
+    '它刚才说什么？',
+    'I noticed the weather ping.'
+  ])
+  assert.equal(JSON.stringify(store.getMessages('control-center:legacy-cat', 'main')).includes('今天可能会下雨'), false)
+  assert.equal(requests[1].messages.some((message) => message.content.includes('今天可能会下雨')), false)
+})
+
 test('ai talk service records chat lifecycle diagnostics without prompt text', async () => {
   const logs = []
   const service = createAiTalkService({

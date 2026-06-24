@@ -55,6 +55,12 @@ export const defaultSettings = {
     enabled: false,
     radius: 'medium',
     hasAnchor: false
+  },
+  petBubbleChat: {
+    enabled: true,
+    autoPopup: true,
+    autoHide: true,
+    pinOnInteraction: true
   }
 } satisfies ControlCenterSettings
 
@@ -250,6 +256,14 @@ export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | 
   home: {
     ...defaultSettings.home,
     ...(settings?.home || {})
+  },
+  petBubbleChat: {
+    ...defaultSettings.petBubbleChat,
+    ...(settings?.petBubbleChat || {}),
+    enabled: settings?.petBubbleChat?.enabled !== false,
+    autoPopup: settings?.petBubbleChat?.autoPopup !== false,
+    autoHide: settings?.petBubbleChat?.autoHide !== false,
+    pinOnInteraction: settings?.petBubbleChat?.pinOnInteraction !== false
   }
 })
 
