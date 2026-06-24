@@ -201,7 +201,7 @@ const sanitizeChatMessages = (messages = []) => (
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
   let lastPetBubble = createEmptyPetBubble()
@@ -449,6 +449,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   petService.onSay?.((payload) => {
     recordPetUtterance(payload)
     capturePetBubble(payload)
+    petBubbleChatWindowService?.showMessage?.({
+      ...payload,
+      petPackId: getActivePetPackId()
+    })
     sendToPetWindow(getPetWindow, IPC.PET_SAY, payload)
   })
   petService.onAction?.((payload) => {
@@ -459,6 +463,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       const bubble = { text: payload.message, ttlMs: payload.ttlMs, source: payload.source }
       recordPetUtterance(bubble)
       capturePetBubble(bubble)
+      petBubbleChatWindowService?.showMessage?.({
+        ...bubble,
+        petPackId: getActivePetPackId()
+      })
       sendToPetWindow(getPetWindow, IPC.PET_SAY, bubble)
     }
   })
@@ -483,6 +491,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !viewport) return
     applyPetViewport(win, viewport)
+    petBubbleChatWindowService?.syncToPetWindow?.()
   })
 
   // 拖拽移动：直接设置窗口位置（主进程负责钳制到工作区）
@@ -497,6 +506,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         })
       : clampToWorkArea(win, point.x, point.y)
     win.setPosition(next.x, next.y)
+    petBubbleChatWindowService?.syncToPetWindow?.()
   })
 
   ipcMainService.on(IPC.PET_DRAG_ENDED, (event) => {
@@ -518,6 +528,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       }
     })
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
+    petBubbleChatWindowService?.syncToPetWindow?.()
   })
 
   ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
@@ -570,6 +581,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         })
       : clampToWorkArea(win, x + delta.x, y + delta.y)
     win.setPosition(next.x, next.y)
+    petBubbleChatWindowService?.syncToPetWindow?.()
     return next
   })
 
@@ -652,6 +664,22 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.PET_CHAT_GET_STATE, () => {
     return getPetChatState()
+  })
+
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_GET_STATE, () => {
+    return petBubbleChatWindowService?.getState?.() || { visible: false, hasWindow: false }
+  })
+
+  ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, () => {
+    petBubbleChatWindowService?.hide?.({ source: 'pet-bubble-chat-renderer' })
+  })
+
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SET_PINNED, (_event, payload) => {
+    return petBubbleChatWindowService?.setPinned?.(Boolean(payload?.pinned), { source: 'pet-bubble-chat-renderer' }) || { visible: false, hasWindow: false }
+  })
+
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SET_INTERACTING, (_event, payload) => {
+    return petBubbleChatWindowService?.setInteracting?.(Boolean(payload?.interacting), { source: 'pet-bubble-chat-renderer' }) || { visible: false, hasWindow: false }
   })
 
   ipcMainService.handle(IPC.PET_CHAT_OPEN, () => {

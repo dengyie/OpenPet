@@ -14,6 +14,7 @@ const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
 const { applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow } = require('./src/main/window')
 const { createPetChatWindowManager } = require('./src/main/pet-chat-window')
+const { createPetBubbleChatWindowManager } = require('./src/main/pet-bubble-chat-window')
 const { createPetRendererSettings, normalizeLocalHttpConfig, reloadAndSendAnimations, registerIpcHandlers } = require('./src/main/ipc')
 const { configureUserDataPath } = require('./src/main/user-data-path')
 const { createEventBus } = require('./src/main/services/event-bus')
@@ -104,6 +105,13 @@ const bootstrapOpenPet = () => {
     screen,
     app,
     createSettingsWindow: () => createSettingsWindow(petWindow)
+  })
+  const petBubbleChatWindowService = createPetBubbleChatWindowManager({
+    getPetWindow,
+    settingsService,
+    appLogService,
+    BrowserWindow,
+    screen
   })
   try {
     console.log(`OpenPet app log: ${appLogService.logPath}`)
@@ -263,6 +271,7 @@ const bootstrapOpenPet = () => {
     aiService,
     aiTalkService,
     petUtteranceLogService,
+    petBubbleChatWindowService,
     imageGenerationModelService,
     behaviorOrchestratorService,
     pluginService,

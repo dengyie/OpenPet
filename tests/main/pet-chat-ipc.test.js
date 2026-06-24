@@ -199,6 +199,7 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
   let onSayHandler = null
   const sentToPetWindow = []
   const utterances = []
+  const bubbleChatMessages = []
   const ipcMain = registerPetChatHandlers({
     getPetWindow: () => ({
       isDestroyed: () => false,
@@ -223,6 +224,12 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
         return payload
       }
     },
+    petBubbleChatWindowService: {
+      showMessage: (payload) => {
+        bubbleChatMessages.push(payload)
+        return { visible: true }
+      }
+    },
     petChatWindowService: {
       getState: () => ({ alwaysOnTop: true, visible: false, hasWindow: true }),
       sendStateChanged: () => {}
@@ -236,12 +243,48 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
   assert.equal(state.bubble.source, 'pet:event')
   assert.equal(state.bubble.ttlMs, 1800)
   assert.equal(sentToPetWindow.at(-1).channel, IPC.PET_SAY)
+  assert.deepEqual(bubbleChatMessages, [{
+    text: '刚刚打了个招呼',
+    ttlMs: 1800,
+    source: 'pet:event',
+    petPackId: 'legacy-cat'
+  }])
   assert.deepEqual(utterances, [{
     petPackId: 'legacy-cat',
     text: '刚刚打了个招呼',
     source: 'pet:event',
     ttlMs: 1800
   }])
+})
+
+test('pet bubble chat IPC delegates state, hide, pin and interaction updates', async () => {
+  const calls = []
+  const ipcMain = registerPetChatHandlers({
+    petBubbleChatWindowService: {
+      getState: () => ({ visible: true, pinned: false }),
+      hide: (payload) => {
+        calls.push(['hide', payload])
+      },
+      setPinned: (pinned, meta) => {
+        calls.push(['pinned', pinned, meta])
+        return { visible: true, pinned }
+      },
+      setInteracting: (interacting, meta) => {
+        calls.push(['interacting', interacting, meta])
+        return { visible: true, interacting }
+      }
+    }
+  })
+
+  assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_GET_STATE)(), { visible: true, pinned: false })
+  ipcMain.listeners.get(IPC.PET_BUBBLE_CHAT_HIDE)()
+  assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_PINNED)(null, { pinned: true }), { visible: true, pinned: true })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_INTERACTING)(null, { interacting: true }), { visible: true, interacting: true })
+  assert.deepEqual(calls, [
+    ['hide', { source: 'pet-bubble-chat-renderer' }],
+    ['pinned', true, { source: 'pet-bubble-chat-renderer' }],
+    ['interacting', true, { source: 'pet-bubble-chat-renderer' }]
+  ])
 })
 
 test('pet chat send stops before provider call when chat provider is not ready', async () => {
