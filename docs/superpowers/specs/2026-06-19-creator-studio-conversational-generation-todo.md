@@ -1,8 +1,8 @@
 # Creator Studio Conversational Generation TODO
 
 Date: 2026-06-19
-Last updated: 2026-06-23
-Status: First plugin slice implemented; remaining dashboard polish, trigger inbox closure, and real provider smoke
+Last updated: 2026-06-25
+Status: First plugin slice implemented; action-frame QA gate shared; remaining dashboard polish, trigger inbox closure, and real provider smoke
 Scope: Creator Studio plugin extension for conversational full-pet and single-action generation
 
 ## Confirmed Product Direction
@@ -219,9 +219,13 @@ For `full-pet`, import through the approved pet-pack import bridge.
 - Task defaults cover action id, frame count, loop, style source, and trigger proposal.
 - `create-run` can persist `generationTask` and `originalPrompt`.
 - `task-workflow.js` plus `draft-task`, `answer-question`, and `confirm-task` commands support the first conversation-style task flow.
-- Custom single-action fixture generation, QA metadata, trigger proposal metadata, and approved action import paths exist.
+- Custom single-action fixture generation, host-bridged action-frame generation, QA metadata, trigger proposal metadata, and approved action import paths exist.
 - `openpet-prompt-builder.js` compiles OpenPet-specific image prompts before host model generation.
-- Tests cover prompt parsing, safe defaults, run persistence, prompt building, host model bridge prompt use, and single-action output metadata.
+- Dashboard routes support single-action task draft, answer, confirm, generate, approve, action review, frame preview/repair, and import handoff.
+- Single-action runs write ordered transparent frame folders under the Creator Studio run workspace and store action-frame QA metadata with dimensions, frame count, trigger proposal, and visible-pixel evidence.
+- Dashboard approval, CLI approval, and action import use one shared action-frame QA gate before approval/import side effects.
+- Dashboard responses expose data-relative artifact paths and preview URLs, not raw absolute filesystem paths.
+- Tests cover prompt parsing, safe defaults, run persistence, prompt building, host model bridge prompt use, QA failure paths, frame repair, dashboard service routes, and single-action import handoff.
 
 ## Remaining Plugin Work
 
@@ -231,6 +235,8 @@ For `full-pet`, import through the approved pet-pack import bridge.
 - Surface prompt-builder provenance in the dashboard, including sanitized final prompt preview for developer mode.
 - Connect generated trigger proposals to the host trigger proposal inbox after that host inbox service/UI is complete.
 - Add realistic smoke guidance for configured host image Provider generation.
+- Add stronger review artifacts for animation quality, such as contact sheets or playback previews.
+- Keep expanding the same `GenerationTask` contract toward full-pet/multi-action generation after the single-action milestone is stable.
 
 ## TODO: Host / Main UI Work
 

@@ -57,10 +57,28 @@ The following pieces already exist and should be extended, not rewritten:
 - `examples/plugins/creator-studio/lib/run-store.js`: durable run workspace, `run.json`, inputs, outputs, QA, logs, and state updates.
 - `examples/plugins/creator-studio/lib/backend-runner.js`: backend dispatch, fixture support, host-model bridge path, append-only logs, and failure state persistence.
 - `examples/plugins/creator-studio/lib/real-atlas-builder.js`: host-generated image to OpenPet atlas conversion with path/symlink safety checks.
-- `examples/plugins/creator-studio/service/studio-service.js`: loopback dashboard service with run list, run detail, and run logs APIs.
-- `examples/plugins/creator-studio/web/dashboard/index.html`: placeholder dashboard shell.
+- `examples/plugins/creator-studio/lib/action-frame-builder.js`: host-generated image to ordered transparent single-action frame sequence with QA evidence and repair support.
+- `examples/plugins/creator-studio/commands/import-approved-action.js`: approved single-action import through the host creator asset bridge.
+- `examples/plugins/creator-studio/service/studio-service.js`: loopback dashboard service with task lifecycle, generation, run list/detail/logs, action review, frame preview/repair, approval, and sanitized public artifact APIs.
+- `examples/plugins/creator-studio/web/dashboard/index.html`: static dashboard UI for prompt entry, task review, generation, QA/action review, frame repair, approval, import handoff, and logs.
 - `tests/examples/creator-studio-plugin.test.js`: broad Creator Studio plugin tests.
 - `tests/examples/creator-studio-real-atlas-builder.test.js`: real atlas builder tests.
+- `tests/examples/creator-studio-action-frame-builder.test.js`: action-frame generation and repair tests.
+
+## Status Update 2026-06-24
+
+Completed since this plan was written:
+- Conversational single-action task workflow is implemented through `draft-task`, `answer-question`, `confirm-task`, dashboard routes, and persisted run state.
+- Single-action runs can generate reviewable frame artifacts under the Creator Studio data directory instead of only producing a pet-pack atlas.
+- Dashboard users can inspect action-review metadata, preview individual frames through data-relative URLs, repair a selected frame from the generated source image, approve the run, and receive the correct import command.
+- `import-approved-action` imports approved action frames through `/creator/assets/import-frames`; the plugin still does not mutate trigger bindings directly.
+- Approval/import paths gate action frames on passing QA metadata, ordered frame evidence, matching dimensions/count, and non-empty visible-pixel evidence.
+
+Remaining production TODO:
+- Consolidate action-frame QA validation into one shared module used by dashboard approval, CLI approval/import, and tests.
+- Add real provider smoke coverage for configured `cloud` and `local` providers, without claiming visual quality automatically.
+- Add Electron/Control Center E2E coverage for the Creator Studio plugin entry and dashboard click flow.
+- Finish host-owned trigger proposal inbox/editor and durable non-click trigger-rule persistence.
 
 ## File Structure
 

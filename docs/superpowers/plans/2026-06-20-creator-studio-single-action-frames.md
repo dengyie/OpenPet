@@ -61,7 +61,24 @@ Implemented and verified:
 - `src/main/services/action-import-service.js` is the only host write path for action frame import and sprite regeneration.
 
 Known limitation:
-- The current provider image is usable as a pet pack source, but every runtime atlas cell is the same normalized image. It is technically importable, but it is not a real multi-frame action animation.
+- The full-pet/provider atlas path still normalizes one provider image into repeated atlas cells.
+- The single-action path now creates an ordered transparent frame sequence by deriving motion variants from one generated source image. This is technically importable as an OpenPet action, but human review is still required to judge whether the animation quality is production-ready.
+
+## Status Update 2026-06-24
+
+Completed in the current implementation:
+- `examples/plugins/creator-studio/lib/action-frame-builder.js` creates ordered `0001.png...` transparent action frames, writes `action-frame-validation.json`, records frame dimensions, visible pixels, loop metadata, and trigger proposals, and supports single-frame repair.
+- `examples/plugins/creator-studio/lib/backend-runner.js` routes confirmed `single-action` runs into action-frame output while preserving the existing full-pet/real-atlas path.
+- `examples/plugins/creator-studio/commands/import-approved-action.js` imports approved single-action frames only through the host `/creator/assets/import-frames` bridge.
+- `examples/plugins/creator-studio/service/studio-service.js` exposes dashboard task, generation, approval, preview, repair, and action-review routes without returning raw absolute paths.
+- Dashboard approval and `import-approved-action` both reject failed/incomplete action-frame QA and require ordered frame metadata with `visiblePixels >= 1`.
+- Regression coverage exists for action-frame generation/repair, failed QA import rejection, dashboard approval gating, and host-bridge import handoff.
+
+Still open after this slice:
+- Extract the duplicated dashboard approval/import QA checks into one shared `action-frame-qa` helper and add parity tests for both paths.
+- Add a real configured cloud/local provider smoke for the full single-action command flow.
+- Add Electron/Control Center E2E coverage from Plugins -> Creator Studio -> generate -> approve/import.
+- Add stronger animation-quality review tooling such as contact sheets, timing preview, and provider-native multi-frame support.
 
 ---
 
