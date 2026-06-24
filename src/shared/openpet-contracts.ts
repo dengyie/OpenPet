@@ -2082,9 +2082,16 @@ export interface PackagedRuntimeSmokeStateRendererSprite {
   backgroundImage: string
 }
 
-export interface PackagedRuntimeSmokeStateRendererBubble {
+export interface PackagedRuntimeSmokeStateRendererLegacyInlineBubble {
   visible: boolean
   text: string
+}
+
+export interface PackagedRuntimeSmokeStateRendererBubbleChat {
+  visible: boolean
+  hasWindow: boolean
+  text: string
+  source: string
 }
 
 export interface PackagedRuntimeSmokeStateRendererAction {
@@ -2101,7 +2108,8 @@ export interface PackagedRuntimeSmokeStateRenderer {
   htmlBackground?: string
   transparentBackground?: boolean
   sprite?: PackagedRuntimeSmokeStateRendererSprite
-  bubble?: PackagedRuntimeSmokeStateRendererBubble
+  legacyInlineBubble?: PackagedRuntimeSmokeStateRendererLegacyInlineBubble
+  bubbleChat?: PackagedRuntimeSmokeStateRendererBubbleChat
   action?: PackagedRuntimeSmokeStateRendererAction
 }
 

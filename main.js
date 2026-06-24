@@ -341,7 +341,7 @@ const bootstrapOpenPet = () => {
     const settings = petService.getSettings()
     applyWindowScale(petWindow, settings.scale)
     petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(settings))
-    maybeRunPackagedRuntimeSmoke({ app, petWindow, petService, petPackService })
+    maybeRunPackagedRuntimeSmoke({ app, petWindow, petService, petPackService, petBubbleChatWindowService })
     maybeRunPackagedPluginCleanupEvidence({ app, pluginInstallService, pluginService })
   })
   loadPetWindow(petWindow)

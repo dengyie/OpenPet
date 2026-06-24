@@ -26,6 +26,8 @@ const IPC = {
   PET_SHOW_CONTEXT_MENU: 'pet:show-context-menu',
   PET_MENU_COMMAND: 'pet:menu-command',
   PET_QUIT: 'pet:quit',
+  PET_BUBBLE_CHAT_OPEN: 'pet-bubble-chat:open',
+  PET_BUBBLE_CHAT_SHOW_MESSAGE: 'pet-bubble-chat:show-message',
   SETTINGS_OPEN: 'settings:open',
   SETTINGS_CHANGED: 'settings:changed'
 }
@@ -42,6 +44,8 @@ contextBridge.exposeInMainWorld('petAPI', {
   dragEnded: () => ipcRenderer.send(IPC.PET_DRAG_ENDED),
   moveBy: (delta) => ipcRenderer.invoke(IPC.PET_MOVE_BY, delta),
   showContextMenu: (point) => ipcRenderer.invoke(IPC.PET_SHOW_CONTEXT_MENU, point),
+  openBubbleChat: () => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_OPEN),
+  showBubbleChatMessage: (payload) => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_SHOW_MESSAGE, payload),
   quit: () => ipcRenderer.send(IPC.PET_QUIT),
   openSettings: () => ipcRenderer.send(IPC.SETTINGS_OPEN),
   onPetSay: (callback) => {

@@ -8,7 +8,7 @@ const CHECK_GUIDANCE = {
   'pet-window-created': 'Record Electron window evidence such as a screenshot, screen recording, or runtime log showing the pet window exists.',
   'transparent-background': 'Attach a screenshot showing desktop content visible around the pet sprite without an opaque window rectangle.',
   'sprite-visible': 'Attach a screenshot or pixel observation showing the pet sprite is visible and not fully transparent.',
-  'speech-bubble-rendered': 'Trigger a say event and record that the speech bubble appears while the pet sprite remains visible.',
+  'speech-bubble-rendered': 'Trigger a say event and record that the floating BubbleChatWindow appears while the old inline pet bubble stays hidden.',
   'default-action-playback': 'Trigger the default action and record animation playback from the packaged renderer.',
   'pack-switch-legacy-cat': 'Activate legacy-cat and record that it renders with a visible sprite and working default action.',
   'pack-switch-doro': 'Activate doro and record that it renders with a visible sprite and working default action.',

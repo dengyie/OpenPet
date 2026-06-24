@@ -1292,9 +1292,15 @@ const packagedRuntimeSmokeEvidenceFixture = {
         height: 173,
         backgroundImage: 'url("file:///Users/mango/project/codex/OpenPet/release/mac-arm64/OpenPet.app/Contents/Resources/app.asar/cat_anime/sprites/eat_no_bg.png")'
       },
-      bubble: {
+      legacyInlineBubble: {
+        visible: false,
+        text: ''
+      },
+      bubbleChat: {
         visible: true,
-        text: '喂食'
+        hasWindow: true,
+        text: '喂食',
+        source: 'packaged-runtime-smoke'
       },
       action: {
         current: '',

@@ -478,7 +478,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       ...payload,
       petPackId: getActivePetPackId()
     })
-    sendToPetWindow(getPetWindow, IPC.PET_SAY, payload)
   })
   petService.onAction?.((payload) => {
     sendToPetWindow(getPetWindow, IPC.PET_PLAY_ACTION, payload)
@@ -493,7 +492,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         ...bubble,
         petPackId: getActivePetPackId()
       })
-      sendToPetWindow(getPetWindow, IPC.PET_SAY, bubble)
     }
   })
 
@@ -694,6 +692,21 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.PET_BUBBLE_CHAT_GET_STATE, () => {
     return petBubbleChatWindowService?.getState?.() || { visible: false, hasWindow: false }
+  })
+
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_OPEN, () => {
+    return petBubbleChatWindowService?.open?.({ source: 'pet-renderer', focus: true }) || { visible: false, hasWindow: false }
+  })
+
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SHOW_MESSAGE, (_event, payload = {}) => {
+    const text = normalizeMessageText(payload?.text)
+    if (!text) return petBubbleChatWindowService?.getState?.() || { visible: false, hasWindow: false }
+    return petBubbleChatWindowService?.showMessage?.({
+      text,
+      ttlMs: payload?.ttlMs,
+      source: normalizeMessageText(payload?.source) || 'pet-renderer',
+      petPackId: getActivePetPackId()
+    }) || { visible: false, hasWindow: false }
   })
 
   ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, () => {

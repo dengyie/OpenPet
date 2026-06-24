@@ -38,7 +38,10 @@ const createFakeBrowserWindow = () => {
     isVisible() { return this.visible }
     getBounds() { return this.bounds }
     setBounds(bounds) { this.bounds = { ...this.bounds, ...bounds } }
+    show() { this.visible = true }
     showInactive() { this.visible = true }
+    focus() { this.focused = true }
+    moveTop() { this.movedTop = true }
     hide() { this.visible = false }
     loadFile() { return Promise.resolve() }
     setVisibleOnAllWorkspaces() {}
@@ -98,6 +101,38 @@ test('resolveBubbleBounds uses side placement when vertical space would cover th
   assert.ok(bounds.x >= petBounds.x + petBounds.width + 8)
   assert.ok(bounds.y < petBounds.y + petBounds.height)
   assert.ok(bounds.y + bounds.height > petBounds.y)
+})
+
+test('pet bubble chat manager opens manually with a chat prompt even when auto popup is disabled', () => {
+  const logs = []
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: false, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const state = manager.open({ source: 'pet-renderer', focus: true })
+
+  assert.equal(instances.length, 1)
+  assert.equal(instances[0].visible, true)
+  assert.equal(instances[0].focused, true)
+  assert.equal(state.visible, true)
+  assert.equal(state.interacting, true)
+  assert.equal(state.message.text, '想聊点什么？')
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.open-requested'), true)
 })
 
 test('pet bubble chat manager shows latest message and auto hides when idle', () => {

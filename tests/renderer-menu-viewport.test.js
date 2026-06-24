@@ -47,6 +47,9 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
   const viewportCalls = []
   const contextMenuRequests = []
   const mousePassthroughCalls = []
+  const openBubbleChatRequests = []
+  const bubbleChatMessages = []
+  const timers = []
   const callbacks = {}
   const logs = []
   const elements = {
@@ -74,16 +77,23 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
         getViewportHitbox: () => ({ left: 0, top: 0, right: 58, bottom: 58 }),
         isPointInHitbox: () => insideFrame
       },
-      clearTimeout: () => {},
+      clearTimeout: (timer) => {
+        if (timer) timer.cleared = true
+      },
       addEventListener(eventName, callback) { callbacks[eventName] = callback },
       setInterval: () => 0,
-      setTimeout: () => 0,
+      setTimeout: (callback, delay) => {
+        const timer = { callback, delay, cleared: false }
+        timers.push(timer)
+        return timer
+      },
       petAPI: {
         getAnimations: async () => ({
           defaultAction: 'idle',
-          clickAction: 'idle',
+          clickAction: 'feed',
           actions: [
-            { id: 'idle', label: 'Idle', loop: true, sprite: 'idle.png', frameWidth: 100, frameHeight: 100, frameCount: 4, frameMs: 100 }
+            { id: 'idle', label: 'Idle', loop: true, sprite: 'idle.png', frameWidth: 100, frameHeight: 100, frameCount: 4, frameMs: 100 },
+            { id: 'feed', label: 'Feed', loop: false, sprite: 'feed.png', frameWidth: 100, frameHeight: 100, frameCount: 4, frameMs: 100 }
           ]
         }),
         setViewport: (viewport) => viewportCalls.push(viewport),
@@ -92,7 +102,7 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
         onSettingsChanged: () => {},
         onPetSay: () => {},
         onPetAction: () => {},
-        onPetMenuCommand: () => {},
+        onPetMenuCommand: (callback) => { callbacks.menuCommand = callback },
         onAnimationsChanged: () => {},
         showContextMenu: (point) => contextMenuRequests.push(point),
         getBounds: async () => ({ x: 0, y: 0, width: 58, height: 58 }),
@@ -100,7 +110,15 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
         moveBy: async () => ({}),
         setPosition: () => {},
         quit: () => {},
-        openSettings: () => {}
+        openSettings: () => {},
+        openBubbleChat: () => {
+          openBubbleChatRequests.push({})
+          return Promise.resolve({ visible: true })
+        },
+        showBubbleChatMessage: (payload) => {
+          bubbleChatMessages.push(payload)
+          return Promise.resolve({ visible: true })
+        }
       }
     }
   }
@@ -109,7 +127,7 @@ const createRendererHarness = async ({ insideFrame = true } = {}) => {
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, contextMenuRequests, elements, logs, mousePassthroughCalls, viewportCalls }
+  return { bubbleChatMessages, callbacks, contextMenuRequests, elements, logs, mousePassthroughCalls, openBubbleChatRequests, timers, viewportCalls }
 }
 
 test('right-click delegates menu placement to the main-process menu', async () => {
@@ -179,9 +197,11 @@ test('menu blur leaves the current action viewport intact', async () => {
 
 
 test('single-click stops an active walk without waiting for the walk timer', async () => {
-  const { elements, logs } = await createRendererHarness()
+  const { callbacks, elements, logs } = await createRendererHarness()
 
-  await dispatch(elements.pet, 'dblclick')
+  callbacks.menuCommand({ command: 'walk' })
+  await Promise.resolve()
+  await Promise.resolve()
   await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
   await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
 
@@ -192,10 +212,49 @@ test('single-click stops an active walk without waiting for the walk timer', asy
 })
 
 test('walking keeps mouse handling enabled so the context menu remains reachable', async () => {
-  const { elements, mousePassthroughCalls } = await createRendererHarness({ insideFrame: false })
+  const { callbacks, elements, mousePassthroughCalls } = await createRendererHarness({ insideFrame: false })
 
-  await dispatch(elements.pet, 'dblclick')
+  callbacks.menuCommand({ command: 'walk' })
+  await Promise.resolve()
+  await Promise.resolve()
   await dispatch(elements.pet, 'pointermove', { clientX: 1, clientY: 1, screenX: 1001, screenY: 701 })
 
   assert.deepEqual(mousePassthroughCalls, [])
+})
+
+test('double-click opens the floating bubble chat instead of toggling walk', async () => {
+  const { elements, logs, openBubbleChatRequests } = await createRendererHarness()
+
+  await dispatch(elements.pet, 'dblclick')
+
+  assert.equal(openBubbleChatRequests.length, 1)
+  assert.equal(logs.some((entry) => entry.event === 'pet.walk.toggled'), false)
+})
+
+test('real double-click sequence opens bubble chat without running the single-click action', async () => {
+  const { bubbleChatMessages, elements, openBubbleChatRequests } = await createRendererHarness()
+
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'dblclick')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(openBubbleChatRequests.length, 1)
+  assert.equal(bubbleChatMessages.some((payload) => payload.text === 'Feed'), false)
+})
+
+test('single-click still runs the click action after the double-click window expires', async () => {
+  const { bubbleChatMessages, elements, timers } = await createRendererHarness()
+
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  const clickTimer = timers.find((timer) => timer.delay === 220 && !timer.cleared)
+  assert.ok(clickTimer)
+
+  clickTimer.callback()
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(bubbleChatMessages.some((payload) => payload.text === 'Feed'), true)
 })

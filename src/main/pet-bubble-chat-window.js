@@ -12,6 +12,7 @@ const BUBBLE_GAP = 8
 const WORK_AREA_MARGIN = 8
 const MIN_TTL_MS = 6000
 const MAX_TTL_MS = 30000
+const MANUAL_OPEN_PROMPT = '想聊点什么？'
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -118,6 +119,14 @@ const normalizeMessagePayload = (payload = {}) => {
     createdAt: typeof payload.createdAt === 'string' && payload.createdAt ? payload.createdAt : new Date().toISOString()
   }
 }
+
+const createManualOpenMessage = () => ({
+  text: MANUAL_OPEN_PROMPT,
+  source: 'Pet',
+  ttlMs: 0,
+  petPackId: '',
+  createdAt: new Date().toISOString()
+})
 
 const createPetBubbleChatWindowManager = ({
   getPetWindow = () => null,
@@ -291,6 +300,43 @@ const createPetBubbleChatWindowManager = ({
     return bubbleWindow
   }
 
+  const open = ({ source = 'pet-bubble-chat', focus = false } = {}) => {
+    const settings = getSettings()
+    if (!settings.enabled) {
+      recordLog({
+        level: 'info',
+        event: 'pet-bubble-chat.window.open-skipped',
+        message: 'Pet bubble chat window open skipped by settings',
+        details: { enabled: false, source }
+      })
+      if (state.visible) hide({ source: 'settings-disabled' })
+      return getState()
+    }
+    const win = ensureWindow()
+    syncToPetWindow()
+    clearHideTimer()
+    patchState({
+      message: state.message || createManualOpenMessage(),
+      visible: true,
+      interacting: true,
+      error: ''
+    })
+    if (focus && typeof win.show === 'function') win.show()
+    else if (typeof win.showInactive === 'function') win.showInactive()
+    else win.show?.()
+    if (focus) {
+      win.moveTop?.()
+      win.focus?.()
+    }
+    recordLog({
+      level: 'info',
+      event: 'pet-bubble-chat.window.open-requested',
+      message: 'Pet bubble chat window open requested',
+      details: { source, focus: Boolean(focus) }
+    })
+    return getState()
+  }
+
   const showMessage = (payload = {}) => {
     const settings = getSettings()
     if (!settings.enabled || !settings.autoPopup) {
@@ -383,6 +429,7 @@ const createPetBubbleChatWindowManager = ({
   return {
     getState,
     hide,
+    open,
     setInteracting,
     setPinned,
     setSendingState,

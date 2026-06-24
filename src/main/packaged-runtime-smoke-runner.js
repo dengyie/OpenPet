@@ -39,8 +39,8 @@ const inspectRenderer = async (petWindow) => petWindow.webContents.executeJavaSc
   return sleep(260).then(() => {
     const nextCatStyle = cat ? getComputedStyle(cat) : null;
     const rect = cat ? cat.getBoundingClientRect() : { width: 0, height: 0 };
-    const bubbleRect = bubble ? bubble.getBoundingClientRect() : { width: 0, height: 0 };
-    const bubbleStyle = bubble ? getComputedStyle(bubble) : null;
+    const legacyBubbleRect = bubble ? bubble.getBoundingClientRect() : { width: 0, height: 0 };
+    const legacyBubbleStyle = bubble ? getComputedStyle(bubble) : null;
     const bodyBackground = bodyStyle.backgroundColor || bodyStyle.background || '';
     const htmlBackground = htmlStyle.backgroundColor || htmlStyle.background || '';
     const backgroundImage = nextCatStyle?.backgroundImage || '';
@@ -56,8 +56,8 @@ const inspectRenderer = async (petWindow) => petWindow.webContents.executeJavaSc
         height: Math.round(rect.height || 0),
         backgroundImage
       },
-      bubble: {
-        visible: Boolean(bubble && bubbleStyle && Number(bubbleStyle.opacity) > 0 && bubbleRect.width > 0 && bubbleRect.height > 0),
+      legacyInlineBubble: {
+        visible: Boolean(bubble && legacyBubbleStyle && Number(legacyBubbleStyle.opacity) > 0 && legacyBubbleRect.width > 0 && legacyBubbleRect.height > 0),
         text: bubble?.textContent || ''
       },
       action: {
@@ -109,7 +109,7 @@ const collectPackEvidence = async ({ petWindow, petService, petPackService }) =>
   return results
 }
 
-const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackService, env = process.env } = {}) => {
+const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackService, petBubbleChatWindowService, env = process.env } = {}) => {
   if (!isSmokeEnabled(env)) return null
   const outputPath = env.OPENPET_PACKAGED_RUNTIME_SMOKE_OUTPUT
   if (!outputPath) throw new Error('OPENPET_PACKAGED_RUNTIME_SMOKE_OUTPUT is required')
@@ -154,6 +154,13 @@ const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackServ
     if (actionId) petService.playAction({ actionId, source: 'packaged-runtime-smoke' })
     await sleep(300)
     const renderer = await inspectRenderer(petWindow)
+    const bubbleChatState = petBubbleChatWindowService?.getState?.() || {}
+    renderer.bubbleChat = {
+      visible: Boolean(bubbleChatState.visible),
+      hasWindow: Boolean(bubbleChatState.hasWindow),
+      text: String(bubbleChatState.message?.text || ''),
+      source: String(bubbleChatState.message?.source || '')
+    }
     renderer.action.requested = actionId
     evidence.state.renderer = renderer
     evidence.screenshotPath = await writeScreenshot(petWindow, screenshotPath)

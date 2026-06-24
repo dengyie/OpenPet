@@ -36,6 +36,7 @@ const createElement = (id = '') => ({
 const createRendererHarness = async () => {
   const callbacks = {}
   const timers = []
+  const bubbleChatMessages = []
   const elements = {
     pet: createElement('pet'),
     cat: createElement('cat'),
@@ -72,9 +73,10 @@ const createRendererHarness = async () => {
       petAPI: {
         getAnimations: async () => ({
           defaultAction: 'idle',
-          clickAction: 'idle',
+          clickAction: 'feed',
           actions: [
-            { id: 'idle', label: 'Idle', loop: true, sprite: 'idle.png', frameWidth: 100, frameHeight: 100, frameCount: 4, frameMs: 100 }
+            { id: 'idle', label: 'Idle', loop: true, sprite: 'idle.png', frameWidth: 100, frameHeight: 100, frameCount: 4, frameMs: 100 },
+            { id: 'feed', label: '喂食', loop: false, sprite: 'feed.png', frameWidth: 100, frameHeight: 100, frameCount: 4, frameMs: 100 }
           ]
         }),
         setViewport: () => {},
@@ -82,14 +84,19 @@ const createRendererHarness = async () => {
         recordAppLog: () => {},
         onSettingsChanged: (callback) => { callbacks.settings = callback },
         onPetSay: (callback) => { callbacks.say = callback },
-        onPetAction: () => {},
+        onPetAction: (callback) => { callbacks.petAction = callback },
+        onPetMenuCommand: (callback) => { callbacks.menuCommand = callback },
         onAnimationsChanged: () => {},
         getBounds: async () => ({ x: 0, y: 0, width: 300, height: 300 }),
         getMovementState: async () => ({}),
         moveBy: async () => ({}),
         setPosition: () => {},
         quit: () => {},
-        openSettings: () => {}
+        openSettings: () => {},
+        showBubbleChatMessage: (payload) => {
+          bubbleChatMessages.push(payload)
+          return Promise.resolve({ visible: true })
+        }
       }
     }
   }
@@ -98,16 +105,39 @@ const createRendererHarness = async () => {
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, elements, timers }
+  return { bubbleChatMessages, callbacks, elements, timers }
 }
 
-test('pet renderer keeps inline speech bubbles readable when legacy short durations are configured', async () => {
-  const { callbacks, elements, timers } = await createRendererHarness()
+test('pet renderer routes local speech to the floating bubble chat and keeps legacy inline bubble hidden', async () => {
+  const { bubbleChatMessages, callbacks, elements } = await createRendererHarness()
 
   callbacks.settings({ bubbleDuration: 1300 })
-  callbacks.say({ text: '短消息', ttlMs: 800 })
+  callbacks.menuCommand({ command: 'walk' })
+  await new Promise((resolve) => setImmediate(resolve))
 
-  assert.equal(elements.bubble.textContent, '短消息')
-  assert.equal(elements.bubble.classList.contains('show'), true)
-  assert.equal(timers.at(-1).delay, 4000)
+  assert.equal(elements.bubble.textContent, '')
+  assert.equal(elements.bubble.classList.contains('show'), false)
+  assert.equal(bubbleChatMessages.at(-1).text, '出发')
+  assert.equal(bubbleChatMessages.at(-1).ttlMs, 4000)
+
+  callbacks.say({ text: '主进程消息不应再进入宠物内联气泡', ttlMs: 800 })
+
+  assert.equal(elements.bubble.textContent, '')
+  assert.equal(elements.bubble.classList.contains('show'), false)
+  assert.equal(
+    bubbleChatMessages.some((payload) => payload.text === '主进程消息不应再进入宠物内联气泡'),
+    false
+  )
+})
+
+test('pet renderer does not let main-process actions replace the floating bubble chat text', async () => {
+  const { bubbleChatMessages, callbacks, elements } = await createRendererHarness()
+  bubbleChatMessages.length = 0
+
+  callbacks.petAction({ actionId: 'feed', source: 'ai' })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(elements.bubble.textContent, '')
+  assert.equal(elements.bubble.classList.contains('show'), false)
+  assert.equal(bubbleChatMessages.some((payload) => payload.text === '喂食'), false)
 })

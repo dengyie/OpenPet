@@ -56,7 +56,8 @@ test('mergeRuntimeEvidenceIntoReport marks automated runtime checks pass and kee
         htmlBackground: 'rgba(0, 0, 0, 0)',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        bubble: { visible: true, text: 'smoke' },
+        legacyInlineBubble: { visible: false, text: '' },
+        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke' },
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
       packs: [
@@ -107,7 +108,8 @@ test('mergeRuntimeEvidenceIntoReport can produce a ready runtime report when pic
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        bubble: { visible: true, text: 'smoke' },
+        legacyInlineBubble: { visible: false, text: '' },
+        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke' },
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
       packs: ['legacy-cat', 'doro', 'duodong', 'chispa'].map((id) => ({ id, ok: true, actionCount: 1, spriteVisible: true })),
@@ -162,7 +164,8 @@ test('runPackagedRuntimeSmoke merges evidence into a report file', async () => {
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 96, height: 96, backgroundImage: 'url(file:///sprite.png)' },
-        bubble: { visible: true, text: 'smoke' },
+        legacyInlineBubble: { visible: false, text: '' },
+        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke' },
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
       packs: ['legacy-cat', 'doro', 'duodong', 'chispa'].map((id) => ({ id, ok: true, actionCount: 1, defaultAction: 'idle', spriteVisible: true })),
@@ -222,7 +225,8 @@ test('mergeRuntimeEvidenceIntoReport fails transparent background without render
         htmlBackground: 'transparent',
         transparentBackground: false,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        bubble: { visible: true, text: 'smoke' },
+        legacyInlineBubble: { visible: false, text: '' },
+        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke' },
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
       packs: ['legacy-cat', 'doro', 'duodong', 'chispa'].map((id) => ({ id, ok: true, actionCount: 1, spriteVisible: true })),
@@ -251,7 +255,8 @@ test('mergeRuntimeEvidenceIntoReport fails action playback without frame advance
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        bubble: { visible: true, text: 'smoke' },
+        legacyInlineBubble: { visible: false, text: '' },
+        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke' },
         action: { requested: 'idle', current: 'idle', advanced: false }
       },
       packs: ['legacy-cat', 'doro', 'duodong', 'chispa'].map((id) => ({ id, ok: true, actionCount: 1, spriteVisible: true })),

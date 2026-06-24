@@ -198,7 +198,7 @@ test('updateReport updates environment, artifact, fixtures, linked evidence, and
 test('updateReport reads selected check evidence from a text file', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-runtime-update-'))
   const evidencePath = path.join(tempDir, 'evidence.txt')
-  fs.writeFileSync(evidencePath, 'Sprite and speech bubble visible together\n')
+  fs.writeFileSync(evidencePath, 'Sprite and floating bubble chat visible; old inline bubble hidden\n')
 
   const updated = updateReport(createPendingReport(), {
     checkId: 'speech-bubble-rendered',
@@ -207,7 +207,7 @@ test('updateReport reads selected check evidence from a text file', () => {
   })
 
   const check = updated.checks.find((item) => item.id === 'speech-bubble-rendered')
-  assert.equal(check.evidence, 'Sprite and speech bubble visible together')
+  assert.equal(check.evidence, 'Sprite and floating bubble chat visible; old inline bubble hidden')
 })
 
 test('updateReport rejects unknown metadata and check ids', () => {

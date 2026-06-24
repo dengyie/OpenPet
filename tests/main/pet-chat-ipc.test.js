@@ -265,9 +265,7 @@ test('pet chat send emits through PetService so the floating bubble window is di
   assert.equal(bubbleChatMessages[0].text, reply)
   assert.equal(bubbleChatMessages[0].source, 'ai')
   assert.equal(bubbleChatMessages[0].petPackId, 'legacy-cat')
-  assert.equal(sentToPetWindow.length, 1)
-  assert.equal(sentToPetWindow[0].channel, IPC.PET_SAY)
-  assert.equal(sentToPetWindow[0].payload.text, reply)
+  assert.equal(sentToPetWindow.length, 0)
 })
 
 test('pet chat state tracks latest pet bubble from say events', async () => {
@@ -317,7 +315,7 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
   assert.equal(state.bubble.text, '刚刚打了个招呼')
   assert.equal(state.bubble.source, 'pet:event')
   assert.equal(state.bubble.ttlMs, 1800)
-  assert.equal(sentToPetWindow.at(-1).channel, IPC.PET_SAY)
+  assert.equal(sentToPetWindow.length, 0)
   assert.deepEqual(bubbleChatMessages, [{
     text: '刚刚打了个招呼',
     ttlMs: 1800,
@@ -332,13 +330,20 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
   }])
 })
 
-test('pet bubble chat IPC delegates state, hide, pin and interaction updates', async () => {
+test('pet bubble chat IPC delegates state, open, local message, hide, pin and interaction updates', async () => {
   const calls = []
   const ipcMain = registerPetChatHandlers({
+    petPackService: {
+      getActivePetPack: () => ({ manifest: { id: 'legacy-cat' } })
+    },
     petBubbleChatWindowService: {
       getState: () => ({ visible: true, pinned: false }),
       hide: (payload) => {
         calls.push(['hide', payload])
+      },
+      open: (payload) => {
+        calls.push(['open', payload])
+        return { visible: true, opened: true }
       },
       setPinned: (pinned, meta) => {
         calls.push(['pinned', pinned, meta])
@@ -347,18 +352,39 @@ test('pet bubble chat IPC delegates state, hide, pin and interaction updates', a
       setInteracting: (interacting, meta) => {
         calls.push(['interacting', interacting, meta])
         return { visible: true, interacting }
+      },
+      showMessage: (payload) => {
+        calls.push(['showMessage', payload])
+        return { visible: true, message: payload }
       }
     }
   })
 
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_GET_STATE)(), { visible: true, pinned: false })
   ipcMain.listeners.get(IPC.PET_BUBBLE_CHAT_HIDE)()
+  assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_OPEN)(), { visible: true, opened: true })
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_PINNED)(null, { pinned: true }), { visible: true, pinned: true })
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_INTERACTING)(null, { interacting: true }), { visible: true, interacting: true })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SHOW_MESSAGE)(null, { text: '本地轻量消息', ttlMs: 800 }), {
+    visible: true,
+    message: {
+      text: '本地轻量消息',
+      ttlMs: 800,
+      source: 'pet-renderer',
+      petPackId: 'legacy-cat'
+    }
+  })
   assert.deepEqual(calls, [
     ['hide', { source: 'pet-bubble-chat-renderer' }],
+    ['open', { source: 'pet-renderer', focus: true }],
     ['pinned', true, { source: 'pet-bubble-chat-renderer' }],
-    ['interacting', true, { source: 'pet-bubble-chat-renderer' }]
+    ['interacting', true, { source: 'pet-bubble-chat-renderer' }],
+    ['showMessage', {
+      text: '本地轻量消息',
+      ttlMs: 800,
+      source: 'pet-renderer',
+      petPackId: 'legacy-cat'
+    }]
   ])
 })
 

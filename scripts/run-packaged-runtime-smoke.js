@@ -163,6 +163,9 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   const state = evidence.state || {}
   const renderer = state.renderer || {}
   const windowState = state.window || {}
+  const bubbleChat = renderer.bubbleChat || {}
+  const legacyInlineBubble = renderer.legacyInlineBubble || {}
+  const floatingBubbleVisible = Boolean(bubbleChat.visible && renderer.sprite?.visible && legacyInlineBubble.visible !== true)
 
   if (!merged.linkedEvidence || typeof merged.linkedEvidence !== 'object') merged.linkedEvidence = {}
   if (!Array.isArray(merged.linkedEvidence.screenshots)) merged.linkedEvidence.screenshots = []
@@ -200,9 +203,9 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   setCheck(
     merged,
     'speech-bubble-rendered',
-    renderer.bubble?.visible && renderer.sprite?.visible ? 'pass' : 'fail',
-    renderer.bubble?.visible ? `Speech bubble visible with text=${JSON.stringify(renderer.bubble.text || '')}; spriteVisible=${Boolean(renderer.sprite?.visible)}${screenshot ? `; screenshot=${screenshot}` : ''}` : '',
-    renderer.bubble?.visible ? 'Speech bubble was visible while the sprite remained visible.' : 'Speech bubble evidence is missing.'
+    floatingBubbleVisible ? 'pass' : 'fail',
+    floatingBubbleVisible ? `Floating bubble chat visible with text=${JSON.stringify(bubbleChat.text || '')}; spriteVisible=${Boolean(renderer.sprite?.visible)}; legacyInlineVisible=${Boolean(legacyInlineBubble.visible)}${screenshot ? `; screenshot=${screenshot}` : ''}` : '',
+    floatingBubbleVisible ? 'Floating bubble chat was visible while the old inline pet bubble stayed hidden.' : 'Floating bubble chat evidence is missing or the old inline bubble is still visible.'
   )
   setCheck(
     merged,

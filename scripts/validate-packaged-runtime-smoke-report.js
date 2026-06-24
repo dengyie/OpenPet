@@ -8,7 +8,7 @@ const REQUIRED_CHECKS = [
   { id: 'pet-window-created', label: 'Pet BrowserWindow is created from the packaged app' },
   { id: 'transparent-background', label: 'Pet window transparent background renders correctly' },
   { id: 'sprite-visible', label: 'Pet sprite is visible and not fully transparent' },
-  { id: 'speech-bubble-rendered', label: 'Speech bubble renders without being the only visible element' },
+  { id: 'speech-bubble-rendered', label: 'Floating BubbleChatWindow renders and the old inline bubble stays hidden' },
   { id: 'default-action-playback', label: 'Default action plays in the packaged renderer' },
   ...BUILT_IN_PACKS.map((packId) => ({ id: `pack-switch-${packId}`, label: `Built-in pet pack ${packId} can be activated and rendered` })),
   { id: 'plugin-picker-evidence-linked', label: 'Plugin package native picker smoke evidence is linked' },
