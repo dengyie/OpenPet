@@ -1,8 +1,18 @@
 # OpenPet Creator Prompt Builder Design
 
 Date: 2026-06-20
-Status: Proposed
+Status: Implemented first slice; remaining UI/backlog polish
 Scope: Creator Studio prompt engineering layer for OpenPet-specific image generation
+
+## Implementation Update: 2026-06-24
+
+The first prompt-builder slice is implemented:
+
+- `examples/plugins/creator-studio/lib/openpet-prompt-builder.js` builds structured OpenPet image prompts.
+- `examples/plugins/creator-studio/lib/host-model-bridge.js` sends the built prompt to host-owned image generation instead of using raw user text as the whole prompt.
+- `tests/examples/creator-studio-plugin.test.js` covers runtime contract wording, single-action prompts, Chinese creative briefs, `gpt-image-2` transparency wording, prompt sanitization, and host bridge prompt use.
+
+The remaining work is dashboard visibility, prompt profile polish, and real provider smoke evidence.
 
 ## 1. Goal
 
@@ -410,17 +420,21 @@ Required tests:
 - host-model-bridge sends the built prompt instead of raw user prompt;
 - warnings are returned for missing optional context without failing the run.
 
-## 21. Implementation Plan Preview
+## 21. Implementation Status
 
-Implementation should be a small, testable slice:
+Implemented:
 
-1. Add `openpet-prompt-builder.js`.
-2. Add prompt builder unit tests.
-3. Update `host-model-bridge.js` to call the builder.
-4. Store prompt provenance in generated QA metadata if the current output path supports it.
-5. Verify cloud smoke generation still works with the configured host provider.
+1. `openpet-prompt-builder.js` exists.
+2. Prompt builder unit tests exist in the Creator Studio plugin test suite.
+3. `host-model-bridge.js` calls the builder.
+4. Prompt provenance is available through prompt builder outputs and generated metadata paths where supported.
 
-Do not add UI in this slice.
+Still required:
+
+- expose sanitized final prompt preview in the dashboard developer path;
+- verify real cloud/local smoke generation with the configured host provider.
+
+Do not add broad Control Center prompt editing in this slice.
 
 ## 22. Main Page Backlog
 
@@ -438,7 +452,7 @@ They are useful, but not required for the plugin-first prompt builder.
 
 ## 23. Acceptance Criteria
 
-The design is ready to implement when:
+Production acceptance is complete when:
 
 - Creator Studio has one prompt builder module;
 - image generation no longer sends raw user text directly as the whole model prompt;
@@ -447,4 +461,3 @@ The design is ready to implement when:
 - provider secrets and local paths are absent from prompts;
 - host model bridge still owns the provider call boundary;
 - at least one cloud smoke generation can run through the new prompt.
-

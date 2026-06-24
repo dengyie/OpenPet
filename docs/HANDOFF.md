@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-23 | Branch: `codex/dev`
+> Last updated: 2026-06-24 | Branch: `codex/todo-architecture-refactor`
 
 ## Current Snapshot
 
@@ -10,7 +10,7 @@ OpenPet is a desktop pet platform with:
 - React + Vite Control Center,
 - pet pack runtime with Codex pet import and zip import,
 - bundled built-in packs `doro`, `duodong`, and `chispa`,
-- AI chat with secret storage in the main process, active/draft provider settings, save-and-test connection checks, structured provider diagnostics, and host-owned image-generation model settings for Creator Studio,
+- AI chat with secret storage in the main process, active/draft provider settings, separate save/test connection checks, structured provider diagnostics, pet-pack AI Talk persona/history/memory, desktop chat, and host-owned image-generation model settings for Creator Studio,
 - AI behavior decisions with Control Center replay and redacted diagnostics,
 - developer-first local extension docs with explicit `entries.setup` execution, language-neutral explicit `entries.commands` process execution, explicit command result feedback, explicit command bridge access, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, user-approved picker frame inspection/import for declaration-only commands, reviewed action trigger proposal acceptance, explicit dashboard opening, explicit service start/stop controls, explicit loopback service health checks, host-managed periodic service health policy for running services, best-effort service process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across service/setup/declaration-command stop paths, current-host plugin cleanup evidence collection, cleanup evidence helper generation, cleanup evidence runner archives, packaged-app plugin cleanup evidence runner archives, cleanup evidence archive manifests, structured plugin cleanup readiness reports with validation-first updates, plugin submission bundles, scaffold author rehearsal, maintainer approval rehearsal records, existing-plugin real-world submission rehearsal evidence, remote-source submission rehearsal evidence, community-source submission evidence tooling, community-source candidate discovery reporting, community-source invitation kits, community-source candidate intake reporting, and compatible-intake-to-submission bridge tooling,
 - loopback-only local HTTP / MCP,
@@ -21,8 +21,9 @@ OpenPet is a desktop pet platform with:
 1. [`docs/development-summary.md`](./development-summary.md)
 2. [`docs/project-context.json`](./project-context.json)
 3. [`docs/project-status-review.md`](./project-status-review.md)
-4. [`docs/productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md)
-5. [`docs/project-documentation-design.md`](./project-documentation-design.md)
+4. [`docs/openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md)
+5. [`docs/productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md)
+6. [`docs/project-documentation-design.md`](./project-documentation-design.md)
 
 ## Facts To Preserve
 
@@ -47,7 +48,7 @@ npm run test:control-center
 npm run typecheck
 npm run check:syntax
 node --test tests/services/ai-service.test.js tests/services/action-service.test.js tests/main/control-center-adapters.test.js tests/main/ipc-plugin-install.test.js
-npm run test:control-center -- --grep "AI config|save and test uses the current AI drafts|applies an action trigger proposal|loads the app shell"
+npm run test:control-center -- --grep "AI config|applies an action trigger proposal|loads the app shell"
 npm run create-openpet-plugin -- "My Plugin" --template minimal --output-dir scratch/plugins
 npm run create-plugin-author-rehearsal
 npm run create-plugin-real-world-submission-rehearsal -- --source examples/plugins/weather-status --output-dir docs/release-evidence/plugin-real-world-submission-rehearsal/<session>
@@ -84,6 +85,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 ## Where To Look For Detail
 
 - `docs/README.md` for the documentation map and reading order.
+- `docs/openpet-current-todo-architecture.md` for the current TODO map grouped by runtime/service boundary.
 - `docs/phases/` for phase records.
 - `docs/reviews/` for phase review notes.
 - `docs/project-status-review.md` for longer evaluation.
@@ -97,7 +99,7 @@ npm run create-macos-release-evidence-archive -- --artifact-dir <downloaded-open
 - `scripts/create-release-evidence-archive-manifest.js` and `scripts/create-signed-release-closure-report.js` for release-level evidence archive validation and release-claim closure.
 - `scripts/create-macos-release-evidence.js`, `scripts/create-macos-release-evidence-archive.js`, and `.github/workflows/release.yml` for canonical macOS codesign/notarization/Gatekeeper evidence capture, Actions artifact upload, and permanent evidence artifact archiving before release-level archive aggregation.
 - `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, and `docs/plugin-submission-workflow-playbook.md` for extension onboarding, maintainer approval rehearsal, remote-source rehearsal, community-source discovery/invitation/intake/evidence, and legacy SDK compatibility.
-- `docs/ai-provider-settings-ux-design.md` for the implemented AI provider draft/active save-and-test workflow, structured diagnostics, and security boundaries.
+- `docs/ai-provider-settings-ux-design.md` for the implemented AI provider draft/active save/test workflow, structured diagnostics, and security boundaries.
 - `docs/superpowers/specs/2026-06-19-openpet-model-settings-backlog.md` for host-owned image-generation model settings and remaining model UI/bridge work.
 - `docs/superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md` for Creator Studio conversational generation, custom action tasks, and trigger proposal boundaries.
 - `scripts/create-openpet-plugin.js`, `scripts/create-plugin-author-rehearsal.js`, `scripts/create-plugin-real-world-submission-rehearsal.js`, `scripts/create-plugin-remote-source-submission-rehearsal.js`, `scripts/create-plugin-community-source-discovery-report.js`, `scripts/create-plugin-community-source-invitation-kit.js`, `scripts/create-plugin-community-source-intake-report.js`, `scripts/create-plugin-community-source-evidence-from-intake.js`, `scripts/create-plugin-community-source-submission-evidence.js`, `scripts/create-plugin-maintainer-approval.js`, and `scripts/validate-plugin-maintainer-approval.js` for current compatibility starter templates, existing-plugin rehearsal, remote-source rehearsal, community-source discovery/invitation/intake/evidence, and reviewer-path rehearsal.

@@ -10,15 +10,14 @@
 This design is implemented for the chat provider path:
 
 - `useAiPane` keeps an active provider snapshot separate from editable drafts.
-- `保存配置` validates Base URL and model before calling IPC.
-- `保存并测试` saves changed non-secret config, saves a pending API key draft when present, reloads the active view, and tests the saved provider.
-- `测试当前已保存配置` reports when unsaved drafts exist and still tests only the active saved config.
+- `保存聊天 Provider` validates Base URL and model before calling IPC, saves regardless of whether a later test succeeds, and refreshes the active provider view.
+- `测试已保存配置` reports when unsaved drafts exist and still tests only the active saved config.
 - `AiService.testConnection()` returns structured `ok`, `provider`, sanitized `baseUrl`, `model`, `hasApiKey`, `elapsedMs`, `code`, and `message` fields.
 - Provider errors are classified into actionable failures such as auth, timeout, model/endpoint, empty response, and network/provider errors.
 - Credentialed Base URLs are sanitized for renderer display, and save logic protects against replacing a credentialed stored URL with a display-only downgraded URL.
 - Provider logs intentionally avoid API keys, Authorization headers, prompts, and raw provider response bodies.
 
-The same AI pane now also exposes host-owned Creator Studio image-generation settings. That surface belongs to `ImageGenerationModelService`, not `AiService`: it manages `fixture` / `cloud` / `local` backend settings, cloud API key storage, health checks, provider invocation, and generated output writes. Future UI work should likely split this into a clearer model-settings card, but the security boundary is already host-owned.
+The same AI pane now also exposes host-owned Creator Studio image-generation settings. That surface belongs to `ImageGenerationModelService`, not `AiService`: it manages the unified OpenAI-compatible image Provider config, API key storage, health checks, provider invocation, and generated output writes. Creator Studio may still use `fixture` / `cloud` / `local` as run backend vocabulary, but Provider credentials and calls stay host-owned. Future UI work should likely split this into a clearer model-settings card, but the security boundary is already host-owned.
 
 ## 1. Background
 
@@ -160,10 +159,8 @@ When the user edits provider, base URL, model, or system prompt:
 
 Recommended button labels:
 
-- `保存配置`
-- `保存密钥`
-- `保存并测试`
-- `测试当前已保存配置`
+- `保存聊天 Provider`
+- `测试已保存配置`
 
 ### 6.3 Save config
 
@@ -209,15 +206,13 @@ type AiApiKeySaveResult = {
 
 ### 6.5 Save and test
 
-`保存并测试` should run:
+Original design note: this used to propose a combined save/test action. The current product decision is to keep save and test separate:
 
-1. save non-secret config if dirty;
-2. save API key if `apiKeyDraft` is non-empty;
-3. reload active config;
-4. call `testAiConnection`;
-5. display a structured result.
+- `保存聊天 Provider` persists the draft and succeeds or fails independently from provider reachability.
+- `测试已保存配置` tests only the active saved config and warns when local drafts are unsaved.
+- A failed test must not roll back a successful save.
 
-This is the safest primary action because it matches user intent: "use these values and tell me if they work".
+This avoids hiding two different operations behind one button and makes it clear whether the app is saving configuration or contacting a provider.
 
 ### 6.6 Test active config
 
@@ -265,7 +260,7 @@ Header or footer actions:
 
 - `保存配置`
 - `保存密钥`
-- `保存并测试`
+- `测试已保存配置`
 - `测试当前已保存配置`
 
 ### 7.2 Active summary
@@ -433,20 +428,20 @@ Likely files:
 - `src/shared/openpet-contracts.ts`
 - `tests/control-center/control-center-smoke.spec.js`
 
-### Phase B: Save-and-test workflow
+### Phase B: Separate saved-config test workflow
 
 Scope:
 
-- Add `onSaveAndTest` handler.
-- Save dirty non-secret config first.
-- Save API key draft when present.
-- Reload active config.
-- Run connection test.
+- Add an explicit saved-config test handler.
+- Keep save and test as separate UI actions.
+- Reload active config after save.
+- Run connection test only against saved config.
 - Show sanitized tested provider/baseUrl/model/elapsedMs.
 
 Acceptance:
 
-- User can change base URL/model/key and press one button to make it active and test it.
+- User can change base URL/model/key, save it, and then test the saved config.
+- A failed test does not undo the saved provider config.
 - Test result clearly states which saved values were tested.
 - Unsaved draft warning appears when using "test active config" while dirty.
 
@@ -496,7 +491,7 @@ Likely files:
 - Invalid Base URL blocks save with a clear status.
 - Saving config updates active summary.
 - Saving API key clears password input and switches API key state to saved.
-- Save-and-test displays tested provider/baseUrl/model.
+- Testing the saved config displays tested provider/baseUrl/model.
 - Test-active-config warns when draft changes are unsaved.
 
 ### Manual smoke
@@ -513,10 +508,11 @@ Steps:
 
 1. Open Control Center > AI.
 2. Enter Base URL, Model, and API key.
-3. Press `保存并测试`.
-4. Confirm success status includes endpoint/model/latency.
-5. Send a pet chat message.
-6. Confirm `ai-chat.ipc.completed`, `ai-talk.chat.completed`, and `ai.provider.request.completed` appear in app logs.
+3. Press `保存聊天 Provider`.
+4. Press `测试已保存配置`.
+5. Confirm success status includes endpoint/model/latency.
+6. Send a pet chat message.
+7. Confirm `ai-chat.ipc.completed`, `ai-talk.chat.completed`, and `ai.provider.request.completed` appear in app logs.
 
 ## 12. Acceptance Checklist
 
@@ -535,6 +531,6 @@ Steps:
 - Per-provider model discovery from `/models` where supported.
 - Dedicated model-settings presentation for image generation, including clearer cloud/local trust copy and setup guidance.
 - Connection test history with last success/failure timestamp.
-- Separate persona prompt editor with pet-pack override preview.
+- Persona preset/import polish on top of the implemented pet-pack override preview.
 - Streaming chat response once the non-streaming provider settings flow is stable.
-- Desktop floating-window chat integration after Control Center settings are reliable.
+- Desktop chat UX polish on top of the implemented floating chat window.
