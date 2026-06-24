@@ -52,6 +52,8 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
   const cursorRegionResults = insideCursorRegion === undefined
     ? null
     : Array.isArray(insideCursorRegion) ? insideCursorRegion.slice() : null
+  const focusState = { value: Boolean(hasFocus) }
+  const windowListeners = {}
   const readHitboxResult = (source, fallback) => {
     if (!source) return fallback
     if (source.length === 0) return fallback
@@ -73,7 +75,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
     document: {
       documentElement: { style: createStyle() },
       body: { style: createStyle() },
-      hasFocus: () => hasFocus,
+      hasFocus: () => focusState.value,
       getElementById: (id) => elements[id],
       createElement: () => createElement()
     },
@@ -99,7 +101,10 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
           }
         : {}),
       clearTimeout: () => {},
-      addEventListener: () => {},
+      addEventListener: (eventName, callback) => {
+        windowListeners[eventName] ||= []
+        windowListeners[eventName].push(callback)
+      },
       setInterval: () => 0,
       setTimeout: () => 0,
       petAPI: {
@@ -133,7 +138,7 @@ const createRendererHarness = async ({ insideFrame = true, insideCursorRegion, i
   vm.runInNewContext(rendererSource, context, { filename: 'renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { callbacks, elements, focusRequests, logs, context }
+  return { callbacks, elements, focusRequests, focusState, logs, context, windowListeners }
 }
 
 const dispatch = (element, eventName, event) => {
@@ -142,6 +147,10 @@ const dispatch = (element, eventName, event) => {
 
 const dispatchAsync = async (element, eventName, event) => {
   for (const listener of element.listeners[eventName] || []) await listener(event)
+}
+
+const dispatchWindow = (listeners, eventName) => {
+  for (const listener of listeners[eventName] || []) listener()
 }
 
 test('custom cursor uses a DOM overlay inside the clickable pet region and hides the native cursor', async () => {
@@ -160,6 +169,32 @@ test('custom cursor uses a DOM overlay inside the clickable pet region and hides
   assert.equal(context.document.documentElement.style.values.cursor, 'none')
   assert.equal(context.document.documentElement.style.priorities.cursor, 'important')
   assert.equal(elements.pet.style.cursor, 'none')
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
+})
+
+test('custom cursor waits for pet focus before drawing overlay to avoid duplicate OS cursors', async () => {
+  const { callbacks, elements, focusRequests, focusState, logs, windowListeners } = await createRendererHarness({
+    insideFrame: true,
+    hasFocus: false
+  })
+
+  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
+  dispatch(elements.pet, 'pointermove', { clientX: 24.3, clientY: 88.6, screenX: 1024.3, screenY: 768.6 })
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, '')
+  assert.equal(focusRequests.length, 1)
+  assert.equal(logs.at(-1).details.windowFocused, false)
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+
+  focusState.value = true
+  dispatchWindow(windowListeners, 'focus')
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.values.cursor, 'none')
+  assert.equal(elements.pet.style.priorities.cursor, 'important')
+  assert.equal(focusRequests.length, 1)
+  assert.equal(logs.at(-1).details.windowFocused, true)
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
 })
 

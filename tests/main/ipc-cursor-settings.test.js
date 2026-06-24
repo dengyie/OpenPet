@@ -25,6 +25,7 @@ const createRequiredServices = ({
   cursorAssetService,
   dialogService,
   browserWindowService,
+  appService,
   getPetWindow = () => null,
   applyWindowScale = () => {}
 }) => ({
@@ -101,6 +102,7 @@ const createRequiredServices = ({
     showOpenDialog: async () => ({ canceled: true, filePaths: [] })
   },
   browserWindowService,
+  appService,
   ipcMainService
 })
 
@@ -196,10 +198,13 @@ test('settings:save removes orphaned cursor assets after replacing a custom curs
 
 test('pet cursor focus request focuses the pet window only when it is unfocused', () => {
   const ipcMain = createIpcMainStub()
+  const appFocusCalls = []
+  let moveTopCalls = 0
   let focusCalls = 0
   let focused = false
   const petWindow = {
     isFocused: () => focused,
+    moveTop: () => { moveTopCalls += 1 },
     focus: () => {
       focusCalls += 1
       focused = true
@@ -227,12 +232,17 @@ test('pet cursor focus request focuses the pet window only when it is unfocused'
     },
     browserWindowService: {
       fromWebContents: () => petWindow
+    },
+    appService: {
+      focus: (options) => appFocusCalls.push(options)
     }
   }))
 
   ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: { id: 'pet-web-contents' } })
   ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: { id: 'pet-web-contents' } })
 
+  assert.equal(moveTopCalls, 1)
+  assert.deepEqual(appFocusCalls, [{ steal: true }])
   assert.equal(focusCalls, 1)
 })
 
