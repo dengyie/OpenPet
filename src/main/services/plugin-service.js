@@ -11,6 +11,7 @@ const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = r
 const { normalizeNetworkRequest, readLimitedResponseText } = require('./plugin-network-client')
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
 const { readLocalPluginManifests } = require('./plugin-discovery')
+const { createPluginCommandRuntimeManager } = require('./plugin-command-runtime-manager')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -32,7 +33,6 @@ const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId
 
 const ACTIVE_SERVICE_STATUSES = new Set(['running', 'stopping'])
 const ACTIVE_SETUP_STATUSES = new Set(['running', 'stopping'])
-const ACTIVE_COMMAND_STATUSES = new Set(['running', 'stopping'])
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const defaultServiceProcessTree = createServiceProcessTree()
@@ -271,7 +271,6 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   if (!petService) throw new Error('petService is required')
   const serviceRuntimes = new Map()
   const setupRuntimes = new Map()
-  const commandRuntimes = new Map()
   const commandBridgeRuntimes = new Map()
   let commandBridgeServer = null
   let commandBridgePort = 0
@@ -1158,6 +1157,11 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     runtime.child?.kill?.(signal)
   }
 
+  const commandRuntimeManager = createPluginCommandRuntimeManager({
+    appendLog,
+    stopRuntimeProcess: stopRuntimeProcessWithFallback
+  })
+
   const clearServiceStopTimer = (runtime) => {
     if (!runtime?.stopTimer) return
     clearTimeout(runtime.stopTimer)
@@ -1260,28 +1264,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     }
   }
 
-  const stopPluginCommandRuntime = (pluginId, commandId, runtime, _options = {}) => {
-    if (!runtime || runtime.status !== 'running') return runtime
-    try {
-      runtime.stop?.({ reason: 'Command stopped' })
-      appendLog({ pluginId, commandId, level: 'info', message: 'Command stop requested' })
-    } catch (error) {
-      runtime.status = 'failed'
-      runtime.error = error.message || 'Plugin command stop failed'
-      error.openpetLogged = true
-      appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
-      runtime.failStop?.(error)
-    }
-    return runtime
-  }
-
-  const stopPluginCommands = (pluginId, options = {}) => {
-    for (const [key, runtime] of commandRuntimes.entries()) {
-      if (key.startsWith(`${pluginId}:`)) {
-        stopPluginCommandRuntime(pluginId, runtime.commandId, runtime, options)
-      }
-    }
-  }
+  const stopPluginCommands = (pluginId) => commandRuntimeManager.stopPlugin(pluginId)
 
   const setEnabled = (pluginId, enabled) => {
     if (enabled) assertPluginAllowed(pluginId)
@@ -1444,9 +1427,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const runCommandEntryProcess = async ({ plugin, commandEntry, commandId, payload, config }) => {
     const pluginId = plugin.manifest.id
-    const runtimeKey = createPluginServiceKey(pluginId, commandId)
-    const existingRuntime = commandRuntimes.get(runtimeKey)
-    if (ACTIVE_COMMAND_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin command is already running')
+    commandRuntimeManager.assertNotActive(pluginId, commandId)
     const { file, args } = parseServiceCommand(commandEntry.command)
     const cwd = resolveCommandCwd(plugin.manifest, commandEntry.cwd)
     const bridgePort = await ensureCommandBridgeServer()
@@ -1498,7 +1479,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       status: 'running',
       handlers: createPluginBridgeHandlers(plugin, commandId)
     })
-    commandRuntimes.set(runtimeKey, runtime)
+    commandRuntimeManager.setRuntime(runtime)
     let stdoutText = ''
     let stderrText = ''
 
@@ -1513,7 +1494,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         if (settled) return
         settled = true
         if (timeoutId) clearTimeout(timeoutId)
-        commandRuntimes.delete(runtimeKey)
+        commandRuntimeManager.deleteRuntime(pluginId, commandId)
         commandBridgeRuntimes.delete(bridgeRuntimeKey)
         if (commandBridgeServer && commandBridgeRuntimes.size === 0) {
           commandBridgeServer.unref?.()
@@ -1523,13 +1504,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       runtime.failStop = (error) => {
         settle(() => reject(error))
       }
-      runtime.stop = ({ reason = 'Command stopped', signal = 'SIGTERM' } = {}) => {
-        runtime.status = 'stopping'
-        runtime.error = ''
-        runtime.stopReason = reason
-        stopRuntimeProcessWithFallback(runtime, signal)
-        return true
-      }
+      commandRuntimeManager.attachStopHandler(runtime)
       const timeoutMs = Number.isFinite(Number(commandProcessTimeoutMs))
         ? Math.max(0, Number(commandProcessTimeoutMs))
         : LOCAL_PLUGIN_COMMAND_TIMEOUT_MS
@@ -2001,9 +1976,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     for (const runtime of setupRuntimes.values()) {
       stopPluginSetupRuntime(runtime.pluginId, runtime.setupId, runtime, { log: false })
     }
-    for (const runtime of commandRuntimes.values()) {
-      stopPluginCommandRuntime(runtime.pluginId, runtime.commandId, runtime, { log: false })
-    }
+    commandRuntimeManager.stopAll()
     commandBridgeRuntimes.clear()
     if (commandBridgeServer) {
       commandBridgeServer.close?.()
