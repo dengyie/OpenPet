@@ -6,16 +6,13 @@ const { spawn } = require('child_process')
 const { createServiceProcessTree } = require('./service-process-tree')
 const { normalizePluginManifest } = require('../plugins/manifest')
 const { coerceConfigValue, normalizeConfigSchema } = require('../plugins/config-schema')
-const { hasOwn, cloneJsonValue, getJsonByteSize } = require('./plugin-json-utils')
-const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = require('./plugin-log-store')
+const { hasOwn, cloneJsonValue } = require('./plugin-json-utils')
 const { normalizeNetworkRequest, readLimitedResponseText } = require('./plugin-network-client')
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
 const { readLocalPluginManifests } = require('./plugin-discovery')
+const { createPluginStorageService } = require('./plugin-storage-service')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
-const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
-const MAX_PLUGIN_STORAGE_BYTES = 64 * 1024
-const MAX_PLUGIN_STORAGE_VALUE_BYTES = 16 * 1024
 const MAX_PLUGIN_COMMAND_OUTPUT_BYTES = 64 * 1024
 const MAX_PLUGIN_BRIDGE_BODY_BYTES = 1024 * 1024
 const MAX_PLUGIN_ASSET_IMPORT_FRAMES = 240
@@ -246,29 +243,10 @@ const getSignatureStatus = (manifest) => {
   }
 }
 
-const assertStorageValueSize = (value) => {
-  const byteSize = getJsonByteSize(value)
-  if (byteSize > MAX_PLUGIN_STORAGE_VALUE_BYTES) {
-    throw new Error(`Plugin storage value exceeds ${MAX_PLUGIN_STORAGE_VALUE_BYTES} bytes`)
-  }
-}
-
-const assertStorageSize = (storage) => {
-  const byteSize = getJsonByteSize(storage)
-  if (byteSize > MAX_PLUGIN_STORAGE_BYTES) {
-    throw new Error(`Plugin storage exceeds ${MAX_PLUGIN_STORAGE_BYTES} bytes`)
-  }
-}
-
-const assertStorageKey = (key) => {
-  if (typeof key !== 'string' || !STORAGE_KEY_PATTERN.test(key)) {
-    throw new Error('Plugin storage key must be 1-128 characters using letters, numbers, _, ., :, or -')
-  }
-}
-
 const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
+  const pluginStorage = createPluginStorageService({ settingsService })
   const serviceRuntimes = new Map()
   const setupRuntimes = new Map()
   const commandRuntimes = new Map()
@@ -276,37 +254,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   let commandBridgeServer = null
   let commandBridgePort = 0
 
-  const getLogStore = () => {
-    const logs = settingsService.get().plugins?.logs
-    return Array.isArray(logs) ? logs.map(normalizePluginLog) : []
-  }
-
-  const saveLogStore = (logs) => {
-    const settings = settingsService.get()
-    settingsService.save({
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        logs: logs.slice(0, MAX_PLUGIN_LOG_ENTRIES).map((entry, index) => normalizePluginLog(entry, index))
-      }
-    })
-  }
-
-  const appendLog = ({ level = 'info', pluginId = '', commandId = '', message = '' } = {}) => {
-    const logs = getLogStore()
-    const maxLogId = logs.reduce((maxId, entry) => Math.max(maxId, entry.id), 0)
-    const entry = {
-      id: maxLogId + 1,
-      timestamp: new Date().toISOString(),
-      level: level === 'error' ? 'error' : 'info',
-      pluginId,
-      commandId,
-      message: String(message || '')
-    }
-    logs.unshift(entry)
-    saveLogStore(logs)
-    return entry
-  }
+  const appendLog = pluginStorage.appendLog
 
   const ensurePluginCreatorDirs = (manifest) => {
     const baseDir = path.join(path.dirname(manifest.basePath || process.cwd()), '.openpet', manifest.id)
@@ -778,13 +726,11 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     ...readLocalPluginManifests(pluginDirs)
   ]
 
-  const getEnabledMap = () => settingsService.get().plugins?.enabled || {}
+  const getEnabledMap = pluginStorage.getEnabledMap
 
-  const getConfigMap = () => settingsService.get().plugins?.config || {}
+  const getConfigMap = pluginStorage.getConfigMap
 
-  const getStorageMap = () => settingsService.get().plugins?.storage || {}
-
-  const getInstalledMap = () => settingsService.get().plugins?.installed || {}
+  const getInstalledMap = pluginStorage.getInstalledMap
 
   const normalizeServiceHealthPolicy = (policy = {}) => {
     const intervalMs = Number(policy.intervalMs)
@@ -796,7 +742,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     }
   }
 
-  const getServiceHealthPolicyMap = () => settingsService.get().plugins?.serviceHealthPolicies || {}
+  const getServiceHealthPolicyMap = pluginStorage.getServiceHealthPolicyMap
 
   const getPluginServiceHealthPolicy = (pluginId, serviceId) => normalizeServiceHealthPolicy(
     getServiceHealthPolicyMap()?.[pluginId]?.[serviceId]
@@ -829,23 +775,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return getSignatureStatus(manifest)
   }
 
-  const getPluginStorageStats = (pluginId) => {
-    try {
-      const storage = getPluginStorage(pluginId)
-      return {
-        keyCount: Object.keys(storage).length,
-        byteSize: getJsonByteSize(storage),
-        valid: true
-      }
-    } catch (error) {
-      return {
-        keyCount: 0,
-        byteSize: 0,
-        valid: false,
-        error: error.message || 'Plugin storage is invalid'
-      }
-    }
-  }
+  const getPluginStorageStats = pluginStorage.getPluginStorageStats
 
   const normalizePluginConfig = (schema, config = {}) => {
     if (!schema) return {}
@@ -893,22 +823,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return aiService.chat({ message, conversationId })
   }
 
-  const getPluginStorage = (pluginId) => cloneJsonValue(getStorageMap()[pluginId] || {}, 'value')
+  const getPluginStorage = pluginStorage.getPluginStorage
 
-  const savePluginStorage = (pluginId, storage) => {
-    assertStorageSize(storage)
-    const settings = settingsService.get()
-    settingsService.save({
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        storage: {
-          ...(settings.plugins?.storage || {}),
-          [pluginId]: cloneJsonValue(storage, 'value')
-        }
-      }
-    })
-  }
+  const savePluginStorage = pluginStorage.savePluginStorage
 
   const clearStorage = (pluginId) => {
     const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
@@ -1290,18 +1207,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       stopPluginServices(pluginId)
       stopPluginSetups(pluginId)
     }
-    const settings = settingsService.get()
-    const nextSettings = {
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        enabled: {
-          ...(settings.plugins?.enabled || {}),
-          [pluginId]: Boolean(enabled)
-        }
-      }
-    }
-    settingsService.save(nextSettings)
+    pluginStorage.saveEnabled(pluginId, enabled)
     appendLog({
       pluginId,
       level: 'info',
@@ -1315,17 +1221,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
     if (!plugin.configSchema) throw new Error('Plugin does not declare a config schema')
     const normalizedConfig = normalizePluginConfig(plugin.configSchema, config)
-    const settings = settingsService.get()
-    settingsService.save({
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        config: {
-          ...(settings.plugins?.config || {}),
-          [pluginId]: normalizedConfig
-        }
-      }
-    })
+    pluginStorage.saveConfig(pluginId, normalizedConfig)
     appendLog({ pluginId, level: 'info', message: 'Plugin config saved' })
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
@@ -1335,20 +1231,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const serviceEntry = getServiceEntry(plugin, serviceId)
     if (!serviceEntry.health?.url) throw new Error('Plugin service health check is not configured')
     const normalizedPolicy = normalizeServiceHealthPolicy(policy)
-    const settings = settingsService.get()
-    settingsService.save({
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        serviceHealthPolicies: {
-          ...(settings.plugins?.serviceHealthPolicies || {}),
-          [pluginId]: {
-            ...(settings.plugins?.serviceHealthPolicies?.[pluginId] || {}),
-            [serviceId]: normalizedPolicy
-          }
-        }
-      }
-    })
+    pluginStorage.saveServiceHealthPolicy(pluginId, serviceId, normalizedPolicy)
 
     const runtime = serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
     if (runtime) {
@@ -1381,21 +1264,21 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           assertPermission(manifest, 'storage')
           const storage = getPluginStorage(manifest.id)
           if (key == null) return storage
-          assertStorageKey(key)
+          pluginStorage.assertStorageKey(key)
           return hasOwn(storage, key) ? cloneJsonValue(storage[key], 'value') : fallbackValue
         },
         set: async (key, value) => {
           assertPermission(manifest, 'storage')
-          assertStorageKey(key)
+          pluginStorage.assertStorageKey(key)
           const storage = getPluginStorage(manifest.id)
           const nextValue = cloneJsonValue(value, 'value')
-          assertStorageValueSize(nextValue)
+          pluginStorage.assertStorageValueSize(nextValue)
           savePluginStorage(manifest.id, { ...storage, [key]: nextValue })
           return nextValue
         },
         remove: async (key) => {
           assertPermission(manifest, 'storage')
-          assertStorageKey(key)
+          pluginStorage.assertStorageKey(key)
           const storage = getPluginStorage(manifest.id)
           delete storage[key]
           savePluginStorage(manifest.id, storage)
@@ -1985,14 +1868,11 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     }
   }
 
-  const getLogs = (filters = {}) => filterLogs(getLogStore(), filters).map((entry) => ({ ...entry }))
+  const getLogs = pluginStorage.getLogs
 
-  const exportLogEntries = ({ format = 'json', ...filters } = {}) => exportLogs(getLogs(filters), format)
+  const exportLogEntries = pluginStorage.exportLogEntries
 
-  const clearLogs = () => {
-    saveLogStore([])
-    return getLogs()
-  }
+  const clearLogs = pluginStorage.clearLogs
 
   const stopAllServices = () => {
     for (const runtime of serviceRuntimes.values()) {
