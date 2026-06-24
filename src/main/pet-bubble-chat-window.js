@@ -109,6 +109,9 @@ const createPetBubbleChatWindowManager = ({
     pinned: false,
     interacting: false,
     message: null,
+    lastUserMessage: null,
+    sending: false,
+    error: '',
     placement: '',
     bounds: null
   }
@@ -311,6 +314,23 @@ const createPetBubbleChatWindowManager = ({
     return getState()
   }
 
+  const setSendingState = ({ sending = false, lastUserMessage = null, error = '' } = {}) => {
+    const normalizedUserMessage = lastUserMessage && typeof lastUserMessage === 'object'
+      ? {
+          text: String(lastUserMessage.text || '').trim().slice(0, 1000),
+          createdAt: typeof lastUserMessage.createdAt === 'string' && lastUserMessage.createdAt ? lastUserMessage.createdAt : new Date().toISOString()
+        }
+      : state.lastUserMessage
+    patchState({
+      sending: Boolean(sending),
+      lastUserMessage: normalizedUserMessage?.text ? normalizedUserMessage : null,
+      error: String(error || '').slice(0, 240),
+      interacting: Boolean(sending) || state.interacting
+    })
+    scheduleAutoHide()
+    return getState()
+  }
+
   const getState = () => ({
     ...state,
     hasWindow: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.()),
@@ -327,6 +347,7 @@ const createPetBubbleChatWindowManager = ({
     hide,
     setInteracting,
     setPinned,
+    setSendingState,
     showMessage,
     syncToPetWindow
   }
