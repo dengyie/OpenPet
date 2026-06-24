@@ -378,6 +378,14 @@ const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, inside
     menuOpen: false
   }
   const overlayState = cursorStyle.resolvePetCursorOverlayState(state.customCursor, context)
+
+  if (overlayState.visible && !context.windowFocused) {
+    hideCursorOverlay()
+    setNativeCursor('')
+    requestFocusForCursorIfNeeded(true, context.windowFocused)
+    return { visible: false, assetUrl: overlayState.assetUrl, nativeCursor: '' }
+  }
+
   setNativeCursor(overlayState.visible ? overlayState.nativeCursor : '')
   if (overlayState.visible && point) showCursorOverlay(overlayState.assetUrl, point.clientX, point.clientY)
   else hideCursorOverlay()
@@ -876,6 +884,10 @@ pet.addEventListener('pointerup', onPointerUp)
 pet.addEventListener('pointerleave', clearPointerHoverState)
 pet.addEventListener('dblclick', toggleWalk)
 pet.addEventListener('contextmenu', showContextMenu)
+window.addEventListener('focus', () => {
+  state.cursorFocusRequested = false
+  refreshMouseStateFromLastPoint()
+})
 window.addEventListener('blur', () => { clearPointerHoverState() })  // 窗口失焦时清理 hover 态
 
 /**
