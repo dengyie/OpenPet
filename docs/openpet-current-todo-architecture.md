@@ -45,7 +45,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The highest
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` remain pending host-rule work.
-- Trigger proposal inbox data/channel names have started to appear, but the full service/UI/API closed loop is not complete.
+- Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
 
 ## P1 Architecture TODOs
 
@@ -122,16 +122,17 @@ Current state:
 - Manual trigger review card can apply `click` to `clickAction`.
 - `manual` and `unbound` proposals are acknowledged without mutating bindings.
 - `random`, `state`, and `event` proposals return pending-host-rule semantics.
-- `triggerProposalInbox` is present in parts of the data shape, and IPC channel constants/handlers exist for submit/accept/reject.
+- `triggerProposalInbox` is part of the action config view state and host service contract.
+- `ActionService.submitTriggerProposal`, `acceptTriggerProposalItem`, and `rejectTriggerProposalItem` persist proposal status: pending, accepted, rejected, applied, or pending-host-rule.
+- Control Center Actions pane shows a trigger proposal inbox and can accept/reject queued proposals.
+- Legacy action regeneration preserves the trigger proposal inbox.
 
 P1 work:
 
-- Reconcile the half-wired inbox path: implement `ActionService.submitTriggerProposal`, `acceptTriggerProposalItem`, and `rejectTriggerProposalItem`, or remove/defer the exposed IPC handlers until the service exists.
-- Add Control Center inbox/editor for proposals submitted by Creator Studio and future plugins.
-- Persist proposal status: pending, accepted, rejected, applied, or pending-host-rule.
 - Define durable trigger-rule schema for `random`, `state`, and `event`.
 - Add validation that every trigger rule references an existing imported action.
 - Add simulation/preview before applying non-click triggers.
+- Connect Creator Studio imports to submit generated trigger proposals into the host inbox instead of only showing them in the plugin dashboard.
 
 P2/P3:
 
