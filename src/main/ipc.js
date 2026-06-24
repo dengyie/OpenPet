@@ -19,11 +19,10 @@ const {
   createCatalogBlocklistResult,
   createPetPackMutationResult,
   createPluginMutationResult,
-  createServiceStatusView,
   createUpdateCheckView
 } = require('./control-center-adapters')
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
-const { createLocalHttpToken } = require('./services/local-http-service')
+const { createLocalHttpConfigService, normalizeLocalHttpConfig } = require('./services/local-http-config-service')
 
 const MAX_PET_BUBBLE_CHARS = 80
 const MAX_PET_CHAT_MESSAGES = 100
@@ -92,19 +91,6 @@ const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings
         anchor: currentHome.anchor || null
       }
     }
-  }
-}
-
-const normalizeLocalHttpConfig = (currentConfig = {}, nextConfig = {}) => {
-  const enabled = Boolean(nextConfig.enabled)
-  const token = nextConfig.token || currentConfig.token || (enabled ? createLocalHttpToken() : '')
-  return {
-    ...currentConfig,
-    ...nextConfig,
-    host: '127.0.0.1',
-    port: Number(nextConfig.port ?? currentConfig.port ?? 0),
-    enabled,
-    token
   }
 }
 
@@ -1315,12 +1301,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.PLUGINS_CLEAR_STORAGE, (_event, payload) => pluginService.clearStorage(payload.pluginId))
 
-  const getServiceStatusView = () => createServiceStatusView(
-    petService.getSettings().localHttp,
-    localHttpService.getStatus()
-  )
+  const localHttpConfigService = createLocalHttpConfigService({ petService, localHttpService })
 
-  ipcMainService.handle(IPC.SERVICE_GET_STATUS, getServiceStatusView)
+  ipcMainService.handle(IPC.SERVICE_GET_STATUS, () => localHttpConfigService.getStatus())
 
   ipcMainService.handle(IPC.SERVICE_GET_LOGS, (_event, filters) => localHttpService.getLogs(filters))
 
@@ -1328,33 +1311,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.SERVICE_CLEAR_LOGS, () => localHttpService.clearLogs())
 
-  ipcMainService.handle(IPC.SERVICE_ROTATE_TOKEN, async () => {
-    const currentSettings = petService.getSettings()
-    const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, {
-      ...currentSettings.localHttp,
-      token: createLocalHttpToken()
-    })
-    const runtime = nextConfig.enabled
-      ? await localHttpService.start(nextConfig)
-      : localHttpService.getStatus()
-    const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
-    return createServiceStatusView(savedSettings.localHttp, localHttpService.getStatus() || runtime)
-  })
+  ipcMainService.handle(IPC.SERVICE_ROTATE_TOKEN, () => localHttpConfigService.rotateToken())
 
-  ipcMainService.handle(IPC.SERVICE_REVOKE_MCP_SESSIONS, () => {
-    const mcp = localHttpService.revokeMcpSessions()
-    return createServiceStatusView(petService.getSettings().localHttp, { ...localHttpService.getStatus(), mcp })
-  })
+  ipcMainService.handle(IPC.SERVICE_REVOKE_MCP_SESSIONS, () => localHttpConfigService.revokeMcpSessions())
 
-  ipcMainService.handle(IPC.SERVICE_SAVE_CONFIG, async (_event, config) => {
-    const currentSettings = petService.getSettings()
-    const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, config)
-    const runtime = nextConfig.enabled
-      ? await localHttpService.start(nextConfig)
-      : await localHttpService.stop()
-    const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
-    return createServiceStatusView(savedSettings.localHttp, localHttpService.getStatus() || runtime)
-  })
+  ipcMainService.handle(IPC.SERVICE_SAVE_CONFIG, (_event, config) => localHttpConfigService.saveConfig(config))
 
   ipcMainService.handle(IPC.ABOUT_GET_INFO, () => createAboutInfoView(aboutService.getInfo()))
 
