@@ -142,6 +142,7 @@ test.describe('Control Center smoke', () => {
     })
     await page.getByRole('button', { name: '快' }).click()
     await page.getByRole('button', { name: '左侧' }).click()
+    await page.getByRole('switch', { name: 'Enable pet bubble chat popup' }).click()
     await page.getByRole('button', { name: '保存', exact: true }).click()
 
     await expect(page.locator('.status-line')).toContainText('原始大小 135%')
@@ -149,6 +150,7 @@ test.describe('Control Center smoke', () => {
     await expect(scale).toHaveValue('135')
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
     await expect(page.getByRole('group', { name: '菜单位置' }).getByRole('button', { name: '左侧' })).toHaveClass(/active/)
+    await expect(page.getByRole('switch', { name: 'Enable pet bubble chat popup' })).toHaveAttribute('aria-checked', 'false')
   })
 
   test('configures a custom pet hover cursor in the redesigned cursor library', async ({ page }) => {

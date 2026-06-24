@@ -198,6 +198,7 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
 test('pet chat state tracks latest pet bubble from say events', async () => {
   let onSayHandler = null
   const sentToPetWindow = []
+  const utterances = []
   const ipcMain = registerPetChatHandlers({
     getPetWindow: () => ({
       isDestroyed: () => false,
@@ -213,6 +214,15 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
       getConversation: () => [],
       getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' })
     },
+    petPackService: {
+      getActivePetPack: () => ({ manifest: { id: 'legacy-cat' } })
+    },
+    petUtteranceLogService: {
+      record: (payload) => {
+        utterances.push(payload)
+        return payload
+      }
+    },
     petChatWindowService: {
       getState: () => ({ alwaysOnTop: true, visible: false, hasWindow: true }),
       sendStateChanged: () => {}
@@ -226,6 +236,12 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
   assert.equal(state.bubble.source, 'pet:event')
   assert.equal(state.bubble.ttlMs, 1800)
   assert.equal(sentToPetWindow.at(-1).channel, IPC.PET_SAY)
+  assert.deepEqual(utterances, [{
+    petPackId: 'legacy-cat',
+    text: '刚刚打了个招呼',
+    source: 'pet:event',
+    ttlMs: 1800
+  }])
 })
 
 test('pet chat send stops before provider call when chat provider is not ready', async () => {

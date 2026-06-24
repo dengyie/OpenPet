@@ -13,6 +13,10 @@ const MEMORY_OPERATIONS = new Set(['create', 'update', 'reinforce', 'ignore'])
 const MEMORY_STATUSES = new Set(['active', 'superseded', 'deleted'])
 const MAX_MEMORY_TEXT_CHARS = 500
 const MAX_MEMORY_TAGS = 12
+const MAX_PET_UTTERANCE_TEXT_CHARS = 1000
+const MAX_PET_UTTERANCES_PER_PACK = 100
+const DEFAULT_RECENT_PET_UTTERANCE_LIMIT = 6
+const DEFAULT_RECENT_PET_UTTERANCE_CHARS = 1200
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -23,6 +27,7 @@ const createEmptyState = () => ({
   messages: {},
   personaOverrides: {},
   memories: {},
+  petUtterances: {},
   memoryJobs: {},
   traces: {}
 })
@@ -61,6 +66,38 @@ const normalizeMessages = (messages) => {
   }).filter(Boolean)
 }
 
+const normalizePetUtterance = (utterance) => {
+  if (!isPlainObject(utterance)) return null
+  const text = typeof utterance.text === 'string'
+    ? utterance.text.trim().replace(/\s+/g, ' ').slice(0, MAX_PET_UTTERANCE_TEXT_CHARS)
+    : ''
+  const petPackId = typeof utterance.petPackId === 'string' ? utterance.petPackId.trim() : ''
+  if (!text || !petPackId) return null
+  const ttlMs = Number(utterance.ttlMs)
+  return {
+    id: typeof utterance.id === 'string' && utterance.id ? utterance.id : '',
+    petPackId,
+    text,
+    source: typeof utterance.source === 'string' ? utterance.source.trim().slice(0, 120) : '',
+    ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? Math.round(ttlMs) : 0,
+    createdAt: typeof utterance.createdAt === 'string' && utterance.createdAt ? utterance.createdAt : ''
+  }
+}
+
+const normalizePetUtterances = (petUtterances) => {
+  if (!isPlainObject(petUtterances)) return {}
+  return Object.fromEntries(
+    Object.entries(petUtterances).map(([petPackId, utterances]) => {
+      const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
+      const normalized = (Array.isArray(utterances) ? utterances : [])
+        .map((utterance) => normalizePetUtterance({ ...utterance, petPackId: utterance?.petPackId || packId }))
+        .filter(Boolean)
+        .slice(-MAX_PET_UTTERANCES_PER_PACK)
+      return [packId, normalized]
+    }).filter(([petPackId]) => Boolean(petPackId))
+  )
+}
+
 const normalizeState = (value) => {
   const input = isPlainObject(value) ? value : {}
   const state = createEmptyState()
@@ -72,6 +109,7 @@ const normalizeState = (value) => {
     : {}
   state.personaOverrides = isPlainObject(input.personaOverrides) ? input.personaOverrides : {}
   state.memories = isPlainObject(input.memories) ? input.memories : {}
+  state.petUtterances = normalizePetUtterances(input.petUtterances)
   state.memoryJobs = isPlainObject(input.memoryJobs) ? input.memoryJobs : {}
   state.traces = isPlainObject(input.traces) ? input.traces : {}
   return state
@@ -252,6 +290,53 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
 
   const createMemoryId = () => `memory:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
   const createTraceId = () => `trace:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
+  const createPetUtteranceId = () => `pet-utterance:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
+
+  const recordPetUtterance = (utterance = {}) => {
+    const timestamp = now()
+    const normalized = normalizePetUtterance({
+      ...utterance,
+      id: typeof utterance.id === 'string' && utterance.id ? utterance.id : createPetUtteranceId(),
+      createdAt: typeof utterance.createdAt === 'string' && utterance.createdAt ? utterance.createdAt : timestamp
+    })
+    if (!normalized) throw new Error('Valid pet utterance text and petPackId are required')
+    const current = Array.isArray(state.petUtterances[normalized.petPackId])
+      ? state.petUtterances[normalized.petPackId]
+      : []
+    state.petUtterances[normalized.petPackId] = [...current, normalized].slice(-MAX_PET_UTTERANCES_PER_PACK)
+    persist()
+    return clone(normalized)
+  }
+
+  const listRecentPetUtterances = ({ petPackId, limit = DEFAULT_RECENT_PET_UTTERANCE_LIMIT, maxChars = DEFAULT_RECENT_PET_UTTERANCE_CHARS } = {}) => {
+    const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
+    if (!packId) return []
+    const max = Math.max(0, Number(limit) || 0)
+    const charBudget = Math.max(0, Number(maxChars) || 0)
+    const utterances = Array.isArray(state.petUtterances[packId])
+      ? state.petUtterances[packId].map(normalizePetUtterance).filter(Boolean)
+      : []
+    const selected = []
+    let usedChars = 0
+    for (const utterance of utterances.slice().reverse()) {
+      if (max && selected.length >= max) break
+      const nextChars = usedChars + utterance.text.length
+      if (charBudget && selected.length > 0 && nextChars > charBudget) break
+      selected.push(utterance)
+      usedChars = nextChars
+      if (charBudget && usedChars >= charBudget) break
+    }
+    return clone(selected.reverse())
+  }
+
+  const clearPetUtterances = (petPackId) => {
+    const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
+    if (!packId) throw new Error('petPackId is required')
+    const deletedCount = Array.isArray(state.petUtterances[packId]) ? state.petUtterances[packId].length : 0
+    delete state.petUtterances[packId]
+    if (deletedCount > 0) persist()
+    return { petPackId: packId, deletedCount }
+  }
 
   const normalizeExistingMemory = (memory) => ({
     id: typeof memory?.id === 'string' && memory.id ? memory.id : createMemoryId(),
@@ -438,8 +523,11 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     getMessages,
     getPersonaOverride,
     getState,
+    listRecentPetUtterances,
     listMemories,
     persist,
+    recordPetUtterance,
+    clearPetUtterances,
     savePersonaOverride
   }
 }

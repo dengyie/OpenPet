@@ -70,6 +70,12 @@ const controlCenterSettingsFixture = {
     enabled: true,
     radius: 'medium',
     hasAnchor: true
+  },
+  petBubbleChat: {
+    enabled: true,
+    autoPopup: true,
+    autoHide: true,
+    pinOnInteraction: true
   }
 } satisfies ControlCenterSettings
 
