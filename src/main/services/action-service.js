@@ -129,6 +129,8 @@ const normalizePersistedCreatorConfig = (config = {}) => ({
 
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const HOST_RULE_REQUIRED_TYPES = new Set(['random', 'state', 'event'])
+const TRIGGER_PROPOSAL_STATUSES = new Set(['pending', 'accepted', 'rejected', 'applied', 'pending-host-rule'])
+const SAFE_TRIGGER_PROPOSAL_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
 const MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH = 160
 
 const normalizeOptionalText = (value) => {
@@ -136,9 +138,17 @@ const normalizeOptionalText = (value) => {
   return value.slice(0, MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH)
 }
 
+const normalizeTriggerProposalId = (value, fieldName = 'trigger proposal id') => {
+  if (typeof value !== 'string' || !SAFE_TRIGGER_PROPOSAL_ID_PATTERN.test(value)) {
+    throw new Error(`Creator ${fieldName} must be a safe id`)
+  }
+  return value
+}
+
 const normalizeTriggerProposalInboxItem = (item = {}) => {
   const actionId = typeof item.actionId === 'string' ? item.actionId : ''
   const type = typeof item.type === 'string' && TRIGGER_PROPOSAL_TYPES.has(item.type) ? item.type : 'unbound'
+  const status = typeof item.status === 'string' && TRIGGER_PROPOSAL_STATUSES.has(item.status) ? item.status : 'pending'
   return {
     id: normalizeOptionalText(item.id || `${type}:${actionId}`),
     actionId: normalizeOptionalText(actionId),
@@ -148,7 +158,14 @@ const normalizeTriggerProposalInboxItem = (item = {}) => {
     sourceRunId: normalizeOptionalText(item.sourceRunId),
     sourceCommandId: normalizeOptionalText(item.sourceCommandId),
     message: normalizeOptionalText(item.message),
-    createdAt: normalizeOptionalText(item.createdAt)
+    status,
+    resultCode: normalizeOptionalText(item.resultCode),
+    resultMessage: normalizeOptionalText(item.resultMessage),
+    rejectionReason: normalizeOptionalText(item.rejectionReason),
+    createdAt: normalizeOptionalText(item.createdAt),
+    updatedAt: normalizeOptionalText(item.updatedAt),
+    acceptedAt: normalizeOptionalText(item.acceptedAt),
+    rejectedAt: normalizeOptionalText(item.rejectedAt)
   }
 }
 
@@ -369,7 +386,141 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     throw new Error(`Unsupported trigger proposal type: ${type}`)
   }
 
-  return { getPetPack, getConfig, getPreviewConfig, listActions, getAction, reload, validateCreatorActionMutation, applyCreatorActionMutation, acceptTriggerProposal }
+  const createTriggerProposalId = (inbox, type, actionId) => {
+    const createdAt = now().replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'now'
+    const baseId = `proposal:${type}:${actionId}:${createdAt}`
+    const usedIds = new Set(inbox.map((item) => item.id))
+    if (!usedIds.has(baseId)) return baseId
+    let index = 2
+    while (usedIds.has(`${baseId}:${index}`)) index += 1
+    return `${baseId}:${index}`
+  }
+
+  const buildSubmittedTriggerProposal = (payload = {}, current) => {
+    const actionId = normalizeActionId(payload.actionId, 'trigger proposal action id')
+    const type = String(payload.type || '')
+    if (!TRIGGER_PROPOSAL_TYPES.has(type)) {
+      throw new Error(`Unsupported trigger proposal type: ${type || 'unknown'}`)
+    }
+    if (!current.actions.some((action) => action.id === actionId)) {
+      throw new Error(`Trigger proposal action does not exist: ${actionId}`)
+    }
+    const binding = type === 'click' ? (payload.binding || 'clickAction') : ''
+    if (type === 'click' && binding !== 'clickAction') {
+      throw new Error(`Unsupported click trigger binding: ${binding}`)
+    }
+    const id = payload.id
+      ? normalizeTriggerProposalId(payload.id)
+      : createTriggerProposalId(current.triggerProposalInbox || [], type, actionId)
+    if ((current.triggerProposalInbox || []).some((item) => item.id === id)) {
+      throw new Error(`Trigger proposal id already exists: ${id}`)
+    }
+    return normalizeTriggerProposalInboxItem({
+      id,
+      actionId,
+      type,
+      binding,
+      sourcePluginId: payload.sourcePluginId,
+      sourceRunId: payload.sourceRunId,
+      sourceCommandId: payload.sourceCommandId,
+      message: payload.message || payload.notes,
+      status: 'pending',
+      createdAt: now(),
+      updatedAt: now()
+    })
+  }
+
+  const submitTriggerProposal = (payload = {}) => {
+    const current = getMutableConfig()
+    const proposal = buildSubmittedTriggerProposal(payload, current)
+    const animations = persistMutableConfig({
+      ...current,
+      triggerProposalInbox: [...current.triggerProposalInbox, proposal]
+    })
+    return { proposal, animations }
+  }
+
+  const findTriggerProposalItem = (proposalId, status = 'pending') => {
+    const id = normalizeTriggerProposalId(proposalId)
+    const current = getMutableConfig()
+    const index = current.triggerProposalInbox.findIndex((item) => item.id === id)
+    if (index < 0) throw new Error(`Trigger proposal does not exist: ${id}`)
+    const proposal = current.triggerProposalInbox[index]
+    if (status && proposal.status !== status) {
+      throw new Error(`Trigger proposal is not ${status}: ${id}`)
+    }
+    return { current, index, proposal }
+  }
+
+  const acceptTriggerProposalItem = (proposalId) => {
+    const { proposal } = findTriggerProposalItem(proposalId)
+    const triggerProposal = acceptTriggerProposal({
+      actionId: proposal.actionId,
+      type: proposal.type,
+      binding: proposal.binding,
+      sourcePluginId: proposal.sourcePluginId,
+      sourceRunId: proposal.sourceRunId,
+      sourceCommandId: proposal.sourceCommandId,
+      notes: proposal.message
+    })
+    const nextCurrent = getMutableConfig()
+    const nextIndex = nextCurrent.triggerProposalInbox.findIndex((item) => item.id === proposal.id)
+    if (nextIndex < 0) throw new Error(`Trigger proposal does not exist: ${proposal.id}`)
+    const status = triggerProposal.applied
+      ? 'applied'
+      : (triggerProposal.code === 'pending_host_rule' ? 'pending-host-rule' : 'accepted')
+    const nextProposal = normalizeTriggerProposalInboxItem({
+      ...nextCurrent.triggerProposalInbox[nextIndex],
+      status,
+      resultCode: triggerProposal.code,
+      resultMessage: triggerProposal.message,
+      acceptedAt: triggerProposal.acceptedAt,
+      updatedAt: triggerProposal.acceptedAt
+    })
+    const nextInbox = nextCurrent.triggerProposalInbox.map((item, itemIndex) => (
+      itemIndex === nextIndex ? nextProposal : item
+    ))
+    const animations = persistMutableConfig({
+      ...nextCurrent,
+      triggerProposalInbox: nextInbox
+    })
+    return { proposal: nextProposal, triggerProposal, animations }
+  }
+
+  const rejectTriggerProposalItem = (proposalId, reason = '') => {
+    const { current, index, proposal } = findTriggerProposalItem(proposalId)
+    const rejectedAt = now()
+    const nextProposal = normalizeTriggerProposalInboxItem({
+      ...proposal,
+      status: 'rejected',
+      rejectionReason: reason,
+      rejectedAt,
+      updatedAt: rejectedAt
+    })
+    const nextInbox = current.triggerProposalInbox.map((item, itemIndex) => (
+      itemIndex === index ? nextProposal : item
+    ))
+    const animations = persistMutableConfig({
+      ...current,
+      triggerProposalInbox: nextInbox
+    })
+    return { proposal: nextProposal, animations }
+  }
+
+  return {
+    getPetPack,
+    getConfig,
+    getPreviewConfig,
+    listActions,
+    getAction,
+    reload,
+    validateCreatorActionMutation,
+    applyCreatorActionMutation,
+    acceptTriggerProposal,
+    submitTriggerProposal,
+    acceptTriggerProposalItem,
+    rejectTriggerProposalItem
+  }
 }
 
 module.exports = { createActionService }

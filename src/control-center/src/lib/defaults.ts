@@ -179,7 +179,8 @@ export const defaultServiceStatus = {
 export const defaultActionsConfig = {
   defaultAction: '',
   clickAction: '',
-  actions: []
+  actions: [],
+  triggerProposalInbox: []
 } satisfies ActionsConfigViewState
 
 export const defaultPetPacks = {
@@ -366,7 +367,8 @@ export const cloneServiceLogs = (logs: Array<Partial<ServiceLogEntry> & { path?:
 export const cloneActionsConfig = (config: Partial<ActionsConfigViewState> | null | undefined): ActionsConfigViewState => ({
   ...defaultActionsConfig,
   ...(config || {}),
-  actions: Array.isArray(config?.actions) ? config.actions : []
+  actions: Array.isArray(config?.actions) ? config.actions : [],
+  triggerProposalInbox: Array.isArray(config?.triggerProposalInbox) ? config.triggerProposalInbox : []
 })
 
 export const clonePetPacks = (petPacks: Partial<PetPacksViewState> | null | undefined): PetPacksViewState => ({
