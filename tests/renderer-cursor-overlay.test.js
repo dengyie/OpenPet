@@ -198,6 +198,30 @@ test('custom cursor waits for pet focus before drawing overlay to avoid duplicat
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
 })
 
+test('custom cursor does not trust transient document.hasFocus changes before the focus event fires', async () => {
+  const { callbacks, elements, focusRequests, focusState, logs, windowListeners } = await createRendererHarness({
+    insideFrame: true,
+    hasFocus: false
+  })
+
+  callbacks.settings({ customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' } })
+  focusState.value = true
+  dispatch(elements.pet, 'pointermove', { clientX: 20, clientY: 48, screenX: 1200, screenY: 700 })
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, '')
+  assert.equal(focusRequests.length, 1)
+  assert.equal(logs.at(-1).details.windowFocused, false)
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, false)
+
+  dispatchWindow(windowListeners, 'focus')
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), true)
+  assert.equal(elements.pet.style.values.cursor, 'none')
+  assert.equal(logs.at(-1).details.windowFocused, true)
+  assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
+})
+
 test('custom cursor is not shown in passthrough-only padding so desktop clicks are not trapped', async () => {
   const { callbacks, elements, logs } = await createRendererHarness({
     insideFrame: false,
