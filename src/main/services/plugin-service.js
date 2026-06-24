@@ -12,6 +12,7 @@ const { readLocalPluginManifests } = require('./plugin-discovery')
 const { createPluginCommandRuntimeManager } = require('./plugin-command-runtime-manager')
 const { createPluginCommandBridgeService } = require('./plugin-command-bridge-service')
 const { createPluginSetupRuntimeManager } = require('./plugin-setup-runtime-manager')
+const { createPluginServiceRuntimeManager } = require('./plugin-service-runtime-manager')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -27,10 +28,6 @@ const PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS = 1500
 const MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 15000
 const DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 30000
 const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
-const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
-
-const ACTIVE_SERVICE_STATUSES = new Set(['running', 'stopping'])
-
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const defaultServiceProcessTree = createServiceProcessTree()
 
@@ -213,7 +210,6 @@ const assertStorageKey = (key) => {
 const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
-  const serviceRuntimes = new Map()
 
   const getLogStore = () => {
     const logs = settingsService.get().plugins?.logs
@@ -754,7 +750,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     services: (manifest.entries?.services || []).map((serviceEntry) => ({
       ...serviceEntry,
       healthPolicy: getPluginServiceHealthPolicy(manifest.id, serviceEntry.id),
-      runtime: createRuntimeView(serviceRuntimes.get(createPluginServiceKey(manifest.id, serviceEntry.id)), serviceEntry)
+      runtime: createRuntimeView(serviceRuntimeManager.getRuntime(manifest.id, serviceEntry.id), serviceEntry)
     }))
   })
 
@@ -847,17 +843,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return plugin
   }
 
-  const getPluginServiceRuntime = (pluginId, serviceId) => serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
-
-  const setServiceRuntime = (pluginId, serviceId, runtime) => {
-    serviceRuntimes.set(createPluginServiceKey(pluginId, serviceId), runtime)
-    return runtime
-  }
-
   const getOrCreateServiceRuntime = (pluginId, serviceId, serviceEntry) => {
-    const existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
-    if (existingRuntime) return existingRuntime
-    return setServiceRuntime(pluginId, serviceId, {
+    return serviceRuntimeManager.getOrCreateRuntime(pluginId, serviceId, () => ({
       pluginId,
       serviceId,
       status: 'stopped',
@@ -875,7 +862,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       healthChecking: false,
       stopGracePeriodMs: Number.isFinite(Number(serviceStopGracePeriodMs)) ? Math.max(0, Number(serviceStopGracePeriodMs)) : PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS,
       health: createServiceHealthView({}, serviceEntry)
-    })
+    }))
   }
 
   const clearServiceHealthSchedule = (runtime) => {
@@ -1024,13 +1011,11 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return runtime
   }
 
-  const stopPluginServices = (pluginId, options = {}) => {
-    for (const [key, runtime] of serviceRuntimes.entries()) {
-      if (key.startsWith(`${pluginId}:`)) {
-        stopPluginServiceRuntime(pluginId, runtime.serviceId, runtime, options)
-      }
-    }
-  }
+  const serviceRuntimeManager = createPluginServiceRuntimeManager({
+    stopRuntime: stopPluginServiceRuntime
+  })
+
+  const stopPluginServices = (pluginId, options = {}) => serviceRuntimeManager.stopPlugin(pluginId, options)
 
   const stopPluginSetups = (pluginId, options = {}) => setupRuntimeManager.stopPlugin(pluginId, options)
 
@@ -1103,7 +1088,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       }
     })
 
-    const runtime = serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
+    const runtime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
     if (runtime) {
       clearServiceHealthSchedule(runtime)
       scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
@@ -1533,8 +1518,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     try {
       const plugin = findPluginForService(pluginId)
       const serviceEntry = getServiceEntry(plugin, serviceId)
-      const existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
-      if (ACTIVE_SERVICE_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin service is already running')
+      const existingRuntime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
+      serviceRuntimeManager.assertNotActive(pluginId, serviceId)
       const declaration = resolveServiceRuntimeDeclaration(serviceEntry)
       const { file, args } = parseServiceCommand(declaration.command)
       const cwd = resolveServiceCwd(plugin.manifest, declaration.cwd)
@@ -1546,7 +1531,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       })
-      const runtime = setServiceRuntime(pluginId, serviceId, {
+      const runtime = serviceRuntimeManager.setRuntime({
         pluginId,
         serviceId,
         status: 'running',
@@ -1635,7 +1620,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
     if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
     const serviceEntry = getServiceEntry(plugin, serviceId)
-    const runtime = getPluginServiceRuntime(pluginId, serviceId)
+    const runtime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
     if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')
     stopPluginServiceRuntime(pluginId, serviceId, runtime)
     return {
@@ -1734,9 +1719,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   }
 
   const stopAllServices = () => {
-    for (const runtime of serviceRuntimes.values()) {
-      stopPluginServiceRuntime(runtime.pluginId, runtime.serviceId, runtime, { log: false })
-    }
+    serviceRuntimeManager.stopAll({ log: false })
     setupRuntimeManager.stopAll({ log: false })
     commandRuntimeManager.stopAll()
     commandBridgeService.close()
