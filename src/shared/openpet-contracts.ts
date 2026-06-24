@@ -97,6 +97,8 @@ export interface AiBehaviorDecision {
   kind?: string
   event?: string
   intent?: string
+  providerReason?: string
+  displayMode?: 'none' | 'bubble' | 'action' | 'event'
   inputSummary?: string
   cooldown?: boolean
   fallback?: boolean

@@ -861,6 +861,8 @@ export function AiPane({
                   <div className="behavior-decision-meta">
                     {decision.ruleId ? <span>{decision.ruleId}</span> : null}
                     {decision.actionId ? <span>{decision.actionId}</span> : null}
+                    {decision.displayMode ? <span>display: {decision.displayMode}</span> : null}
+                    {decision.providerReason ? <span>provider: {decision.providerReason}</span> : null}
                     {decision.cooldown ? <span>cooldown</span> : null}
                     {decision.fallback ? <span>fallback</span> : null}
                   </div>

@@ -61,13 +61,56 @@ test('behavior orchestrator rejects unavailable provider action ids', () => {
 
   assert.deepEqual(service.evaluate({
     reply: 'ok',
-    behaviorIntent: { intent: 'success', actionId: 'missing', confidence: 0.9 },
+    behaviorIntent: {
+      intent: 'success',
+      actionId: 'missing',
+      confidence: 0.9,
+      reason: 'The provider asked for a celebration action that is not installed.',
+      displayMode: 'action'
+    },
     actions
   }), {
     matched: false,
     reason: 'provider actionId is not available',
-    actionId: 'missing'
+    actionId: 'missing',
+    providerReason: 'The provider asked for a celebration action that is not installed.',
+    displayMode: 'action'
   })
+})
+
+test('behavior orchestrator preserves provider behavior reason and display mode in decisions', () => {
+  const service = createBehaviorOrchestratorService({
+    settingsService: createSettingsService()
+  })
+
+  const decision = service.evaluate({
+    reply: 'Great work.',
+    behaviorIntent: {
+      intent: 'success',
+      actionId: 'done',
+      confidence: 0.9,
+      bubbleText: '做得漂亮！',
+      reason: 'The user completed a task, so a celebration action fits.',
+      displayMode: 'action'
+    },
+    actions
+  })
+  const stored = service.getConfig().decisions[0]
+  const replayed = service.replayDecision({ decisionId: stored.id, actions })
+  const exported = JSON.parse(service.exportDiagnostics())
+
+  assert.equal(decision.providerReason, 'The user completed a task, so a celebration action fits.')
+  assert.equal(decision.displayMode, 'action')
+  assert.equal(stored.providerReason, 'The user completed a task, so a celebration action fits.')
+  assert.equal(stored.displayMode, 'action')
+  assert.equal(stored.replay.behaviorIntent.reason, 'The user completed a task, so a celebration action fits.')
+  assert.equal(stored.replay.behaviorIntent.displayMode, 'action')
+  assert.equal(replayed.providerReason, 'The user completed a task, so a celebration action fits.')
+  assert.equal(replayed.displayMode, 'action')
+  assert.equal(exported.decisions[0].providerReason, 'The user completed a task, so a celebration action fits.')
+  assert.equal(exported.decisions[0].displayMode, 'action')
+  assert.equal(JSON.stringify(exported).includes('Great work.'), false)
+  assert.equal(JSON.stringify(exported).includes('做得漂亮'), false)
 })
 
 test('behavior orchestrator skips matching rules with unavailable actions', () => {

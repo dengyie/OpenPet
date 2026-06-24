@@ -4,6 +4,8 @@ const MAX_BEHAVIOR_RULES = 50
 const MAX_DECISIONS = 50
 const MAX_RULE_TEXT_CHARS = 500
 const MAX_REPLAY_REPLY_CHARS = 2000
+const MAX_PROVIDER_REASON_CHARS = 240
+const DISPLAY_MODES = new Set(['none', 'bubble', 'action', 'event'])
 const DEFAULT_BEHAVIOR_CONFIG = {
   enabled: false,
   useTools: true,
@@ -23,11 +25,37 @@ const normalizeStringList = (value) => {
 
 const normalizeActionId = (value) => String(value || '').trim()
 
+const sanitizeDecisionText = (value, maxChars = MAX_PROVIDER_REASON_CHARS) => String(value || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
+  .slice(0, maxChars)
+
+const normalizeDisplayMode = (value) => {
+  const mode = String(value || '').trim()
+  return DISPLAY_MODES.has(mode) ? mode : ''
+}
+
+const getProviderBehaviorFields = (behaviorIntent = {}) => {
+  const providerReason = sanitizeDecisionText(behaviorIntent?.reason)
+  const displayMode = normalizeDisplayMode(behaviorIntent?.displayMode)
+  return {
+    ...(providerReason ? { providerReason } : {}),
+    ...(displayMode ? { displayMode } : {})
+  }
+}
+
+const getDecisionProviderFields = (decision = {}) => ({
+  ...(decision.providerReason ? { providerReason: sanitizeDecisionText(decision.providerReason) } : {}),
+  ...(decision.displayMode ? { displayMode: normalizeDisplayMode(decision.displayMode) } : {})
+})
+
 const summarizeInput = ({ reply = '', behaviorIntent = null } = {}) => {
   const parts = [`reply:${String(reply || '').length} chars`]
   if (behaviorIntent?.intent) parts.push(`intent:${String(behaviorIntent.intent).slice(0, 80)}`)
   if (behaviorIntent?.actionId) parts.push(`actionId:${String(behaviorIntent.actionId).slice(0, 80)}`)
   if (behaviorIntent?.confidence != null) parts.push(`confidence:${Number(behaviorIntent.confidence) || 0}`)
+  if (behaviorIntent?.displayMode) parts.push(`displayMode:${normalizeDisplayMode(behaviorIntent.displayMode) || 'unknown'}`)
   return parts.join(' · ')
 }
 
@@ -37,7 +65,9 @@ const normalizeReplayInput = (replay = {}) => ({
     intent: String(replay.behaviorIntent.intent || '').slice(0, 120),
     actionId: String(replay.behaviorIntent.actionId || '').slice(0, 120),
     bubbleText: String(replay.behaviorIntent.bubbleText || '').slice(0, MAX_RULE_TEXT_CHARS),
-    confidence: Number(replay.behaviorIntent.confidence || 0)
+    confidence: Number(replay.behaviorIntent.confidence || 0),
+    reason: sanitizeDecisionText(replay.behaviorIntent.reason),
+    displayMode: normalizeDisplayMode(replay.behaviorIntent.displayMode)
   } : null
 })
 
@@ -80,6 +110,8 @@ const normalizeDecision = (decision = {}, index = 0) => ({
   cooldown: Boolean(decision.cooldown),
   fallback: Boolean(decision.fallback),
   blockedReason: String(decision.blockedReason || ''),
+  providerReason: sanitizeDecisionText(decision.providerReason),
+  displayMode: normalizeDisplayMode(decision.displayMode),
   replay: normalizeReplayInput(decision.replay)
 })
 
@@ -129,15 +161,16 @@ const getActionMap = (actions = []) => new Map(
 const createNoMatch = (reason, extra = {}) => ({ matched: false, reason, ...extra })
 
 const actionDecision = ({ ruleId = '', reason, action, then, reply, behaviorIntent }) => {
+  const providerFields = getProviderBehaviorFields(behaviorIntent)
   if (then.type === 'say') {
     const text = then.text || behaviorIntent?.bubbleText || reply
     if (!text) return createNoMatch('say behavior has no text')
-    return { matched: true, type: 'say', text, ruleId, reason, intent: behaviorIntent?.intent || '' }
+    return { matched: true, type: 'say', text, ruleId, reason, intent: behaviorIntent?.intent || '', ...providerFields }
   }
   if (then.type === 'setEvent') {
     const event = then.event || behaviorIntent?.intent
     if (!event) return createNoMatch('event behavior has no event')
-    return { matched: true, type: 'setEvent', event, message: then.message || behaviorIntent?.bubbleText || reply, ruleId, reason, intent: behaviorIntent?.intent || '' }
+    return { matched: true, type: 'setEvent', event, message: then.message || behaviorIntent?.bubbleText || reply, ruleId, reason, intent: behaviorIntent?.intent || '', ...providerFields }
   }
   if (!action) return createNoMatch('action behavior has no valid action')
   return {
@@ -148,7 +181,8 @@ const actionDecision = ({ ruleId = '', reason, action, then, reply, behaviorInte
     kind: action.kind || 'custom',
     ruleId,
     reason,
-    intent: behaviorIntent?.intent || ''
+    intent: behaviorIntent?.intent || '',
+    ...providerFields
   }
 }
 
@@ -205,7 +239,11 @@ const createBehaviorOrchestratorService = ({ settingsService }) => {
     const now = Date.now()
     const nextAllowedAt = cooldowns.get(decision.actionId) || 0
     if (nextAllowedAt > now) {
-      return createNoMatch('action is cooling down', { cooldown: true, actionId: decision.actionId })
+      return createNoMatch('action is cooling down', {
+        cooldown: true,
+        actionId: decision.actionId,
+        ...getDecisionProviderFields(decision)
+      })
     }
     cooldowns.set(decision.actionId, now + cooldownMs)
     return null
@@ -242,7 +280,10 @@ const createBehaviorOrchestratorService = ({ settingsService }) => {
           behaviorIntent
         })
       }
-      return createNoMatch('provider actionId is not available', { actionId: behaviorIntent.actionId })
+      return createNoMatch('provider actionId is not available', {
+        actionId: behaviorIntent.actionId,
+        ...getProviderBehaviorFields(behaviorIntent)
+      })
     }
 
     const fallback = findSemanticAction(reply, actions)
@@ -254,11 +295,12 @@ const createBehaviorOrchestratorService = ({ settingsService }) => {
         label: fallback.label,
         kind: fallback.kind,
         reason: `fallback matched ${fallback.matchedTerm}`,
-        intent: behaviorIntent?.intent || ''
+        intent: behaviorIntent?.intent || '',
+        ...getProviderBehaviorFields(behaviorIntent)
       }
     }
 
-    return createNoMatch('no behavior rule matched')
+    return createNoMatch('no behavior rule matched', getProviderBehaviorFields(behaviorIntent))
   }
 
   const evaluate = (payload = {}) => {
