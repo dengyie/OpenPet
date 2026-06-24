@@ -2,7 +2,7 @@
 
 > 日期：2026-06-25
 > 基线：`main@1f01cf2`
-> 状态：设计待确认
+> 状态：低风险加固已完成；高风险拆分需另启 milestone
 > 范围：基于整体架构 review 的后续开发设计，优先加固配置状态边界、IPC 契约边界，并为插件服务和 IPC 编排拆分定义分阶段路径。
 
 ## 1. 背景
@@ -29,17 +29,25 @@ OpenPet 已经从单窗口桌宠演进为 Electron 桌宠平台。当前架构�
 第一阶段只做低风险架构加固，不改变用户可见功能：
 
 - `SettingsService.get()`、`save()`、`preview()` 返回和保存的配置快照不共享嵌套引用。
-- 开发和测试环境尽早暴露直接修改 settings 快照的错误用法。
+- 测试覆盖直接修改 settings 快照不会污染内部状态；如需显式暴露非法写入，可在后续单独启用 deep freeze 策略。
 - 主进程 shared IPC channel 与 preload 暴露的 channel 保持可测试一致。
 - 保持 `npm start`、`npm test`、`npm run check:syntax` 的现有行为。
 
-### 2.2 第二阶段目标
+完成情况：
 
-第二阶段开始拆分高风险中心模块，但保持对外 API 稳定：
+- 已完成 `SettingsService` 嵌套快照隔离。
+- 已完成 preload IPC 契约一致性测试。
+- 已抽取 `plugin-storage-service.js`，承接插件 config/storage/logs/settings 子树写入。
+- 已抽取 `local-http-config-service.js`，承接 Local HTTP 配置保存、token 轮换、运行时启停和 MCP session 撤销编排。
 
-- 从 `plugin-service.js` 抽出插件能力网关、命令 bridge、运行时管理和存储日志模块。
-- 从 `ipc.js` 抽出 AI chat、宠物移动、本地 HTTP 配置等用例编排服务。
-- IPC 层逐步退回到参数适配、调用服务、返回 view model。
+### 2.2 下一高风险 milestone 目标
+
+下一 milestone 才开始拆分高风险中心模块，保持对外 API 稳定，且不得混入本轮低风险抽取：
+
+- 从 `plugin-service.js` 抽出 command bridge 与 runtime 管理边界。
+- 保留 `createPluginService` 作为 facade，对外方法名和返回结构不变。
+- 高风险拆分每个阶段必须有 plugin-service 相关回归测试兜底。
+- `ipc.js` 的 AI chat、宠物移动等编排拆分进入后续 backlog，不与 command/runtime milestone 混做。
 
 ## 3. 非目标
 
@@ -57,9 +65,9 @@ OpenPet 已经从单窗口桌宠演进为 Electron 桌宠平台。当前架构�
 | 决策 | 推荐方案 | 备选方案 | 影响 |
 | --- | --- | --- | --- |
 | 开发分支 | `codex/architecture-hardening` 或当前文档分支后续改名/延续 | 直接在现有功能分支做 | 推荐独立分支，方便 review 和回滚。 |
-| 第一阶段范围 | 只做 `SettingsService` 深拷贝/冻结和 IPC parity test | 同时拆 `plugin-service.js` | 推荐先小步加固，避免行为变更过大。 |
+| 第一阶段范围 | 只做 `SettingsService` 深拷贝隔离和 IPC parity test | 同时拆 `plugin-service.js` | 已按小步加固完成，避免行为变更过大。 |
 | deep clone 实现 | 优先使用 `structuredClone`，回退 JSON clone | 引入第三方库 | 当前 settings 是 JSON 形态，避免新增依赖。 |
-| deep freeze 范围 | 仅测试环境默认启用，开发环境可选启用 | 所有环境启用 | 生产启用 freeze 可能带来兼容和性能风险。 |
+| deep freeze 范围 | 本轮不默认启用；需要显式暴露非法写入时单独设计 | 所有环境启用 | 生产启用 freeze 可能带来兼容和性能风险。 |
 | preload 契约策略 | 增加 parity test 解析 preload `IPC` 对象 | 生成 preload 常量 | 先测试守住漂移，后续再生成化。 |
 
 ## 5. 第一阶段详细设计
@@ -78,7 +86,7 @@ OpenPet 已经从单窗口桌宠演进为 Electron 桌宠平台。当前架构�
 - `get()` 返回深拷贝。
 - `save(settings)` 先深拷贝输入，再持久化和触发事件。
 - `preview(partialSettings)` 生成下一份 settings 后返回深拷贝，并向事件总线发送深拷贝。
-- 测试环境可对 `get()` 和 `preview()` 返回值做 deep freeze，帮助测试捕获非法嵌套写入。
+- 本轮不默认启用 deep freeze，先通过深拷贝隔离内部状态；如后续需要把非法嵌套写入变成显式错误，需单独评估测试兼容性和生产性能。
 
 建议实现形态：
 
@@ -97,14 +105,14 @@ const cloneJson = (value) => {
 
 ### 5.2 SettingsService 测试
 
-新增测试覆盖：
+已新增测试覆盖：
 
 - `get()` 返回的嵌套对象被修改后，再次 `get()` 不受影响。
 - `save()` 后修改传入对象，不会污染内部状态。
 - `settings:changed` 事件收到的嵌套对象被修改，不会污染内部状态。
 - `preview()` 返回值和事件 payload 不污染内部状态。
 
-建议文件：
+文件：
 
 - `tests/services/settings-service.test.js`
 
@@ -289,4 +297,3 @@ const cloneJson = (value) => {
 7. `refactor: extract local http config service`
 
 前四步可以作为第一批 PR 或一个小分支完成。后续拆分建议每一步单独 review。
-
