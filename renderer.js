@@ -71,6 +71,7 @@ const state = {
   customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '', width: 0, height: 0, hotspotX: 0, hotspotY: 0 },
   customCursorOverlayVisible: false,
   cursorFocusRequested: false,
+  windowFocused: typeof document.hasFocus === 'function' ? document.hasFocus() : true,
   nativeCursor: '',
   lastPointerPoint: null,
   lastMouseDiagnostic: null,
@@ -317,8 +318,7 @@ const isPointInsidePetWindow = (clientX, clientY) => (
 )
 
 const isPetWindowFocused = () => {
-  if (typeof document.hasFocus !== 'function') return true
-  return document.hasFocus()
+  return Boolean(state.windowFocused)
 }
 
 const moveCursorOverlay = (clientX, clientY) => {
@@ -885,10 +885,14 @@ pet.addEventListener('pointerleave', clearPointerHoverState)
 pet.addEventListener('dblclick', toggleWalk)
 pet.addEventListener('contextmenu', showContextMenu)
 window.addEventListener('focus', () => {
+  state.windowFocused = true
   state.cursorFocusRequested = false
   refreshMouseStateFromLastPoint()
 })
-window.addEventListener('blur', () => { clearPointerHoverState() })  // 窗口失焦时清理 hover 态
+window.addEventListener('blur', () => {
+  state.windowFocused = false
+  clearPointerHoverState()
+})  // 窗口失焦时清理 hover 态
 
 /**
  * 启动流程：
