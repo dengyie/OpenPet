@@ -34,6 +34,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | [`productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md) | Detailed phase execution design and completed phase index. |
 | [`project-review-todo-design.md`](./project-review-todo-design.md) | Consolidated review-derived TODO design. |
 | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md) | Live TODO entry point grouped by current runtime/service boundaries. |
+| [`architecture-hardening-development-design.md`](./architecture-hardening-development-design.md) | Current architecture hardening design for settings ownership, IPC contracts, PluginService split, and IPC orchestration split. |
 | [`productization-roadmap.md`](./productization-roadmap.md) | Older broad roadmap. Treat as background unless a live doc links a current item to it. |
 
 ## Historical Audit Trail
