@@ -512,6 +512,180 @@ test('action service accepts review-only trigger proposals without mutating acti
   assert.equal(service.getConfig().clickAction, 'idle')
 })
 
+test('action service persists trigger proposals through inbox submit and accept', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => '2026-06-22T10:02:00.000Z',
+    loadLegacyAnimations: () => savedConfig || ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const submitted = service.submitTriggerProposal({
+    actionId: 'wave',
+    type: 'click',
+    sourcePluginId: 'openpet.creator-studio',
+    sourceRunId: 'run-42',
+    sourceCommandId: 'import-approved-action',
+    message: 'User asked for click trigger.'
+  })
+
+  assert.equal(submitted.proposal.status, 'pending')
+  assert.equal(submitted.proposal.binding, 'clickAction')
+  assert.equal(submitted.proposal.message, 'User asked for click trigger.')
+  assert.equal(savedConfig.triggerProposalInbox.length, 1)
+
+  const accepted = service.acceptTriggerProposalItem(submitted.proposal.id)
+
+  assert.equal(accepted.triggerProposal.applied, true)
+  assert.equal(accepted.triggerProposal.code, 'applied')
+  assert.equal(accepted.proposal.status, 'applied')
+  assert.equal(accepted.proposal.resultCode, 'applied')
+  assert.equal(accepted.proposal.resultMessage, 'Click trigger now uses action: wave')
+  assert.equal(savedConfig.clickAction, 'wave')
+  assert.equal(savedConfig.triggerProposalInbox[0].status, 'applied')
+  assert.equal(service.getConfig().triggerProposalInbox[0].status, 'applied')
+})
+
+test('action service persists pending-host-rule and rejected inbox proposals', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => '2026-06-22T10:03:00.000Z',
+    loadLegacyAnimations: () => savedConfig || ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const stateProposal = service.submitTriggerProposal({
+    id: 'proposal:state:wave:test',
+    actionId: 'wave',
+    type: 'state',
+    sourcePluginId: 'openpet.creator-studio'
+  })
+  const randomProposal = service.submitTriggerProposal({
+    id: 'proposal:random:wave:test',
+    actionId: 'wave',
+    type: 'random'
+  })
+
+  const accepted = service.acceptTriggerProposalItem(stateProposal.proposal.id)
+  const rejected = service.rejectTriggerProposalItem(randomProposal.proposal.id, 'Not for this pet.')
+
+  assert.equal(accepted.triggerProposal.applied, false)
+  assert.equal(accepted.triggerProposal.code, 'pending_host_rule')
+  assert.equal(accepted.proposal.status, 'pending-host-rule')
+  assert.equal(rejected.proposal.status, 'rejected')
+  assert.equal(rejected.proposal.rejectionReason, 'Not for this pet.')
+  assert.equal(savedConfig.clickAction, 'idle')
+  assert.deepEqual(
+    savedConfig.triggerProposalInbox.map((proposal) => proposal.status),
+    ['pending-host-rule', 'rejected']
+  )
+})
+
+test('action service rejects unsafe trigger proposal inbox mutations', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: () => {
+      throw new Error('should not save invalid inbox proposal')
+    }
+  })
+
+  assert.throws(
+    () => service.submitTriggerProposal({ actionId: '../wave', type: 'click' }),
+    /safe id/
+  )
+  assert.throws(
+    () => service.submitTriggerProposal({ actionId: 'missing', type: 'click' }),
+    /does not exist/
+  )
+  assert.throws(
+    () => service.submitTriggerProposal({ actionId: 'idle', type: 'click', binding: 'defaultAction' }),
+    /Unsupported click trigger binding/
+  )
+  assert.throws(
+    () => service.rejectTriggerProposalItem('../bad'),
+    /safe id/
+  )
+})
+
 test('action service rejects unsafe trigger proposals before mutation', () => {
   const service = createActionService({
     projectRoot: '/app/openpet',

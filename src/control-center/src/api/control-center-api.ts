@@ -5,6 +5,7 @@ import type {
   ActionFrameInspectionResult,
   ActionFrameImportRequest,
   ActionFrameReinspectRequest,
+  ActionTriggerProposalInboxStatus,
   ActionsConfigViewState,
   AiChatRequest,
   AiConfigViewState,
@@ -149,6 +150,7 @@ const createDemoPetPacks = (): PetPacksViewState => clonePetPacks({
 const createDemoActionsConfig = (): ActionsConfigViewState => cloneActionsConfig({
   defaultAction: 'idle',
   clickAction: 'wave',
+  triggerProposalInbox: [],
   actions: [
     { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
     { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
@@ -1020,6 +1022,81 @@ const demoApi: ControlCenterApi = {
           }
         : {})
     }
+  },
+  submitActionTriggerProposal: async (proposal) => {
+    const id = proposal.id || `demo-proposal-${Date.now()}`
+    const item = {
+      id,
+      actionId: proposal.actionId,
+      type: proposal.type,
+      binding: proposal.type === 'click' ? (proposal.binding || 'clickAction') : '',
+      sourcePluginId: proposal.sourcePluginId || '',
+      sourceRunId: proposal.sourceRunId || '',
+      sourceCommandId: proposal.sourceCommandId || '',
+      message: proposal.message || proposal.notes || '',
+      status: 'pending' as const,
+      resultCode: '',
+      resultMessage: '',
+      rejectionReason: '',
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z',
+      acceptedAt: '',
+      rejectedAt: ''
+    }
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      triggerProposalInbox: [...demoState.actionsConfig.triggerProposalInbox, item]
+    })
+    writeDemoState()
+    return { animations: cloneActionsConfig(demoState.actionsConfig), proposal: item }
+  },
+  acceptActionTriggerProposal: async (proposalId) => {
+    const proposal = demoState.actionsConfig.triggerProposalInbox.find((item) => item.id === proposalId)
+    if (!proposal) throw new Error('Trigger proposal not found')
+    const response = await demoApi.saveActionsConfig({
+      triggerProposal: {
+        actionId: proposal.actionId,
+        type: proposal.type,
+        binding: proposal.binding || undefined,
+        sourcePluginId: proposal.sourcePluginId,
+        sourceRunId: proposal.sourceRunId,
+        sourceCommandId: proposal.sourceCommandId
+      }
+    })
+    const status: ActionTriggerProposalInboxStatus = response.triggerProposal?.applied
+      ? 'applied'
+      : (response.triggerProposal?.code === 'pending_host_rule' ? 'pending-host-rule' : 'accepted')
+    const nextProposal = {
+      ...proposal,
+      status,
+      resultCode: response.triggerProposal?.code || '',
+      resultMessage: response.triggerProposal?.message || '',
+      acceptedAt: response.triggerProposal?.acceptedAt || '',
+      updatedAt: response.triggerProposal?.acceptedAt || '2026-06-22T00:00:00.000Z'
+    }
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      triggerProposalInbox: demoState.actionsConfig.triggerProposalInbox.map((item) => item.id === proposalId ? nextProposal : item)
+    })
+    writeDemoState()
+    return { animations: cloneActionsConfig(demoState.actionsConfig), proposal: nextProposal, triggerProposal: response.triggerProposal }
+  },
+  rejectActionTriggerProposal: async (proposalId, reason = '') => {
+    const proposal = demoState.actionsConfig.triggerProposalInbox.find((item) => item.id === proposalId)
+    if (!proposal) throw new Error('Trigger proposal not found')
+    const nextProposal = {
+      ...proposal,
+      status: 'rejected' as const,
+      rejectionReason: reason,
+      rejectedAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z'
+    }
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      triggerProposalInbox: demoState.actionsConfig.triggerProposalInbox.map((item) => item.id === proposalId ? nextProposal : item)
+    })
+    writeDemoState()
+    return { animations: cloneActionsConfig(demoState.actionsConfig), proposal: nextProposal }
   },
   deleteAction: async () => ({ animations: cloneActionsConfig(demoState.actionsConfig) }),
   listPetPacks: async () => clonePetPacks(demoState.petPacks),

@@ -181,6 +181,25 @@ test('action adapters package import and mutation results without leaking servic
   })
   assert.deepEqual(createActionsMutationResult(animations), { animations })
   assert.deepEqual(createActionsMutationResult(animations, {
+    proposal: {
+      id: 'proposal:click:wave:test',
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action',
+      message: 'Click trigger proposal',
+      status: 'applied',
+      resultCode: 'applied',
+      resultMessage: 'Click trigger now uses action: wave',
+      rejectionReason: '',
+      createdAt: '2026-06-22T09:00:00.000Z',
+      updatedAt: '2026-06-22T10:00:00.000Z',
+      acceptedAt: '2026-06-22T10:00:00.000Z',
+      rejectedAt: '',
+      internal: 'ignore-me'
+    },
     triggerProposal: {
       ok: true,
       applied: true,
@@ -197,6 +216,24 @@ test('action adapters package import and mutation results without leaking servic
     }
   }), {
     animations,
+    proposal: {
+      id: 'proposal:click:wave:test',
+      actionId: 'wave',
+      type: 'click',
+      binding: 'clickAction',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action',
+      message: 'Click trigger proposal',
+      status: 'applied',
+      resultCode: 'applied',
+      resultMessage: 'Click trigger now uses action: wave',
+      rejectionReason: '',
+      createdAt: '2026-06-22T09:00:00.000Z',
+      updatedAt: '2026-06-22T10:00:00.000Z',
+      acceptedAt: '2026-06-22T10:00:00.000Z',
+      rejectedAt: ''
+    },
     triggerProposal: {
       ok: true,
       applied: true,

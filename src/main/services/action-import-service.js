@@ -62,7 +62,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
   const regenerate = async (overrides = {}) => {
     const currentConfig = readCurrentConfig()
     const { generateSpritesFromFrames } = loadSpriteGenerator()
-    return generateSpritesFromFrames({
+    const generated = await generateSpritesFromFrames({
       framesRoot,
       spritesDir,
       configPath,
@@ -70,6 +70,16 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       clickAction: overrides.clickAction ?? currentConfig.clickAction,
       labels: getExistingLabels()
     })
+    const preserved = {
+      ...generated,
+      ...(Array.isArray(currentConfig.triggerProposalInbox)
+        ? { triggerProposalInbox: currentConfig.triggerProposalInbox }
+        : {})
+    }
+    if (preserved !== generated) {
+      fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')
+    }
+    return preserved
   }
 
   const importActionFrames = async ({ sourceDir, actionId, label }) => {
