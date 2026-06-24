@@ -287,6 +287,88 @@ test('pet bubble chat IPC delegates state, hide, pin and interaction updates', a
   ])
 })
 
+test('pet bubble chat re-syncs to pet window on viewport and movement updates so popup tracks pet actions', async () => {
+  let viewportHandler = null
+  let setPositionHandler = null
+  let moveByHandler = null
+  let dragEndedHandler = null
+  let onActionHandler = null
+  const syncCalls = []
+  const savedSettings = []
+  const win = {
+    getBounds: () => ({ x: 320, y: 280, width: 120, height: 120 }),
+    getPosition: () => [320, 280],
+    setPosition: () => {},
+    webContents: {},
+    isDestroyed: () => false
+  }
+  const ipcMain = createIpcMainStub()
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: { fromWebContents: () => win },
+    app: { quit: () => {} },
+    dialog: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      petService: {
+        ...createRequiredServices().petService,
+        onAction: (handler) => { onActionHandler = handler },
+        getSettings: () => ({
+          localHttp: {},
+          menuPosition: 'auto',
+          petBehavior: {
+            grounded: false,
+            home: { enabled: true, radius: 'medium', anchor: null }
+          }
+        }),
+        saveSettings: (settings) => {
+          savedSettings.push(settings)
+          return settings
+        }
+      },
+      petBubbleChatWindowService: {
+        syncToPetWindow: () => {
+          syncCalls.push('sync')
+        }
+      },
+      applyPetViewport: () => {},
+      clampToWorkArea: (_win, x, y) => ({ x, y }),
+      getMovementState: () => ({}),
+      petMovementPolicy: {
+        clampDragPosition: ({ requestedTopLeft }) => requestedTopLeft,
+        clampMoveBy: ({ windowBounds, delta }) => ({
+          x: windowBounds.x + delta.x,
+          y: windowBounds.y + delta.y
+        }),
+        normalizePetBehaviorSettings: (settings) => settings,
+        createHomeAnchorFromWindow: () => ({ x: 0.5, y: 1 })
+      }
+    }),
+    browserWindowService: { fromWebContents: () => win },
+    ipcMainService: ipcMain
+  })
+
+  viewportHandler = ipcMain.listeners.get(IPC.PET_SET_VIEWPORT)
+  setPositionHandler = ipcMain.listeners.get(IPC.PET_SET_POSITION)
+  moveByHandler = ipcMain.handlers.get(IPC.PET_MOVE_BY)
+  dragEndedHandler = ipcMain.listeners.get(IPC.PET_DRAG_ENDED)
+
+  viewportHandler({ sender: {} }, { width: 180, height: 200 })
+  setPositionHandler({ sender: {} }, { x: 400, y: 420 })
+  await moveByHandler({ sender: {} }, { x: 6, y: -4 })
+  dragEndedHandler({ sender: {} })
+  onActionHandler({ actionId: 'wave', source: 'test' })
+
+  assert.equal(syncCalls.length, 5)
+  assert.equal(savedSettings.length, 1)
+  assert.deepEqual(savedSettings[0].petBehavior.home.anchor, { x: 0.5, y: 1 })
+})
+
 test('pet bubble chat send reuses shared AI Talk conversation and updates popup state', async () => {
   const prompt = 'bubble secret prompt'
   const reply = 'bubble reply'

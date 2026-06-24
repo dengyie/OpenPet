@@ -457,6 +457,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
   petService.onAction?.((payload) => {
     sendToPetWindow(getPetWindow, IPC.PET_PLAY_ACTION, payload)
+    petBubbleChatWindowService?.syncToPetWindow?.()
   })
   petService.onEvent?.((payload) => {
     if (payload?.message) {
