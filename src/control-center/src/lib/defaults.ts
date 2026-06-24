@@ -44,7 +44,7 @@ export const defaultSettings = {
   scale: 1,
   walkSpeed: 2,
   walkDuration: 15000,
-  bubbleDuration: 1300,
+  bubbleDuration: 6000,
   menuPosition: 'auto',
   autoStart: false,
   selectedCursorId: SYSTEM_CURSOR_ID,

@@ -39,9 +39,9 @@ export const walkDurationOptions: NumericOption[] = [
 ]
 
 export const bubbleDurationOptions: NumericOption[] = [
-  { label: '短', value: 800 },
-  { label: '中', value: 1300 },
-  { label: '长', value: 2000 }
+  { label: '短', value: 4000 },
+  { label: '中', value: 6000 },
+  { label: '长', value: 10000 }
 ]
 
 export const homeRadiusOptions: StringOption[] = [
