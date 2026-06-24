@@ -130,6 +130,80 @@ test.describe('Control Center smoke', () => {
     await expect(clickAction).toHaveValue(beforeClickAction)
   })
 
+  test('reviews queued trigger proposals from the Actions inbox', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        actionsConfig: {
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
+            { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+            { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
+          ],
+          triggerProposalInbox: [
+            {
+              id: 'proposal:state:sleep:test',
+              actionId: 'sleep',
+              type: 'state',
+              binding: '',
+              sourcePluginId: 'openpet.creator-studio',
+              sourceRunId: 'run-demo-state',
+              sourceCommandId: 'import-approved-action',
+              message: 'Use Sleep when the pet enters idle focus mode.',
+              status: 'pending',
+              resultCode: '',
+              resultMessage: '',
+              rejectionReason: '',
+              createdAt: '2026-06-24T08:00:00.000Z',
+              updatedAt: '2026-06-24T08:00:00.000Z',
+              acceptedAt: '',
+              rejectedAt: ''
+            },
+            {
+              id: 'proposal:click:wave:test',
+              actionId: 'wave',
+              type: 'click',
+              binding: 'clickAction',
+              sourcePluginId: 'openpet.creator-studio',
+              sourceRunId: 'run-demo-click',
+              sourceCommandId: 'import-approved-action',
+              message: 'Keep Wave as a click action candidate.',
+              status: 'pending',
+              resultCode: '',
+              resultMessage: '',
+              rejectionReason: '',
+              createdAt: '2026-06-24T08:01:00.000Z',
+              updatedAt: '2026-06-24T08:01:00.000Z',
+              acceptedAt: '',
+              rejectedAt: ''
+            }
+          ]
+        }
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    const inbox = page.locator('[aria-label="触发提案 Inbox"]')
+    await expect(inbox).toContainText('2 条待审核')
+    const sleepProposal = inbox.locator('.trigger-inbox-item', { hasText: 'Sleep' })
+    await expect(sleepProposal).toContainText('待审核')
+    await sleepProposal.getByRole('button', { name: '接受提案' }).click()
+    await expect(page.locator('.status-line')).toContainText('已标记待规则触发提案：sleep')
+    await expect(sleepProposal).toContainText('待规则')
+    await expect(sleepProposal).toContainText('pending_host_rule')
+
+    const waveProposal = inbox.locator('.trigger-inbox-item', { hasText: 'Wave' })
+    page.once('dialog', (dialog) => dialog.accept('Not for this pack'))
+    await waveProposal.getByRole('button', { name: '拒绝' }).click()
+    await expect(page.locator('.status-line')).toContainText('已拒绝触发提案：wave')
+    await expect(waveProposal).toContainText('已拒绝')
+    await expect(waveProposal).toContainText('Not for this pack')
+    await expect(inbox).toContainText('0 条待审核')
+  })
+
   test('persists Pet settings in the demo API session', async ({ page }) => {
     await page.goto('/')
 

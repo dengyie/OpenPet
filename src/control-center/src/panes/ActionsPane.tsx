@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerProposalInboxItem,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalType,
   ActionsConfigViewState,
@@ -40,6 +41,8 @@ export interface ActionsPaneProps {
   onSetActivePetPack: (packId: string) => void | Promise<void>
   onRemovePetPack: (packId: string) => void | Promise<void>
   onApplyTriggerProposal: () => void | Promise<void>
+  onAcceptTriggerProposal: (proposalId: string) => void | Promise<void>
+  onRejectTriggerProposal: (proposalId: string) => void | Promise<void>
   triggerProposalType: ActionTriggerProposalType
   setTriggerProposalType: (value: ActionTriggerProposalType) => void
   triggerProposalNotes: string
@@ -96,6 +99,101 @@ const triggerProposalDetails: Record<ActionTriggerProposalType, {
     boundary: '用户之后仍可在 Actions 或未来规则编辑器里手动绑定。',
     buttonLabel: '确认不绑定'
   }
+}
+
+const triggerProposalStatusLabel: Record<ActionTriggerProposalInboxItem['status'], string> = {
+  pending: '待审核',
+  accepted: '已接受',
+  rejected: '已拒绝',
+  applied: '已应用',
+  'pending-host-rule': '待规则'
+}
+
+function TriggerProposalInbox({
+  proposals,
+  actions,
+  working,
+  onAccept,
+  onReject
+}: {
+  proposals: ActionTriggerProposalInboxItem[]
+  actions: ActionEntry[]
+  working: boolean
+  onAccept: (proposalId: string) => void | Promise<void>
+  onReject: (proposalId: string) => void | Promise<void>
+}) {
+  const sortedProposals = [...proposals].sort((left, right) => {
+    if (left.status === 'pending' && right.status !== 'pending') return -1
+    if (right.status === 'pending' && left.status !== 'pending') return 1
+    return String(right.updatedAt || right.createdAt).localeCompare(String(left.updatedAt || left.createdAt))
+  })
+
+  if (!sortedProposals.length) {
+    return (
+      <div className="trigger-inbox-card" aria-label="触发提案 Inbox">
+        <div className="trigger-review-header">
+          <div>
+            <strong>触发提案 Inbox</strong>
+            <span>Creator Studio 和插件提交的触发建议会在这里等待用户确认。</span>
+          </div>
+          <span className="trigger-badge applied">空</span>
+        </div>
+        <div className="empty-chat">暂无待审核提案</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="trigger-inbox-card" aria-label="触发提案 Inbox">
+      <div className="trigger-review-header">
+        <div>
+          <strong>触发提案 Inbox</strong>
+          <span>{sortedProposals.filter((proposal) => proposal.status === 'pending').length} 条待审核 · {sortedProposals.length} 条总记录</span>
+        </div>
+        <span className="trigger-badge pending">Review queue</span>
+      </div>
+      <div className="trigger-inbox-grid">
+        {sortedProposals.map((proposal) => {
+          const action = actions.find((candidate) => candidate.id === proposal.actionId)
+          const details = triggerProposalDetails[proposal.type] || triggerProposalDetails.unbound
+          const isPending = proposal.status === 'pending'
+          const badgeTone = proposal.status === 'pending' || proposal.status === 'pending-host-rule'
+            ? 'pending'
+            : (proposal.status === 'rejected' ? 'rejected' : 'applied')
+          return (
+            <div className={`trigger-inbox-item ${proposal.status}`} key={proposal.id}>
+              <div className="trigger-inbox-main">
+                <div>
+                  <strong>{action?.label || proposal.actionId}</strong>
+                  <span>{proposal.actionId} · {details.label}</span>
+                </div>
+                <span className={`trigger-badge ${badgeTone}`}>
+                  {triggerProposalStatusLabel[proposal.status] || proposal.status}
+                </span>
+              </div>
+              {proposal.message ? <p>{proposal.message}</p> : <p>{details.summary}</p>}
+              <div className="trigger-inbox-meta">
+                {proposal.sourcePluginId ? <span>来源：{proposal.sourcePluginId}</span> : null}
+                {proposal.sourceRunId ? <span>Run：{proposal.sourceRunId}</span> : null}
+                {proposal.resultCode ? <span>结果：{proposal.resultCode}</span> : null}
+                {proposal.rejectionReason ? <span>原因：{proposal.rejectionReason}</span> : null}
+              </div>
+              {isPending ? (
+                <div className="inline-action">
+                  <button type="button" className="ghost" disabled={working} onClick={() => onReject(proposal.id)}>
+                    拒绝
+                  </button>
+                  <button type="button" className="primary" disabled={working} onClick={() => onAccept(proposal.id)}>
+                    接受提案
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 function ActionPreview({ action }: { action?: ActionEntry }) {
@@ -300,6 +398,8 @@ export function ActionsPane({
   onSetActivePetPack,
   onRemovePetPack,
   onApplyTriggerProposal,
+  onAcceptTriggerProposal,
+  onRejectTriggerProposal,
   triggerProposalType,
   setTriggerProposalType,
   triggerProposalNotes,
@@ -453,6 +553,14 @@ export function ActionsPane({
             </button>
           </div>
         </div>
+
+        <TriggerProposalInbox
+          proposals={actionsConfig.triggerProposalInbox || []}
+          actions={actionsConfig.actions}
+          working={working}
+          onAccept={onAcceptTriggerProposal}
+          onReject={onRejectTriggerProposal}
+        />
       </div>
 
       <div className="actions-workspace">
