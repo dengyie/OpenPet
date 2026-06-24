@@ -1,5 +1,7 @@
 # OpenPet 项目完整测试报告
 
+> Archived historical snapshot. This file was moved from the repository root during documentation consolidation and reflects the `v1.0.1-rc.1` test run, not the current validation baseline. For current test guidance, read [`../../testing-strategy.md`](../../testing-strategy.md) and [`../../development-workflow.md`](../../development-workflow.md).
+
 **测试日期**: 2026-06-13
 **测试分支**: `main`
 **测试执行人**: Codex 自动化测试

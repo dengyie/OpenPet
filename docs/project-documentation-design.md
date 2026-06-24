@@ -84,13 +84,13 @@ The docs should be read as layered sources of truth, not as interchangeable note
 | Layer | Documents | Owns | Detail Level |
 |-------|-----------|------|--------------|
 | Product entry | `README.md`, `README.zh-CN.md`, `docs/README.md` | Public feature list, quick start, support claims, documentation index, maintainer reading order | Broad, user-facing, concise |
-| Current state | `docs/HANDOFF.md`, `docs/project-status-review.md` | What is true now, what is verified, what remains risky | Operational handoff and status snapshot |
+| Current state and workflow | `docs/HANDOFF.md`, `docs/project-status-review.md`, `docs/development-summary.md`, `docs/development-workflow.md`, `docs/testing-strategy.md` | What is true now, what is verified, what remains risky, and how maintainers run the project | Operational handoff, status snapshot, and local command flow |
 | Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants | Normative project rules |
 | Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md`, `docs/productization-next-steps-design.md`, `docs/productization-todo-design.md` | System design, completed productization arc, near-term productization sequence, prioritized TODO implementation design, planned enhancements | Architecture and sequencing |
 | Release operations | `docs/desktop-release-design.md`, `docs/release-checklist.md`, `docs/release-evidence/*.json` | macOS/Windows release gates, signing, smoke evidence, operator checklist | Evidence and release procedure |
 | Phase records | `docs/phases/phase-*.md`, `docs/reviews/phase-*-review.md` | Implementation decisions, verification, review findings, residual risks | Append-only phase audit trail |
-| Domain references | `docs/mcp-usage.md`, `docs/mcp-compatibility.md`, `docs/plugin-sandbox-evaluation.md`, `docs/ecosystem-catalog.md` | Focused reference material for one subsystem | Subsystem usage and threat/risk notes |
-| Historical remediation | `docs/code-quality-remediation-plan.md`, `docs/superpowers/plans/*.md` | Historical context; update only when explicitly continuing that thread | Archived context |
+| Domain references | `docs/mcp-usage.md`, `docs/mcp-compatibility.md`, `docs/plugin-sandbox-evaluation.md`, `docs/ecosystem-catalog.md`, `docs/design-system/*.md` | Focused reference material for one subsystem or UI slice | Subsystem usage, threat/risk notes, and visual design constraints |
+| Historical remediation and archive | `docs/code-quality-remediation-plan.md`, `docs/archive/`, `docs/superpowers/plans/*.md` | Historical context; update only when explicitly continuing that thread | Archived context |
 
 When documents disagree, prefer the narrowest factual source for the topic:
 
@@ -109,6 +109,8 @@ README.md / README.zh-CN.md        # public entry and conservative support wordi
 AGENTS.md                          # local contributor constraints
 docs/README.md                     # documentation map and reading order
 docs/HANDOFF.md                    # current project state and next work
+docs/development-workflow.md       # local run, validation, and packaging workflow
+docs/testing-strategy.md           # test suite ownership and deletion guidance
 docs/project-documentation-design.md # goal anchor and documentation operating model
 docs/jishuwendang.md               # Chinese technical architecture reference
 docs/productization-roadmap.md     # productization sequence and long-running risks
@@ -120,10 +122,12 @@ docs/release-checklist.md          # release operator checklist
 docs/release-evidence/             # structured release and smoke evidence
 docs/phases/                       # phase implementation records
 docs/reviews/                      # paired phase reviews
+docs/design-system/                # focused UI design-system notes
+docs/archive/                      # superseded one-off reports and status snapshots
 docs/*-usage.md / *-compatibility.md / *-evaluation.md # subsystem references
 ```
 
-New folders should earn their place by having a distinct lifecycle. For example, release evidence deserves its own folder because it is structured and generated; phase records deserve their own folder because they are append-only audit history. A single conceptual note usually belongs inside the existing owner document instead.
+New folders should earn their place by having a distinct lifecycle. For example, release evidence deserves its own folder because it is structured and generated; phase records deserve their own folder because they are append-only audit history; archive exists for superseded reports that should not stay in the repository root. A single conceptual note usually belongs inside the existing owner document instead.
 
 ## 5. Documentation Map
 
@@ -133,6 +137,8 @@ New folders should earn their place by having a distinct lifecycle. For example,
 | `README.md` / `README.zh-CN.md` | Public entry point, feature list, quick start, roadmap | User-facing capabilities, commands, test totals, or support claims change |
 | `docs/README.md` | Canonical documentation map and reading order | Persistent docs are added, removed, renamed, or reclassified as current vs historical |
 | `docs/HANDOFF.md` | Current factual project state, next work, file map, command map | A phase lands, service map changes, release status changes, or test totals change |
+| `docs/development-workflow.md` | Local run, validation, packaging, and troubleshooting workflow | Commands, dev ports, packaging flow, or release-prep validation flow changes |
+| `docs/testing-strategy.md` | Test suite ownership and deletion guidance | Test grouping, suite commands, or testing policy changes |
 | `docs/project-documentation-design.md` | Project goal anchor and documentation governance | Documentation structure, support claim rules, or phase governance changes |
 | `docs/pet-platform-development-plan.md` | Historical platform architecture and staged refactor plan | Core architecture contracts or completed phase status changes |
 | `docs/productization-roadmap.md` | Productization roadmap and long-running risks | Roadmap sequencing, risk status, or release-track scope changes |
@@ -142,6 +148,8 @@ New folders should earn their place by having a distinct lifecycle. For example,
 | `docs/jishuwendang.md` | Chinese technical architecture reference | Service structure, IPC surface, commands, or technical status changes |
 | `docs/desktop-release-design.md` | macOS + Windows desktop release design and acceptance gates | Packaging, CI, signing, update, or platform support status changes |
 | `docs/release-checklist.md` | Operator checklist for producing and validating releases | Build/signing inputs, artifact sets, or smoke checks change |
+| `docs/design-system/*.md` | Focused visual design constraints for durable UI slices | The approved source, route scope, visual contract, or implementation owner changes |
+| `docs/archive/` | Superseded one-off reports and historical snapshots | Rarely; move stale root-level reports here instead of leaving them at repository root |
 | `docs/phases/phase-*.md` | Phase development notes and decisions | During and immediately after each implementation phase |
 | `docs/reviews/phase-*-review.md` | Phase code review notes, residual risks, verification | After each phase implementation and before commit |
 | `docs/release-evidence/*.json` | Structured release evidence templates or filled reports | Smoke evidence schema or a real release validation run changes |
@@ -176,7 +184,7 @@ Use these paths when onboarding or when deciding which document to update:
 | Reader Need | Start Here | Then Read |
 |-------------|------------|-----------|
 | Understand what OpenPet is | `README.zh-CN.md` or `README.md` | `docs/project-documentation-design.md`, `docs/HANDOFF.md` |
-| Continue development today | `AGENTS.md` | `docs/HANDOFF.md`, relevant phase/review docs |
+| Continue development today | `AGENTS.md` | `docs/development-workflow.md`, `docs/HANDOFF.md`, relevant phase/review docs |
 | Understand architecture | `docs/jishuwendang.md` | `docs/pet-platform-development-plan.md`, service tests |
 | Continue productization | `docs/productization-next-steps-design.md` | `docs/productization-todo-design.md`, `docs/productization-roadmap.md`, latest `docs/phases/` and `docs/reviews/` pair |
 | Work on release readiness | `docs/desktop-release-design.md` | `docs/release-checklist.md`, `docs/release-evidence/` |

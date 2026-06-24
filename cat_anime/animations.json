@@ -1,26 +1,253 @@
 {
-  "defaultAction": "bai_no_bg",
-  "clickAction": "eat_no_bg",
+  "defaultAction": "idle",
+  "clickAction": "idle",
   "actions": [
     {
-      "id": "bai_no_bg",
-      "label": "待机",
+      "id": "idle",
+      "label": "Idle",
+      "kind": "idle",
       "loop": true,
-      "frameMs": 95,
-      "frameWidth": 191,
-      "frameHeight": 453,
-      "sprite": "cat_anime/sprites/bai_no_bg.png",
-      "frameCount": 16
+      "frameCount": 6,
+      "frameMs": 280,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 0,
+      "frameColumn": 0,
+      "frameDurations": [
+        280,
+        110,
+        110,
+        140,
+        140,
+        320
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
     },
     {
-      "id": "eat_no_bg",
-      "label": "喂食",
+      "id": "running-right",
+      "label": "Running Right",
+      "kind": "working",
+      "loop": true,
+      "frameCount": 8,
+      "frameMs": 120,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 1,
+      "frameColumn": 0,
+      "frameDurations": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "running-left",
+      "label": "Running Left",
+      "kind": "working",
+      "loop": true,
+      "frameCount": 8,
+      "frameMs": 120,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 2,
+      "frameColumn": 0,
+      "frameDurations": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "waving",
+      "label": "Waving",
+      "kind": "greeting",
       "loop": false,
-      "frameMs": 85,
-      "frameWidth": 381,
-      "frameHeight": 253,
-      "sprite": "cat_anime/sprites/eat_no_bg.png",
-      "frameCount": 16
+      "frameCount": 4,
+      "frameMs": 140,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 3,
+      "frameColumn": 0,
+      "frameDurations": [
+        140,
+        140,
+        140,
+        280
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "jumping",
+      "label": "Jumping",
+      "kind": "custom",
+      "loop": false,
+      "frameCount": 5,
+      "frameMs": 140,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 4,
+      "frameColumn": 0,
+      "frameDurations": [
+        140,
+        140,
+        140,
+        140,
+        280
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "failed",
+      "label": "Failed",
+      "kind": "failure",
+      "loop": false,
+      "frameCount": 8,
+      "frameMs": 140,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 5,
+      "frameColumn": 0,
+      "frameDurations": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        240
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "waiting",
+      "label": "Waiting",
+      "kind": "waiting",
+      "loop": true,
+      "frameCount": 6,
+      "frameMs": 150,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 6,
+      "frameColumn": 0,
+      "frameDurations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        260
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "running",
+      "label": "Running",
+      "kind": "working",
+      "loop": true,
+      "frameCount": 6,
+      "frameMs": 120,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 7,
+      "frameColumn": 0,
+      "frameDurations": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
+    },
+    {
+      "id": "review",
+      "label": "Review",
+      "kind": "thinking",
+      "loop": true,
+      "frameCount": 6,
+      "frameMs": 150,
+      "frameWidth": 192,
+      "frameHeight": 208,
+      "sprite": "spritesheet.webp",
+      "frameRow": 8,
+      "frameColumn": 0,
+      "frameDurations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        280
+      ],
+      "atlas": {
+        "columns": 8,
+        "rows": 9,
+        "width": 1536,
+        "height": 1872
+      }
     }
-  ]
+  ],
+  "triggerProposalInbox": []
 }

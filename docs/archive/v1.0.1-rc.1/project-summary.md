@@ -1,5 +1,7 @@
 # OpenPet 项目完整总结
 
+> Archived historical snapshot. This file was moved from the repository root during documentation consolidation and reflects `v1.0.1-rc.1` status, not the current release baseline. For current status, read [`../../project-status-review.md`](../../project-status-review.md) and [`../../development-summary.md`](../../development-summary.md).
+
 **评估日期**: 2026-06-13
 **分支**: `main`
 **版本**: v1.0.1-rc.1

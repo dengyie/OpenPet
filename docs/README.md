@@ -8,6 +8,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | --- | --- |
 | User-facing overview and commands | [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) |
 | Current maintainer handoff | [`HANDOFF.md`](./HANDOFF.md) |
+| Local development workflow | [`development-workflow.md`](./development-workflow.md) |
 | Short engineering summary | [`development-summary.md`](./development-summary.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Current platform status and remaining gaps | [`project-status-review.md`](./project-status-review.md) |
@@ -19,6 +20,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
+| Control Center visual design notes | [`design-system/cursor-settings.md`](./design-system/cursor-settings.md) |
 | Creator Studio and model-generation backlog | [`superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md`](./superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md), [`superpowers/specs/2026-06-19-openpet-model-settings-backlog.md`](./superpowers/specs/2026-06-19-openpet-model-settings-backlog.md), [`superpowers/specs/2026-06-20-openpet-creator-prompt-builder-design.md`](./superpowers/specs/2026-06-20-openpet-creator-prompt-builder-design.md) |
 | Desktop release evidence | [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md) |
 | Release notes | [`release-notes/`](./release-notes/) |
@@ -35,6 +37,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 
 ## Historical Audit Trail
 
+- [`archive/`](./archive/) stores superseded one-off root-level reports and status snapshots.
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
 - [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports.
@@ -51,6 +54,7 @@ Historical documents are intentionally retained. When facts conflict, prefer cur
 ## Maintenance Rules
 
 - Keep README files short and user-facing.
+- Keep repository-root Markdown limited to public/project-standard entry files such as README, CHANGELOG, and AGENTS; put maintainer docs under `docs/`.
 - Keep HANDOFF focused on current state, commands, facts to preserve, and next steps.
 - Keep project-context compact and valid JSON.
 - Do not update every historical phase/review doc when current facts change.
