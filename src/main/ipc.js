@@ -147,6 +147,24 @@ const sanitizeDiagnosticText = (value) => String(value || '')
 
 const normalizeMessageText = (value) => String(value || '').trim().replace(/\s+/g, ' ')
 
+const createEmptyPetBubble = () => ({
+  text: '',
+  source: '',
+  ttlMs: 0,
+  updatedAt: ''
+})
+
+const normalizePetBubble = (payload = {}) => {
+  const text = normalizeMessageText(payload?.text)
+  if (!text) return null
+  return {
+    text,
+    source: sanitizeDiagnosticText(payload?.source || ''),
+    ttlMs: Number.isFinite(Number(payload?.ttlMs)) ? Number(payload.ttlMs) : 0,
+    updatedAt: new Date().toISOString()
+  }
+}
+
 const createPetBubbleText = (reply, behaviorIntent) => {
   const preferred = normalizeMessageText(behaviorIntent?.bubbleText)
   const text = preferred || normalizeMessageText(reply)
@@ -172,6 +190,7 @@ const sanitizeChatMessages = (messages = []) => (
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
+  let lastPetBubble = createEmptyPetBubble()
 
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -227,8 +246,27 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           ? ''
           : (enabled ? '请先在 Control Center 保存 AI API Key' : '请先在 Control Center 启用 AI Provider')
       },
+      bubble: lastPetBubble,
       messages: sanitizeChatMessages(messages)
     }
+  }
+
+  const notifyPetChatStateChanged = (state = getPetChatState()) => {
+    petChatWindowService?.sendStateChanged?.(state)
+  }
+
+  const capturePetBubble = (payload = {}, { notify = true } = {}) => {
+    const bubble = normalizePetBubble(payload)
+    if (!bubble) return lastPetBubble
+    lastPetBubble = bubble
+    if (notify) notifyPetChatStateChanged()
+    return lastPetBubble
+  }
+
+  const attachPetChatState = (response = {}, bubble = lastPetBubble) => {
+    const state = getPetChatState()
+    notifyPetChatStateChanged(state)
+    return { ...response, bubble, state }
   }
 
   const assertPetChatReady = () => {
@@ -272,6 +310,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     try {
       const result = await (aiTalkService || aiService).chat(requestPayload)
       const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent)
+      const bubble = bubbleText ? capturePetBubble({ text: bubbleText, source: 'ai' }, { notify: false }) : lastPetBubble
       if (bubbleText) petService.say({ text: bubbleText, source: 'ai' })
       if (behaviorOrchestratorService?.getConfig?.().enabled) {
         const decision = behaviorOrchestratorService.evaluate({
@@ -301,7 +340,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
             actionId: behavior?.actionId || ''
           }
         })
-        return response
+        return attachPetChatState(response, bubble)
       }
       const action = triggerAiSemanticAction(petService, result.reply)
       const response = action ? { ...result, action } : result
@@ -322,7 +361,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           actionId: action?.actionId || ''
         }
       })
-      return response
+      return attachPetChatState(response, bubble)
     } catch (error) {
       recordAppLog({
         scope: 'ai-chat',
@@ -360,13 +399,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   }
 
   petService.onSay?.((payload) => {
+    capturePetBubble(payload)
     sendToPetWindow(getPetWindow, IPC.PET_SAY, payload)
   })
   petService.onAction?.((payload) => {
     sendToPetWindow(getPetWindow, IPC.PET_PLAY_ACTION, payload)
   })
   petService.onEvent?.((payload) => {
-    if (payload?.message) sendToPetWindow(getPetWindow, IPC.PET_SAY, { text: payload.message, ttlMs: payload.ttlMs, source: payload.source })
+    if (payload?.message) {
+      const bubble = { text: payload.message, ttlMs: payload.ttlMs, source: payload.source }
+      capturePetBubble(bubble)
+      sendToPetWindow(getPetWindow, IPC.PET_SAY, bubble)
+    }
   })
 
   // 渲染进程启动时请求动作列表（通过 preload 暴露的 getAnimations 调用）
@@ -560,6 +604,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return getPetChatState()
   })
 
+  ipcMainService.handle(IPC.PET_CHAT_OPEN, () => {
+    petChatWindowService?.open?.()
+    return getPetChatState()
+  })
+
   ipcMainService.on(IPC.PET_CHAT_HIDE, () => {
     petChatWindowService?.hide?.({ source: 'pet-chat-renderer' })
   })
@@ -577,27 +626,30 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.PET_CHAT_SEND_MESSAGE, async (_event, payload = {}) => {
     const startedAt = Date.now()
     const message = typeof payload?.message === 'string' ? payload.message.trim() : ''
+    const source = payload?.source === 'control-center' ? 'control-center' : 'pet-chat'
     recordAppLog({
       scope: 'pet-chat',
       level: 'info',
       actor: 'user',
       event: 'pet-chat.message.started',
-      message: 'Desktop pet chat message started',
+      message: 'Pet chat message started',
       details: {
+        source,
         messageChars: message.length
       }
     })
     try {
       assertPetChatReady()
-      const result = await runAiChatRequest({ message, entrypoint: 'control-center' }, { source: 'pet-chat' })
+      const result = await runAiChatRequest({ message, entrypoint: 'control-center' }, { source })
       const state = getPetChatState()
       recordAppLog({
         scope: 'pet-chat',
         level: 'info',
         actor: 'system',
         event: 'pet-chat.message.completed',
-        message: 'Desktop pet chat message completed',
+        message: 'Pet chat message completed',
         details: {
+          source,
           elapsedMs: Date.now() - startedAt,
           conversationId: result.conversationId || '',
           messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
@@ -612,8 +664,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         level: 'error',
         actor: 'system',
         event: 'pet-chat.message.failed',
-        message: 'Desktop pet chat message failed',
+        message: 'Pet chat message failed',
         details: {
+          source,
           elapsedMs: Date.now() - startedAt,
           errorName: sanitizeDiagnosticText(error?.name || 'Error'),
           errorMessage: error?.providerStatus

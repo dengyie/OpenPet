@@ -1,4 +1,4 @@
-import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneCatalog, cloneImageGenerationConfig, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneCatalog, cloneChatMessages, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
@@ -20,11 +20,14 @@ import type {
   CatalogPetPackEntry,
   CatalogPluginEntry,
   CatalogState,
+  ChatMessage,
   ControlCenterApi,
   ControlCenterSettings,
   CustomCursorRecord,
   ImageGenerationConfigViewState,
   JsonObject,
+  PetChatBubbleViewState,
+  PetChatStateViewState,
   PetPackSummary,
   PetPacksViewState,
   PluginCommandRunResultViewState,
@@ -51,6 +54,8 @@ interface DemoState {
   aiPersonaOverrides: Record<string, AiPersonaOverride>
   aiMemories: AiMemoryItemViewState[]
   aiMemoryJobs: AiMemoryJobViewState[]
+  petChatMessages: ChatMessage[]
+  petChatBubble: PetChatBubbleViewState
   imageGenerationConfig: ImageGenerationConfigViewState
   petPacks: PetPacksViewState
   serviceStatus: ServiceStatusViewState
@@ -255,6 +260,35 @@ const createDemoMemoryProfile = (petPacks: PetPacksViewState): AiMemoryProfileVi
     globalMemories: activeMemories.filter((memory) => memory.scope === 'global'),
     petPackMemories: activeMemories.filter((memory) => memory.scope === 'petPack' && memory.petPackId === petPackId),
     recentJobs: demoState.aiMemoryJobs.filter((job) => job.petPackId === petPackId).slice(0, 5)
+  })
+}
+
+const createDemoPetChatState = (): PetChatStateViewState => {
+  const activePack = getActiveDemoPetPack()
+  return clonePetChatState({
+    available: true,
+    visible: false,
+    hasWindow: false,
+    alwaysOnTop: true,
+    hasUserBounds: false,
+    bounds: null,
+    petPack: {
+      id: activePack?.id || defaultAiMemoryProfile.petPackId,
+      displayName: activePack?.displayName || activePack?.id || defaultAiMemoryProfile.petPackDisplayName
+    },
+    ai: {
+      enabled: Boolean(demoState.aiConfig.enabled),
+      hasApiKey: Boolean(demoState.aiConfig.hasApiKey),
+      ready: Boolean(demoState.aiConfig.enabled && demoState.aiConfig.hasApiKey),
+      provider: demoState.aiConfig.provider,
+      baseUrl: demoState.aiConfig.baseUrl,
+      model: demoState.aiConfig.model,
+      reason: demoState.aiConfig.enabled
+        ? (demoState.aiConfig.hasApiKey ? '' : '请先在 Control Center 保存 AI API Key')
+        : '请先在 Control Center 启用 AI Provider'
+    },
+    bubble: demoState.petChatBubble,
+    messages: demoState.petChatMessages
   })
 }
 
@@ -573,6 +607,8 @@ const createDefaultDemoState = (): DemoState => ({
     })
   ],
   aiMemoryJobs: [],
+  petChatMessages: [],
+  petChatBubble: defaultPetChatState.bubble,
   imageGenerationConfig: cloneImageGenerationConfig(defaultImageGenerationConfig),
   petPacks: createDemoPetPacks(),
   serviceStatus: createDemoServiceStatus(),
@@ -598,6 +634,8 @@ const readDemoState = (): DemoState => {
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       aiMemories: Array.isArray(state.aiMemories) ? state.aiMemories.map(createDemoMemory) : createDefaultDemoState().aiMemories,
       aiMemoryJobs: Array.isArray(state.aiMemoryJobs) ? state.aiMemoryJobs : [],
+      petChatMessages: cloneChatMessages(state.petChatMessages),
+      petChatBubble: clonePetChatState({ bubble: state.petChatBubble }).bubble,
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
       petPacks: normalizeDemoPetPacks(state.petPacks),
       serviceStatus: cloneServiceStatus(state.serviceStatus),
@@ -781,6 +819,92 @@ const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin)
   storage: { ...(plugin.storage || {}) },
   signatureStatus: { ...(plugin.signatureStatus || {}) }
 }))
+
+const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: '' }) => {
+  const normalizedMessage = String(message || '').trim()
+  const activePack = getActiveDemoPetPack()
+  const personaProfile = createDemoPersonaProfile(demoState.petPacks, demoState.aiConfig, demoState.aiPersonaOverrides)
+  const reply = `${personaProfile.effectivePersona.name}: ${normalizedMessage}`
+  const decisions = Array.isArray(demoState.aiConfig.behavior?.decisions)
+    ? demoState.aiConfig.behavior.decisions
+    : []
+  const nextId = decisions.reduce((max, decision) => Math.max(max, Number(decision.id) || 0), 0) + 1
+  const timestamp = new Date().toISOString()
+  demoState.aiConfig = cloneAiConfig({
+    ...demoState.aiConfig,
+    behavior: {
+      ...demoState.aiConfig.behavior,
+      decisions: [
+        {
+          id: nextId,
+          timestamp,
+          matched: true,
+          type: 'playAction',
+          ruleId: 'demo-chat',
+          reason: `matched rule demo-chat for ${activePack?.id || 'legacy-cat'}`,
+          actionId: 'wave',
+          intent: 'greeting',
+          inputSummary: `reply:${normalizedMessage.length} chars · intent:greeting`,
+          replay: { reply, behaviorIntent: { intent: 'greeting', actionId: 'wave', confidence: 0.8 } }
+        },
+        ...decisions
+      ].slice(0, 50)
+    }
+  })
+  demoState.petChatMessages = cloneChatMessages([
+    ...demoState.petChatMessages,
+    { role: 'user', content: normalizedMessage },
+    { role: 'assistant', content: reply }
+  ])
+  demoState.petChatBubble = {
+    text: reply.slice(0, 80),
+    source: 'ai',
+    ttlMs: 1300,
+    updatedAt: timestamp
+  }
+  if (demoState.aiConfig.memory.enabled) {
+    demoState.aiMemories = [
+      createDemoMemory({
+        id: `demo-memory-chat-${Date.now()}`,
+        scope: 'petPack',
+        petPackId: activePack?.id || 'legacy-cat',
+        text: `${personaProfile.effectivePersona.name} recently discussed: ${normalizedMessage.slice(0, 120)}`,
+        tags: ['demo-chat'],
+        confidence: 0.62,
+        importance: 0.42,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        lastEvidenceAt: timestamp,
+        reason: 'Demo chat memory extraction'
+      }),
+      ...demoState.aiMemories
+    ]
+    demoState.aiMemoryJobs = [
+      {
+        id: `demo-memory-job-${Date.now()}`,
+        petPackId: activePack?.id || 'legacy-cat',
+        conversationId: `control-center:${activePack?.id || 'legacy-cat'}:main`,
+        status: 'completed',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        errorCode: '',
+        appliedCount: 1,
+        filteredCount: 0
+      },
+      ...demoState.aiMemoryJobs
+    ].slice(0, 20)
+  }
+  writeDemoState()
+  return {
+    conversationId: `control-center:${activePack?.id || 'legacy-cat'}:main`,
+    reply,
+    messages: cloneChatMessages(demoState.petChatMessages),
+    bubble: demoState.petChatBubble,
+    state: createDemoPetChatState(),
+    behavior: { matched: true, type: 'playAction', actionId: 'wave' },
+    action: { actionId: 'wave', label: 'Wave' }
+  }
+}
 
 const cloneDemoPluginLogs = (filters: PluginLogFilters = {}) => demoState.pluginLogs.filter((log) => {
   if (filters.pluginId && log.pluginId !== filters.pluginId) return false
@@ -1056,75 +1180,11 @@ const demoApi: ControlCenterApi = {
       message: 'ok'
     }
   },
-  getAiConversation: async () => [],
-  chat: async ({ message }) => {
-    const activePack = getActiveDemoPetPack()
-    const personaProfile = createDemoPersonaProfile(demoState.petPacks, demoState.aiConfig, demoState.aiPersonaOverrides)
-    const decisions = Array.isArray(demoState.aiConfig.behavior?.decisions)
-      ? demoState.aiConfig.behavior.decisions
-      : []
-    const nextId = decisions.reduce((max, decision) => Math.max(max, Number(decision.id) || 0), 0) + 1
-    demoState.aiConfig = cloneAiConfig({
-      ...demoState.aiConfig,
-      behavior: {
-        ...demoState.aiConfig.behavior,
-        decisions: [
-          {
-            id: nextId,
-            timestamp: new Date().toISOString(),
-            matched: true,
-            type: 'playAction',
-            ruleId: 'demo-chat',
-            reason: `matched rule demo-chat for ${activePack?.id || 'legacy-cat'}`,
-            actionId: 'wave',
-            intent: 'greeting',
-            inputSummary: `reply:${String(message || '').length} chars · intent:greeting`,
-            replay: { reply: `${personaProfile.effectivePersona.name}: ${message}`, behaviorIntent: { intent: 'greeting', actionId: 'wave', confidence: 0.8 } }
-          },
-          ...decisions
-        ].slice(0, 50)
-      }
-    })
-    if (demoState.aiConfig.memory.enabled) {
-      const timestamp = new Date().toISOString()
-      demoState.aiMemories = [
-        createDemoMemory({
-          id: `demo-memory-chat-${Date.now()}`,
-          scope: 'petPack',
-          petPackId: activePack?.id || 'legacy-cat',
-          text: `${personaProfile.effectivePersona.name} recently discussed: ${String(message || '').slice(0, 120)}`,
-          tags: ['demo-chat'],
-          confidence: 0.62,
-          importance: 0.42,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          lastEvidenceAt: timestamp,
-          reason: 'Demo chat memory extraction'
-        }),
-        ...demoState.aiMemories
-      ]
-      demoState.aiMemoryJobs = [
-        {
-          id: `demo-memory-job-${Date.now()}`,
-          petPackId: activePack?.id || 'legacy-cat',
-          conversationId: `control-center:${activePack?.id || 'legacy-cat'}:main`,
-          status: 'completed',
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          errorCode: '',
-          appliedCount: 1,
-          filteredCount: 0
-        },
-        ...demoState.aiMemoryJobs
-      ].slice(0, 20)
-    }
-    writeDemoState()
-    return {
-      reply: `${personaProfile.effectivePersona.name}: ${message}`,
-      behavior: { matched: true, type: 'playAction', actionId: 'wave' },
-      action: { actionId: 'wave', label: 'Wave' }
-    }
-  },
+  getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
+  chat: sendDemoPetChatMessage,
+  getPetChatState: async () => createDemoPetChatState(),
+  openPetChatWindow: async () => createDemoPetChatState(),
+  sendPetChatMessage: sendDemoPetChatMessage,
   getAiBehavior: async () => cloneAiConfig(demoState.aiConfig).behavior,
   saveAiBehavior: async (config) => {
     demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, behavior: config })

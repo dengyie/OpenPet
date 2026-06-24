@@ -468,6 +468,12 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
 
+    const providerSection = await expandAiSection(page, '聊天 Provider')
+    await page.getByRole('switch', { name: 'Enable AI chat' }).click()
+    await providerSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+    await providerSection.getByPlaceholder('输入 API Key').fill('sk-demo-chat')
+    await providerSection.getByRole('button', { name: '保存密钥' }).click()
+
     await expandAiSection(page, 'Behavior')
     const decisionsPanel = page.locator('.field-row', { hasText: 'Decisions' })
     await expect(decisionsPanel).toContainText('1 条')

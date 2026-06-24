@@ -7,10 +7,12 @@ import {
   cloneAiPersonaProfile,
   cloneChatMessages,
   cloneImageGenerationConfig,
+  clonePetChatState,
   defaultAiConfig,
   defaultAiMemoryProfile,
   defaultAiPersonaProfile,
-  defaultImageGenerationConfig
+  defaultImageGenerationConfig,
+  defaultPetChatState
 } from '../lib/defaults'
 import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
@@ -33,7 +35,8 @@ import type {
   AiPersonaProfileViewState,
   ChatMessage,
   ImageGenerationHealthCheckResult,
-  ImageGenerationConfigViewState
+  ImageGenerationConfigViewState,
+  PetChatStateViewState
 } from '../../../shared/openpet-contracts'
 import type { AiPaneProps } from '../panes/AiPane'
 
@@ -199,6 +202,7 @@ export function useAiPane(activeTab = 'ai') {
   const [imageHealthStatus, setImageHealthStatus] = useState('')
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
   const [chatting, setChatting] = useState(false)
   const [behavior, setBehavior] = useState<AiBehaviorConfig>(defaultAiConfig.behavior)
   const [behaviorRulesText, setBehaviorRulesText] = useState('[]')
@@ -221,6 +225,15 @@ export function useAiPane(activeTab = 'ai') {
     return profile
   }
 
+  const applyPetChatState = (state: PetChatStateViewState) => {
+    const nextState = clonePetChatState(state)
+    setPetChatState(nextState)
+    setChatMessages(nextState.messages)
+    return nextState
+  }
+
+  const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
+
   useEffect(() => {
     let mounted = true
     Promise.all([
@@ -228,9 +241,9 @@ export function useAiPane(activeTab = 'ai') {
       api.getAiPersonaProfile(),
       api.getAiMemoryProfile(),
       api.getImageGenerationConfig(),
-      api.getAiConversation('control-center'),
+      api.getPetChatState(),
       api.getAiBehavior()
-    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedChatMessages, loadedBehavior]) => {
+    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedPetChatState, loadedBehavior]) => {
       if (!mounted) return
       const nextConfig = cloneAiConfig(loadedConfig)
       setConfig(nextConfig)
@@ -242,7 +255,7 @@ export function useAiPane(activeTab = 'ai') {
       const nextImageGenerationConfig = cloneImageGenerationConfig(loadedImageGenerationConfig)
       setImageGenerationConfig(nextImageGenerationConfig)
       setActiveImageGenerationConfig(nextImageGenerationConfig)
-      setChatMessages(cloneChatMessages(loadedChatMessages))
+      applyPetChatState(loadedPetChatState)
       const nextBehavior = cloneAiBehavior(loadedBehavior || loadedConfig?.behavior)
       setBehavior(nextBehavior)
       setBehaviorRulesText(JSON.stringify(nextBehavior.rules || [], null, 2))
@@ -259,6 +272,7 @@ export function useAiPane(activeTab = 'ai') {
     if (activeTab !== 'ai') return
     void loadPersonaProfile().catch(() => {})
     void loadMemoryProfile().catch(() => {})
+    void loadPetChatState().catch(() => {})
   }, [activeTab])
 
   const saveProviderConfigDraft = async () => {
@@ -294,6 +308,7 @@ export function useAiPane(activeTab = 'ai') {
     setConnectionStatus('保存聊天 Provider 中')
     try {
       const { changedFields } = await saveProviderConfigDraft()
+      await loadPetChatState()
       setConnectionTestResult(null)
       setConnectionStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
     } catch (error) {
@@ -406,6 +421,7 @@ export function useAiPane(activeTab = 'ai') {
       if (!result) {
         setConnectionStatus('API Key 未修改')
       } else {
+        await loadPetChatState()
         setConnectionStatus(result.updatedAt ? `API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'API Key 已保存')
       }
     } catch (error) {
@@ -614,16 +630,28 @@ export function useAiPane(activeTab = 'ai') {
   const onSendChat = async () => {
     const message = chatDraft.trim()
     if (!message || chatting) return
+    if (!petChatState.ai.ready) {
+      setStatus(petChatState.ai.reason || '请先配置 AI Provider')
+      return
+    }
     const nextMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }]
     setChatMessages(nextMessages)
+    setPetChatState((current) => clonePetChatState({ ...current, messages: nextMessages }))
     setChatDraft('')
     setChatting(true)
     setStatus('')
     try {
-      const result = await api.chat({ conversationId: 'control-center', message })
-      setChatMessages(Array.isArray(result.messages)
+      const result = await api.sendPetChatMessage({ message, entrypoint: 'control-center' })
+      const fallbackMessages: ChatMessage[] = Array.isArray(result.messages)
         ? cloneChatMessages(result.messages)
-        : [...nextMessages, { role: 'assistant', content: result.reply }])
+        : [...nextMessages, { role: 'assistant', content: result.reply }]
+      const nextState = result.state
+        ? clonePetChatState(result.state)
+        : clonePetChatState({ ...petChatState, messages: fallbackMessages, bubble: result.bubble })
+      setPetChatState(nextState)
+      setChatMessages(nextState.messages.length
+        ? nextState.messages
+        : fallbackMessages)
       if (result.action?.actionId) {
         setStatus(result.action.error
           ? `动作触发失败：${result.action.error}`
@@ -637,6 +665,16 @@ export function useAiPane(activeTab = 'ai') {
       setStatus(messageFromError(error, '发送失败'))
     } finally {
       setChatting(false)
+    }
+  }
+
+  const onOpenDesktopChat = async () => {
+    try {
+      const nextState = clonePetChatState(await api.openPetChatWindow())
+      setPetChatState(nextState)
+      setStatus('已打开桌面聊天框')
+    } catch (error) {
+      setStatus(messageFromError(error, '打开桌面聊天框失败'))
     }
   }
 
@@ -672,6 +710,7 @@ export function useAiPane(activeTab = 'ai') {
     chatDraft,
     setChatDraft,
     chatMessages,
+    petChatState,
     chatting,
     behavior,
     behaviorRulesText,
@@ -708,7 +747,8 @@ export function useAiPane(activeTab = 'ai') {
     onRefreshMemoryProfile,
     onDeleteMemory,
     onClearPetPackMemories,
-    onSendChat
+    onSendChat,
+    onOpenDesktopChat
   } satisfies AiPaneProps
 
   return { loading, paneProps }

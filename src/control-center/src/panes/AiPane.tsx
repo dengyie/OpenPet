@@ -9,7 +9,8 @@ import type {
   AiPersonaDraftViewState,
   AiPersonaProfileViewState,
   ChatMessage,
-  ImageGenerationConfigViewState
+  ImageGenerationConfigViewState,
+  PetChatStateViewState
 } from '../../../shared/openpet-contracts'
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
@@ -169,6 +170,7 @@ export interface AiPaneProps {
   chatDraft: string
   setChatDraft: (value: string) => void
   chatMessages: ChatMessage[]
+  petChatState: PetChatStateViewState
   chatting: boolean
   behavior: AiBehaviorConfig
   behaviorRulesText: string
@@ -188,6 +190,7 @@ export interface AiPaneProps {
   onRefreshMemoryProfile: () => void | Promise<void>
   onDeleteMemory: (memoryId: string) => void | Promise<void>
   onClearPetPackMemories: () => void | Promise<void>
+  onOpenDesktopChat: () => void | Promise<void>
 }
 
 export function AiPane({
@@ -237,6 +240,7 @@ export function AiPane({
   chatDraft,
   setChatDraft,
   chatMessages,
+  petChatState,
   chatting,
   behavior,
   behaviorRulesText,
@@ -255,7 +259,8 @@ export function AiPane({
   onClearBehaviorDecisions,
   onRefreshMemoryProfile,
   onDeleteMemory,
-  onClearPetPackMemories
+  onClearPetPackMemories,
+  onOpenDesktopChat
 }: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
   const latestMemoryJob = memoryProfile.recentJobs[0]
@@ -869,6 +874,25 @@ export function AiPane({
 
       <CollapsibleAiSection title="聊天" note="用当前已保存 Provider 和宠物对话">
         <div className="chat-panel">
+          <div className="chat-meta-bar">
+            <div>
+              <strong>{petChatState.petPack.displayName || '当前宠物'}</strong>
+              <span>
+                {petChatState.ai.ready
+                  ? `${petChatState.ai.provider} · ${petChatState.ai.model}`
+                  : (petChatState.ai.reason || '请先配置 AI Provider')}
+              </span>
+            </div>
+            <button type="button" className="ghost" onClick={onOpenDesktopChat}>
+              打开桌面聊天框
+            </button>
+          </div>
+          {petChatState.bubble.text ? (
+            <div className="chat-bubble-preview" data-testid="ai-chat-bubble-preview">
+              <strong>宠物当前气泡</strong>
+              <span>{petChatState.bubble.text}</span>
+            </div>
+          ) : null}
           <div className="chat-transcript" aria-live="polite">
             {chatMessages.length === 0 ? (
               <div className="empty-chat">暂无对话</div>
@@ -880,16 +904,20 @@ export function AiPane({
             ))}
           </div>
           <div className="chat-input-row">
-            <input
-              className="text-input"
+            <textarea
+              className="text-input textarea chat-composer"
               value={chatDraft}
               placeholder="说点什么"
               onChange={(event) => setChatDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') onSendChat()
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  onSendChat()
+                }
               }}
+              disabled={!petChatState.ai.ready || chatting}
             />
-            <button type="button" className="primary" onClick={onSendChat} disabled={!chatDraft.trim() || chatting}>
+            <button type="button" className="primary" onClick={onSendChat} disabled={!chatDraft.trim() || chatting || !petChatState.ai.ready}>
               {chatting ? '发送中' : '发送'}
             </button>
           </div>

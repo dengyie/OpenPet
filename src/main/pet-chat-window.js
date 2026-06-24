@@ -163,9 +163,9 @@ const createPetChatWindowManager = ({
     }
   }
 
-  const sendStateChanged = () => {
+  const sendStateChanged = (state = getState()) => {
     if (!chatWindow || chatWindow.isDestroyed?.()) return
-    chatWindow.webContents?.send?.(IPC.PET_CHAT_STATE_CHANGED, getState())
+    chatWindow.webContents?.send?.(IPC.PET_CHAT_STATE_CHANGED, state)
   }
 
   const saveBounds = ({ source = 'window-event' } = {}) => {
@@ -329,6 +329,7 @@ const createPetChatWindowManager = ({
     open,
     openSettings,
     saveBounds,
+    sendStateChanged,
     setAlwaysOnTop
   }
 }

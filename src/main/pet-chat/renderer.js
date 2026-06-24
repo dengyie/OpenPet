@@ -2,6 +2,8 @@ const statusEl = document.getElementById('window-status')
 const topmostButton = document.getElementById('topmost-button')
 const settingsButton = document.getElementById('settings-button')
 const closeButton = document.getElementById('close-button')
+const bubbleStrip = document.getElementById('bubble-strip')
+const bubbleText = document.getElementById('bubble-text')
 const messagesEl = document.getElementById('messages')
 const chatInput = document.getElementById('chat-input')
 const sendButton = document.getElementById('send-button')
@@ -35,6 +37,12 @@ const renderMessages = (messages = []) => {
   messagesEl.scrollTop = messagesEl.scrollHeight
 }
 
+const renderBubble = (bubble = {}) => {
+  const text = String(bubble.text || '').trim()
+  bubbleStrip.hidden = !text
+  bubbleText.textContent = text
+}
+
 const renderWindowState = (state = {}) => {
   currentState = {
     ...currentState,
@@ -46,6 +54,10 @@ const renderWindowState = (state = {}) => {
     petPack: {
       ...(currentState.petPack || {}),
       ...(state.petPack || {})
+    },
+    bubble: {
+      ...(currentState.bubble || {}),
+      ...(state.bubble || {})
     },
     messages: Array.isArray(state.messages) ? state.messages : currentState.messages
   }
@@ -62,6 +74,7 @@ const renderWindowState = (state = {}) => {
   chatInput.placeholder = aiReady
     ? '输入消息，Enter 发送，Shift+Enter 换行'
     : (currentState.ai?.reason || '请先配置 AI Provider')
+  renderBubble(currentState.bubble || {})
   renderMessages(currentState.messages || [])
 }
 

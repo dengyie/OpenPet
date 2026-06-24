@@ -121,6 +121,7 @@ test('pet chat state exposes provider readiness and current pet-pack main conver
   assert.equal(state.ai.reason, '请先在 Control Center 启用 AI Provider')
   assert.equal(state.ai.baseUrl, 'http://127.0.0.1:8317/v1')
   assert.deepEqual(state.petPack, { id: 'legacy-cat', displayName: 'Legacy Cat' })
+  assert.deepEqual(state.bubble, { text: '', source: '', ttlMs: 0, updatedAt: '' })
   assert.deepEqual(state.messages, [{ id: 'm1', role: 'assistant', content: 'hello', createdAt: '2026-06-24T00:00:00.000Z' }])
   assert.deepEqual(conversationRequests, [''])
 })
@@ -179,6 +180,8 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
   assert.equal(result.reply, longReply)
   assert.deepEqual(result.state.messages, conversationMessages)
+  assert.equal(result.state.bubble.text.length, 80)
+  assert.equal(result.state.bubble.source, 'ai')
   assert.equal(sayCalls.length, 1)
   assert.equal(sayCalls[0].source, 'ai')
   assert.equal(sayCalls[0].text.length, 80)
@@ -190,6 +193,39 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
     'ai-chat.ipc.completed',
     'pet-chat.message.completed'
   ])
+})
+
+test('pet chat state tracks latest pet bubble from say events', async () => {
+  let onSayHandler = null
+  const sentToPetWindow = []
+  const ipcMain = registerPetChatHandlers({
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      webContents: {
+        send: (channel, payload) => sentToPetWindow.push({ channel, payload })
+      }
+    }),
+    petService: {
+      ...createRequiredServices().petService,
+      onSay: (handler) => { onSayHandler = handler }
+    },
+    aiTalkService: {
+      getConversation: () => [],
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' })
+    },
+    petChatWindowService: {
+      getState: () => ({ alwaysOnTop: true, visible: false, hasWindow: true }),
+      sendStateChanged: () => {}
+    }
+  })
+
+  onSayHandler({ text: '刚刚打了个招呼', ttlMs: 1800, source: 'pet:event' })
+  const state = await ipcMain.handlers.get(IPC.PET_CHAT_GET_STATE)()
+
+  assert.equal(state.bubble.text, '刚刚打了个招呼')
+  assert.equal(state.bubble.source, 'pet:event')
+  assert.equal(state.bubble.ttlMs, 1800)
+  assert.equal(sentToPetWindow.at(-1).channel, IPC.PET_SAY)
 })
 
 test('pet chat send stops before provider call when chat provider is not ready', async () => {
