@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenPet Bubble Chat</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="bubble-shell" id="bubble-shell">
+      <div class="bubble-card">
+        <header class="bubble-header">
+          <span id="source-label">Pet</span>
+          <div class="bubble-actions">
+            <button type="button" id="pin-button" aria-pressed="false">定格</button>
+            <button type="button" id="close-button" aria-label="关闭">×</button>
+          </div>
+        </header>
+        <p id="message-text">...</p>
+        <div class="mini-input-placeholder" aria-hidden="true">迷你回复输入将在下一阶段接入</div>
+      </div>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
