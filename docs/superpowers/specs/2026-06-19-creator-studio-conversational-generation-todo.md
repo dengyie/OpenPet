@@ -2,7 +2,7 @@
 
 Date: 2026-06-19
 Last updated: 2026-06-23
-Status: Approved direction, partially implemented host support, remaining plugin TODO
+Status: First plugin slice implemented; remaining dashboard polish, trigger inbox closure, and real provider smoke
 Scope: Creator Studio plugin extension for conversational full-pet and single-action generation
 
 ## Confirmed Product Direction
@@ -182,8 +182,8 @@ Prompt constraints should request:
 Use the existing backend adapter boundary:
 
 - `fixture` remains deterministic for tests and demos.
-- `cloud` remains `not_configured` until host model settings/bridge are available.
-- `local` remains `not_configured` until local endpoint settings are available.
+- `cloud` and `local` use the host model bridge when the host Provider is configured.
+- `cloud` and `local` fail as explicit `not_configured` states when host settings are missing.
 
 The plugin should not silently fall back from cloud/local to fixture.
 
@@ -212,28 +212,35 @@ For `single-action`, import through the existing creator asset/frame import brid
 
 For `full-pet`, import through the approved pet-pack import bridge.
 
-## TODO: Plugin Work
+## Implemented Plugin Work
 
-- Add `GenerationTask` schema and validators.
-- Add a `conversation` or `wizard` module that parses prompts into draft tasks.
-- Add task completion defaults for action id, frame count, loop, style source, and trigger proposal.
-- Extend `create-run` payload to accept `mode`, `targetPet`, `styleSource`, `actions`, and `conversation`.
-- Persist `generationTask` and `originalPrompt` in `run.json`.
-- Add single-action run workspace folders for imported/generated action frames.
-- Add deterministic fixture support for custom single-action tasks.
-- Add QA metadata for custom actions and trigger proposals.
-- Add dashboard UI for conversation prompt, task preview, follow-up question, and approval.
-- Add commands or routes for `draft-task`, `answer-question`, `confirm-task`, and `generate-action`.
-- Add tests for prompt parsing, safe defaults, run persistence, and single-action import workflow.
+- `GenerationTask` schema and validators exist in `lib/generation-task.js`.
+- Deterministic prompt parsing exists in `lib/conversation-wizard.js`.
+- Task defaults cover action id, frame count, loop, style source, and trigger proposal.
+- `create-run` can persist `generationTask` and `originalPrompt`.
+- `task-workflow.js` plus `draft-task`, `answer-question`, and `confirm-task` commands support the first conversation-style task flow.
+- Custom single-action fixture generation, QA metadata, trigger proposal metadata, and approved action import paths exist.
+- `openpet-prompt-builder.js` compiles OpenPet-specific image prompts before host model generation.
+- Tests cover prompt parsing, safe defaults, run persistence, prompt building, host model bridge prompt use, and single-action output metadata.
+
+## Remaining Plugin Work
+
+- Turn the command-level task flow into a dashboard-first wizard with visible prompt, task preview, pending question, confirmation, generation, QA, and import states.
+- Preserve command paths as automation/test entry points while improving user-facing dashboard affordances.
+- Add explicit retry/recover flows for failed cloud/local generation without silently falling back to fixture.
+- Surface prompt-builder provenance in the dashboard, including sanitized final prompt preview for developer mode.
+- Connect generated trigger proposals to the host trigger proposal inbox after that host inbox service/UI is complete.
+- Add realistic smoke guidance for configured host image Provider generation.
 
 ## TODO: Host / Main UI Work
 
 - Define host-owned trigger rule schema.
 - Add Control Center UI for trigger rules and accepted trigger proposals.
-- Add bridge route for reading current pet/action context needed by style-source selection.
-- Add bridge route for accepting a plugin trigger proposal after user review.
+- Complete the trigger proposal inbox service/UI/API closed loop.
+- Keep bridge route coverage for current pet/action context aligned with the plugin wizard.
+- Add bridge route for accepting a plugin trigger proposal after user review when inbox persistence is ready.
 - Add validation that trigger bindings reference existing imported actions.
-- Add model settings UI and host model bridge from the model-settings backlog before real cloud/local generation.
+- Continue model settings UI polish on top of the implemented host model bridge.
 - Ensure API keys remain in host secret storage and are not exposed to ordinary plugins.
 
 Completed host slice:
@@ -246,7 +253,7 @@ Completed host slice:
 
 Remaining host/main UI request:
 
-- Add a persistent trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals submitted directly from Creator Studio and other plugins rather than manually choosing the current action/type.
+- Add a persistent trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals submitted directly from Creator Studio and other plugins rather than manually choosing the current action/type. Channel names and data fields already exist in parts of the codebase, but `ActionService` still needs the submit/accept/reject item methods and the UI needs the actual inbox list.
 - Define the durable trigger-rule schema for `random`, `state`, and `event` rules.
 - Add simulation/preview before applying non-click triggers.
 - Keep final trigger persistence host-owned; plugins should continue to propose rather than directly mutate rules.

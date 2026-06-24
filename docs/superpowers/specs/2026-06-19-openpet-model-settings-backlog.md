@@ -9,21 +9,21 @@ Scope: Capabilities intentionally not implemented inside the Creator Studio plug
 
 OpenPet should provide first-class model configuration that Creator Studio and other extensions can consume without each plugin inventing incompatible settings screens.
 
-The first host slice is now implemented. OpenPet owns image-generation backend settings, cloud API key storage, local endpoint settings, model health checks, provider calls, output writing, and Creator Studio host bridge access. The remaining work is product/UI polish and broader provider ergonomics, not the initial security boundary.
+The first host slice is now implemented. OpenPet owns unified OpenAI-compatible image Provider settings, API key storage, model health checks, provider calls, output writing, and Creator Studio host bridge access. Creator Studio can still label run backends as `fixture` / `cloud` / `local`, but the main UI credential boundary is the host-owned Provider config. The remaining work is product/UI polish and broader provider ergonomics, not the initial security boundary.
 
 ## Implemented Host Slice
 
-- Control Center AI pane exposes image-generation settings for `fixture`, `cloud`, and `local` backends.
+- Control Center AI pane exposes unified image Provider settings for Base URL, model, timeout, concurrency, and host-owned API key storage.
 - `ImageGenerationModelService` stores non-secret settings in `settings.models.imageGeneration`.
-- Cloud API keys are stored through `SecretService` and renderer responses expose only `hasApiKey` / masked preview metadata.
-- Cloud provider calls are host-owned and write generated images under the allowed Creator Studio data directory.
-- Local generation uses loopback-only endpoint validation and health checks.
+- Image Provider API keys are stored through `SecretService` and renderer responses expose only `hasApiKey` / masked preview metadata.
+- Provider calls are host-owned and write generated images under the allowed Creator Studio data directory.
+- Local/proxy providers use the same OpenAI-compatible Provider shape and rely on URL validation plus health checks.
 - Host model bridge routes support non-secret model settings reads, model health checks, and bounded image-generation requests during explicit plugin execution.
 - Creator Studio can fail clearly when `cloud` or `local` is not configured instead of silently falling back to fixture.
 
 ## Remaining Host / Main UI Responsibilities
 
-- Refine the current AI pane image-generation card into a clearer Control Center model settings surface for selecting default image-generation backend, provider, model name, base URL, and local endpoint. First-pass inline summary, host-boundary copy, and dedicated health status are implemented in the AI pane.
+- Refine the current AI pane image-generation card into a clearer Control Center model settings surface for selecting provider, model name, base URL, timeout, and concurrency. First-pass inline summary, host-boundary copy, and dedicated health status are implemented in the AI pane.
 - Store API keys and provider secrets through `SecretService`; never expose raw secrets to renderers or ordinary plugin code.
 - Preserve the safe host-mediated model bridge for plugins that opt into host-managed generation.
 - Improve provider health, local endpoint reachability, and actionable setup errors.
@@ -34,13 +34,12 @@ The first host slice is now implemented. OpenPet owns image-generation backend s
 
 Refine the current Control Center AI image-generation card, or move it into a dedicated model settings area, with these sections:
 
-- Default backend: `fixture`, `cloud`, or `local`.
-- Cloud provider: provider id, display name, base URL, model id, API key secret ref, and optional organization/project fields.
-- Local provider: endpoint URL, health URL, model id, timeout, and max concurrent jobs.
+- Provider preset: OpenAI, OpenAI-compatible gateway, local/proxy endpoint, or custom.
+- Provider fields: provider id, display name, base URL, model id, API key secret ref, timeout, max concurrent jobs, and optional organization/project fields if needed.
 - Safety copy: explain whether generation is host-mediated or plugin-managed, and whether credentials stay in OpenPet secret storage.
-- Health check action: validates cloud credential presence or local endpoint reachability without starting a pet generation run.
+- Health check action: validates credential presence and endpoint reachability without starting a pet generation run.
 
-Recommended setting shape:
+Historical target shape before unification:
 
 ```json
 {
@@ -65,6 +64,8 @@ Recommended setting shape:
 ```
 
 Renderer must never receive raw API keys. It can receive booleans such as `hasApiKey` and masked labels such as `••••abcd`.
+
+Current saves should preserve the unified Provider shape rather than reintroducing separate `cloud` and `local` settings in the main UI.
 
 ## Host Model Bridge Status
 
