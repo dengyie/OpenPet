@@ -104,7 +104,10 @@ const validateActionFrameQa = ({ dataDir, actionFrames }) => {
     if (Number(frame.width) !== frameWidth || Number(frame.height) !== frameHeight) {
       throw new Error(`${ACTION_FRAME_QA_LABEL} frame dimensions do not match generated action`)
     }
-    if (Number(frame.visiblePixels) < 1) throw new Error(`${ACTION_FRAME_QA_LABEL} is incomplete`)
+    const visiblePixels = Number(frame.visiblePixels)
+    if (!Number.isFinite(visiblePixels) || visiblePixels < 1) {
+      throw new Error(`${ACTION_FRAME_QA_LABEL} is incomplete`)
+    }
   })
 
   return qa

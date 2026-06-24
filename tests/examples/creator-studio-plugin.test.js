@@ -1569,6 +1569,77 @@ test('creator studio action frame QA gate rejects mismatched metadata before app
   }
 })
 
+test('creator studio action frame QA gate rejects missing visible pixel evidence before approval and import', async () => {
+  const { readRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const invalidQa = createActionFrameQa()
+  delete invalidQa.frames[0].visiblePixels
+  const serviceDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-qa-visible-service-'))
+  const importDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-qa-visible-import-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const serviceRun = await createStoredSingleActionRun({
+    dataDir: serviceDataDir,
+    status: 'ready_for_review',
+    qa: invalidQa
+  })
+  const importRun = await createStoredSingleActionRun({
+    dataDir: importDataDir,
+    status: 'approved',
+    qa: invalidQa
+  })
+
+  const service = createCreatorStudioServer({ dataDir: serviceDataDir, dashboardPath })
+  await new Promise((resolve) => service.listen(0, '127.0.0.1', resolve))
+  const servicePort = service.address().port
+  try {
+    const response = await fetch(`http://127.0.0.1:${servicePort}/api/runs/${serviceRun.run.runId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    })
+    const body = await response.json()
+    const stored = readRun({ dataDir: serviceDataDir, runId: serviceRun.run.runId })
+
+    assert.equal(response.status, 400)
+    assert.equal(body.ok, false)
+    assert.match(body.error, /QA is incomplete/)
+    assert.equal(stored.status, 'ready_for_review')
+  } finally {
+    await new Promise((resolve) => service.close(resolve))
+  }
+
+  const { server, requests } = createBridgeServer({
+    routes: [{
+      path: '/creator/assets/import-frames',
+      handler: () => ({ body: { ok: true, result: { importedAction: { id: 'shy-spin' } } } })
+    }]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-action',
+      dataDir: importDataDir,
+      payload: { runId: importRun.run.runId },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir: importDataDir, runId: importRun.run.runId })
+
+    assert.equal(imported.status, 1)
+    assert.equal(imported.json.ok, false)
+    assert.match(imported.json.error, /QA is incomplete/)
+    assert.equal(stored.importStatus, 'not-imported')
+    assert.equal(requests.length, 0)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio create-run command drafts a generation task from a conversation prompt', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-create-task-'))
 
