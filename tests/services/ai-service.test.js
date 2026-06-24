@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createAiService } = require('../../src/main/services/ai-service')
+const { createAiService, getBehaviorToolDefinition } = require('../../src/main/services/ai-service')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {
@@ -53,6 +53,22 @@ test('ai service exposes config without secret values', () => {
     },
     hasApiKey: true
   })
+})
+
+test('behavior tool definition exposes action candidates reason and display mode', () => {
+  const tool = getBehaviorToolDefinition({
+    actions: [
+      { id: 'wave', label: 'Wave', kind: 'social' },
+      { id: 'sleep', label: 'Sleep', kind: 'rest' }
+    ]
+  })
+
+  assert.equal(tool.function.name, 'openpet_behavior')
+  assert.deepEqual(tool.function.parameters.properties.actionId.enum, ['wave', 'sleep'])
+  assert.deepEqual(tool.function.parameters.properties.displayMode.enum, ['none', 'bubble', 'action', 'event'])
+  assert.equal(tool.function.parameters.properties.reason.type, 'string')
+  assert.match(tool.function.parameters.properties.actionId.description, /wave: Wave/)
+  assert.match(tool.function.parameters.properties.actionId.description, /sleep: Sleep/)
 })
 
 test('ai service sanitizes credentialed baseUrl in public config', () => {
@@ -363,7 +379,9 @@ test('ai service sends behavior tool definition and parses tool call intent', as
                     intent: 'success',
                     actionId: 'done',
                     confidence: 0.9,
-                    bubbleText: '完成了'
+                    bubbleText: '完成了',
+                    reason: '任务完成时适合庆祝',
+                    displayMode: 'action'
                   })
                 }
               }]
@@ -382,7 +400,9 @@ test('ai service sends behavior tool definition and parses tool call intent', as
     intent: 'success',
     actionId: 'done',
     confidence: 0.9,
-    bubbleText: '完成了'
+    bubbleText: '完成了',
+    reason: '任务完成时适合庆祝',
+    displayMode: 'action'
   })
 })
 

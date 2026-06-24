@@ -41,7 +41,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Trigger pro
 
 - Chat provider UX has separate `保存聊天 Provider` and `测试已保存配置` actions. Saving does not require a successful test, and testing uses the active saved config.
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
-- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-ranked memory injection with use tracking, memory profile UI, delete memory, and clear current pet-pack memories.
+- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` create host-owned durable trigger rules.
@@ -94,8 +94,6 @@ Current state:
 
 P1 work:
 
-- Upgrade the action tool schema with `reason`, `displayMode`, and a current-pet action candidate whitelist.
-- Add reply bubble segmentation while keeping the full assistant reply in transcript.
 - Add explicit active pet-pack refresh signals so AI pane and desktop chat reload persona, history, memory profile, and chat state when the active pack changes.
 - Add redacted AI Talk trace export that links provider, conversation, memory, and behavior decisions without exposing full prompts, API keys, or raw memory text.
 - Add conservative legacy migration from old `settings.ai.conversations.control-center` into `ai-talk-store.json` only when the new store has no messages.
@@ -247,23 +245,19 @@ P2/P3:
 
 Choose one of these when starting the next development milestone:
 
-1. AI Talk Bubble And Action Tool UX
-   - User value: pet conversations feel more pet-like with segmented reply bubbles and safer action suggestions.
-   - Main files: `AiTalkService`, `AiTalkStore`, AI pane, pet chat renderer, behavior tool tests.
-
-2. AI Talk Refresh And Trace Export
+1. AI Talk Refresh And Trace Export
    - User value: switching pet packs reloads the right persona/history/memory state, and developers can inspect redacted AI Talk traces.
    - Main files: `AiTalkService`, `AiTalkStore`, IPC/adapters, AI pane, desktop chat state tests.
 
-3. Creator Studio Dashboard Wizard Polish
+2. Creator Studio Dashboard Wizard Polish
    - User value: users can drive custom action generation from dashboard instead of running individual commands.
    - Main files: Creator Studio service/dashboard/commands, plugin tests, host bridge tests.
 
-4. Model Settings Product Polish
+3. Model Settings Product Polish
    - User value: provider setup is clearer for local and hosted image/chat gateways.
    - Main files: AI pane, `ImageGenerationModelService`, `AiService`, Control Center smoke tests.
 
-5. Release Evidence Closure
+4. Release Evidence Closure
    - User value: release readiness claims can be upgraded only when real evidence exists.
    - Main files: release scripts/docs. This is mostly Manual-required.
 

@@ -79,6 +79,8 @@ export interface AiBehaviorRule {
   kind?: string
   actionId?: string
   bubbleText?: string
+  reason?: string
+  displayMode?: 'none' | 'bubble' | 'action' | 'event'
   intent?: string
   confidence?: number
 }

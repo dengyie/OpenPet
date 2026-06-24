@@ -18,6 +18,8 @@ const MAX_MEMORY_RELEVANCE_HISTORY_MESSAGES = 6
 const MAX_USER_MESSAGE_CHARS = 4000
 const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
 const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
+const MAX_BUBBLE_SEGMENTS = 3
+const MAX_BUBBLE_SEGMENT_CHARS = 80
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '')
 
@@ -25,6 +27,20 @@ const normalizeList = (value) => (
   Array.isArray(value)
     ? value.map(normalizeString).filter(Boolean)
     : []
+)
+
+const normalizeActionCandidates = (actions = []) => (
+  (Array.isArray(actions) ? actions : [])
+    .map((action) => {
+      const id = normalizeString(action?.id)
+      if (!id) return null
+      return {
+        id,
+        label: normalizeString(action.label) || id,
+        kind: normalizeString(action.kind) || 'custom'
+      }
+    })
+    .filter(Boolean)
 )
 
 const normalizeScore = (value, fallback = 0.5) => {
@@ -110,6 +126,43 @@ const compileRecentPetActivityPrompt = (utterances = []) => {
     'Use this as lightweight recent context. Do not treat it as durable memory unless the user explicitly continues the topic.',
     ...lines
   ].join('\n')
+}
+
+const splitReplyIntoBubbleSegments = (reply) => {
+  const text = normalizeString(reply).replace(/\s+/g, ' ')
+  if (!text) return []
+  const sentences = text
+    .split(/(?<=[.!?。！？；;])\s*/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+  const sourceSegments = sentences.length ? sentences : [text]
+  const segments = []
+  for (const source of sourceSegments) {
+    if (segments.length >= MAX_BUBBLE_SEGMENTS) break
+    if (source.length <= MAX_BUBBLE_SEGMENT_CHARS) {
+      segments.push(source)
+      continue
+    }
+    segments.push(`${source.slice(0, MAX_BUBBLE_SEGMENT_CHARS - 3)}...`)
+  }
+  return segments
+}
+
+const createReplyBubble = ({ reply, behaviorIntent } = {}) => {
+  if (behaviorIntent?.displayMode === 'none') {
+    return { text: '', segments: [], displayMode: 'none', source: 'behavior-intent' }
+  }
+  const preferred = normalizeString(behaviorIntent?.bubbleText)
+  const source = preferred ? 'behavior-intent' : 'assistant-reply'
+  const segments = preferred
+    ? splitReplyIntoBubbleSegments(preferred)
+    : splitReplyIntoBubbleSegments(reply)
+  return {
+    text: segments[0] || '',
+    segments,
+    displayMode: behaviorIntent?.displayMode || 'bubble',
+    source
+  }
 }
 
 const buildMemoryExtractionMessages = ({ userMessage, assistantReply, petPackId, persona }) => [
@@ -344,6 +397,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     const petPackId = normalizeString(manifest.id) || 'legacy-cat'
     return { pack, manifest, petPackId }
   }
+
+  const getCurrentActionCandidates = (manifest = {}) => normalizeActionCandidates(manifest.actions)
 
   const pendingMemoryJobs = new Set()
   const conversationQueues = new Map()
@@ -658,8 +713,9 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
           userMessage
         ]
+        const actionCandidates = getCurrentActionCandidates(manifest)
         const tools = config.behavior?.enabled && config.behavior?.useTools !== false
-          ? [getBehaviorToolDefinition()]
+          ? [getBehaviorToolDefinition({ actions: actionCandidates })]
           : []
         Object.assign(diagnostics, {
           petPackId,
@@ -668,6 +724,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           messagesCount: messages.length,
           memoryContextCount: memoryContext.length,
           recentPetActivityCount: recentPetActivity.length,
+          actionCandidateCount: actionCandidates.length,
           toolsCount: tools.length,
           memoryEnabled: config.memory?.enabled === true,
           behaviorEnabled: config.behavior?.enabled === true
@@ -693,6 +750,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         const result = await aiService.complete({ messages, tools })
         const reply = normalizeString(result.reply)
         if (!reply) throw new Error('AI provider returned an empty response')
+        const bubble = createReplyBubble({ reply, behaviorIntent: result.behaviorIntent })
         const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [
           userMessage,
           { role: 'assistant', content: reply }
@@ -723,6 +781,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         return {
           conversationId: conversationPublicId,
           reply,
+          bubble,
           behaviorIntent: result.behaviorIntent || undefined,
           messages: nextMessages
         }

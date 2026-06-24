@@ -194,7 +194,7 @@ test('ai talk service serializes concurrent messages for the same main conversat
   ])
 })
 
-test('ai talk service preserves existing behavior tool request when enabled', async () => {
+test('ai talk service provides current pet action candidates to behavior tool request', async () => {
   const requests = []
   const service = createAiTalkService({
     aiService: {
@@ -205,13 +205,53 @@ test('ai talk service preserves existing behavior tool request when enabled', as
       }
     },
     aiTalkStore: createStore(),
-    petPackService: createPetPackService({ id: 'legacy-cat' })
+    petPackService: createPetPackService({
+      id: 'legacy-cat',
+      actions: [
+        { id: 'wave', label: 'Wave', kind: 'social' },
+        { id: 'sleep', label: 'Sleep', kind: 'rest' }
+      ]
+    })
   })
 
   const result = await service.chat({ message: 'Hi' })
 
   assert.equal(requests[0].tools[0].function.name, 'openpet_behavior')
+  assert.deepEqual(requests[0].tools[0].function.parameters.properties.actionId.enum, ['wave', 'sleep'])
+  assert.match(requests[0].tools[0].function.parameters.properties.actionId.description, /wave: Wave/)
+  assert.deepEqual(requests[0].tools[0].function.parameters.properties.displayMode.enum, ['none', 'bubble', 'action', 'event'])
   assert.deepEqual(result.behaviorIntent, { intent: 'greet', confidence: 0.8 })
+})
+
+test('ai talk service returns compact bubble segments while keeping full assistant transcript', async () => {
+  const fullReply = [
+    '第一句会显示在宠物气泡里。',
+    '第二句仍然应该留在聊天记录里。',
+    '第三句也属于完整回复。'
+  ].join('\n')
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      complete: async () => ({ reply: fullReply })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const result = await service.chat({ message: '说完整一点' })
+
+  assert.equal(result.reply, fullReply)
+  assert.deepEqual(store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), [
+    '说完整一点',
+    fullReply
+  ])
+  assert.deepEqual(result.bubble, {
+    text: '第一句会显示在宠物气泡里。',
+    segments: ['第一句会显示在宠物气泡里。', '第二句仍然应该留在聊天记录里。', '第三句也属于完整回复。'],
+    displayMode: 'bubble',
+    source: 'assistant-reply'
+  })
 })
 
 test('ai talk service injects recent pet activity without polluting transcript or memory extraction', async () => {

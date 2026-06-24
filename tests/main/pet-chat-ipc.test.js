@@ -131,6 +131,7 @@ test('pet chat state exposes provider readiness and current pet-pack main conver
 test('pet chat send uses shared control-center entrypoint and compact pet bubble', async () => {
   const prompt = 'secret phrase should not be logged'
   const longReply = 'This is a very long desktop pet reply that should remain complete in the chat panel but short inside the speech bubble.'
+  const bubbleText = 'Short pet bubble line.'
   const talkCalls = []
   const sayCalls = []
   const logs = []
@@ -157,6 +158,12 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
         return {
           conversationId: 'control-center:legacy-cat:main',
           reply: longReply,
+          bubble: {
+            text: bubbleText,
+            segments: [bubbleText],
+            displayMode: 'bubble',
+            source: 'assistant-reply'
+          },
           messages: conversationMessages
         }
       }
@@ -182,12 +189,11 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
   assert.equal(result.reply, longReply)
   assert.deepEqual(result.state.messages, conversationMessages)
-  assert.equal(result.state.bubble.text.length, 80)
+  assert.equal(result.state.bubble.text, bubbleText)
   assert.equal(result.state.bubble.source, 'ai')
   assert.equal(sayCalls.length, 1)
   assert.equal(sayCalls[0].source, 'ai')
-  assert.equal(sayCalls[0].text.length, 80)
-  assert.equal(sayCalls[0].text.endsWith('...'), true)
+  assert.equal(sayCalls[0].text, bubbleText)
   assert.equal(JSON.stringify(logs).includes(prompt), false)
   assert.deepEqual(logs.map((entry) => entry.event), [
     'pet-chat.message.started',

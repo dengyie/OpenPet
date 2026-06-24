@@ -180,9 +180,11 @@ const normalizePetBubble = (payload = {}) => {
   }
 }
 
-const createPetBubbleText = (reply, behaviorIntent) => {
+const createPetBubbleText = (reply, behaviorIntent, bubble) => {
+  if (bubble?.displayMode === 'none') return ''
+  const segmented = normalizeMessageText(bubble?.text)
   const preferred = normalizeMessageText(behaviorIntent?.bubbleText)
-  const text = preferred || normalizeMessageText(reply)
+  const text = segmented || preferred || normalizeMessageText(reply)
   if (text.length <= MAX_PET_BUBBLE_CHARS) return text
   return `${text.slice(0, MAX_PET_BUBBLE_CHARS - 3)}...`
 }
@@ -358,7 +360,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     })
     try {
       const result = await (aiTalkService || aiService).chat(requestPayload)
-      const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent)
+      const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent, result.bubble)
       const bubble = bubbleText ? capturePetBubble({ text: bubbleText, source: 'ai' }, { notify: false }) : lastPetBubble
       if (bubbleText) {
         recordAppLog({

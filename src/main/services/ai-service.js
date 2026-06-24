@@ -25,10 +25,26 @@ const MAX_STORED_MESSAGE_CHARS = 8000
 const MAX_USER_MESSAGE_CHARS = 4000
 const BEHAVIOR_TOOL_NAME = 'openpet_behavior'
 const LEGACY_BEHAVIOR_TOOL_NAME = 'ibot_behavior'
+const DISPLAY_MODES = Object.freeze(['none', 'bubble', 'action', 'event'])
 
 const HISTORY_ROLES = new Set(['user', 'assistant'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeActionCandidates = (actions = []) => (
+  (Array.isArray(actions) ? actions : [])
+    .map((action) => {
+      const id = typeof action?.id === 'string' ? action.id.trim() : ''
+      if (!id) return null
+      return {
+        id,
+        label: typeof action.label === 'string' && action.label.trim() ? action.label.trim() : id,
+        kind: typeof action.kind === 'string' && action.kind.trim() ? action.kind.trim() : 'custom'
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 80)
+)
 
 const normalizeBehaviorConfig = (behavior = {}) => ({
   ...DEFAULT_AI_CONFIG.behavior,
@@ -62,12 +78,15 @@ const parseBehaviorToolArguments = (value) => {
   try {
     const parsed = JSON.parse(value)
     if (!isPlainObject(parsed)) return null
-    return {
+    const intent = {
       intent: typeof parsed.intent === 'string' ? parsed.intent : '',
       actionId: typeof parsed.actionId === 'string' ? parsed.actionId : '',
       confidence: Number.isFinite(Number(parsed.confidence)) ? Number(parsed.confidence) : 0,
       bubbleText: typeof parsed.bubbleText === 'string' ? parsed.bubbleText : ''
     }
+    if (typeof parsed.reason === 'string') intent.reason = parsed.reason
+    if (DISPLAY_MODES.includes(parsed.displayMode)) intent.displayMode = parsed.displayMode
+    return intent
   } catch (_) {
     return null
   }
@@ -97,23 +116,39 @@ const parseChatResult = (data) => {
   }
 }
 
-const getBehaviorToolDefinition = () => ({
-  type: 'function',
-  function: {
-    name: BEHAVIOR_TOOL_NAME,
-    description: 'Choose an OpenPet behavior for this assistant reply.',
-    parameters: {
-      type: 'object',
-      properties: {
-        intent: { type: 'string' },
-        actionId: { type: 'string' },
-        confidence: { type: 'number' },
-        bubbleText: { type: 'string' }
-      },
-      required: ['intent', 'confidence']
+const getBehaviorToolDefinition = ({ actions = [] } = {}) => {
+  const candidates = normalizeActionCandidates(actions)
+  const actionDescription = candidates.length
+    ? `Optional action id. Choose only from the current pet actions: ${candidates.map((action) => `${action.id}: ${action.label} (${action.kind})`).join('; ')}. Leave empty when no action fits.`
+    : 'Optional action id. Leave empty unless the current pet has a matching action.'
+  return {
+    type: 'function',
+    function: {
+      name: BEHAVIOR_TOOL_NAME,
+      description: 'Choose a safe OpenPet behavior for this assistant reply.',
+      parameters: {
+        type: 'object',
+        properties: {
+          intent: { type: 'string', description: 'Short behavior intent, such as greet, celebrate, rest, or focus.' },
+          actionId: {
+            type: 'string',
+            description: actionDescription,
+            ...(candidates.length ? { enum: candidates.map((action) => action.id) } : {})
+          },
+          confidence: { type: 'number', description: 'Confidence from 0 to 1 that this behavior fits the reply.' },
+          bubbleText: { type: 'string', description: 'Short pet bubble line. Keep it concise and user-facing.' },
+          reason: { type: 'string', description: 'Short non-secret reason for the selected behavior.' },
+          displayMode: {
+            type: 'string',
+            enum: DISPLAY_MODES,
+            description: 'How OpenPet should present the behavior: none, bubble, action, or event.'
+          }
+        },
+        required: ['intent', 'confidence']
+      }
     }
   }
-})
+}
 
 const trimHistory = (messages, maxHistoryMessages) => {
   if (messages.length <= maxHistoryMessages) return messages
