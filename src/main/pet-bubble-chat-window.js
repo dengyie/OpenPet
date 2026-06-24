@@ -1,6 +1,7 @@
 const path = require('path')
 const electron = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { applyWorkspaceVisibility } = require('./runtime/automation-desktop-mode')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_BUBBLE_WIDTH = 340
@@ -258,7 +259,7 @@ const createPetBubbleChatWindowManager = ({
         nodeIntegration: false
       }
     })
-    bubbleWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
+    applyWorkspaceVisibility(bubbleWindow)
     bubbleWindow.on?.('close', (event) => {
       if (allowClose) return
       event?.preventDefault?.()

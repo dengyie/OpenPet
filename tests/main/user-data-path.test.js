@@ -87,6 +87,36 @@ test('configureUserDataPath leaves the legacy userData directory untouched when 
   assert.equal(fs.existsSync(configuredPath), true)
 })
 
+test('configureUserDataPath uses isolated automation userData when desktop automation mode is enabled', () => {
+  const appData = createTempAppData()
+  const app = createFakeApp({
+    appData,
+    userData: path.join(appData, 'OpenPet')
+  })
+  const previousIsolation = process.env.OPENPET_AUTOMATION_ISOLATION
+  const previousDesktop = process.env.OPENPET_AUTOMATION_TARGET_DESKTOP
+  const previousUserDataDir = process.env.OPENPET_USER_DATA_DIR
+  process.env.OPENPET_AUTOMATION_ISOLATION = '1'
+  process.env.OPENPET_AUTOMATION_TARGET_DESKTOP = '2'
+  delete process.env.OPENPET_USER_DATA_DIR
+
+  try {
+    const configuredPath = configureUserDataPath({ app })
+
+    assert.equal(configuredPath, path.join(appData, 'ibot-automation-desktop-2'))
+    assert.deepEqual(app.setPathCalls, [['userData', configuredPath]])
+    assert.equal(process.env.OPENPET_USER_DATA_DIR, configuredPath)
+    assert.equal(fs.existsSync(configuredPath), true)
+  } finally {
+    if (previousIsolation === undefined) delete process.env.OPENPET_AUTOMATION_ISOLATION
+    else process.env.OPENPET_AUTOMATION_ISOLATION = previousIsolation
+    if (previousDesktop === undefined) delete process.env.OPENPET_AUTOMATION_TARGET_DESKTOP
+    else process.env.OPENPET_AUTOMATION_TARGET_DESKTOP = previousDesktop
+    if (previousUserDataDir === undefined) delete process.env.OPENPET_USER_DATA_DIR
+    else process.env.OPENPET_USER_DATA_DIR = previousUserDataDir
+  }
+})
+
 test('configureUserDataPath requires an Electron app-like object', () => {
   assert.throws(() => configureUserDataPath(), /Electron app is required/)
   assert.throws(() => configureUserDataPath({ app: { getPath: () => '/tmp' } }), /Electron app is required/)

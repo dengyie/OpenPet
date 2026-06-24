@@ -3,6 +3,7 @@
  */
 const path = require('path')
 const electron = require('electron')
+const { applyWorkspaceVisibility } = require('./runtime/automation-desktop-mode')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const BASE_WIDTH = 300
@@ -131,7 +132,7 @@ const createWindow = ({ load = true, BrowserWindow = electron.BrowserWindow, scr
     workArea.x + workArea.width - BASE_WIDTH - 40,
     workArea.y + workArea.height - BASE_HEIGHT - 40
   )
-  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  applyWorkspaceVisibility(petWindow)
   if (load) loadPetWindow(petWindow)
 
   return petWindow

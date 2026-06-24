@@ -1,5 +1,6 @@
 const path = require('path')
 const { execFileSync } = require('child_process')
+const { shouldSkipDevCleanup } = require('../src/main/runtime/automation-desktop-mode')
 
 const parsePosixProcessRows = (output = '') => output
   .split('\n')
@@ -55,8 +56,10 @@ const runCleanupDevInstances = ({
   userDataPath = path.join(process.env.HOME || '', 'Library', 'Application Support', 'ibot'),
   currentPid = process.pid,
   execFileSyncImpl = execFileSync,
-  killImpl = process.kill
+  killImpl = process.kill,
+  env = process.env
 } = {}) => {
+  if (shouldSkipDevCleanup(env)) return { killedPids: [] }
   const rows = readPosixProcesses({ execFileSyncImpl })
   const killedPids = findOpenPetDevInstancePids({ rows, projectRoot, userDataPath, currentPid })
 

@@ -7,6 +7,7 @@
   "main": "main.js",
   "scripts": {
     "start": "node scripts/cleanup-dev-instances.js && npm run build:control-center && electron .",
+    "start:automation-desktop-2": "node scripts/start-automation-desktop-2.js",
     "dev:control-center": "vite --config src/control-center/vite.config.js --host 127.0.0.1",
     "build:control-center": "vite build --config src/control-center/vite.config.js",
     "pack": "npm run build:control-center && electron-builder --dir",

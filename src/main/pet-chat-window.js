@@ -1,6 +1,7 @@
 const path = require('path')
 const electron = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { applyWorkspaceVisibility } = require('./runtime/automation-desktop-mode')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_CHAT_WIDTH = 360
@@ -254,7 +255,7 @@ const createPetChatWindowManager = ({
       }
     })
 
-    chatWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
+    applyWorkspaceVisibility(chatWindow)
     chatWindow.on?.('move', () => saveBounds({ source: 'move' }))
     chatWindow.on?.('resize', () => saveBounds({ source: 'resize' }))
     chatWindow.on?.('close', (event) => {

@@ -134,6 +134,29 @@ test('createWindow preserves automatic loading by default', () => {
   assert.equal(petWindow.options.alwaysOnTop, true)
 })
 
+test('createWindow stays on its current desktop during automation isolation runs', () => {
+  const instances = []
+  const previousIsolation = process.env.OPENPET_AUTOMATION_ISOLATION
+  const previousDesktop = process.env.OPENPET_AUTOMATION_TARGET_DESKTOP
+  process.env.OPENPET_AUTOMATION_ISOLATION = '1'
+  process.env.OPENPET_AUTOMATION_TARGET_DESKTOP = '2'
+  try {
+    const { createWindow } = loadWindowModule()
+    createWindow({
+      load: false,
+      BrowserWindow: createBrowserWindowStub(instances),
+      screen: createScreenStub()
+    })
+
+    assert.deepEqual(instances[0].visibleOnAllWorkspaces, { value: false, options: undefined })
+  } finally {
+    if (previousIsolation === undefined) delete process.env.OPENPET_AUTOMATION_ISOLATION
+    else process.env.OPENPET_AUTOMATION_ISOLATION = previousIsolation
+    if (previousDesktop === undefined) delete process.env.OPENPET_AUTOMATION_TARGET_DESKTOP
+    else process.env.OPENPET_AUTOMATION_TARGET_DESKTOP = previousDesktop
+  }
+})
+
 test('createSettingsWindow uses normal app stacking instead of pet-level always-on-top', () => {
   const instances = []
   const { createSettingsWindow, createWindow } = loadWindowModule()

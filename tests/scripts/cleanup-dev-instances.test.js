@@ -58,3 +58,19 @@ test('runCleanupDevInstances sends SIGTERM only to selected old dev instances', 
   assert.deepEqual(result, { killedPids: [100] })
   assert.deepEqual(killed, [{ pid: 100, signal: 'SIGTERM' }])
 })
+
+test('runCleanupDevInstances skips cleanup during isolated automation runs', () => {
+  let readCalled = false
+
+  const result = runCleanupDevInstances({
+    projectRoot: '/repo/OpenPet',
+    env: { OPENPET_AUTOMATION_ISOLATION: '1' },
+    execFileSyncImpl: () => {
+      readCalled = true
+      return ''
+    }
+  })
+
+  assert.deepEqual(result, { killedPids: [] })
+  assert.equal(readCalled, false)
+})
