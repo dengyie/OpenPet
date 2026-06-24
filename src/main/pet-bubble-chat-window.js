@@ -4,10 +4,10 @@ const { IPC } = require('../shared/ipc-channels')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_BUBBLE_WIDTH = 340
-const DEFAULT_BUBBLE_HEIGHT = 156
+const DEFAULT_BUBBLE_HEIGHT = 260
 const MIN_BUBBLE_WIDTH = 240
 const MAX_BUBBLE_WIDTH = 380
-const MAX_BUBBLE_HEIGHT = 220
+const MAX_BUBBLE_HEIGHT = 280
 const BUBBLE_GAP = 8
 const WORK_AREA_MARGIN = 8
 const MIN_TTL_MS = 2200
