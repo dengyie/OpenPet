@@ -12,6 +12,7 @@ import type {
   ControlCenterSettings,
   CustomCursorSettings,
   ImageGenerationConfigViewState,
+  PetChatStateViewState,
   PetPacksViewState,
   ServiceLogEntry,
   ServiceStatusViewState,
@@ -126,6 +127,35 @@ export const defaultImageGenerationConfig = {
   apiKeyPreview: '',
   apiKeyLabel: 'Image API Key'
 } satisfies ImageGenerationConfigViewState
+
+export const defaultPetChatState = {
+  available: false,
+  visible: false,
+  hasWindow: false,
+  alwaysOnTop: true,
+  hasUserBounds: false,
+  bounds: null,
+  petPack: {
+    id: '',
+    displayName: ''
+  },
+  ai: {
+    enabled: false,
+    hasApiKey: false,
+    ready: false,
+    provider: '',
+    baseUrl: '',
+    model: '',
+    reason: '请先配置 AI Provider'
+  },
+  bubble: {
+    text: '',
+    source: '',
+    ttlMs: 0,
+    updatedAt: ''
+  },
+  messages: []
+} satisfies PetChatStateViewState
 
 export const defaultServiceStatus = {
   config: {
@@ -371,6 +401,34 @@ export const cloneChatMessages = (messages: Array<Partial<ChatMessage> | null | 
       }]
     })
 )
+
+export const clonePetChatState = (
+  state: Partial<PetChatStateViewState> | null | undefined
+): PetChatStateViewState => ({
+  ...defaultPetChatState,
+  ...(state || {}),
+  bounds: state?.bounds
+    ? {
+        x: Number(state.bounds.x || 0),
+        y: Number(state.bounds.y || 0),
+        width: Number(state.bounds.width || 0),
+        height: Number(state.bounds.height || 0)
+      }
+    : null,
+  petPack: {
+    ...defaultPetChatState.petPack,
+    ...(state?.petPack || {})
+  },
+  ai: {
+    ...defaultPetChatState.ai,
+    ...(state?.ai || {})
+  },
+  bubble: {
+    ...defaultPetChatState.bubble,
+    ...(state?.bubble || {})
+  },
+  messages: cloneChatMessages(state?.messages)
+})
 
 export const cloneAboutInfo = (info: Partial<AboutInfoViewState> | null | undefined): AboutInfoViewState => ({
   ...defaultAboutInfo,

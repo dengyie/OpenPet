@@ -20,7 +20,7 @@ textarea {
 
 .chat-shell {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   width: 100%;
   height: 100%;
   border: 1px solid rgba(101, 72, 45, 0.18);
@@ -86,6 +86,35 @@ textarea {
 .window-actions button.active {
   background: #2f2118;
   color: #fff8ef;
+}
+
+.bubble-strip {
+  display: grid;
+  gap: 4px;
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(196, 121, 39, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 245, 210, 0.84);
+  box-shadow: 0 10px 24px rgba(110, 72, 26, 0.08);
+}
+
+.bubble-strip[hidden] {
+  display: none;
+}
+
+.bubble-strip span {
+  color: rgba(77, 49, 24, 0.66);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bubble-strip p {
+  margin: 0;
+  color: #3d291d;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .messages {

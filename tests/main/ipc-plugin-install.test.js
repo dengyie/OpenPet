@@ -200,6 +200,7 @@ test('ai chat handler delegates to ai talk service when available', async () => 
       }
     },
     aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
       getConversation: () => [{ role: 'assistant', content: 'hello' }],
       chat: async (payload) => {
         talkCalls.push(payload)
@@ -217,6 +218,8 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   assert.deepEqual(sayCalls, [{ text: 'talk reply', source: 'ai' }])
   assert.equal(result.reply, 'talk reply')
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
+  assert.equal(result.bubble.text, 'talk reply')
+  assert.equal(result.state.petPack.id, 'legacy-cat')
   assert.deepEqual(history, [{ role: 'assistant', content: 'hello' }])
   assert.deepEqual(appLogs.map((entry) => entry.event), [
     'ai-chat.ipc.received',

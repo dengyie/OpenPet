@@ -885,16 +885,64 @@ button {
   max-width: 720px;
 }
 
-.chat-transcript {
+.chat-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fffaf2 0%, #f8efe2 100%);
+}
+
+.chat-meta-bar div {
   display: grid;
-  align-content: start;
+  gap: 3px;
+}
+
+.chat-meta-bar strong {
+  color: #2f2118;
+  font-size: 14px;
+}
+
+.chat-meta-bar span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.chat-bubble-preview {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 16px;
+  background: #fff8db;
+}
+
+.chat-bubble-preview strong {
+  color: #8a5a10;
+  font-size: 12px;
+}
+
+.chat-bubble-preview span {
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.chat-transcript {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-height: 180px;
-  max-height: 260px;
+  max-height: 320px;
   overflow: auto;
-  padding: 14px 0;
-  border-top: 1px solid #dde2e8;
-  border-bottom: 1px solid #dde2e8;
+  padding: 14px;
+  border: 1px solid #dde2e8;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fffdf8 0%, #f8fbff 100%);
 }
 
 .empty-chat {
@@ -904,21 +952,40 @@ button {
 
 .chat-message {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
+  gap: 6px;
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
   font-size: 13px;
   line-height: 1.5;
+  background: #ffffff;
 }
 
 .chat-message strong {
   color: #374151;
   font-weight: 650;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .chat-message span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  background: #2f2118;
+}
+
+.chat-message.user strong,
+.chat-message.user span {
+  color: #fff8ef;
+}
+
+.chat-message.assistant {
+  align-self: flex-start;
 }
 
 .chat-message.assistant span {
@@ -929,6 +996,11 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.chat-composer {
+  min-height: 72px;
+  max-height: 140px;
 }
 
 .behavior-rules {

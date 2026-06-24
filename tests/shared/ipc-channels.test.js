@@ -8,6 +8,7 @@ test('shared IPC contract exports stable frozen channel names', () => {
   assert.equal(IPC.PET_SHOW_CONTEXT_MENU, 'pet:show-context-menu')
   assert.equal(IPC.PET_MENU_COMMAND, 'pet:menu-command')
   assert.equal(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, 'pet:request-focus-for-cursor')
+  assert.equal(IPC.PET_CHAT_OPEN, 'pet-chat:open')
   assert.equal(IPC.PET_CHAT_GET_STATE, 'pet-chat:get-state')
   assert.equal(IPC.PET_CHAT_SET_ALWAYS_ON_TOP, 'pet-chat:set-always-on-top')
   assert.equal(IPC.PET_CHAT_SEND_MESSAGE, 'pet-chat:send-message')

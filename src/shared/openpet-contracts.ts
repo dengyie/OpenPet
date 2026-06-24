@@ -1773,6 +1773,42 @@ export interface ChatMessage {
   content: string
 }
 
+export interface PetChatBubbleViewState {
+  text: string
+  source: string
+  ttlMs: number
+  updatedAt: string
+}
+
+export interface PetChatStateViewState {
+  available: boolean
+  visible: boolean
+  hasWindow: boolean
+  alwaysOnTop: boolean
+  hasUserBounds: boolean
+  bounds: {
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null
+  petPack: {
+    id: string
+    displayName: string
+  }
+  ai: {
+    enabled: boolean
+    hasApiKey: boolean
+    ready: boolean
+    provider: string
+    baseUrl: string
+    model: string
+    reason: string
+  }
+  bubble: PetChatBubbleViewState
+  messages: ChatMessage[]
+}
+
 export interface AiSaveApiKeyResult {
   apiKeyRef: string
   hasApiKey: boolean
@@ -1851,13 +1887,17 @@ export interface ImageGenerationResult {
 }
 
 export interface AiChatRequest {
-  conversationId: string
+  conversationId?: string
   message: string
+  entrypoint?: string
 }
 
 export interface AiChatResponse {
+  conversationId?: string
   reply: string
   messages?: ChatMessage[]
+  bubble?: PetChatBubbleViewState
+  state?: PetChatStateViewState
   behavior?: Partial<AiBehaviorDecision>
   action?: {
     actionId?: string
@@ -2297,6 +2337,9 @@ export interface ControlCenterApi {
   checkImageGenerationHealth: (payload?: ImageGenerationHealthCheckRequest) => Promise<ImageGenerationHealthCheckResult>
   getAiConversation: (conversationId: string) => Promise<ChatMessage[]>
   chat: (payload: AiChatRequest) => Promise<AiChatResponse>
+  getPetChatState: () => Promise<PetChatStateViewState>
+  openPetChatWindow: () => Promise<PetChatStateViewState>
+  sendPetChatMessage: (payload: AiChatRequest) => Promise<AiChatResponse>
   getAiBehavior: () => Promise<AiBehaviorConfig>
   saveAiBehavior: (config: AiBehaviorConfig) => Promise<AiBehaviorConfig>
   dryRunAiBehavior: (payload: AiBehaviorDryRunRequest) => Promise<AiBehaviorResult>

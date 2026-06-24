@@ -21,6 +21,7 @@ const IPC = Object.freeze({
   PET_SHOW_CONTEXT_MENU: 'pet:show-context-menu',
   PET_MENU_COMMAND: 'pet:menu-command',
   PET_QUIT: 'pet:quit',
+  PET_CHAT_OPEN: 'pet-chat:open',
   PET_CHAT_GET_STATE: 'pet-chat:get-state',
   PET_CHAT_HIDE: 'pet-chat:hide',
   PET_CHAT_SET_ALWAYS_ON_TOP: 'pet-chat:set-always-on-top',
