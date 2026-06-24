@@ -145,12 +145,15 @@ test('pet renderer quit records user intent before quitting', () => {
 test('pet cursor focus request focuses the source pet window', () => {
   const ipcMain = createIpcMainStub()
   const logs = []
+  const appFocusCalls = []
+  let moveTopCalls = 0
   let restoreCalls = 0
   let focusCalls = 0
   const petWindow = {
     isDestroyed: () => false,
     isMinimized: () => true,
     restore: () => { restoreCalls += 1 },
+    moveTop: () => { moveTopCalls += 1 },
     focus: () => { focusCalls += 1 },
     webContents: {}
   }
@@ -158,12 +161,17 @@ test('pet cursor focus request focuses the source pet window', () => {
   registerIpcHandlers(createRequiredServices({
     ipcMainService: ipcMain,
     petWindow,
-    appLogService: { record: (entry) => logs.push(entry) }
+    appLogService: { record: (entry) => logs.push(entry) },
+    appService: {
+      focus: (options) => appFocusCalls.push(options)
+    }
   }))
 
   ipcMain.listeners.get(IPC.PET_REQUEST_FOCUS_FOR_CURSOR)({ sender: petWindow.webContents })
 
   assert.equal(restoreCalls, 1)
+  assert.equal(moveTopCalls, 1)
+  assert.deepEqual(appFocusCalls, [{ steal: true }])
   assert.equal(focusCalls, 1)
   assert.deepEqual(logs.at(-1), {
     scope: 'pet-window',

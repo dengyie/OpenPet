@@ -405,18 +405,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     win.setPosition(next.x, next.y)
   })
 
-  ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
-    if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
-    else win.setIgnoreMouseEvents(false)
-  })
-
-  ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
-    recordAppLog(entry)
-  })
-
   ipcMainService.on(IPC.PET_DRAG_ENDED, (event) => {
     if (!petMovementPolicy) return
     const win = browserWindowService.fromWebContents(event.sender)
@@ -451,6 +439,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     if (win.contextMenuWindow && !win.contextMenuWindow.isDestroyed?.()) return
     if (typeof win.isFocused === 'function' && win.isFocused()) return
     if (typeof win.isMinimized === 'function' && win.isMinimized() && typeof win.restore === 'function') win.restore()
+    win.moveTop?.()
+    appService.focus?.({ steal: true })
     win.focus()
     recordAppLog({
       scope: 'pet-window',
