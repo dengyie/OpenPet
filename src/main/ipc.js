@@ -44,6 +44,12 @@ const createPetRendererSettings = (settings = {}) => {
       enabled: Boolean(settings.petBehavior?.home?.enabled),
       radius: settings.petBehavior?.home?.radius || 'medium',
       hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
+    },
+    petBubbleChat: {
+      enabled: settings.petBubbleChat?.enabled !== false,
+      autoPopup: settings.petBubbleChat?.autoPopup !== false,
+      autoHide: settings.petBubbleChat?.autoHide !== false,
+      pinOnInteraction: settings.petBubbleChat?.pinOnInteraction !== false
     }
   }
 }
@@ -68,6 +74,14 @@ const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings
     selectedCursorId: cursorState.selectedCursorId,
     customCursors: cursorState.customCursors,
     customCursor: cursorState.customCursor,
+    petBubbleChat: {
+      ...(currentSettings.petBubbleChat || {}),
+      ...(nextSettings.petBubbleChat || {}),
+      enabled: nextSettings.petBubbleChat?.enabled ?? currentSettings.petBubbleChat?.enabled ?? true,
+      autoPopup: nextSettings.petBubbleChat?.autoPopup ?? currentSettings.petBubbleChat?.autoPopup ?? true,
+      autoHide: nextSettings.petBubbleChat?.autoHide ?? currentSettings.petBubbleChat?.autoHide ?? true,
+      pinOnInteraction: nextSettings.petBubbleChat?.pinOnInteraction ?? currentSettings.petBubbleChat?.pinOnInteraction ?? true
+    },
     petBehavior: {
       ...(currentSettings.petBehavior || {}),
       grounded: Boolean(nextSettings.grounded),
@@ -187,7 +201,7 @@ const sanitizeChatMessages = (messages = []) => (
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
   let lastPetBubble = createEmptyPetBubble()
@@ -207,6 +221,40 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       appLogService?.record?.(entry)
     } catch (_) {
       // Logging must never break the user action that triggered it.
+    }
+  }
+
+  const getActivePetPackId = () => {
+    try {
+      const manifest = petPackService?.getActivePetPack?.()?.manifest || {}
+      return normalizeMessageText(manifest.id) || 'legacy-cat'
+    } catch (_) {
+      return 'legacy-cat'
+    }
+  }
+
+  const recordPetUtterance = (payload = {}) => {
+    if (!petUtteranceLogService?.record) return null
+    try {
+      return petUtteranceLogService.record({
+        petPackId: getActivePetPackId(),
+        text: payload.text || payload.message || '',
+        source: payload.source || '',
+        ttlMs: payload.ttlMs
+      })
+    } catch (error) {
+      recordAppLog({
+        scope: 'pet-utterance',
+        level: 'error',
+        actor: 'system',
+        event: 'pet-utterance.record.failed',
+        message: 'Pet utterance recording failed',
+        details: {
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: sanitizeDiagnosticText(error?.message)
+        }
+      })
+      return null
     }
   }
 
@@ -399,6 +447,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   }
 
   petService.onSay?.((payload) => {
+    recordPetUtterance(payload)
     capturePetBubble(payload)
     sendToPetWindow(getPetWindow, IPC.PET_SAY, payload)
   })
@@ -408,6 +457,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   petService.onEvent?.((payload) => {
     if (payload?.message) {
       const bubble = { text: payload.message, ttlMs: payload.ttlMs, source: payload.source }
+      recordPetUtterance(bubble)
       capturePetBubble(bubble)
       sendToPetWindow(getPetWindow, IPC.PET_SAY, bubble)
     }

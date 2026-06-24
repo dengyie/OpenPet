@@ -15,6 +15,8 @@ const FALLBACK_PERSONA = Object.freeze({
 const MAX_CONTEXT_MESSAGES = 20
 const MAX_MEMORY_CONTEXT_ITEMS = 8
 const MAX_USER_MESSAGE_CHARS = 4000
+const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
+const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '')
 
@@ -87,6 +89,20 @@ const compileMemoryContextPrompt = (memories = []) => {
     return `${index + 1}. [${scope}] ${memory.text}${tags}`
   })
   return ['# Relevant Memories', ...lines].join('\n')
+}
+
+const compileRecentPetActivityPrompt = (utterances = []) => {
+  if (!Array.isArray(utterances) || !utterances.length) return ''
+  const lines = utterances.map((utterance) => {
+    const source = normalizeString(utterance.source) || 'pet'
+    return `- [${source}] ${normalizeString(utterance.text)}`
+  }).filter((line) => line.length > 4)
+  if (!lines.length) return ''
+  return [
+    '# Recent pet activity outside the main chat',
+    'Use this as lightweight recent context. Do not treat it as durable memory unless the user explicitly continues the topic.',
+    ...lines
+  ].join('\n')
 }
 
 const buildMemoryExtractionMessages = ({ userMessage, assistantReply, petPackId, persona }) => [
@@ -200,7 +216,7 @@ const splitTalkConversationId = (conversationId) => {
   return { sessionId: match[1], conversationId: match[2] }
 }
 
-const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogService } = {}) => {
+const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService = null } = {}) => {
   if (!aiService) throw new Error('aiService is required')
   if (!aiTalkStore) throw new Error('aiTalkStore is required')
   if (!petPackService) throw new Error('petPackService is required')
@@ -300,6 +316,24 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
   const getMemoryContext = (petPackId) => {
     if (typeof aiTalkStore.listMemories !== 'function') return []
     return aiTalkStore.listMemories({ petPackId, limit: MAX_MEMORY_CONTEXT_ITEMS })
+  }
+
+  const getRecentPetActivity = (petPackId) => {
+    if (typeof petUtteranceLogService?.listRecent === 'function') {
+      return petUtteranceLogService.listRecent({
+        petPackId,
+        limit: MAX_RECENT_PET_ACTIVITY_ITEMS,
+        maxChars: MAX_RECENT_PET_ACTIVITY_CHARS
+      })
+    }
+    if (typeof aiTalkStore.listRecentPetUtterances === 'function') {
+      return aiTalkStore.listRecentPetUtterances({
+        petPackId,
+        limit: MAX_RECENT_PET_ACTIVITY_ITEMS,
+        maxChars: MAX_RECENT_PET_ACTIVITY_CHARS
+      })
+    }
+    return []
   }
 
   const listRecentMemoryJobs = (petPackId) => {
@@ -478,9 +512,12 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         const userMessage = { role: 'user', content }
         const memoryContext = getMemoryContext(petPackId)
         const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
+        const recentPetActivity = getRecentPetActivity(petPackId)
+        const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
         const messages = [
           { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
           ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
+          ...(recentPetActivityPrompt ? [{ role: 'system', content: recentPetActivityPrompt }] : []),
           ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
           userMessage
         ]
@@ -493,10 +530,23 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           historyCount: history.length,
           messagesCount: messages.length,
           memoryContextCount: memoryContext.length,
+          recentPetActivityCount: recentPetActivity.length,
           toolsCount: tools.length,
           memoryEnabled: config.memory?.enabled === true,
           behaviorEnabled: config.behavior?.enabled === true
         })
+        if (recentPetActivity.length) {
+          recordLog({
+            level: 'info',
+            event: 'ai-talk.pet-activity.injected',
+            message: 'AI talk recent pet activity injected',
+            details: {
+              petPackId,
+              conversationId: conversationPublicId,
+              activityCount: recentPetActivity.length
+            }
+          })
+        }
         recordLog({
           level: 'info',
           event: 'ai-talk.chat.started',

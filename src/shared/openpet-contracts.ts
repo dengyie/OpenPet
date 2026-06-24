@@ -16,6 +16,14 @@ export interface ControlCenterSettings {
   customCursors: CustomCursorRecord[]
   grounded: boolean
   home: ControlCenterPetHomeSettings
+  petBubbleChat: PetBubbleChatSettings
+}
+
+export interface PetBubbleChatSettings {
+  enabled: boolean
+  autoPopup: boolean
+  autoHide: boolean
+  pinOnInteraction: boolean
 }
 
 export interface CustomCursorSettings {

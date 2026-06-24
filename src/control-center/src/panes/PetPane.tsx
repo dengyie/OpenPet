@@ -117,6 +117,17 @@ export function PetPane({
           options={bubbleDurationOptions}
           onChange={(bubbleDuration) => onChange({ bubbleDuration })}
         />
+        <div className="field-row">
+          <div>
+            <div className="field-label">头顶轻聊天 Popup</div>
+            <div className="field-note">宠物说话时在头顶显示可回复的小弹窗，不影响普通气泡和完整聊天窗。</div>
+          </div>
+          <Toggle
+            ariaLabel="Enable pet bubble chat popup"
+            checked={settings.petBubbleChat.enabled}
+            onChange={(enabled) => onChange({ petBubbleChat: { ...settings.petBubbleChat, enabled } })}
+          />
+        </div>
         <SegmentedControl
           label="菜单位置"
           value={settings.menuPosition}

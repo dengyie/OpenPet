@@ -68,6 +68,12 @@ const defaultSettings = {
     hasUserBounds: false,
     alwaysOnTop: true
   },
+  petBubbleChat: {
+    enabled: true,
+    autoPopup: true,
+    autoHide: true,
+    pinOnInteraction: true
+  },
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -168,6 +174,14 @@ const mergeSettings = (settings = {}) => ({
       : defaultSettings.desktopChat.bounds,
     hasUserBounds: Boolean(settings.desktopChat?.hasUserBounds),
     alwaysOnTop: settings.desktopChat?.alwaysOnTop !== false
+  },
+  petBubbleChat: {
+    ...defaultSettings.petBubbleChat,
+    ...(isPlainObject(settings.petBubbleChat) ? settings.petBubbleChat : {}),
+    enabled: settings.petBubbleChat?.enabled !== false,
+    autoPopup: settings.petBubbleChat?.autoPopup !== false,
+    autoHide: settings.petBubbleChat?.autoHide !== false,
+    pinOnInteraction: settings.petBubbleChat?.pinOnInteraction !== false
   },
   models: {
     ...defaultSettings.models,
