@@ -2025,6 +2025,8 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /Test saved image Provider/)
   assert.match(html, /Prompt snapshot/)
   assert.match(html, /Next Step/)
+  assert.match(html, /Wizard Steps/)
+  assert.match(html, /id="wizard-steps-panel"/)
   assert.match(html, /id="run-logs"/)
   assert.equal(html.includes('safe fixture output for import'), false)
   assert.equal(html.includes('apiKey'), false)
@@ -2259,6 +2261,14 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(draft.run.wizardState.phase, 'needs-input')
     assert.match(draft.run.wizardState.summary, /Answer the pending follow-up/i)
     assert.match(draft.run.wizardState.prompt, /原地打滚/)
+    assert.deepEqual(draft.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:current',
+      'confirm:upcoming',
+      'generate:upcoming',
+      'review:upcoming',
+      'import:upcoming'
+    ])
     assert.equal(draft.run.wizardState.nextStep.label, 'Answer follow-up')
     assert.equal(draft.run.wizardState.nextStep.blocked, false)
     assert.equal(earlyApproval.response.status, 400)
@@ -2269,18 +2279,42 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(answered.run.generationTask.questions.length, 0)
     assert.equal(answered.run.wizardState.phase, 'ready-for-confirmation')
     assert.match(answered.run.wizardState.summary, /Confirm the drafted task/i)
+    assert.deepEqual(answered.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:current',
+      'generate:upcoming',
+      'review:upcoming',
+      'import:upcoming'
+    ])
     assert.equal(answered.run.wizardState.nextStep.label, 'Confirm task')
     assert.equal(answered.run.wizardState.nextStep.blocked, false)
     assert.equal(confirmed.ok, true)
     assert.equal(confirmed.run.taskStatus, 'confirmed')
     assert.equal(confirmed.run.wizardState.phase, 'ready-to-generate')
     assert.match(confirmed.run.wizardState.summary, /Run Generate action/i)
+    assert.deepEqual(confirmed.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:complete',
+      'generate:current',
+      'review:upcoming',
+      'import:upcoming'
+    ])
     assert.equal(confirmed.run.wizardState.nextStep.label, 'Generate action')
     assert.equal(confirmed.run.wizardState.nextStep.blocked, false)
     assert.equal(generated.ok, true)
     assert.equal(generated.run.status, 'ready_for_review')
     assert.equal(generated.run.wizardState.phase, 'ready-for-review')
     assert.match(generated.run.wizardState.summary, /Review QA artifacts/i)
+    assert.deepEqual(generated.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:complete',
+      'generate:complete',
+      'review:current',
+      'import:upcoming'
+    ])
     assert.equal(generated.run.wizardState.nextStep.label, 'Approve run')
     assert.equal(generated.run.wizardState.nextStep.blocked, false)
     assert.equal(generated.run.artifacts.actionTaskQa.endsWith('action-generation-task.json'), true)
@@ -2292,6 +2326,14 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(approved.run.currentStep, 'approved')
     assert.equal(approved.run.wizardState.phase, 'approved')
     assert.match(approved.run.wizardState.summary, /Run the host-owned import command/i)
+    assert.deepEqual(approved.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:complete',
+      'generate:complete',
+      'review:complete',
+      'import:blocked'
+    ])
     assert.equal(approved.run.wizardState.nextStep.label, 'Import Approved Pet')
     assert.equal(approved.run.wizardState.nextStep.blocked, true)
     assert.match(approved.run.wizardState.nextStep.reason, /Control Center -> Plugins/i)
@@ -2548,6 +2590,14 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedDetail.run.workflowGuidance.import.triggerProposalStatus, 'submitted')
     assert.match(importedDetail.run.workflowGuidance.import.triggerProposalSummary, /Trigger Proposal Inbox/i)
     assert.equal(importedDetail.run.wizardState.phase, 'imported')
+    assert.deepEqual(importedDetail.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:complete',
+      'generate:complete',
+      'review:complete',
+      'import:complete'
+    ])
     assert.equal(importedDetail.run.wizardState.nextStep.label, 'Review imported result')
     assert.equal(importedDetail.run.wizardState.nextStep.blocked, true)
     assert.equal(importedSerialized.includes('127.0.0.1:7860'), false)
@@ -2662,6 +2712,14 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
     assert.equal(failed.body.run.wizardState.nextStep.label, 'Retry generation')
     assert.equal(failed.body.run.wizardState.nextStep.blocked, false)
+    assert.deepEqual(failed.body.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:complete',
+      'generate:blocked',
+      'review:upcoming',
+      'import:upcoming'
+    ])
     assert.equal(failed.body.run.recovery.backend.state, 'failed')
     assert.match(failed.body.run.recovery.backend.message, /Provider queue overloaded/)
     assert.equal(retried.response.status, 200)
@@ -2670,6 +2728,14 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(retried.body.run.status, 'ready_for_review')
     assert.equal(retried.body.run.recovery.canRetryGeneration, false)
     assert.equal(retried.body.run.wizardState.nextStep.label, 'Approve run')
+    assert.deepEqual(retried.body.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
+      'draft:complete',
+      'follow-up:complete',
+      'confirm:complete',
+      'generate:complete',
+      'review:current',
+      'import:upcoming'
+    ])
     assert.equal(generationAttempts, 2)
     assert.deepEqual(logs.logs.map((entry) => entry.event), [
       'task.drafted',

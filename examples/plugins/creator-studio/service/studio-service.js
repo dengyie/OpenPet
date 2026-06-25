@@ -179,6 +179,72 @@ const createPublicRecovery = ({ dataDir, run }) => {
   }
 }
 
+const WIZARD_STEPS = [
+  { key: 'draft', label: 'Draft' },
+  { key: 'follow-up', label: 'Follow-up' },
+  { key: 'confirm', label: 'Confirm' },
+  { key: 'generate', label: 'Generate' },
+  { key: 'review', label: 'Review' },
+  { key: 'import', label: 'Import' }
+]
+
+const createWizardSteps = (phase) => {
+  const statusByKey = {
+    draft: 'upcoming',
+    'follow-up': 'upcoming',
+    confirm: 'upcoming',
+    generate: 'upcoming',
+    review: 'upcoming',
+    import: 'upcoming'
+  }
+
+  if (phase === 'draft') {
+    statusByKey.draft = 'current'
+  } else if (phase === 'needs-input') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'current'
+  } else if (phase === 'ready-for-confirmation') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'complete'
+    statusByKey.confirm = 'current'
+  } else if (phase === 'ready-to-generate') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'complete'
+    statusByKey.confirm = 'complete'
+    statusByKey.generate = 'current'
+  } else if (phase === 'failed') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'complete'
+    statusByKey.confirm = 'complete'
+    statusByKey.generate = 'blocked'
+  } else if (phase === 'ready-for-review') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'complete'
+    statusByKey.confirm = 'complete'
+    statusByKey.generate = 'complete'
+    statusByKey.review = 'current'
+  } else if (phase === 'approved') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'complete'
+    statusByKey.confirm = 'complete'
+    statusByKey.generate = 'complete'
+    statusByKey.review = 'complete'
+    statusByKey.import = 'blocked'
+  } else if (phase === 'imported') {
+    statusByKey.draft = 'complete'
+    statusByKey['follow-up'] = 'complete'
+    statusByKey.confirm = 'complete'
+    statusByKey.generate = 'complete'
+    statusByKey.review = 'complete'
+    statusByKey.import = 'complete'
+  }
+
+  return WIZARD_STEPS.map((step) => ({
+    ...step,
+    status: statusByKey[step.key] || 'upcoming'
+  }))
+}
+
 const createWizardState = ({ dataDir, run }) => {
   const backend = String(run.backend || run.input?.backend || 'fixture')
   const prompt = run.input?.originalPrompt || run.input?.prompt || ''
@@ -238,6 +304,7 @@ const createWizardState = ({ dataDir, run }) => {
     currentStep: createPublicText({ dataDir, value: run.currentStep || 'draft' }),
     reviewStatus: createPublicText({ dataDir, value: run.reviewStatus || 'pending' }),
     importStatus: createPublicText({ dataDir, value: run.importStatus || 'not-imported' }),
+    steps: createWizardSteps(phase),
     nextStep: {
       label: createPublicText({ dataDir, value: nextStepLabel }),
       reason: createPublicText({ dataDir, value: nextStepReason }),

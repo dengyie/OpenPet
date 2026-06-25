@@ -201,6 +201,72 @@
         margin-top: 10px;
       }
 
+      .wizard-steps {
+        display: grid;
+        gap: 10px;
+      }
+
+      .wizard-step {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fffef8;
+        padding: 10px 12px;
+      }
+
+      .wizard-step-badge {
+        display: inline-grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: rgba(39, 63, 67, 0.1);
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .wizard-step.complete {
+        border-color: rgba(40, 123, 84, 0.32);
+        background: rgba(237, 243, 238, 0.88);
+      }
+
+      .wizard-step.complete .wizard-step-badge {
+        background: var(--good);
+        color: #fff;
+      }
+
+      .wizard-step.current {
+        border-color: rgba(216, 111, 56, 0.42);
+        box-shadow: inset 0 0 0 1px rgba(216, 111, 56, 0.18);
+      }
+
+      .wizard-step.current .wizard-step-badge {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .wizard-step.blocked {
+        border-color: rgba(170, 61, 61, 0.3);
+        background: rgba(255, 240, 232, 0.86);
+      }
+
+      .wizard-step.blocked .wizard-step-badge {
+        background: var(--bad);
+        color: #fff;
+      }
+
+      .wizard-step-meta {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
       .contact-sheet {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -314,6 +380,10 @@
           <section>
             <h2>Run Snapshot</h2>
             <section id="run-snapshot-panel">Prompt snapshot and wizard state appear after you draft or load a run.</section>
+          </section>
+          <section>
+            <h2>Wizard Steps</h2>
+            <section id="wizard-steps-panel">Draft a task to see the workflow rail.</section>
           </section>
           <section>
             <h2>Next Step</h2>
@@ -555,6 +625,25 @@
         ].join('')
       }
 
+      const renderWizardSteps = (run) => {
+        const snapshot = run?.wizardState || {}
+        const steps = Array.isArray(snapshot.steps) ? snapshot.steps : []
+        if (!steps.length) return 'Draft a task to see the workflow rail.'
+        return [
+          '<div class="wizard-steps">',
+          ...steps.map((step, index) => (
+            `<div class="wizard-step ${escapeHtml(step.status || 'upcoming')}">` +
+            `<span class="wizard-step-badge">${index + 1}</span>` +
+            '<div>' +
+            `<strong>${escapeHtml(step.label || step.key || `Step ${index + 1}`)}</strong>` +
+            `<div class="wizard-step-meta">${escapeHtml(step.status || 'upcoming')}</div>` +
+            '</div>' +
+            '</div>'
+          )),
+          '</div>'
+        ].join('')
+      }
+
       const renderNextStep = (run) => {
         const snapshot = run?.wizardState || {}
         const nextStep = snapshot.nextStep || {}
@@ -573,6 +662,7 @@
         const run = state.run
         if (!run?.generationTask) {
           $('run-snapshot-panel').textContent = 'Prompt snapshot and wizard state appear after you draft or load a run.'
+          $('wizard-steps-panel').textContent = 'Draft a task to see the workflow rail.'
           $('next-step-panel').textContent = 'Draft a task to see the next recommended action.'
           $('task-preview').textContent = 'No task drafted yet.'
           $('question-panel').textContent = 'No pending question.'
@@ -593,6 +683,7 @@
         const action = run.generationTask.actions[0]
         const question = run.generationTask.questions[0]
         $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
+        $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
         $('next-step-panel').innerHTML = renderNextStep(run)
         $('task-preview').innerHTML = [
           `<strong>${escapeHtml(action.name)}</strong>`,
