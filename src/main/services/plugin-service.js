@@ -13,6 +13,7 @@ const { createPluginCommandRuntimeManager } = require('./plugin-command-runtime-
 const { createPluginCommandBridgeService } = require('./plugin-command-bridge-service')
 const { createPluginSetupRuntimeManager } = require('./plugin-setup-runtime-manager')
 const { createPluginServiceRuntimeManager } = require('./plugin-service-runtime-manager')
+const { createPluginServiceStopController } = require('./plugin-service-stop-controller')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -947,72 +948,18 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     stopRuntimeProcess: stopRuntimeProcessWithFallback
   })
 
-  const clearServiceStopTimer = (runtime) => {
-    if (!runtime?.stopTimer) return
-    clearTimeout(runtime.stopTimer)
-    runtime.stopTimer = null
-  }
-
-  const stopPluginServiceRuntime = (pluginId, serviceId, runtime, { log = true } = {}) => {
-    if (!runtime || runtime.status !== 'running') return runtime
-    runtime.status = 'stopping'
-    runtime.stoppedAt = new Date().toISOString()
-    runtime.error = ''
-    let stopped = false
-    try {
-      stopServiceProcess(runtime, 'SIGTERM')
-      stopped = true
-    } catch (error) {
-      runtime.error = error.message || 'Plugin service stop failed'
-      runtime.status = 'failed'
-    }
-    clearServiceStopTimer(runtime)
-    clearServiceHealthSchedule(runtime)
-    if (runtime.status === 'stopping') {
-      const gracePeriodMs = Number.isFinite(Number(runtime.stopGracePeriodMs))
-        ? Math.max(0, Number(runtime.stopGracePeriodMs))
-        : PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS
-      const requestForceStop = () => {
-        if (runtime.status !== 'stopping') return
-        try {
-          forceStopServiceProcess(runtime, 'SIGKILL')
-          runtime.error = 'Service did not stop before force kill'
-          appendLog({
-            pluginId,
-            commandId: `service:${serviceId}`,
-            level: 'error',
-            message: 'Service stop grace period expired; force stop requested'
-          })
-        } catch (error) {
-          runtime.error = error.message || 'Plugin service force stop failed'
-          runtime.status = 'failed'
-          appendLog({
-            pluginId,
-            commandId: `service:${serviceId}`,
-            level: 'error',
-            message: runtime.error
-          })
-        }
-      }
-      if (gracePeriodMs === 0) requestForceStop()
-      else {
-        runtime.stopTimer = setTimeout(requestForceStop, gracePeriodMs)
-        runtime.stopTimer.unref?.()
-      }
-    }
-    if (log) {
-      appendLog({
-        pluginId,
-        commandId: `service:${serviceId}`,
-        level: stopped ? 'info' : 'error',
-        message: stopped ? 'Service stop requested' : 'Service stop failed'
-      })
-    }
-    return runtime
-  }
+  const stopController = createPluginServiceStopController({
+    appendLog,
+    killServiceProcess,
+    signalServiceProcessTree,
+    setStopTimer: setTimeout,
+    clearStopTimer: clearTimeout,
+    clearHealthSchedule: clearServiceHealthSchedule,
+    fallbackGracePeriodMs: PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS
+  })
 
   const serviceRuntimeManager = createPluginServiceRuntimeManager({
-    stopRuntime: stopPluginServiceRuntime
+    stopRuntime: stopController.stopRuntime
   })
 
   const stopPluginServices = (pluginId, options = {}) => serviceRuntimeManager.stopPlugin(pluginId, options)
@@ -1560,15 +1507,16 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         if (message) appendLog({ pluginId, commandId, level: 'error', message: `Service stderr: ${message}`.slice(0, 500) })
       })
       child.on?.('error', (error) => {
-        clearServiceHealthSchedule(runtime)
+        stopController.clearStopTimer(runtime)
+        stopController.clearHealthSchedule(runtime)
         runtime.status = 'failed'
         runtime.error = error.message || 'Plugin service failed'
         runtime.stoppedAt = new Date().toISOString()
         appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
       })
       child.on?.('exit', (code, signal) => {
-        clearServiceStopTimer(runtime)
-        clearServiceHealthSchedule(runtime)
+        stopController.clearStopTimer(runtime)
+        stopController.clearHealthSchedule(runtime)
         const stoppedByRequest = runtime.status === 'stopping'
         let forcedStop = false
         if (runtime.status === 'stopping') {
@@ -1622,7 +1570,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const serviceEntry = getServiceEntry(plugin, serviceId)
     const runtime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
     if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')
-    stopPluginServiceRuntime(pluginId, serviceId, runtime)
+    stopController.stopRuntime(pluginId, serviceId, runtime)
     return {
       ok: true,
       pluginId,
