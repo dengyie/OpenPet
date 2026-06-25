@@ -179,6 +179,49 @@ const createPublicRecovery = ({ dataDir, run }) => {
   }
 }
 
+const createWizardState = ({ dataDir, run }) => {
+  const backend = String(run.backend || run.input?.backend || 'fixture')
+  const prompt = run.input?.originalPrompt || run.input?.prompt || ''
+  const taskStatus = String(run.taskStatus || '')
+  const status = String(run.status || 'draft')
+  let phase = 'draft'
+  let summary = 'Draft a task to create a run snapshot.'
+
+  if (taskStatus === 'needs_input') {
+    phase = 'needs-input'
+    summary = 'Answer the pending follow-up question to unlock task confirmation.'
+  } else if (taskStatus === 'ready_for_confirmation') {
+    phase = 'ready-for-confirmation'
+    summary = 'Confirm the drafted task before generation.'
+  } else if (status === 'failed') {
+    phase = 'failed'
+    summary = 'Retry generation on this same run after reviewing the failure details.'
+  } else if (status === 'ready_for_review') {
+    phase = 'ready-for-review'
+    summary = 'Review QA artifacts and approve the run for host-owned import.'
+  } else if (status === 'approved') {
+    phase = 'approved'
+    summary = 'Run the host-owned import command from Control Center -> Plugins.'
+  } else if (status === 'imported') {
+    phase = 'imported'
+    summary = 'Host-owned import is complete. Review the imported result inside OpenPet.'
+  } else if (taskStatus === 'confirmed') {
+    phase = 'ready-to-generate'
+    summary = 'Run Generate action to start host-owned generation.'
+  }
+
+  return {
+    phase: createPublicText({ dataDir, value: phase }),
+    summary: createPublicText({ dataDir, value: summary }),
+    prompt: createPublicText({ dataDir, value: prompt }),
+    backend: createPublicText({ dataDir, value: backend }),
+    taskStatus: createPublicText({ dataDir, value: taskStatus || 'unknown' }),
+    currentStep: createPublicText({ dataDir, value: run.currentStep || 'draft' }),
+    reviewStatus: createPublicText({ dataDir, value: run.reviewStatus || 'pending' }),
+    importStatus: createPublicText({ dataDir, value: run.importStatus || 'not-imported' })
+  }
+}
+
 const createPublicTextList = ({ dataDir, values = [] }) => (
   Array.isArray(values)
     ? values.map((value) => createPublicText({ dataDir, value })).filter(Boolean)
@@ -308,6 +351,7 @@ const createPublicRun = ({ dataDir, run }) => {
     artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
     developerPrompt: createDeveloperPrompt({ dataDir, run }),
     recovery: createPublicRecovery({ dataDir, run }),
+    wizardState: createWizardState({ dataDir, run }),
     workflowGuidance: createWorkflowGuidance({ dataDir, run })
   }
 }

@@ -312,6 +312,10 @@
 
         <aside class="panel stack">
           <section>
+            <h2>Run Snapshot</h2>
+            <section id="run-snapshot-panel">Prompt snapshot and wizard state appear after you draft or load a run.</section>
+          </section>
+          <section>
             <h2>Task Preview</h2>
             <section id="task-preview">No task drafted yet.</section>
           </section>
@@ -530,9 +534,27 @@
         ].join('')
       }
 
+      const renderRunSnapshot = (run) => {
+        const snapshot = run?.wizardState || {}
+        const prompt = snapshot.prompt || run?.input?.originalPrompt || run?.input?.prompt || ''
+        return [
+          '<div class="notice">',
+          `<strong>${escapeHtml(snapshot.summary || 'Draft a task to create a run snapshot.')}</strong>`,
+          '<div class="meta-list">',
+          `<span>Phase: ${escapeHtml(snapshot.phase || 'draft')}</span>`,
+          `<span>Backend: ${escapeHtml(snapshot.backend || run?.backend || 'fixture')}</span>`,
+          `<span>Task: ${escapeHtml(snapshot.taskStatus || run?.taskStatus || 'unknown')} / Step: ${escapeHtml(snapshot.currentStep || run?.currentStep || 'draft')}</span>`,
+          `<span>Review: ${escapeHtml(snapshot.reviewStatus || run?.reviewStatus || 'pending')} / Import: ${escapeHtml(snapshot.importStatus || run?.importStatus || 'not-imported')}</span>`,
+          '</div>',
+          `<pre class="prompt-preview">${escapeHtml(prompt || 'No prompt snapshot yet.')}</pre>`,
+          '</div>'
+        ].join('')
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
+          $('run-snapshot-panel').textContent = 'Prompt snapshot and wizard state appear after you draft or load a run.'
           $('task-preview').textContent = 'No task drafted yet.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
@@ -551,6 +573,7 @@
         }
         const action = run.generationTask.actions[0]
         const question = run.generationTask.questions[0]
+        $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
         $('task-preview').innerHTML = [
           `<strong>${escapeHtml(action.name)}</strong>`,
           `<p>Mode: ${escapeHtml(run.generationTask.mode)} / Frames: ${escapeHtml(action.frameCount)} / Loop: ${action.loop ? 'yes' : 'no'}</p>`,
