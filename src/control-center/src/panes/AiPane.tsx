@@ -37,6 +37,23 @@ const imageProviderPresets = [
   }
 ] as const
 
+const chatProviderPresets = [
+  {
+    id: 'openai',
+    title: 'OpenAI 官方',
+    description: '使用官方 OpenAI 聊天接口；API Key 保存在主进程。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini'
+  },
+  {
+    id: 'local-openai-compatible',
+    title: '本地/代理 OpenAI-compatible',
+    description: '适合本机网关、反代或局域网模型服务；本地和云端共用同一套 Provider 配置。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-4o-mini'
+  }
+] as const
+
 const describeImageModelCompatibility = (model: string) => {
   const normalizedModel = String(model || '').trim()
   if (!normalizedModel) {
@@ -347,6 +364,11 @@ export function AiPane({
   ].filter(Boolean).join(' · ')
   const imageTargetSummary = `${activeImageGenerationConfig.provider} · ${activeImageGenerationConfig.baseUrl} · ${activeImageGenerationConfig.model} · ${activeImageGenerationConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
   const imageModelCompatibility = describeImageModelCompatibility(imageGenerationConfig.model)
+  const applyChatProviderPreset = (preset: typeof chatProviderPresets[number]) => onChange({
+    provider: 'openai-compatible',
+    baseUrl: preset.baseUrl,
+    model: preset.model
+  })
   const applyImageProviderPreset = (preset: typeof imageProviderPresets[number]) => onChangeImageGeneration({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
@@ -420,6 +442,28 @@ export function AiPane({
               onChange={(event) => onChange({ model: event.target.value })}
             />
           </label>
+
+          <div className="field-row tall">
+            <div>
+              <div className="field-label">聊天 Provider 预设</div>
+              <div className="field-note">预设只填充 Base URL / Model；不会读取或覆盖 API Key。</div>
+            </div>
+            <div className="provider-preset-grid">
+              {chatProviderPresets.map((preset) => (
+                <button
+                  type="button"
+                  key={preset.id}
+                  className="provider-preset-card"
+                  onClick={() => applyChatProviderPreset(preset)}
+                  disabled={saving}
+                >
+                  <strong>{preset.title}</strong>
+                  <span>{preset.description}</span>
+                  <code>{preset.baseUrl}</code>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="field-row">
             <div>

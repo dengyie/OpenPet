@@ -404,6 +404,24 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })).toContainText('已保存')
   })
 
+  test('applies chat provider presets without touching the API key draft', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+    const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+
+    await expect(chatProviderSection.getByRole('button', { name: 'OpenAI 官方' })).toHaveCount(1)
+    await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://dirty.example.test/v1')
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('dirty-model')
+    await page.getByPlaceholder('输入 API Key').fill('sk-dirty-secret')
+    await chatProviderSection.getByRole('button', { name: 'OpenAI 官方' }).click()
+
+    await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveValue('https://api.openai.com/v1')
+    await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveValue('gpt-4o-mini')
+    await expect(page.getByPlaceholder('输入 API Key')).toHaveValue('sk-dirty-secret')
+    const chatDraftStatusRow = chatProviderSection.locator('.readonly-row').filter({ has: page.locator('strong', { hasText: /^草稿状态$/ }) })
+    await expect(chatDraftStatusRow).toContainText('草稿未保存')
+  })
+
   test('persists image generation config and supports key health actions in the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
