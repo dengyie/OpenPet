@@ -74,6 +74,7 @@ const dispatchDocument = async (documentListeners, eventName, event = {}) => {
 
 const createHarness = async () => {
   const apiCalls = {
+    hide: [],
     setInteracting: [],
     setHitTestMode: [],
     sendMessage: []
@@ -119,7 +120,9 @@ const createHarness = async () => {
       getSelection: () => selection.text,
       petBubbleChatAPI: {
         getState: async () => latestState,
-        hide: () => {},
+        hide: () => {
+          apiCalls.hide.push(true)
+        },
         setPinned: async () => {
           latestState = { ...latestState, pinned: true }
           return latestState
@@ -218,6 +221,47 @@ test('bubble chat renderer sends mini input on Enter and collapses interaction a
   assert.equal(apiCalls.setInteracting.includes(false), true)
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
   assert.equal(apiCalls.setHitTestMode.at(-1).interactive, false)
+})
+
+test('bubble chat renderer keeps Shift+Enter for multiline drafts without sending', async () => {
+  const harness = await createHarness()
+  const { apiCalls, elements, focusState } = harness
+  const input = elements['mini-input']
+  let prevented = false
+
+  focusState.activeElement = input
+  input.value = 'hello bubble'
+  await dispatch(input, 'focus')
+  await dispatch(input, 'input')
+  await dispatch(input, 'keydown', {
+    key: 'Enter',
+    shiftKey: true,
+    preventDefault() { prevented = true }
+  })
+
+  assert.equal(prevented, false)
+  assert.equal(elements['mini-input-form'].lastSubmitPromise, undefined)
+  assert.deepEqual(apiCalls.sendMessage, [])
+})
+
+test('bubble chat renderer Escape first collapses a draft and then hides when already collapsed', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements, focusState } = harness
+  const input = elements['mini-input']
+
+  focusState.activeElement = input
+  input.value = 'draft'
+  await dispatch(input, 'focus')
+  await dispatch(input, 'input')
+  await dispatchDocument(documentListeners, 'keydown', { key: 'Escape' })
+
+  assert.equal(input.value, '')
+  assert.deepEqual(apiCalls.hide, [])
+  assert.equal(apiCalls.setHitTestMode.at(-1).interactive, false)
+
+  await dispatchDocument(documentListeners, 'keydown', { key: 'Escape' })
+
+  assert.deepEqual(apiCalls.hide, [true])
 })
 
 test('bubble chat renderer keeps interaction while text is selected and releases it after selection clears', async () => {
