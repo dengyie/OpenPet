@@ -21,6 +21,8 @@ const sanitizeCreativeBrief = (value = '') => {
   sanitized = sanitized.replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[redacted-secret]')
   sanitized = sanitized.replace(/\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi, '[redacted-token]')
   sanitized = sanitized.replace(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/\b(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/\[::1\](?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
   sanitized = sanitized.replace(/(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g, '[redacted-path]')
   sanitized = sanitized.replace(/[A-Za-z]:\\[^\s,，。)]+/g, '[redacted-path]')
   return sanitized.trim()
@@ -56,9 +58,9 @@ const describeLoop = (action) => action?.loop ? 'looping' : 'one-shot'
 const describeTrigger = (action) => {
   const trigger = action?.triggerProposal || { type: 'unbound' }
   return [
-    trigger.type || 'unbound',
-    trigger.binding ? `binding=${trigger.binding}` : '',
-    trigger.notes ? `notes=${trigger.notes}` : ''
+    sanitizeCreativeBrief(trigger.type || 'unbound'),
+    trigger.binding ? `binding=${sanitizeCreativeBrief(trigger.binding)}` : '',
+    trigger.notes ? `notes=${sanitizeCreativeBrief(trigger.notes)}` : ''
   ].filter(Boolean).join(', ')
 }
 
@@ -66,9 +68,9 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
   const mode = task.mode
   const target = task.targetPet
   const styleSource = task.styleSource
-  const actionName = action?.name || 'Base Pose'
-  const actionId = action?.actionId || 'base-pose'
-  const motionPrompt = action?.motionPrompt || actionName
+  const actionName = sanitizeCreativeBrief(action?.name || 'Base Pose')
+  const actionId = sanitizeCreativeBrief(action?.actionId || 'base-pose')
+  const motionPrompt = sanitizeCreativeBrief(action?.motionPrompt || actionName)
   const providerWording = model === 'gpt-image-2'
     ? 'Use transparent-friendly, easy cutout silhouette wording; do not depend on a provider alpha-channel parameter.'
     : 'Prefer transparent-background output when available, with a clean cutout silhouette.'
@@ -149,7 +151,7 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
       'No cropped body parts, close-up portrait, realistic noisy fur, tiny unreadable ornamentation, heavy shadow, complex lighting, strong perspective, malformed limbs, duplicate limbs, extra tails, or merged facial features.'
     ],
     'User Creative Brief': [
-      creativeBrief || task.characterBrief || actionName || 'Create an OpenPet desktop pet.'
+      creativeBrief || sanitizeCreativeBrief(task.characterBrief) || actionName || 'Create an OpenPet desktop pet.'
     ]
   }
 }

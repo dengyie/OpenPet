@@ -8,6 +8,8 @@ const DEFAULT_CONSTRAINTS = {
   transparent: true
 }
 
+const PROMPT_PREVIEW_MAX_LENGTH = 8000
+
 const safeUrlHost = (value) => {
   try {
     return new URL(String(value || '')).host
@@ -56,6 +58,7 @@ const generateViaHostModelBridge = async ({ backend, run }) => {
     backend,
     model: modelSnapshot.model
   })
+  const promptPreviewText = String(promptBuild.prompt || '')
   const response = await callBridge('/creator/model-image-generate', {
     prompt: promptBuild.prompt,
     output: {
@@ -72,7 +75,12 @@ const generateViaHostModelBridge = async ({ backend, run }) => {
       mode: promptBuild.mode,
       actionId: promptBuild.actionId,
       sections: promptBuild.sections,
-      warnings: promptBuild.warnings
+      warnings: promptBuild.warnings,
+      promptPreview: {
+        text: promptPreviewText.slice(0, PROMPT_PREVIEW_MAX_LENGTH),
+        truncated: promptPreviewText.length > PROMPT_PREVIEW_MAX_LENGTH,
+        maxLength: PROMPT_PREVIEW_MAX_LENGTH
+      }
     }
   }
 }

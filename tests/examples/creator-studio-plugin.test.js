@@ -2015,6 +2015,10 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /contact-sheet-preview/)
   assert.match(html, /contactSheetUrl/)
   assert.match(html, /action-frame-validation\.json/)
+  assert.match(html, /id="recovery-panel"/)
+  assert.match(html, /id="prompt-provenance-panel"/)
+  assert.match(html, /Retry generation/)
+  assert.match(html, /developerPrompt/)
   assert.match(html, /id="run-logs"/)
   assert.equal(html.includes('apiKey'), false)
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
@@ -2268,6 +2272,253 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(JSON.stringify(approved).includes(dataDir), false)
     assert.equal(logs.logs.at(-1).event, 'run.approved')
   } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service exposes sanitized host prompt provenance for dashboard clients', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-prompt-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  const bridgeRequests = []
+  const bridgeServer = require('node:http').createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {}
+      bridgeRequests.push({ url: request.url, payload })
+      response.writeHead(200, {
+        'Content-Type': 'application/json',
+        Connection: 'close'
+      })
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            provider: 'openai-compatible',
+            baseUrl: 'http://127.0.0.1:7860/v1',
+            model: 'local-custom-sprite-v2',
+            hasApiKey: true,
+            apiKeyPreview: '••••test'
+          }
+        }))
+        return
+      }
+      const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+      const generatedPath = path.join(dataDir, dataRelativePath)
+      fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
+      sharp({
+        create: {
+          width: 96,
+          height: 112,
+          channels: 4,
+          background: { r: 140, g: 190, b: 90, alpha: 1 }
+        }
+      })
+        .png()
+        .toFile(generatedPath)
+        .then(() => {
+          response.end(JSON.stringify({
+            ok: true,
+            result: {
+              ok: true,
+              backend: 'local',
+              model: 'local-custom-sprite-v2',
+              generatedAt: '2026-06-25T00:00:00.000Z',
+              outputs: [{
+                dataRelativePath,
+                mimeType: 'image/png',
+                sha256: 'prompt-provenance-sha'
+              }]
+            }
+          }))
+        })
+        .catch((error) => {
+          response.end(JSON.stringify({ ok: false, error: error.message }))
+        })
+    })
+  })
+  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  const bridgePort = bridgeServer.address().port
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgePort}`
+  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
+  const postJson = (pathname, body = {}) => fetch(`http://127.0.0.1:${port}${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then((response) => response.json())
+
+  try {
+    const unsafePrompt = '给当前猫猫加一个“摸头撒娇”的动作，点击触发。API key sk-test-secret at /Users/mango/private/ref.png via http://127.0.0.1:8317/v1 and bridge-token.'
+    const draft = await postJson('/api/tasks/draft', {
+      prompt: unsafePrompt,
+      backend: 'local'
+    })
+    await postJson(`/api/runs/${draft.run.runId}/confirm`)
+    await postJson(`/api/runs/${draft.run.runId}/generate-action`)
+    const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${draft.run.runId}`).then((response) => response.json())
+    const serializedDetail = JSON.stringify(detail)
+
+    assert.equal(detail.ok, true)
+    assert.equal(detail.run.status, 'ready_for_review')
+    assert.equal(detail.run.developerPrompt.available, true)
+    assert.equal(detail.run.developerPrompt.source, 'host-model-bridge')
+    assert.equal(detail.run.developerPrompt.promptBuilder.version, 1)
+    assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
+    assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
+    assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
+    assert.equal(detail.run.developerPrompt.promptPreview.truncated, false)
+    assert.match(detail.run.developerPrompt.promptPreview.text, /OpenPet desktop pet sprite asset/)
+    assert.match(detail.run.developerPrompt.promptPreview.text, /\[redacted-secret\]/)
+    assert.equal(serializedDetail.includes('sk-test-secret'), false)
+    assert.equal(serializedDetail.includes('/Users/mango/private/ref.png'), false)
+    assert.equal(serializedDetail.includes('127.0.0.1:8317'), false)
+    assert.equal(serializedDetail.includes('127.0.0.1:7860'), false)
+    assert.equal(serializedDetail.includes('bridge-token'), false)
+    assert.equal(serializedDetail.includes(dataDir), false)
+    assert.equal(bridgeRequests.at(-1).payload.prompt.includes('sk-test-secret'), false)
+  } finally {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    bridgeServer.closeAllConnections?.()
+    await new Promise((resolve) => bridgeServer.close(resolve))
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service exposes failed generation recovery and retries the same run', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-retry-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  let generationAttempts = 0
+  const bridgeServer = require('node:http').createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {}
+      response.writeHead(200, {
+        'Content-Type': 'application/json',
+        Connection: 'close'
+      })
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            provider: 'openai-compatible',
+            baseUrl: 'http://127.0.0.1:7860/v1',
+            model: 'local-custom-sprite-v2'
+          }
+        }))
+        return
+      }
+      generationAttempts += 1
+      if (generationAttempts === 1) {
+        response.end(JSON.stringify({
+          ok: false,
+          error: 'Provider queue overloaded'
+        }))
+        return
+      }
+      const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+      const generatedPath = path.join(dataDir, dataRelativePath)
+      fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
+      sharp({
+        create: {
+          width: 96,
+          height: 112,
+          channels: 4,
+          background: { r: 80, g: 150, b: 220, alpha: 1 }
+        }
+      })
+        .png()
+        .toFile(generatedPath)
+        .then(() => {
+          response.end(JSON.stringify({
+            ok: true,
+            result: {
+              ok: true,
+              backend: 'local',
+              model: 'local-custom-sprite-v2',
+              generatedAt: '2026-06-25T00:00:00.000Z',
+              outputs: [{
+                dataRelativePath,
+                mimeType: 'image/png',
+                sha256: 'retry-sha'
+              }]
+            }
+          }))
+        })
+        .catch((error) => {
+          response.end(JSON.stringify({ ok: false, error: error.message }))
+        })
+    })
+  })
+  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  const bridgePort = bridgeServer.address().port
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgePort}`
+  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
+  const postJsonResponse = async (pathname, body = {}) => {
+    const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    return { response, body: await response.json() }
+  }
+
+  try {
+    const draft = await postJsonResponse('/api/tasks/draft', {
+      prompt: '新增一个自定义动作：开心挥手，动作要循环，点击触发。',
+      backend: 'local'
+    })
+    const runId = draft.body.run.runId
+    await postJsonResponse(`/api/runs/${runId}/confirm`)
+    const failed = await postJsonResponse(`/api/runs/${runId}/generate-action`)
+    const retried = await postJsonResponse(`/api/runs/${runId}/generate-action`)
+    const logs = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/logs`).then((response) => response.json())
+
+    assert.equal(failed.response.status, 500)
+    assert.equal(failed.body.ok, false)
+    assert.match(failed.body.error, /Provider queue overloaded/)
+    assert.equal(failed.body.run.runId, runId)
+    assert.equal(failed.body.run.status, 'failed')
+    assert.equal(failed.body.run.recovery.canRetryGeneration, true)
+    assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
+    assert.equal(failed.body.run.recovery.backend.state, 'failed')
+    assert.match(failed.body.run.recovery.backend.message, /Provider queue overloaded/)
+    assert.equal(retried.response.status, 200)
+    assert.equal(retried.body.ok, true)
+    assert.equal(retried.body.run.runId, runId)
+    assert.equal(retried.body.run.status, 'ready_for_review')
+    assert.equal(retried.body.run.recovery.canRetryGeneration, false)
+    assert.equal(generationAttempts, 2)
+    assert.deepEqual(logs.logs.map((entry) => entry.event), [
+      'task.drafted',
+      'task.confirmed',
+      'generate.start',
+      'generate.failed',
+      'generate.start',
+      'generate.complete'
+    ])
+  } finally {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    bridgeServer.closeAllConnections?.()
+    await new Promise((resolve) => bridgeServer.close(resolve))
     await new Promise((resolve) => server.close(resolve))
   }
 })

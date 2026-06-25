@@ -5,6 +5,7 @@ const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = requir
 const { runGenerationStep } = require('../lib/backend-runner')
 const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
+const { sanitizeCreativeBrief } = require('../lib/openpet-prompt-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun } = require('../lib/task-workflow')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
@@ -47,11 +48,18 @@ const readJsonBody = (request, maxBytes = 64 * 1024) => new Promise((resolve, re
   request.on('error', reject)
 })
 
-const sendError = (response, error) => {
+const sendError = (response, error, { dataDir } = {}) => {
   const statusCode = /valid JSON|too large|invalid|remaining questions|not pending|required|requires|must/i.test(error.message || '')
     ? 400
     : 500
-  sendJson(response, statusCode, { ok: false, error: error.message || 'Creator Studio service failed' })
+  sendJson(response, statusCode, {
+    ok: false,
+    error: createPublicText({ dataDir, value: error.message || 'Creator Studio service failed' }),
+    ...(error.run ? {
+      run: createPublicRun({ dataDir, run: error.run }),
+      actionReview: createActionReview({ dataDir, run: error.run })
+    } : {})
+  })
 }
 
 const assertPathInsideDataDir = ({ dataDir, targetPath, label }) => {
@@ -94,8 +102,10 @@ const toPublicLogString = ({ dataDir, value }) => {
     : text
 }
 
+const createPublicText = ({ dataDir, value }) => sanitizeCreativeBrief(toPublicLogString({ dataDir, value }))
+
 const createPublicLogValue = ({ dataDir, value }) => {
-  if (typeof value === 'string') return toPublicLogString({ dataDir, value })
+  if (typeof value === 'string') return createPublicText({ dataDir, value })
   if (Array.isArray(value)) return value.map((entry) => createPublicLogValue({ dataDir, value: entry }))
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
@@ -107,6 +117,67 @@ const createPublicLogValue = ({ dataDir, value }) => {
 }
 
 const createPublicLogEntry = ({ dataDir, entry }) => createPublicLogValue({ dataDir, value: entry })
+
+const createPublicPromptPreview = ({ dataDir, promptPreview = {} }) => {
+  const text = createPublicText({ dataDir, value: promptPreview.text || '' })
+  return {
+    text,
+    truncated: Boolean(promptPreview.truncated),
+    maxLength: Number(promptPreview.maxLength || text.length)
+  }
+}
+
+const createPublicPromptBuilder = ({ dataDir, promptBuilder = {} }) => {
+  const sections = Array.isArray(promptBuilder.sections)
+    ? promptBuilder.sections.map((section) => createPublicText({ dataDir, value: section }))
+    : []
+  const warnings = Array.isArray(promptBuilder.warnings)
+    ? promptBuilder.warnings.map((warning) => createPublicText({ dataDir, value: warning }))
+    : []
+  return {
+    version: Number(promptBuilder.version || promptBuilder.promptBuilderVersion || 0),
+    mode: createPublicText({ dataDir, value: promptBuilder.mode || '' }),
+    actionId: createPublicText({ dataDir, value: promptBuilder.actionId || '' }),
+    sections,
+    warnings,
+    promptPreview: createPublicPromptPreview({ dataDir, promptPreview: promptBuilder.promptPreview })
+  }
+}
+
+const createPublicModelSnapshot = ({ dataDir, modelSnapshot = {} }) => {
+  if (!modelSnapshot || typeof modelSnapshot !== 'object') return undefined
+  return createPublicLogValue({ dataDir, value: modelSnapshot })
+}
+
+const createDeveloperPrompt = ({ dataDir, run }) => {
+  const generatedImage = run.artifacts?.generatedImage || null
+  const promptBuilder = generatedImage?.promptBuilder || null
+  if (!promptBuilder) {
+    return {
+      available: false,
+      source: 'host-model-bridge',
+      message: 'Prompt provenance appears after a host-generated run completes.'
+    }
+  }
+  return {
+    available: true,
+    source: 'host-model-bridge',
+    modelSnapshot: createPublicModelSnapshot({ dataDir, modelSnapshot: generatedImage.modelSnapshot || run.modelSnapshot }),
+    promptBuilder: createPublicPromptBuilder({ dataDir, promptBuilder }),
+    promptPreview: createPublicPromptPreview({ dataDir, promptPreview: promptBuilder.promptPreview || {} })
+  }
+}
+
+const createPublicRecovery = ({ dataDir, run }) => {
+  const backendStatus = run.backendStatus || {}
+  const canRetryGeneration = run.status === 'failed' && run.taskStatus === 'confirmed' && run.currentStep === 'generate'
+  return {
+    canRetryGeneration,
+    actionLabel: canRetryGeneration ? 'Retry generation' : 'Generate action',
+    backend: createPublicLogValue({ dataDir, value: backendStatus }),
+    failureReason: createPublicText({ dataDir, value: run.error || backendStatus.message || '' })
+  }
+}
 
 const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
   const publicArtifacts = {}
@@ -123,23 +194,28 @@ const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
   }
   if (artifacts.actionFrames) {
     publicArtifacts.actionFrames = {
-      actionId: artifacts.actionFrames.actionId,
-      name: artifacts.actionFrames.name,
+      actionId: createPublicText({ dataDir, value: artifacts.actionFrames.actionId }),
+      name: createPublicText({ dataDir, value: artifacts.actionFrames.name }),
       qa: toDataRelativePath({ dataDir, targetPath: artifacts.actionFrames.qa }),
       contactSheet: toDataRelativePath({ dataDir, targetPath: artifacts.actionFrames.contactSheet }),
       frameCount: artifacts.actionFrames.frameCount,
       frameWidth: artifacts.actionFrames.frameWidth,
       frameHeight: artifacts.actionFrames.frameHeight,
-      triggerProposal: artifacts.actionFrames.triggerProposal || { type: 'unbound' }
+      triggerProposal: createPublicLogValue({ dataDir, value: artifacts.actionFrames.triggerProposal || { type: 'unbound' } })
     }
   }
   return publicArtifacts
 }
 
-const createPublicRun = ({ dataDir, run }) => ({
-  ...run,
-  artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} })
-})
+const createPublicRun = ({ dataDir, run }) => {
+  const publicRun = createPublicLogValue({ dataDir, value: run })
+  return {
+    ...publicRun,
+    artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
+    developerPrompt: createDeveloperPrompt({ dataDir, run }),
+    recovery: createPublicRecovery({ dataDir, run })
+  }
+}
 
 const getActionFramePath = ({ dataDir, run, actionId, fileName }) => {
   const actionFrames = run.artifacts?.actionFrames
@@ -187,8 +263,8 @@ const createActionReview = ({ dataDir, run }) => {
     }
   })
   return {
-    actionId,
-    name: actionFrames.name || action?.name || actionFrames.actionId,
+    actionId: createPublicText({ dataDir, value: actionId }),
+    name: createPublicText({ dataDir, value: actionFrames.name || action?.name || actionFrames.actionId }),
     frameCount,
     frameWidth: actionFrames.frameWidth || 0,
     frameHeight: actionFrames.frameHeight || 0,
@@ -198,7 +274,7 @@ const createActionReview = ({ dataDir, run }) => {
       ? `/api/runs/${encodeURIComponent(run.runId)}/action-frames/${encodeURIComponent(actionId)}/contact-sheet.png`
       : '',
     previewFrames,
-    triggerProposal: actionFrames.triggerProposal || action?.triggerProposal || { type: 'unbound' },
+    triggerProposal: createPublicLogValue({ dataDir, value: actionFrames.triggerProposal || action?.triggerProposal || { type: 'unbound' } }),
     importStatus: run.importStatus || 'not-imported'
   }
 }
@@ -362,7 +438,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
 
     return false
   } catch (error) {
-    sendError(response, error)
+    sendError(response, error, { dataDir })
     return true
   }
 }

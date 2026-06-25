@@ -173,6 +173,34 @@
         margin-bottom: 4px;
       }
 
+      .notice {
+        border: 1px solid rgba(40, 123, 84, 0.28);
+        border-radius: 14px;
+        background: rgba(237, 243, 238, 0.72);
+        padding: 12px;
+      }
+
+      .notice.error {
+        border-color: rgba(170, 61, 61, 0.35);
+        background: rgba(255, 240, 232, 0.82);
+      }
+
+      .meta-list {
+        display: grid;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .meta-list span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .prompt-preview {
+        max-height: 360px;
+        margin-top: 10px;
+      }
+
       .contact-sheet {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -296,6 +324,10 @@
             <section id="trigger-panel">No trigger proposal yet.</section>
           </section>
           <section>
+            <h2>Recovery</h2>
+            <section id="recovery-panel">No failed generation to recover.</section>
+          </section>
+          <section>
             <h2>Import Handoff</h2>
             <section id="import-handoff-panel">Generate and approve an action to unlock host-owned import.</section>
           </section>
@@ -303,6 +335,10 @@
       </div>
 
       <section class="panel stack" style="margin-top: 18px;">
+        <section>
+          <h2>Developer Prompt Provenance</h2>
+          <section id="prompt-provenance-panel">Host prompt preview appears after cloud/local generation.</section>
+        </section>
         <section>
           <h2>QA</h2>
           <section id="qa-panel">No generated QA yet.</section>
@@ -334,7 +370,12 @@
           body: JSON.stringify(body)
         })
         const payload = await response.json()
-        if (!response.ok || !payload.ok) throw new Error(payload.error || 'Creator Studio request failed')
+        if (!response.ok || !payload.ok) {
+          const error = new Error(payload.error || 'Creator Studio request failed')
+          error.payload = payload
+          error.status = response.status
+          throw error
+        }
         return payload
       }
 
@@ -412,18 +453,73 @@
         )).join('')}</div>`
       }
 
+      const renderRecoveryPanel = (run) => {
+        const recovery = run?.recovery || {}
+        const backend = recovery.backend || run?.backendStatus || {}
+        if (run?.status === 'failed') {
+          return [
+            '<div class="notice error">',
+            '<strong>Generation failed.</strong>',
+            '<div class="meta-list">',
+            `<span>Backend: ${escapeHtml(backend.backend || run.backend || 'unknown')}</span>`,
+            `<span>State: ${escapeHtml(backend.state || 'failed')}</span>`,
+            `<span>Reason: ${escapeHtml(recovery.failureReason || backend.message || run.error || 'Unknown failure')}</span>`,
+            recovery.canRetryGeneration
+              ? '<span>Retry generation will reuse this same run and preserve the confirmed task.</span>'
+              : '<span>Retry is locked until the task is confirmed again.</span>',
+            '</div>',
+            '</div>'
+          ].join('')
+        }
+        if (backend.state === 'running') {
+          return '<div class="notice"><strong>Generation running.</strong><p>Refresh the run logs if the provider is slow.</p></div>'
+        }
+        return 'No failed generation to recover.'
+      }
+
+      const renderPromptProvenance = (run) => {
+        const developerPrompt = run?.developerPrompt || {}
+        if (!developerPrompt.available) {
+          return `<p>${escapeHtml(developerPrompt.message || 'Host prompt preview appears after cloud/local generation.')}</p>`
+        }
+        const builder = developerPrompt.promptBuilder || {}
+        const preview = developerPrompt.promptPreview || builder.promptPreview || {}
+        const snapshot = developerPrompt.modelSnapshot || {}
+        const sections = Array.isArray(builder.sections) ? builder.sections.join(', ') : ''
+        const warnings = Array.isArray(builder.warnings) && builder.warnings.length
+          ? builder.warnings.join(', ')
+          : 'none'
+        return [
+          '<div class="notice">',
+          '<strong>Host model prompt-builder provenance</strong>',
+          '<div class="meta-list">',
+          `<span>Source: ${escapeHtml(developerPrompt.source || 'host-model-bridge')}</span>`,
+          `<span>Builder: v${escapeHtml(builder.version || 0)} / ${escapeHtml(builder.mode || 'unknown')} / ${escapeHtml(builder.actionId || 'n/a')}</span>`,
+          `<span>Model: ${escapeHtml(snapshot.model || 'unknown')} via ${escapeHtml(snapshot.provider || 'unknown')} (${escapeHtml(snapshot.backend || 'unknown')})</span>`,
+          `<span>Sections: ${escapeHtml(sections || 'none')}</span>`,
+          `<span>Warnings: ${escapeHtml(warnings)}</span>`,
+          preview.truncated ? `<span>Prompt preview is capped at ${escapeHtml(preview.maxLength || 0)} characters.</span>` : '',
+          '</div>',
+          `<pre class="prompt-preview">${escapeHtml(preview.text || '')}</pre>`,
+          '</div>'
+        ].join('')
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
           $('task-preview').textContent = 'No task drafted yet.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
+          $('recovery-panel').textContent = 'No failed generation to recover.'
+          $('prompt-provenance-panel').textContent = 'Host prompt preview appears after cloud/local generation.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
           $('import-handoff-panel').textContent = 'Generate and approve an action to unlock host-owned import.'
           $('run-logs').textContent = 'No logs yet.'
           $('confirm-button').disabled = true
           $('generate-button').disabled = true
+          $('generate-button').textContent = 'Generate action'
           $('approve-button').disabled = true
           return
         }
@@ -444,7 +540,10 @@
         }
         $('confirm-button').disabled = Boolean(question) || run.taskStatus === 'confirmed'
         $('generate-button').disabled = Boolean(question) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status)
+        $('generate-button').textContent = run.recovery?.canRetryGeneration ? 'Retry generation' : 'Generate action'
         $('approve-button').disabled = run.status !== 'ready_for_review'
+        $('recovery-panel').innerHTML = renderRecoveryPanel(run)
+        $('prompt-provenance-panel').innerHTML = renderPromptProvenance(run)
         const actionFrames = run.artifacts?.actionFrames
         const actionReview = state.actionReview
         if (actionFrames) {
@@ -577,6 +676,13 @@
           await refreshRunList()
           setStatus(`Generated action output in ${payload.outputDir || 'run workspace'}.`, 'ok')
         } catch (error) {
+          if (error.payload?.run) {
+            state.run = error.payload.run
+            state.actionReview = error.payload.actionReview || null
+            renderRun()
+            await refreshLogs()
+            await refreshRunList()
+          }
           setStatus(error.message, 'error')
         }
       })
