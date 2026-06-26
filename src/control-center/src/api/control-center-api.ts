@@ -1260,6 +1260,7 @@ const demoApi: ControlCenterApi = {
   getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
   chat: sendDemoPetChatMessage,
   getPetChatState: async () => createDemoPetChatState(),
+  openPetBubbleChat: async () => ({ visible: true, hasWindow: true }),
   openPetChatWindow: async () => createDemoPetChatState(),
   sendPetChatMessage: sendDemoPetChatMessage,
   getAiBehavior: async () => cloneAiConfig(demoState.aiConfig).behavior,

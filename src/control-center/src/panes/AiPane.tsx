@@ -191,6 +191,7 @@ export interface AiPaneProps {
   onDeleteMemory: (memoryId: string) => void | Promise<void>
   onClearPetPackMemories: () => void | Promise<void>
   onOpenDesktopChat: () => void | Promise<void>
+  onOpenBubbleChat: () => void | Promise<void>
 }
 
 export function AiPane({
@@ -260,7 +261,8 @@ export function AiPane({
   onRefreshMemoryProfile,
   onDeleteMemory,
   onClearPetPackMemories,
-  onOpenDesktopChat
+  onOpenDesktopChat,
+  onOpenBubbleChat
 }: AiPaneProps) {
   const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
   const latestMemoryJob = memoryProfile.recentJobs[0]
@@ -883,9 +885,14 @@ export function AiPane({
                   : (petChatState.ai.reason || '请先配置 AI Provider')}
               </span>
             </div>
-            <button type="button" className="ghost" onClick={onOpenDesktopChat}>
-              打开扩展聊天面板
-            </button>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onOpenBubbleChat}>
+                打开默认气泡聊天
+              </button>
+              <button type="button" className="ghost" onClick={onOpenDesktopChat}>
+                打开扩展聊天面板
+              </button>
+            </div>
           </div>
           {petChatState.bubble.text ? (
             <div className="chat-bubble-preview" data-testid="ai-chat-bubble-preview">

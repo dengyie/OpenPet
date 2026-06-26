@@ -1812,6 +1812,11 @@ export interface PetChatBubbleViewState {
   updatedAt: string
 }
 
+export interface PetBubbleChatWindowStateViewState {
+  visible: boolean
+  hasWindow: boolean
+}
+
 export interface PetChatStateViewState {
   available: boolean
   visible: boolean
@@ -2381,6 +2386,7 @@ export interface ControlCenterApi {
   getAiConversation: (conversationId: string) => Promise<ChatMessage[]>
   chat: (payload: AiChatRequest) => Promise<AiChatResponse>
   getPetChatState: () => Promise<PetChatStateViewState>
+  openPetBubbleChat: () => Promise<PetBubbleChatWindowStateViewState>
   openPetChatWindow: () => Promise<PetChatStateViewState>
   sendPetChatMessage: (payload: AiChatRequest) => Promise<AiChatResponse>
   getAiBehavior: () => Promise<AiBehaviorConfig>

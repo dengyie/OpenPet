@@ -678,6 +678,15 @@ export function useAiPane(activeTab = 'ai') {
     }
   }
 
+  const onOpenBubbleChat = async () => {
+    try {
+      await api.openPetBubbleChat()
+      setStatus('已打开默认气泡聊天')
+    } catch (error) {
+      setStatus(messageFromError(error, '打开默认气泡聊天失败'))
+    }
+  }
+
   const paneProps = {
     config,
     activeConfig,
@@ -748,6 +757,7 @@ export function useAiPane(activeTab = 'ai') {
     onDeleteMemory,
     onClearPetPackMemories,
     onSendChat,
+    onOpenBubbleChat,
     onOpenDesktopChat
   } satisfies AiPaneProps
 

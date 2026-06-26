@@ -546,6 +546,8 @@ test.describe('Control Center smoke', () => {
 
     const chatSection = await expandAiSection(page, '聊天')
     await expect(chatSection).toContainText('默认在这里和宠物对话；需要长历史时可打开扩展聊天面板')
+    await chatSection.getByRole('button', { name: '打开默认气泡聊天' }).click()
+    await expect(page.locator('.status-line')).toContainText('已打开默认气泡聊天')
     await chatSection.getByRole('button', { name: '打开扩展聊天面板' }).click()
     await expect(page.locator('.status-line')).toContainText('已打开扩展聊天面板')
   })
