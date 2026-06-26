@@ -22,6 +22,11 @@ const sendPng = (response, filePath) => {
   fs.createReadStream(filePath).pipe(response)
 }
 
+const sendWebp = (response, filePath) => {
+  response.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'no-store' })
+  fs.createReadStream(filePath).pipe(response)
+}
+
 const sendHtml = (response, dashboardPath) => {
   response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
   response.end(fs.readFileSync(dashboardPath, 'utf-8'))
@@ -690,6 +695,18 @@ const getActionContactSheetPath = ({ dataDir, run, actionId }) => {
   return contactSheetPath
 }
 
+const getFullPetSpritesheetPath = ({ dataDir, run }) => {
+  const spritesheetPath = run.artifacts?.spritesheet
+  if (!spritesheetPath) throw new Error('Full-pet spritesheet is not available')
+  const absolutePath = assertPathInsideDataDir({
+    dataDir,
+    targetPath: spritesheetPath,
+    label: 'Full-pet spritesheet'
+  })
+  if (!fs.existsSync(absolutePath)) throw new Error('Full-pet spritesheet is missing')
+  return absolutePath
+}
+
 const readActionFrameQa = ({ dataDir, actionFrames }) => {
   if (!actionFrames?.qa) return null
   try {
@@ -741,6 +758,26 @@ const createActionReview = ({ dataDir, run }) => {
     previewFrames,
     triggerProposal: createPublicLogValue({ dataDir, value: actionFrames.triggerProposal || action?.triggerProposal || { type: 'unbound' } }),
     importStatus: run.importStatus || 'not-imported'
+  }
+}
+
+const createFullPetReview = ({ dataDir, run }) => {
+  if (run.artifacts?.actionFrames) return null
+  if (run.generationTask?.mode !== 'full-pet') return null
+  const artifacts = run.artifacts || {}
+  return {
+    petId: createPublicText({ dataDir, value: run.petId || '' }),
+    displayName: createPublicText({ dataDir, value: run.input?.petName || run.petId || '' }),
+    outputDir: toDataRelativePath({ dataDir, targetPath: artifacts.outputDir }),
+    petJson: toDataRelativePath({ dataDir, targetPath: artifacts.petJson }),
+    spritesheet: toDataRelativePath({ dataDir, targetPath: artifacts.spritesheet }),
+    bundle: toDataRelativePath({ dataDir, targetPath: artifacts.bundle }),
+    qa: toDataRelativePath({ dataDir, targetPath: artifacts.qa }),
+    sourceImageQa: toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa }),
+    actionTaskQa: toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa }),
+    spritesheetUrl: artifacts.spritesheet
+      ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`
+      : ''
   }
 }
 
@@ -938,7 +975,8 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
       sendJson(response, 200, {
         ok: true,
         run: createPublicRun({ dataDir, run }),
-        actionReview: createActionReview({ dataDir, run })
+        actionReview: createActionReview({ dataDir, run }),
+        fullPetReview: createFullPetReview({ dataDir, run })
       })
       return
     } catch (error) {
@@ -978,6 +1016,19 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Action frame preview not found' })
+      return
+    }
+  }
+
+  const spritesheetMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/spritesheet\.webp$/)
+  if (spritesheetMatch) {
+    try {
+      const run = readRun({ dataDir, runId: decodeURIComponent(spritesheetMatch[1]) })
+      const spritesheetPath = getFullPetSpritesheetPath({ dataDir, run })
+      sendWebp(response, spritesheetPath)
+      return
+    } catch (error) {
+      sendJson(response, 404, { ok: false, error: error.message || 'Full-pet spritesheet not found' })
       return
     }
   }

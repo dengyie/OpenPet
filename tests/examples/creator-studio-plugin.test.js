@@ -2085,6 +2085,9 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /renderPlaybackPanel/)
   assert.match(html, /playback-preview/)
   assert.match(html, /timeline/)
+  assert.match(html, /id="full-pet-review-panel"/)
+  assert.match(html, /renderFullPetReview/)
+  assert.match(html, /spritesheet-preview/)
   assert.equal(html.includes('safe fixture output for import'), false)
   assert.equal(html.includes('apiKey'), false)
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
@@ -2096,6 +2099,118 @@ test('creator studio dashboard asset includes full-pet import review messaging',
 
   assert.match(html, /Review the generated pet-pack output and approve the run before host-owned pet import\./)
   assert.match(html, /Generate and approve the pet-pack output to unlock host-owned pet import\./)
+})
+
+test('creator studio service exposes full-pet review details for dashboard clients', async () => {
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-full-pet-review-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const reviewTask = {
+    mode: 'full-pet',
+    targetPet: 'new',
+    styleSource: 'textOnly',
+    characterBrief: '一只软乎乎的橘猫桌宠。',
+    actions: [{
+      actionId: 'idle',
+      name: 'Idle',
+      motionPrompt: 'neutral idle pose',
+      loop: true,
+      frameCount: 12,
+      triggerProposal: { type: 'state', binding: 'idle' }
+    }]
+  }
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Review Pet Cat',
+      petId: 'review-pet-cat',
+      prompt: '生成一只完整的新桌宠。',
+      originalPrompt: '生成一只完整的新桌宠。',
+      backend: 'fixture',
+      generationTask: reviewTask
+    },
+    now: () => '2026-06-26T00:20:00.000Z'
+  })
+  const outputDir = path.join(dataDir, 'runs', run.runId, 'outputs')
+  const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: 'review-pet-cat',
+    displayName: 'Review Pet Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(outputDir, 'review-pet-cat.codex-pet.zip'), Buffer.from('fake-bundle'))
+  fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+    ok: true,
+    width: 1536,
+    height: 1872,
+    visiblePixels: 6400,
+    warnings: []
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
+    ok: true,
+    sourceRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+    width: 1024,
+    height: 1024,
+    visiblePixels: 1000,
+    warnings: []
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'action-generation-task.json'), `${JSON.stringify({
+    ok: true,
+    mode: 'full-pet',
+    targetPet: 'new',
+    styleSource: 'textOnly'
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'review',
+      reviewStatus: 'pending',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        bundle: path.join(outputDir, 'review-pet-cat.codex-pet.zip'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        actionTaskQa: path.join(qaDir, 'action-generation-task.json')
+      }
+    },
+    now: () => '2026-06-26T00:20:30.000Z'
+  })
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
+    const spritesheetResponse = await fetch(`http://127.0.0.1:${port}${detail.fullPetReview.spritesheetUrl}`)
+    const spritesheetBytes = Buffer.from(await spritesheetResponse.arrayBuffer())
+    const serialized = JSON.stringify(detail)
+
+    assert.equal(detail.ok, true)
+    assert.equal(detail.actionReview, null)
+    assert.equal(detail.fullPetReview.petId, 'review-pet-cat')
+    assert.equal(detail.fullPetReview.bundle, `runs/${run.runId}/outputs/review-pet-cat.codex-pet.zip`)
+    assert.equal(detail.fullPetReview.petJson, `runs/${run.runId}/outputs/pet.json`)
+    assert.equal(detail.fullPetReview.spritesheet, `runs/${run.runId}/outputs/spritesheet.webp`)
+    assert.equal(detail.fullPetReview.qa, `runs/${run.runId}/qa/atlas-validation.json`)
+    assert.equal(detail.fullPetReview.sourceImageQa, `runs/${run.runId}/qa/source-image-validation.json`)
+    assert.equal(detail.fullPetReview.actionTaskQa, `runs/${run.runId}/qa/action-generation-task.json`)
+    assert.equal(detail.fullPetReview.spritesheetUrl, `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`)
+    assert.equal(spritesheetResponse.status, 200)
+    assert.equal(spritesheetResponse.headers.get('content-type'), 'image/webp')
+    assert.equal(spritesheetBytes.slice(0, 4).toString('utf-8'), 'RIFF')
+    assert.equal(serialized.includes(dataDir), false)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 test('creator studio service exposes run detail and logs for dashboard clients', async () => {
