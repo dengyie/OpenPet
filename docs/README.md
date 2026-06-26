@@ -12,12 +12,14 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Current platform status and remaining gaps | [`project-status-review.md`](./project-status-review.md) |
 | Current code-aligned TODO architecture | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md) |
+| Plugin host architecture checkpoint | [`plugin-service-architecture-checkpoint.md`](./plugin-service-architecture-checkpoint.md) |
 
 ## Product Areas
 
 | Area | Canonical docs |
 | --- | --- |
 | Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
+| Plugin host service architecture | [`plugin-service-architecture-checkpoint.md`](./plugin-service-architecture-checkpoint.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
 | AI Talk and pet dialogue | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md), [`superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md`](./superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md) |
