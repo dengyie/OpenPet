@@ -57,6 +57,12 @@
         color: var(--muted);
       }
 
+      ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+
       .grid {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
@@ -232,13 +238,13 @@
     <main>
       <header>
         <h1>Creator Studio</h1>
-        <p>Describe a custom OpenPet action, review the generated task, then generate safe fixture output for import.</p>
+        <p>Describe an OpenPet creation task, review the interpreted workflow, then generate output for host-owned import.</p>
       </header>
 
       <div class="grid">
         <section class="panel stack">
           <div>
-            <label for="prompt-input">Action prompt</label>
+            <label for="prompt-input">Creator prompt</label>
             <textarea id="prompt-input">新增一个自定义动作：原地打滚，动作要循环。</textarea>
           </div>
           <div>
@@ -261,7 +267,7 @@
           <div class="actions">
             <button id="draft-button">Draft task</button>
             <button id="confirm-button" class="secondary" disabled>Confirm task</button>
-            <button id="generate-button" class="secondary" disabled>Generate action</button>
+            <button id="generate-button" class="secondary" disabled>Generate output</button>
             <button id="approve-button" class="secondary" disabled>Approve run</button>
           </div>
           <p id="status-line" class="status">Ready.</p>
@@ -309,8 +315,8 @@
           <section id="qa-panel">No generated QA yet.</section>
         </section>
         <section id="action-review">
-          <h2>Single Action Review</h2>
-          <section id="action-review-panel">Generated action frames and action-frame-validation.json will appear here before import.</section>
+          <h2>Run Review</h2>
+          <section id="action-review-panel">Generated output review details will appear here before import.</section>
         </section>
         <section>
           <h2>Run Logs</h2>
@@ -322,6 +328,9 @@
     <script>
       const state = { run: null, actionReview: null, promptProvenance: null, imageUsageSummary: null, wizardState: null, backendRecovery: null, runs: [] }
       const $ = (id) => document.getElementById(id)
+      const getRunMode = (run) => run?.generationTask?.mode || ''
+      const isSingleActionRun = (run) => getRunMode(run) === 'single-action'
+      const isFullPetRun = (run) => getRunMode(run) === 'full-pet'
 
       const setStatus = (message, kind = '') => {
         $('status-line').textContent = message
@@ -444,6 +453,44 @@
         ].join('')
       }
 
+      const renderTaskPreview = (run) => {
+        const mode = getRunMode(run)
+        const actions = Array.isArray(run?.generationTask?.actions) ? run.generationTask.actions : []
+        if (mode === 'full-pet') {
+          return [
+            `<strong>${escapeHtml(run?.input?.petName || run?.petId || 'Generated pet')}</strong>`,
+            `<p>Mode: ${escapeHtml(mode)} / Target: ${escapeHtml(run.generationTask.targetPet || 'new')} / Style: ${escapeHtml(run.generationTask.styleSource || 'textOnly')} / Actions: ${escapeHtml(actions.length)}</p>`,
+            `<p>${escapeHtml(run.generationTask.characterBrief || run.input?.prompt || 'No character brief available.')}</p>`,
+            actions.length
+              ? `<ul>${actions.map((action) => (`<li>${escapeHtml(action.name || action.actionId)} / ${escapeHtml(action.triggerProposal?.type || 'unbound')} / ${action.loop ? 'loop' : 'one-shot'} / ${escapeHtml(action.frameCount || 0)} frames</li>`)).join('')}</ul>`
+              : '<p>No actions planned yet.</p>'
+          ].join('')
+        }
+        const action = actions[0]
+        return [
+          `<strong>${escapeHtml(action?.name || run?.input?.petName || run?.petId || 'Task')}</strong>`,
+          `<p>Mode: ${escapeHtml(mode || 'single-action')} / Frames: ${escapeHtml(action?.frameCount || 0)} / Loop: ${action?.loop ? 'yes' : 'no'}</p>`,
+          `<p>${escapeHtml(action?.motionPrompt || run?.input?.prompt || 'No motion prompt available.')}</p>`
+        ].join('')
+      }
+
+      const renderTriggerProposal = (run) => {
+        const actions = Array.isArray(run?.generationTask?.actions) ? run.generationTask.actions : []
+        if (!actions.length) return 'No trigger proposal yet.'
+        if (isFullPetRun(run)) {
+          return [
+            `<strong>${escapeHtml(actions.length)} planned trigger proposals</strong>`,
+            `<ul>${actions.map((action) => (`<li>${escapeHtml(action.name || action.actionId)}: ${escapeHtml(action.triggerProposal?.type || 'unbound')} ${action.triggerProposal?.notes ? `(${escapeHtml(action.triggerProposal.notes)})` : ''}</li>`)).join('')}</ul>`
+          ].join('')
+        }
+        const action = actions[0]
+        return `<strong>${escapeHtml(action.triggerProposal?.type || 'unbound')}</strong><p>${escapeHtml(action.triggerProposal?.notes || 'No notes.')}</p>`
+      }
+
+      const setGenerateButtonLabel = (run) => {
+        $('generate-button').textContent = isFullPetRun(run) ? 'Generate pet' : 'Generate action'
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
@@ -455,26 +502,25 @@
           $('generation-usage-panel').textContent = 'No generation usage summary yet.'
           $('backend-recovery-panel').textContent = 'No recovery guidance yet.'
           $('qa-panel').textContent = 'No generated QA yet.'
-          $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
-          $('import-handoff-panel').textContent = 'Generate and approve an action to unlock host-owned import.'
+          $('action-review-panel').textContent = 'Generated output review details will appear here before import.'
+          $('import-handoff-panel').textContent = 'Generate and approve output to unlock host-owned import.'
           $('run-logs').textContent = 'No logs yet.'
+          setGenerateButtonLabel(null)
           $('confirm-button').disabled = true
           $('generate-button').disabled = true
           $('approve-button').disabled = true
           return
         }
-        const action = run.generationTask.actions[0]
         const question = run.generationTask.questions[0]
-        $('task-preview').innerHTML = [
-          `<strong>${escapeHtml(action.name)}</strong>`,
-          `<p>Mode: ${escapeHtml(run.generationTask.mode)} / Frames: ${escapeHtml(action.frameCount)} / Loop: ${action.loop ? 'yes' : 'no'}</p>`,
-          `<p>${escapeHtml(action.motionPrompt)}</p>`
-        ].join('')
+        const action = run.generationTask.actions[0]
+        const hasActionFrames = Boolean(run.artifacts?.actionFrames)
+        $('task-preview').innerHTML = renderTaskPreview(run)
         $('wizard-state-panel').innerHTML = renderWizardState(state.wizardState)
-        $('trigger-panel').innerHTML = `<strong>${escapeHtml(action.triggerProposal.type)}</strong><p>${escapeHtml(action.triggerProposal.notes || 'No notes.')}</p>`
+        $('trigger-panel').innerHTML = renderTriggerProposal(run)
         $('prompt-provenance-panel').innerHTML = renderPromptProvenance(state.promptProvenance)
         $('generation-usage-panel').innerHTML = renderImageUsageSummary(state.imageUsageSummary)
         $('backend-recovery-panel').innerHTML = renderBackendRecovery(state.backendRecovery)
+        setGenerateButtonLabel(run)
         if (question) {
           $('question-panel').innerHTML = question.options.map((option) => (
             `<button data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`
@@ -487,7 +533,7 @@
         $('approve-button').disabled = run.status !== 'ready_for_review'
         const actionFrames = run.artifacts?.actionFrames
         const actionReview = state.actionReview
-        if (actionFrames) {
+        if (hasActionFrames) {
           $('qa-panel').textContent = `Frame QA written: ${actionFrames.qa || 'action-frame-validation.json'}`
           $('action-review-panel').innerHTML = [
             `<strong>${escapeHtml(actionFrames.name || actionFrames.actionId)}</strong>`,
@@ -515,17 +561,38 @@
             $('import-handoff-panel').textContent = 'Review the generated frames, repair any bad frame, then approve the action.'
           }
         } else {
-          $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
-          $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+          const qaBits = [
+            run.artifacts?.qa ? `Atlas QA: ${run.artifacts.qa}` : '',
+            run.artifacts?.actionTaskQa ? `Task QA: ${run.artifacts.actionTaskQa}` : ''
+          ].filter(Boolean)
+          $('qa-panel').textContent = qaBits.join(' / ') || 'No generated QA yet.'
+          $('action-review-panel').innerHTML = isFullPetRun(run)
+            ? [
+                `<strong>${escapeHtml(run.input?.petName || run.petId || 'Generated pet')}</strong>`,
+                `<p>Output dir: ${escapeHtml(run.artifacts?.outputDir || 'pending')}</p>`,
+                `<p>Bundle: ${escapeHtml(run.artifacts?.bundle || 'not exported')}</p>`,
+                `<p>Spritesheet: ${escapeHtml(run.artifacts?.spritesheet || 'pending')}</p>`,
+                `<p>Review status: ${escapeHtml(run.reviewStatus || 'pending')} / Import status: ${escapeHtml(run.importStatus || 'not-imported')}</p>`
+              ].join('')
+            : 'Generated output review details will appear here before import.'
           if (run.status === 'approved') {
             $('import-handoff-panel').innerHTML = [
               '<div class="handoff">',
               '<strong>Approved pet-pack output.</strong>',
-              '<p>No action frame folder is available for action import. Use the Creator Studio command <code>Import Approved Pet</code>, or generate with a cloud/local provider to create action frames for <code>Import Approved Action</code>.</p>',
+              '<p>Run the Creator Studio command <code>Import Approved Pet</code> from Control Center → Plugins. The host import will activate the pack and submit any generated trigger proposals into the existing review inbox.</p>',
+              '</div>'
+            ].join('')
+          } else if (run.status === 'imported') {
+            $('import-handoff-panel').innerHTML = [
+              '<div class="handoff">',
+              `<strong>Imported pet pack: ${escapeHtml(run.importedPackId || run.petId || 'pet-pack')}</strong>`,
+              `<p>${escapeHtml(run.triggerProposalSubmissionError
+                ? 'The pet pack import succeeded, but at least one trigger proposal still needs host follow-up.'
+                : 'The pet pack has been handed to OpenPet through the host import bridge.')}</p>`,
               '</div>'
             ].join('')
           } else {
-            $('import-handoff-panel').textContent = 'Generate action frames before action import handoff.'
+            $('import-handoff-panel').textContent = 'Generate and approve the pet-pack output before host import handoff.'
           }
         }
       }
@@ -633,7 +700,7 @@
           renderRun()
           await refreshLogs()
           await refreshRunList()
-          setStatus(`Generated action output in ${payload.outputDir || 'run workspace'}.`, 'ok')
+          setStatus(`Generated ${isFullPetRun(state.run) ? 'pet' : 'action'} output in ${payload.outputDir || 'run workspace'}.`, 'ok')
         } catch (error) {
           setStatus(error.message, 'error')
         }

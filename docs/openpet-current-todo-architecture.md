@@ -157,7 +157,7 @@ Current state:
 
 P1 work:
 
-- Turn the existing command-level task flow into a smoother dashboard-first wizard with visible prompt, task preview, pending question, confirmation, generation, QA, and import states. Partially completed in current branch: the dashboard now surfaces a host-owned workflow status summary with current stage, next-step guidance, and the existing prompt/question/review/import panels.
+- Turn the existing command-level task flow into a smoother dashboard-first wizard with visible prompt, task preview, pending question, confirmation, generation, QA, and import states. Partially completed in current branch: the dashboard now surfaces a host-owned workflow status summary with current stage, next-step guidance, prompt/question/review/import panels, and mode-aware `single-action` vs `full-pet` task/review/import copy so the same UI can guide both flows without action-only wording.
 - Preserve the current command paths as automation/test entry points while improving user-facing dashboard affordances.
 - Add explicit retry/recover flows for failed cloud/local generation without silently falling back to fixture. Completed in current branch: failed generation runs now expose backend recovery guidance in the dashboard and service detail view, while keeping retry on the existing generation command path instead of silently falling back to fixture.
 - Connect generated trigger proposals directly into the existing host trigger proposal inbox from successful generation/import flows. Completed in current branch: approved single-action and task-driven full-pet imports now submit generated trigger proposals through the existing host inbox bridge, and Codex pet manifests preserve host-owned trigger proposal/rule fields after import.
