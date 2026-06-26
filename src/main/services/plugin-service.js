@@ -25,6 +25,7 @@ const { createPluginResolutionController } = require('./plugin-resolution-contro
 const { createPluginConfigStorageController } = require('./plugin-config-storage-controller')
 const { createPluginRuntimeSdkController } = require('./plugin-runtime-sdk-controller')
 const { createPluginBridgeHandlersController } = require('./plugin-bridge-handlers-controller')
+const { createPluginAssetPathController } = require('./plugin-asset-path-controller')
 
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
 const MAX_PLUGIN_STORAGE_BYTES = 64 * 1024
@@ -266,83 +267,16 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return { dataDir, cacheDir, logDir }
   }
 
-  const resolvePluginAssetPath = (manifest, relativePath) => {
-    if (!manifest.basePath) throw new Error('Plugin assets require a local plugin directory')
-    if (typeof relativePath !== 'string' || !relativePath.trim()) {
-      throw new Error('Plugin asset relativePath is required')
-    }
-    const normalized = relativePath.replace(/\\/g, '/')
-    if (
-      normalized.startsWith('/') ||
-      /^[a-zA-Z]:\//.test(normalized) ||
-      normalized.includes('\0') ||
-      normalized.split('/').includes('..')
-    ) {
-      throw new Error('Plugin asset path must be a safe relative path')
-    }
-    const basePath = path.resolve(manifest.basePath)
-    const targetPath = path.resolve(basePath, normalized)
-    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
-      throw new Error('Plugin asset path must stay inside the plugin directory')
-    }
-    if (!fs.existsSync(targetPath)) throw new Error('Plugin asset path does not exist')
-    const realTargetPath = fs.realpathSync(targetPath)
-    const realBasePath = fs.realpathSync(basePath)
-    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
-      throw new Error('Plugin asset path must stay inside the plugin directory')
-    }
-    if (!fs.statSync(realTargetPath).isDirectory()) throw new Error('Plugin asset path must be a folder')
-    assertDirectoryHasNoSymlinks(realTargetPath)
-    return realTargetPath
-  }
+  const assetPathController = createPluginAssetPathController({
+    ensureCreatorDirs: ensurePluginCreatorDirs,
+    assertDirectoryHasNoSymlinks,
+    selectCreatorAssetFrameFolder
+  })
 
-  const resolvePluginDataPath = (manifest, relativePath) => {
-    if (typeof relativePath !== 'string' || !relativePath.trim()) {
-      throw new Error('Plugin data relative path is required')
-    }
-    const normalized = relativePath.replace(/\\/g, '/')
-    if (
-      normalized.startsWith('/') ||
-      /^[a-zA-Z]:\//.test(normalized) ||
-      normalized.includes('\0') ||
-      normalized.split('/').includes('..')
-    ) {
-      throw new Error('Plugin data path must be a safe relative path')
-    }
-    const { dataDir } = ensurePluginCreatorDirs(manifest)
-    const basePath = path.resolve(dataDir)
-    const targetPath = path.resolve(basePath, normalized)
-    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
-      throw new Error('Plugin data path must stay inside plugin data directory')
-    }
-    if (!fs.existsSync(targetPath)) throw new Error('Plugin data path does not exist')
-    const realTargetPath = fs.realpathSync(targetPath)
-    const realBasePath = fs.realpathSync(basePath)
-    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
-      throw new Error('Plugin data path must stay inside plugin data directory')
-    }
-    if (fs.statSync(realTargetPath).isDirectory()) assertDirectoryHasNoSymlinks(realTargetPath)
-    return realTargetPath
-  }
-
-  const resolvePickedAssetPath = (sourceDir) => {
-    if (typeof sourceDir !== 'string' || !sourceDir.trim()) {
-      throw new Error('Selected frame folder is required')
-    }
-    const targetPath = path.resolve(sourceDir)
-    if (!fs.existsSync(targetPath)) throw new Error('Selected frame folder does not exist')
-    if (fs.lstatSync(targetPath).isSymbolicLink()) throw new Error('Selected frame folder must not be a symlink')
-    const realTargetPath = fs.realpathSync(targetPath)
-    if (!fs.statSync(realTargetPath).isDirectory()) throw new Error('Selected frame folder must be a folder')
-    assertDirectoryHasNoSymlinks(realTargetPath)
-    return realTargetPath
-  }
-
-  const selectCreatorAssetSourceDir = async () => {
-    const selected = await selectCreatorAssetFrameFolder()
-    if (selected?.canceled || !selected?.sourceDir) return { canceled: true }
-    return { canceled: false, sourceDir: resolvePickedAssetPath(selected.sourceDir) }
-  }
+  const resolvePluginAssetPath = assetPathController.resolvePluginAssetPath
+  const resolvePluginDataPath = assetPathController.resolvePluginDataPath
+  const resolvePickedAssetPath = assetPathController.resolvePickedAssetPath
+  const selectCreatorAssetSourceDir = assetPathController.selectCreatorAssetSourceDir
 
   const createPluginBridgeContext = () => {
     const snapshot = petService.getSnapshot?.() || {}
