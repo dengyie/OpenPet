@@ -468,9 +468,24 @@ test.describe('Control Center smoke', () => {
     const chatProviderSection = await expandAiSection(page, '聊天 Provider')
 
     await expect(chatProviderSection.getByRole('button', { name: 'OpenAI 官方' })).toHaveCount(1)
+    await expect(chatProviderSection.getByRole('button', { name: 'LM Studio' })).toHaveCount(1)
+    await expect(chatProviderSection.getByRole('button', { name: 'vLLM' })).toHaveCount(1)
+    await expect(chatProviderSection.getByRole('button', { name: 'OpenRouter' })).toHaveCount(1)
+    await expect(chatProviderSection.getByRole('button', { name: 'Together' })).toHaveCount(1)
     await page.getByRole('textbox', { name: 'Base URL', exact: true }).fill('https://dirty.example.test/v1')
     await page.getByRole('textbox', { name: 'Model', exact: true }).fill('dirty-model')
     await page.getByPlaceholder('输入 API Key').fill('sk-dirty-secret')
+
+    await chatProviderSection.getByRole('button', { name: 'LM Studio' }).click()
+    await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveValue('http://127.0.0.1:1234/v1')
+    await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveValue('dirty-model')
+    await expect(page.getByPlaceholder('输入 API Key')).toHaveValue('sk-dirty-secret')
+
+    await chatProviderSection.getByRole('button', { name: 'OpenRouter' }).click()
+    await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveValue('https://openrouter.ai/api/v1')
+    await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveValue('dirty-model')
+    await expect(page.getByPlaceholder('输入 API Key')).toHaveValue('sk-dirty-secret')
+
     await chatProviderSection.getByRole('button', { name: 'OpenAI 官方' }).click()
 
     await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveValue('https://api.openai.com/v1')
@@ -495,10 +510,20 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByPlaceholder('输入 API Key')).toHaveValue('sk-chat-draft-secret')
 
     const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await expect(imageProviderSection.getByRole('button', { name: 'Together' })).toHaveCount(1)
+    await expect(imageProviderSection.getByRole('button', { name: 'OpenRouter' })).toHaveCount(1)
     await page.getByLabel('图片 Base URL').fill('https://dirty-image.example.test/v1')
     await page.getByLabel('图片 Model').fill('dirty-image-model')
     const imageApiKeyRow = page.locator('.field-row', { hasText: '图片 API Key' })
     await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-draft-secret')
+
+    await imageProviderSection.getByRole('button', { name: 'Together' }).click()
+    await expect(page.getByLabel('图片 Base URL')).toHaveValue('https://api.together.xyz/v1')
+    await expect(page.getByLabel('图片 Model')).toHaveValue('dirty-image-model')
+    await expect(page.getByLabel('图片 Timeout MS')).toHaveValue('120000')
+    await expect(page.getByLabel('图片最大并发')).toHaveValue('1')
+    await expect(imageApiKeyRow.locator('input[type="password"]')).toHaveValue('sk-image-draft-secret')
+
     await imageProviderSection.getByRole('button', { name: /OpenPet 8317 网关/ }).click()
 
     await expect(page.getByLabel('图片 Base URL')).toHaveValue('http://127.0.0.1:8317/v1')

@@ -17,13 +17,47 @@ import type {
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
 
-const imageProviderPresets = [
+type ImageProviderPreset = {
+  id: string
+  title: string
+  description: string
+  baseUrl: string
+  model?: string
+  timeoutMs: number
+  maxConcurrentJobs: number
+}
+
+type ChatProviderPreset = {
+  id: string
+  title: string
+  description: string
+  baseUrl: string
+  model?: string
+}
+
+const imageProviderPresets: readonly ImageProviderPreset[] = [
   {
     id: 'openai',
     title: 'OpenAI 官方',
     description: '使用官方 OpenAI 图片接口；API Key 保存在主进程。',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'together',
+    title: 'Together',
+    description: '云端 OpenAI-compatible 图片网关；默认保留当前模型名，请按 Together 已开通模型调整。',
+    baseUrl: 'https://api.together.xyz/v1',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'openrouter',
+    title: 'OpenRouter',
+    description: '云端 OpenAI-compatible 图片网关；默认保留当前模型名，请按 OpenRouter 实际可用模型调整。',
+    baseUrl: 'https://openrouter.ai/api/v1',
     timeoutMs: 120000,
     maxConcurrentJobs: 1
   },
@@ -47,13 +81,37 @@ const imageProviderPresets = [
   }
 ] as const
 
-const chatProviderPresets = [
+const chatProviderPresets: readonly ChatProviderPreset[] = [
   {
     id: 'openai',
     title: 'OpenAI 官方',
     description: '使用官方 OpenAI 聊天接口；API Key 保存在主进程。',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini'
+  },
+  {
+    id: 'lm-studio',
+    title: 'LM Studio',
+    description: '本地 LM Studio OpenAI-compatible server；默认保留当前模型名，请按已加载模型调整。',
+    baseUrl: 'http://127.0.0.1:1234/v1'
+  },
+  {
+    id: 'vllm',
+    title: 'vLLM',
+    description: '自托管 vLLM OpenAI-compatible server；默认保留当前模型名，请按部署模型调整。',
+    baseUrl: 'http://127.0.0.1:8000/v1'
+  },
+  {
+    id: 'openrouter',
+    title: 'OpenRouter',
+    description: '云端 OpenAI-compatible 聚合网关；默认保留当前模型名，请按路由模型调整。',
+    baseUrl: 'https://openrouter.ai/api/v1'
+  },
+  {
+    id: 'together',
+    title: 'Together',
+    description: '云端 OpenAI-compatible 推理网关；默认保留当前模型名，请按 Together 模型列表调整。',
+    baseUrl: 'https://api.together.xyz/v1'
   },
   {
     id: 'local-openai-compatible',
@@ -458,12 +516,12 @@ export function AiPane({
   const applyChatProviderPreset = (preset: typeof chatProviderPresets[number]) => onChange({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
-    model: preset.model
+    ...(preset.model ? { model: preset.model } : {})
   })
   const applyImageProviderPreset = (preset: typeof imageProviderPresets[number]) => onChangeImageGeneration({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
-    model: preset.model,
+    ...(preset.model ? { model: preset.model } : {}),
     timeoutMs: preset.timeoutMs,
     maxConcurrentJobs: preset.maxConcurrentJobs
   })
@@ -544,7 +602,7 @@ export function AiPane({
           <div className="field-row tall">
             <div>
               <div className="field-label">聊天 Provider 预设</div>
-              <div className="field-note">预设只填充 Base URL / Model；不会读取或覆盖 API Key。</div>
+              <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。</div>
             </div>
             <div className="provider-preset-grid">
               {chatProviderPresets.map((preset) => (
@@ -680,7 +738,7 @@ export function AiPane({
           <div className="field-row tall">
             <div>
               <div className="field-label">图片 Provider 预设</div>
-              <div className="field-note">预设只填充 Base URL / Model / 超时；不会读取或覆盖 API Key。</div>
+              <div className="field-note">预设只填充 Base URL / 可安全默认的 Model / 超时；不会读取或覆盖 API Key。</div>
             </div>
             <div className="provider-preset-grid">
               {imageProviderPresets.map((preset) => (

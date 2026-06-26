@@ -62,13 +62,13 @@ Current state:
 - Chat Provider save and test are separated and provide section-local feedback.
 - Image Provider can be saved independently and health-checked through host services.
 - Provider diagnostics are structured and sanitized.
-- Chat/image provider presets exist for OpenAI official, generic local or proxied OpenAI-compatible gateways, and the OpenPet `127.0.0.1:8317/v1` development gateway.
+- Chat provider presets now cover OpenAI official, LM Studio, vLLM, OpenRouter, Together, generic local or proxied OpenAI-compatible gateways, and the OpenPet `127.0.0.1:8317/v1` development gateway; image provider presets cover OpenAI official, Together, OpenRouter, generic local or proxied OpenAI-compatible gateways, and the OpenPet `127.0.0.1:8317/v1` development gateway.
 - Chat/image provider health checks now perform optional `/models` discovery with safe fallback wording when probing is unavailable.
 - Chat/image model compatibility hints are visible in the AI pane, image generation usage/cost summaries surface when safe provider metadata is returned, and the AI pane now foregrounds the chat/image Provider sections before memory/persona/behavior/chat while explicitly restating the host-owned trust and save/test boundaries.
 
 P1 work:
 
-- Add more provider presets/catalog coverage for common OpenAI-compatible gateways beyond the current OpenAI, generic local/proxy, and OpenPet 8317 entries.
+- Keep the curated provider preset list small and verified instead of turning the AI pane into a large dynamic catalog.
 - Keep provider compatibility copy aligned with real verified gateway behavior, especially for transparent-background support details.
 
 P2/P3:
