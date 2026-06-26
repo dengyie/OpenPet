@@ -75,6 +75,7 @@ const dispatchDocument = async (documentListeners, eventName, event = {}) => {
 const createHarness = async () => {
   const apiCalls = {
     hide: [],
+    openFullChat: [],
     setInteracting: [],
     setHitTestMode: [],
     sendMessage: []
@@ -92,6 +93,7 @@ const createHarness = async () => {
     pinned: false
   })
   let latestState = baseState()
+  let failOpenFullChat = false
   const apiStateListeners = []
   const documentListeners = {}
   const elements = {
@@ -100,6 +102,7 @@ const createHarness = async () => {
     'bubble-stream': createElement('bubble-stream'),
     'bubble-items': createElement('bubble-items'),
     'new-message-button': createElement('new-message-button'),
+    'open-full-chat-button': createElement('open-full-chat-button'),
     'pin-button': createElement('pin-button'),
     'close-button': createElement('close-button'),
     'last-user-message': createElement('last-user-message'),
@@ -136,6 +139,11 @@ const createHarness = async () => {
           apiCalls.setHitTestMode.push(payload)
           latestState = { ...latestState, hitTestInteractive: Boolean(payload?.interactive) }
           return latestState
+        },
+        openFullChat: async () => {
+          if (failOpenFullChat) throw new Error('open failed')
+          apiCalls.openFullChat.push(true)
+          return { opened: true }
         },
         sendMessage: async ({ message }) => {
           apiCalls.sendMessage.push(message)
@@ -177,7 +185,17 @@ const createHarness = async () => {
   vm.runInNewContext(rendererSource, context, { filename: 'pet-bubble-chat-renderer.js' })
   await Promise.resolve()
   await Promise.resolve()
-  return { apiCalls, apiStateListeners, documentListeners, elements, focusState, selection }
+  return {
+    apiCalls,
+    apiStateListeners,
+    documentListeners,
+    elements,
+    focusState,
+    selection,
+    setOpenFullChatFailure(value) {
+      failOpenFullChat = Boolean(value)
+    }
+  }
 }
 
 test('bubble chat renderer renders user, pet and notice items as a mini dialogue stream', async () => {
@@ -277,6 +295,35 @@ test('bubble chat renderer keeps interaction while text is selected and releases
   assert.equal(apiCalls.setInteracting.at(-1), false)
   assert.equal(apiCalls.setHitTestMode.at(-2).interactive, true)
   assert.equal(apiCalls.setHitTestMode.at(-1).interactive, false)
+})
+
+test('bubble chat renderer can hand off to the full chat window and hide the popup', async () => {
+  const harness = await createHarness()
+  const { apiCalls, elements } = harness
+
+  await dispatch(elements['open-full-chat-button'], 'click', {
+    stopPropagation() {}
+  })
+
+  assert.deepEqual(apiCalls.openFullChat, [true])
+  assert.equal(apiCalls.setInteracting.at(-1), false)
+  assert.equal(apiCalls.setHitTestMode.at(-1).interactive, false)
+  assert.deepEqual(apiCalls.hide, [true])
+})
+
+test('bubble chat renderer keeps the popup interactive when full chat handoff fails', async () => {
+  const harness = await createHarness()
+  const { apiCalls, elements, setOpenFullChatFailure } = harness
+  setOpenFullChatFailure(true)
+
+  await dispatch(elements['open-full-chat-button'], 'click', {
+    stopPropagation() {}
+  })
+
+  assert.deepEqual(apiCalls.openFullChat, [])
+  assert.equal(apiCalls.setInteracting.at(-1), true)
+  assert.equal(apiCalls.setHitTestMode.at(-1).interactive, true)
+  assert.deepEqual(apiCalls.hide, [])
 })
 
 test('bubble chat renderer shows and clears a new-message prompt while user is interacting', async () => {

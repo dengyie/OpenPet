@@ -3,6 +3,7 @@ const sourceLabel = document.getElementById('source-label')
 const bubbleStream = document.getElementById('bubble-stream')
 const bubbleItems = document.getElementById('bubble-items')
 const newMessageButton = document.getElementById('new-message-button')
+const openFullChatButton = document.getElementById('open-full-chat-button')
 const pinButton = document.getElementById('pin-button')
 const closeButton = document.getElementById('close-button')
 const lastUserMessage = document.getElementById('last-user-message')
@@ -229,6 +230,21 @@ newMessageButton.addEventListener('click', (event) => {
   localUnseenCount = 0
   scrollToLatest()
   updateUnseenButton()
+})
+
+openFullChatButton.addEventListener('click', async (event) => {
+  event.stopPropagation()
+  try {
+    await window.petBubbleChatAPI.openFullChat?.()
+    expanded = false
+    setInteracting(false)
+    setHitTestMode(false, 'renderer-open-full-chat')
+    window.petBubbleChatAPI.hide()
+  } catch (_) {
+    expanded = true
+    setInteracting(true)
+    setHitTestMode(true, 'renderer-open-full-chat-failed')
+  }
 })
 
 miniInput.addEventListener('focus', () => {

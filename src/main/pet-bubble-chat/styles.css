@@ -83,6 +83,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 button {
@@ -96,6 +98,12 @@ button {
   font-weight: 700;
   line-height: 1;
   padding: 6px 8px;
+}
+
+#open-full-chat-button {
+  padding-inline: 10px;
+  background: rgba(54, 83, 125, 0.12);
+  color: #314b72;
 }
 
 button:hover,
