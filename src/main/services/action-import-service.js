@@ -28,6 +28,12 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     }
   }
 
+  const pruneTriggerRules = (rules, actions) => {
+    if (!Array.isArray(rules) || !Array.isArray(actions)) return []
+    const validActionIds = new Set(actions.map((action) => action?.id).filter(Boolean))
+    return rules.filter((rule) => validActionIds.has(rule?.actionId))
+  }
+
   const getExistingLabels = () => Object.fromEntries(
     (readCurrentConfig().actions || [])
       .filter((action) => action.id && action.label)
@@ -72,6 +78,9 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     })
     const preserved = {
       ...generated,
+      ...(Array.isArray(currentConfig.triggerRules)
+        ? { triggerRules: pruneTriggerRules(currentConfig.triggerRules, generated.actions) }
+        : {}),
       ...(Array.isArray(currentConfig.triggerProposalInbox)
         ? { triggerProposalInbox: currentConfig.triggerProposalInbox }
         : {})
@@ -102,8 +111,19 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       clickAction: readCurrentConfig().clickAction,
       labels: { ...getExistingLabels(), ...(label ? { [actionId]: label } : {}) }
     })
-    const importedAction = config.actions.find((action) => action.id === actionId)
-    return { ...config, importedAction }
+    const currentConfig = readCurrentConfig()
+    const preserved = {
+      ...config,
+      ...(Array.isArray(currentConfig.triggerRules)
+        ? { triggerRules: pruneTriggerRules(currentConfig.triggerRules, config.actions) }
+        : {}),
+      ...(Array.isArray(currentConfig.triggerProposalInbox)
+        ? { triggerProposalInbox: currentConfig.triggerProposalInbox }
+        : {})
+    }
+    fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')
+    const importedAction = preserved.actions.find((action) => action.id === actionId)
+    return { ...preserved, importedAction }
   }
 
   const inspectActionFrames = async ({ sourceDir, actionId }) => {

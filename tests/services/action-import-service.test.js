@@ -154,6 +154,40 @@ test('action import service preserves trigger proposal inbox while regenerating 
   assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerProposalInbox[0].actionId, 'wave')
 })
 
+test('action import service preserves valid trigger rules while regenerating config', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-trigger-rules-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+  const current = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    ...current,
+    triggerRules: [{
+      id: 'rule:state:wave:test',
+      type: 'state',
+      actionId: 'wave',
+      enabled: true,
+      condition: {
+        stateKey: 'posture',
+        equals: 'resting'
+      }
+    }]
+  }, null, 2)}\n`, 'utf-8')
+
+  const result = await service.updateActionConfig({
+    defaultAction: 'wave',
+    clickAction: 'idle'
+  })
+
+  assert.equal(result.triggerRules.length, 1)
+  assert.equal(result.triggerRules[0].id, 'rule:state:wave:test')
+  assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerRules[0].actionId, 'wave')
+})
+
 test('action import service preserves custom labels after regenerating config', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-label-'))
   const sourceDir = path.join(root, 'source-wave')
@@ -189,6 +223,37 @@ test('action import service deletes an action and regenerates config', async () 
   assert.deepEqual(result.actions.map((action) => action.id), ['idle'])
   assert.equal(result.defaultAction, 'idle')
   assert.equal(result.clickAction, 'idle')
+})
+
+test('action import service prunes orphaned trigger rules when deleting an action', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-delete-trigger-rule-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+  const current = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    ...current,
+    triggerRules: [{
+      id: 'rule:state:wave:test',
+      type: 'state',
+      actionId: 'wave',
+      enabled: true,
+      condition: {
+        stateKey: 'posture',
+        equals: 'resting'
+      }
+    }]
+  }, null, 2)}\n`, 'utf-8')
+
+  const result = await service.deleteAction('wave')
+
+  assert.deepEqual(result.actions.map((action) => action.id), ['idle'])
+  assert.deepEqual(result.triggerRules || [], [])
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerRules || [], [])
 })
 
 test('action import service refuses to delete the last valid action', async () => {
