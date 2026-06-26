@@ -190,9 +190,10 @@ const createDeveloperPrompt = ({ dataDir, run }) => {
 const createPublicRecovery = ({ dataDir, run }) => {
   const backendStatus = run.backendStatus || {}
   const canRetryGeneration = run.status === 'failed' && run.taskStatus === 'confirmed' && run.currentStep === 'generate'
+  const isFullPet = run.generationTask?.mode === 'full-pet'
   return {
     canRetryGeneration,
-    actionLabel: canRetryGeneration ? 'Retry generation' : 'Generate action',
+    actionLabel: canRetryGeneration ? 'Retry generation' : (isFullPet ? 'Generate pet pack' : 'Generate action'),
     backend: createPublicLogValue({ dataDir, value: backendStatus }),
     failureReason: createPublicText({ dataDir, value: run.error || backendStatus.message || '' })
   }
@@ -285,6 +286,7 @@ const createWizardState = ({ dataDir, run }) => {
   const prompt = run.input?.originalPrompt || run.input?.prompt || ''
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
+  const isFullPet = run.generationTask?.mode === 'full-pet'
   let phase = 'draft'
   let summary = 'Draft a task to create a run snapshot.'
   let nextStepLabel = 'Draft task'
@@ -325,8 +327,10 @@ const createWizardState = ({ dataDir, run }) => {
     nextStepBlocked = true
   } else if (taskStatus === 'confirmed') {
     phase = 'ready-to-generate'
-    summary = 'Run Generate action to start host-owned generation.'
-    nextStepLabel = 'Generate action'
+    summary = isFullPet
+      ? 'Run Generate pet pack to start host-owned generation.'
+      : 'Run Generate action to start host-owned generation.'
+    nextStepLabel = isFullPet ? 'Generate pet pack' : 'Generate action'
     nextStepReason = 'Generation is unlocked for this confirmed task.'
   }
 
@@ -387,7 +391,8 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
   const canRetryGeneration = Boolean(run.recovery?.canRetryGeneration || (status === 'failed' && taskStatus === 'confirmed'))
-  const generateLabel = canRetryGeneration ? 'Retry generation' : 'Generate action'
+  const isFullPet = run.generationTask?.mode === 'full-pet'
+  const generateLabel = canRetryGeneration ? 'Retry generation' : (isFullPet ? 'Generate pet pack' : 'Generate action')
 
   const confirmEnabled = !hasPendingQuestion && taskStatus !== 'confirmed'
   const generateEnabled = !hasPendingQuestion && taskStatus === 'confirmed' && ['draft', 'failed'].includes(status)

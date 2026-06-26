@@ -2115,6 +2115,15 @@ test('creator studio dashboard keeps full-pet review state when loading run deta
   )
 })
 
+test('creator studio dashboard asset includes full-pet mode copy for generation and review states', () => {
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const html = fs.readFileSync(dashboardPath, 'utf-8')
+
+  assert.match(html, /Generate pet-pack output to inspect full-pet review artifacts\./)
+  assert.match(html, /Generated pet-pack review artifacts and atlas QA will appear here before import\./)
+  assert.match(html, /Generate pet pack/)
+})
+
 test('creator studio service exposes full-pet review details for dashboard clients', async () => {
   const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
@@ -2557,6 +2566,94 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(approved.actionReview, null)
     assert.equal(JSON.stringify(approved).includes(dataDir), false)
     assert.equal(logs.logs.at(-1).event, 'run.approved')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service returns full-pet specific wizard and dashboard labels', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-full-pet-copy-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const petTask = normalizeGenerationTask({
+      mode: 'full-pet',
+      targetPet: 'new',
+      styleSource: 'textOnly',
+      characterBrief: '一只软乎乎的橘猫桌宠。',
+      actions: [{
+        actionId: 'idle',
+        name: 'Idle',
+        motionPrompt: 'neutral idle pose',
+        loop: true,
+        frameCount: 12,
+        triggerProposal: { type: 'state', binding: 'idle' }
+      }]
+    })
+    const run = createRun({
+      dataDir,
+      input: {
+        petName: 'Full Pet Copy Cat',
+        prompt: '生成一只完整的新桌宠。',
+        originalPrompt: '生成一只完整的新桌宠。',
+        backend: 'fixture',
+        generationTask: petTask
+      },
+      now: () => '2026-06-26T00:30:00.000Z'
+    })
+
+    updateRunStatus({
+      dataDir,
+      runId: run.runId,
+      status: 'draft',
+      patch: {
+        taskStatus: 'confirmed',
+        currentStep: 'confirm'
+      },
+      now: () => '2026-06-26T00:31:00.000Z'
+    })
+
+    const confirmedDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
+
+    assert.equal(confirmedDetail.ok, true)
+    assert.match(confirmedDetail.run.wizardState.summary, /Run Generate pet pack/i)
+    assert.equal(confirmedDetail.run.wizardState.nextStep.label, 'Generate pet pack')
+    assert.equal(confirmedDetail.run.actionLane.dashboardAction.label, 'Generate pet pack')
+    assert.equal(confirmedDetail.run.actionLane.buttonStates.generate.label, 'Generate pet pack')
+
+    updateRunStatus({
+      dataDir,
+      runId: run.runId,
+      status: 'ready_for_review',
+      patch: {
+        currentStep: 'review',
+        reviewStatus: 'pending',
+        artifacts: {
+          outputDir: path.join(dataDir, 'runs', run.runId, 'outputs'),
+          petJson: path.join(dataDir, 'runs', run.runId, 'outputs', 'pet.json'),
+          spritesheet: path.join(dataDir, 'runs', run.runId, 'outputs', 'spritesheet.webp'),
+          bundle: path.join(dataDir, 'runs', run.runId, 'outputs', 'full-pet-copy-cat.codex-pet.zip'),
+          qa: path.join(dataDir, 'runs', run.runId, 'qa', 'atlas-validation.json'),
+          sourceImageQa: path.join(dataDir, 'runs', run.runId, 'qa', 'source-image-validation.json'),
+          actionTaskQa: path.join(dataDir, 'runs', run.runId, 'qa', 'action-generation-task.json')
+        }
+      },
+      now: () => '2026-06-26T00:32:00.000Z'
+    })
+
+    const reviewDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
+
+    assert.equal(reviewDetail.ok, true)
+    assert.equal(reviewDetail.actionReview, null)
+    assert.match(reviewDetail.run.workflowGuidance.import.summary, /pet-pack output/i)
+    assert.equal(reviewDetail.run.actionLane.buttonStates.generate.label, 'Generate pet pack')
+    assert.equal(reviewDetail.run.actionLane.buttonStates.approve.label, 'Approve run')
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

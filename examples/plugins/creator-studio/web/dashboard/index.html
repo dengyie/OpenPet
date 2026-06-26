@@ -540,6 +540,8 @@
     <script>
       const state = { run: null, actionReview: null, fullPetReview: null, runs: [], playbackTimer: null, playbackSession: 0 }
       const $ = (id) => document.getElementById(id)
+      const isFullPetRun = (run) => run?.generationTask?.mode === 'full-pet'
+      const defaultGenerateLabel = (run = state.run) => (isFullPetRun(run) ? 'Generate pet pack' : 'Generate action')
 
       const stopPlaybackPreview = () => {
         if (state.playbackTimer) {
@@ -947,7 +949,7 @@
           $('run-logs').textContent = 'No logs yet.'
           $('confirm-button').disabled = true
           $('generate-button').disabled = true
-          $('generate-button').textContent = 'Generate action'
+          $('generate-button').textContent = defaultGenerateLabel()
           $('approve-button').disabled = true
           stopPlaybackPreview()
           return
@@ -974,7 +976,7 @@
         const buttonStates = run.actionLane?.buttonStates || {}
         $('confirm-button').disabled = buttonStates.confirm ? !buttonStates.confirm.enabled : (Boolean(question) || run.taskStatus === 'confirmed')
         $('generate-button').disabled = buttonStates.generate ? !buttonStates.generate.enabled : (Boolean(question) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status))
-        $('generate-button').textContent = buttonStates.generate?.label || (run.recovery?.canRetryGeneration ? 'Retry generation' : 'Generate action')
+        $('generate-button').textContent = buttonStates.generate?.label || (run.recovery?.canRetryGeneration ? 'Retry generation' : defaultGenerateLabel(run))
         $('approve-button').disabled = buttonStates.approve ? !buttonStates.approve.enabled : (run.status !== 'ready_for_review')
         $('recovery-panel').innerHTML = renderRecoveryPanel(run)
         $('workflow-guidance-panel').innerHTML = renderWorkflowGuidance(run)
@@ -1000,8 +1002,12 @@
           $('import-handoff-panel').innerHTML = renderImportHandoff(run, actionFrames)
         } else {
           $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
-          $('playback-panel').textContent = 'Generate action frames to inspect playback timing.'
-          $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+          $('playback-panel').textContent = isFullPetRun(run)
+            ? 'Generate pet-pack output to inspect full-pet review artifacts.'
+            : 'Generate action frames to inspect playback timing.'
+          $('action-review-panel').textContent = isFullPetRun(run)
+            ? 'Generated pet-pack review artifacts and atlas QA will appear here before import.'
+            : 'Generated action frames and action-frame-validation.json will appear here before import.'
           $('full-pet-review-panel').innerHTML = renderFullPetReview(fullPetReview)
           stopPlaybackPreview()
           $('import-handoff-panel').innerHTML = renderImportHandoff(run)
