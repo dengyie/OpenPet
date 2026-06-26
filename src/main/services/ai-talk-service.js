@@ -588,12 +588,12 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     return result
   }
 
-  const exportTraceDiagnostics = ({ behaviorDecisions = [] } = {}) => {
+  const exportTraceDiagnostics = ({ behaviorDecisions = [], filters = {} } = {}) => {
     if (typeof aiTalkStore.exportTraceDiagnostics !== 'function') {
       throw new Error('AI talk trace diagnostics are not available')
     }
     const provider = typeof aiService.getConfig === 'function' ? aiService.getConfig() : {}
-    return aiTalkStore.exportTraceDiagnostics({ provider, behaviorDecisions })
+    return aiTalkStore.exportTraceDiagnostics({ provider, behaviorDecisions, filters })
   }
 
   const deleteMemory = (memoryId) => {

@@ -904,3 +904,46 @@ test('ai talk service exports redacted diagnostics with provider and behavior li
   assert.equal(raw.includes('trace raw assistant reply'), false)
   assert.equal(raw.includes('raw replay'), false)
 })
+
+test('ai talk service forwards trace diagnostic filters to the store export', () => {
+  const captured = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        hasApiKey: true,
+        behavior: { enabled: true, useTools: true },
+        memory: { enabled: true }
+      })
+    },
+    aiTalkStore: {
+      exportTraceDiagnostics: (payload) => {
+        captured.push(payload)
+        return JSON.stringify({ ok: true })
+      }
+    },
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const output = service.exportTraceDiagnostics({
+    filters: {
+      petPackId: 'legacy-cat',
+      conversationId: 'control-center:legacy-cat:main'
+    },
+    behaviorDecisions: [{ id: 9, matched: true, reason: 'demo' }]
+  })
+
+  assert.equal(output, JSON.stringify({ ok: true }))
+  assert.equal(captured.length, 1)
+  assert.equal(captured[0].provider.model, 'gpt-5.5')
+  assert.equal(captured[0].provider.memory.enabled, true)
+  assert.equal(captured[0].provider.behavior.enabled, true)
+  assert.deepEqual(captured[0].filters, {
+    petPackId: 'legacy-cat',
+    conversationId: 'control-center:legacy-cat:main'
+  })
+  assert.deepEqual(captured[0].behaviorDecisions, [{ id: 9, matched: true, reason: 'demo' }])
+})

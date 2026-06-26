@@ -140,6 +140,7 @@ export const defaultPetChatState = {
   hasWindow: false,
   alwaysOnTop: true,
   hasUserBounds: false,
+  conversationId: '',
   bounds: null,
   petPack: {
     id: '',

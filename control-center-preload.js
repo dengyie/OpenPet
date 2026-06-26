@@ -141,7 +141,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   checkImageGenerationHealth: (payload) => ipcRenderer.invoke(IPC.IMAGE_GENERATION_CHECK_HEALTH, payload),
   getAiConversation: (conversationId) => ipcRenderer.invoke(IPC.AI_GET_CONVERSATION, { conversationId }),
   chat: (payload) => ipcRenderer.invoke(IPC.AI_CHAT, payload),
-  exportAiTalkTraceDiagnostics: () => ipcRenderer.invoke(IPC.AI_EXPORT_TRACE_DIAGNOSTICS),
+  exportAiTalkTraceDiagnostics: (filters) => ipcRenderer.invoke(IPC.AI_EXPORT_TRACE_DIAGNOSTICS, filters || {}),
   getPetChatState: () => ipcRenderer.invoke(IPC.PET_CHAT_GET_STATE),
   openPetChatWindow: () => ipcRenderer.invoke(IPC.PET_CHAT_OPEN),
   sendPetChatMessage: (payload) => ipcRenderer.invoke(IPC.PET_CHAT_SEND_MESSAGE, { ...(payload || {}), source: 'control-center' }),

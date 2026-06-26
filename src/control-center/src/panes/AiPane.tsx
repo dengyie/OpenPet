@@ -4,6 +4,7 @@ import type {
   AiBehaviorResult,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiTalkTraceDiagnosticsFilters,
   ImageGenerationHealthCheckResult,
   AiMemoryItemViewState,
   AiMemoryProfileViewState,
@@ -342,6 +343,8 @@ export interface AiPaneProps {
   setReplayDraft: (value: string) => void
   replayResult: AiBehaviorResult | null
   onReplayBehaviorDecision: () => void | Promise<void>
+  traceDiagnosticsFilters: AiTalkTraceDiagnosticsFilters
+  onChangeTraceDiagnosticsFilters: (partial: AiTalkTraceDiagnosticsFilters) => void
   onExportBehaviorDiagnostics: () => void | Promise<void>
   onExportAiTalkTraceDiagnostics: () => void | Promise<void>
   onClearBehaviorDecisions: () => void | Promise<void>
@@ -414,6 +417,8 @@ export function AiPane({
   setReplayDraft,
   replayResult,
   onReplayBehaviorDecision,
+  traceDiagnosticsFilters,
+  onChangeTraceDiagnosticsFilters,
   onExportBehaviorDiagnostics,
   onExportAiTalkTraceDiagnostics,
   onClearBehaviorDecisions,
@@ -634,6 +639,53 @@ export function AiPane({
                 清空当前宠物记忆
               </button>
             </div>
+          </div>
+
+          <div className="field-row">
+            <div>
+              <div className="field-label">Trace 导出范围</div>
+              <div className="field-note">导出 redacted 诊断时，可缩小到当前宠物包或当前主会话。</div>
+            </div>
+            <select
+              className="text-input"
+              value={traceDiagnosticsFilters.conversationId
+                ? 'conversation'
+                : (traceDiagnosticsFilters.petPackId ? 'petPack' : 'all')}
+              onChange={(event) => {
+                const nextMode = event.target.value
+                if (nextMode === 'conversation') {
+                  onChangeTraceDiagnosticsFilters({
+                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
+                    conversationId: petChatState.conversationId || `control-center:${memoryProfile.petPackId}:main`
+                  })
+                  return
+                }
+                if (nextMode === 'petPack') {
+                  onChangeTraceDiagnosticsFilters({
+                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
+                    conversationId: ''
+                  })
+                  return
+                }
+                onChangeTraceDiagnosticsFilters({ petPackId: '', conversationId: '' })
+              }}
+              data-testid="ai-trace-filter-select"
+            >
+              <option value="all">全部 AI Talk 数据</option>
+              <option value="petPack">仅当前宠物包</option>
+              <option value="conversation">仅当前主会话</option>
+            </select>
+          </div>
+
+          <div className="readonly-row">
+            <strong>当前 Trace 过滤</strong>
+            <span>
+              {traceDiagnosticsFilters.conversationId
+                ? `会话 ${traceDiagnosticsFilters.conversationId}`
+                : traceDiagnosticsFilters.petPackId
+                  ? `宠物包 ${traceDiagnosticsFilters.petPackId}`
+                  : '不过滤，导出全部'}
+            </span>
           </div>
 
           <div className="memory-grid">

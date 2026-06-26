@@ -629,6 +629,23 @@ test.describe('Control Center smoke', () => {
     await expect(citrusMemorySection).not.toContainText('Legacy Cat should greet the user softly before focus sessions.')
   })
 
+  test('switches AI trace export filters in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const memorySection = await expandAiSection(page, '长期记忆')
+    const filterSelect = memorySection.getByTestId('ai-trace-filter-select')
+
+    await expect(filterSelect).toHaveValue('all')
+    await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('不过滤，导出全部')
+
+    await filterSelect.selectOption('petPack')
+    await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('宠物包 legacy-cat')
+
+    await filterSelect.selectOption('conversation')
+    await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:legacy-cat:main')
+  })
+
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

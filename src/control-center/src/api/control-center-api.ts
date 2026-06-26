@@ -14,6 +14,7 @@ import type {
   AiMemoryJobViewState,
   AiMemoryProfileViewState,
   AiPersona,
+  AiTalkTraceDiagnosticsFilters,
   AiPersonaOverride,
   AiPersonaProfileViewState,
   CatalogBlocklistEntry,
@@ -1405,26 +1406,18 @@ const demoApi: ControlCenterApi = {
   },
   getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
   chat: sendDemoPetChatMessage,
-  exportAiTalkTraceDiagnostics: async () => JSON.stringify({
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    redaction: {
-      messages: 'content omitted; contentChars and contentSha256 retained',
-      memories: 'text omitted; textChars and textSha256 retained',
-      provider: 'api keys and credentials omitted by provider view contract',
-      behavior: 'decision replay payloads omitted'
-    },
-    provider: {
-      enabled: demoState.aiConfig.enabled,
-      provider: demoState.aiConfig.provider,
-      baseUrl: demoState.aiConfig.baseUrl,
-      model: demoState.aiConfig.model,
-      hasApiKey: demoState.aiConfig.hasApiKey,
-      memoryEnabled: demoState.aiConfig.memory.enabled,
-      behaviorEnabled: demoState.aiConfig.behavior.enabled
-    },
-    conversations: [{
-      key: `control-center:${demoState.petPacks.activePackId}:main`,
+  exportAiTalkTraceDiagnostics: async (filters?: AiTalkTraceDiagnosticsFilters) => {
+    const normalizedPetPackId = String(filters?.petPackId || '').trim()
+    const normalizedConversationId = String(filters?.conversationId || '').trim()
+    const matchesFilters = (entry: { petPackId?: string, conversationId?: string }) => {
+      if (normalizedPetPackId && String(entry.petPackId || '') !== normalizedPetPackId) return false
+      if (normalizedConversationId && String(entry.conversationId || '') !== normalizedConversationId) return false
+      return true
+    }
+    const activeConversationId = `control-center:${demoState.petPacks.activePackId}:main`
+    const conversations = [{
+      key: activeConversationId,
+      conversationId: activeConversationId,
       petPackId: demoState.petPacks.activePackId,
       messageCount: demoState.petChatMessages.length,
       messages: demoState.petChatMessages.map((message, index) => ({
@@ -1434,25 +1427,56 @@ const demoApi: ControlCenterApi = {
         contentSha256: `demo-sha256-${index + 1}`,
         createdAt: ''
       }))
-    }],
-    memories: demoState.aiMemories.map((memory) => ({
+    }].filter((entry) => matchesFilters(entry))
+    const memories = demoState.aiMemories.map((memory) => ({
       id: memory.id,
       scope: memory.scope,
       petPackId: memory.petPackId,
+      conversationId: memory.sourceConversationId,
       textChars: memory.text.length,
       textSha256: `demo-memory-sha256-${memory.id}`,
       tags: memory.tags,
       confidence: memory.confidence,
       importance: memory.importance,
       status: memory.status
-    })),
-    memoryJobs: demoState.aiMemoryJobs,
-    traces: [],
-    behaviorDecisions: demoState.aiConfig.behavior.decisions.map(({ replay: _replay, ...decision }) => ({
-      ...decision,
-      replayRedacted: true
-    }))
-  }, null, 2),
+    })).filter((entry) => matchesFilters(entry))
+    const memoryJobs = demoState.aiMemoryJobs
+      .map((job) => ({
+        ...job,
+        petPackId: job.petPackId,
+        conversationId: job.conversationId
+      }))
+      .filter((entry) => matchesFilters(entry))
+    return JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      redaction: {
+        messages: 'content omitted; contentChars and contentSha256 retained',
+        memories: 'text omitted; textChars and textSha256 retained',
+        provider: 'api keys and credentials omitted by provider view contract',
+        behavior: 'decision replay payloads omitted'
+      },
+      provider: {
+        enabled: demoState.aiConfig.enabled,
+        provider: demoState.aiConfig.provider,
+        baseUrl: demoState.aiConfig.baseUrl,
+        model: demoState.aiConfig.model,
+        hasApiKey: demoState.aiConfig.hasApiKey,
+        memoryEnabled: demoState.aiConfig.memory.enabled,
+        behaviorEnabled: demoState.aiConfig.behavior.enabled
+      },
+      conversations,
+      memories,
+      memoryJobs,
+      traces: [],
+      behaviorDecisions: (!normalizedPetPackId && !normalizedConversationId)
+        ? demoState.aiConfig.behavior.decisions.map(({ replay: _replay, ...decision }) => ({
+            ...decision,
+            replayRedacted: true
+          }))
+        : []
+    }, null, 2)
+  },
   getPetChatState: async () => createDemoPetChatState(),
   openPetChatWindow: async () => createDemoPetChatState(),
   sendPetChatMessage: sendDemoPetChatMessage,

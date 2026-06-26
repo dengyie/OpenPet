@@ -185,6 +185,11 @@ export interface AiTalkTraceDiagnosticsExport {
   behaviorDecisions: JsonObject[]
 }
 
+export interface AiTalkTraceDiagnosticsFilters {
+  petPackId?: string
+  conversationId?: string
+}
+
 export interface AiPersona {
   name: string
   identity: string
@@ -1887,6 +1892,7 @@ export interface PetChatStateViewState {
   hasWindow: boolean
   alwaysOnTop: boolean
   hasUserBounds: boolean
+  conversationId: string
   bounds: {
     x: number
     y: number
@@ -2457,7 +2463,7 @@ export interface ControlCenterApi {
   checkImageGenerationHealth: (payload?: ImageGenerationHealthCheckRequest) => Promise<ImageGenerationHealthCheckResult>
   getAiConversation: (conversationId: string) => Promise<ChatMessage[]>
   chat: (payload: AiChatRequest) => Promise<AiChatResponse>
-  exportAiTalkTraceDiagnostics: () => Promise<string>
+  exportAiTalkTraceDiagnostics: (filters?: AiTalkTraceDiagnosticsFilters) => Promise<string>
   getPetChatState: () => Promise<PetChatStateViewState>
   openPetChatWindow: () => Promise<PetChatStateViewState>
   sendPetChatMessage: (payload: AiChatRequest) => Promise<AiChatResponse>

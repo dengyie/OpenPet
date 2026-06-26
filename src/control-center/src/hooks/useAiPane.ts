@@ -29,6 +29,7 @@ import type {
   AiBehaviorRule,
   AiConfigViewState,
   AiConnectionTestResult,
+  AiTalkTraceDiagnosticsFilters,
   AiMemoryProfileViewState,
   AiPersonaDraftViewState,
   AiPersonaOverride,
@@ -204,6 +205,7 @@ export function useAiPane(activeTab = 'ai') {
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
+  const [traceDiagnosticsFilters, setTraceDiagnosticsFilters] = useState<AiTalkTraceDiagnosticsFilters>({})
   const [chatting, setChatting] = useState(false)
   const [behavior, setBehavior] = useState<AiBehaviorConfig>(defaultAiConfig.behavior)
   const [behaviorRulesText, setBehaviorRulesText] = useState('[]')
@@ -723,7 +725,10 @@ export function useAiPane(activeTab = 'ai') {
   const onExportAiTalkTraceDiagnostics = async () => {
     setStatus('')
     try {
-      const content = await api.exportAiTalkTraceDiagnostics()
+      const content = await api.exportAiTalkTraceDiagnostics({
+        petPackId: String(traceDiagnosticsFilters.petPackId || '').trim(),
+        conversationId: String(traceDiagnosticsFilters.conversationId || '').trim()
+      })
       downloadTextFile('openpet-ai-talk-trace-diagnostics.json', content, 'application/json;charset=utf-8')
       setStatus('AI Talk Trace 已导出')
     } catch (error) {
@@ -772,6 +777,7 @@ export function useAiPane(activeTab = 'ai') {
     dryRunResult,
     replayDraft,
     replayResult,
+    traceDiagnosticsFilters,
     setDryRunText,
     setReplayDraft,
     setBehaviorRulesText,
@@ -796,6 +802,10 @@ export function useAiPane(activeTab = 'ai') {
     onTest,
     onDryRunBehavior,
     onReplayBehaviorDecision,
+    onChangeTraceDiagnosticsFilters: (partial: AiTalkTraceDiagnosticsFilters) => setTraceDiagnosticsFilters({
+      petPackId: String(partial.petPackId || '').trim(),
+      conversationId: String(partial.conversationId || '').trim()
+    }),
     onExportBehaviorDiagnostics,
     onExportAiTalkTraceDiagnostics,
     onClearBehaviorDecisions,

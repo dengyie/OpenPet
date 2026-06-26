@@ -266,6 +266,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const config = aiService?.getConfig?.() || {}
     let profile = {}
     let messages = []
+    let conversationId = ''
     try {
       profile = aiTalkService?.getPersonaProfile?.() || {}
     } catch (_) {
@@ -276,12 +277,16 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     } catch (_) {
       messages = []
     }
+    if (profile?.petPackId) {
+      conversationId = `control-center:${profile.petPackId}:main`
+    }
     const enabled = Boolean(config.enabled)
     const hasApiKey = Boolean(config.hasApiKey)
     const ready = enabled && hasApiKey
     return {
       available: Boolean(petChatWindowService),
       ...windowState,
+      conversationId,
       petPack: {
         id: profile.petPackId || '',
         displayName: profile.petPackDisplayName || profile.petPackId || ''
@@ -1231,9 +1236,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => runAiChatRequest(payload, { source: 'control-center' }))
 
-  ipcMainService.handle(IPC.AI_EXPORT_TRACE_DIAGNOSTICS, () => {
+  ipcMainService.handle(IPC.AI_EXPORT_TRACE_DIAGNOSTICS, (_event, payload) => {
     if (!aiTalkService?.exportTraceDiagnostics) throw new Error('AI talk trace diagnostics are not available')
     return aiTalkService.exportTraceDiagnostics({
+      filters: payload || {},
       behaviorDecisions: behaviorOrchestratorService.getConfig?.().decisions || []
     })
   })

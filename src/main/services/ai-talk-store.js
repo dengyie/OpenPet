@@ -209,6 +209,7 @@ const summarizeMemory = (memory) => {
     id: typeof normalized.id === 'string' ? normalized.id : '',
     scope: MEMORY_SCOPES.has(normalized.scope) ? normalized.scope : 'global',
     petPackId: typeof normalized.petPackId === 'string' ? normalized.petPackId : '',
+    conversationId: typeof normalized.sourceConversationId === 'string' ? normalized.sourceConversationId : '',
     textChars: text.length,
     textSha256: hashText(text),
     tags: normalizeMemoryTags(normalized.tags),
@@ -616,12 +617,20 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     }
   }
 
-  const exportTraceDiagnostics = ({ provider = {}, behaviorDecisions = [] } = {}) => {
+  const exportTraceDiagnostics = ({ provider = {}, behaviorDecisions = [], filters = {} } = {}) => {
+    const filterPetPackId = typeof filters.petPackId === 'string' ? filters.petPackId.trim() : ''
+    const filterConversationId = typeof filters.conversationId === 'string' ? filters.conversationId.trim() : ''
+    const matchesFilters = ({ petPackId = '', conversationId = '' } = {}) => {
+      if (filterPetPackId && petPackId !== filterPetPackId) return false
+      if (filterConversationId && conversationId !== filterConversationId) return false
+      return true
+    }
     const conversations = Object.entries(state.conversations || {})
       .map(([conversationKey, conversation]) => {
         const messages = normalizeMessages(state.messages[conversationKey] || [])
         return {
           key: conversationKey,
+          conversationId: conversationKey,
           id: typeof conversation?.id === 'string' ? conversation.id : '',
           sessionId: typeof conversation?.sessionId === 'string' ? conversation.sessionId : '',
           petPackId: typeof conversation?.petPackId === 'string' ? conversation.petPackId : '',
@@ -634,10 +643,18 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
           updatedAt: typeof conversation?.updatedAt === 'string' ? conversation.updatedAt : ''
         }
       })
+      .filter((conversation) => matchesFilters({
+        petPackId: conversation.petPackId,
+        conversationId: conversation.key
+      }))
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       .slice(0, MAX_TRACE_ITEMS)
     const memories = Object.values(state.memories || {})
       .map(summarizeMemory)
+      .filter((memory) => matchesFilters({
+        petPackId: memory.petPackId,
+        conversationId: memory.conversationId
+      }))
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       .slice(0, MAX_TRACE_ITEMS)
     const memoryJobs = Object.values(state.memoryJobs || {})
@@ -651,6 +668,10 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
         filteredCount: Number.isFinite(Number(job?.filteredCount)) ? Number(job.filteredCount) : 0,
         createdAt: typeof job?.createdAt === 'string' ? job.createdAt : '',
         updatedAt: typeof job?.updatedAt === 'string' ? job.updatedAt : ''
+      }))
+      .filter((job) => matchesFilters({
+        petPackId: job.petPackId,
+        conversationId: job.conversationId
       }))
       .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
       .slice(0, MAX_TRACE_ITEMS)
@@ -668,8 +689,20 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
           : [],
         createdAt: typeof trace?.createdAt === 'string' ? trace.createdAt : ''
       }))
+      .filter((trace) => matchesFilters({
+        petPackId: trace.petPackId,
+        conversationId: trace.conversationId
+      }))
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
       .slice(0, MAX_TRACE_ITEMS)
+    const filteredBehaviorDecisions = (Array.isArray(behaviorDecisions) ? behaviorDecisions : [])
+      .filter((decision) => {
+        if (!filterPetPackId && !filterConversationId) return true
+        const petPackId = typeof decision?.petPackId === 'string' ? decision.petPackId : ''
+        const conversationId = typeof decision?.conversationId === 'string' ? decision.conversationId : ''
+        if (!petPackId && !conversationId) return false
+        return matchesFilters({ petPackId, conversationId })
+      })
     return JSON.stringify({
       schemaVersion: 1,
       exportedAt: now(),
@@ -692,7 +725,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       memories,
       memoryJobs,
       traces,
-      behaviorDecisions: (Array.isArray(behaviorDecisions) ? behaviorDecisions : [])
+      behaviorDecisions: filteredBehaviorDecisions
         .slice(0, MAX_TRACE_ITEMS)
         .map(({ replay: _replay, ...decision }) => ({
           id: Number.isFinite(Number(decision?.id)) ? Number(decision.id) : 0,
