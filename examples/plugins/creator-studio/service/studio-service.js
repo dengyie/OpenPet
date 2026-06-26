@@ -602,7 +602,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
     importStatus = 'imported'
     importSummary = importCommand === 'import-approved-action'
       ? `Imported action ${run.importedActionId || run.artifacts?.actionFrames?.actionId || ''}.`
-      : 'Imported pet-pack output through the host-owned bridge.'
+      : `Imported pet pack ${run.importedPackId || 'unknown-pack'}.`
     if (hasActionFrames) {
       if (run.triggerProposalSubmission?.ok) {
         triggerProposalStatus = 'submitted'
@@ -611,6 +611,8 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
         triggerProposalStatus = 'failed'
         triggerProposalSummary = 'Action import succeeded, but trigger proposal handoff failed. Re-run import or inspect the command output before applying trigger rules.'
       }
+    } else if (run.activatedPackId) {
+      triggerProposalSummary = `Activated pack: ${run.activatedPackId}.`
     }
   } else if (run.status === 'ready_for_review') {
     importStatus = 'review-required'

@@ -66,6 +66,7 @@ runCommand(async (context) => {
     patch: {
       importStatus: 'imported',
       importedPackId: imported.imported?.pack?.id || '',
+      activatedPackId: imported.activated?.activePackId || '',
       currentStep: 'imported'
     }
   })

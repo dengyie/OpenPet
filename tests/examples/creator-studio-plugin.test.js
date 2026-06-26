@@ -1271,6 +1271,7 @@ test('creator studio import command regenerates stale fixture output when approv
     assert.equal(imported.json.ok, true)
     assert.equal(imported.json.run.status, 'imported')
     assert.equal(repaired.importedPackId, 'stale-fixture-cat')
+    assert.equal(repaired.activatedPackId, 'stale-fixture-cat')
     assert.equal(atlasStats.channels[3].max > 0, true)
     assert.deepEqual(requests.map((entry) => entry.url), [
       '/creator/pet-pack/inspect-output',
@@ -1506,6 +1507,7 @@ test('creator studio import-approved-pet imports approved full-pet output when q
     assert.equal(imported.json.ok, true)
     assert.equal(imported.json.run.status, 'imported')
     assert.equal(stored.importedPackId, 'import-qa-pass-cat')
+    assert.equal(stored.activatedPackId, 'import-qa-pass-cat')
     assert.deepEqual(requests.map((entry) => entry.url), [
       '/creator/pet-pack/inspect-output',
       '/creator/pet-pack/import-output'
@@ -2331,6 +2333,7 @@ test('creator studio import-approved-pet skips action-only runs when inferring l
     assert.equal(imported.json.ok, true)
     assert.equal(imported.json.run.runId, petRun.json.run.runId)
     assert.equal(imported.json.run.importedPackId, 'import-pet-cat')
+    assert.equal(imported.json.run.activatedPackId, 'import-pet-cat')
     assert.deepEqual(requests.map((entry) => entry.url), [
       '/creator/pet-pack/inspect-output',
       '/creator/pet-pack/import-output'
@@ -3356,6 +3359,31 @@ test('creator studio service exposes workflow guidance for fixture and imported 
       },
       now: () => '2026-06-26T00:01:00.000Z'
     })
+    const importedPetRun = createRun({
+      dataDir,
+      input: {
+        petName: 'Imported Pet Guidance Cat',
+        petId: 'imported-pet-guidance-cat',
+        prompt: '生成一只完整的新桌宠。',
+        originalPrompt: '生成一只完整的新桌宠。',
+        backend: 'cloud',
+        generationTask: normalizeGenerationTask({
+          mode: 'full-pet',
+          targetPet: 'new',
+          styleSource: 'textOnly',
+          characterBrief: '一只完整的软乎乎桌宠。',
+          actions: [{
+            actionId: 'idle',
+            name: 'Idle',
+            motionPrompt: 'neutral idle pose',
+            loop: true,
+            frameCount: 12,
+            triggerProposal: { type: 'state', binding: 'idle' }
+          }]
+        })
+      },
+      now: () => '2026-06-26T00:01:30.000Z'
+    })
     updateRunStatus({
       dataDir,
       runId: fixtureRun.runId,
@@ -3430,10 +3458,48 @@ test('creator studio service exposes workflow guidance for fixture and imported 
       },
       now: () => '2026-06-26T00:03:00.000Z'
     })
+    updateRunStatus({
+      dataDir,
+      runId: importedPetRun.runId,
+      status: 'imported',
+      patch: {
+        taskStatus: 'confirmed',
+        currentStep: 'imported',
+        reviewStatus: 'approved',
+        importStatus: 'imported',
+        importedPackId: 'imported-pet-guidance-cat',
+        activatedPackId: 'imported-pet-guidance-cat',
+        modelSnapshot: {
+          backend: 'cloud',
+          provider: 'openai-compatible',
+          model: 'gpt-image-2',
+          baseUrlHost: '127.0.0.1:7860'
+        },
+        artifacts: {
+          generatedImage: {
+            ok: true,
+            backend: 'cloud',
+            model: 'gpt-image-2',
+            generatedAt: '2026-06-26T00:03:30.000Z',
+            usage: {
+              estimatedCostUsd: 0.021
+            },
+            outputs: [{
+              dataRelativePath: `runs/${importedPetRun.runId}/frames/base/0001.png`,
+              mimeType: 'image/png',
+              sha256: 'imported-pet-provider-sha'
+            }]
+          }
+        }
+      },
+      now: () => '2026-06-26T00:03:30.000Z'
+    })
 
     const fixtureDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${fixtureRun.runId}`).then((response) => response.json())
     const importedDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${importedRun.runId}`).then((response) => response.json())
+    const importedPetDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${importedPetRun.runId}`).then((response) => response.json())
     const importedSerialized = JSON.stringify(importedDetail)
+    const importedPetSerialized = JSON.stringify(importedPetDetail)
 
     assert.equal(fixtureDetail.ok, true)
     assert.equal(fixtureDetail.run.workflowGuidance.generation.mode, 'fixture-preview')
@@ -3468,6 +3534,20 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedDetail.run.wizardState.nextStep.blocked, true)
     assert.equal(importedSerialized.includes('127.0.0.1:7860'), false)
     assert.equal(importedSerialized.includes(dataDir), false)
+
+    assert.equal(importedPetDetail.ok, true)
+    assert.equal(importedPetDetail.run.workflowGuidance.import.status, 'imported')
+    assert.equal(importedPetDetail.run.workflowGuidance.import.command, 'import-approved-pet')
+    assert.match(importedPetDetail.run.workflowGuidance.import.summary, /Imported pet pack imported-pet-guidance-cat\./)
+    assert.equal(importedPetDetail.run.workflowGuidance.import.triggerProposalStatus, 'not-applicable')
+    assert.match(importedPetDetail.run.workflowGuidance.import.triggerProposalSummary, /Activated pack: imported-pet-guidance-cat\./)
+    assert.equal(importedPetDetail.run.importedPackId, 'imported-pet-guidance-cat')
+    assert.equal(importedPetDetail.run.activatedPackId, 'imported-pet-guidance-cat')
+    assert.equal(importedPetDetail.run.wizardState.phase, 'imported')
+    assert.equal(importedPetDetail.run.wizardState.nextStep.label, 'Review imported result')
+    assert.equal(importedPetDetail.run.wizardState.nextStep.blocked, true)
+    assert.equal(importedPetSerialized.includes('127.0.0.1:7860'), false)
+    assert.equal(importedPetSerialized.includes(dataDir), false)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }
