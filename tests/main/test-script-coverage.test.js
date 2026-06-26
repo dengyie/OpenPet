@@ -20,5 +20,5 @@ test('package scripts expose core and auxiliary test suites separately', () => {
   assert.equal(scripts['test:core:all'], 'npm run test:core && npm run test:control-center')
   assert.match(scripts['test:tools'], /tests\/scripts\/\*\.test\.js/)
   assert.match(scripts['test:tools'], /tests\/release\/\*\.test\.js/)
-  assert.equal(scripts['test:control-center'], 'playwright test')
+  assert.equal(scripts['test:control-center'], 'node scripts/run-control-center-playwright.js')
 })
