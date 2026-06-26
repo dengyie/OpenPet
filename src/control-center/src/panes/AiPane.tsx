@@ -872,7 +872,7 @@ export function AiPane({
         </div>
       </CollapsibleAiSection>
 
-      <CollapsibleAiSection title="聊天" note="用当前已保存 Provider 和宠物对话">
+      <CollapsibleAiSection title="聊天" note="默认在这里和宠物对话；需要长历史时可打开扩展聊天面板">
         <div className="chat-panel">
           <div className="chat-meta-bar">
             <div>
@@ -884,7 +884,7 @@ export function AiPane({
               </span>
             </div>
             <button type="button" className="ghost" onClick={onOpenDesktopChat}>
-              打开桌面聊天框
+              打开扩展聊天面板
             </button>
           </div>
           {petChatState.bubble.text ? (

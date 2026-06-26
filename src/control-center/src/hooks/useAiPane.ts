@@ -672,9 +672,9 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const nextState = clonePetChatState(await api.openPetChatWindow())
       setPetChatState(nextState)
-      setStatus('已打开桌面聊天框')
+      setStatus('已打开扩展聊天面板')
     } catch (error) {
-      setStatus(messageFromError(error, '打开桌面聊天框失败'))
+      setStatus(messageFromError(error, '打开扩展聊天面板失败'))
     }
   }
 

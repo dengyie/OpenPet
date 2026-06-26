@@ -540,6 +540,16 @@ test.describe('Control Center smoke', () => {
     await expect(citrusMemorySection).not.toContainText('Legacy Cat should greet the user softly before focus sessions.')
   })
 
+  test('AI page labels the full window as an extended chat panel', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatSection = await expandAiSection(page, '聊天')
+    await expect(chatSection).toContainText('默认在这里和宠物对话；需要长历史时可打开扩展聊天面板')
+    await chatSection.getByRole('button', { name: '打开扩展聊天面板' }).click()
+    await expect(page.locator('.status-line')).toContainText('已打开扩展聊天面板')
+  })
+
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
