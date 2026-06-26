@@ -150,6 +150,21 @@ const createPromptProvenance = ({ run }) => {
   }
 }
 
+const createImageUsageSummary = ({ run }) => {
+  const generatedImage = run.artifacts?.generatedImage
+  const usage = generatedImage?.usage
+  const estimatedCostUsd = Number(usage?.estimatedCostUsd)
+  if (!generatedImage || !Number.isFinite(estimatedCostUsd) || estimatedCostUsd < 0) return null
+  return {
+    provider: String(generatedImage.provider || run.backend || ''),
+    model: String(generatedImage.model || ''),
+    generatedAt: String(generatedImage.generatedAt || ''),
+    outputCount: Array.isArray(generatedImage.outputs) ? generatedImage.outputs.length : 0,
+    estimatedCostUsd,
+    estimatedCostDisplayUsd: `$${estimatedCostUsd.toFixed(4)}`
+  }
+}
+
 const createBackendRecovery = ({ run }) => {
   const backendStatus = run.backendStatus || {}
   if (run.status !== 'failed' || run.currentStep !== 'generate') return null
@@ -270,7 +285,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         ...output,
         run: createPublicRun({ dataDir, run: output.run }),
-        promptProvenance: createPromptProvenance({ run: output.run })
+        promptProvenance: createPromptProvenance({ run: output.run }),
+        imageUsageSummary: createImageUsageSummary({ run: output.run })
       })
       return true
     }
@@ -287,7 +303,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         ...output,
         run: createPublicRun({ dataDir, run: output.run }),
-        promptProvenance: createPromptProvenance({ run: output.run })
+        promptProvenance: createPromptProvenance({ run: output.run }),
+        imageUsageSummary: createImageUsageSummary({ run: output.run })
       })
       return true
     }
@@ -302,7 +319,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         ...output,
         run: createPublicRun({ dataDir, run: output.run }),
-        promptProvenance: createPromptProvenance({ run: output.run })
+        promptProvenance: createPromptProvenance({ run: output.run }),
+        imageUsageSummary: createImageUsageSummary({ run: output.run })
       })
       return true
     }
@@ -318,6 +336,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         run: createPublicRun({ dataDir, run: output.run }),
         actionReview: createActionReview({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
+        imageUsageSummary: createImageUsageSummary({ run: output.run }),
         outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
       })
       return true
@@ -350,6 +369,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         run: createPublicRun({ dataDir, run }),
         actionReview: createActionReview({ dataDir, run }),
         promptProvenance: createPromptProvenance({ run }),
+        imageUsageSummary: createImageUsageSummary({ run }),
         importCommand: run.artifacts?.actionFrames ? 'import-approved-action' : 'import-approved-pet'
       })
       return true
@@ -406,6 +426,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         run: createPublicRun({ dataDir, run: nextRun }),
         actionReview: createActionReview({ dataDir, run: nextRun }),
         promptProvenance: createPromptProvenance({ run: nextRun }),
+        imageUsageSummary: createImageUsageSummary({ run: nextRun }),
         repair: {
           actionId: repair.actionId,
           fileName: repair.fileName,
@@ -455,6 +476,7 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
         run: createPublicRun({ dataDir, run }),
         actionReview: createActionReview({ dataDir, run }),
         promptProvenance: createPromptProvenance({ run }),
+        imageUsageSummary: createImageUsageSummary({ run }),
         backendRecovery: createBackendRecovery({ run })
       })
       return

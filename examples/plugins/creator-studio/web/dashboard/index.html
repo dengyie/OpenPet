@@ -280,14 +280,18 @@
             <h2>Trigger Proposal</h2>
             <section id="trigger-panel">No trigger proposal yet.</section>
           </section>
-          <section>
-            <h2>Prompt Provenance</h2>
-            <section id="prompt-provenance-panel">No prompt provenance yet.</section>
-          </section>
-          <section>
-            <h2>Generation Recovery</h2>
-            <section id="backend-recovery-panel">No recovery guidance yet.</section>
-          </section>
+        <section>
+          <h2>Prompt Provenance</h2>
+          <section id="prompt-provenance-panel">No prompt provenance yet.</section>
+        </section>
+        <section>
+          <h2>Generation Usage</h2>
+          <section id="generation-usage-panel">No generation usage summary yet.</section>
+        </section>
+        <section>
+          <h2>Generation Recovery</h2>
+          <section id="backend-recovery-panel">No recovery guidance yet.</section>
+        </section>
           <section>
             <h2>Import Handoff</h2>
             <section id="import-handoff-panel">Generate and approve an action to unlock host-owned import.</section>
@@ -312,7 +316,7 @@
     </main>
 
     <script>
-      const state = { run: null, actionReview: null, promptProvenance: null, backendRecovery: null, runs: [] }
+      const state = { run: null, actionReview: null, promptProvenance: null, imageUsageSummary: null, backendRecovery: null, runs: [] }
       const $ = (id) => document.getElementById(id)
 
       const setStatus = (message, kind = '') => {
@@ -370,6 +374,7 @@
         state.run = payload.run
         state.actionReview = payload.actionReview || null
         state.promptProvenance = payload.promptProvenance || null
+        state.imageUsageSummary = payload.imageUsageSummary || null
         state.backendRecovery = payload.backendRecovery || null
         renderRunList()
       }
@@ -416,6 +421,15 @@
         ].join('')
       }
 
+      const renderImageUsageSummary = (summary) => {
+        if (!summary) return 'No generation usage summary yet.'
+        return [
+          `<p><strong>${escapeHtml(summary.provider || 'provider')}</strong> / ${escapeHtml(summary.model || 'model')}</p>`,
+          `<p>Estimated cost: ${escapeHtml(summary.estimatedCostDisplayUsd || '$0.0000')}</p>`,
+          `<p>Outputs: ${escapeHtml(summary.outputCount || 0)}${summary.generatedAt ? ` / Generated at: ${escapeHtml(summary.generatedAt)}` : ''}</p>`
+        ].join('')
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
@@ -423,6 +437,7 @@
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
           $('prompt-provenance-panel').textContent = 'No prompt provenance yet.'
+          $('generation-usage-panel').textContent = 'No generation usage summary yet.'
           $('backend-recovery-panel').textContent = 'No recovery guidance yet.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
@@ -442,6 +457,7 @@
         ].join('')
         $('trigger-panel').innerHTML = `<strong>${escapeHtml(action.triggerProposal.type)}</strong><p>${escapeHtml(action.triggerProposal.notes || 'No notes.')}</p>`
         $('prompt-provenance-panel').innerHTML = renderPromptProvenance(state.promptProvenance)
+        $('generation-usage-panel').innerHTML = renderImageUsageSummary(state.imageUsageSummary)
         $('backend-recovery-panel').innerHTML = renderBackendRecovery(state.backendRecovery)
         if (question) {
           $('question-panel').innerHTML = question.options.map((option) => (
@@ -515,6 +531,7 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -533,6 +550,7 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -552,6 +570,7 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -569,6 +588,7 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -586,6 +606,7 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
           state.backendRecovery = payload.backendRecovery || null
           if (!state.actionReview) await fetchRunDetail()
           renderRun()
@@ -604,6 +625,7 @@
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()

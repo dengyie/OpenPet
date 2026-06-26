@@ -2023,8 +2023,10 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /action-frame-validation\.json/)
   assert.match(html, /id="run-logs"/)
   assert.match(html, /id="prompt-provenance-panel"/)
+  assert.match(html, /id="generation-usage-panel"/)
   assert.match(html, /id="backend-recovery-panel"/)
   assert.match(html, /Generation Recovery/)
+  assert.match(html, /Generation Usage/)
   assert.match(html, /Prompt Provenance/)
   assert.equal(html.includes('apiKey'), false)
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
@@ -2067,6 +2069,9 @@ test('creator studio service exposes run detail and logs for dashboard clients',
           backend: 'fixture',
           model: 'fixture-image',
           generatedAt: '2026-06-19T00:00:00.000Z',
+          usage: {
+            estimatedCostUsd: 0.0123
+          },
           prompt: [
             '## Intent',
             '- Safe line',
@@ -2165,6 +2170,14 @@ test('creator studio service exposes run detail and logs for dashboard clients',
         '## User Creative Brief',
         '- sketch from [redacted-path] with [redacted-token] [redacted-secret]'
       ].join('\n')
+    })
+    assert.deepEqual(detail.imageUsageSummary, {
+      provider: 'fixture',
+      model: 'fixture-image',
+      generatedAt: '2026-06-19T00:00:00.000Z',
+      outputCount: 1,
+      estimatedCostUsd: 0.0123,
+      estimatedCostDisplayUsd: '$0.0123'
     })
     assert.equal(JSON.stringify(detail).includes(dataDir), false)
     assert.equal(detail.promptProvenance.promptPreview.includes('/Users/mango'), false)
