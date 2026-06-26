@@ -353,6 +353,28 @@ const resolveImportCommand = (run) => (
     : 'import-approved-pet'
 )
 
+const resolveImportCommandTitle = (commandId) => (
+  commandId === 'import-approved-action'
+    ? 'Import Approved Action'
+    : 'Import Approved Pet'
+)
+
+const createImportHandoff = ({ dataDir, run, importStatus }) => {
+  const commandId = resolveImportCommand(run)
+  const ready = run.status === 'approved' && importStatus === 'ready'
+  return {
+    ready,
+    runId: createPublicText({ dataDir, value: run.runId || '' }),
+    commandId: createPublicText({ dataDir, value: commandId }),
+    commandTitle: createPublicText({ dataDir, value: resolveImportCommandTitle(commandId) }),
+    location: 'Control Center -> Plugins',
+    dashboardCanImport: false,
+    reason: ready
+      ? 'The dashboard cannot import directly because the OpenPet bridge token is command-scoped and only issued to explicit plugin command runs.'
+      : 'Approve the run first, then use the host-owned plugin command so bridge access stays command-scoped.'
+  }
+}
+
 const createWorkflowGuidance = ({ dataDir, run }) => {
   const backend = String(run.backend || run.input?.backend || 'fixture')
   const modelSnapshot = run.modelSnapshot || run.artifacts?.generatedImage?.modelSnapshot || {}
@@ -429,6 +451,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
     import: {
       status: createPublicText({ dataDir, value: importStatus }),
       command: createPublicText({ dataDir, value: importCommand }),
+      handoff: createImportHandoff({ dataDir, run, importStatus }),
       summary: createPublicText({ dataDir, value: importSummary }),
       importedActionId: createPublicText({ dataDir, value: run.importedActionId || '' }),
       triggerProposalStatus: createPublicText({ dataDir, value: triggerProposalStatus }),

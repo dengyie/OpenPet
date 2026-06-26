@@ -44,7 +44,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Trigger pro
 - Control Center AI settings now include chat/image provider presets, an explicit OpenPet `127.0.0.1:8317/v1` gateway preset for `gpt-5.5` chat and `gpt-image-2` image generation, optional `/models` discovery with safe fallback wording, chat/image model compatibility hints, and safe image generation usage/cost summaries when provider metadata is available.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, conservative legacy `settings.ai.conversations.control-center` migration, active pet-pack refresh signals for AI pane and desktop chat, redacted trace diagnostics export with pet-pack and conversation filters, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, provider behavior `reason` / `displayMode` preservation through behavior decisions, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
-- Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard-first wizard display, prompt snapshot, wizard-step rail, retry/recover for failed provider runs, sanitized developer-mode prompt provenance, workflow smoke guidance, and approved action/pet import command handoff.
+- Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard-first wizard display, prompt snapshot, wizard-step rail, retry/recover for failed provider runs, sanitized developer-mode prompt provenance, workflow smoke guidance, and structured approved action/pet import command handoff that tells the dashboard which Control Center plugin command to run while preserving command-scoped bridge-token boundaries.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` create host-owned durable trigger rules.
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
 - Creator Studio approved single-action imports now submit their generated `triggerProposal` into the host-owned trigger proposal inbox through the narrow `trigger-proposals:write` creator-tools bridge permission after action frames are imported; the plugin still does not directly apply trigger rules.
@@ -155,11 +155,12 @@ Current state:
 - `openpet-prompt-builder` compiles OpenPet-specific prompts.
 - Host model bridge sends built prompts to host-owned image generation.
 - Run persistence, logs, QA metadata, dashboard-first wizard preview, prompt provenance, workflow guidance, retry/recover, and approved action import paths exist.
+- Approved action/pet dashboard runs now expose a sanitized `workflowGuidance.import.handoff` object with command id/title, Control Center location, run id, and the reason dashboard import remains blocked by command-scoped bridge tokens.
 - Approved single-action imports submit generated trigger proposals to the host inbox with source plugin/command/run provenance after successful action frame import.
 
 P1 work:
 
-- Preserve the current command paths as automation/test entry points while continuing dashboard UX polish.
+- Preserve the current command paths as automation/test entry points while continuing dashboard UX polish beyond the import handoff card.
 - Keep generated trigger proposal submission compatible with future random/state/event trigger-rule schema and editor semantics.
 
 P2/P3:

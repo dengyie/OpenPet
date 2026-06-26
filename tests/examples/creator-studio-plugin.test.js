@@ -2010,7 +2010,8 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="run-select"/)
   assert.match(html, /id="reload-runs-button"/)
   assert.match(html, /id="approve-button"/)
-  assert.match(html, /Import Approved Action/)
+  assert.match(html, /renderImportHandoff/)
+  assert.match(html, /handoff\.commandTitle/)
   assert.match(html, /fetch\('\/api\/runs'\)/)
   assert.match(html, /DOMContentLoaded/)
   assert.match(html, /Loaded latest run/)
@@ -2657,6 +2658,139 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedDetail.run.wizardState.nextStep.blocked, true)
     assert.equal(importedSerialized.includes('127.0.0.1:7860'), false)
     assert.equal(importedSerialized.includes(dataDir), false)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service exposes safe import handoff guidance for approved dashboard runs', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-import-handoff-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const actionTask = normalizeGenerationTask({
+      mode: 'single-action',
+      targetPet: 'current',
+      styleSource: 'currentPet',
+      actions: [{
+        actionId: 'shy-spin',
+        name: '害羞转圈',
+        motionPrompt: '点击后害羞转圈',
+        loop: false,
+        frameCount: 16,
+        triggerProposal: { type: 'click', binding: 'clickAction', notes: 'User selected click trigger.' }
+      }]
+    })
+    const actionRun = createRun({
+      dataDir,
+      input: {
+        petName: 'Approved Action Cat',
+        prompt: '新增一个自定义动作：害羞转圈，点击触发。',
+        originalPrompt: '新增一个自定义动作：害羞转圈，点击触发。',
+        backend: 'local',
+        generationTask: actionTask
+      },
+      now: () => '2026-06-26T00:10:00.000Z'
+    })
+    updateRunStatus({
+      dataDir,
+      runId: actionRun.runId,
+      status: 'approved',
+      patch: {
+        taskStatus: 'confirmed',
+        currentStep: 'approved',
+        reviewStatus: 'approved',
+        artifacts: {
+          actionFrames: {
+            actionId: 'shy-spin',
+            name: '害羞转圈',
+            qa: path.join(dataDir, 'runs', actionRun.runId, 'qa', 'action-frame-validation.json'),
+            contactSheet: path.join(dataDir, 'runs', actionRun.runId, 'qa', 'action-frame-contact-sheet.png'),
+            frameCount: 16,
+            frameWidth: 192,
+            frameHeight: 208,
+            triggerProposal: { type: 'click', binding: 'clickAction' }
+          }
+        }
+      },
+      now: () => '2026-06-26T00:11:00.000Z'
+    })
+
+    const petTask = normalizeGenerationTask({
+      mode: 'full-pet',
+      targetPet: 'new',
+      styleSource: 'textOnly',
+      characterBrief: '一只软乎乎的橘猫桌宠。',
+      actions: [{
+        actionId: 'idle',
+        name: 'Idle',
+        motionPrompt: 'neutral idle pose',
+        loop: true,
+        frameCount: 12,
+        triggerProposal: { type: 'state', binding: 'idle' }
+      }]
+    })
+    const petRun = createRun({
+      dataDir,
+      input: {
+        petName: 'Approved Pet Cat',
+        prompt: '生成一只完整的新桌宠。',
+        originalPrompt: '生成一只完整的新桌宠。',
+        backend: 'fixture',
+        generationTask: petTask
+      },
+      now: () => '2026-06-26T00:12:00.000Z'
+    })
+    updateRunStatus({
+      dataDir,
+      runId: petRun.runId,
+      status: 'approved',
+      patch: {
+        taskStatus: 'confirmed',
+        currentStep: 'approved',
+        reviewStatus: 'approved',
+        artifacts: {
+          outputDir: path.join(dataDir, 'runs', petRun.runId, 'output'),
+          bundle: path.join(dataDir, 'runs', petRun.runId, 'output', 'approved-pet.codex-pet.zip')
+        }
+      },
+      now: () => '2026-06-26T00:13:00.000Z'
+    })
+
+    const actionDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${actionRun.runId}`).then((response) => response.json())
+    const petDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${petRun.runId}`).then((response) => response.json())
+    const actionHandoff = actionDetail.run.workflowGuidance.import.handoff
+    const petHandoff = petDetail.run.workflowGuidance.import.handoff
+    const serialized = JSON.stringify({ actionDetail, petDetail })
+
+    assert.equal(actionDetail.ok, true)
+    assert.equal(actionHandoff.ready, true)
+    assert.equal(actionHandoff.runId, actionRun.runId)
+    assert.equal(actionHandoff.commandId, 'import-approved-action')
+    assert.equal(actionHandoff.commandTitle, 'Import Approved Action')
+    assert.match(actionHandoff.location, /Control Center -> Plugins/i)
+    assert.match(actionHandoff.reason, /bridge token is command-scoped/i)
+    assert.equal(actionHandoff.dashboardCanImport, false)
+
+    assert.equal(petDetail.ok, true)
+    assert.equal(petHandoff.ready, true)
+    assert.equal(petHandoff.runId, petRun.runId)
+    assert.equal(petHandoff.commandId, 'import-approved-pet')
+    assert.equal(petHandoff.commandTitle, 'Import Approved Pet')
+    assert.match(petHandoff.location, /Control Center -> Plugins/i)
+    assert.match(petHandoff.reason, /bridge token is command-scoped/i)
+    assert.equal(petHandoff.dashboardCanImport, false)
+
+    assert.equal(serialized.includes(dataDir), false)
+    assert.equal(serialized.includes('bridge-token'), false)
+    assert.equal(serialized.includes('sk-'), false)
+    assert.equal(serialized.includes('OPENPET_BRIDGE_TOKEN'), false)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

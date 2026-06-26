@@ -662,6 +662,33 @@
         ].join('')
       }
 
+      const renderImportHandoff = (run, actionFrames = null) => {
+        const importGuidance = run?.workflowGuidance?.import || {}
+        const handoff = importGuidance.handoff || {}
+        if (run?.status === 'approved' && handoff.commandTitle) {
+          return [
+            '<div class="handoff">',
+            `<strong>Approved. Ready for host-owned import: ${escapeHtml(handoff.commandTitle)}</strong>`,
+            `<p>Open ${escapeHtml(handoff.location || 'Control Center -> Plugins')} and run <code>${escapeHtml(handoff.commandTitle)}</code> for run <code>${escapeHtml(handoff.runId || run.runId)}</code>.</p>`,
+            `<p>${escapeHtml(handoff.reason || 'The dashboard cannot import directly because bridge access is command-scoped.')}</p>`,
+            `<p>Command ID: <code>${escapeHtml(handoff.commandId || importGuidance.command || 'import')}</code></p>`,
+            '</div>'
+          ].join('')
+        }
+        if (run?.status === 'imported') {
+          return [
+            '<div class="handoff">',
+            `<strong>${escapeHtml(importGuidance.summary || `Imported action: ${run.importedActionId || actionFrames?.actionId || ''}`)}</strong>`,
+            importGuidance.triggerProposalSummary
+              ? `<p>${escapeHtml(importGuidance.triggerProposalSummary)}</p>`
+              : '<p>The output has been handed to OpenPet through the host import bridge.</p>',
+            '</div>'
+          ].join('')
+        }
+        if (actionFrames) return 'Review the generated frames, repair any bad frame, then approve the action.'
+        return 'Generate action frames before action import handoff.'
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
@@ -723,36 +750,11 @@
             renderContactSheet(actionReview),
             renderFramePreview(actionReview)
           ].join('')
-          if (run.status === 'approved') {
-            $('import-handoff-panel').innerHTML = [
-              '<div class="handoff">',
-              '<strong>Approved. Ready for host-owned import.</strong>',
-              '<p>Run the Creator Studio command <code>Import Approved Action</code> from Control Center → Plugins. The dashboard service cannot import directly because the OpenPet bridge token is only issued to command runs.</p>',
-              '</div>'
-            ].join('')
-          } else if (run.status === 'imported') {
-            $('import-handoff-panel').innerHTML = [
-              '<div class="handoff">',
-              `<strong>Imported action: ${escapeHtml(run.importedActionId || actionFrames.actionId)}</strong>`,
-              '<p>The action frames have been handed to OpenPet through the host import bridge.</p>',
-              '</div>'
-            ].join('')
-          } else {
-            $('import-handoff-panel').textContent = 'Review the generated frames, repair any bad frame, then approve the action.'
-          }
+          $('import-handoff-panel').innerHTML = renderImportHandoff(run, actionFrames)
         } else {
           $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
-          if (run.status === 'approved') {
-            $('import-handoff-panel').innerHTML = [
-              '<div class="handoff">',
-              '<strong>Approved pet-pack output.</strong>',
-              '<p>No action frame folder is available for action import. Use the Creator Studio command <code>Import Approved Pet</code>, or generate with a cloud/local provider to create action frames for <code>Import Approved Action</code>.</p>',
-              '</div>'
-            ].join('')
-          } else {
-            $('import-handoff-panel').textContent = 'Generate action frames before action import handoff.'
-          }
+          $('import-handoff-panel').innerHTML = renderImportHandoff(run)
         }
       }
 
