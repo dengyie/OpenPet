@@ -165,6 +165,66 @@ const createImageUsageSummary = ({ run }) => {
   }
 }
 
+const getProviderCompatibilityNote = ({ model }) => {
+  if (String(model || '').trim() === 'gpt-image-2') {
+    return 'gpt-image-2 uses the host default image protocol; transparent-background behavior depends on the host/provider default negotiation.'
+  }
+  return 'OpenAI-compatible image requests ask for transparent output, but the final alpha behavior still depends on the active gateway and model.'
+}
+
+const createProviderSmokeGuidance = ({ run }) => {
+  const backend = String(run.backend || run.input?.backend || '').trim().toLowerCase()
+  if (!backend || backend === 'fixture') return null
+  const status = String(run.backendStatus?.state || 'idle')
+  const modelSnapshot = run.modelSnapshot || run.artifacts?.generatedImage?.modelSnapshot || {}
+  const provider = String(modelSnapshot.provider || 'openai-compatible')
+  const model = String(modelSnapshot.model || run.artifacts?.generatedImage?.model || '')
+  const baseUrlHost = String(modelSnapshot.baseUrlHost || '')
+  if (status === 'not_configured') {
+    return {
+      backend,
+      provider,
+      model,
+      baseUrlHost,
+      status,
+      summary: 'This backend cannot run a real provider smoke check until the host-owned image settings are saved.',
+      checklist: [
+        'Open Control Center -> AI and save the Image Provider settings for this backend.',
+        'Run the Image Provider health check before retrying this Creator Studio run.',
+        'After the health check passes, re-run this task and review the generated transparent artifacts before import.'
+      ],
+      expectedEvidence: [
+        'Backend recovery should clear the not_configured state and return a provider-backed run detail payload.',
+        'The follow-up run should expose prompt provenance, generation usage, and reviewable output artifacts.'
+      ],
+      compatibilityNote: getProviderCompatibilityNote({ model })
+    }
+  }
+
+  const outputEvidence = run.generationTask?.mode === 'single-action'
+    ? 'Single-action runs should produce ordered transparent PNG frames plus action-frame-validation.json before import.'
+    : 'Full-pet runs should produce a reviewable spritesheet.webp, bundle, and atlas QA before import.'
+
+  return {
+    backend,
+    provider,
+    model,
+    baseUrlHost,
+    status: status || 'ready',
+    summary: 'This run used the host-owned image provider path. Re-run a real generation after a fresh provider health check before you trust the output for production assets.',
+    checklist: [
+      'Open Control Center -> AI and save the Image Provider settings for this backend.',
+      'Run the Image Provider health check and confirm the selected model and gateway match this run.',
+      'Generate one more non-fixture Creator Studio run and verify the transparent output artifacts before import.'
+    ],
+    expectedEvidence: [
+      'Prompt provenance, generation usage, and backend state all reflect the same provider-backed run.',
+      outputEvidence
+    ],
+    compatibilityNote: getProviderCompatibilityNote({ model })
+  }
+}
+
 const createWizardState = ({ run }) => {
   const question = Array.isArray(run.generationTask?.questions) ? run.generationTask.questions[0] : null
   const triggerProposalSubmissions = Array.isArray(run.triggerProposalSubmissions) ? run.triggerProposalSubmissions : []
@@ -389,7 +449,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         run: createPublicRun({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
         imageUsageSummary: createImageUsageSummary({ run: output.run }),
-        wizardState: createWizardState({ run: output.run })
+        wizardState: createWizardState({ run: output.run }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run: output.run })
       })
       return true
     }
@@ -408,7 +469,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         run: createPublicRun({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
         imageUsageSummary: createImageUsageSummary({ run: output.run }),
-        wizardState: createWizardState({ run: output.run })
+        wizardState: createWizardState({ run: output.run }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run: output.run })
       })
       return true
     }
@@ -425,7 +487,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         run: createPublicRun({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
         imageUsageSummary: createImageUsageSummary({ run: output.run }),
-        wizardState: createWizardState({ run: output.run })
+        wizardState: createWizardState({ run: output.run }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run: output.run })
       })
       return true
     }
@@ -443,6 +506,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         promptProvenance: createPromptProvenance({ run: output.run }),
         imageUsageSummary: createImageUsageSummary({ run: output.run }),
         wizardState: createWizardState({ run: output.run }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run: output.run }),
         outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
       })
       return true
@@ -477,6 +541,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         promptProvenance: createPromptProvenance({ run }),
         imageUsageSummary: createImageUsageSummary({ run }),
         wizardState: createWizardState({ run }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run }),
         importCommand: run.artifacts?.actionFrames ? 'import-approved-action' : 'import-approved-pet'
       })
       return true
@@ -535,6 +600,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         promptProvenance: createPromptProvenance({ run: nextRun }),
         imageUsageSummary: createImageUsageSummary({ run: nextRun }),
         wizardState: createWizardState({ run: nextRun }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run: nextRun }),
         repair: {
           actionId: repair.actionId,
           fileName: repair.fileName,
@@ -586,7 +652,8 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
         promptProvenance: createPromptProvenance({ run }),
         imageUsageSummary: createImageUsageSummary({ run }),
         wizardState: createWizardState({ run }),
-        backendRecovery: createBackendRecovery({ run })
+        backendRecovery: createBackendRecovery({ run }),
+        providerSmokeGuidance: createProviderSmokeGuidance({ run })
       })
       return
     } catch (error) {

@@ -2291,11 +2291,100 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="prompt-provenance-panel"/)
   assert.match(html, /id="generation-usage-panel"/)
   assert.match(html, /id="backend-recovery-panel"/)
+  assert.match(html, /id="provider-smoke-panel"/)
   assert.match(html, /Generation Recovery/)
   assert.match(html, /Generation Usage/)
+  assert.match(html, /Provider Smoke/)
   assert.match(html, /Prompt Provenance/)
   assert.equal(html.includes('apiKey'), false)
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
+})
+
+test('creator studio service exposes provider smoke guidance for configured host-provider runs', async () => {
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-provider-guidance-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Provider Smoke Cat',
+      prompt: '做一个带透明背景的点击打滚动作',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'roll',
+          name: '打滚',
+          motionPrompt: '点击后打滚',
+          frameCount: 12,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }],
+        questions: []
+      }
+    },
+    now: () => '2026-06-26T00:00:00.000Z'
+  })
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      currentStep: 'review',
+      taskStatus: 'confirmed',
+      modelSnapshot: {
+        backend: 'cloud',
+        provider: 'openai-compatible',
+        model: 'gpt-image-2',
+        baseUrlHost: 'api.openai.com'
+      },
+      artifacts: {
+        outputDir: path.join(dataDir, 'runs', run.runId, 'outputs'),
+        bundle: path.join(dataDir, 'runs', run.runId, 'outputs', 'provider-smoke-cat.codex-pet.zip'),
+        spritesheet: path.join(dataDir, 'runs', run.runId, 'outputs', 'spritesheet.webp'),
+        qa: path.join(dataDir, 'runs', run.runId, 'qa', 'atlas-validation.json')
+      },
+      backendStatus: {
+        backend: 'cloud',
+        state: 'ready',
+        message: '',
+        updatedAt: '2026-06-26T00:02:00.000Z'
+      }
+    },
+    now: () => '2026-06-26T00:02:00.000Z'
+  })
+
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
+
+    assert.equal(detail.ok, true)
+    assert.deepEqual(detail.providerSmokeGuidance, {
+      backend: 'cloud',
+      provider: 'openai-compatible',
+      model: 'gpt-image-2',
+      baseUrlHost: 'api.openai.com',
+      status: 'ready',
+      summary: 'This run used the host-owned image provider path. Re-run a real generation after a fresh provider health check before you trust the output for production assets.',
+      checklist: [
+        'Open Control Center -> AI and save the Image Provider settings for this backend.',
+        'Run the Image Provider health check and confirm the selected model and gateway match this run.',
+        'Generate one more non-fixture Creator Studio run and verify the transparent output artifacts before import.'
+      ],
+      expectedEvidence: [
+        'Prompt provenance, generation usage, and backend state all reflect the same provider-backed run.',
+        'Single-action runs should produce ordered transparent PNG frames plus action-frame-validation.json before import.'
+      ],
+      compatibilityNote: 'gpt-image-2 uses the host default image protocol; transparent-background behavior depends on the host/provider default negotiation.'
+    })
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
 })
 
 test('creator studio service exposes run detail and logs for dashboard clients', async () => {
@@ -2667,6 +2756,24 @@ test('creator studio service exposes backend recovery guidance for failed genera
       actionLabel: 'Retry generation',
       summary: 'Cloud backend is not configured.',
       guidance: 'Configure model settings in OpenPet before retrying this run.'
+    })
+    assert.deepEqual(detail.providerSmokeGuidance, {
+      backend: 'cloud',
+      provider: 'openai-compatible',
+      model: '',
+      baseUrlHost: '',
+      status: 'not_configured',
+      summary: 'This backend cannot run a real provider smoke check until the host-owned image settings are saved.',
+      checklist: [
+        'Open Control Center -> AI and save the Image Provider settings for this backend.',
+        'Run the Image Provider health check before retrying this Creator Studio run.',
+        'After the health check passes, re-run this task and review the generated transparent artifacts before import.'
+      ],
+      expectedEvidence: [
+        'Backend recovery should clear the not_configured state and return a provider-backed run detail payload.',
+        'The follow-up run should expose prompt provenance, generation usage, and reviewable output artifacts.'
+      ],
+      compatibilityNote: 'OpenAI-compatible image requests ask for transparent output, but the final alpha behavior still depends on the active gateway and model.'
     })
     assert.equal(detail.run.status, 'failed')
     assert.equal(detail.run.currentStep, 'generate')

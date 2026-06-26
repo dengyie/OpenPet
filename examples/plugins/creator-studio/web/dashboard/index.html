@@ -302,6 +302,10 @@
           <h2>Generation Recovery</h2>
           <section id="backend-recovery-panel">No recovery guidance yet.</section>
         </section>
+        <section>
+          <h2>Provider Smoke</h2>
+          <section id="provider-smoke-panel">No provider smoke guidance yet.</section>
+        </section>
           <section>
             <h2>Import Handoff</h2>
             <section id="import-handoff-panel">Generate and approve an action to unlock host-owned import.</section>
@@ -326,7 +330,7 @@
     </main>
 
     <script>
-      const state = { run: null, actionReview: null, promptProvenance: null, imageUsageSummary: null, wizardState: null, backendRecovery: null, runs: [] }
+      const state = { run: null, actionReview: null, promptProvenance: null, imageUsageSummary: null, wizardState: null, backendRecovery: null, providerSmokeGuidance: null, runs: [] }
       const $ = (id) => document.getElementById(id)
       const getRunMode = (run) => run?.generationTask?.mode || ''
       const isSingleActionRun = (run) => getRunMode(run) === 'single-action'
@@ -390,6 +394,7 @@
         state.imageUsageSummary = payload.imageUsageSummary || null
         state.wizardState = payload.wizardState || null
         state.backendRecovery = payload.backendRecovery || null
+        state.providerSmokeGuidance = payload.providerSmokeGuidance || null
         renderRunList()
       }
 
@@ -441,6 +446,22 @@
           `<p><strong>${escapeHtml(summary.provider || 'provider')}</strong> / ${escapeHtml(summary.model || 'model')}</p>`,
           `<p>Estimated cost: ${escapeHtml(summary.estimatedCostDisplayUsd || '$0.0000')}</p>`,
           `<p>Outputs: ${escapeHtml(summary.outputCount || 0)}${summary.generatedAt ? ` / Generated at: ${escapeHtml(summary.generatedAt)}` : ''}</p>`
+        ].join('')
+      }
+
+      const renderProviderSmokeGuidance = (guidance) => {
+        if (!guidance) return 'No provider smoke guidance yet.'
+        return [
+          `<p><strong>${escapeHtml(guidance.provider || 'provider')}</strong> / ${escapeHtml(guidance.model || 'model')} / ${escapeHtml(guidance.backend || 'backend')} / ${escapeHtml(guidance.status || 'unknown')}</p>`,
+          guidance.baseUrlHost ? `<p>Gateway: ${escapeHtml(guidance.baseUrlHost)}</p>` : '',
+          `<p>${escapeHtml(guidance.summary || 'Review the host provider path before production use.')}</p>`,
+          Array.isArray(guidance.checklist) && guidance.checklist.length
+            ? `<p><strong>Checklist</strong></p><ul>${guidance.checklist.map((entry) => (`<li>${escapeHtml(entry)}</li>`)).join('')}</ul>`
+            : '',
+          Array.isArray(guidance.expectedEvidence) && guidance.expectedEvidence.length
+            ? `<p><strong>Expected evidence</strong></p><ul>${guidance.expectedEvidence.map((entry) => (`<li>${escapeHtml(entry)}</li>`)).join('')}</ul>`
+            : '',
+          guidance.compatibilityNote ? `<p>${escapeHtml(guidance.compatibilityNote)}</p>` : ''
         ].join('')
       }
 
@@ -501,6 +522,7 @@
           $('prompt-provenance-panel').textContent = 'No prompt provenance yet.'
           $('generation-usage-panel').textContent = 'No generation usage summary yet.'
           $('backend-recovery-panel').textContent = 'No recovery guidance yet.'
+          $('provider-smoke-panel').textContent = 'No provider smoke guidance yet.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated output review details will appear here before import.'
           $('import-handoff-panel').textContent = 'Generate and approve output to unlock host-owned import.'
@@ -520,6 +542,7 @@
         $('prompt-provenance-panel').innerHTML = renderPromptProvenance(state.promptProvenance)
         $('generation-usage-panel').innerHTML = renderImageUsageSummary(state.imageUsageSummary)
         $('backend-recovery-panel').innerHTML = renderBackendRecovery(state.backendRecovery)
+        $('provider-smoke-panel').innerHTML = renderProviderSmokeGuidance(state.providerSmokeGuidance)
         setGenerateButtonLabel(run)
         if (question) {
           $('question-panel').innerHTML = question.options.map((option) => (
@@ -617,6 +640,7 @@
           state.imageUsageSummary = payload.imageUsageSummary || null
           state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -637,6 +661,7 @@
           state.imageUsageSummary = payload.imageUsageSummary || null
           state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -658,6 +683,7 @@
           state.imageUsageSummary = payload.imageUsageSummary || null
           state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -677,6 +703,7 @@
           state.imageUsageSummary = payload.imageUsageSummary || null
           state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -696,6 +723,7 @@
           state.imageUsageSummary = payload.imageUsageSummary || null
           state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
           if (!state.actionReview) await fetchRunDetail()
           renderRun()
           await refreshLogs()
@@ -716,6 +744,7 @@
           state.imageUsageSummary = payload.imageUsageSummary || null
           state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()

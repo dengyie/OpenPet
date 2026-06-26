@@ -16,3 +16,5 @@ Current commands:
 - `export-bundle`: return the generated `.codex-pet.zip` output details.
 
 The dashboard service exposes review data through loopback-only routes. Frame previews and repairs stay inside the Creator Studio run workspace; dashboard responses use data-relative artifact paths and preview URLs rather than raw filesystem paths.
+
+The dashboard now also exposes provider smoke guidance for non-fixture runs so users can verify the host-owned Image Provider path through Control Center before trusting generated assets for production import.
