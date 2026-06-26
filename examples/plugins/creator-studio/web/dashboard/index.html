@@ -416,6 +416,43 @@
         height: auto;
       }
 
+      .review-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .review-grid.two-up {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .review-card {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fffef8;
+        padding: 12px;
+      }
+
+      .review-card strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .review-card img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .review-summary {
+        display: grid;
+        gap: 6px;
+      }
+
+      .review-summary span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
       @media (max-width: 820px) {
         main {
           padding: 20px;
@@ -688,17 +725,42 @@
 
       const renderFullPetReview = (review) => {
         if (!review?.spritesheetUrl) return 'Generated pet-pack review artifacts will appear here before import.'
+        const sourceValidation = review?.sourceImageValidation || {}
+        const atlasValidation = review?.atlasValidation || {}
         return [
           '<div class="notice">',
           `<strong>${escapeHtml(review.displayName || review.petId || 'Generated pet')}</strong>`,
           `<p>Bundle: ${escapeHtml(review.bundle || 'not available')}</p>`,
           `<p>Manifest: ${escapeHtml(review.petJson || 'not available')}</p>`,
+          `<p>Source image: ${escapeHtml(review.sourceImage || 'not available')}</p>`,
+          review.sourceImageQa ? `<p>Source QA: ${escapeHtml(review.sourceImageQa)}</p>` : '',
           `<p>Atlas QA: ${escapeHtml(review.qa || 'not available')}</p>`,
-          review.sourceImageQa ? `<p>Source image QA: ${escapeHtml(review.sourceImageQa)}</p>` : '',
           review.actionTaskQa ? `<p>Task QA: ${escapeHtml(review.actionTaskQa)}</p>` : '',
           '</div>',
-          '<div class="spritesheet-preview">',
+          '<div class="review-grid two-up">',
+          '<div class="review-card">',
+          '<strong>Source image preview</strong>',
+          review.sourceImageUrl
+            ? `<img alt="Source image preview" src="${escapeHtml(assetSrc(review.sourceImageUrl))}">`
+            : '<p>No source image preview available.</p>',
+          '</div>',
+          '<div class="review-card spritesheet-preview">',
+          '<strong>Atlas preview</strong>',
           `<img alt="Full pet spritesheet preview" src="${escapeHtml(assetSrc(review.spritesheetUrl))}">`,
+          '</div>',
+          '</div>',
+          '<div class="review-grid two-up">',
+          '<div class="review-card review-summary">',
+          '<strong>Source QA summary:</strong>',
+          `<span>Size: ${escapeHtml(sourceValidation.width || 0)} x ${escapeHtml(sourceValidation.height || 0)}</span>`,
+          `<span>Visible pixels: ${escapeHtml(sourceValidation.visiblePixels || 0)}</span>`,
+          `<span>Warnings: ${escapeHtml((sourceValidation.warnings || []).length)}</span>`,
+          '</div>',
+          '<div class="review-card review-summary">',
+          '<strong>Atlas QA summary:</strong>',
+          `<span>Size: ${escapeHtml(atlasValidation.width || 0)} x ${escapeHtml(atlasValidation.height || 0)}</span>`,
+          `<span>Visible pixels: ${escapeHtml(atlasValidation.visiblePixels || 0)}</span>`,
+          `<span>Warnings: ${escapeHtml((atlasValidation.warnings || []).length)}</span>`,
           '</div>'
         ].join('')
       }

@@ -670,6 +670,21 @@ const createPublicRun = ({ dataDir, run }) => {
   }
 }
 
+const readJsonArtifact = ({ dataDir, targetPath, label }) => {
+  if (!targetPath) return null
+  try {
+    const artifactPath = assertPathInsideDataDir({
+      dataDir,
+      targetPath,
+      label
+    })
+    if (!fs.existsSync(artifactPath)) return null
+    return JSON.parse(fs.readFileSync(artifactPath, 'utf-8'))
+  } catch (_) {
+    return null
+  }
+}
+
 const getActionFramePath = ({ dataDir, run, actionId, fileName }) => {
   const actionFrames = run.artifacts?.actionFrames
   if (!actionFrames || actionFrames.actionId !== actionId) throw new Error('Action frame preview is not available')
@@ -709,6 +724,26 @@ const getFullPetSpritesheetPath = ({ dataDir, run }) => {
     label: 'Full-pet spritesheet'
   })
   if (!fs.existsSync(absolutePath)) throw new Error('Full-pet spritesheet is missing')
+  return absolutePath
+}
+
+const getFullPetSourceImagePath = ({ dataDir, run }) => {
+  const firstOutput = Array.isArray(run.artifacts?.generatedImage?.outputs)
+    ? run.artifacts.generatedImage.outputs[0]
+    : null
+  const sourceImageValidation = readJsonArtifact({
+    dataDir,
+    targetPath: run.artifacts?.sourceImageQa,
+    label: 'Full-pet source image QA'
+  })
+  const sourceCandidate = firstOutput?.dataRelativePath || sourceImageValidation?.sourceRelativePath
+  if (!sourceCandidate) throw new Error('Full-pet source image is not available')
+  const absolutePath = assertPathInsideDataDir({
+    dataDir,
+    targetPath: sourceCandidate,
+    label: 'Full-pet source image'
+  })
+  if (!fs.existsSync(absolutePath)) throw new Error('Full-pet source image is missing')
   return absolutePath
 }
 
@@ -770,6 +805,20 @@ const createFullPetReview = ({ dataDir, run }) => {
   if (run.artifacts?.actionFrames) return null
   if (run.generationTask?.mode !== 'full-pet') return null
   const artifacts = run.artifacts || {}
+  const sourceImageValidation = readJsonArtifact({
+    dataDir,
+    targetPath: artifacts.sourceImageQa,
+    label: 'Full-pet source image QA'
+  })
+  const atlasValidation = readJsonArtifact({
+    dataDir,
+    targetPath: artifacts.qa,
+    label: 'Full-pet atlas QA'
+  })
+  const sourceImage = createPublicText({
+    dataDir,
+    value: sourceImageValidation?.sourceRelativePath || artifacts.generatedImage?.outputs?.[0]?.dataRelativePath || ''
+  })
   return {
     petId: createPublicText({ dataDir, value: run.petId || '' }),
     displayName: createPublicText({ dataDir, value: run.input?.petName || run.petId || '' }),
@@ -780,8 +829,14 @@ const createFullPetReview = ({ dataDir, run }) => {
     qa: toDataRelativePath({ dataDir, targetPath: artifacts.qa }),
     sourceImageQa: toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa }),
     actionTaskQa: toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa }),
+    sourceImage,
+    sourceImageValidation: createPublicLogValue({ dataDir, value: sourceImageValidation }),
+    atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`
+      : '',
+    sourceImageUrl: sourceImage
+      ? `/api/runs/${encodeURIComponent(run.runId)}/source-image.png`
       : ''
   }
 }
@@ -1034,6 +1089,19 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Full-pet spritesheet not found' })
+      return
+    }
+  }
+
+  const sourceImageMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/source-image\.png$/)
+  if (sourceImageMatch) {
+    try {
+      const run = readRun({ dataDir, runId: decodeURIComponent(sourceImageMatch[1]) })
+      const sourceImagePath = getFullPetSourceImagePath({ dataDir, run })
+      sendPng(response, sourceImagePath)
+      return
+    } catch (error) {
+      sendJson(response, 404, { ok: false, error: error.message || 'Full-pet source image not found' })
       return
     }
   }

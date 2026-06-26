@@ -2124,6 +2124,17 @@ test('creator studio dashboard asset includes full-pet mode copy for generation 
   assert.match(html, /Generate pet pack/)
 })
 
+test('creator studio dashboard asset renders full-pet source and qa review details', () => {
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const html = fs.readFileSync(dashboardPath, 'utf-8')
+
+  assert.match(html, /Source image:/)
+  assert.match(html, /Source QA:/)
+  assert.match(html, /Atlas QA summary:/)
+  assert.match(html, /Source image preview/)
+  assert.match(html, /Full pet spritesheet preview/)
+})
+
 test('creator studio dashboard asset includes full-pet task preview summary copy', () => {
   const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
   const html = fs.readFileSync(dashboardPath, 'utf-8')
@@ -2187,8 +2198,18 @@ test('creator studio service exposes full-pet review details for dashboard clien
   })
   const outputDir = path.join(dataDir, 'runs', run.runId, 'outputs')
   const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  const sourceDir = path.join(dataDir, 'runs', run.runId, 'frames', 'base')
   fs.mkdirSync(outputDir, { recursive: true })
   fs.mkdirSync(qaDir, { recursive: true })
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 240, g: 140, b: 80, alpha: 1 }
+    }
+  }).png().toFile(path.join(sourceDir, '0001.png'))
   fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: 'review-pet-cat',
@@ -2256,7 +2277,24 @@ test('creator studio service exposes full-pet review details for dashboard clien
     assert.equal(detail.fullPetReview.qa, `runs/${run.runId}/qa/atlas-validation.json`)
     assert.equal(detail.fullPetReview.sourceImageQa, `runs/${run.runId}/qa/source-image-validation.json`)
     assert.equal(detail.fullPetReview.actionTaskQa, `runs/${run.runId}/qa/action-generation-task.json`)
+    assert.equal(detail.fullPetReview.sourceImage, `runs/${run.runId}/frames/base/0001.png`)
     assert.equal(detail.fullPetReview.spritesheetUrl, `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`)
+    assert.equal(detail.fullPetReview.sourceImageUrl, `/api/runs/${encodeURIComponent(run.runId)}/source-image.png`)
+    assert.deepEqual(detail.fullPetReview.sourceImageValidation, {
+      ok: true,
+      sourceRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+      width: 1024,
+      height: 1024,
+      visiblePixels: 1000,
+      warnings: []
+    })
+    assert.deepEqual(detail.fullPetReview.atlasValidation, {
+      ok: true,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 6400,
+      warnings: []
+    })
     assert.equal(spritesheetResponse.status, 200)
     assert.equal(spritesheetResponse.headers.get('content-type'), 'image/webp')
     assert.equal(spritesheetBytes.slice(0, 4).toString('utf-8'), 'RIFF')
