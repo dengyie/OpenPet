@@ -31,6 +31,33 @@ test('chat provider presets expose common OpenAI-compatible endpoints', () => {
   )
 })
 
+test('image provider presets expose common OpenAI-compatible endpoint templates', () => {
+  assert.deepEqual(
+    aiProviderConfig.imageProviderPresets.map((preset) => ({
+      id: preset.id,
+      baseUrl: preset.baseUrl,
+      model: preset.model
+    })),
+    [
+      {
+        id: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-image-2'
+      },
+      {
+        id: 'local-openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-image-2'
+      },
+      {
+        id: 'generic-gateway-template',
+        baseUrl: 'https://gateway.example.com/v1',
+        model: 'dall-e-3'
+      }
+    ]
+  )
+})
+
 test('image provider compatibility hint explains transparent background support heuristics', () => {
   const gptImageHint = aiProviderConfig.getImageProviderCompatibilityHint({
     provider: 'openai-compatible',
@@ -44,9 +71,25 @@ test('image provider compatibility hint explains transparent background support 
     model: 'openpet-image-test',
     hasApiKey: false
   })
+  const dalleHint = aiProviderConfig.getImageProviderCompatibilityHint({
+    provider: 'openai-compatible',
+    baseUrl: 'https://gateway.example.com/v1',
+    model: 'dall-e-3',
+    hasApiKey: false
+  })
+  const fluxHint = aiProviderConfig.getImageProviderCompatibilityHint({
+    provider: 'openai-compatible',
+    baseUrl: 'https://gateway.example.com/v1',
+    model: 'flux.1-dev',
+    hasApiKey: false
+  })
 
   assert.match(gptImageHint, /gpt-image-2/)
   assert.match(gptImageHint, /transparent/i)
+  assert.match(dalleHint, /dall-e-3/)
+  assert.match(dalleHint, /通常不暴露 transparent/i)
+  assert.match(fluxHint, /flux\.1-dev/)
+  assert.match(fluxHint, /FLUX\/SDXL 网关/i)
   assert.match(customModelHint, /openpet-image-test/)
   assert.match(customModelHint, /transparent/i)
   assert.match(customModelHint, /兼容性取决于当前网关/i)

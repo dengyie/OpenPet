@@ -18,29 +18,9 @@ import { defaultImageGenerationConfig } from '../lib/defaults'
 import {
   chatProviderPresets,
   getDiscoveredModelOptions,
-  getImageProviderCompatibilityHint
+  getImageProviderCompatibilityHint,
+  imageProviderPresets
 } from '../lib/ai-provider-config'
-
-const imageProviderPresets = [
-  {
-    id: 'openai',
-    title: 'OpenAI 官方',
-    description: '使用官方 OpenAI 图片接口；API Key 保存在主进程。',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-image-2',
-    timeoutMs: 120000,
-    maxConcurrentJobs: 1
-  },
-  {
-    id: 'local-openai-compatible',
-    title: '本地/代理 OpenAI-compatible',
-    description: '适合本机网关、反代或局域网模型服务；本地和云端共用同一套 Provider 配置。',
-    baseUrl: 'http://127.0.0.1:8317/v1',
-    model: 'gpt-image-2',
-    timeoutMs: 120000,
-    maxConcurrentJobs: 1
-  }
-] as const
 
 const CollapsibleAiSection = ({
   title,

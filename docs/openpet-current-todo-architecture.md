@@ -66,9 +66,9 @@ Current state:
 P1 work:
 
 - Split dense AI settings into clearer model-settings sections if the current AI pane becomes hard to operate.
-- Add provider presets/catalog entries for common OpenAI-compatible chat and image endpoints. Partially completed in current branch: the AI pane now exposes host-safe chat provider presets plus existing image presets for common OpenAI-compatible endpoints, without auto-saving or overwriting stored API keys.
+- Add provider presets/catalog entries for common OpenAI-compatible chat and image endpoints. Completed in current branch: the AI pane now exposes shared chat and image provider preset catalogs for official OpenAI, local/proxy OpenAI-compatible endpoints, and a generic gateway image template, without auto-saving or overwriting stored API keys.
 - Add optional `/models` discovery where providers support it, with safe fallback wording when probing is unavailable. Completed in current branch: chat and image provider host checks now return discovered model lists when probing succeeds, the AI pane surfaces them as suggested model options, and unavailable probes still use the existing safe fallback wording.
-- Add provider compatibility hints, especially for image models that do or do not support transparent-background payload parameters. Partially completed in current branch: the AI pane now shows image compatibility guidance that distinguishes `gpt-image-2` host-default behavior from generic OpenAI-compatible transparent-background requests.
+- Add provider compatibility hints, especially for image models that do or do not support transparent-background payload parameters. Completed in current branch: the AI pane now distinguishes `gpt-image-2` host-default behavior, `dall-e*` transparent-parameter limitations, FLUX/SDXL gateway alpha-cutout caveats, and generic OpenAI-compatible transparent-background requests.
 - Add user-visible generation usage/cost summaries when the provider response exposes safe metadata. Completed in current branch: Creator Studio dashboard/service detail now surfaces sanitized generation usage summaries from host-owned image generation metadata when estimated cost is available.
 
 P2/P3:

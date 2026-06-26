@@ -21,6 +21,36 @@ export const chatProviderPresets = [
   }
 ] as const
 
+export const imageProviderPresets = [
+  {
+    id: 'openai',
+    title: 'OpenAI 官方',
+    description: '使用官方 OpenAI 图片接口；API Key 保存在主进程。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'local-openai-compatible',
+    title: '本地/代理 OpenAI-compatible',
+    description: '适合本机网关、反代或局域网模型服务；本地和云端共用同一套 Provider 配置。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'generic-gateway-template',
+    title: '通用网关模板',
+    description: '适合 OneAPI / NewAPI / 其他 OpenAI-compatible 图片网关；保存前按实际网关修改 URL 和 Model。',
+    baseUrl: 'https://gateway.example.com/v1',
+    model: 'dall-e-3',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  }
+] as const
+
 export const normalizeProviderBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
 
 export const validateProviderConfig = (config: AiConfigViewState): string => {
@@ -85,8 +115,15 @@ export const getDiscoveredModelOptions = ({
 
 export const getImageProviderCompatibilityHint = (config: ImageGenerationConfigViewState) => {
   const model = String(config.model || '').trim() || '未设置模型'
-  if (model === 'gpt-image-2') {
+  const normalizedModel = model.toLowerCase()
+  if (normalizedModel === 'gpt-image-2') {
     return `当前模型 ${model} 走 host 默认图片协议；transparent 背景参数由 host/provider 默认协商，不额外显式下发。`
+  }
+  if (normalizedModel.includes('dall-e')) {
+    return `当前模型 ${model} 通常不暴露 transparent 背景参数；如果网关仍返回不透明结果，需改用支持 alpha 的模型或走宿主侧后处理裁切。`
+  }
+  if (normalizedModel.includes('flux') || normalizedModel.includes('sdxl') || normalizedModel.includes('stable-diffusion')) {
+    return `当前模型 ${model} 走 OpenAI-compatible 图片请求；host 会显式请求 transparent 背景，但很多 FLUX/SDXL 网关仍需要自定义 alpha 或 cutout 流水线。`
   }
   return `当前模型 ${model} 走 OpenAI-compatible 图片请求；host 会显式请求 transparent 背景，但最终兼容性取决于当前网关和模型实现。`
 }

@@ -526,6 +526,14 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByLabel('图片最大并发')).toHaveValue('1')
     await expect(page.locator('.readonly-row', { hasText: '图片兼容性提示' })).toContainText('gpt-image-2')
     await expect(page.locator('.readonly-row', { hasText: '图片兼容性提示' })).toContainText('transparent')
+    await expect(page.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片配置草稿未保存')
+    await expect(page.locator('.readonly-row', { hasText: '图片当前 Provider' })).not.toContainText('http://127.0.0.1:8317/v1')
+
+    await imageProviderSection.getByRole('button', { name: /通用网关模板/ }).click()
+    await expect(page.getByLabel('图片 Base URL')).toHaveValue('https://gateway.example.com/v1')
+    await expect(page.getByLabel('图片 Model')).toHaveValue('dall-e-3')
+    await expect(page.locator('.readonly-row', { hasText: '图片兼容性提示' })).toContainText('dall-e-3')
+    await expect(page.locator('.readonly-row', { hasText: '图片兼容性提示' })).toContainText('通常不暴露 transparent 背景参数')
 
     await page.getByLabel('图片 Base URL').fill('https://image.example.test/v1')
     await page.getByLabel('图片 Model').fill('openpet-image-test')
