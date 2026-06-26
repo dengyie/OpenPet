@@ -242,6 +242,76 @@ body,
 - `PetBubbleChatWindowManager` 是轻聊天窗口唯一状态源，负责 popup 生命周期、定位、TTL、pin/interacting、发送中/错误 UI 状态和 `items[]` 裁剪视图。
 - Control Center 的 Pet 页只提供开关和基础行为设置，不承载轻聊天运行时状态。
 
+## 基于最新 main 的聊天收口迁移
+
+这部分不是重新定义产品，而是把真实 `main` 的过渡状态和 v2 目标接上，避免后续开发再次回到“双主入口”。
+
+### main 当前真实状态
+
+基于真实 `main` 分支代码读取：
+
+- `src/main/pet-bubble-chat-window.js` 已经存在独立透明 `BrowserWindow`，但仍带有较强的“单条消息 popup”历史包袱。
+- `src/main/pet-chat-window.js` 仍是一套完整独立聊天窗，支持 bounds、top-most、设置入口和发送消息。
+- `renderer.js` 中宠物双击默认已走 BubbleChat 打开入口。
+- `ipc.js` 中 AI 完成后会调用 `petService.say({ source: 'ai' })`，而 `petService.onEvent(...)` 又会把 say/event message 继续送给 bubble chat。
+- 结果是：运行时已经开始向 BubbleChat 倾斜，但产品语义还没有彻底收口，桌面聊天窗和 bubble chat 仍然像两套并列主聊天体验。
+
+### 收口决定
+
+后续聊天产品统一按以下原则推进：
+
+1. `BubbleChatWindow` 是默认聊天入口。
+2. `PetChatWindow` 是扩展聊天面板，不再作为并列默认入口。
+3. 所有轻量对话、宠物提示、短追问都优先汇总到 BubbleChatWindow。
+4. 完整桌面聊天窗只承接长历史、较重输入和后续高级能力。
+
+### 迁移后职责边界
+
+#### BubbleChatWindow
+
+- 透明迷你对话流。
+- 默认 popup。
+- 宠物双击默认打开。
+- 承接所有 `petService.say()` 的轻展示。
+- 渲染最近 4-6 轮主会话 dialogue 和少量 notice。
+- 提供折叠迷你输入框。
+
+#### PetChatWindow
+
+- 不再承担“默认聊天入口”语义。
+- 保留独立窗口、拖动、尺寸、置顶和设置入口。
+- 作为长历史查看、完整输入、后续流式回复和开发/调试视图的承载面板。
+
+#### PetService.say()
+
+- 继续是所有宠物发声的统一入口。
+- AI、插件、MCP、HTTP、renderer、本地事件都从这里进入。
+- UI 收口发生在 say 之后的主进程分发层，而不是放开多个业务方自行控制不同聊天窗口。
+
+### 必须维持的兼容规则
+
+- 不删除 `PetChatWindow`，只调整产品定位。
+- 不让桌面聊天窗分叉出第二套 provider 调用或第二套 transcript。
+- 不恢复旧 inline `#bubble` 为第二个可见聊天框。
+- 不修改插件/HTTP/MCP 一期 payload schema 去直接写 `dialogue`。
+- `showMessage()`、`PET_BUBBLE_CHAT_SHOW_MESSAGE` 这类兼容入口继续保留，但内部语义对齐到统一的 BubbleChat item 流。
+
+### 迁移后的入口语义
+
+| 入口 | 默认行为 | 备注 |
+| --- | --- | --- |
+| 宠物双击 | 打开 BubbleChatWindow | 默认主入口 |
+| `petService.say()` | 刷新 BubbleChatWindow | 所有轻量说话统一收口 |
+| Control Center AI 页发送 | 写主会话并刷新 BubbleChatWindow + 桌面聊天窗 | 不再只偏向桌面聊天窗 |
+| 桌面聊天窗发送 | 写主会话并刷新 BubbleChatWindow | 桌面窗不是独立脑 |
+| 手动打开桌面聊天窗 | 查看扩展历史/重输入 | 次级入口 |
+
+### 对后续实现的约束
+
+- 新功能若涉及“和宠物说一句话”，默认先问自己是否应走 `PetService.say()` + BubbleChatWindow，而不是新开一个聊天 UI。
+- 新功能若涉及“正式会话消息”，默认先写入当前 active pet-pack 的主会话，再让 BubbleChatWindow 从主会话裁剪显示。
+- 新功能若只是状态提示或插件回执，默认作为 notice，不直接进入 transcript。
+
 ## 用户交互模型
 
 ### 默认 popup

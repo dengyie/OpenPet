@@ -43,6 +43,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The highest
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
+- Bubble chat now has a transparent mini-dialogue implementation path in the current branch, but `main` still reflects a transitional dual-surface model where the lightweight bubble and full desktop chat coexist as separate primary entry points.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` remain pending host-rule work.
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
@@ -89,9 +90,21 @@ Current state:
 - Memory is automatically extracted in the background and injected as dynamic context without blocking the main reply.
 - Memory profile UI can show global and pet-pack memories, delete one memory, and clear current pet-pack relationship memories.
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
+- The lightweight pet bubble chat is the right product direction for default interaction, but `main` still needs an explicit convergence pass so the transparent bubble becomes the default entry while the desktop chat becomes an extended view instead of a second primary chat surface.
 
 P1 work:
 
+- Converge chat surfaces into one primary flow:
+  - `BubbleChatWindow` becomes the default user-facing chat entry anchored around the pet.
+  - `PetChatWindow` stays as an extended desktop panel for longer history and advanced interaction, not a competing default entry.
+  - Double-click on the pet should open the same bubble chat surface by default.
+- Route all lightweight pet speech through one visible surface.
+  - Keep `PetService.say()` as the single runtime speech entry.
+  - Keep old inline `#bubble` hidden as a compatibility node only; it must not reappear as a second visible chat box.
+  - Continue classifying AI main replies as `dialogue` and plugin/http/mcp/renderer/event speech as `notice`.
+- Keep one shared conversation brain across all chat entry points.
+  - Bubble chat, desktop chat, and Control Center AI must keep using `control-center:{petPackId}:main`.
+  - Bubble chat should render a clipped recent dialogue stream plus lightweight notices instead of owning a second transcript.
 - Add relevant memory scoring before injection. Score by current user message, recent history, tags, scope, importance, confidence, recency, and use count.
 - Mark injected memories as used by updating `lastUsedAt` and `useCount`.
 - Upgrade the action tool schema with `reason`, `displayMode`, and a current-pet action candidate whitelist.
@@ -112,6 +125,39 @@ P2/P3:
 Manual-required:
 
 - Real provider latency and streaming behavior checks once streaming is introduced.
+- Real desktop-product validation for bubble placement, transparent hit-testing, reading time, and whether the desktop chat can safely be demoted to an extended panel without harming power-user workflows.
+
+### 2A. Chat Surface Convergence Direction
+
+Owner boundary: `src/main/pet-bubble-chat-window.js`, `src/main/pet-chat-window.js`, `src/main/ipc.js`, `renderer.js`, Control Center Pet/AI panes.
+
+Decision:
+
+- OpenPet should not keep evolving two parallel primary chat experiences.
+- The transparent bubble chat above the pet is the default lightweight conversation surface.
+- The standalone desktop chat window is retained, but positioned as an extended panel for long-form history, advanced controls, and later streaming-focused interaction.
+
+Why this direction fits the current architecture:
+
+- `PetService.say()` is already the correct single speech ingress for AI, plugins, MCP, local HTTP, and other runtime emitters.
+- The main process already owns both bubble and desktop chat windows, which means surface convergence can happen without moving provider logic into a renderer.
+- AI Talk already provides the right shared state model: one per-pack main conversation, persona layering, memory extraction, and provider-safe orchestration.
+- The current dual-surface model causes product ambiguity: users can see a lightweight bubble path and a full chat path that both feel like "the chat", which makes future behavior changes harder to reason about.
+
+Convergence rules:
+
+- One visible lightweight chat surface: the transparent `BubbleChatWindow`.
+- One extended chat surface: the standalone `PetChatWindow`.
+- One chat brain: `AiTalkService` + `AiTalkStore`.
+- One speech ingress: `PetService.say()`.
+- One main conversation id per active pack: `control-center:{petPackId}:main`.
+
+Out of scope for this convergence pass:
+
+- Streaming UI.
+- Multiple conversations per pet-pack.
+- Plugin-authored dialogue writes into the main transcript by default.
+- Theme/custom-position product customization.
 
 ### 3. Actions And Trigger Rules
 
