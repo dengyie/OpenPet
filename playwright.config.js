@@ -1,7 +1,8 @@
 const { defineConfig, devices } = require('@playwright/test')
 
-const controlCenterPort = Number(process.env.OPENPET_CONTROL_CENTER_PORT || 5173)
+const controlCenterPort = Number(process.env.OPENPET_CONTROL_CENTER_PORT || 4173)
 const controlCenterBaseURL = `http://127.0.0.1:${controlCenterPort}`
+const reuseExistingControlCenterServer = process.env.OPENPET_CONTROL_CENTER_REUSE_SERVER === '1'
 
 module.exports = defineConfig({
   testDir: './tests/control-center',
@@ -23,7 +24,7 @@ module.exports = defineConfig({
   webServer: {
     command: `npm run dev:control-center -- --port ${controlCenterPort} --strictPort`,
     url: controlCenterBaseURL,
-    reuseExistingServer: !process.env.CI && !process.env.OPENPET_CONTROL_CENTER_PORT,
+    reuseExistingServer: !process.env.CI && reuseExistingControlCenterServer,
     timeout: 30_000
   }
 })
