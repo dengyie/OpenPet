@@ -660,6 +660,10 @@ const createPetPackService = ({
       ...(nextManifest.triggerProposalInbox !== undefined
         ? { triggerProposalInbox: Array.isArray(nextManifest.triggerProposalInbox) ? nextManifest.triggerProposalInbox : [] }
         : {})
+      ,
+      ...(nextManifest.triggerRules !== undefined
+        ? { triggerRules: Array.isArray(nextManifest.triggerRules) ? nextManifest.triggerRules : [] }
+        : {})
     }
     writeJsonFile(path.join(targetDir, 'pet.json'), manifest)
     return loadPetPackFromDirectory(targetDir).manifest

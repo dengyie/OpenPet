@@ -23,7 +23,7 @@
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const TRIGGER_PROPOSAL_STATUSES = new Set(['pending', 'accepted', 'rejected', 'applied', 'pending-host-rule'])
-const TRIGGER_PROPOSAL_RESULT_CODES = new Set(['applied', 'no_binding_required', 'pending_host_rule'])
+const TRIGGER_PROPOSAL_RESULT_CODES = new Set(['applied', 'no_binding_required', 'pending_host_rule', 'preview_ready', 'rule_saved'])
 
 /**
  * @param {unknown} value
@@ -133,6 +133,30 @@ const createTriggerProposalAcceptanceResult = (proposal = {}) => ({
   code: typeof proposal.code === 'string' && TRIGGER_PROPOSAL_RESULT_CODES.has(proposal.code) ? proposal.code : 'pending_host_rule',
   message: typeof proposal.message === 'string' ? proposal.message : '',
   acceptedAt: typeof proposal.acceptedAt === 'string' ? proposal.acceptedAt : '',
+  ...(proposal.preview && typeof proposal.preview === 'object'
+    ? {
+        preview: {
+          summary: typeof proposal.preview.summary === 'string' ? proposal.preview.summary : '',
+          rule: proposal.preview.rule && typeof proposal.preview.rule === 'object'
+            ? {
+                id: typeof proposal.preview.rule.id === 'string' ? proposal.preview.rule.id : '',
+                type: typeof proposal.preview.rule.type === 'string' ? proposal.preview.rule.type : 'random',
+                actionId: typeof proposal.preview.rule.actionId === 'string' ? proposal.preview.rule.actionId : '',
+                enabled: proposal.preview.rule.enabled !== false,
+                condition: proposal.preview.rule.condition && typeof proposal.preview.rule.condition === 'object'
+                  ? { ...proposal.preview.rule.condition }
+                  : {}
+              }
+            : {
+                id: '',
+                type: 'random',
+                actionId: '',
+                enabled: true,
+                condition: {}
+              }
+        }
+      }
+    : {}),
   ...(typeof proposal.sourcePluginId === 'string' ? { sourcePluginId: proposal.sourcePluginId } : {}),
   ...(typeof proposal.sourceRunId === 'string' ? { sourceRunId: proposal.sourceRunId } : {}),
   ...(typeof proposal.sourceCommandId === 'string' ? { sourceCommandId: proposal.sourceCommandId } : {})

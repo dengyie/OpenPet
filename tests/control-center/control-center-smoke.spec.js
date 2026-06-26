@@ -111,7 +111,7 @@ test.describe('Control Center smoke', () => {
     await expect(reviewCard).not.toContainText('最近结果：已应用')
   })
 
-  test('keeps host-rule trigger proposals pending in the Actions review UI', async ({ page }) => {
+  test('persists host trigger rules in the Actions review UI', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Actions' }).click()
 
@@ -126,7 +126,7 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.locator('.status-line')).toContainText('已确认 触发建议')
     await expect(reviewCard).toContainText('最近结果：已确认')
-    await expect(reviewCard).toContainText('结果码：pending_host_rule')
+    await expect(reviewCard).toContainText('结果码：rule_saved')
     await expect(clickAction).toHaveValue(beforeClickAction)
   })
 
@@ -191,9 +191,9 @@ test.describe('Control Center smoke', () => {
     const sleepProposal = inbox.locator('.trigger-inbox-item', { hasText: 'Sleep' })
     await expect(sleepProposal).toContainText('待审核')
     await sleepProposal.getByRole('button', { name: '接受提案' }).click()
-    await expect(page.locator('.status-line')).toContainText('已标记待规则触发提案：sleep')
-    await expect(sleepProposal).toContainText('待规则')
-    await expect(sleepProposal).toContainText('pending_host_rule')
+    await expect(page.locator('.status-line')).toContainText('已接受触发提案：sleep')
+    await expect(sleepProposal).toContainText('已接受')
+    await expect(sleepProposal).toContainText('rule_saved')
 
     const waveProposal = inbox.locator('.trigger-inbox-item', { hasText: 'Wave' })
     page.once('dialog', (dialog) => dialog.accept('Not for this pack'))

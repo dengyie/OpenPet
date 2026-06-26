@@ -273,6 +273,7 @@ export interface ActionsConfigViewState {
   clickAction: string
   actions: ActionEntry[]
   triggerProposalInbox: ActionTriggerProposalInboxItem[]
+  triggerRules: ActionTriggerRule[]
 }
 
 export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
@@ -309,15 +310,36 @@ export interface ActionTriggerProposalAcceptanceRequest {
   notes?: string
 }
 
+export interface ActionTriggerRuleCondition {
+  stateKey?: string
+  equals?: string
+  eventName?: string
+  probability?: number
+}
+
+export interface ActionTriggerRule {
+  id: string
+  type: 'random' | 'state' | 'event'
+  actionId: string
+  enabled: boolean
+  condition: ActionTriggerRuleCondition
+}
+
+export interface ActionTriggerRulePreview {
+  summary: string
+  rule: ActionTriggerRule
+}
+
 export interface ActionTriggerProposalAcceptanceResult {
   ok: boolean
   applied: boolean
   actionId: string
   type: ActionTriggerProposalType
   binding: string
-  code: 'applied' | 'no_binding_required' | 'pending_host_rule'
+  code: 'applied' | 'no_binding_required' | 'pending_host_rule' | 'preview_ready' | 'rule_saved'
   message: string
   acceptedAt: string
+  preview?: ActionTriggerRulePreview
   sourcePluginId?: string
   sourceRunId?: string
   sourceCommandId?: string

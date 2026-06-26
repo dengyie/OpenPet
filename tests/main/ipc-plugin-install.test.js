@@ -137,7 +137,7 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
       actionId: proposal.actionId,
       type: proposal.type,
       binding: proposal.binding || '',
-      code: proposal.type === 'click' ? 'applied' : 'pending_host_rule',
+      code: proposal.type === 'click' ? 'applied' : 'rule_saved',
       message: proposal.type === 'click' ? 'applied' : 'pending',
       acceptedAt: '2026-06-22T10:00:00.000Z',
       sourcePluginId: proposal.sourcePluginId || '',

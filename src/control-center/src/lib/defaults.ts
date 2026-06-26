@@ -186,7 +186,8 @@ export const defaultActionsConfig = {
   defaultAction: '',
   clickAction: '',
   actions: [],
-  triggerProposalInbox: []
+  triggerProposalInbox: [],
+  triggerRules: []
 } satisfies ActionsConfigViewState
 
 export const defaultPetPacks = {
@@ -382,7 +383,8 @@ export const cloneActionsConfig = (config: Partial<ActionsConfigViewState> | nul
   ...defaultActionsConfig,
   ...(config || {}),
   actions: Array.isArray(config?.actions) ? config.actions : [],
-  triggerProposalInbox: Array.isArray(config?.triggerProposalInbox) ? config.triggerProposalInbox : []
+  triggerProposalInbox: Array.isArray(config?.triggerProposalInbox) ? config.triggerProposalInbox : [],
+  triggerRules: Array.isArray(config?.triggerRules) ? config.triggerRules : []
 })
 
 export const clonePetPacks = (petPacks: Partial<PetPacksViewState> | null | undefined): PetPacksViewState => ({

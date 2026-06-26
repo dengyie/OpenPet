@@ -9,7 +9,8 @@ const emptyConfig = {
   defaultAction: '',
   clickAction: '',
   actions: [],
-  triggerProposalInbox: []
+  triggerProposalInbox: [],
+  triggerRules: []
 }
 
 const emptyPetPack = {
@@ -122,6 +123,7 @@ const normalizePersistedCreatorConfig = (config = {}) => ({
   defaultAction: String(config.defaultAction || ''),
   clickAction: String(config.clickAction || ''),
   actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
+  triggerRules: Array.isArray(config.triggerRules) ? config.triggerRules.map((rule) => ({ ...rule, condition: { ...(rule?.condition || {}) } })) : [],
   triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
     ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
     : []
@@ -132,6 +134,7 @@ const HOST_RULE_REQUIRED_TYPES = new Set(['random', 'state', 'event'])
 const TRIGGER_PROPOSAL_STATUSES = new Set(['pending', 'accepted', 'rejected', 'applied', 'pending-host-rule'])
 const SAFE_TRIGGER_PROPOSAL_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
 const MAX_TRIGGER_PROPOSAL_SOURCE_LENGTH = 160
+const TRIGGER_RULE_TYPES = new Set(['random', 'state', 'event'])
 
 const normalizeOptionalText = (value) => {
   if (typeof value !== 'string') return ''
@@ -166,6 +169,53 @@ const normalizeTriggerProposalInboxItem = (item = {}) => {
     updatedAt: normalizeOptionalText(item.updatedAt),
     acceptedAt: normalizeOptionalText(item.acceptedAt),
     rejectedAt: normalizeOptionalText(item.rejectedAt)
+  }
+}
+
+const normalizeTriggerRuleCondition = (type, condition = {}) => {
+  if (type === 'random') {
+    const probability = Number(condition.probability)
+    return {
+      probability: Number.isFinite(probability) && probability > 0 && probability <= 1 ? probability : 0.15
+    }
+  }
+  if (type === 'state') {
+    const stateKey = normalizeOptionalText(condition.stateKey || 'posture')
+    const equals = normalizeOptionalText(condition.equals || 'resting')
+    return { stateKey: stateKey || 'posture', equals: equals || 'resting' }
+  }
+  if (type === 'event') {
+    const eventName = normalizeOptionalText(condition.eventName || 'pet.greeting.completed')
+    return { eventName: eventName || 'pet.greeting.completed' }
+  }
+  return {}
+}
+
+const createTriggerRulePreviewSummary = (rule) => {
+  if (rule.type === 'random') {
+    return `Randomly play ${rule.actionId} at ${(Number(rule.condition?.probability || 0) * 100).toFixed(0)}% probability.`
+  }
+  if (rule.type === 'state') {
+    return `When ${rule.condition?.stateKey || 'state'} is ${rule.condition?.equals || 'active'}, play ${rule.actionId}.`
+  }
+  if (rule.type === 'event') {
+    return `When event ${rule.condition?.eventName || 'event'} fires, play ${rule.actionId}.`
+  }
+  return `Preview trigger rule for action: ${rule.actionId}`
+}
+
+const normalizeTriggerRule = (rule = {}) => {
+  const type = String(rule.type || '')
+  if (!TRIGGER_RULE_TYPES.has(type)) {
+    throw new Error(`Unsupported trigger rule type: ${type || 'unknown'}`)
+  }
+  const actionId = normalizeActionId(rule.actionId, 'trigger rule action id')
+  return {
+    id: normalizeTriggerProposalId(rule.id || `rule:${type}:${actionId}`),
+    type,
+    actionId,
+    enabled: rule.enabled !== false,
+    condition: normalizeTriggerRuleCondition(type, rule.condition)
   }
 }
 
@@ -212,6 +262,9 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
           ? pathToFileURL(path.join(spriteRoot, action.sprite)).toString()
           : ''
       })) : [],
+      triggerRules: Array.isArray(config.triggerRules)
+        ? config.triggerRules.map((rule) => normalizeTriggerRule(rule))
+        : [],
       triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
         ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
         : []
@@ -225,6 +278,9 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
       actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
+      triggerRules: Array.isArray(config.triggerRules)
+        ? config.triggerRules.map((rule) => normalizeTriggerRule(rule))
+        : [],
       triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
         ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
         : []
@@ -320,9 +376,67 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       defaultAction: validation.actions.defaultAction,
       clickAction: validation.actions.clickAction,
       actions: validation.actions.actions.map((action) => ({ ...action })),
+      triggerRules: current.triggerRules || [],
       triggerProposalInbox: current.triggerProposalInbox || []
     }
     return persistMutableConfig(nextConfig)
+  }
+
+  const buildHostTriggerRule = (proposal = {}, current) => {
+    const type = String(proposal.type || '')
+    if (!TRIGGER_RULE_TYPES.has(type)) {
+      throw new Error(`Unsupported trigger rule type: ${type || 'unknown'}`)
+    }
+    const actionId = normalizeActionId(proposal.actionId, 'trigger proposal action id')
+    if (!current.actions.some((action) => action.id === actionId)) {
+      throw new Error(`Trigger proposal action does not exist: ${actionId}`)
+    }
+    const binding = String(proposal.binding || '')
+    if (type === 'state' && binding && binding !== 'stateRule') {
+      throw new Error(`Unsupported state trigger binding: ${binding}`)
+    }
+    if (type === 'event' && binding && binding !== 'eventRule') {
+      throw new Error(`Unsupported event trigger binding: ${binding}`)
+    }
+    if (type === 'random' && binding && binding !== 'randomRule') {
+      throw new Error(`Unsupported random trigger binding: ${binding}`)
+    }
+    const existingRules = Array.isArray(current.triggerRules) ? current.triggerRules.map(normalizeTriggerRule) : []
+    const sameTypeRules = existingRules.filter((rule) => rule.type === type && rule.actionId === actionId)
+    const nextId = sameTypeRules.length === 0
+      ? `rule:${type}:${actionId}`
+      : `rule:${type}:${actionId}:${sameTypeRules.length + 1}`
+    const rule = normalizeTriggerRule({
+      id: nextId,
+      type,
+      actionId,
+      enabled: true,
+      condition: normalizeTriggerRuleCondition(type, proposal.condition)
+    })
+    return {
+      rule,
+      summary: createTriggerRulePreviewSummary(rule)
+    }
+  }
+
+  const previewTriggerProposal = (proposal = {}) => {
+    const current = getMutableConfig()
+    const type = String(proposal.type || '')
+    if (type === 'click' || type === 'manual' || type === 'unbound') {
+      return acceptTriggerProposal(proposal)
+    }
+    const preview = buildHostTriggerRule(proposal, current)
+    return {
+      ok: true,
+      applied: false,
+      actionId: preview.rule.actionId,
+      type: preview.rule.type,
+      binding: '',
+      code: 'preview_ready',
+      message: `Preview ready for ${preview.rule.type} trigger on action: ${preview.rule.actionId}`,
+      acceptedAt: now(),
+      preview
+    }
   }
 
   const acceptTriggerProposal = (proposal = {}) => {
@@ -374,12 +488,20 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     }
 
     if (HOST_RULE_REQUIRED_TYPES.has(type)) {
+      const current = getMutableConfig()
+      const preview = buildHostTriggerRule(proposal, current)
+      const nextRules = [...(current.triggerRules || []).map(normalizeTriggerRule), preview.rule]
+      persistMutableConfig({
+        ...current,
+        triggerRules: nextRules
+      })
       return {
         ...baseResult,
         applied: false,
         binding: '',
-        code: 'pending_host_rule',
-        message: `Trigger type ${type} requires a host trigger-rule editor before it can be applied.`
+        code: 'rule_saved',
+        message: `${type === 'state' ? 'State' : type === 'event' ? 'Event' : 'Random'} trigger rule saved for action: ${actionId}`,
+        preview
       }
     }
 
@@ -435,6 +557,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     const proposal = buildSubmittedTriggerProposal(payload, current)
     const animations = persistMutableConfig({
       ...current,
+      triggerRules: current.triggerRules || [],
       triggerProposalInbox: [...current.triggerProposalInbox, proposal]
     })
     return { proposal, animations }
@@ -517,6 +640,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     validateCreatorActionMutation,
     applyCreatorActionMutation,
     acceptTriggerProposal,
+    previewTriggerProposal,
     submitTriggerProposal,
     acceptTriggerProposalItem,
     rejectTriggerProposalItem

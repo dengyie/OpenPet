@@ -165,6 +165,7 @@ const creatorActionsReadFixture = {
   actions: {
     defaultAction: 'idle',
     clickAction: 'wave',
+    triggerRules: [],
     triggerProposalInbox: [],
     actions: [
       { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', previewSprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
@@ -182,6 +183,7 @@ const creatorActionsMutationFixture = {
     actions: {
       defaultAction: 'idle',
       clickAction: 'wave',
+      triggerRules: [],
       triggerProposalInbox: [],
       actions: [
         { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
@@ -192,6 +194,7 @@ const creatorActionsMutationFixture = {
   actions: {
     defaultAction: 'idle',
     clickAction: 'wave',
+    triggerRules: [],
     triggerProposalInbox: [],
     actions: [
       { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
@@ -237,6 +240,7 @@ const creatorAssetsImportFramesResponseFixture = {
   actions: {
     defaultAction: 'idle',
     clickAction: 'wave',
+    triggerRules: [],
     triggerProposalInbox: [],
     actions: [
       { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },

@@ -250,6 +250,76 @@ test('action adapters package import and mutation results without leaking servic
   })
 })
 
+test('action adapters preserve host trigger rule previews and persisted rules', () => {
+  const animations = {
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    triggerProposalInbox: [],
+    triggerRules: [{
+      id: 'rule:state:sleep:test',
+      type: 'state',
+      actionId: 'sleep',
+      enabled: true,
+      condition: {
+        stateKey: 'posture',
+        equals: 'resting'
+      }
+    }],
+    actions: [{ id: 'sleep', label: 'Sleep', sprite: 'sleep.png', frameCount: 8, frameMs: 120, loop: true }]
+  }
+
+  assert.deepEqual(createActionsMutationResult(animations, {
+    triggerProposal: {
+      ok: true,
+      applied: false,
+      actionId: 'sleep',
+      type: 'state',
+      binding: '',
+      code: 'rule_saved',
+      message: 'State trigger rule saved for action: sleep',
+      acceptedAt: '2026-06-23T10:00:00.000Z',
+      preview: {
+        summary: 'When posture is resting, play sleep.',
+        rule: {
+          id: 'rule:state:sleep:test',
+          type: 'state',
+          actionId: 'sleep',
+          enabled: true,
+          condition: {
+            stateKey: 'posture',
+            equals: 'resting'
+          }
+        }
+      }
+    }
+  }), {
+    animations,
+    triggerProposal: {
+      ok: true,
+      applied: false,
+      actionId: 'sleep',
+      type: 'state',
+      binding: '',
+      code: 'rule_saved',
+      message: 'State trigger rule saved for action: sleep',
+      acceptedAt: '2026-06-23T10:00:00.000Z',
+      preview: {
+        summary: 'When posture is resting, play sleep.',
+        rule: {
+          id: 'rule:state:sleep:test',
+          type: 'state',
+          actionId: 'sleep',
+          enabled: true,
+          condition: {
+            stateKey: 'posture',
+            equals: 'resting'
+          }
+        }
+      }
+    }
+  })
+})
+
 test('about adapters provide stable defaults for partial info and update checks', () => {
   assert.deepEqual(createAboutInfoView({
     version: '1.0.1',

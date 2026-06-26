@@ -5,6 +5,7 @@ import type {
   ActionFrameInspectionResult,
   ActionFrameImportRequest,
   ActionFrameReinspectRequest,
+  ActionTriggerRule,
   ActionTriggerProposalInboxStatus,
   ActionsConfigViewState,
   AiChatRequest,
@@ -151,6 +152,7 @@ const createDemoActionsConfig = (): ActionsConfigViewState => cloneActionsConfig
   defaultAction: 'idle',
   clickAction: 'wave',
   triggerProposalInbox: [],
+  triggerRules: [],
   actions: [
     { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
     { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
@@ -987,6 +989,34 @@ const demoApi: ControlCenterApi = {
         ...demoState.actionsConfig,
         clickAction: triggerProposal.actionId
       })
+    } else if (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)) {
+      const nextRule: ActionTriggerRule = triggerProposal.type === 'random'
+        ? {
+            id: `rule:random:${triggerProposal.actionId}`,
+            type: 'random',
+            actionId: triggerProposal.actionId,
+            enabled: true,
+            condition: { probability: 0.15 }
+          }
+        : (triggerProposal.type === 'state'
+            ? {
+                id: `rule:state:${triggerProposal.actionId}`,
+                type: 'state',
+                actionId: triggerProposal.actionId,
+                enabled: true,
+                condition: { stateKey: 'posture', equals: 'resting' }
+              }
+            : {
+                id: `rule:event:${triggerProposal.actionId}`,
+                type: 'event',
+                actionId: triggerProposal.actionId,
+                enabled: true,
+                condition: { eventName: 'pet.greeting.completed' }
+              })
+      demoState.actionsConfig = cloneActionsConfig({
+        ...demoState.actionsConfig,
+        triggerRules: [...(demoState.actionsConfig.triggerRules || []), nextRule]
+      })
     } else if (!triggerProposal) {
       demoState.actionsConfig = cloneActionsConfig({
         ...demoState.actionsConfig,
@@ -996,11 +1026,11 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     const triggerCode = triggerProposal?.type === 'click'
       ? 'applied'
-      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type) ? 'pending_host_rule' : 'no_binding_required')
+      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type) ? 'rule_saved' : 'no_binding_required')
     const triggerMessage = triggerProposal?.type === 'click'
       ? `Click trigger now uses action: ${triggerProposal.actionId}`
       : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)
-          ? `Trigger type ${triggerProposal.type} requires a host trigger-rule editor before it can be applied.`
+          ? `${triggerProposal.type === 'state' ? 'State' : triggerProposal.type === 'event' ? 'Event' : 'Random'} trigger rule saved for action: ${triggerProposal.actionId}`
           : `Action trigger proposal accepted for ${triggerProposal?.actionId || ''}`)
     return {
       animations: cloneActionsConfig(demoState.actionsConfig),
@@ -1015,6 +1045,18 @@ const demoApi: ControlCenterApi = {
               code: triggerCode,
               message: triggerMessage,
               acceptedAt: '2026-06-22T00:00:00.000Z',
+              ...(triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)
+                ? {
+                    preview: {
+                      summary: triggerProposal.type === 'random'
+                        ? `Randomly play ${triggerProposal.actionId} at 15% probability.`
+                        : (triggerProposal.type === 'state'
+                            ? `When posture is resting, play ${triggerProposal.actionId}.`
+                            : `When event pet.greeting.completed fires, play ${triggerProposal.actionId}.`),
+                      rule: demoState.actionsConfig.triggerRules[demoState.actionsConfig.triggerRules.length - 1]
+                    }
+                  }
+                : {}),
               sourcePluginId: triggerProposal.sourcePluginId,
               sourceRunId: triggerProposal.sourceRunId,
               sourceCommandId: triggerProposal.sourceCommandId
