@@ -22,6 +22,7 @@ const { createPluginSetupProcessController } = require('./plugin-setup-process-c
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
 const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
 const { createPluginResolutionController } = require('./plugin-resolution-controller')
+const { createPluginConfigStorageController } = require('./plugin-config-storage-controller')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -639,30 +640,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return getSignatureStatus(manifest)
   }
 
-  const getPluginStorageStats = (pluginId) => {
-    try {
-      const storage = getPluginStorage(pluginId)
-      return {
-        keyCount: Object.keys(storage).length,
-        byteSize: getJsonByteSize(storage),
-        valid: true
-      }
-    } catch (error) {
-      return {
-        keyCount: 0,
-        byteSize: 0,
-        valid: false,
-        error: error.message || 'Plugin storage is invalid'
-      }
-    }
-  }
-
   const normalizePluginConfig = (schema, config = {}) => {
     if (!schema) return {}
     return Object.fromEntries(schema.properties.map((field) => [field.key, coerceConfigValue(config[field.key], field)]))
   }
-
-  const getPluginConfig = (pluginId, schema) => normalizePluginConfig(schema, getConfigMap()[pluginId] || {})
 
   const assertPermission = (manifest, permission) => {
     if (!manifest.permissions.includes(permission)) {
@@ -703,27 +684,23 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return aiService.chat({ message, conversationId })
   }
 
-  const getPluginStorage = (pluginId) => cloneJsonValue(getStorageMap()[pluginId] || {}, 'value')
+  const configStorageController = createPluginConfigStorageController({
+    settingsService,
+    normalizePluginConfig,
+    cloneJsonValue,
+    getJsonByteSize,
+    assertStorageSize
+  })
 
-  const savePluginStorage = (pluginId, storage) => {
-    assertStorageSize(storage)
-    const settings = settingsService.get()
-    settingsService.save({
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        storage: {
-          ...(settings.plugins?.storage || {}),
-          [pluginId]: cloneJsonValue(storage, 'value')
-        }
-      }
-    })
-  }
+  const getPluginConfig = configStorageController.getConfig
+  const getPluginStorage = configStorageController.getStorage
+  const savePluginStorage = configStorageController.saveStorage
+  const getPluginStorageStats = configStorageController.getStorageStats
 
   const clearStorage = (pluginId) => {
     const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
     if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
-    savePluginStorage(pluginId, {})
+    configStorageController.clearStorage(pluginId)
     appendLog({ pluginId, level: 'info', message: 'Plugin storage cleared' })
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
@@ -996,18 +973,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
     if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
     if (!plugin.configSchema) throw new Error('Plugin does not declare a config schema')
-    const normalizedConfig = normalizePluginConfig(plugin.configSchema, config)
-    const settings = settingsService.get()
-    settingsService.save({
-      ...settings,
-      plugins: {
-        ...(settings.plugins || {}),
-        config: {
-          ...(settings.plugins?.config || {}),
-          [pluginId]: normalizedConfig
-        }
-      }
-    })
+    configStorageController.saveConfig(pluginId, plugin.configSchema, config)
     appendLog({ pluginId, level: 'info', message: 'Plugin config saved' })
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
