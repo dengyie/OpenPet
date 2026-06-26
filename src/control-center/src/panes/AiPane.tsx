@@ -9,6 +9,7 @@ import type {
   AiPersonaDraftViewState,
   AiPersonaProfileViewState,
   ChatMessage,
+  ImageGenerationHealthCheckResult,
   ImageGenerationConfigViewState,
   PetChatStateViewState
 } from '../../../shared/openpet-contracts'
@@ -16,6 +17,7 @@ import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
 import {
   chatProviderPresets,
+  getDiscoveredModelOptions,
   getImageProviderCompatibilityHint
 } from '../lib/ai-provider-config'
 
@@ -140,6 +142,7 @@ export interface AiPaneProps {
   activeProviderSummary: string
   providerConfigValidationError: string
   connectionTestResult: AiConnectionTestResult | null
+  imageHealthResult: ImageGenerationHealthCheckResult | null
   imageProviderValidationError: string
   onChange: (partial: Partial<AiConfigViewState>) => void
   onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
@@ -210,6 +213,7 @@ export function AiPane({
   activeProviderSummary,
   providerConfigValidationError,
   connectionTestResult,
+  imageHealthResult,
   imageProviderValidationError,
   onChange,
   onChangeImageGeneration,
@@ -277,6 +281,14 @@ export function AiPane({
   ].filter(Boolean).join(' · ')
   const imageTargetSummary = `${activeImageGenerationConfig.provider} · ${activeImageGenerationConfig.baseUrl} · ${activeImageGenerationConfig.model} · ${activeImageGenerationConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
   const imageCompatibilityHint = getImageProviderCompatibilityHint(imageGenerationConfig)
+  const chatDiscoveredModelOptions = getDiscoveredModelOptions({
+    model: config.model,
+    availableModels: connectionTestResult?.availableModels
+  })
+  const imageDiscoveredModelOptions = getDiscoveredModelOptions({
+    model: imageGenerationConfig.model,
+    availableModels: imageHealthResult?.availableModels
+  })
   const applyChatProviderPreset = (preset: typeof chatProviderPresets[number]) => onChange({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
@@ -373,10 +385,24 @@ export function AiPane({
             <span className="field-label">Model</span>
             <input
               className="text-input"
+              list="ai-chat-model-options"
               value={config.model}
               onChange={(event) => onChange({ model: event.target.value })}
             />
           </label>
+
+          <datalist id="ai-chat-model-options">
+            {chatDiscoveredModelOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </datalist>
+
+          {chatDiscoveredModelOptions.length ? (
+            <div className="readonly-row" data-testid="ai-chat-discovered-models">
+              <strong>发现的聊天模型</strong>
+              <span>{chatDiscoveredModelOptions.map((option) => option.label).join(' / ')}</span>
+            </div>
+          ) : null}
 
           <div className="field-row">
             <div>
@@ -577,10 +603,24 @@ export function AiPane({
             <input
               aria-label="图片 Model"
               className="text-input"
+              list="ai-image-model-options"
               value={imageGenerationConfig.model}
               onChange={(event) => onChangeImageGeneration({ model: event.target.value })}
             />
           </label>
+
+          <datalist id="ai-image-model-options">
+            {imageDiscoveredModelOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </datalist>
+
+          {imageDiscoveredModelOptions.length ? (
+            <div className="readonly-row" data-testid="ai-image-discovered-models">
+              <strong>发现的图片模型</strong>
+              <span>{imageDiscoveredModelOptions.map((option) => option.label).join(' / ')}</span>
+            </div>
+          ) : null}
 
           <label className="field-row">
             <div>

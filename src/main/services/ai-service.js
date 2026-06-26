@@ -229,6 +229,13 @@ const sanitizeDiagnosticText = (value) => String(value || '')
 
 const isOptionalModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
 
+const extractAvailableModels = (payload) => {
+  const entries = Array.isArray(payload?.data) ? payload.data : []
+  return [...new Set(entries
+    .map((entry) => (typeof entry?.id === 'string' ? entry.id.trim() : ''))
+    .filter(Boolean))]
+}
+
 const getSafeProviderErrorMessage = (status, code) => {
   const normalizedStatus = Number(status) || 0
   if (normalizedStatus === 401 || normalizedStatus === 403) return 'AI provider authentication failed'
@@ -594,10 +601,12 @@ const createAiService = ({
         })
       }
 
+      const data = await response.json().catch(() => ({}))
       const result = {
         ok: true,
         ...baseResult,
         elapsedMs: Date.now() - startedAt,
+        availableModels: extractAvailableModels(data),
         reply: 'ok',
         code: 'ok',
         message: 'AI provider connection test succeeded'

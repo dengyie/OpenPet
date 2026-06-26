@@ -200,6 +200,7 @@ export function useAiPane(activeTab = 'ai') {
   const [connectionStatus, setConnectionStatus] = useState('')
   const [connectionTestResult, setConnectionTestResult] = useState<AiConnectionTestResult | null>(null)
   const [imageHealthStatus, setImageHealthStatus] = useState('')
+  const [imageHealthResult, setImageHealthResult] = useState<ImageGenerationHealthCheckResult | null>(null)
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
@@ -506,10 +507,13 @@ export function useAiPane(activeTab = 'ai') {
     }
     setSaving(true)
     setImageHealthStatus('图片 Provider 健康检查中')
+    setImageHealthResult(null)
     try {
       const result = await api.checkImageGenerationHealth({})
+      setImageHealthResult(result)
       setImageHealthStatus(formatImageGenerationHealthStatus(result))
     } catch (error) {
+      setImageHealthResult(null)
       setImageHealthStatus(messageFromError(error, '图片模型健康检查失败'))
     } finally {
       setSaving(false)
@@ -713,6 +717,7 @@ export function useAiPane(activeTab = 'ai') {
     activeProviderSummary: formatActiveProviderSummary(activeConfig),
     providerConfigValidationError: validateProviderConfig(config),
     connectionTestResult,
+    imageHealthResult,
     imageProviderValidationError: validateImageProviderConfig(imageGenerationConfig),
     saving,
     status,

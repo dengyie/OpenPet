@@ -70,3 +70,18 @@ test('connection status copy maps optional chat models probe fallback into user-
   assert.match(text, /chat\.example\.test/)
   assert.match(text, /example-model/)
 })
+
+test('provider config helpers format discovered model options for the AI pane', async () => {
+  const { getDiscoveredModelOptions } = aiProviderConfig
+
+  assert.deepEqual(
+    getDiscoveredModelOptions({
+      model: 'gpt-4o-mini',
+      availableModels: ['gpt-4o-mini', 'gpt-4.1-mini', '', 'gpt-4.1-mini']
+    }),
+    [
+      { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+      { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' }
+    ]
+  )
+})

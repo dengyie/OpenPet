@@ -1944,6 +1944,7 @@ export interface AiConnectionTestResult {
   model: string
   hasApiKey: boolean
   elapsedMs: number
+  availableModels?: string[]
   reply?: string
   code?: string
   message?: string
@@ -1974,6 +1975,7 @@ export interface ImageGenerationHealthCheckResult {
   provider: string
   code: string
   message: string
+  availableModels?: string[]
 }
 
 export type ImageGenerationHealthCheckRequest = Record<string, never>

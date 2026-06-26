@@ -424,6 +424,8 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前存在未保存修改')
     await expect(page.getByTestId('ai-connection-result')).toContainText('gpt-4o-mini')
     await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('https://ai.example.test/v1')
+    await expect(page.getByTestId('ai-chat-discovered-models')).toContainText('gpt-4o-mini')
+    await expect(page.getByRole('textbox', { name: 'Model', exact: true })).toHaveAttribute('list', 'ai-chat-model-options')
 
     await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('AI 配置已保存：Base URL / Model / System Prompt / 长期记忆')
@@ -539,6 +541,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '图片当前 Provider' })).toContainText('openpet-image-test')
     await expect(page.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('当前没有未保存')
     await expect(page.locator('.readonly-row', { hasText: '生成边界' })).toContainText('API Key')
+    await expect(page.getByLabel('图片 Model')).toHaveAttribute('list', 'ai-image-model-options')
 
     const imageApiKeyRow = page.locator('.field-row', { hasText: '图片 API Key' })
     const imageApiKeyInput = imageApiKeyRow.locator('input[type="password"]')

@@ -66,6 +66,23 @@ export const formatConnectionTestStatus = (result: AiConnectionTestResult) => (
     : `连接测试失败：${formatProviderDisplayName(result.provider)} · ${result.baseUrl} · ${result.model} · ${result.message || result.code || 'unknown'}`
 )
 
+export const getDiscoveredModelOptions = ({
+  model,
+  availableModels
+}: {
+  model?: string
+  availableModels?: string[]
+}) => {
+  const normalizedCurrent = String(model || '').trim()
+  const unique = [...new Set((Array.isArray(availableModels) ? availableModels : [])
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean))]
+  const values = normalizedCurrent && !unique.includes(normalizedCurrent)
+    ? [normalizedCurrent, ...unique]
+    : unique
+  return values.map((value) => ({ value, label: value }))
+}
+
 export const getImageProviderCompatibilityHint = (config: ImageGenerationConfigViewState) => {
   const model = String(config.model || '').trim() || '未设置模型'
   if (model === 'gpt-image-2') {

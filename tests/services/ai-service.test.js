@@ -1005,3 +1005,39 @@ test('ai service testConnection treats optional chat /models probe failure as re
   assert.equal(result.message, 'AI provider is reachable, but the optional /models probe is unavailable')
   assert.equal(requests[0], 'https://chat.example.test/v1/models')
 })
+
+test('ai service testConnection returns discovered chat models when /models probe succeeds', async () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://chat.example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: 'example-model' },
+          { id: 'gpt-4.1-mini' },
+          { id: '' },
+          { object: 'model' }
+        ]
+      })
+    })
+  })
+
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.availableModels, ['example-model', 'gpt-4.1-mini'])
+})

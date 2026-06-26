@@ -1213,6 +1213,7 @@ const demoApi: ControlCenterApi = {
           model: demoState.aiConfig.model,
           hasApiKey: demoState.aiConfig.hasApiKey,
           elapsedMs: 12,
+          availableModels: [],
           reply: '',
           code: 'provider_reachable_models_unavailable',
           message: 'AI provider is reachable, but the optional /models probe is unavailable'
@@ -1224,6 +1225,7 @@ const demoApi: ControlCenterApi = {
           model: demoState.aiConfig.model,
           hasApiKey: demoState.aiConfig.hasApiKey,
           elapsedMs: 12,
+          availableModels: [demoState.aiConfig.model, 'gpt-4.1-mini', 'gpt-4o'],
           reply: 'ok',
           code: 'ok',
           message: 'AI provider connection test succeeded'
@@ -1389,13 +1391,19 @@ const demoApi: ControlCenterApi = {
       return {
         ok: true,
         provider: demoState.imageGenerationConfig.provider,
+        availableModels: [],
         code: 'provider_reachable_models_unavailable',
         message: 'Image Provider is reachable, but the optional /models probe is unavailable'
       }
     }
+    const availableModels = [
+      demoState.imageGenerationConfig.model,
+      'openpet-image-fast'
+    ].filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
     return {
       ok: true,
       provider: demoState.imageGenerationConfig.provider,
+      availableModels,
       code: 'provider_healthy',
       message: 'ok'
     }

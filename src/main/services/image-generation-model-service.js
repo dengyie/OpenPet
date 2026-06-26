@@ -218,6 +218,13 @@ const getUrlHost = (value) => {
   }
 }
 
+const extractAvailableModels = (payload) => {
+  const entries = Array.isArray(payload?.data) ? payload.data : []
+  return [...new Set(entries
+    .map((entry) => (typeof entry?.id === 'string' ? entry.id.trim() : ''))
+    .filter(Boolean))]
+}
+
 const getErrorMessage = async (response) => {
   try {
     const body = await response?.json?.()
@@ -479,8 +486,15 @@ const createImageGenerationModelService = ({
           { status, modelsProbe: 'failed' }
         )
       }
+      const payload = await response.json().catch(() => ({}))
       return completeHealth(
-        { ok: true, provider: config.provider, code: 'provider_healthy', message: 'Image Provider is reachable' },
+        {
+          ok: true,
+          provider: config.provider,
+          code: 'provider_healthy',
+          message: 'Image Provider is reachable',
+          availableModels: extractAvailableModels(payload)
+        },
         { status, modelsProbe: 'ok' }
       )
     } catch (error) {

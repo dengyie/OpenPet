@@ -41,6 +41,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The highest
 
 - Chat provider UX has separate `保存聊天 Provider` and `测试已保存配置` actions. Saving does not require a successful test, and testing uses the active saved config.
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
+- Chat and image provider checks now surface discovered `/models` results back to the AI pane as suggested model lists, while preserving safe fallback wording when probing is unavailable.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-ranked memory injection, injected-memory usage tracking, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Active pet-pack changes now emit explicit refresh signals so the AI pane reloads persona, memory profile, and chat state without requiring a tab switch or window reopen.
@@ -65,7 +66,7 @@ P1 work:
 
 - Split dense AI settings into clearer model-settings sections if the current AI pane becomes hard to operate.
 - Add provider presets/catalog entries for common OpenAI-compatible chat and image endpoints. Partially completed in current branch: the AI pane now exposes host-safe chat provider presets plus existing image presets for common OpenAI-compatible endpoints, without auto-saving or overwriting stored API keys.
-- Add optional `/models` discovery where providers support it, with safe fallback wording when probing is unavailable. Partially completed in current branch: chat and image provider host checks now use optional `/models` probes with consistent safe fallback wording when probing is unavailable, but the AI pane does not yet enumerate and present discovered model lists for user selection.
+- Add optional `/models` discovery where providers support it, with safe fallback wording when probing is unavailable. Completed in current branch: chat and image provider host checks now return discovered model lists when probing succeeds, the AI pane surfaces them as suggested model options, and unavailable probes still use the existing safe fallback wording.
 - Add provider compatibility hints, especially for image models that do or do not support transparent-background payload parameters. Partially completed in current branch: the AI pane now shows image compatibility guidance that distinguishes `gpt-image-2` host-default behavior from generic OpenAI-compatible transparent-background requests.
 - Add user-visible generation usage/cost summaries when the provider response exposes safe metadata.
 
