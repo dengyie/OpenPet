@@ -606,6 +606,78 @@ test('ai talk service injects relevant memories as dynamic context without chang
   assert.match(requests[0].messages[1].content, /Mochi greets the user softly/)
 })
 
+test('ai talk service ranks relevant memories for the current message and marks injected memories as used', async () => {
+  const requests = []
+  const store = createStore()
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      {
+        operation: 'create',
+        scope: 'global',
+        text: 'User prefers concise Chinese replies.',
+        tags: ['preference'],
+        confidence: 0.9,
+        importance: 0.6,
+        reason: 'stable preference'
+      },
+      {
+        operation: 'create',
+        scope: 'petPack',
+        text: 'Mochi helps the user start focus sessions quietly.',
+        tags: ['focus', 'work'],
+        confidence: 0.7,
+        importance: 0.7,
+        reason: 'focus relationship'
+      },
+      {
+        operation: 'create',
+        scope: 'petPack',
+        text: 'Mochi celebrates stretch breaks with a cheerful wiggle.',
+        tags: ['break'],
+        confidence: 0.8,
+        importance: 0.9,
+        reason: 'break ritual'
+      }
+    ]
+  })
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true },
+        memory: { enabled: false }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: '开始专注吧。' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat' })
+  })
+
+  await service.chat({ message: '我要开始专注工作了' })
+
+  const memoryPrompt = requests[0].messages[1].content
+  const focusIndex = memoryPrompt.indexOf('Mochi helps the user start focus sessions quietly.')
+  const breakIndex = memoryPrompt.indexOf('Mochi celebrates stretch breaks with a cheerful wiggle.')
+  assert.notEqual(focusIndex, -1)
+  assert.notEqual(breakIndex, -1)
+  assert.ok(focusIndex < breakIndex)
+
+  const focusMemory = store.listMemories({ petPackId: 'mochi-cat', limit: 0 })
+    .find((memory) => memory.text.includes('focus sessions'))
+  const breakMemory = store.listMemories({ petPackId: 'mochi-cat', limit: 0 })
+    .find((memory) => memory.text.includes('stretch breaks'))
+  assert.equal(focusMemory.useCount, 1)
+  assert.ok(focusMemory.lastUsedAt)
+  assert.equal(breakMemory.useCount, 1)
+  assert.ok(breakMemory.lastUsedAt)
+})
+
 test('ai talk service exposes and manages memory profile without reinjecting deleted memories', async () => {
   const requests = []
   const logs = []

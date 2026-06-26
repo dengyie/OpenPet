@@ -17,6 +17,12 @@ const MAX_MEMORY_CONTEXT_ITEMS = 8
 const MAX_USER_MESSAGE_CHARS = 4000
 const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
 const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
+const MEMORY_RELEVANCE_CANDIDATE_LIMIT = 24
+const MEMORY_RELEVANCE_CONCEPTS = Object.freeze({
+  focus: [/专注/u, /\bfocus\b/i, /深度工作/u],
+  work: [/工作/u, /\bwork(?:ing)?\b/i, /办公/u],
+  break: [/休息/u, /拉伸/u, /\bbreaks?\b/i, /摸鱼/u]
+})
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '')
 
@@ -209,6 +215,39 @@ const sanitizeDiagnosticText = (value) => String(value || '')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
   .slice(0, 240)
 
+const tokenizeMemorySearchText = (value) => Array.from(new Set(
+  normalizeString(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+))
+
+const extractMemoryConceptTokens = (value) => Object.entries(MEMORY_RELEVANCE_CONCEPTS)
+  .filter(([, patterns]) => patterns.some((pattern) => pattern.test(String(value || ''))))
+  .map(([concept]) => concept)
+
+const scoreMemoryRelevance = (memory, queryTokens) => {
+  const textTokens = tokenizeMemorySearchText(memory?.text)
+  const tagTokens = tokenizeMemorySearchText(Array.isArray(memory?.tags) ? memory.tags.join(' ') : '')
+  const conceptTokens = extractMemoryConceptTokens([
+    memory?.text || '',
+    Array.isArray(memory?.tags) ? memory.tags.join(' ') : ''
+  ].join(' '))
+  const textMatches = queryTokens.filter((token) => textTokens.includes(token)).length
+  const tagMatches = queryTokens.filter((token) => tagTokens.includes(token)).length
+  const conceptMatches = queryTokens.filter((token) => conceptTokens.includes(token)).length
+  const textMatchScore = queryTokens.length ? (textMatches / queryTokens.length) * 4 : 0
+  const tagMatchScore = queryTokens.length ? (tagMatches / queryTokens.length) * 2 : 0
+  const conceptMatchScore = queryTokens.length ? (conceptMatches / queryTokens.length) * 5 : 0
+  const importanceScore = Math.max(0, Number(memory?.importance) || 0)
+  const confidenceScore = Math.max(0, Number(memory?.confidence) || 0)
+  const useScore = Math.min(1, Math.max(0, Number(memory?.useCount) || 0) / 10) * 0.25
+  const scopeScore = memory?.scope === 'petPack' ? 0.15 : 0
+  return conceptMatchScore + textMatchScore + tagMatchScore + importanceScore + confidenceScore + useScore + scopeScore
+}
+
 const splitTalkConversationId = (conversationId) => {
   const normalized = normalizeString(conversationId)
   const match = normalized.match(/^(.+:.+):(main)$/)
@@ -313,9 +352,35 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
   }
 
-  const getMemoryContext = (petPackId) => {
+  const getMemoryContext = (petPackId, currentMessage = '') => {
     if (typeof aiTalkStore.listMemories !== 'function') return []
-    return aiTalkStore.listMemories({ petPackId, limit: MAX_MEMORY_CONTEXT_ITEMS })
+    const candidates = aiTalkStore.listMemories({ petPackId, limit: MEMORY_RELEVANCE_CANDIDATE_LIMIT })
+    const queryTokens = Array.from(new Set([
+      ...tokenizeMemorySearchText(currentMessage),
+      ...extractMemoryConceptTokens(currentMessage)
+    ]))
+    if (!queryTokens.length) return candidates.slice(0, MAX_MEMORY_CONTEXT_ITEMS)
+    return candidates
+      .map((memory, index) => ({
+        memory,
+        index,
+        score: scoreMemoryRelevance(memory, queryTokens)
+      }))
+      .sort((a, b) => {
+        if (a.score !== b.score) return b.score - a.score
+        return a.index - b.index
+      })
+      .slice(0, MAX_MEMORY_CONTEXT_ITEMS)
+      .map((entry) => entry.memory)
+  }
+
+  const markInjectedMemoriesUsed = (memories = []) => {
+    if (typeof aiTalkStore.markMemoriesUsed !== 'function') return
+    const memoryIds = memories
+      .map((memory) => normalizeString(memory?.id))
+      .filter(Boolean)
+    if (!memoryIds.length) return
+    aiTalkStore.markMemoriesUsed(memoryIds)
   }
 
   const getRecentPetActivity = (petPackId) => {
@@ -510,7 +575,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       return await enqueueConversation(conversationPublicId, async () => {
         const history = aiTalkStore.getMessages(sessionId, conversationId)
         const userMessage = { role: 'user', content }
-        const memoryContext = getMemoryContext(petPackId)
+        const memoryContext = getMemoryContext(petPackId, content)
         const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
         const recentPetActivity = getRecentPetActivity(petPackId)
         const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
@@ -556,6 +621,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         const result = await aiService.complete({ messages, tools })
         const reply = normalizeString(result.reply)
         if (!reply) throw new Error('AI provider returned an empty response')
+        markInjectedMemoriesUsed(memoryContext)
         const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [
           userMessage,
           { role: 'assistant', content: reply }

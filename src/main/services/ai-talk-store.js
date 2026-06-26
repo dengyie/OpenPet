@@ -452,6 +452,33 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     return clone(max ? memories.slice(0, max) : memories)
   }
 
+  const markMemoriesUsed = (memoryIds = []) => {
+    const ids = Array.from(new Set(
+      (Array.isArray(memoryIds) ? memoryIds : [])
+        .map((memoryId) => (typeof memoryId === 'string' ? memoryId.trim() : ''))
+        .filter(Boolean)
+    ))
+    if (!ids.length) return []
+    const timestamp = now()
+    const updated = []
+    for (const id of ids) {
+      const existing = state.memories[id]
+      if (!existing) continue
+      const memory = normalizeExistingMemory(existing)
+      if (memory.status !== 'active') continue
+      const next = normalizeExistingMemory({
+        ...memory,
+        useCount: Math.max(0, Number(memory.useCount) || 0) + 1,
+        lastUsedAt: timestamp,
+        updatedAt: timestamp
+      })
+      state.memories[id] = next
+      updated.push(clone(next))
+    }
+    if (updated.length) persist()
+    return updated
+  }
+
   const deleteMemory = (memoryId) => {
     const id = typeof memoryId === 'string' ? memoryId.trim() : ''
     if (!id || !state.memories[id]) return null
@@ -525,6 +552,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     getState,
     listRecentPetUtterances,
     listMemories,
+    markMemoriesUsed,
     persist,
     recordPetUtterance,
     clearPetUtterances,

@@ -221,3 +221,26 @@ test('ai talk store filters sensitive memory candidates without storing raw secr
     [{ operation: 'create', scope: 'global', reason: 'sensitive' }]
   ])
 })
+
+test('ai talk store marks injected memories as used', () => {
+  let currentTime = '2026-06-20T00:00:00.000Z'
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => currentTime })
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'global', text: 'User prefers concise replies.', confidence: 0.8, importance: 0.7 },
+      { operation: 'create', scope: 'petPack', text: 'Mochi helps with focus sessions.', tags: ['focus'], confidence: 0.7, importance: 0.8 }
+    ]
+  })
+  const memoryIds = created.applied.map((item) => item.id)
+  currentTime = '2026-06-20T00:05:00.000Z'
+
+  const updated = store.markMemoriesUsed(memoryIds)
+
+  assert.equal(updated.length, 2)
+  const memories = store.listMemories({ petPackId: 'mochi-cat', limit: 0 })
+  assert.deepEqual(memories.map((memory) => memory.lastUsedAt), ['2026-06-20T00:05:00.000Z', '2026-06-20T00:05:00.000Z'])
+  assert.deepEqual(memories.map((memory) => memory.useCount), [1, 1])
+})
