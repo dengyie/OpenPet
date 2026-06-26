@@ -5,6 +5,7 @@ const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-stor
 const { generateViaHostModelBridge } = require('./host-model-bridge')
 const { buildActionFramesFromGeneratedImage } = require('./action-frame-builder')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
+const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const {
   createCreatorStudioMetadata,
   sha256,
@@ -23,7 +24,7 @@ const assertTaskReadyForGeneration = (run) => {
   if (!run.taskStatus || run.taskStatus === 'confirmed') return
   if (run.taskStatus === 'ready_for_confirmation' && (run.generationTask.questions || []).length === 0) return
   const error = new Error('Creator Studio task must be confirmed before generation')
-  error.backend = run.backend || run.input?.backend || 'fixture'
+  error.backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   error.state = 'failed'
   throw error
 }
@@ -161,7 +162,7 @@ const buildHostGeneratedRunOutput = async ({ dataDir, run, generationResult, now
 
 const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOString() }) => {
   const run = readRun({ dataDir, runId })
-  const backend = run.backend || run.input?.backend || 'fixture'
+  const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const startedAt = now()
   appendRunLog({
     dataDir,
@@ -191,7 +192,7 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
   try {
     assertTaskReadyForGeneration(run)
     let output
-    if (backend === 'fixture') {
+    if (backend === FIXTURE_BACKEND) {
       output = await getBackendAdapter(backend).run({ dataDir, runId, now })
     } else {
       const generationResult = await generateViaHostModelBridge({ backend, run })

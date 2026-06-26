@@ -1,4 +1,5 @@
 const { generateFixturePetOutput } = require('./fake-hatch-pet')
+const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 
 class BackendUnavailableError extends Error {
   constructor({ backend, message }) {
@@ -20,16 +21,15 @@ const createUnavailableAdapter = ({ backend, label }) => ({
 })
 
 const adapters = {
-  fixture: {
-    backend: 'fixture',
+  [FIXTURE_BACKEND]: {
+    backend: FIXTURE_BACKEND,
     run: generateFixturePetOutput
   },
-  cloud: createUnavailableAdapter({ backend: 'cloud', label: 'Cloud' }),
-  local: createUnavailableAdapter({ backend: 'local', label: 'Local' })
+  [PROVIDER_BACKEND]: createUnavailableAdapter({ backend: PROVIDER_BACKEND, label: 'Provider' })
 }
 
-const getBackendAdapter = (backend = 'fixture') => {
-  const normalized = String(backend || 'fixture').toLowerCase()
+const getBackendAdapter = (backend = FIXTURE_BACKEND) => {
+  const normalized = normalizeCreatorBackend(backend, String(backend || '').trim().toLowerCase())
   const adapter = adapters[normalized]
   if (!adapter) {
     throw new BackendUnavailableError({

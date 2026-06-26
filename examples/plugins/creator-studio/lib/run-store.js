@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { normalizeGenerationTask } = require('./generation-task')
+const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 
@@ -51,6 +52,7 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
   const petId = slugify(input.petId || petName)
   const originalPrompt = input.originalPrompt == null ? '' : String(input.originalPrompt).trim()
   const generationTask = input.generationTask ? normalizeGenerationTask(input.generationTask) : null
+  const backend = normalizeCreatorBackend(input.backend, FIXTURE_BACKEND)
   const baseRunId = `${timestamp.slice(0, 10)}-${petId}`.replace(/[^a-zA-Z0-9_-]/g, '-')
   const { runId, runDir } = createUniqueRunDirectory({ dataDir, baseRunId })
   ensureDirectory(path.join(runDir, 'inputs', 'references'))
@@ -67,15 +69,15 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
     taskStatus: generationTask
       ? (generationTask.questions.length > 0 ? 'needs_input' : 'ready_for_confirmation')
       : 'not_started',
-    backend: input.backend || 'fixture',
-    modelProvider: input.modelProvider || input.backend || 'fixture',
+    backend,
+    modelProvider: input.modelProvider || backend,
     createdAt: timestamp,
     updatedAt: timestamp,
     currentStep: 'draft',
     input: {
       petName,
       prompt: String(input.prompt || ''),
-      backend: input.backend || 'fixture',
+      backend,
       ...(originalPrompt ? { originalPrompt } : {})
     },
     ...(generationTask ? { generationTask } : {}),
@@ -84,7 +86,7 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
       answers: []
     },
     backendStatus: {
-      backend: input.backend || 'fixture',
+      backend,
       state: 'idle',
       message: '',
       updatedAt: timestamp

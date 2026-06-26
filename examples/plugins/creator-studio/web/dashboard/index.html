@@ -358,7 +358,7 @@
     <main>
       <header>
         <h1>Creator Studio</h1>
-        <p>Describe a custom OpenPet action, validate the workflow with fixture runs, then use cloud or local generation for real host-provider smoke.</p>
+        <p>Describe a custom OpenPet action, validate the workflow with fixture runs, then use provider generation for real host-provider smoke.</p>
       </header>
 
       <div class="grid">
@@ -368,11 +368,10 @@
             <textarea id="prompt-input">新增一个自定义动作：原地打滚，动作要循环。</textarea>
           </div>
           <div>
-            <label for="backend-select">Backend</label>
+            <label for="backend-select">Generation Mode</label>
             <select id="backend-select">
               <option value="fixture">fixture</option>
-              <option value="cloud">cloud</option>
-              <option value="local">local</option>
+              <option value="provider">provider</option>
             </select>
           </div>
           <div class="run-picker">
@@ -428,7 +427,7 @@
           </section>
           <section>
             <h2>Workflow Guidance</h2>
-            <section id="workflow-guidance-panel">Use fixture for workflow QA first. Before cloud/local smoke, go to Control Center -> AI -> Test saved image Provider.</section>
+            <section id="workflow-guidance-panel">Use fixture for workflow QA first. Before provider smoke, go to Control Center -> AI -> Test saved image Provider.</section>
           </section>
           <section>
             <h2>Import Handoff</h2>
@@ -440,7 +439,7 @@
       <section class="panel stack" style="margin-top: 18px;">
         <section>
           <h2>Developer Prompt Provenance</h2>
-          <section id="prompt-provenance-panel">Host prompt preview appears after cloud/local generation.</section>
+          <section id="prompt-provenance-panel">Host prompt preview appears after provider generation.</section>
         </section>
         <section>
           <h2>QA</h2>
@@ -583,7 +582,7 @@
       const renderPromptProvenance = (run) => {
         const developerPrompt = run?.developerPrompt || {}
         if (!developerPrompt.available) {
-          return `<p>${escapeHtml(developerPrompt.message || 'Host prompt preview appears after cloud/local generation.')}</p>`
+          return `<p>${escapeHtml(developerPrompt.message || 'Host prompt preview appears after provider generation.')}</p>`
         }
         const builder = developerPrompt.promptBuilder || {}
         const preview = developerPrompt.promptPreview || builder.promptPreview || {}
@@ -760,8 +759,8 @@
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
           $('recovery-panel').textContent = 'No failed generation to recover.'
-          $('workflow-guidance-panel').textContent = 'Use fixture for workflow QA first. Before cloud/local smoke, go to Control Center -> AI -> Test saved image Provider.'
-          $('prompt-provenance-panel').textContent = 'Host prompt preview appears after cloud/local generation.'
+          $('workflow-guidance-panel').textContent = 'Use fixture for workflow QA first. Before provider smoke, go to Control Center -> AI -> Test saved image Provider.'
+          $('prompt-provenance-panel').textContent = 'Host prompt preview appears after provider generation.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
           $('import-handoff-panel').textContent = 'Generate and approve an action to unlock host-owned import.'

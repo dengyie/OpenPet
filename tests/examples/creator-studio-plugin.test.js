@@ -68,7 +68,43 @@ test('creator studio example config schema normalizes backend controls', () => {
     'autoActivateAfterImport',
     'servicePort'
   ])
-  assert.deepEqual(schema.properties.find((field) => field.key === 'backend').enum, ['fixture', 'cloud', 'local'])
+  assert.deepEqual(schema.properties.find((field) => field.key === 'backend').enum, ['fixture', 'provider'])
+})
+
+test('creator studio run store normalizes legacy cloud and local backend values to provider', () => {
+  const { createRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-backend-normalize-'))
+
+  const localRun = createRun({
+    dataDir,
+    input: { petName: 'Local Cat', prompt: 'A local generated cat', backend: 'local' },
+    now: () => '2026-06-26T00:00:00.000Z'
+  })
+  const cloudRun = createRun({
+    dataDir,
+    input: { petName: 'Cloud Cat', prompt: 'A cloud generated cat', backend: 'cloud' },
+    now: () => '2026-06-26T00:00:01.000Z'
+  })
+  const providerRun = createRun({
+    dataDir,
+    input: { petName: 'Provider Cat', prompt: 'A provider generated cat', backend: 'provider' },
+    now: () => '2026-06-26T00:00:02.000Z'
+  })
+
+  assert.equal(localRun.backend, 'provider')
+  assert.equal(localRun.input.backend, 'provider')
+  assert.equal(localRun.backendStatus.backend, 'provider')
+  assert.equal(localRun.modelProvider, 'provider')
+
+  assert.equal(cloudRun.backend, 'provider')
+  assert.equal(cloudRun.input.backend, 'provider')
+  assert.equal(cloudRun.backendStatus.backend, 'provider')
+  assert.equal(cloudRun.modelProvider, 'provider')
+
+  assert.equal(providerRun.backend, 'provider')
+  assert.equal(providerRun.input.backend, 'provider')
+  assert.equal(providerRun.backendStatus.backend, 'provider')
+  assert.equal(providerRun.modelProvider, 'provider')
 })
 
 test('creator studio wizard drafts a custom click-triggered single-action task', () => {
@@ -186,7 +222,7 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
         generationTask
       }
     },
-    backend: 'cloud',
+    backend: 'provider',
     model: 'gpt-image-2'
   })
 
@@ -234,7 +270,7 @@ test('creator studio prompt builder preserves custom action semantics and curren
         generationTask: draft.generationTask
       }
     },
-    backend: 'local',
+    backend: 'provider',
     model: 'local-pet-sprite'
   })
 
@@ -263,7 +299,7 @@ test('creator studio prompt builder filters secrets paths and bridge details fro
         originalPrompt: 'Make a cat. API key sk-test-secret at /Users/mango/private/ref.png via http://127.0.0.1:8317/v1 and bridge-token.'
       }
     },
-    backend: 'cloud',
+    backend: 'provider',
     model: 'gpt-image-2'
   })
 
@@ -644,10 +680,10 @@ test('creator studio backend runner refuses unresolved conversational tasks befo
   assert.equal(fs.existsSync(path.join(dataDir, 'runs', draft.run.runId, 'outputs', 'pet.json')), false)
 })
 
-test('creator studio backend runner records unavailable cloud backend without fixture fallback', async () => {
+test('creator studio backend runner records unavailable provider backend without fixture fallback', async () => {
   const { createRun, readRun, readRunLogs } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { runGenerationStep } = require('../../examples/plugins/creator-studio/lib/backend-runner')
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-cloud-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-provider-'))
   const run = createRun({
     dataDir,
     input: { petName: 'Cloud Cat', prompt: 'A cloud generated cat', backend: 'cloud' },
@@ -656,14 +692,14 @@ test('creator studio backend runner records unavailable cloud backend without fi
 
   await assert.rejects(
     runGenerationStep({ dataDir, runId: run.runId }),
-    /Cloud backend is not configured/
+    /Provider backend is not configured/
   )
   const failed = readRun({ dataDir, runId: run.runId })
   assert.equal(failed.status, 'failed')
   assert.equal(failed.currentStep, 'generate')
-  assert.equal(failed.backendStatus.backend, 'cloud')
+  assert.equal(failed.backendStatus.backend, 'provider')
   assert.equal(failed.backendStatus.state, 'not_configured')
-  assert.match(failed.error, /Cloud backend is not configured/)
+  assert.match(failed.error, /Provider backend is not configured/)
   assert.equal(fs.existsSync(path.join(dataDir, 'runs', run.runId, 'outputs', 'pet.json')), false)
   assert.deepEqual(readRunLogs({ dataDir, runId: run.runId }).map((entry) => entry.event), [
     'generate.start',
@@ -745,40 +781,40 @@ const runCreatorCommandAsync = ({ command, dataDir, payload = {}, config = {}, e
   child.stdin.end(createCommandInput({ command, payload, config }))
 })
 
-test('creator studio run-step command fails unavailable local backend with persisted run state', () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-command-'))
+test('creator studio run-step command fails unavailable provider backend with persisted run state', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-provider-command-'))
 
   const created = runCreatorCommand({
     command: 'create-run',
     dataDir,
     payload: { petName: 'Local Cat', prompt: 'A local generated cat', backend: 'local' },
-    config: { backend: 'local' }
+    config: { backend: 'provider' }
   })
   const generated = runCreatorCommand({
     command: 'run-step',
     dataDir,
     payload: { runId: created.json.run.runId },
-    config: { backend: 'local' }
+    config: { backend: 'provider' }
   })
   const run = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.json.run.runId, 'run.json'), 'utf-8'))
 
   assert.equal(created.status, 0)
   assert.equal(generated.status, 1)
   assert.equal(generated.json.ok, false)
-  assert.match(generated.json.error, /Local backend is not configured/)
+  assert.match(generated.json.error, /Provider backend is not configured/)
   assert.equal(run.status, 'failed')
-  assert.equal(run.backendStatus.backend, 'local')
+  assert.equal(run.backendStatus.backend, 'provider')
   assert.equal(run.backendStatus.state, 'not_configured')
 })
 
-test('creator studio run-step command uses host bridge for local backend generation when available', async () => {
+test('creator studio run-step command uses host bridge for provider generation when available', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-bridge-'))
   const requests = []
   const created = runCreatorCommand({
     command: 'create-run',
     dataDir,
     payload: { petName: 'Local Cat', prompt: '新增一个自定义动作：原地打滚，动作要循环，点击触发。', backend: 'local' },
-    config: { backend: 'local' }
+    config: { backend: 'provider' }
   })
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
@@ -878,7 +914,7 @@ test('creator studio run-step command uses host bridge for local backend generat
       command: 'run-step',
       dataDir,
       payload: { runId: created.json.run.runId },
-      config: { backend: 'local' },
+      config: { backend: 'provider' },
       env: {
         OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
         OPENPET_BRIDGE_TOKEN: 'bridge-token'
@@ -894,7 +930,7 @@ test('creator studio run-step command uses host bridge for local backend generat
     assert.equal(created.status, 0)
     assert.equal(generated.status, 0)
     assert.equal(generated.json.ok, true)
-    assert.equal(generated.json.run.backendStatus.backend, 'local')
+    assert.equal(generated.json.run.backendStatus.backend, 'provider')
     assert.equal(generated.json.run.backendStatus.state, 'ready')
     assert.equal(run.status, 'ready_for_review')
     assert.equal(run.backendStatus.state, 'ready')
@@ -919,7 +955,7 @@ test('creator studio run-step command uses host bridge for local backend generat
     assert.notEqual(requests[1].payload.prompt, '新增一个自定义动作：原地打滚，动作要循环，点击触发。')
     assert.equal(requests[1].payload.prompt.includes('bridge-token'), false)
     assert.deepEqual(run.modelSnapshot, {
-      backend: 'local',
+      backend: 'provider',
       provider: 'openai-compatible',
       model: 'local-custom-sprite-v2',
       baseUrlHost: '127.0.0.1:7860'
@@ -935,17 +971,17 @@ test('creator studio run-step command uses host bridge for local backend generat
   }
 })
 
-test('creator studio run-step command fails and persists run state when bridge image generation times out', async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-cloud-timeout-'))
+test('creator studio run-step command fails and persists run state when provider image generation times out', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-provider-timeout-'))
   const created = runCreatorCommand({
     command: 'create-run',
     dataDir,
     payload: {
       petName: 'Cloud Timeout Cat',
       prompt: '新增一个自定义动作：原地打滚，动作要循环，点击触发。',
-      backend: 'cloud'
+      backend: 'provider'
     },
-    config: { backend: 'cloud' }
+    config: { backend: 'provider' }
   })
 
   const bridgeServer = require('node:http').createServer((request, response) => {
@@ -961,7 +997,7 @@ test('creator studio run-step command fails and persists run state when bridge i
         })
         response.end(JSON.stringify({
           ok: false,
-          error: 'Cloud image generation timed out after 120000ms'
+          error: 'Provider image generation timed out after 120000ms'
         }))
       }, 25)
     })
@@ -974,7 +1010,7 @@ test('creator studio run-step command fails and persists run state when bridge i
       command: 'run-step',
       dataDir,
       payload: { runId: created.json.run.runId },
-      config: { backend: 'cloud' },
+      config: { backend: 'provider' },
       env: {
         OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
         OPENPET_BRIDGE_TOKEN: 'bridge-token'
@@ -991,7 +1027,7 @@ test('creator studio run-step command fails and persists run state when bridge i
     assert.match(generated.json.error, /timed out after 120000ms/i)
     assert.equal(run.status, 'failed')
     assert.equal(run.currentStep, 'generate')
-    assert.equal(run.backendStatus.backend, 'cloud')
+    assert.equal(run.backendStatus.backend, 'provider')
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /timed out after 120000ms/i)
     assert.match(run.error, /timed out after 120000ms/i)
@@ -1003,16 +1039,16 @@ test('creator studio run-step command fails and persists run state when bridge i
 })
 
 test('creator studio run-step command surfaces provider business errors from the bridge', async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-cloud-business-error-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-provider-business-error-'))
   const created = runCreatorCommand({
     command: 'create-run',
     dataDir,
     payload: {
       petName: 'Cloud Business Error Cat',
       prompt: '新增一个自定义动作：开心挥手，动作要循环，点击触发。',
-      backend: 'cloud'
+      backend: 'provider'
     },
-    config: { backend: 'cloud' }
+    config: { backend: 'provider' }
   })
 
   const bridgeServer = require('node:http').createServer((request, response) => {
@@ -1038,7 +1074,7 @@ test('creator studio run-step command surfaces provider business errors from the
       command: 'run-step',
       dataDir,
       payload: { runId: created.json.run.runId },
-      config: { backend: 'cloud' },
+      config: { backend: 'provider' },
       env: {
         OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
         OPENPET_BRIDGE_TOKEN: 'bridge-token'
@@ -1055,7 +1091,7 @@ test('creator studio run-step command surfaces provider business errors from the
     assert.match(generated.json.error, /旧转发链路已关闭/)
     assert.equal(run.status, 'failed')
     assert.equal(run.currentStep, 'generate')
-    assert.equal(run.backendStatus.backend, 'cloud')
+    assert.equal(run.backendStatus.backend, 'provider')
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /旧转发链路已关闭/)
     assert.match(run.error, /旧转发链路已关闭/)
@@ -2640,13 +2676,14 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(fixtureDetail.ok, true)
     assert.equal(fixtureDetail.run.workflowGuidance.generation.mode, 'fixture-preview')
     assert.match(fixtureDetail.run.workflowGuidance.generation.summary, /workflow QA/i)
-    assert.equal(fixtureDetail.run.workflowGuidance.generation.smokeChecklist.some((entry) => /cloud or local/i.test(entry)), true)
+    assert.equal(fixtureDetail.run.workflowGuidance.generation.smokeChecklist.some((entry) => /provider generation/i.test(entry)), true)
     assert.equal(fixtureDetail.run.workflowGuidance.generation.usageSummary.available, false)
     assert.equal(fixtureDetail.run.workflowGuidance.generation.usageSummary.displayCost, '')
 
     assert.equal(importedDetail.ok, true)
     assert.equal(importedDetail.run.workflowGuidance.generation.mode, 'host-provider')
-    assert.match(importedDetail.run.workflowGuidance.generation.summary, /host-owned local image Provider/i)
+    assert.match(importedDetail.run.workflowGuidance.generation.summary, /host-owned image Provider/i)
+    assert.equal(importedDetail.run.backend, 'provider')
     assert.equal(importedDetail.run.workflowGuidance.generation.smokeChecklist.some((entry) => /Control Center/i.test(entry)), true)
     assert.equal(importedDetail.run.workflowGuidance.generation.usageSummary.available, true)
     assert.equal(importedDetail.run.workflowGuidance.generation.usageSummary.estimatedCostUsd, 0.012345)

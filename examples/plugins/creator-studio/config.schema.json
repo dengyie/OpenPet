@@ -4,10 +4,10 @@
   "type": "object",
   "properties": {
     "backend": {
-      "title": "Backend",
-      "description": "Generation backend selected for new Creator Studio runs.",
+      "title": "Generation Mode",
+      "description": "Choose fixture workflow QA or the host-owned image Provider path for new Creator Studio runs.",
       "type": "string",
-      "enum": ["fixture", "cloud", "local"],
+      "enum": ["fixture", "provider"],
       "default": "fixture"
     },
     "autoActivateAfterImport": {

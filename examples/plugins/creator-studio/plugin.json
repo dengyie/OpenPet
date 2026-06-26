@@ -35,7 +35,7 @@
     "dataLocations": [
       { "path": "OPENPET_DATA_DIR/runs", "description": "Creator Studio run workspaces and generated pet outputs." }
     ],
-    "modelBackends": ["fixture", "cloud", "local"],
+    "modelBackends": ["fixture", "provider"],
     "outputFormat": "codex-pet"
   },
   "assets": ["web/dashboard/index.html"]

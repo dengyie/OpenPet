@@ -7,6 +7,7 @@ const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-bui
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
 const { sanitizeCreativeBrief } = require('../lib/openpet-prompt-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun } = require('../lib/task-workflow')
+const { FIXTURE_BACKEND, normalizeCreatorBackend, usesHostProviderBackend } = require('../lib/backend-mode')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
 
@@ -274,7 +275,7 @@ const createWizardSteps = (phase) => {
 }
 
 const createWizardState = ({ dataDir, run }) => {
-  const backend = String(run.backend || run.input?.backend || 'fixture')
+  const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const prompt = run.input?.originalPrompt || run.input?.prompt || ''
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
@@ -515,18 +516,18 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
 }
 
 const createWorkflowGuidance = ({ dataDir, run }) => {
-  const backend = String(run.backend || run.input?.backend || 'fixture')
+  const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const modelSnapshot = run.modelSnapshot || run.artifacts?.generatedImage?.modelSnapshot || {}
   const providerLabel = [modelSnapshot.provider, modelSnapshot.model].filter(Boolean).join(' / ')
-  const usesProviderRun = backend !== 'fixture'
+  const usesProviderRun = usesHostProviderBackend(backend)
   const usageSummary = createGenerationUsageSummary({ run })
   const generationSummary = usesProviderRun
     ? (
         ['ready_for_review', 'approved', 'imported'].includes(run.status)
-          ? `This run already used the host-owned ${backend} image Provider${providerLabel ? ` (${providerLabel})` : ''}.`
+          ? `This run already used the host-owned image Provider${providerLabel ? ` (${providerLabel})` : ''}.`
           : run.status === 'failed'
-            ? `This run failed while using the host-owned ${backend} image Provider${providerLabel ? ` (${providerLabel})` : ''}.`
-            : `This run will use the host-owned ${backend} image Provider when generation starts${providerLabel ? ` (${providerLabel})` : ''}.`
+            ? `This run failed while using the host-owned image Provider${providerLabel ? ` (${providerLabel})` : ''}.`
+            : `This run will use the host-owned image Provider when generation starts${providerLabel ? ` (${providerLabel})` : ''}.`
       )
     : 'Fixture output is for workflow QA only and does not validate real host image Provider quality.'
   const smokeChecklist = usesProviderRun
@@ -539,7 +540,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
       ]
     : [
         'Use fixture runs to validate task flow, QA, and import handoff wiring.',
-        'Switch to cloud or local before claiming production-ready generated assets.',
+        'Switch to provider generation before claiming production-ready generated assets.',
         'Use Control Center -> AI -> Test saved image Provider before production smoke runs.'
       ]
   const hasActionFrames = Boolean(run.artifacts?.actionFrames)
