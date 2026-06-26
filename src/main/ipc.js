@@ -12,6 +12,7 @@ const { sanitizeDetails } = require('./services/app-log-service')
 const { normalizeCursorSettingsState } = require('../shared/cursor-library')
 const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
 const { showPetContextMenuWindow } = require('./pet-context-menu-window')
+const { calculateBubbleTtlMs } = require('./pet-bubble-chat-window')
 const {
   createActionFrameImportResult,
   createActionsMutationResult,
@@ -211,9 +212,10 @@ const sanitizeChatMessages = (messages = []) => (
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
-  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
+  clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow, setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout }) => {
   let pendingActionFrameSelection = null
   let lastPetBubble = createEmptyPetBubble()
+  let pendingAiBubbleTimers = []
 
   const sendToControlCenterWindow = (channel, data) => {
     const petWindow = getPetWindow()
@@ -320,6 +322,37 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     petChatWindowService?.sendStateChanged?.(state)
   }
 
+  const clearPendingAiBubbleTimers = () => {
+    pendingAiBubbleTimers.forEach((timer) => clearTimeoutFn(timer))
+    pendingAiBubbleTimers = []
+  }
+
+  const dispatchAiBubbleSegments = (segments = []) => {
+    clearPendingAiBubbleTimers()
+    const normalizedSegments = normalizeBubbleSegments(segments)
+    if (!normalizedSegments.length) return null
+
+    let cumulativeDelayMs = 0
+    let firstPayload = null
+    normalizedSegments.forEach((segment, index) => {
+      const ttlMs = calculateBubbleTtlMs({ text: segment })
+      const payload = { text: segment, source: 'ai', ttlMs }
+      if (index === 0) {
+        firstPayload = petService.say(payload)
+      } else {
+        const timer = setTimeoutFn(() => {
+          pendingAiBubbleTimers = pendingAiBubbleTimers.filter((candidate) => candidate !== timer)
+          petService.say(payload)
+        }, cumulativeDelayMs)
+        timer?.unref?.()
+        pendingAiBubbleTimers.push(timer)
+      }
+      cumulativeDelayMs += ttlMs
+    })
+
+    return firstPayload
+  }
+
   const capturePetBubble = (payload = {}, { notify = true } = {}) => {
     const bubble = normalizePetBubble(payload)
     if (!bubble) return lastPetBubble
@@ -378,8 +411,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         result.bubbleSegments,
         createPetBubbleText(result.reply, result.behaviorIntent)
       )
-      const lastBubbleText = bubbleSegments.at(-1) || ''
-      const bubble = lastBubbleText ? capturePetBubble({ text: lastBubbleText, source: 'ai' }, { notify: false }) : lastPetBubble
+      const dispatchedBubble = dispatchAiBubbleSegments(bubbleSegments)
+      const currentBubbleText = String(dispatchedBubble?.text || bubbleSegments[0] || '')
+      const bubble = currentBubbleText ? capturePetBubble({ text: currentBubbleText, source: 'ai', ttlMs: dispatchedBubble?.ttlMs }, { notify: false }) : lastPetBubble
       if (bubbleSegments.length) {
         recordAppLog({
           scope: 'ai-chat',
@@ -389,14 +423,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           message: 'AI chat bubble dispatching to pet service',
           details: {
             source,
-            textChars: lastBubbleText.length,
+            textChars: currentBubbleText.length,
             segmentCount: bubbleSegments.length
           }
         })
-        let sayResult = null
-        for (const segment of bubbleSegments) {
-          sayResult = petService.say({ text: segment, source: 'ai' })
-        }
         recordAppLog({
           scope: 'ai-chat',
           level: 'info',
@@ -405,8 +435,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           message: 'AI chat bubble dispatched to pet service',
           details: {
             source,
-            textChars: String(sayResult?.text || '').length,
-            hasTtl: Number.isFinite(Number(sayResult?.ttlMs))
+            textChars: currentBubbleText.length,
+            hasTtl: Number.isFinite(Number(dispatchedBubble?.ttlMs))
           }
         })
       }
@@ -433,7 +463,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
             conversationId: result.conversationId || '',
             elapsedMs: Date.now() - startedAt,
             replyChars: String(result.reply || '').length,
-            bubbleChars: lastBubbleText.length,
+            bubbleChars: currentBubbleText.length,
             messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
             behaviorMatched: Boolean(behavior?.matched),
             actionId: behavior?.actionId || ''
@@ -455,7 +485,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           conversationId: result.conversationId || '',
           elapsedMs: Date.now() - startedAt,
           replyChars: String(result.reply || '').length,
-          bubbleChars: lastBubbleText.length,
+          bubbleChars: currentBubbleText.length,
           messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
           actionId: action?.actionId || ''
         }

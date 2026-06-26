@@ -71,6 +71,7 @@ test('setup process controller runs the success path and returns runtime view', 
   state.child.stdout.emit('data', 'ready\n')
   state.child.stderr.emit('data', 'warn\n')
   state.child.emit('exit', 0, '')
+  state.child.emit('close', 0, '')
 
   const result = await run
 
@@ -103,6 +104,7 @@ test('setup process controller marks non-zero exits as failed', async () => {
   await waitForControllerInit()
 
   state.child.emit('exit', 1, '')
+  state.child.emit('close', 1, '')
 
   const result = await run
 
@@ -130,4 +132,27 @@ test('setup process controller rejects when a stop request fails the running set
   state.runtimes[0].failStop(new Error('setup stop failed'))
 
   await assert.rejects(run, /setup stop failed/)
+})
+
+test('setup process controller waits for close so trailing stderr is logged before completion', async () => {
+  const state = createController()
+
+  const run = state.controller.run({
+    pluginId: 'weather-declaration',
+    manifest: { id: 'weather-declaration', basePath: '/plugins/weather-declaration' },
+    setupId: 'install-deps',
+    setupEntry: { command: 'npm install', cwd: '.' }
+  })
+
+  await waitForControllerInit()
+
+  state.child.emit('exit', 0, '')
+  state.child.stderr.emit('data', 'late warn\n')
+  state.child.emit('close', 0, '')
+
+  const result = await run
+
+  assert.equal(result.runtime.status, 'succeeded')
+  assert.equal(state.logs.at(-2).message, 'Setup stderr: late warn')
+  assert.equal(state.logs.at(-1).message, 'Setup completed')
 })

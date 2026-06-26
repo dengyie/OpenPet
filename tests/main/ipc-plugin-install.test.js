@@ -215,7 +215,10 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   const history = await ipcMain.handlers.get(IPC.AI_GET_CONVERSATION)(null, 'control-center')
 
   assert.deepEqual(talkCalls, [{ message: 'hi', conversationId: 'ignored' }])
-  assert.deepEqual(sayCalls, [{ text: 'talk reply', source: 'ai' }])
+  assert.equal(sayCalls.length, 1)
+  assert.equal(sayCalls[0].text, 'talk reply')
+  assert.equal(sayCalls[0].source, 'ai')
+  assert.equal(Number.isFinite(Number(sayCalls[0].ttlMs)), true)
   assert.equal(result.reply, 'talk reply')
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
   assert.equal(result.bubble.text, 'talk reply')

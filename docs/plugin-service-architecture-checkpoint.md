@@ -44,6 +44,10 @@ The following boundaries are already split and should stay split:
 | Command entry process | `src/main/services/plugin-command-entry-process-controller.js` | Declaration command process runs and bridge lifecycle |
 | Service launch/health/lifecycle/stop/runtime | `plugin-service-*.js` controllers/managers | Long-running service process orchestration split by concern |
 
+Runtime note:
+
+- Declaration-only setup and command process controllers now wait for child `close` before resolving final success/failure so trailing stdout/stderr stays available for JSON result parsing, logging, and user-facing diagnostics.
+
 ## Remaining Responsibilities In `PluginService`
 
 The remaining code in `src/main/services/plugin-service.js` is mostly appropriate orchestration:
@@ -59,6 +63,7 @@ These are still local because they are tightly scoped implementation details rat
 - storage key/value guard helpers
 - service health view formatting
 - service-process fallback kill helpers
+- final orchestration around command/setup/service entry-point logging and user-facing error surfaces
 
 These helpers are small, directly consumed by the composition root, and do not currently justify separate modules.
 

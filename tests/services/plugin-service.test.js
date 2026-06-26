@@ -156,11 +156,17 @@ const createDeclarationOnlyPluginDir = ({
 
 const createFakeServiceProcess = ({ pid = 4321 } = {}) => {
   const child = new EventEmitter()
+  const emit = child.emit.bind(child)
   child.pid = pid
   child.stdin = new PassThrough()
   child.stdout = new PassThrough()
   child.stderr = new PassThrough()
   child.killCalls = []
+  child.emit = (event, ...args) => {
+    const result = emit(event, ...args)
+    if (event === 'exit') emit('close', ...args)
+    return result
+  }
   child.kill = (signal) => {
     child.killCalls.push(signal || 'SIGTERM')
     child.emit('exit', 0, signal || 'SIGTERM')

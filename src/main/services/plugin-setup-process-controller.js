@@ -42,6 +42,8 @@ const createPluginSetupProcessController = ({
 
     return new Promise((resolve, reject) => {
       let settled = false
+      let exitCode = null
+      let exitSignal = null
       const settle = (callback) => {
         if (settled) return
         settled = true
@@ -71,16 +73,21 @@ const createPluginSetupProcessController = ({
         })
       })
       child.on?.('exit', (code, signal) => {
+        exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+        exitSignal = signal || ''
+      })
+      child.on?.('close', (code, signal) => {
         settle(() => {
-          const exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+          const resolvedExitCode = Number.isFinite(Number(code)) ? Number(code) : exitCode
+          const resolvedExitSignal = signal || exitSignal || ''
           const stopRequested = runtime.status === 'stopping'
           runtime.status = stopRequested
             ? 'failed'
-            : (exitCode === 0 && !signal ? 'succeeded' : 'failed')
-          runtime.exitCode = exitCode
+            : (resolvedExitCode === 0 && !resolvedExitSignal ? 'succeeded' : 'failed')
+          runtime.exitCode = resolvedExitCode
           runtime.error = stopRequested
             ? 'Setup stopped'
-            : (runtime.status === 'failed' ? (signal ? `Setup exited with signal ${signal}` : `Setup exited with code ${exitCode ?? 'unknown'}`) : '')
+            : (runtime.status === 'failed' ? (resolvedExitSignal ? `Setup exited with signal ${resolvedExitSignal}` : `Setup exited with code ${resolvedExitCode ?? 'unknown'}`) : '')
           runtime.lastRunAt = now()
           appendLog({
             pluginId,

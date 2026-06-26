@@ -203,6 +203,7 @@ test('pet chat send dispatches segmented bubbles while keeping the full reply in
   const prompt = 'split this'
   const fullReply = '第一句很短。第二句也很短。最后一句收尾。'
   const sayCalls = []
+  const timers = []
   let conversationMessages = []
   const ipcMain = registerPetChatHandlers({
     aiService: {
@@ -239,15 +240,27 @@ test('pet chat send dispatches segmented bubbles while keeping the full reply in
     },
     petChatWindowService: {
       getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true })
-    }
+    },
+    setTimeoutFn: (callback, delay) => {
+      const timer = { callback, delay, unref() {} }
+      timers.push(timer)
+      return timer
+    },
+    clearTimeoutFn: () => {}
   })
 
   const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: prompt })
 
   assert.equal(result.reply, fullReply)
   assert.deepEqual(result.state.messages, conversationMessages)
+  assert.deepEqual(sayCalls.map((item) => item.text), ['第一句很短。'])
+  assert.equal(result.state.bubble.text, '第一句很短。')
+  assert.equal(timers.length, 2)
+
+  timers[0].callback()
+  timers[1].callback()
+
   assert.deepEqual(sayCalls.map((item) => item.text), ['第一句很短。', '第二句也很短。', '最后一句收尾。'])
-  assert.equal(result.state.bubble.text, '最后一句收尾。')
 })
 
 test('pet chat send emits through PetService so the floating bubble window is displayed', async () => {
@@ -255,6 +268,7 @@ test('pet chat send emits through PetService so the floating bubble window is di
   const reply = '第一句冒泡。第二句继续。'
   const bubbleChatMessages = []
   const sentToPetWindow = []
+  const timers = []
   const eventBus = createEventBus()
   const settingsService = {
     get: () => ({ localHttp: {}, menuPosition: 'auto', petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }),
@@ -307,17 +321,27 @@ test('pet chat send emits through PetService so the floating bubble window is di
         return { visible: true, hasWindow: true, message: payload }
       },
       syncToPetWindow: () => ({ visible: true, hasWindow: true })
-    }
+    },
+    setTimeoutFn: (callback, delay) => {
+      const timer = { callback, delay, unref() {} }
+      timers.push(timer)
+      return timer
+    },
+    clearTimeoutFn: () => {}
   })
 
   const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: prompt })
 
-  assert.equal(result.bubble.text, '第二句继续。')
-  assert.equal(bubbleChatMessages.length, 2)
-  assert.deepEqual(bubbleChatMessages.map((item) => item.text), ['第一句冒泡。', '第二句继续。'])
+  assert.equal(result.bubble.text, '第一句冒泡。')
+  assert.equal(bubbleChatMessages.length, 1)
+  assert.deepEqual(bubbleChatMessages.map((item) => item.text), ['第一句冒泡。'])
   assert.equal(bubbleChatMessages[0].source, 'ai')
   assert.equal(bubbleChatMessages[0].petPackId, 'legacy-cat')
   assert.equal(sentToPetWindow.length, 0)
+
+  timers[0].callback()
+
+  assert.deepEqual(bubbleChatMessages.map((item) => item.text), ['第一句冒泡。', '第二句继续。'])
 })
 
 test('pet chat send attaches host behavior decision back onto ai talk trace', async () => {

@@ -318,6 +318,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString(), le
     const sessionId = createSessionId({ entrypoint, petPackId })
     const conversationId = 'main'
     const conversationKey = `${sessionId}:${conversationId}`
+    let changed = false
     if (!state.sessions[sessionId]) {
       state.sessions[sessionId] = {
         id: sessionId,
@@ -327,6 +328,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString(), le
         createdAt: timestamp,
         updatedAt: timestamp
       }
+      changed = true
     }
     if (!state.conversations[conversationKey]) {
       state.conversations[conversationKey] = {
@@ -344,19 +346,24 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString(), le
         updatedAt: timestamp
       }
       state.messages[conversationKey] = []
+      changed = true
     } else if (personaHash && state.conversations[conversationKey].personaHash !== personaHash) {
       state.conversations[conversationKey] = {
         ...state.conversations[conversationKey],
         personaHash,
         updatedAt: timestamp
       }
+      changed = true
     }
-    state.sessions[sessionId] = {
-      ...state.sessions[sessionId],
-      activeConversationId: conversationId,
-      updatedAt: timestamp
+    if (state.sessions[sessionId].activeConversationId !== conversationId) {
+      state.sessions[sessionId] = {
+        ...state.sessions[sessionId],
+        activeConversationId: conversationId,
+        updatedAt: timestamp
+      }
+      changed = true
     }
-    persist()
+    if (changed) persist()
     return { sessionId, conversationId, conversation: clone(state.conversations[conversationKey]) }
   }
 

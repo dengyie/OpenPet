@@ -89,6 +89,8 @@ const createPluginCommandEntryProcessController = ({
     return new Promise((resolve, reject) => {
       let settled = false
       let timeoutId = null
+      let exitCode = null
+      let exitSignal = null
 
       const safeKillChild = () => {
         try {
@@ -146,8 +148,14 @@ const createPluginCommandEntryProcessController = ({
       })
 
       child.on?.('exit', (code, signal) => {
+        exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+        exitSignal = signal || ''
+      })
+
+      child.on?.('close', (code, signal) => {
         settle(() => {
-          const exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+          const resolvedExitCode = Number.isFinite(Number(code)) ? Number(code) : exitCode
+          const resolvedExitSignal = signal || exitSignal || ''
           if (runtime.status === 'stopping') {
             runtime.status = 'failed'
             runtime.error = runtime.stopReason || 'Command stopped'
@@ -158,12 +166,12 @@ const createPluginCommandEntryProcessController = ({
             return
           }
 
-          if (exitCode !== 0 || signal) {
+          if (resolvedExitCode !== 0 || resolvedExitSignal) {
             const parsedResult = readCommandResult(stdoutText)
             const parsedError = parsedResult && typeof parsedResult === 'object' && typeof parsedResult.error === 'string'
               ? parsedResult.error.trim()
               : ''
-            const message = parsedError || (signal ? `Plugin command exited with signal ${signal}` : `Plugin command exited with code ${exitCode ?? 'unknown'}`)
+            const message = parsedError || (resolvedExitSignal ? `Plugin command exited with signal ${resolvedExitSignal}` : `Plugin command exited with code ${resolvedExitCode ?? 'unknown'}`)
             reject(new Error(message))
             return
           }
@@ -173,7 +181,7 @@ const createPluginCommandEntryProcessController = ({
             ok: true,
             pluginId,
             commandId,
-            exitCode,
+            exitCode: resolvedExitCode,
             ...(parsedResult ? { result: parsedResult } : {}),
             ...(!parsedResult && stdoutText.trim() ? { stdout: stdoutText.trim() } : {}),
             ...(stderrText.trim() ? { stderr: stderrText.trim() } : {})

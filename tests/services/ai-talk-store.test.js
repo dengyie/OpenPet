@@ -367,3 +367,23 @@ test('ai talk store does not migrate legacy control-center conversation when new
     migratedMessageCount: 0
   })
 })
+
+test('ai talk store does not rewrite main conversation timestamps when read state is unchanged', () => {
+  let currentTimestamp = '2026-06-20T00:00:00.000Z'
+  const store = createAiTalkStore({
+    storePath: createTempStorePath(),
+    now: () => currentTimestamp
+  })
+
+  store.ensureMainConversation({ entrypoint: 'control-center', petPackId: 'legacy-cat', personaHash: 'hash-a' })
+  const before = store.getState()
+  const beforeConversationUpdatedAt = before.conversations['control-center:legacy-cat:main'].updatedAt
+  const beforeSessionUpdatedAt = before.sessions['control-center:legacy-cat'].updatedAt
+
+  currentTimestamp = '2026-06-20T00:10:00.000Z'
+  store.ensureMainConversation({ entrypoint: 'control-center', petPackId: 'legacy-cat', personaHash: 'hash-a' })
+
+  const after = store.getState()
+  assert.equal(after.conversations['control-center:legacy-cat:main'].updatedAt, beforeConversationUpdatedAt)
+  assert.equal(after.sessions['control-center:legacy-cat'].updatedAt, beforeSessionUpdatedAt)
+})

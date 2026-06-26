@@ -110,6 +110,7 @@ test('command entry process controller runs success path with bridge env and std
   state.child.stdout.emit('data', '{"ok":true,"message":"Bring an umbrella"}')
   state.child.stderr.emit('data', 'warn output')
   state.child.emit('exit', 0, '')
+  state.child.emit('close', 0, '')
 
   const result = await run
 
@@ -144,6 +145,7 @@ test('command entry process controller surfaces structured errors on non-zero ex
 
   state.child.stdout.emit('data', '{"ok":false,"error":"runId is required"}')
   state.child.emit('exit', 1, '')
+  state.child.emit('close', 1, '')
 
   await assert.rejects(run, /runId is required/)
   assert.deepEqual(state.deletedRuns[0], ['weather-declaration', 'forecast', 'run-1'])
@@ -165,6 +167,7 @@ test('command entry process controller rejects stopped commands with logged erro
 
   state.runtimes[0].stop({ reason: 'Command stopped' })
   state.child.emit('exit', 0, '')
+  state.child.emit('close', 0, '')
 
   let rejection
   try {
@@ -199,4 +202,27 @@ test('command entry process controller times out stalled commands and kills the 
   assert.deepEqual(state.child.killCalls, ['SIGTERM'])
   assert.deepEqual(state.deletedRuns[0], ['weather-declaration', 'forecast', 'run-1'])
   assert.deepEqual(state.deletedRuntimes[0], ['weather-declaration', 'forecast'])
+})
+
+test('command entry process controller waits for close so trailing stdout is included in final result parsing', async () => {
+  const state = createController()
+
+  const run = state.controller.run({
+    plugin: { manifest: { id: 'weather-declaration' } },
+    commandEntry: { command: 'node command.js', cwd: 'commands' },
+    commandId: 'forecast',
+    payload: {},
+    config: {}
+  })
+
+  await waitForControllerInit()
+
+  state.child.stdout.emit('data', '{"ok":true,')
+  state.child.emit('exit', 0, '')
+  state.child.stdout.emit('data', '"message":"tail chunk"}')
+  state.child.emit('close', 0, '')
+
+  const result = await run
+
+  assert.deepEqual(result.result, { ok: true, message: 'tail chunk' })
 })
