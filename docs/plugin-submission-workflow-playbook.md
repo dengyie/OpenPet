@@ -118,7 +118,7 @@ npm run validate-plugin-maintainer-approval -- plugin-submission-bundle --requir
 If the bundle is blocked before human review, fix the package or signature issue first, then rerun the bundle and validator commands.
 If the maintainer decision is `changes-requested`, keep the approval files as review evidence but do not treat the bundle as maintainer-approved.
 
-Current validation may still reject legacy SDK config fields that look like secrets, such as `apiKey`, `accessToken`, `password`, `credential`, `format: "password"`, or `writeOnly: true`. Under the extension boundary, treat that as a current tooling limitation for OpenPet-managed config: disclose extension-owned secrets in `manifest`, keep them in extension-managed files or setup flows, and avoid implying that OpenPet controls every credential.
+Current validation may still reject legacy SDK config fields that look like secrets, such as `apiKey`, `accessToken`, `password`, `credential`, `format: "password"`, or `writeOnly: true`. Under the extension boundary, treat that as a current tooling limitation for OpenPet-managed config: disclose extension-owned secrets in `manifest`, keep them in extension-managed files or setup flows, avoid implying that OpenPet controls every credential, and do not present saved OpenPet chat/image provider credentials as something an ordinary extension can read or reuse.
 
 ## 5. What Each Artifact Means
 
