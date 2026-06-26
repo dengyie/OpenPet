@@ -745,6 +745,78 @@ test('action service accepts random state and event trigger proposals by persist
   )
 })
 
+test('action service does not persist duplicate host trigger rules for the same proposal semantics', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => '2026-06-23T10:04:00.000Z',
+    loadLegacyAnimations: () => savedConfig || ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ],
+      triggerRules: []
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const first = service.acceptTriggerProposal({
+    actionId: 'wave',
+    type: 'state',
+    condition: {
+      stateKey: 'posture',
+      equals: 'resting'
+    }
+  })
+  const second = service.acceptTriggerProposal({
+    actionId: 'wave',
+    type: 'state',
+    condition: {
+      stateKey: 'posture',
+      equals: 'resting'
+    }
+  })
+
+  assert.equal(first.code, 'rule_saved')
+  assert.equal(second.code, 'rule_saved')
+  assert.equal(savedConfig.triggerRules.length, 1)
+  assert.deepEqual(savedConfig.triggerRules[0], {
+    id: 'rule:state:wave',
+    type: 'state',
+    actionId: 'wave',
+    enabled: true,
+    condition: {
+      stateKey: 'posture',
+      equals: 'resting'
+    }
+  })
+})
+
 test('action service previews host trigger rules before persistence', () => {
   const service = createActionService({
     projectRoot: '/app/openpet',

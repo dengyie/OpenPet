@@ -34,6 +34,12 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     return rules.filter((rule) => validActionIds.has(rule?.actionId))
   }
 
+  const pruneTriggerProposalInbox = (proposals, actions) => {
+    if (!Array.isArray(proposals) || !Array.isArray(actions)) return []
+    const validActionIds = new Set(actions.map((action) => action?.id).filter(Boolean))
+    return proposals.filter((proposal) => validActionIds.has(proposal?.actionId))
+  }
+
   const getExistingLabels = () => Object.fromEntries(
     (readCurrentConfig().actions || [])
       .filter((action) => action.id && action.label)
@@ -82,7 +88,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
         ? { triggerRules: pruneTriggerRules(currentConfig.triggerRules, generated.actions) }
         : {}),
       ...(Array.isArray(currentConfig.triggerProposalInbox)
-        ? { triggerProposalInbox: currentConfig.triggerProposalInbox }
+        ? { triggerProposalInbox: pruneTriggerProposalInbox(currentConfig.triggerProposalInbox, generated.actions) }
         : {})
     }
     if (preserved !== generated) {
@@ -118,7 +124,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
         ? { triggerRules: pruneTriggerRules(currentConfig.triggerRules, config.actions) }
         : {}),
       ...(Array.isArray(currentConfig.triggerProposalInbox)
-        ? { triggerProposalInbox: currentConfig.triggerProposalInbox }
+        ? { triggerProposalInbox: pruneTriggerProposalInbox(currentConfig.triggerProposalInbox, config.actions) }
         : {})
     }
     fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')

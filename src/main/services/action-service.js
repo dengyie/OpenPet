@@ -204,6 +204,22 @@ const createTriggerRulePreviewSummary = (rule) => {
   return `Preview trigger rule for action: ${rule.actionId}`
 }
 
+const areTriggerRuleConditionsEqual = (type, left = {}, right = {}) => {
+  const normalizedLeft = normalizeTriggerRuleCondition(type, left)
+  const normalizedRight = normalizeTriggerRuleCondition(type, right)
+  if (type === 'random') {
+    return normalizedLeft.probability === normalizedRight.probability
+  }
+  if (type === 'state') {
+    return normalizedLeft.stateKey === normalizedRight.stateKey
+      && normalizedLeft.equals === normalizedRight.equals
+  }
+  if (type === 'event') {
+    return normalizedLeft.eventName === normalizedRight.eventName
+  }
+  return false
+}
+
 const normalizeTriggerRule = (rule = {}) => {
   const type = String(rule.type || '')
   if (!TRIGGER_RULE_TYPES.has(type)) {
@@ -402,6 +418,18 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       throw new Error(`Unsupported random trigger binding: ${binding}`)
     }
     const existingRules = Array.isArray(current.triggerRules) ? current.triggerRules.map(normalizeTriggerRule) : []
+    const duplicateRule = existingRules.find((rule) => (
+      rule.type === type
+      && rule.actionId === actionId
+      && areTriggerRuleConditionsEqual(type, rule.condition, proposal.condition)
+    ))
+    if (duplicateRule) {
+      return {
+        rule: duplicateRule,
+        summary: createTriggerRulePreviewSummary(duplicateRule),
+        duplicate: true
+      }
+    }
     const sameTypeRules = existingRules.filter((rule) => rule.type === type && rule.actionId === actionId)
     const nextId = sameTypeRules.length === 0
       ? `rule:${type}:${actionId}`
@@ -490,11 +518,13 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     if (HOST_RULE_REQUIRED_TYPES.has(type)) {
       const current = getMutableConfig()
       const preview = buildHostTriggerRule(proposal, current)
-      const nextRules = [...(current.triggerRules || []).map(normalizeTriggerRule), preview.rule]
-      persistMutableConfig({
-        ...current,
-        triggerRules: nextRules
-      })
+      if (!preview.duplicate) {
+        const nextRules = [...(current.triggerRules || []).map(normalizeTriggerRule), preview.rule]
+        persistMutableConfig({
+          ...current,
+          triggerRules: nextRules
+        })
+      }
       return {
         ...baseResult,
         applied: false,

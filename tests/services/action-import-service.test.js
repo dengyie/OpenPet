@@ -256,6 +256,33 @@ test('action import service prunes orphaned trigger rules when deleting an actio
   assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerRules || [], [])
 })
 
+test('action import service prunes orphaned trigger proposals when deleting an action', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-delete-trigger-proposal-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+  const current = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    ...current,
+    triggerProposalInbox: [{
+      id: 'proposal:state:wave:test',
+      actionId: 'wave',
+      type: 'state',
+      status: 'pending'
+    }]
+  }, null, 2)}\n`, 'utf-8')
+
+  const result = await service.deleteAction('wave')
+
+  assert.deepEqual(result.actions.map((action) => action.id), ['idle'])
+  assert.deepEqual(result.triggerProposalInbox || [], [])
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerProposalInbox || [], [])
+})
+
 test('action import service refuses to delete the last valid action', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-delete-last-'))
   const framesRoot = path.join(root, 'cat_anime', 'flames')
