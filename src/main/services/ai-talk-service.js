@@ -18,6 +18,7 @@ const MAX_USER_MESSAGE_CHARS = 4000
 const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
 const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
 const MEMORY_RELEVANCE_CANDIDATE_LIMIT = 24
+const MAX_BUBBLE_SEGMENTS = 6
 const MEMORY_RELEVANCE_CONCEPTS = Object.freeze({
   focus: [/专注/u, /\bfocus\b/i, /深度工作/u],
   work: [/工作/u, /\bwork(?:ing)?\b/i, /办公/u],
@@ -253,6 +254,18 @@ const splitTalkConversationId = (conversationId) => {
   const match = normalized.match(/^(.+:.+):(main)$/)
   if (!match) return null
   return { sessionId: match[1], conversationId: match[2] }
+}
+
+const splitBubbleSegments = (reply = '') => {
+  const normalized = normalizeString(reply)
+  if (!normalized) return []
+  const sentences = normalized
+    .replace(/\r\n/g, '\n')
+    .split(/(?<=[。！？!?])/u)
+    .map((segment) => normalizeString(segment))
+    .filter(Boolean)
+  if (!sentences.length) return []
+  return sentences.slice(0, MAX_BUBBLE_SEGMENTS)
 }
 
 const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService = null } = {}) => {
@@ -691,6 +704,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           conversationId: conversationPublicId,
           traceId: trace?.id || '',
           reply,
+          bubbleSegments: splitBubbleSegments(result.behaviorIntent?.bubbleText || reply),
           behaviorIntent: result.behaviorIntent || undefined,
           messages: nextMessages
         }
@@ -739,5 +753,6 @@ module.exports = {
   compilePersonaPrompt,
   compileSystemPrompt,
   createAiTalkService,
+  splitBubbleSegments,
   mergePersona
 }

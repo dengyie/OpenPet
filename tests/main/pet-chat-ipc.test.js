@@ -199,9 +199,60 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
   ])
 })
 
+test('pet chat send dispatches segmented bubbles while keeping the full reply in chat state', async () => {
+  const prompt = 'split this'
+  const fullReply = '第一句很短。第二句也很短。最后一句收尾。'
+  const sayCalls = []
+  let conversationMessages = []
+  const ipcMain = registerPetChatHandlers({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        hasApiKey: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5'
+      })
+    },
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      getConversation: () => conversationMessages,
+      chat: async () => {
+        conversationMessages = [
+          { id: 'u1', role: 'user', content: prompt, createdAt: '2026-06-24T00:00:00.000Z' },
+          { id: 'a1', role: 'assistant', content: fullReply, createdAt: '2026-06-24T00:00:01.000Z' }
+        ]
+        return {
+          conversationId: 'control-center:legacy-cat:main',
+          reply: fullReply,
+          bubbleSegments: ['第一句很短。', '第二句也很短。', '最后一句收尾。'],
+          messages: conversationMessages
+        }
+      }
+    },
+    petService: {
+      ...createRequiredServices().petService,
+      say: (payload) => {
+        sayCalls.push(payload)
+        return payload
+      }
+    },
+    petChatWindowService: {
+      getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true })
+    }
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: prompt })
+
+  assert.equal(result.reply, fullReply)
+  assert.deepEqual(result.state.messages, conversationMessages)
+  assert.deepEqual(sayCalls.map((item) => item.text), ['第一句很短。', '第二句也很短。', '最后一句收尾。'])
+  assert.equal(result.state.bubble.text, '最后一句收尾。')
+})
+
 test('pet chat send emits through PetService so the floating bubble window is displayed', async () => {
   const prompt = 'hello'
-  const reply = 'Floating bubble reply should be visible above the desktop pet.'
+  const reply = '第一句冒泡。第二句继续。'
   const bubbleChatMessages = []
   const sentToPetWindow = []
   const eventBus = createEventBus()
@@ -239,6 +290,7 @@ test('pet chat send emits through PetService so the floating bubble window is di
       chat: async () => ({
         conversationId: 'control-center:legacy-cat:main',
         reply,
+        bubbleSegments: ['第一句冒泡。', '第二句继续。'],
         messages: [{ id: 'a1', role: 'assistant', content: reply, createdAt: '2026-06-24T00:00:01.000Z' }]
       })
     },
@@ -260,9 +312,9 @@ test('pet chat send emits through PetService so the floating bubble window is di
 
   const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: prompt })
 
-  assert.equal(result.bubble.text, reply)
-  assert.equal(bubbleChatMessages.length, 1)
-  assert.equal(bubbleChatMessages[0].text, reply)
+  assert.equal(result.bubble.text, '第二句继续。')
+  assert.equal(bubbleChatMessages.length, 2)
+  assert.deepEqual(bubbleChatMessages.map((item) => item.text), ['第一句冒泡。', '第二句继续。'])
   assert.equal(bubbleChatMessages[0].source, 'ai')
   assert.equal(bubbleChatMessages[0].petPackId, 'legacy-cat')
   assert.equal(sentToPetWindow.length, 0)

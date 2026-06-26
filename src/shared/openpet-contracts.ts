@@ -2018,6 +2018,7 @@ export interface AiChatResponse {
   conversationId?: string
   traceId?: string
   reply: string
+  bubbleSegments?: string[]
   messages?: ChatMessage[]
   bubble?: PetChatBubbleViewState
   state?: PetChatStateViewState

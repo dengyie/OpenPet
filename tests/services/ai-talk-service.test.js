@@ -834,3 +834,29 @@ test('ai talk service exports redacted traces linked to memory activity', async 
   assert.equal(serialized.includes('我的 key 是 sk-test-should-not-export'), false)
   assert.equal(serialized.includes('User likes quiet focus music.'), false)
 })
+
+test('ai talk service returns bubble segments while preserving the full assistant reply in transcript', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async () => ({
+        reply: '第一句很短。第二句也很短。最后一句收尾。'
+      })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const result = await service.chat({ message: '讲三句' })
+
+  assert.deepEqual(result.bubbleSegments, ['第一句很短。', '第二句也很短。', '最后一句收尾。'])
+  assert.equal(result.reply, '第一句很短。第二句也很短。最后一句收尾。')
+  assert.deepEqual(store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), [
+    '讲三句',
+    '第一句很短。第二句也很短。最后一句收尾。'
+  ])
+})

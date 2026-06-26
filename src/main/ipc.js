@@ -186,6 +186,15 @@ const createPetBubbleText = (reply, behaviorIntent) => {
   return `${text.slice(0, MAX_PET_BUBBLE_CHARS - 3)}...`
 }
 
+const normalizeBubbleSegments = (segments = [], fallback = '') => {
+  const normalized = (Array.isArray(segments) ? segments : [])
+    .map((segment) => normalizeMessageText(segment))
+    .filter(Boolean)
+  if (normalized.length) return normalized
+  const fallbackText = normalizeMessageText(fallback)
+  return fallbackText ? [fallbackText] : []
+}
+
 const sanitizeChatMessages = (messages = []) => (
   (Array.isArray(messages) ? messages : [])
     .filter((message) => ['user', 'assistant'].includes(message?.role) && typeof message?.content === 'string')
@@ -365,9 +374,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     })
     try {
       const result = await (aiTalkService || aiService).chat(requestPayload)
-      const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent)
-      const bubble = bubbleText ? capturePetBubble({ text: bubbleText, source: 'ai' }, { notify: false }) : lastPetBubble
-      if (bubbleText) {
+      const bubbleSegments = normalizeBubbleSegments(
+        result.bubbleSegments,
+        createPetBubbleText(result.reply, result.behaviorIntent)
+      )
+      const lastBubbleText = bubbleSegments.at(-1) || ''
+      const bubble = lastBubbleText ? capturePetBubble({ text: lastBubbleText, source: 'ai' }, { notify: false }) : lastPetBubble
+      if (bubbleSegments.length) {
         recordAppLog({
           scope: 'ai-chat',
           level: 'info',
@@ -376,10 +389,14 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           message: 'AI chat bubble dispatching to pet service',
           details: {
             source,
-            textChars: bubbleText.length
+            textChars: lastBubbleText.length,
+            segmentCount: bubbleSegments.length
           }
         })
-        const sayResult = petService.say({ text: bubbleText, source: 'ai' })
+        let sayResult = null
+        for (const segment of bubbleSegments) {
+          sayResult = petService.say({ text: segment, source: 'ai' })
+        }
         recordAppLog({
           scope: 'ai-chat',
           level: 'info',
@@ -416,7 +433,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
             conversationId: result.conversationId || '',
             elapsedMs: Date.now() - startedAt,
             replyChars: String(result.reply || '').length,
-            bubbleChars: bubbleText.length,
+            bubbleChars: lastBubbleText.length,
             messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
             behaviorMatched: Boolean(behavior?.matched),
             actionId: behavior?.actionId || ''
@@ -438,7 +455,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           conversationId: result.conversationId || '',
           elapsedMs: Date.now() - startedAt,
           replyChars: String(result.reply || '').length,
-          bubbleChars: bubbleText.length,
+          bubbleChars: lastBubbleText.length,
           messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
           actionId: action?.actionId || ''
         }
