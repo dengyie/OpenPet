@@ -1057,4 +1057,55 @@ test.describe('Control Center smoke', () => {
     await expect(reviewPanel).toBeHidden()
     await expect(page.locator('.plugin-row', { hasText: 'Demo Manual Review' })).toContainText('openpet.demo.manual-review')
   })
+
+  test('opens the Creator Studio dashboard entry from the Plugins pane with the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['pet:say', 'storage'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' },
+              { id: 'import-approved-pet', title: 'Import Approved Pet' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
+                { id: 'import-approved-pet', title: 'Import Approved Pet', command: 'node ./commands/import-approved-pet.js', cwd: '.' }
+              ],
+              services: [],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await expect(pluginRow).toContainText('openpet.creator-studio')
+    await expect(pluginRow).toContainText('Dashboard entries')
+    await expect(pluginRow).toContainText('main')
+
+    await pluginRow.getByRole('button', { name: 'Creator Studio' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('openpet.creator-studio')
+  })
 })
