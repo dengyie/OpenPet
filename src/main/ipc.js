@@ -206,6 +206,14 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   let pendingActionFrameSelection = null
   let lastPetBubble = createEmptyPetBubble()
 
+  const sendToControlCenterWindow = (channel, data) => {
+    const petWindow = getPetWindow()
+    const settingsWindow = petWindow?.settingsWindow
+    if (settingsWindow && !settingsWindow.isDestroyed?.()) {
+      settingsWindow.webContents?.send?.(channel, data)
+    }
+  }
+
   const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
   const showOpenDialogForEvent = (event, options) => {
@@ -1133,6 +1141,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     reloadAndSendAnimations(getPetWindow, petService)
     const animations = petService.getPreviewAnimations()
     const petPacks = petPackService.listPacks()
+    notifyPetChatStateChanged()
+    sendToControlCenterWindow(IPC.PET_PACKS_ACTIVE_CHANGED, petPacks)
     return createPetPackMutationResult(result, petPacks, animations)
   })
 

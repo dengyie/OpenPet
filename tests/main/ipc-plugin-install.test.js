@@ -1257,6 +1257,7 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
   const animations = { defaultAction: 'idle', clickAction: 'happy', actions: [{ id: 'idle', label: 'Idle' }] }
   const calls = []
   const petWindowMessages = []
+  const settingsWindowMessages = []
   const services = createRequiredServices({
     pluginInstallService: {
       inspectPluginPackage: () => ({}),
@@ -1281,6 +1282,12 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
     },
     getPetWindow: () => ({
       isDestroyed: () => false,
+      settingsWindow: {
+        isDestroyed: () => false,
+        webContents: {
+          send: (...args) => settingsWindowMessages.push(args)
+        }
+      },
       webContents: {
         send: (...args) => petWindowMessages.push(args)
       }
@@ -1322,6 +1329,9 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
   assert.equal(petWindowMessages.length, 2)
   assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
   assert.equal(petWindowMessages[1][0], IPC.PET_ANIMATIONS_CHANGED)
+  assert.equal(settingsWindowMessages.length, 1)
+  assert.equal(settingsWindowMessages[0][0], IPC.PET_PACKS_ACTIVE_CHANGED)
+  assert.deepEqual(settingsWindowMessages[0][1], petPacks)
 })
 
 test('pet-packs:export opens native output folder picker and delegates selected pack id', async () => {

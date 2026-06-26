@@ -592,6 +592,26 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByLabel('Tone')).toHaveValue('generated from: 更适合专注工作')
   })
 
+  test('refreshes AI memory and chat state when the active pet-pack changes without leaving the AI tab', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    await expandAiSection(page, 'Long-term Memory')
+    await expect(page.locator('.field-note', { hasText: '当前激活宠物包' })).toContainText('Legacy Cat')
+    await expect(page.locator('.memory-card')).toContainText('User prefers concise Chinese replies.')
+    await expect(page.locator('.chat-status')).toContainText('Legacy Cat')
+
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('button', { name: '启用' }).filter({ hasText: /^启用$/ }).nth(0).click()
+    await expect(page.locator('.status-line')).toContainText('已启用 Citrus Cat')
+
+    await page.getByRole('button', { name: 'AI' }).click()
+    await expandAiSection(page, 'Long-term Memory')
+    await expect(page.locator('.field-note', { hasText: '当前激活宠物包' })).toContainText('Citrus Cat')
+    await expect(page.locator('.memory-card')).toContainText('Citrus likes playful stretch breaks.')
+    await expect(page.locator('.chat-status')).toContainText('Citrus Cat')
+  })
+
   test('manages AI long-term memories in the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

@@ -1178,6 +1178,16 @@ const demoApi: ControlCenterApi = {
       animations: cloneActionsConfig(demoState.actionsConfig)
     }
   },
+  onActivePetPackChanged: (callback) => {
+    let previousActivePackId = demoState.petPacks.activePackId
+    const interval = window.setInterval(() => {
+      const currentActivePackId = demoState.petPacks.activePackId
+      if (currentActivePackId === previousActivePackId) return
+      previousActivePackId = currentActivePackId
+      callback(clonePetPacks(demoState.petPacks))
+    }, 250)
+    return () => window.clearInterval(interval)
+  },
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),
   getAiConfig: async () => cloneAiConfig(demoState.aiConfig),
   saveAiConfig: async (config) => {

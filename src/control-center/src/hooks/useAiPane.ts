@@ -275,6 +275,28 @@ export function useAiPane(activeTab = 'ai') {
     void loadPetChatState().catch(() => {})
   }, [activeTab])
 
+  useEffect(() => {
+    const unsubscribe = api.onActivePetPackChanged(async () => {
+      if (activeTab !== 'ai') return
+      try {
+        const [profile, memory, chatState] = await Promise.all([
+          api.getAiPersonaProfile(),
+          api.getAiMemoryProfile(),
+          api.getPetChatState()
+        ])
+        const nextProfile = cloneAiPersonaProfile(profile)
+        setPersonaProfile(nextProfile)
+        setPersonaDraft(personaToDraft(nextProfile.overridePersona))
+        setGeneratedPersonaDraft((current) => (current?.petPackId === nextProfile.petPackId ? current : null))
+        setMemoryProfile(cloneAiMemoryProfile(memory))
+        applyPetChatState(chatState)
+      } catch (error) {
+        setStatus(messageFromError(error, '当前宠物包 AI 状态刷新失败'))
+      }
+    })
+    return () => unsubscribe?.()
+  }, [activeTab])
+
   const saveProviderConfigDraft = async () => {
     const validationError = validateProviderConfig(config)
     if (validationError) throw new Error(validationError)

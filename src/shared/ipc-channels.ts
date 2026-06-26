@@ -55,6 +55,7 @@ export const IPC = Object.freeze({
   PET_PACKS_IMPORT: 'pet-packs:import',
   PET_PACKS_EXPORT: 'pet-packs:export',
   PET_PACKS_SET_ACTIVE: 'pet-packs:set-active',
+  PET_PACKS_ACTIVE_CHANGED: 'pet-packs:active-changed',
   PET_PACKS_REMOVE: 'pet-packs:remove',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
