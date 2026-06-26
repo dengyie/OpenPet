@@ -262,6 +262,20 @@ Current bridge routes:
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
 
+Current bridge permission set:
+
+- `actions:read`
+- `actions:write`
+- `pack-manifest:read`
+- `pack-manifest:write`
+- `assets:inspect`
+- `assets:generate`
+- `pet-pack:import`
+- `model:image-generate`
+- `pet:say`
+- `pet:action`
+- `pet:event`
+
 The bridge is loopback-only, token-gated, and valid only while the command run is active.
 
 OpenPet may interpret common result keys:
@@ -310,6 +324,20 @@ Current endpoint set:
 - `POST /creator/assets/pick-frames/import`
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
+
+Current bridge permission set:
+
+- `actions:read`
+- `actions:write`
+- `pack-manifest:read`
+- `pack-manifest:write`
+- `assets:inspect`
+- `assets:generate`
+- `pet-pack:import`
+- `model:image-generate`
+- `pet:say`
+- `pet:action`
+- `pet:event`
 
 Bridge rules:
 
@@ -454,6 +482,7 @@ Current bridge-backed capabilities:
 | `assets:inspect` | Inspect package-local or user-approved action frame folders | No raw filesystem grant; paths stay host-confined. |
 | `assets:generate` | Import frames and regenerate sprites/action metadata | Host-mediated, resource-limited, no plugin-selected output path. |
 | `pet-pack:import` | Import approved full pet-pack output from a creator workflow | Host inspects/imports through `PetPackService`; no direct write to OpenPet pet-pack storage. |
+| `model:image-generate` | Read sanitized host model settings, run provider health checks, and generate image output through the host | OpenPet-owned provider credentials stay in main process and output writes stay host-owned. |
 
 Example permission shape:
 
@@ -465,7 +494,8 @@ Example permission shape:
     "actions:read",
     "assets:inspect",
     "assets:generate",
-    "pet-pack:import"
+    "pet-pack:import",
+    "model:image-generate"
   ]
 }
 ```

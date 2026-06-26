@@ -186,6 +186,20 @@ The current local bridge stays intentionally small:
 - `POST /creator/pet-pack/inspect-output`
 - `POST /creator/pet-pack/import-output`
 
+Current bridge permission set:
+
+- `actions:read`
+- `actions:write`
+- `pack-manifest:read`
+- `pack-manifest:write`
+- `assets:inspect`
+- `assets:generate`
+- `pet-pack:import`
+- `model:image-generate`
+- `pet:say`
+- `pet:action`
+- `pet:event`
+
 The bridge is for integration convenience. It is not a complete SDK, not a full security broker, and not a reason to block extensions from using their own local capabilities.
 
 ### Welcomed Pet And Creator Use Cases
@@ -199,6 +213,7 @@ The following capabilities are intentionally available to ordinary third-party a
 - active installed user pack metadata reads/writes through `pack-manifest:read` and `pack-manifest:write`;
 - package-local or user-approved frame inspection through `assets:inspect`;
 - package-local or user-approved frame import and sprite/action metadata generation through `assets:generate`;
+- sanitized host model settings reads, provider health checks, and host-owned image generation through `model:image-generate`;
 - approved full pet-pack import through `pet-pack:import`, where the extension provides an output path and OpenPet performs inspection, import, policy checks, and optional activation.
 
 These are not official-only powers. A community weather announcer, pet dialogue pack, pet personality helper, action editor, sprite generator, or local model workflow may request them when the package explains the user value and accepts the host boundary.

@@ -1,4 +1,4 @@
-const PLUGIN_BRIDGE_ROUTE_INVENTORY = [
+const PLUGIN_BRIDGE_ROUTE_INVENTORY = Object.freeze([
   { method: 'GET', path: '/context', handlerName: 'context', permission: '', description: 'Read bounded command bridge context.' },
   { method: 'GET', path: '/creator/actions', handlerName: 'creatorActionsRead', permission: 'actions:read', description: 'Read the current host-owned action snapshot.' },
   { method: 'POST', path: '/creator/actions/validate', handlerName: 'creatorActionsValidate', permission: 'actions:write', description: 'Validate a proposed action mutation without applying it.' },
@@ -19,7 +19,12 @@ const PLUGIN_BRIDGE_ROUTE_INVENTORY = [
   { method: 'POST', path: '/pet/say', handlerName: 'petSay', permission: 'pet:say', description: 'Send pet speech through PetService.' },
   { method: 'POST', path: '/pet/action', handlerName: 'petAction', permission: 'pet:action', description: 'Play a pet action through PetService.' },
   { method: 'POST', path: '/pet/event', handlerName: 'petEvent', permission: 'pet:event', description: 'Emit a bounded pet event through PetService.' }
-]
+])
+
+const PLUGIN_BRIDGE_ROUTE_PERMISSION_NAMES = Object.freeze(PLUGIN_BRIDGE_ROUTE_INVENTORY
+  .map((entry) => entry.permission)
+  .filter(Boolean)
+  .filter((permission, index, values) => values.indexOf(permission) === index))
 
 const createPluginBridgeHandlersController = ({
   appendLog,
@@ -271,5 +276,6 @@ const createPluginBridgeHandlersController = ({
 
 module.exports = {
   PLUGIN_BRIDGE_ROUTE_INVENTORY,
+  PLUGIN_BRIDGE_ROUTE_PERMISSION_NAMES,
   createPluginBridgeHandlersController
 }

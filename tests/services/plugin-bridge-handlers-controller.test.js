@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const {
   PLUGIN_BRIDGE_ROUTE_INVENTORY,
+  PLUGIN_BRIDGE_ROUTE_PERMISSION_NAMES,
   createPluginBridgeHandlersController
 } = require('../../src/main/services/plugin-bridge-handlers-controller')
 
@@ -156,4 +157,26 @@ test('bridge handlers controller exports a unique route inventory that matches h
       assert.match(entry.permission, /^[a-z:-]+$/)
     }
   })
+})
+
+test('bridge handlers controller exports the exact bridge permission inventory', () => {
+  assert.deepEqual(PLUGIN_BRIDGE_ROUTE_PERMISSION_NAMES, [
+    'actions:read',
+    'actions:write',
+    'pack-manifest:read',
+    'pack-manifest:write',
+    'assets:inspect',
+    'assets:generate',
+    'pet-pack:import',
+    'model:image-generate',
+    'pet:say',
+    'pet:action',
+    'pet:event'
+  ])
+
+  const derivedPermissions = [...new Set(PLUGIN_BRIDGE_ROUTE_INVENTORY
+    .map((entry) => entry.permission)
+    .filter(Boolean))]
+
+  assert.deepEqual(PLUGIN_BRIDGE_ROUTE_PERMISSION_NAMES, derivedPermissions)
 })
