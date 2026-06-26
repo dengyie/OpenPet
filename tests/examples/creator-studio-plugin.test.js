@@ -1283,6 +1283,239 @@ test('creator studio import command regenerates stale fixture output when approv
   }
 })
 
+test('creator studio import-approved-pet rejects full-pet output without passing qa gate', async () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-pet-qa-fail-'))
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Import QA Fail Cat',
+      petId: 'import-qa-fail-cat',
+      backend: 'cloud',
+      prompt: '生成一只完整的新桌宠。',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只圆滚滚的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-26T02:00:00.000Z'
+  })
+  const outputDir = path.join(dataDir, 'runs', run.runId, 'outputs')
+  const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: run.petId,
+    displayName: 'Import QA Fail Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'atlas-validation.json'),
+    `${JSON.stringify({
+      ok: false,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 0,
+      warnings: ['Atlas contained no visible pixels.']
+    }, null, 2)}\n`
+  )
+  fs.writeFileSync(
+    path.join(qaDir, 'source-image-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      sourceRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+      width: 1024,
+      height: 1024,
+      visiblePixels: 2048,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      taskStatus: 'confirmed',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+      }
+    },
+    now: () => '2026-06-26T02:01:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [
+      {
+        path: '/creator/pet-pack/inspect-output',
+        handler: () => ({ body: { ok: true, inspection: { valid: true, selectionId: 'selection-qa-fail' } } })
+      },
+      {
+        path: '/creator/pet-pack/import-output',
+        handler: () => ({ body: { ok: true, imported: { pack: { id: 'import-qa-fail-cat' } } } })
+      }
+    ]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-pet',
+      dataDir,
+      payload: { runId: run.runId, activate: true },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir, runId: run.runId })
+
+    assert.equal(imported.status, 1)
+    assert.equal(imported.json.ok, false)
+    assert.match(imported.json.error, /Full-pet QA must pass before import/)
+    assert.equal(stored.status, 'approved')
+    assert.equal(stored.importStatus, 'not-imported')
+    assert.equal(requests.length, 0)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio import-approved-pet imports approved full-pet output when qa gate passes', async () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-pet-qa-pass-'))
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Import QA Pass Cat',
+      petId: 'import-qa-pass-cat',
+      backend: 'cloud',
+      prompt: '生成一只完整的新桌宠。',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只圆滚滚的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-26T02:10:00.000Z'
+  })
+  const outputDir = path.join(dataDir, 'runs', run.runId, 'outputs')
+  const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: run.petId,
+    displayName: 'Import QA Pass Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'atlas-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 6400,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  fs.writeFileSync(
+    path.join(qaDir, 'source-image-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      sourceRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+      width: 1024,
+      height: 1024,
+      visiblePixels: 2048,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      taskStatus: 'confirmed',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        bundle: path.join(outputDir, `${run.petId}.codex-pet.zip`),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+      }
+    },
+    now: () => '2026-06-26T02:11:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [
+      {
+        path: '/creator/pet-pack/inspect-output',
+        handler: () => ({ body: { ok: true, inspection: { valid: true, selectionId: 'selection-qa-pass' } } })
+      },
+      {
+        path: '/creator/pet-pack/import-output',
+        handler: () => ({ body: { ok: true, imported: { pack: { id: 'import-qa-pass-cat' } }, activated: { activePackId: 'import-qa-pass-cat' } } })
+      }
+    ]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-pet',
+      dataDir,
+      payload: { runId: run.runId, activate: true },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir, runId: run.runId })
+
+    assert.equal(imported.status, 0)
+    assert.equal(imported.json.ok, true)
+    assert.equal(imported.json.run.status, 'imported')
+    assert.equal(stored.importedPackId, 'import-qa-pass-cat')
+    assert.deepEqual(requests.map((entry) => entry.url), [
+      '/creator/pet-pack/inspect-output',
+      '/creator/pet-pack/import-output'
+    ])
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio import-approved-action imports approved single-action frames through host bridge', async () => {
   const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-action-'))

@@ -2,6 +2,7 @@ const path = require('path')
 const { runCommand } = require('../lib/command-io')
 const { callBridge } = require('../lib/bridge-client')
 const { runGenerationStep } = require('../lib/backend-runner')
+const { assertRunFullPetQaPassed } = require('../lib/full-pet-qa')
 const { readRun, resolveRunId, updateRunStatus } = require('../lib/run-store')
 
 const STALE_FIXTURE_ATLAS_ERROR = /Codex pet atlas must contain visible pixels/
@@ -39,6 +40,11 @@ runCommand(async (context) => {
   if (current.status !== 'approved') throw new Error(`Run must be approved before import: ${current.status}`)
   const outputDir = current.artifacts?.outputDir
   if (!outputDir) throw new Error('Run has no output directory')
+  assertRunFullPetQaPassed({
+    dataDir: process.env.OPENPET_DATA_DIR,
+    run: current,
+    operation: 'import'
+  })
   let inspection
   try {
     inspection = await inspectOutput({ outputDir })
