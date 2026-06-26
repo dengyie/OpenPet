@@ -1965,6 +1965,9 @@ export interface ImageGenerationHealthCheckResult {
   modelsProbe?: 'ok' | 'unavailable' | 'failed'
   availableModels?: string[]
   currentModelDiscovered?: boolean
+  usage?: {
+    estimatedCostUsd?: number
+  }
 }
 
 export type ImageGenerationHealthCheckRequest = Record<string, never>

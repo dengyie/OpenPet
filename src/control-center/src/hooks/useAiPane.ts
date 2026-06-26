@@ -146,9 +146,25 @@ const formatConnectionStatus = ({
   const notice = (hasUnsavedConfigChanges || hasUnsavedApiKeyDraft)
     ? '当前存在未保存修改；本次测试使用已保存配置。'
     : ''
+  const localizedMessage = String(result.message || '')
+    .replace(/^AI API key is not configured$/, '聊天 API Key 未配置')
+    .replace(/^AI provider rejected the API key$/, '聊天 Provider 拒绝了当前 API Key')
+    .replace(/^AI provider endpoint or model was not found$/, '聊天 Provider 的接口或模型不存在')
+    .replace(/^AI provider rate limit exceeded$/, '聊天 Provider 已触发限流')
+    .replace(/^AI provider is temporarily unavailable$/, '聊天 Provider 暂时不可用')
+    .replace(/^AI provider returned an error response$/, '聊天 Provider 返回了错误响应')
+    .replace(/^AI provider connection test succeeded$/, '聊天 Provider 连接测试通过')
+  if (result.ok && result.modelsProbe === 'ok' && result.currentModelDiscovered === false) {
+    const mismatch = `聊天 Provider 可达，但当前保存的聊天 Model 未出现在 /models 返回列表中；请手动确认模型名称或网关映射。`
+    return notice ? `${notice} ${mismatch}` : mismatch
+  }
+  if (result.ok && result.modelsProbe === 'unavailable') {
+    const unavailable = '聊天 Provider 可达，但模型列表探测不可用；请手动确认模型名称。'
+    return notice ? `${notice} ${unavailable}` : unavailable
+  }
   const details = result.ok
     ? `连接正常：${context}${result.reply ? ` · ${result.reply}` : ''}`
-    : `连接失败：${result.message || result.code || 'Unknown error'} · ${context}`
+    : `连接失败：${localizedMessage || result.code || 'Unknown error'} · ${context}`
   return notice ? `${notice} ${details}` : details
 }
 
@@ -172,8 +188,12 @@ const formatImageGenerationHealthStatus = (result: ImageGenerationHealthCheckRes
   const label = '图片 Provider'
   const message = String(result.message || result.code || '')
     .replace(/^Cloud image generation API key is missing$/, 'Image generation API key is missing')
+    .replace(/^Image generation API key is missing$/, '图片 API Key 未配置')
     .replace(/^Cloud provider is reachable, but the optional \/models probe is unavailable$/, 'provider 可达，但模型列表探测不可用')
     .replace(/^Image Provider is reachable, but the optional \/models probe is unavailable$/, 'provider 可达，但模型列表探测不可用')
+  if (result.ok && result.modelsProbe === 'ok' && result.currentModelDiscovered === false) {
+    return `${label} 可达，但当前保存的图片 Model 未出现在 /models 返回列表中；请手动确认模型名称或网关映射。`
+  }
   if (result.ok) {
     if (result.code === 'provider_reachable_models_unavailable') {
       return `${label} 可达，但模型列表探测不可用；可继续尝试生成。`

@@ -580,7 +580,7 @@ test.describe('Control Center smoke', () => {
     await expect(imageApiKeyRow).toContainText('未保存')
 
     await page.getByRole('button', { name: '检查图片健康' }).click()
-    await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('图片 Provider 健康检查失败：Image generation API key is missing')
+    await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('图片 Provider 健康检查失败：图片 API Key 未配置')
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
@@ -627,6 +627,12 @@ test.describe('Control Center smoke', () => {
     await page.getByLabel('图片 Model').fill('gpt-image-2')
     await expect(page.getByTestId('image-model-compatibility')).toContainText('gpt-image-2')
     await expect(page.getByTestId('image-model-compatibility')).toContainText('不会强制发送 background 参数')
+
+    await page.getByLabel('图片 Model').fill('missing-image-model')
+    await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
+    await page.getByRole('button', { name: '检查图片健康' }).click()
+    await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('当前保存的图片 Model 未出现在 /models 返回列表中')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('当前保存的图片 Model 未出现在探测列表中')
   })
 
   test('shows chat provider model discovery results in the demo API', async ({ page }) => {
@@ -646,6 +652,13 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('chat-model-discovery')).toContainText('模型列表探测成功')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('deepseek-chat')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('已包含当前模型')
+
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('missing-chat-model')
+    await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
+
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前保存的聊天 Model 未出现在 /models 返回列表中')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('当前保存的聊天 Model 未出现在探测列表中')
   })
 
   test('shows chat model compatibility hints for default and custom models in the demo API', async ({ page }) => {

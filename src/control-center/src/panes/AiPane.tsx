@@ -256,7 +256,7 @@ const renderImageModelDiscovery = (result: ImageGenerationHealthCheckResult | nu
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="image-model-discovery">
         <strong>模型列表探测成功</strong>
         <span>共发现 {discoveredModels.length} 个模型。</span>
-        <span>{currentModelIncluded ? '已包含当前模型' : '当前模型未出现在探测列表中'}</span>
+        <span>{currentModelIncluded ? '已包含当前模型' : '当前保存的图片 Model 未出现在探测列表中'}</span>
         {discoveredModels.length ? (
           <div className="model-chip-list">
             {discoveredModels.map((modelName) => (
@@ -329,7 +329,7 @@ const renderChatModelDiscovery = (result: AiConnectionTestResult | null, current
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="chat-model-discovery">
         <strong>模型列表探测成功</strong>
         <span>共发现 {discoveredModels.length} 个模型。</span>
-        <span>{currentModelIncluded ? '已包含当前模型' : '当前模型未出现在探测列表中'}</span>
+        <span>{currentModelIncluded ? '已包含当前模型' : '当前保存的聊天 Model 未出现在探测列表中'}</span>
         {discoveredModels.length ? (
           <div className="model-chip-list">
             {discoveredModels.map((modelName) => (
