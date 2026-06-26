@@ -453,6 +453,17 @@
         font-size: 13px;
       }
 
+      .task-edit-form {
+        display: grid;
+        gap: 10px;
+      }
+
+      .task-edit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+
       @media (max-width: 820px) {
         main {
           padding: 20px;
@@ -522,6 +533,10 @@
           <section>
             <h2>Task Preview</h2>
             <section id="task-preview">No task drafted yet.</section>
+          </section>
+          <section>
+            <h2>Task Edit</h2>
+            <section id="task-edit-panel">Draft a task to edit action details before confirmation.</section>
           </section>
           <section>
             <h2>Follow-up</h2>
@@ -761,6 +776,46 @@
           `<span>Size: ${escapeHtml(atlasValidation.width || 0)} x ${escapeHtml(atlasValidation.height || 0)}</span>`,
           `<span>Visible pixels: ${escapeHtml(atlasValidation.visiblePixels || 0)}</span>`,
           `<span>Warnings: ${escapeHtml((atlasValidation.warnings || []).length)}</span>`,
+          '</div>'
+        ].join('')
+      }
+
+      const renderTaskEditPanel = (run) => {
+        const action = Array.isArray(run?.generationTask?.actions) ? run.generationTask.actions[0] : null
+        if (!action) return 'Draft a task to edit action details before confirmation.'
+        const editingLocked = run?.taskStatus === 'confirmed'
+        const triggerType = action.triggerProposal?.type || 'unbound'
+        return [
+          '<div class="task-edit-form">',
+          '<div>',
+          '<label for="task-edit-name">Action name</label>',
+          `<input id="task-edit-name" type="text" value="${escapeHtml(action.name || '')}" ${editingLocked ? 'disabled' : ''}>`,
+          '</div>',
+          '<div>',
+          '<label for="task-edit-motion">Motion description</label>',
+          `<textarea id="task-edit-motion" ${editingLocked ? 'disabled' : ''}>${escapeHtml(action.motionPrompt || '')}</textarea>`,
+          '</div>',
+          '<div class="task-edit-grid">',
+          '<div>',
+          '<label for="task-edit-loop">Loop behavior</label>',
+          `<select id="task-edit-loop" ${editingLocked ? 'disabled' : ''}>`,
+          `<option value="false" ${action.loop ? '' : 'selected'}>One-shot</option>`,
+          `<option value="true" ${action.loop ? 'selected' : ''}>Looping</option>`,
+          '</select>',
+          '</div>',
+          '<div>',
+          '<label for="task-edit-trigger">Trigger type</label>',
+          `<select id="task-edit-trigger" ${editingLocked ? 'disabled' : ''}>`,
+          ['manual', 'click', 'random', 'state', 'event', 'unbound'].map((option) => (
+            `<option value="${escapeHtml(option)}" ${option === triggerType ? 'selected' : ''}>${escapeHtml(option)}</option>`
+          )).join(''),
+          '</select>',
+          '</div>',
+          '</div>',
+          `<button id="save-task-button" type="button" class="secondary" ${editingLocked ? 'disabled' : ''}>Save task edits</button>`,
+          editingLocked
+            ? '<p>Task editing is locked after confirmation. Draft a new run if you need different task inputs.</p>'
+            : '<p>Adjust the interpreted action details before confirming the task.</p>',
           '</div>'
         ].join('')
       }
@@ -1005,6 +1060,7 @@
           $('action-lane-panel').textContent = 'Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.'
           $('next-step-panel').textContent = 'Draft a task to see the next recommended action.'
           $('task-preview').textContent = 'No task drafted yet.'
+          $('task-edit-panel').textContent = 'Draft a task to edit action details before confirmation.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
           $('recovery-panel').textContent = 'No failed generation to recover.'
@@ -1029,6 +1085,7 @@
         $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
         $('action-lane-panel').innerHTML = renderActionLane(run)
         $('next-step-panel').innerHTML = renderNextStep(run)
+        $('task-edit-panel').innerHTML = renderTaskEditPanel(run)
         if (isFullPetRun(run) && run.generationTask.characterBrief) {
           const actions = Array.isArray(run.generationTask.actions) ? run.generationTask.actions : []
           const actionSummaries = actions.map((plannedAction) => (
@@ -1185,6 +1242,27 @@
           await refreshLogs()
           await refreshRunList()
           setStatus('Task confirmed.', 'ok')
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      $('task-edit-panel').addEventListener('click', async (event) => {
+        if (event.target?.id !== 'save-task-button' || !state.run?.runId) return
+        try {
+          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/task`, {
+            actionName: $('task-edit-name')?.value || '',
+            motionPrompt: $('task-edit-motion')?.value || '',
+            loop: $('task-edit-loop')?.value === 'true',
+            triggerType: $('task-edit-trigger')?.value || 'unbound'
+          })
+          state.run = payload.run
+          state.actionReview = payload.actionReview || null
+          state.fullPetReview = payload.fullPetReview || null
+          renderRun()
+          await refreshLogs()
+          await refreshRunList()
+          setStatus('Task edits saved.', 'ok')
         } catch (error) {
           setStatus(error.message, 'error')
         }

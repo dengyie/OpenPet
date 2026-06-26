@@ -74,6 +74,63 @@ const applyTriggerAnswer = ({ generationTask, answer }) => ({
   questions: generationTask.questions.filter((question) => question.id !== 'trigger')
 })
 
+const updateTaskDraft = ({
+  dataDir,
+  runId,
+  updates = {},
+  now = () => new Date().toISOString()
+}) => {
+  const run = readRun({ dataDir, runId })
+  if (!run.generationTask) throw new Error('Creator Studio run has no generation task')
+  if (run.taskStatus === 'confirmed') throw new Error('Confirmed Creator Studio tasks cannot be edited')
+  const currentAction = Array.isArray(run.generationTask.actions) ? run.generationTask.actions[0] : null
+  if (!currentAction) throw new Error('Creator Studio task has no editable action')
+  const triggerType = String(updates.triggerType || currentAction.triggerProposal?.type || 'unbound').trim()
+  const triggerProposal = TRIGGER_ANSWERS[triggerType]
+  if (!triggerProposal) throw new Error(`Creator Studio trigger type is invalid: ${triggerType}`)
+  const actionName = String(updates.actionName || currentAction.name || '').trim() || currentAction.name
+  const motionPrompt = String(updates.motionPrompt || currentAction.motionPrompt || '').trim() || currentAction.motionPrompt
+  const editedAt = now()
+  const generationTask = {
+    ...run.generationTask,
+    actions: run.generationTask.actions.map((action, index) => index === 0
+      ? {
+          ...action,
+          name: actionName,
+          motionPrompt,
+          loop: Boolean(updates.loop),
+          triggerProposal
+        }
+      : action),
+    questions: run.generationTask.questions.filter((question) => question.id !== 'trigger')
+  }
+  const taskStatus = getTaskStatus(generationTask)
+  const nextRun = writeRun({
+    dataDir,
+    run: {
+      ...run,
+      generationTask,
+      taskStatus,
+      currentStep: taskStatus === 'needs_input' ? 'task_questions' : 'task_preview',
+      updatedAt: editedAt
+    }
+  })
+  appendRunLog({
+    dataDir,
+    runId,
+    level: 'info',
+    event: 'task.updated',
+    message: 'Creator Studio task updated from dashboard edit controls',
+    data: {
+      taskStatus,
+      triggerType,
+      loop: Boolean(updates.loop)
+    },
+    now: () => editedAt
+  })
+  return { run: nextRun }
+}
+
 const answerTaskQuestion = ({
   dataDir,
   runId,
@@ -154,5 +211,6 @@ const confirmTaskRun = ({ dataDir, runId, now = () => new Date().toISOString() }
 module.exports = {
   answerTaskQuestion,
   confirmTaskRun,
-  draftTaskRun
+  draftTaskRun,
+  updateTaskDraft
 }

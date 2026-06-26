@@ -2736,6 +2736,18 @@ test('creator studio dashboard task preview renders full-pet brief and action su
   assert.match(html, /triggerSummaries/)
 })
 
+test('creator studio dashboard asset exposes task edit controls before confirmation', () => {
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const html = fs.readFileSync(dashboardPath, 'utf-8')
+
+  assert.match(html, /id="task-edit-panel"/)
+  assert.match(html, /id="save-task-button"/)
+  assert.match(html, /Action name/)
+  assert.match(html, /Motion description/)
+  assert.match(html, /Loop behavior/)
+  assert.match(html, /Trigger type/)
+})
+
 test('creator studio service rejects unknown api routes instead of falling back to dashboard html', async () => {
   const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-route-guard-'))
@@ -3366,6 +3378,49 @@ test('creator studio service rejects invalid dashboard JSON bodies', async () =>
     assert.equal(response.status, 400)
     assert.equal(body.ok, false)
     assert.match(body.error, /valid JSON/)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service lets dashboard update a drafted single-action task before confirmation', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-task-edit-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  const postJson = (pathname, body = {}) => fetch(`http://127.0.0.1:${port}${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then((response) => response.json())
+
+  try {
+    const draft = await postJson('/api/tasks/draft', {
+      prompt: '新增一个自定义动作：原地打滚，动作要循环。',
+      backend: 'fixture'
+    })
+    const updated = await postJson(`/api/runs/${draft.run.runId}/task`, {
+      actionName: '害羞打滚',
+      motionPrompt: '先缩起来再慢慢打滚一圈',
+      loop: false,
+      triggerType: 'manual'
+    })
+
+    assert.equal(updated.ok, true)
+    assert.equal(updated.run.taskStatus, 'ready_for_confirmation')
+    assert.equal(updated.run.generationTask.actions[0].name, '害羞打滚')
+    assert.equal(updated.run.generationTask.actions[0].motionPrompt, '先缩起来再慢慢打滚一圈')
+    assert.equal(updated.run.generationTask.actions[0].loop, false)
+    assert.equal(updated.run.generationTask.actions[0].triggerProposal.type, 'manual')
+    assert.equal(updated.run.generationTask.questions.length, 0)
+
+    const stored = await fetch(`http://127.0.0.1:${port}/api/runs/${draft.run.runId}`).then((response) => response.json())
+    assert.equal(stored.ok, true)
+    assert.equal(stored.run.generationTask.actions[0].name, '害羞打滚')
+    assert.equal(stored.run.generationTask.actions[0].triggerProposal.type, 'manual')
+    assert.equal(JSON.stringify(stored).includes(dataDir), false)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

@@ -6,7 +6,7 @@ const { runGenerationStep } = require('../lib/backend-runner')
 const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
 const { sanitizeCreativeBrief } = require('../lib/openpet-prompt-builder')
-const { answerTaskQuestion, confirmTaskRun, draftTaskRun } = require('../lib/task-workflow')
+const { answerTaskQuestion, confirmTaskRun, draftTaskRun, updateTaskDraft } = require('../lib/task-workflow')
 const { FIXTURE_BACKEND, normalizeCreatorBackend, usesHostProviderBackend } = require('../lib/backend-mode')
 const { createPlaybackDiagnostics } = require('../lib/action-frame-playback')
 
@@ -908,6 +908,22 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         ...output,
         run: createPublicRun({ dataDir, run: output.run })
+      })
+      return true
+    }
+
+    const updateTaskMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/task$/)
+    if (updateTaskMatch) {
+      const output = updateTaskDraft({
+        dataDir,
+        runId: decodeURIComponent(updateTaskMatch[1]),
+        updates: body
+      })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run: output.run }),
+        actionReview: createActionReview({ dataDir, run: output.run }),
+        fullPetReview: createFullPetReview({ dataDir, run: output.run })
       })
       return true
     }
