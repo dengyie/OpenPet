@@ -96,6 +96,18 @@ const normalizeMessages = (messages) => {
   }).filter(Boolean)
 }
 
+const normalizeLegacyConversations = (conversations) => {
+  if (!isPlainObject(conversations)) return {}
+  return Object.fromEntries(
+    Object.entries(conversations)
+      .map(([conversationId, messages]) => {
+        const normalizedConversationId = typeof conversationId === 'string' ? conversationId.trim() : ''
+        return [normalizedConversationId, normalizeMessages(messages)]
+      })
+      .filter(([conversationId, messages]) => Boolean(conversationId) && messages.length > 0)
+  )
+}
+
 const normalizePetUtterance = (utterance) => {
   if (!isPlainObject(utterance)) return null
   const text = typeof utterance.text === 'string'
@@ -154,6 +166,8 @@ const loadState = ({ storePath, now }) => {
     return createEmptyState()
   }
 }
+
+const hasStoredMessages = (state) => Object.values(state?.messages || {}).some((messages) => Array.isArray(messages) && messages.length > 0)
 
 const createSessionId = ({ entrypoint, petPackId }) => `${entrypoint || 'control-center'}:${petPackId || 'legacy-cat'}`
 
@@ -220,9 +234,15 @@ const normalizePersonaOverride = (override) => {
   return result
 }
 
-const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } = {}) => {
+const createAiTalkStore = ({ storePath, now = () => new Date().toISOString(), legacyConversationMigration = null } = {}) => {
   if (!storePath) throw new Error('storePath is required')
   let state = loadState({ storePath, now })
+  let migrationSummary = {
+    migrated: false,
+    sourceConversationId: 'control-center',
+    targetConversationId: '',
+    migratedMessageCount: 0
+  }
 
   const persist = () => {
     writeJsonAtomic(storePath, state)
@@ -230,6 +250,67 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
   }
 
   const getState = () => clone(state)
+
+  const runLegacyConversationMigration = () => {
+    const sourceConversationId = 'control-center'
+    const normalized = isPlainObject(legacyConversationMigration)
+      ? {
+          petPackId: typeof legacyConversationMigration.petPackId === 'string' ? legacyConversationMigration.petPackId.trim() : '',
+          conversations: normalizeLegacyConversations(legacyConversationMigration.conversations)
+        }
+      : { petPackId: '', conversations: {} }
+    migrationSummary = {
+      migrated: false,
+      sourceConversationId,
+      targetConversationId: '',
+      migratedMessageCount: 0
+    }
+    if (!normalized.petPackId) return
+    if (hasStoredMessages(state)) return
+    const legacyMessages = normalized.conversations[sourceConversationId]
+    if (!Array.isArray(legacyMessages) || legacyMessages.length === 0) return
+
+    const timestamp = now()
+    const sessionId = createSessionId({ entrypoint: 'control-center', petPackId: normalized.petPackId })
+    const conversationId = 'main'
+    const conversationKey = `${sessionId}:${conversationId}`
+    state.sessions[sessionId] = {
+      id: sessionId,
+      entrypoint: 'control-center',
+      petPackId: normalized.petPackId,
+      activeConversationId: conversationId,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+    state.conversations[conversationKey] = {
+      id: conversationId,
+      sessionId,
+      petPackId: normalized.petPackId,
+      title: '',
+      personaPackId: normalized.petPackId,
+      personaHash: '',
+      responseMode: 'complete',
+      summary: '',
+      summaryUpdatedAt: '',
+      contextPolicy: { ...DEFAULT_CONTEXT_POLICY },
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+    state.messages[conversationKey] = legacyMessages.map((message, index) => ({
+      ...message,
+      id: message.id || createMessageId({ sessionId, conversationId, index }),
+      createdAt: message.createdAt || timestamp
+    }))
+    persist()
+    migrationSummary = {
+      migrated: true,
+      sourceConversationId,
+      targetConversationId: `${sessionId}:${conversationId}`,
+      migratedMessageCount: legacyMessages.length
+    }
+  }
+
+  runLegacyConversationMigration()
 
   const ensureMainConversation = ({ entrypoint = 'control-center', petPackId, personaHash = '' } = {}) => {
     if (!petPackId || typeof petPackId !== 'string') throw new Error('petPackId is required')
@@ -693,6 +774,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     exportTraces,
     finishMemoryJob,
     getMessages,
+    getMigrationSummary: () => ({ ...migrationSummary }),
     getPersonaOverride,
     getState,
     listRecentPetUtterances,

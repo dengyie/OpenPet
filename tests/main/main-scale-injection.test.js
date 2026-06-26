@@ -19,6 +19,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
   let registeredIpcDependencies = null
   let registeredPluginDependencies = null
   let createdAiTalkStorePath = null
+  let createdAiTalkStoreDependencies = null
   let createdAiTalkDependencies = null
   let bundledPluginSyncDependencies = null
   const petWindow = {
@@ -76,7 +77,15 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
           scale: 1,
           autoStart: false,
           localHttp: {},
-          ai: { behavior: {} },
+          ai: {
+            behavior: {},
+            conversations: {
+              'control-center': [
+                { role: 'user', content: 'legacy hi' },
+                { role: 'assistant', content: 'legacy hello' }
+              ]
+            }
+          },
           plugins: { enabled: {}, config: {}, storage: {}, logs: [] },
           petPacks: { activePackId: 'legacy-cat', installed: {} },
           ecosystem: { blocklist: { pluginIds: [], packIds: [], sha256: [] } }
@@ -144,9 +153,19 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       './src/main/services/secret-service': { createSecretService: () => ({}) },
       './src/main/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
       './src/main/services/ai-talk-store': {
-        createAiTalkStore: ({ storePath }) => {
+        createAiTalkStore: (dependencies) => {
+          createdAiTalkStoreDependencies = dependencies
+          const { storePath } = dependencies
           createdAiTalkStorePath = storePath
-          return { id: 'ai-talk-store' }
+          return {
+            id: 'ai-talk-store',
+            getMigrationSummary: () => ({
+              migrated: true,
+              sourceConversationId: 'control-center',
+              targetConversationId: 'control-center:legacy-cat:main',
+              migratedMessageCount: 2
+            })
+          }
         }
       },
       './src/main/services/ai-talk-service': {
@@ -201,12 +220,20 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     assert.equal(animationReloadCalls.length, 1)
     assert.equal(animationReloadCalls[0].petWindow, petWindow)
     assert.equal(createdAiTalkStorePath, path.join(__dirname, '..', '.tmp-main-scale-injection', 'ai-talk-store.json'))
+    assert.equal(createdAiTalkStoreDependencies.legacyConversationMigration.petPackId, 'legacy-cat')
+    assert.deepEqual(createdAiTalkStoreDependencies.legacyConversationMigration.conversations, {
+      'control-center': [
+        { role: 'user', content: 'legacy hi' },
+        { role: 'assistant', content: 'legacy hello' }
+      ]
+    })
     assert.equal(createdAiTalkDependencies.aiService.id, 'ai-service')
     assert.equal(createdAiTalkDependencies.aiTalkStore.id, 'ai-talk-store')
     assert.equal(registeredIpcDependencies.aiTalkService.id, 'ai-talk-service')
     assert.equal(bundledPluginSyncDependencies.pluginDir, path.join(__dirname, '..', '.tmp-main-scale-injection', 'plugins'))
     assert.deepEqual(bundledPluginSyncDependencies.bundledPluginDirs, [path.resolve(__dirname, '../../examples/plugins/creator-studio')])
     assert.deepEqual(appLogs.map((entry) => entry.event), [
+      'ai-talk.migration.legacy-conversations',
       'app.ready',
       'plugins.bundled.synced',
       'app.before-quit',

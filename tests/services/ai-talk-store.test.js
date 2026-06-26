@@ -307,3 +307,63 @@ test('ai talk store exports redacted traces without prompts, secrets, or raw mem
   assert.equal(serialized.includes('User secret preference text should not leak.'), false)
   assert.equal(serialized.includes('sk-test-should-not-leak'), false)
 })
+
+test('ai talk store migrates legacy control-center conversation only when the new store is empty', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({
+    storePath,
+    now: () => '2026-06-20T00:00:00.000Z',
+    legacyConversationMigration: {
+      petPackId: 'sprout-cat',
+      conversations: {
+        'control-center': [
+          { role: 'user', content: ' Hi legacy ' },
+          { role: 'assistant', content: 'Hello legacy' }
+        ]
+      }
+    }
+  })
+
+  assert.deepEqual(store.getMessages('control-center:sprout-cat', 'main').map((message) => message.content), [
+    'Hi legacy',
+    'Hello legacy'
+  ])
+  assert.deepEqual(store.getMigrationSummary(), {
+    migrated: true,
+    sourceConversationId: 'control-center',
+    targetConversationId: 'control-center:sprout-cat:main',
+    migratedMessageCount: 2
+  })
+})
+
+test('ai talk store does not migrate legacy control-center conversation when new store already has messages', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })
+  const mainConversation = store.ensureMainConversation({ entrypoint: 'control-center', petPackId: 'legacy-cat', personaHash: 'hash-a' })
+  store.appendMessages(mainConversation.sessionId, mainConversation.conversationId, [
+    { role: 'user', content: 'new store message' }
+  ])
+
+  const reloaded = createAiTalkStore({
+    storePath,
+    now: () => '2026-06-20T00:10:00.000Z',
+    legacyConversationMigration: {
+      petPackId: 'sprout-cat',
+      conversations: {
+        'control-center': [
+          { role: 'user', content: 'legacy user' },
+          { role: 'assistant', content: 'legacy assistant' }
+        ]
+      }
+    }
+  })
+
+  assert.deepEqual(reloaded.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), ['new store message'])
+  assert.deepEqual(reloaded.getMessages('control-center:sprout-cat', 'main'), [])
+  assert.deepEqual(reloaded.getMigrationSummary(), {
+    migrated: false,
+    sourceConversationId: 'control-center',
+    targetConversationId: '',
+    migratedMessageCount: 0
+  })
+})
