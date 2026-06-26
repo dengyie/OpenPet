@@ -591,6 +591,7 @@
         const guidance = run?.workflowGuidance || {}
         const generation = guidance.generation || {}
         const importGuidance = guidance.import || {}
+        const usageSummary = generation.usageSummary || {}
         const checklist = Array.isArray(generation.smokeChecklist) ? generation.smokeChecklist : []
         const checklistHtml = checklist.length
           ? `<ul>${checklist.map((entry) => `<li>${escapeHtml(entry)}</li>`).join('')}</ul>`
@@ -598,6 +599,9 @@
         return [
           '<div class="notice">',
           `<strong>${escapeHtml(generation.summary || 'Use fixture for workflow QA first.')}</strong>`,
+          usageSummary.available
+            ? `<p>Estimated generation cost: <code>${escapeHtml(usageSummary.displayCost || '')}</code></p>`
+            : '',
           checklistHtml,
           `<p>Import state: ${escapeHtml(importGuidance.status || 'not-ready')} / Command: ${escapeHtml(importGuidance.command || 'n/a')}</p>`,
           `<p>${escapeHtml(importGuidance.summary || 'Approve the run before host-owned import.')}</p>`,

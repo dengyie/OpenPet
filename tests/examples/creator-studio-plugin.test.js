@@ -2020,6 +2020,7 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="recovery-panel"/)
   assert.match(html, /id="prompt-provenance-panel"/)
   assert.match(html, /id="workflow-guidance-panel"/)
+  assert.match(html, /Estimated generation cost:/)
   assert.match(html, /Retry generation/)
   assert.match(html, /developerPrompt/)
   assert.match(html, /Test saved image Provider/)
@@ -2556,6 +2557,20 @@ test('creator studio service exposes workflow guidance for fixture and imported 
           }
         },
         artifacts: {
+          generatedImage: {
+            ok: true,
+            backend: 'local',
+            model: 'local-custom-sprite-v2',
+            generatedAt: '2026-06-26T00:02:00.000Z',
+            usage: {
+              estimatedCostUsd: 0.012345
+            },
+            outputs: [{
+              dataRelativePath: `runs/${importedRun.runId}/frames/base/0001.png`,
+              mimeType: 'image/png',
+              sha256: 'imported-provider-sha'
+            }]
+          },
           actionFrames: {
             actionId: 'shy-spin',
             name: '害羞转圈',
@@ -2579,11 +2594,16 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(fixtureDetail.run.workflowGuidance.generation.mode, 'fixture-preview')
     assert.match(fixtureDetail.run.workflowGuidance.generation.summary, /workflow QA/i)
     assert.equal(fixtureDetail.run.workflowGuidance.generation.smokeChecklist.some((entry) => /cloud or local/i.test(entry)), true)
+    assert.equal(fixtureDetail.run.workflowGuidance.generation.usageSummary.available, false)
+    assert.equal(fixtureDetail.run.workflowGuidance.generation.usageSummary.displayCost, '')
 
     assert.equal(importedDetail.ok, true)
     assert.equal(importedDetail.run.workflowGuidance.generation.mode, 'host-provider')
     assert.match(importedDetail.run.workflowGuidance.generation.summary, /host-owned local image Provider/i)
     assert.equal(importedDetail.run.workflowGuidance.generation.smokeChecklist.some((entry) => /Control Center/i.test(entry)), true)
+    assert.equal(importedDetail.run.workflowGuidance.generation.usageSummary.available, true)
+    assert.equal(importedDetail.run.workflowGuidance.generation.usageSummary.estimatedCostUsd, 0.012345)
+    assert.match(importedDetail.run.workflowGuidance.generation.usageSummary.displayCost, /\$0\.0123/)
     assert.equal(importedDetail.run.workflowGuidance.import.status, 'imported')
     assert.equal(importedDetail.run.workflowGuidance.import.command, 'import-approved-action')
     assert.match(importedDetail.run.workflowGuidance.import.summary, /Imported action/i)

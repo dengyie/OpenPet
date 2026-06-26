@@ -118,6 +118,18 @@ const createPublicLogValue = ({ dataDir, value }) => {
 
 const createPublicLogEntry = ({ dataDir, entry }) => createPublicLogValue({ dataDir, value: entry })
 
+const normalizeEstimatedCostUsd = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return null
+  return numeric
+}
+
+const formatEstimatedCostUsd = (value) => {
+  const estimatedCostUsd = normalizeEstimatedCostUsd(value)
+  if (estimatedCostUsd === null) return ''
+  return `$${estimatedCostUsd.toFixed(4)}`
+}
+
 const createPublicPromptPreview = ({ dataDir, promptPreview = {} }) => {
   const text = createPublicText({ dataDir, value: promptPreview.text || '' })
   return {
@@ -176,6 +188,22 @@ const createPublicRecovery = ({ dataDir, run }) => {
     actionLabel: canRetryGeneration ? 'Retry generation' : 'Generate action',
     backend: createPublicLogValue({ dataDir, value: backendStatus }),
     failureReason: createPublicText({ dataDir, value: run.error || backendStatus.message || '' })
+  }
+}
+
+const createGenerationUsageSummary = ({ run }) => {
+  const estimatedCostUsd = normalizeEstimatedCostUsd(run.artifacts?.generatedImage?.usage?.estimatedCostUsd)
+  if (estimatedCostUsd === null) {
+    return {
+      available: false,
+      estimatedCostUsd: null,
+      displayCost: ''
+    }
+  }
+  return {
+    available: true,
+    estimatedCostUsd,
+    displayCost: formatEstimatedCostUsd(estimatedCostUsd)
   }
 }
 
@@ -330,6 +358,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
   const modelSnapshot = run.modelSnapshot || run.artifacts?.generatedImage?.modelSnapshot || {}
   const providerLabel = [modelSnapshot.provider, modelSnapshot.model].filter(Boolean).join(' / ')
   const usesProviderRun = backend !== 'fixture'
+  const usageSummary = createGenerationUsageSummary({ run })
   const generationSummary = usesProviderRun
     ? (
         ['ready_for_review', 'approved', 'imported'].includes(run.status)
@@ -394,7 +423,8 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
       backend: createPublicText({ dataDir, value: backend }),
       mode: usesProviderRun ? 'host-provider' : 'fixture-preview',
       summary: createPublicText({ dataDir, value: generationSummary }),
-      smokeChecklist: createPublicTextList({ dataDir, values: smokeChecklist })
+      smokeChecklist: createPublicTextList({ dataDir, values: smokeChecklist }),
+      usageSummary
     },
     import: {
       status: createPublicText({ dataDir, value: importStatus }),
