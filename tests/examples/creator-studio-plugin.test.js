@@ -2004,6 +2004,7 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="prompt-input"/)
   assert.match(html, /id="task-preview"/)
   assert.match(html, /id="run-snapshot-panel"/)
+  assert.match(html, /id="action-lane-panel"/)
   assert.match(html, /id="next-step-panel"/)
   assert.match(html, /id="trigger-panel"/)
   assert.match(html, /id="action-review"/)
@@ -2026,6 +2027,8 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /developerPrompt/)
   assert.match(html, /Test saved image Provider/)
   assert.match(html, /Prompt snapshot/)
+  assert.match(html, /Action Lane/)
+  assert.match(html, /Button availability/)
   assert.match(html, /Next Step/)
   assert.match(html, /Wizard Steps/)
   assert.match(html, /id="wizard-steps-panel"/)
@@ -2785,6 +2788,11 @@ test('creator studio service exposes safe import handoff guidance for approved d
     assert.match(actionHandoff.location, /Control Center -> Plugins/i)
     assert.match(actionHandoff.reason, /bridge token is command-scoped/i)
     assert.equal(actionHandoff.dashboardCanImport, false)
+    assert.equal(actionDetail.run.actionLane.dashboardAction.available, false)
+    assert.equal(actionDetail.run.actionLane.hostAction.required, true)
+    assert.equal(actionDetail.run.actionLane.hostAction.label, 'Import Approved Action')
+    assert.match(actionDetail.run.actionLane.hostAction.location, /Control Center -> Plugins/i)
+    assert.match(actionDetail.run.actionLane.buttonStates.approve.reason, /already approved/i)
 
     assert.equal(petDetail.ok, true)
     assert.equal(petHandoff.ready, true)
@@ -2794,6 +2802,9 @@ test('creator studio service exposes safe import handoff guidance for approved d
     assert.match(petHandoff.location, /Control Center -> Plugins/i)
     assert.match(petHandoff.reason, /bridge token is command-scoped/i)
     assert.equal(petHandoff.dashboardCanImport, false)
+    assert.equal(petDetail.run.actionLane.dashboardAction.available, false)
+    assert.equal(petDetail.run.actionLane.hostAction.required, true)
+    assert.equal(petDetail.run.actionLane.hostAction.label, 'Import Approved Pet')
 
     assert.equal(serialized.includes(dataDir), false)
     assert.equal(serialized.includes('bridge-token'), false)
@@ -2909,6 +2920,9 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
     assert.equal(failed.body.run.wizardState.nextStep.label, 'Retry generation')
     assert.equal(failed.body.run.wizardState.nextStep.blocked, false)
+    assert.equal(failed.body.run.actionLane.dashboardAction.available, true)
+    assert.equal(failed.body.run.actionLane.dashboardAction.label, 'Retry generation')
+    assert.equal(failed.body.run.actionLane.buttonStates.generate.enabled, true)
     assert.deepEqual(failed.body.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
       'draft:complete',
       'follow-up:complete',
@@ -2925,6 +2939,9 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(retried.body.run.status, 'ready_for_review')
     assert.equal(retried.body.run.recovery.canRetryGeneration, false)
     assert.equal(retried.body.run.wizardState.nextStep.label, 'Approve run')
+    assert.equal(retried.body.run.actionLane.dashboardAction.available, true)
+    assert.equal(retried.body.run.actionLane.dashboardAction.label, 'Approve run')
+    assert.equal(retried.body.run.actionLane.buttonStates.approve.enabled, true)
     assert.deepEqual(retried.body.run.wizardState.steps.map((step) => `${step.key}:${step.status}`), [
       'draft:complete',
       'follow-up:complete',

@@ -375,6 +375,145 @@ const createImportHandoff = ({ dataDir, run, importStatus }) => {
   }
 }
 
+const createDashboardButtonStates = ({ dataDir, run }) => {
+  const hasPendingQuestion = Boolean(run.generationTask?.questions?.[0])
+  const taskStatus = String(run.taskStatus || '')
+  const status = String(run.status || 'draft')
+  const canRetryGeneration = Boolean(run.recovery?.canRetryGeneration || (status === 'failed' && taskStatus === 'confirmed'))
+  const generateLabel = canRetryGeneration ? 'Retry generation' : 'Generate action'
+
+  const confirmEnabled = !hasPendingQuestion && taskStatus !== 'confirmed'
+  const generateEnabled = !hasPendingQuestion && taskStatus === 'confirmed' && ['draft', 'failed'].includes(status)
+  const approveEnabled = status === 'ready_for_review'
+
+  return {
+    confirm: {
+      buttonId: 'confirm-button',
+      label: 'Confirm task',
+      enabled: confirmEnabled,
+      reason: confirmEnabled
+        ? 'The task is drafted and can now be confirmed in the dashboard.'
+        : hasPendingQuestion
+          ? 'Answer the pending follow-up question before confirming the task.'
+          : taskStatus === 'confirmed'
+            ? 'This run is already confirmed.'
+            : 'Draft a task before confirming it.'
+    },
+    generate: {
+      buttonId: 'generate-button',
+      label: generateLabel,
+      enabled: generateEnabled,
+      reason: generateEnabled
+        ? (canRetryGeneration
+            ? 'Retry generation will reuse this same run and preserve the confirmed task.'
+            : 'Generation is unlocked for this confirmed task.')
+        : hasPendingQuestion
+          ? 'Answer the pending follow-up question before generation.'
+          : taskStatus !== 'confirmed'
+            ? 'Confirm the task before generation.'
+            : 'Generation is not available in the current run state.'
+    },
+    approve: {
+      buttonId: 'approve-button',
+      label: 'Approve run',
+      enabled: approveEnabled,
+      reason: approveEnabled
+        ? 'QA is ready. Approve the run to unlock host-owned import.'
+        : status === 'imported'
+          ? 'This run is already imported.'
+          : status === 'approved'
+            ? 'This run is already approved. Finish host-owned import in OpenPet.'
+            : status === 'failed'
+              ? 'Retry generation before approval.'
+              : 'Generation review must complete before approval.'
+    }
+  }
+}
+
+const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
+  const taskStatus = String(run.taskStatus || '')
+  const status = String(run.status || 'draft')
+  const nextStep = run.wizardState?.nextStep || {}
+
+  let dashboardAction = {
+    label: 'Draft task',
+    available: false,
+    buttonId: '',
+    reason: 'Draft or load a run to unlock dashboard actions.'
+  }
+
+  if (taskStatus === 'needs_input') {
+    dashboardAction = {
+      label: 'Answer follow-up',
+      available: true,
+      buttonId: 'question-panel',
+      reason: 'Choose one of the pending follow-up answers in the dashboard.'
+    }
+  } else if (buttonStates.confirm.enabled) {
+    dashboardAction = {
+      label: buttonStates.confirm.label,
+      available: true,
+      buttonId: buttonStates.confirm.buttonId,
+      reason: buttonStates.confirm.reason
+    }
+  } else if (buttonStates.generate.enabled) {
+    dashboardAction = {
+      label: buttonStates.generate.label,
+      available: true,
+      buttonId: buttonStates.generate.buttonId,
+      reason: buttonStates.generate.reason
+    }
+  } else if (buttonStates.approve.enabled) {
+    dashboardAction = {
+      label: buttonStates.approve.label,
+      available: true,
+      buttonId: buttonStates.approve.buttonId,
+      reason: buttonStates.approve.reason
+    }
+  } else {
+    dashboardAction = {
+      label: createPublicText({ dataDir, value: nextStep.label || 'No dashboard action' }),
+      available: false,
+      buttonId: '',
+      reason: createPublicText({ dataDir, value: nextStep.reason || 'This step is not available directly in the dashboard.' })
+    }
+  }
+
+  let hostAction = {
+    required: false,
+    label: '',
+    location: '',
+    reason: ''
+  }
+
+  if (status === 'approved' && importHandoff.ready) {
+    hostAction = {
+      required: true,
+      label: importHandoff.commandTitle,
+      location: importHandoff.location,
+      reason: importHandoff.reason
+    }
+  } else if (status === 'imported') {
+    hostAction = {
+      required: true,
+      label: 'Review imported result',
+      location: 'OpenPet',
+      reason: 'The host-owned import is complete. Review the imported result inside OpenPet.'
+    }
+  }
+
+  return {
+    summary: hostAction.required
+      ? 'This run now depends on a host-owned step outside the dashboard.'
+      : dashboardAction.available
+        ? 'This run still has a dashboard action you can take now.'
+        : 'This run currently has no direct dashboard action available.',
+    dashboardAction,
+    hostAction,
+    buttonStates
+  }
+}
+
 const createWorkflowGuidance = ({ dataDir, run }) => {
   const backend = String(run.backend || run.input?.backend || 'fixture')
   const modelSnapshot = run.modelSnapshot || run.artifacts?.generatedImage?.modelSnapshot || {}
@@ -490,13 +629,32 @@ const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
 
 const createPublicRun = ({ dataDir, run }) => {
   const publicRun = createPublicLogValue({ dataDir, value: run })
+  const wizardState = createWizardState({ dataDir, run })
+  const workflowGuidance = createWorkflowGuidance({ dataDir, run })
+  const buttonStates = createDashboardButtonStates({
+    dataDir,
+    run: {
+      ...run,
+      wizardState
+    }
+  })
+  const actionLane = createActionLane({
+    dataDir,
+    run: {
+      ...run,
+      wizardState
+    },
+    buttonStates,
+    importHandoff: workflowGuidance.import.handoff
+  })
   return {
     ...publicRun,
     artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
     developerPrompt: createDeveloperPrompt({ dataDir, run }),
     recovery: createPublicRecovery({ dataDir, run }),
-    wizardState: createWizardState({ dataDir, run }),
-    workflowGuidance: createWorkflowGuidance({ dataDir, run })
+    wizardState,
+    workflowGuidance,
+    actionLane
   }
 }
 

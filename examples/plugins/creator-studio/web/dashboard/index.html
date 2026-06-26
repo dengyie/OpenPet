@@ -185,6 +185,23 @@
         background: rgba(255, 240, 232, 0.82);
       }
 
+      .action-lane {
+        display: grid;
+        gap: 10px;
+      }
+
+      .action-lane-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fffef8;
+        padding: 12px;
+      }
+
+      .action-lane-card.host {
+        border-style: dashed;
+        background: rgba(237, 243, 238, 0.72);
+      }
+
       .meta-list {
         display: grid;
         gap: 6px;
@@ -384,6 +401,10 @@
           <section>
             <h2>Wizard Steps</h2>
             <section id="wizard-steps-panel">Draft a task to see the workflow rail.</section>
+          </section>
+          <section>
+            <h2>Action Lane</h2>
+            <section id="action-lane-panel">Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.</section>
           </section>
           <section>
             <h2>Next Step</h2>
@@ -662,6 +683,39 @@
         ].join('')
       }
 
+      const renderActionLane = (run) => {
+        const lane = run?.actionLane || {}
+        const dashboardAction = lane.dashboardAction || {}
+        const hostAction = lane.hostAction || {}
+        const buttonStates = lane.buttonStates || {}
+        const buttonSummary = Object.values(buttonStates).map((buttonState) => (
+          `<li><strong>${escapeHtml(buttonState.label || buttonState.buttonId || 'Action')}</strong>: ${escapeHtml(buttonState.reason || '')}</li>`
+        )).join('')
+        return [
+          '<div class="action-lane">',
+          `<div class="action-lane-card ${dashboardAction.available ? '' : 'host'}">`,
+          `<strong>Dashboard action: ${escapeHtml(dashboardAction.label || 'No dashboard action')}</strong>`,
+          `<p>${escapeHtml(dashboardAction.reason || lane.summary || 'No dashboard action available yet.')}</p>`,
+          dashboardAction.available && dashboardAction.buttonId
+            ? `<p>Use <code>${escapeHtml(dashboardAction.buttonId)}</code> in this dashboard.</p>`
+            : '<p>This step is not directly available from a dashboard button right now.</p>',
+          '</div>',
+          hostAction.required
+            ? [
+                '<div class="action-lane-card host">',
+                `<strong>Host-owned action: ${escapeHtml(hostAction.label || 'OpenPet step')}</strong>`,
+                `<p>${escapeHtml(hostAction.reason || 'Continue inside OpenPet.')}</p>`,
+                `<p>Location: <code>${escapeHtml(hostAction.location || 'OpenPet')}</code></p>`,
+                '</div>'
+              ].join('')
+            : '',
+          buttonSummary
+            ? `<div class="notice"><strong>Button availability</strong><ul>${buttonSummary}</ul></div>`
+            : '',
+          '</div>'
+        ].join('')
+      }
+
       const renderImportHandoff = (run, actionFrames = null) => {
         const importGuidance = run?.workflowGuidance?.import || {}
         const handoff = importGuidance.handoff || {}
@@ -700,6 +754,7 @@
         if (!run?.generationTask) {
           $('run-snapshot-panel').textContent = 'Prompt snapshot and wizard state appear after you draft or load a run.'
           $('wizard-steps-panel').textContent = 'Draft a task to see the workflow rail.'
+          $('action-lane-panel').textContent = 'Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.'
           $('next-step-panel').textContent = 'Draft a task to see the next recommended action.'
           $('task-preview').textContent = 'No task drafted yet.'
           $('question-panel').textContent = 'No pending question.'
@@ -721,6 +776,7 @@
         const question = run.generationTask.questions[0]
         $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
         $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
+        $('action-lane-panel').innerHTML = renderActionLane(run)
         $('next-step-panel').innerHTML = renderNextStep(run)
         $('task-preview').innerHTML = [
           `<strong>${escapeHtml(action.name)}</strong>`,
@@ -735,10 +791,11 @@
         } else {
           $('question-panel').textContent = 'No pending question.'
         }
-        $('confirm-button').disabled = Boolean(question) || run.taskStatus === 'confirmed'
-        $('generate-button').disabled = Boolean(question) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status)
-        $('generate-button').textContent = run.recovery?.canRetryGeneration ? 'Retry generation' : 'Generate action'
-        $('approve-button').disabled = run.status !== 'ready_for_review'
+        const buttonStates = run.actionLane?.buttonStates || {}
+        $('confirm-button').disabled = buttonStates.confirm ? !buttonStates.confirm.enabled : (Boolean(question) || run.taskStatus === 'confirmed')
+        $('generate-button').disabled = buttonStates.generate ? !buttonStates.generate.enabled : (Boolean(question) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status))
+        $('generate-button').textContent = buttonStates.generate?.label || (run.recovery?.canRetryGeneration ? 'Retry generation' : 'Generate action')
+        $('approve-button').disabled = buttonStates.approve ? !buttonStates.approve.enabled : (run.status !== 'ready_for_review')
         $('recovery-panel').innerHTML = renderRecoveryPanel(run)
         $('workflow-guidance-panel').innerHTML = renderWorkflowGuidance(run)
         $('prompt-provenance-panel').innerHTML = renderPromptProvenance(run)
