@@ -67,6 +67,64 @@ test.describe('Control Center smoke', () => {
     expect(metrics.shellWidth).toBeLessThanOrEqual(metrics.viewportWidth)
   })
 
+  test('keeps secondary AI settings collapsed until opened', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const sectionHeadings = await page.locator('details.ai-section summary h2').allTextContents()
+    expect(sectionHeadings).toEqual([
+      '聊天 Provider',
+      '图片 Provider',
+      '长期记忆',
+      'Pet Persona Override',
+      'Behavior',
+      '聊天'
+    ])
+
+    const coreSections = ['聊天 Provider', '图片 Provider']
+    const secondarySections = ['长期记忆', 'Pet Persona Override', 'Behavior', '聊天']
+
+    for (const sectionName of coreSections) {
+      const section = aiSection(page, sectionName)
+      await expect(section).toHaveCount(1)
+      await expect(section).toHaveAttribute('open', '')
+    }
+
+    for (const sectionName of secondarySections) {
+      const section = aiSection(page, sectionName)
+      await expect(section).toHaveCount(1)
+      await expect(section).not.toHaveAttribute('open', '')
+    }
+
+    const memorySection = aiSection(page, '长期记忆')
+    await expect(memorySection.locator('.field-label', { hasText: '当前宠物包' })).toBeHidden()
+    await memorySection.locator('summary').click()
+    await expect(memorySection).toHaveAttribute('open', '')
+    await expect(memorySection.locator('.field-label', { hasText: '当前宠物包' })).toBeVisible()
+
+    const personaSection = aiSection(page, 'Pet Persona Override')
+    await expect(personaSection.getByLabel('Tone')).toBeHidden()
+    await personaSection.locator('summary').click()
+    await expect(personaSection.getByLabel('Tone')).toBeVisible()
+  })
+
+  test('shows host-owned trust copy for chat and image providers', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatBoundary = page.getByTestId('chat-provider-boundary')
+    await expect(chatBoundary).toContainText('本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约')
+    await expect(chatBoundary).toContainText('“保存聊天 Provider”只写入当前配置')
+    await expect(chatBoundary).toContainText('“测试已保存配置”只测试已保存的生效配置')
+    await expect(chatBoundary).toContainText('API Key 只保存在 OpenPet host')
+
+    const imageBoundary = page.getByTestId('image-provider-boundary')
+    await expect(imageBoundary).toContainText('本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 图片 Provider 契约')
+    await expect(imageBoundary).toContainText('“保存图片 Provider”只更新 host 配置')
+    await expect(imageBoundary).toContainText('“检查图片健康”只检查当前已保存的图片 Provider')
+    await expect(imageBoundary).toContainText('Creator Studio 只提交提示词和输出目录')
+  })
+
   test('keeps key Pet and About interactions responsive', async ({ page }) => {
     await page.goto('/')
 

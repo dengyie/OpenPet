@@ -2035,6 +2035,14 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
 })
 
+test('creator studio dashboard asset includes full-pet import review messaging', () => {
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const html = fs.readFileSync(dashboardPath, 'utf-8')
+
+  assert.match(html, /Review the generated pet-pack output and approve the run before host-owned pet import\./)
+  assert.match(html, /Generate and approve the pet-pack output to unlock host-owned pet import\./)
+})
+
 test('creator studio service exposes run detail and logs for dashboard clients', async () => {
   const { appendRunLog, createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')

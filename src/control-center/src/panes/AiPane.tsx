@@ -479,6 +479,13 @@ export function AiPane({
 
       <CollapsibleAiSection title="聊天 Provider" note="OpenAI-compatible 聊天模型配置" defaultOpen>
         <div className="section provider-summary" data-testid="ai-provider-summary">
+          <div className="provider-feedback" data-testid="chat-provider-boundary">
+            <strong>聊天 Provider 边界</strong>
+            <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约；切换环境只需要改 Base URL 和 Model。</span>
+            <span>“保存聊天 Provider”只写入当前配置；“测试已保存配置”只测试已保存的生效配置，不会偷用草稿。</span>
+            <span>API Key 只保存在 OpenPet host；renderer、dashboard 和普通插件都不能直接读取。</span>
+          </div>
+
           <div className="readonly-row">
             <strong>当前生效配置</strong>
             <span className="endpoint-text" data-testid="ai-provider-active-summary">{activeProviderSummary}</span>
@@ -637,102 +644,6 @@ export function AiPane({
         </div>
       </CollapsibleAiSection>
 
-      <CollapsibleAiSection title="长期记忆" note="查看和管理自动抽取的用户与宠物关系记忆" defaultOpen>
-        <div className="section memory-section" data-testid="ai-memory-profile">
-          <div className="field-row">
-            <div>
-              <div className="field-label">当前宠物包</div>
-              <div className="field-note">{memoryProfile.petPackDisplayName} · {memoryProfile.petPackId}</div>
-            </div>
-            <div className="inline-action">
-              <button type="button" className="ghost" onClick={onRefreshMemoryProfile} disabled={saving}>
-                刷新记忆
-              </button>
-              <button type="button" className="ghost" onClick={onExportAiTalkTraceDiagnostics}>
-                导出 AI Talk Trace
-              </button>
-              <button type="button" className="danger-text" onClick={onClearPetPackMemories} disabled={saving || memoryProfile.petPackMemories.length === 0}>
-                清空当前宠物记忆
-              </button>
-            </div>
-          </div>
-
-          <div className="field-row">
-            <div>
-              <div className="field-label">Trace 导出范围</div>
-              <div className="field-note">导出 redacted 诊断时，可缩小到当前宠物包或当前主会话。</div>
-            </div>
-            <select
-              className="text-input"
-              value={traceDiagnosticsFilters.conversationId
-                ? 'conversation'
-                : (traceDiagnosticsFilters.petPackId ? 'petPack' : 'all')}
-              onChange={(event) => {
-                const nextMode = event.target.value
-                if (nextMode === 'conversation') {
-                  onChangeTraceDiagnosticsFilters({
-                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
-                    conversationId: petChatState.conversationId || `control-center:${memoryProfile.petPackId}:main`
-                  })
-                  return
-                }
-                if (nextMode === 'petPack') {
-                  onChangeTraceDiagnosticsFilters({
-                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
-                    conversationId: ''
-                  })
-                  return
-                }
-                onChangeTraceDiagnosticsFilters({ petPackId: '', conversationId: '' })
-              }}
-              data-testid="ai-trace-filter-select"
-            >
-              <option value="all">全部 AI Talk 数据</option>
-              <option value="petPack">仅当前宠物包</option>
-              <option value="conversation">仅当前主会话</option>
-            </select>
-          </div>
-
-          <div className="readonly-row">
-            <strong>当前 Trace 过滤</strong>
-            <span>
-              {traceDiagnosticsFilters.conversationId
-                ? `会话 ${traceDiagnosticsFilters.conversationId}`
-                : traceDiagnosticsFilters.petPackId
-                  ? `宠物包 ${traceDiagnosticsFilters.petPackId}`
-                  : '不过滤，导出全部'}
-            </span>
-          </div>
-
-          <div className="memory-grid">
-            <MemoryList
-              title="全局用户记忆"
-              memories={memoryProfile.globalMemories}
-              emptyText="暂无全局用户记忆"
-              saving={saving}
-              onDeleteMemory={onDeleteMemory}
-            />
-            <MemoryList
-              title="当前宠物关系记忆"
-              memories={memoryProfile.petPackMemories}
-              emptyText="暂无当前宠物关系记忆"
-              saving={saving}
-              onDeleteMemory={onDeleteMemory}
-            />
-          </div>
-
-          <div className="readonly-row">
-            <strong>最近记忆任务</strong>
-            {latestMemoryJob ? (
-              <span>
-                {latestMemoryJob.status} · applied {latestMemoryJob.appliedCount} · filtered {latestMemoryJob.filteredCount}
-                {latestMemoryJob.errorCode ? ` · ${latestMemoryJob.errorCode}` : ''}
-              </span>
-            ) : <span>暂无后台抽取任务</span>}
-          </div>
-        </div>
-      </CollapsibleAiSection>
-
       <CollapsibleAiSection title="图片 Provider" note="Creator Studio 生成图片使用的 OpenAI-compatible Provider" defaultOpen>
         <div className="section-actions">
           <button type="button" className="ghost" onClick={onCheckImageGenerationHealth} disabled={saving}>
@@ -744,6 +655,13 @@ export function AiPane({
         </div>
 
         <div className="section">
+          <div className="provider-feedback" data-testid="image-provider-boundary">
+            <strong>图片 Provider 边界</strong>
+            <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 图片 Provider 契约；切换环境只需要改 Base URL、Model 和超时配置。</span>
+            <span>“保存图片 Provider”只更新 host 配置；“检查图片健康”只检查当前已保存的图片 Provider，不会偷用草稿。</span>
+            <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
+          </div>
+
           <div className="readonly-row">
             <strong>图片当前 Provider</strong>
             <span className="endpoint-text">{imageTargetSummary}</span>
@@ -874,6 +792,102 @@ export function AiPane({
                 清除图片密钥
               </button>
             </div>
+          </div>
+        </div>
+      </CollapsibleAiSection>
+
+      <CollapsibleAiSection title="长期记忆" note="查看和管理自动抽取的用户与宠物关系记忆">
+        <div className="section memory-section" data-testid="ai-memory-profile">
+          <div className="field-row">
+            <div>
+              <div className="field-label">当前宠物包</div>
+              <div className="field-note">{memoryProfile.petPackDisplayName} · {memoryProfile.petPackId}</div>
+            </div>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onRefreshMemoryProfile} disabled={saving}>
+                刷新记忆
+              </button>
+              <button type="button" className="ghost" onClick={onExportAiTalkTraceDiagnostics}>
+                导出 AI Talk Trace
+              </button>
+              <button type="button" className="danger-text" onClick={onClearPetPackMemories} disabled={saving || memoryProfile.petPackMemories.length === 0}>
+                清空当前宠物记忆
+              </button>
+            </div>
+          </div>
+
+          <div className="field-row">
+            <div>
+              <div className="field-label">Trace 导出范围</div>
+              <div className="field-note">导出 redacted 诊断时，可缩小到当前宠物包或当前主会话。</div>
+            </div>
+            <select
+              className="text-input"
+              value={traceDiagnosticsFilters.conversationId
+                ? 'conversation'
+                : (traceDiagnosticsFilters.petPackId ? 'petPack' : 'all')}
+              onChange={(event) => {
+                const nextMode = event.target.value
+                if (nextMode === 'conversation') {
+                  onChangeTraceDiagnosticsFilters({
+                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
+                    conversationId: petChatState.conversationId || `control-center:${memoryProfile.petPackId}:main`
+                  })
+                  return
+                }
+                if (nextMode === 'petPack') {
+                  onChangeTraceDiagnosticsFilters({
+                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
+                    conversationId: ''
+                  })
+                  return
+                }
+                onChangeTraceDiagnosticsFilters({ petPackId: '', conversationId: '' })
+              }}
+              data-testid="ai-trace-filter-select"
+            >
+              <option value="all">全部 AI Talk 数据</option>
+              <option value="petPack">仅当前宠物包</option>
+              <option value="conversation">仅当前主会话</option>
+            </select>
+          </div>
+
+          <div className="readonly-row">
+            <strong>当前 Trace 过滤</strong>
+            <span>
+              {traceDiagnosticsFilters.conversationId
+                ? `会话 ${traceDiagnosticsFilters.conversationId}`
+                : traceDiagnosticsFilters.petPackId
+                  ? `宠物包 ${traceDiagnosticsFilters.petPackId}`
+                  : '不过滤，导出全部'}
+            </span>
+          </div>
+
+          <div className="memory-grid">
+            <MemoryList
+              title="全局用户记忆"
+              memories={memoryProfile.globalMemories}
+              emptyText="暂无全局用户记忆"
+              saving={saving}
+              onDeleteMemory={onDeleteMemory}
+            />
+            <MemoryList
+              title="当前宠物关系记忆"
+              memories={memoryProfile.petPackMemories}
+              emptyText="暂无当前宠物关系记忆"
+              saving={saving}
+              onDeleteMemory={onDeleteMemory}
+            />
+          </div>
+
+          <div className="readonly-row">
+            <strong>最近记忆任务</strong>
+            {latestMemoryJob ? (
+              <span>
+                {latestMemoryJob.status} · applied {latestMemoryJob.appliedCount} · filtered {latestMemoryJob.filteredCount}
+                {latestMemoryJob.errorCode ? ` · ${latestMemoryJob.errorCode}` : ''}
+              </span>
+            ) : <span>暂无后台抽取任务</span>}
           </div>
         </div>
       </CollapsibleAiSection>

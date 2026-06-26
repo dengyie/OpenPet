@@ -685,6 +685,12 @@
             '</div>'
           ].join('')
         }
+        if (!actionFrames && run?.generationTask?.mode === 'full-pet') {
+          if (run?.status === 'ready_for_review') {
+            return escapeHtml(importGuidance.summary || 'Review the generated pet-pack output and approve the run before host-owned pet import.')
+          }
+          return 'Generate and approve the pet-pack output to unlock host-owned pet import.'
+        }
         if (actionFrames) return 'Review the generated frames, repair any bad frame, then approve the action.'
         return 'Generate action frames before action import handoff.'
       }
