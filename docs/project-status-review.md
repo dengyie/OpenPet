@@ -1,7 +1,7 @@
 # OpenPet Project Status Review
 
-> Date: 2026-06-18
-> Branch: `main`
+> Date: 2026-06-26
+> Branch: `codex/dev`
 > Release track: `v1.0.1-rc.2`
 
 This document is the current status snapshot. Detailed implementation history belongs in `docs/phases/`; detailed review findings belong in `docs/reviews/`.
@@ -12,7 +12,7 @@ OpenPet has reached the intended desktop platform shape: Electron pet runtime, R
 
 The project is strongest on macOS. Windows build and evidence tooling exists, but Windows must stay **not release-ready** until signed artifacts and real Windows smoke reports are archived.
 
-The extension ecosystem has also crossed another platform threshold: declaration-only local command entries no longer need the legacy JavaScript SDK path just to make the pet speak or react, and creator-tools entries now have host-backed authoring slices for bounded action configuration reads/writes, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import. The wider ecosystem still stays open, local-first, and honest about trust limits.
+The extension ecosystem has also crossed another platform threshold: declaration-only local command entries no longer need the legacy JavaScript SDK path just to make the pet speak or react, and creator-tools entries now have host-backed authoring slices for bounded action configuration reads/writes, active installed user pack metadata workflows, package-local frame inspection/import, user-approved picker frame inspection/import, command-scoped image-generation bridge access, and dashboard-first Creator Studio review flows. The wider ecosystem still stays open, local-first, and honest about trust limits.
 
 ## Current Product Shape
 
@@ -21,7 +21,7 @@ The extension ecosystem has also crossed another platform threshold: declaration
 | Desktop pet runtime | Transparent Electron pet window with movement, actions, speech bubbles, pet pack switching, optional grounded movement, and optional home-anchor roaming constraints | `main.js`, `renderer.js`, `src/main/services/pet-service.js`, `src/main/pet-movement-policy.js` |
 | Control Center | React + Vite app with Pet, Actions, AI, Plugins, Catalog, Service, and About tabs | `src/control-center/`, `tests/control-center/` |
 | Pet packs | Legacy cat, OpenPet packs, Codex pet directory/zip import, bundled read-only packs, export/provenance | `src/main/pet-pack/`, `src/main/services/pet-pack-service.js` |
-| AI | OpenAI-compatible chat, main-process secret storage, AI Talk persona/history/memory, desktop chat, behavior decisions, replay, redacted diagnostics | `src/main/services/ai-service.js`, `src/main/services/ai-talk-service.js`, `src/main/services/ai-talk-store.js`, `src/main/pet-chat-window.js`, `src/main/services/behavior-orchestrator-service.js` |
+| AI | OpenAI-compatible chat, main-process secret storage, chat/image provider presets, optional `/models` discovery, model compatibility hints, AI Talk persona/history/memory, desktop chat, behavior decisions, replay, redacted diagnostics, trace export filters, and host-owned image Provider usage summaries | `src/main/services/ai-service.js`, `src/main/services/image-generation-model-service.js`, `src/main/services/ai-talk-service.js`, `src/main/services/ai-talk-store.js`, `src/main/pet-chat-window.js`, `src/main/services/behavior-orchestrator-service.js` |
 | Extensions | Developer-first ecosystem docs, current legacy SDK compatibility, normalized `entries` declarations including explicit setup execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived bridge access for declaration-only commands, host-owned creator data/cache/log directories for declaration-only command runs, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, user-approved picker frame inspection/import through the short-lived bridge, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime state and logs, manual loopback-only service health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, structured cleanup evidence tooling with validation-first updates, helper generation, runner archives, packaged-app cleanup evidence runner archives, and archive manifests, validation, submission tooling, catalog install, scaffold author rehearsal, existing-plugin real-world submission rehearsal, remote-source submission rehearsal, community-source discovery reporting, community-source invitation kits, community-source candidate intake reporting, compatible-intake-to-submission bridge tooling, community-source submission evidence, and maintainer approval rehearsal; command/setup/service spawns do not use shell expansion, setup and commands never run during install/enable, services do not auto-start, maintainer approval remains a human review artifact, and packaged cleanup evidence still proves only the observed packaged run rather than universal process-tree guarantees | `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, `docs/plugin-submission-workflow-playbook.md`, `src/main/plugins/manifest.js`, `src/main/services/plugin-service.js`, `src/main/services/action-service.js`, `src/main/services/pet-pack-service.js`, `src/main/services/service-process-tree.js` |
 | Local API | Loopback-only HTTP and MCP, token gated, logged, disabled by default | `src/main/services/local-http-service.js` |
 | Release evidence | Packaged runtime evidence tooling, runtime/picker evidence-link gate, Windows smoke and desktop picker evidence summary/archive manifests, macOS codesign/notarization/Gatekeeper evidence capture with workflow artifact upload and permanent artifact archive handoff, release archive reviewed-archive gates, signed release closure gate, Windows smoke/report tooling | `scripts/create-*-smoke-*`, `scripts/create-macos-release-evidence.js`, `scripts/create-macos-release-evidence-archive.js`, `.github/workflows/release.yml`, `docs/release-evidence/` |
@@ -32,8 +32,8 @@ The extension ecosystem has also crossed another platform threshold: declaration
 Current local baseline:
 
 ```bash
-npm test                     # 695/695 Node tests
-npm run test:control-center  # 12/12 Playwright UI tests
+npm test                     # current Node regression suite
+npm run test:control-center  # current Playwright UI regression suite
 npm run typecheck            # TypeScript no-emit checks
 npm run check:syntax         # Node syntax + typecheck + Control Center build
 npm run pack                 # electron-builder directory package

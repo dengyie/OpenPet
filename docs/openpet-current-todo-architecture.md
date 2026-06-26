@@ -41,12 +41,15 @@ Current P0 status: no known startup/build blocker in this TODO pass. Trigger pro
 
 - Chat provider UX has separate `保存聊天 Provider` and `测试已保存配置` actions. Saving does not require a successful test, and testing uses the active saved config.
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
-- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, conservative legacy `settings.ai.conversations.control-center` migration, active pet-pack refresh signals for AI pane and desktop chat, redacted trace diagnostics export, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, provider behavior `reason` / `displayMode` preservation through behavior decisions, memory profile UI, delete memory, and clear current pet-pack memories.
+- Control Center AI settings now include chat/image provider presets, optional `/models` discovery with safe fallback wording, chat/image model compatibility hints, and safe image generation usage/cost summaries when provider metadata is available.
+- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, conservative legacy `settings.ai.conversations.control-center` migration, active pet-pack refresh signals for AI pane and desktop chat, redacted trace diagnostics export with pet-pack and conversation filters, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, provider behavior `reason` / `displayMode` preservation through behavior decisions, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
-- Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
+- Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard-first wizard display, prompt snapshot, wizard-step rail, retry/recover for failed provider runs, sanitized developer-mode prompt provenance, workflow smoke guidance, and approved action/pet import command handoff.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` create host-owned durable trigger rules.
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
 - Creator Studio approved single-action imports now submit their generated `triggerProposal` into the host-owned trigger proposal inbox through the narrow `trigger-proposals:write` creator-tools bridge permission after action frames are imported; the plugin still does not directly apply trigger rules.
+- Creator Studio dashboard service only exposes local task/run/review routes, returns explicit JSON `404` for unknown `/api/*` paths, and cannot invoke command-scoped host bridge routes outside explicit command runs.
+- Creator Studio generation remains host-owned at the provider boundary; plugin-managed provider credentials are unsupported in the current trust model.
 
 ## P1 Architecture TODOs
 
@@ -59,14 +62,15 @@ Current state:
 - Chat Provider save and test are separated and provide section-local feedback.
 - Image Provider can be saved independently and health-checked through host services.
 - Provider diagnostics are structured and sanitized.
+- Chat/image provider presets exist for OpenAI official and local or proxied OpenAI-compatible gateways.
+- Chat/image provider health checks now perform optional `/models` discovery with safe fallback wording when probing is unavailable.
+- Chat/image model compatibility hints are visible in the AI pane, and image generation usage/cost summaries surface when safe provider metadata is returned.
 
 P1 work:
 
 - Split dense AI settings into clearer model-settings sections if the current AI pane becomes hard to operate.
-- Add provider presets/catalog entries for common OpenAI-compatible chat and image endpoints.
-- Add optional `/models` discovery where providers support it, with safe fallback wording when probing is unavailable.
-- Add provider compatibility hints, especially for image models that do or do not support transparent-background payload parameters.
-- Add user-visible generation usage/cost summaries when the provider response exposes safe metadata.
+- Add more provider presets/catalog coverage for common OpenAI-compatible gateways beyond the current baseline entries.
+- Keep provider compatibility copy aligned with real verified gateway behavior, especially for transparent-background support details.
 
 P2/P3:
 
@@ -90,11 +94,12 @@ Current state:
 - Memory is automatically extracted in the background and injected as dynamic context without blocking the main reply.
 - Memory injection is relevance-ranked by current user message, recent history, tags, scope, importance, confidence, recency, and use count; injected memories update `lastUsedAt` and `useCount`.
 - Memory profile UI can show global and pet-pack memories, delete one memory, and clear current pet-pack relationship memories.
+- Trace diagnostics export already supports pet-pack-specific and conversation-specific slices.
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
 
 P1 work:
 
-- Add richer trace filtering controls if developers need pet-pack-specific or conversation-specific export slices.
+- No current P1 gap is frozen at this boundary beyond keeping future trace UX aligned if new trace volume or streaming surfaces land.
 
 P2/P3:
 
@@ -149,17 +154,13 @@ Current state:
 - Question answer and task confirmation commands exist.
 - `openpet-prompt-builder` compiles OpenPet-specific prompts.
 - Host model bridge sends built prompts to host-owned image generation.
-- Run persistence, logs, QA metadata, dashboard preview, and approved action import paths exist.
+- Run persistence, logs, QA metadata, dashboard-first wizard preview, prompt provenance, workflow guidance, retry/recover, and approved action import paths exist.
 - Approved single-action imports submit generated trigger proposals to the host inbox with source plugin/command/run provenance after successful action frame import.
 
 P1 work:
 
-- Turn the existing command-level task flow into a smoother dashboard-first wizard with visible prompt, task preview, pending question, confirmation, generation, QA, and import states.
-- Preserve the current command paths as automation/test entry points while improving user-facing dashboard affordances.
-- Add explicit retry/recover flows for failed cloud/local generation without silently falling back to fixture.
-- Surface prompt-builder provenance in the dashboard, including sanitized final prompt preview for developer mode.
+- Preserve the current command paths as automation/test entry points while continuing dashboard UX polish.
 - Keep generated trigger proposal submission compatible with future random/state/event trigger-rule schema and editor semantics.
-- Add realistic smoke guidance for configured host image Provider generation.
 
 P2/P3:
 
@@ -183,12 +184,12 @@ Current state:
 - Plugin commands/services are explicit, permission-gated, and logged.
 - Creator-tools routes support bounded action, asset, pack metadata, pet-pack import, and model-generation flows.
 - Secrets stay in host services.
+- Creator Studio dashboard cannot use command-scoped host bridge routes directly; explicit command runs remain the only path that receives bridge URL/token credentials.
 
 P1 work:
 
 - Keep bridge route docs synchronized with actual route coverage and permission names.
 - Add targeted tests whenever a new route is added to prevent IPC/bridge drift.
-- Ensure Creator Studio dashboard cannot bypass command-scoped bridge tokens for privileged actions.
 - Document plugin-managed provider credentials as unsupported unless a future explicit trust model is designed.
 
 P2/P3:
