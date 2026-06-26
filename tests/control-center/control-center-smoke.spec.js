@@ -554,6 +554,28 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('已打开扩展聊天面板')
   })
 
+  test('AI page refreshes BubbleChat visibility after the window is externally closed', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatSection = await expandAiSection(page, '聊天')
+    const bubbleState = page.getByTestId('ai-bubble-chat-state')
+    await expect(bubbleState).toContainText('当前未显示')
+
+    await chatSection.getByRole('button', { name: '打开默认气泡聊天' }).click()
+    await expect(bubbleState).toContainText('当前已显示')
+
+    await page.evaluate(() => {
+      const key = 'openpet.controlCenter.demoState'
+      const state = JSON.parse(window.sessionStorage.getItem(key) || '{}')
+      state.petBubbleChatState = { visible: false, hasWindow: false }
+      window.sessionStorage.setItem(key, JSON.stringify(state))
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    await expect(bubbleState).toContainText('当前未显示')
+  })
+
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

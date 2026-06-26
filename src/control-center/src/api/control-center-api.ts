@@ -57,6 +57,10 @@ interface DemoState {
   aiMemoryJobs: AiMemoryJobViewState[]
   petChatMessages: ChatMessage[]
   petChatBubble: PetChatBubbleViewState
+  petBubbleChatState: {
+    visible: boolean
+    hasWindow: boolean
+  }
   imageGenerationConfig: ImageGenerationConfigViewState
   petPacks: PetPacksViewState
   serviceStatus: ServiceStatusViewState
@@ -291,8 +295,8 @@ const createDemoPetChatState = (): PetChatStateViewState => {
     },
     bubble: demoState.petChatBubble,
     bubbleChat: {
-      visible: false,
-      hasWindow: false
+      visible: Boolean(demoState.petBubbleChatState?.visible),
+      hasWindow: Boolean(demoState.petBubbleChatState?.hasWindow)
     },
     messages: demoState.petChatMessages
   })
@@ -615,6 +619,10 @@ const createDefaultDemoState = (): DemoState => ({
   aiMemoryJobs: [],
   petChatMessages: [],
   petChatBubble: defaultPetChatState.bubble,
+  petBubbleChatState: {
+    visible: false,
+    hasWindow: false
+  },
   imageGenerationConfig: cloneImageGenerationConfig(defaultImageGenerationConfig),
   petPacks: createDemoPetPacks(),
   serviceStatus: createDemoServiceStatus(),
@@ -642,6 +650,10 @@ const readDemoState = (): DemoState => {
       aiMemoryJobs: Array.isArray(state.aiMemoryJobs) ? state.aiMemoryJobs : [],
       petChatMessages: cloneChatMessages(state.petChatMessages),
       petChatBubble: clonePetChatState({ bubble: state.petChatBubble }).bubble,
+      petBubbleChatState: {
+        visible: Boolean(state.petBubbleChatState?.visible),
+        hasWindow: Boolean(state.petBubbleChatState?.hasWindow)
+      },
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
       petPacks: normalizeDemoPetPacks(state.petPacks),
       serviceStatus: cloneServiceStatus(state.serviceStatus),
@@ -660,6 +672,24 @@ const writeDemoState = () => {
 }
 
 const demoState = readDemoState()
+const syncDemoStateFromStorage = () => {
+  const nextState = readDemoState()
+  demoState.settings = nextState.settings
+  demoState.actionsConfig = nextState.actionsConfig
+  demoState.aiConfig = nextState.aiConfig
+  demoState.aiPersonaOverrides = nextState.aiPersonaOverrides
+  demoState.aiMemories = nextState.aiMemories
+  demoState.aiMemoryJobs = nextState.aiMemoryJobs
+  demoState.petChatMessages = nextState.petChatMessages
+  demoState.petChatBubble = nextState.petChatBubble
+  demoState.petBubbleChatState = nextState.petBubbleChatState
+  demoState.imageGenerationConfig = nextState.imageGenerationConfig
+  demoState.petPacks = nextState.petPacks
+  demoState.serviceStatus = nextState.serviceStatus
+  demoState.catalog = nextState.catalog
+  demoState.plugins = nextState.plugins
+  demoState.pluginLogs = nextState.pluginLogs
+}
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
 const demoCursorAssetUrl = `data:image/svg+xml;utf8,${encodeURIComponent(`
@@ -1263,8 +1293,18 @@ const demoApi: ControlCenterApi = {
   },
   getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
   chat: sendDemoPetChatMessage,
-  getPetChatState: async () => createDemoPetChatState(),
-  openPetBubbleChat: async () => ({ visible: true, hasWindow: true }),
+  getPetChatState: async () => {
+    syncDemoStateFromStorage()
+    return createDemoPetChatState()
+  },
+  openPetBubbleChat: async () => {
+    demoState.petBubbleChatState = {
+      visible: true,
+      hasWindow: true
+    }
+    writeDemoState()
+    return { ...demoState.petBubbleChatState }
+  },
   openPetChatWindow: async () => createDemoPetChatState(),
   sendPetChatMessage: sendDemoPetChatMessage,
   getAiBehavior: async () => cloneAiConfig(demoState.aiConfig).behavior,

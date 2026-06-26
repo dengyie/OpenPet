@@ -234,6 +234,14 @@ export function useAiPane(activeTab = 'ai') {
 
   const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
 
+  const refreshBubbleChatState = async () => {
+    const nextState = await api.getPetChatState()
+    setPetChatState((current) => clonePetChatState({
+      ...current,
+      bubbleChat: nextState.bubbleChat
+    }))
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
@@ -273,6 +281,22 @@ export function useAiPane(activeTab = 'ai') {
     void loadPersonaProfile().catch(() => {})
     void loadMemoryProfile().catch(() => {})
     void loadPetChatState().catch(() => {})
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'ai' || typeof window === 'undefined' || typeof document === 'undefined') return
+    const handleWindowFocus = () => { void refreshBubbleChatState().catch(() => {}) }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshBubbleChatState().catch(() => {})
+      }
+    }
+    window.addEventListener('focus', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [activeTab])
 
   const saveProviderConfigDraft = async () => {
