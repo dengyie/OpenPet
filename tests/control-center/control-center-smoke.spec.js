@@ -619,6 +619,8 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('image-model-discovery')).toContainText('模型列表探测成功')
     await expect(page.getByTestId('image-model-discovery')).toContainText('openpet-image-test')
     await expect(page.getByTestId('image-model-discovery')).toContainText('已包含当前模型')
+    await expect(page.getByTestId('image-usage-summary')).toContainText('使用量摘要')
+    await expect(page.getByTestId('image-usage-summary')).toContainText('usage.estimatedCostUsd')
     await expect(page.getByTestId('image-model-compatibility')).toContainText('transparent')
     await expect(page.getByTestId('image-model-compatibility')).toContainText('OpenAI-compatible')
 

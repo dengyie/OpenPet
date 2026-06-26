@@ -287,6 +287,30 @@ const renderImageModelDiscovery = (result: ImageGenerationHealthCheckResult | nu
   )
 }
 
+const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null) => {
+  const estimatedCost = result?.usage?.estimatedCostUsd
+  const hasUsage = result != null && result.usage != null && typeof estimatedCost === 'number'
+
+  if (!hasUsage) {
+    return (
+      <div className="provider-feedback" data-testid="image-usage-summary">
+        <strong>使用量摘要</strong>
+        <span>运行“检查图片健康”后，这里会显示本次健康检查返回的 usage 摘要（如有）。</span>
+      </div>
+    )
+  }
+
+  const formattedCost = Number.isFinite(estimatedCost) ? estimatedCost.toFixed(2) : '0.00'
+
+  return (
+    <div className={`provider-feedback ${result?.ok ? 'ok' : ''}`} data-testid="image-usage-summary">
+      <strong>使用量摘要</strong>
+      <span>{`当前健康检查返回的 usage.estimatedCostUsd：USD ${formattedCost}`}</span>
+      <span>这只是健康检查返回值，不代表完整生成流程的真实计费结算。</span>
+    </div>
+  )
+}
+
 const renderChatModelDiscovery = (result: AiConnectionTestResult | null, currentModel: string) => {
   const normalizedCurrentModel = String(currentModel || '').trim()
   if (!result) {
@@ -838,6 +862,8 @@ export function AiPane({
           ) : null}
 
           {renderImageModelDiscovery(imageHealthResult, imageGenerationConfig.model)}
+
+          {renderImageUsageSummary(imageHealthResult)}
 
           <div className="provider-feedback" data-testid="image-model-compatibility">
             <strong>{imageModelCompatibility.title}</strong>

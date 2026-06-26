@@ -1427,7 +1427,10 @@ const demoApi: ControlCenterApi = {
       message: 'ok',
       modelsProbe: 'ok',
       availableModels,
-      currentModelDiscovered: availableModels.includes(demoState.imageGenerationConfig.model)
+      currentModelDiscovered: availableModels.includes(demoState.imageGenerationConfig.model),
+      usage: /healthy-models/i.test(demoState.imageGenerationConfig.baseUrl)
+        ? { estimatedCostUsd: 0 }
+        : undefined
     }
   },
   getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
