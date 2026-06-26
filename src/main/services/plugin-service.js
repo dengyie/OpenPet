@@ -20,6 +20,7 @@ const { createPluginServiceLaunchController } = require('./plugin-service-launch
 const { createPluginCommandEntryProcessController } = require('./plugin-command-entry-process-controller')
 const { createPluginSetupProcessController } = require('./plugin-setup-process-controller')
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
+const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -1158,6 +1159,16 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     getRegisteredCommands: (sdk) => sdk[SDK_REGISTERED_COMMANDS]?.() || {}
   })
 
+  const dashboardOpenController = createPluginDashboardOpenController({
+    appendLog,
+    openExternal,
+    getDashboardEntry: (plugin, dashboardId) => {
+      const dashboard = (plugin.manifest.entries?.dashboards || []).find((entry) => entry.id === dashboardId)
+      if (!dashboard) throw new Error(`Plugin dashboard not found: ${dashboardId}`)
+      return dashboard
+    }
+  })
+
   const runCommand = async (pluginId, commandId, payload = {}) => {
     try {
       const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
@@ -1214,32 +1225,20 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
       assertPluginAllowed(plugin.manifest)
       if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
-      const dashboard = (plugin.manifest.entries?.dashboards || []).find((entry) => entry.id === dashboardId)
-      if (!dashboard) throw new Error(`Plugin dashboard not found: ${dashboardId}`)
-      let dashboardUrl
-      try {
-        dashboardUrl = new URL(dashboard.url)
-      } catch (_) {
-        throw new Error('Plugin dashboard URL is invalid')
-      }
-      if (!['http:', 'https:'].includes(dashboardUrl.protocol)) {
-        throw new Error('Plugin dashboard URL must use HTTP or HTTPS')
-      }
-      await openExternal(dashboardUrl.toString())
-      appendLog({ pluginId, commandId, level: 'info', message: 'Dashboard opened' })
-      return {
-        ok: true,
+      return await dashboardOpenController.open({
+        plugin,
         pluginId,
-        dashboardId,
-        url: dashboardUrl.toString()
-      }
-    } catch (error) {
-      appendLog({
-        pluginId,
-        commandId,
-        level: 'error',
-        message: error.message || 'Dashboard open failed'
+        dashboardId
       })
+    } catch (error) {
+      if (!error?.openpetLogged) {
+        appendLog({
+          pluginId,
+          commandId,
+          level: 'error',
+          message: error.message || 'Dashboard open failed'
+        })
+      }
       throw error
     }
   }
