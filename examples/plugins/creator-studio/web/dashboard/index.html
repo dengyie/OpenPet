@@ -464,6 +464,18 @@
         gap: 10px;
       }
 
+      .task-edit-action-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fffef8;
+        padding: 12px;
+      }
+
+      .task-edit-action-card h3 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+
       @media (max-width: 820px) {
         main {
           padding: 20px;
@@ -781,9 +793,57 @@
       }
 
       const renderTaskEditPanel = (run) => {
-        const action = Array.isArray(run?.generationTask?.actions) ? run.generationTask.actions[0] : null
+        const actions = Array.isArray(run?.generationTask?.actions) ? run.generationTask.actions : []
+        const action = actions[0] || null
         if (!action) return 'Draft a task to edit action details before confirmation.'
         const editingLocked = run?.taskStatus === 'confirmed'
+        if (isFullPetRun(run)) {
+          return [
+            '<div class="task-edit-form">',
+            '<div>',
+            '<label for="task-edit-character-brief">Character brief</label>',
+            `<textarea id="task-edit-character-brief" ${editingLocked ? 'disabled' : ''}>${escapeHtml(run.generationTask.characterBrief || '')}</textarea>`,
+            '</div>',
+            ...actions.map((plannedAction, index) => {
+              const triggerType = plannedAction.triggerProposal?.type || 'unbound'
+              return [
+                `<section class="task-edit-action-card" data-action-id="${escapeHtml(plannedAction.actionId || '')}">`,
+                `<h3>Action ${escapeHtml(index + 1)}: ${escapeHtml(plannedAction.name || plannedAction.actionId || 'Untitled')}</h3>`,
+                '<div>',
+                `<label for="task-edit-name-${escapeHtml(index)}">Action name</label>`,
+                `<input id="task-edit-name-${escapeHtml(index)}" data-task-edit="action-name" data-action-id="${escapeHtml(plannedAction.actionId || '')}" type="text" value="${escapeHtml(plannedAction.name || '')}" ${editingLocked ? 'disabled' : ''}>`,
+                '</div>',
+                '<div>',
+                `<label for="task-edit-motion-${escapeHtml(index)}">Motion description</label>`,
+                `<textarea id="task-edit-motion-${escapeHtml(index)}" data-task-edit="motion-prompt" data-action-id="${escapeHtml(plannedAction.actionId || '')}" ${editingLocked ? 'disabled' : ''}>${escapeHtml(plannedAction.motionPrompt || '')}</textarea>`,
+                '</div>',
+                '<div class="task-edit-grid">',
+                '<div>',
+                `<label for="task-edit-loop-${escapeHtml(index)}">Loop behavior</label>`,
+                `<select id="task-edit-loop-${escapeHtml(index)}" data-task-edit="loop" data-action-id="${escapeHtml(plannedAction.actionId || '')}" ${editingLocked ? 'disabled' : ''}>`,
+                `<option value="false" ${plannedAction.loop ? '' : 'selected'}>One-shot</option>`,
+                `<option value="true" ${plannedAction.loop ? 'selected' : ''}>Looping</option>`,
+                '</select>',
+                '</div>',
+                '<div>',
+                `<label for="task-edit-trigger-${escapeHtml(index)}">Trigger type</label>`,
+                `<select id="task-edit-trigger-${escapeHtml(index)}" data-task-edit="trigger-type" data-action-id="${escapeHtml(plannedAction.actionId || '')}" ${editingLocked ? 'disabled' : ''}>`,
+                ['manual', 'click', 'random', 'state', 'event', 'unbound'].map((option) => (
+                  `<option value="${escapeHtml(option)}" ${option === triggerType ? 'selected' : ''}>${escapeHtml(option)}</option>`
+                )).join(''),
+                '</select>',
+                '</div>',
+                '</div>',
+                '</section>'
+              ].join('')
+            }),
+            `<button id="save-task-button" type="button" class="secondary" ${editingLocked ? 'disabled' : ''}>Save task edits</button>`,
+            editingLocked
+              ? '<p>Task editing is locked after confirmation. Draft a new run if you need different task inputs.</p>'
+              : '<p>Adjust the full-pet brief and per-action task details before confirming the task.</p>',
+            '</div>'
+          ].join('')
+        }
         const triggerType = action.triggerProposal?.type || 'unbound'
         return [
           '<div class="task-edit-form">',
@@ -1250,11 +1310,25 @@
       $('task-edit-panel').addEventListener('click', async (event) => {
         if (event.target?.id !== 'save-task-button' || !state.run?.runId) return
         try {
+          const payloadBody = isFullPetRun(state.run)
+            ? {
+                characterBrief: $('task-edit-character-brief')?.value || '',
+                actions: (Array.isArray(state.run.generationTask?.actions) ? state.run.generationTask.actions : []).map((action, index) => ({
+                  actionId: action.actionId,
+                  actionName: $(`task-edit-name-${index}`)?.value || '',
+                  motionPrompt: $(`task-edit-motion-${index}`)?.value || '',
+                  loop: $(`task-edit-loop-${index}`)?.value === 'true',
+                  triggerType: $(`task-edit-trigger-${index}`)?.value || 'unbound'
+                }))
+              }
+            : {
+                actionName: $('task-edit-name')?.value || '',
+                motionPrompt: $('task-edit-motion')?.value || '',
+                loop: $('task-edit-loop')?.value === 'true',
+                triggerType: $('task-edit-trigger')?.value || 'unbound'
+              }
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/task`, {
-            actionName: $('task-edit-name')?.value || '',
-            motionPrompt: $('task-edit-motion')?.value || '',
-            loop: $('task-edit-loop')?.value === 'true',
-            triggerType: $('task-edit-trigger')?.value || 'unbound'
+            ...payloadBody
           })
           state.run = payload.run
           state.actionReview = payload.actionReview || null

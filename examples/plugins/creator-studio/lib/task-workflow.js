@@ -74,6 +74,37 @@ const applyTriggerAnswer = ({ generationTask, answer }) => ({
   questions: generationTask.questions.filter((question) => question.id !== 'trigger')
 })
 
+const normalizeNonEmptyText = (value, fallback) => {
+  const normalized = String(value || '').trim()
+  return normalized || fallback
+}
+
+const resolveTriggerProposal = (triggerType, fallbackProposal = TRIGGER_ANSWERS.unbound) => {
+  const normalizedType = String(triggerType || fallbackProposal?.type || 'unbound').trim()
+  const proposal = TRIGGER_ANSWERS[normalizedType]
+  if (!proposal) throw new Error(`Creator Studio trigger type is invalid: ${normalizedType}`)
+  return proposal
+}
+
+const buildLegacyActionUpdate = (updates = {}, currentAction = {}) => ({
+  actionId: currentAction.actionId,
+  actionName: updates.actionName,
+  motionPrompt: updates.motionPrompt,
+  loop: typeof updates.loop === 'boolean' ? updates.loop : currentAction.loop,
+  triggerType: updates.triggerType
+})
+
+const applyActionUpdate = ({ action, actionUpdate }) => {
+  const nextAction = {
+    ...action,
+    name: normalizeNonEmptyText(actionUpdate.actionName, action.name),
+    motionPrompt: normalizeNonEmptyText(actionUpdate.motionPrompt, action.motionPrompt),
+    loop: typeof actionUpdate.loop === 'boolean' ? actionUpdate.loop : Boolean(action.loop),
+    triggerProposal: resolveTriggerProposal(actionUpdate.triggerType, action.triggerProposal)
+  }
+  return nextAction
+}
+
 const updateTaskDraft = ({
   dataDir,
   runId,
@@ -83,25 +114,29 @@ const updateTaskDraft = ({
   const run = readRun({ dataDir, runId })
   if (!run.generationTask) throw new Error('Creator Studio run has no generation task')
   if (run.taskStatus === 'confirmed') throw new Error('Confirmed Creator Studio tasks cannot be edited')
-  const currentAction = Array.isArray(run.generationTask.actions) ? run.generationTask.actions[0] : null
+  const currentActions = Array.isArray(run.generationTask.actions) ? run.generationTask.actions : []
+  const currentAction = currentActions[0] || null
   if (!currentAction) throw new Error('Creator Studio task has no editable action')
-  const triggerType = String(updates.triggerType || currentAction.triggerProposal?.type || 'unbound').trim()
-  const triggerProposal = TRIGGER_ANSWERS[triggerType]
-  if (!triggerProposal) throw new Error(`Creator Studio trigger type is invalid: ${triggerType}`)
-  const actionName = String(updates.actionName || currentAction.name || '').trim() || currentAction.name
-  const motionPrompt = String(updates.motionPrompt || currentAction.motionPrompt || '').trim() || currentAction.motionPrompt
+  const requestedActionUpdates = Array.isArray(updates.actions) && updates.actions.length
+    ? updates.actions
+    : [buildLegacyActionUpdate(updates, currentAction)]
+  const actionUpdateMap = new Map(
+    requestedActionUpdates
+      .filter((actionUpdate) => actionUpdate && typeof actionUpdate === 'object')
+      .map((actionUpdate, index) => [
+        String(actionUpdate.actionId || currentActions[index]?.actionId || currentAction.actionId || ''),
+        actionUpdate
+      ])
+      .filter(([actionId]) => actionId)
+  )
   const editedAt = now()
   const generationTask = {
     ...run.generationTask,
-    actions: run.generationTask.actions.map((action, index) => index === 0
-      ? {
-          ...action,
-          name: actionName,
-          motionPrompt,
-          loop: Boolean(updates.loop),
-          triggerProposal
-        }
-      : action),
+    characterBrief: normalizeNonEmptyText(updates.characterBrief, run.generationTask.characterBrief),
+    actions: currentActions.map((action) => {
+      const actionUpdate = actionUpdateMap.get(action.actionId)
+      return actionUpdate ? applyActionUpdate({ action, actionUpdate }) : action
+    }),
     questions: run.generationTask.questions.filter((question) => question.id !== 'trigger')
   }
   const taskStatus = getTaskStatus(generationTask)
@@ -123,8 +158,10 @@ const updateTaskDraft = ({
     message: 'Creator Studio task updated from dashboard edit controls',
     data: {
       taskStatus,
-      triggerType,
-      loop: Boolean(updates.loop)
+      characterBriefUpdated: normalizeNonEmptyText(updates.characterBrief, '') !== '',
+      updatedActionIds: generationTask.actions
+        .filter((action) => actionUpdateMap.has(action.actionId))
+        .map((action) => action.actionId)
     },
     now: () => editedAt
   })

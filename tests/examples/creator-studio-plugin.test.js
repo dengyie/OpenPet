@@ -2746,6 +2746,7 @@ test('creator studio dashboard asset exposes task edit controls before confirmat
   assert.match(html, /Motion description/)
   assert.match(html, /Loop behavior/)
   assert.match(html, /Trigger type/)
+  assert.match(html, /Character brief/)
 })
 
 test('creator studio service rejects unknown api routes instead of falling back to dashboard html', async () => {
@@ -3420,6 +3421,90 @@ test('creator studio service lets dashboard update a drafted single-action task 
     assert.equal(stored.ok, true)
     assert.equal(stored.run.generationTask.actions[0].name, '害羞打滚')
     assert.equal(stored.run.generationTask.actions[0].triggerProposal.type, 'manual')
+    assert.equal(JSON.stringify(stored).includes(dataDir), false)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service lets dashboard update a drafted full-pet task before confirmation', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-full-pet-task-edit-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  const postJson = (pathname, body = {}) => fetch(`http://127.0.0.1:${port}${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then((response) => response.json())
+
+  try {
+    const draft = await postJson('/api/tasks/draft', {
+      prompt: '生成一只完整的新桌宠。',
+      backend: 'fixture',
+      generationTask: normalizeGenerationTask({
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只软乎乎的橘猫桌宠。',
+        actions: [
+          {
+            actionId: 'idle',
+            name: 'Idle',
+            motionPrompt: 'neutral idle pose',
+            loop: true,
+            frameCount: 12,
+            triggerProposal: { type: 'state', binding: 'idle' }
+          },
+          {
+            actionId: 'shy-spin',
+            name: 'Shy Spin',
+            motionPrompt: 'spin shyly after click',
+            loop: false,
+            frameCount: 16,
+            triggerProposal: { type: 'click', binding: 'clickAction' }
+          }
+        ]
+      })
+    })
+
+    const updated = await postJson(`/api/runs/${draft.run.runId}/task`, {
+      characterBrief: '一只更圆润、软乎乎、奶油橘色的桌宠。',
+      actions: [
+        {
+          actionId: 'idle',
+          actionName: 'Lazy Idle',
+          motionPrompt: 'slow breathing with tiny ear flicks',
+          loop: true,
+          triggerType: 'state'
+        },
+        {
+          actionId: 'shy-spin',
+          actionName: 'Shy Twirl',
+          motionPrompt: 'curl up first, then twirl bashfully once',
+          loop: false,
+          triggerType: 'manual'
+        }
+      ]
+    })
+
+    assert.equal(updated.ok, true)
+    assert.equal(updated.run.taskStatus, 'ready_for_confirmation')
+    assert.equal(updated.run.generationTask.characterBrief, '一只更圆润、软乎乎、奶油橘色的桌宠。')
+    assert.equal(updated.run.generationTask.actions[0].name, 'Lazy Idle')
+    assert.equal(updated.run.generationTask.actions[0].motionPrompt, 'slow breathing with tiny ear flicks')
+    assert.equal(updated.run.generationTask.actions[0].triggerProposal.type, 'state')
+    assert.equal(updated.run.generationTask.actions[1].name, 'Shy Twirl')
+    assert.equal(updated.run.generationTask.actions[1].motionPrompt, 'curl up first, then twirl bashfully once')
+    assert.equal(updated.run.generationTask.actions[1].triggerProposal.type, 'manual')
+
+    const stored = await fetch(`http://127.0.0.1:${port}/api/runs/${draft.run.runId}`).then((response) => response.json())
+    assert.equal(stored.ok, true)
+    assert.equal(stored.run.generationTask.characterBrief, '一只更圆润、软乎乎、奶油橘色的桌宠。')
+    assert.equal(stored.run.generationTask.actions[1].name, 'Shy Twirl')
     assert.equal(JSON.stringify(stored).includes(dataDir), false)
   } finally {
     await new Promise((resolve) => server.close(resolve))
