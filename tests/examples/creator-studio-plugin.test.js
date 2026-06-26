@@ -2010,6 +2010,7 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /Creator Studio/)
   assert.match(html, /id="prompt-input"/)
   assert.match(html, /id="task-preview"/)
+  assert.match(html, /id="wizard-state-panel"/)
   assert.match(html, /id="trigger-panel"/)
   assert.match(html, /id="action-review"/)
   assert.match(html, /id="run-select"/)
@@ -2158,6 +2159,15 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     assert.equal(detail.run.artifacts.actionFrames.framesDir, undefined)
     assert.equal(detail.run.artifacts.actionFrames.qa, `runs/${run.runId}/qa/action-frame-validation.json`)
     assert.equal(detail.run.artifacts.generatedImage, undefined)
+    assert.deepEqual(detail.wizardState, {
+      stage: 'review',
+      label: 'Review Output',
+      nextStep: 'Review the generated frames, repair any bad frame, then approve the run.',
+      taskStatus: 'ready_for_confirmation',
+      runStatus: 'ready_for_review',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported'
+    })
     assert.deepEqual(detail.promptProvenance, {
       version: 1,
       mode: 'single-action',
@@ -2300,11 +2310,29 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(generated.run.artifacts.actionTaskQa.endsWith('action-generation-task.json'), true)
     assert.equal(fs.existsSync(path.join(dataDir, generated.run.artifacts.actionTaskQa)), true)
     assert.equal(JSON.stringify(generated).includes(dataDir), false)
+    assert.deepEqual(generated.wizardState, {
+      stage: 'review',
+      label: 'Review Output',
+      nextStep: 'Review the generated output and approve the run when QA looks correct.',
+      taskStatus: 'confirmed',
+      runStatus: 'ready_for_review',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported'
+    })
     assert.equal(approved.ok, true)
     assert.equal(approved.run.status, 'approved')
     assert.equal(approved.run.reviewStatus, 'approved')
     assert.equal(approved.run.currentStep, 'approved')
     assert.equal(approved.run.artifacts.generatedImage, undefined)
+    assert.deepEqual(approved.wizardState, {
+      stage: 'approved',
+      label: 'Approved',
+      nextStep: 'Run the Import Approved Pet command in OpenPet to finish the host-owned import.',
+      taskStatus: 'confirmed',
+      runStatus: 'approved',
+      reviewStatus: 'approved',
+      importStatus: 'not-imported'
+    })
     assert.equal(approved.importCommand, 'import-approved-pet')
     assert.equal(approved.actionReview, null)
     assert.equal(JSON.stringify(approved).includes(dataDir), false)

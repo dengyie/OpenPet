@@ -165,6 +165,102 @@ const createImageUsageSummary = ({ run }) => {
   }
 }
 
+const createWizardState = ({ run }) => {
+  const question = Array.isArray(run.generationTask?.questions) ? run.generationTask.questions[0] : null
+  if (run.importStatus === 'imported') {
+    return {
+      stage: 'imported',
+      label: 'Imported',
+      nextStep: 'Host import completed. Review the imported action or pet pack in OpenPet.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  if (run.status === 'approved') {
+    return {
+      stage: 'approved',
+      label: 'Approved',
+      nextStep: run.artifacts?.actionFrames
+        ? 'Run the Import Approved Action command in OpenPet to finish the host-owned import.'
+        : 'Run the Import Approved Pet command in OpenPet to finish the host-owned import.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  if (run.status === 'ready_for_review') {
+    return {
+      stage: 'review',
+      label: 'Review Output',
+      nextStep: run.artifacts?.actionFrames
+        ? 'Review the generated frames, repair any bad frame, then approve the run.'
+        : 'Review the generated output and approve the run when QA looks correct.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  if (run.status === 'failed') {
+    return {
+      stage: 'failed',
+      label: 'Generation Failed',
+      nextStep: 'Review the backend recovery guidance, fix the provider issue if needed, then retry generation.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  if (run.taskStatus === 'confirmed') {
+    return {
+      stage: 'confirmed',
+      label: 'Ready To Generate',
+      nextStep: 'Generate the action or pet output from this confirmed task.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  if (run.taskStatus === 'needs_input') {
+    return {
+      stage: 'needs_input',
+      label: 'Needs Input',
+      nextStep: question
+        ? `Answer the pending question: ${question.prompt || question.id}`
+        : 'Answer the remaining task questions before confirmation.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  if (run.taskStatus === 'ready_for_confirmation') {
+    return {
+      stage: 'ready_for_confirmation',
+      label: 'Ready For Confirmation',
+      nextStep: 'Confirm the drafted task before generation.',
+      taskStatus: String(run.taskStatus || ''),
+      runStatus: String(run.status || ''),
+      reviewStatus: String(run.reviewStatus || ''),
+      importStatus: String(run.importStatus || '')
+    }
+  }
+  return {
+    stage: 'draft',
+    label: 'Draft',
+    nextStep: 'Draft a task from the prompt to begin the Creator Studio workflow.',
+    taskStatus: String(run.taskStatus || ''),
+    runStatus: String(run.status || ''),
+    reviewStatus: String(run.reviewStatus || ''),
+    importStatus: String(run.importStatus || '')
+  }
+}
+
 const createBackendRecovery = ({ run }) => {
   const backendStatus = run.backendStatus || {}
   if (run.status !== 'failed' || run.currentStep !== 'generate') return null
@@ -286,7 +382,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ...output,
         run: createPublicRun({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
-        imageUsageSummary: createImageUsageSummary({ run: output.run })
+        imageUsageSummary: createImageUsageSummary({ run: output.run }),
+        wizardState: createWizardState({ run: output.run })
       })
       return true
     }
@@ -304,7 +401,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ...output,
         run: createPublicRun({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
-        imageUsageSummary: createImageUsageSummary({ run: output.run })
+        imageUsageSummary: createImageUsageSummary({ run: output.run }),
+        wizardState: createWizardState({ run: output.run })
       })
       return true
     }
@@ -320,7 +418,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ...output,
         run: createPublicRun({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
-        imageUsageSummary: createImageUsageSummary({ run: output.run })
+        imageUsageSummary: createImageUsageSummary({ run: output.run }),
+        wizardState: createWizardState({ run: output.run })
       })
       return true
     }
@@ -337,6 +436,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         actionReview: createActionReview({ dataDir, run: output.run }),
         promptProvenance: createPromptProvenance({ run: output.run }),
         imageUsageSummary: createImageUsageSummary({ run: output.run }),
+        wizardState: createWizardState({ run: output.run }),
         outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
       })
       return true
@@ -370,6 +470,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         actionReview: createActionReview({ dataDir, run }),
         promptProvenance: createPromptProvenance({ run }),
         imageUsageSummary: createImageUsageSummary({ run }),
+        wizardState: createWizardState({ run }),
         importCommand: run.artifacts?.actionFrames ? 'import-approved-action' : 'import-approved-pet'
       })
       return true
@@ -427,6 +528,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         actionReview: createActionReview({ dataDir, run: nextRun }),
         promptProvenance: createPromptProvenance({ run: nextRun }),
         imageUsageSummary: createImageUsageSummary({ run: nextRun }),
+        wizardState: createWizardState({ run: nextRun }),
         repair: {
           actionId: repair.actionId,
           fileName: repair.fileName,
@@ -477,6 +579,7 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
         actionReview: createActionReview({ dataDir, run }),
         promptProvenance: createPromptProvenance({ run }),
         imageUsageSummary: createImageUsageSummary({ run }),
+        wizardState: createWizardState({ run }),
         backendRecovery: createBackendRecovery({ run })
       })
       return

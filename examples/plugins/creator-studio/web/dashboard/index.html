@@ -273,6 +273,10 @@
             <section id="task-preview">No task drafted yet.</section>
           </section>
           <section>
+            <h2>Workflow Status</h2>
+            <section id="wizard-state-panel">No workflow summary yet.</section>
+          </section>
+          <section>
             <h2>Follow-up</h2>
             <section id="question-panel">No pending question.</section>
           </section>
@@ -316,7 +320,7 @@
     </main>
 
     <script>
-      const state = { run: null, actionReview: null, promptProvenance: null, imageUsageSummary: null, backendRecovery: null, runs: [] }
+      const state = { run: null, actionReview: null, promptProvenance: null, imageUsageSummary: null, wizardState: null, backendRecovery: null, runs: [] }
       const $ = (id) => document.getElementById(id)
 
       const setStatus = (message, kind = '') => {
@@ -375,6 +379,7 @@
         state.actionReview = payload.actionReview || null
         state.promptProvenance = payload.promptProvenance || null
         state.imageUsageSummary = payload.imageUsageSummary || null
+        state.wizardState = payload.wizardState || null
         state.backendRecovery = payload.backendRecovery || null
         renderRunList()
       }
@@ -430,10 +435,20 @@
         ].join('')
       }
 
+      const renderWizardState = (wizardState) => {
+        if (!wizardState) return 'No workflow summary yet.'
+        return [
+          `<p><strong>${escapeHtml(wizardState.label || wizardState.stage || 'Stage')}</strong></p>`,
+          `<p>Next: ${escapeHtml(wizardState.nextStep || 'No next step available.')}</p>`,
+          `<p>Task: ${escapeHtml(wizardState.taskStatus || 'unknown')} / Run: ${escapeHtml(wizardState.runStatus || 'unknown')} / Review: ${escapeHtml(wizardState.reviewStatus || 'unknown')} / Import: ${escapeHtml(wizardState.importStatus || 'unknown')}</p>`
+        ].join('')
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
           $('task-preview').textContent = 'No task drafted yet.'
+          $('wizard-state-panel').textContent = 'No workflow summary yet.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
           $('prompt-provenance-panel').textContent = 'No prompt provenance yet.'
@@ -455,6 +470,7 @@
           `<p>Mode: ${escapeHtml(run.generationTask.mode)} / Frames: ${escapeHtml(action.frameCount)} / Loop: ${action.loop ? 'yes' : 'no'}</p>`,
           `<p>${escapeHtml(action.motionPrompt)}</p>`
         ].join('')
+        $('wizard-state-panel').innerHTML = renderWizardState(state.wizardState)
         $('trigger-panel').innerHTML = `<strong>${escapeHtml(action.triggerProposal.type)}</strong><p>${escapeHtml(action.triggerProposal.notes || 'No notes.')}</p>`
         $('prompt-provenance-panel').innerHTML = renderPromptProvenance(state.promptProvenance)
         $('generation-usage-panel').innerHTML = renderImageUsageSummary(state.imageUsageSummary)
@@ -532,6 +548,7 @@
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
           state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -551,6 +568,7 @@
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
           state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -571,6 +589,7 @@
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
           state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -589,6 +608,7 @@
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
           state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
@@ -607,6 +627,7 @@
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
           state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
           if (!state.actionReview) await fetchRunDetail()
           renderRun()
@@ -626,6 +647,7 @@
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
           state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
           state.backendRecovery = payload.backendRecovery || null
           renderRun()
           await refreshLogs()
