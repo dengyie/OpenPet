@@ -281,6 +281,10 @@
             <section id="trigger-panel">No trigger proposal yet.</section>
           </section>
           <section>
+            <h2>Prompt Provenance</h2>
+            <section id="prompt-provenance-panel">No prompt provenance yet.</section>
+          </section>
+          <section>
             <h2>Import Handoff</h2>
             <section id="import-handoff-panel">Generate and approve an action to unlock host-owned import.</section>
           </section>
@@ -304,7 +308,7 @@
     </main>
 
     <script>
-      const state = { run: null, actionReview: null, runs: [] }
+      const state = { run: null, actionReview: null, promptProvenance: null, runs: [] }
       const $ = (id) => document.getElementById(id)
 
       const setStatus = (message, kind = '') => {
@@ -361,6 +365,7 @@
         if (!payload.ok) throw new Error(payload.error || 'Failed to load run detail')
         state.run = payload.run
         state.actionReview = payload.actionReview || null
+        state.promptProvenance = payload.promptProvenance || null
         renderRunList()
       }
 
@@ -386,12 +391,23 @@
         )).join('')}</div>`
       }
 
+      const renderPromptProvenance = (provenance) => {
+        if (!provenance) return 'No prompt provenance yet.'
+        return [
+          `<p><strong>Builder v${escapeHtml(provenance.version)}</strong> / ${escapeHtml(provenance.mode || 'unknown')} / action ${escapeHtml(provenance.actionId || 'unknown')}</p>`,
+          `<p>Sections: ${escapeHtml((provenance.sections || []).join(', ') || 'none')}</p>`,
+          `<p>Warnings: ${escapeHtml((provenance.warnings || []).join(', ') || 'none')}</p>`,
+          `<pre>${escapeHtml(provenance.promptPreview || 'No prompt preview available.')}</pre>`
+        ].join('')
+      }
+
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
           $('task-preview').textContent = 'No task drafted yet.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
+          $('prompt-provenance-panel').textContent = 'No prompt provenance yet.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
           $('import-handoff-panel').textContent = 'Generate and approve an action to unlock host-owned import.'
@@ -409,6 +425,7 @@
           `<p>${escapeHtml(action.motionPrompt)}</p>`
         ].join('')
         $('trigger-panel').innerHTML = `<strong>${escapeHtml(action.triggerProposal.type)}</strong><p>${escapeHtml(action.triggerProposal.notes || 'No notes.')}</p>`
+        $('prompt-provenance-panel').innerHTML = renderPromptProvenance(state.promptProvenance)
         if (question) {
           $('question-panel').innerHTML = question.options.map((option) => (
             `<button data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`
@@ -480,6 +497,7 @@
           })
           state.run = payload.run
           state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -496,6 +514,7 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/questions/trigger/answer`, { answer })
           state.run = payload.run
           state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -513,6 +532,7 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/action-frames/${encodeURIComponent(actionId)}/${encodeURIComponent(fileName)}/repair`)
           state.run = payload.run
           state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -528,6 +548,7 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/confirm`)
           state.run = payload.run
           state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()
@@ -543,6 +564,7 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/generate-action`)
           state.run = payload.run
           state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
           if (!state.actionReview) await fetchRunDetail()
           renderRun()
           await refreshLogs()
@@ -559,6 +581,7 @@
           const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/approve`)
           state.run = payload.run
           state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
           renderRun()
           await refreshLogs()
           await refreshRunList()

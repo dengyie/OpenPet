@@ -188,6 +188,7 @@ const buildOpenPetImagePrompt = ({
 
   return {
     prompt: renderPrompt(sectionMap),
+    promptPreview: renderPrompt(sectionMap),
     sections: SECTION_ORDER.slice(),
     warnings,
     mode: task.mode,

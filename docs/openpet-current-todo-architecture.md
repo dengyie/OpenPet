@@ -44,7 +44,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The highest
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-ranked memory injection, injected-memory usage tracking, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Active pet-pack changes now emit explicit refresh signals so the AI pane reloads persona, memory profile, and chat state without requiring a tab switch or window reopen.
-- Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
+- Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, approved action import paths, and dashboard-visible prompt provenance with a sanitized final prompt preview.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` remain pending host-rule work.
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
 - `PluginService` high-risk subdomains are now split into focused controllers for resolution, config/storage, runtime SDK, creator bridge handlers, asset/path safety, listing/projection, policy/signature gating, dashboard open, and management writes. The remaining `PluginService` code is intentionally kept as orchestration; see `docs/plugin-service-architecture-checkpoint.md`.
@@ -157,7 +157,6 @@ P1 work:
 - Turn the existing command-level task flow into a smoother dashboard-first wizard with visible prompt, task preview, pending question, confirmation, generation, QA, and import states.
 - Preserve the current command paths as automation/test entry points while improving user-facing dashboard affordances.
 - Add explicit retry/recover flows for failed cloud/local generation without silently falling back to fixture.
-- Surface prompt-builder provenance in the dashboard, including sanitized final prompt preview for developer mode.
 - Connect generated trigger proposals directly into the existing host trigger proposal inbox from successful generation/import flows.
 - Add realistic smoke guidance for configured host image Provider generation.
 

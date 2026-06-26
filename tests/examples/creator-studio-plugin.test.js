@@ -2022,6 +2022,8 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /contact-sheet/)
   assert.match(html, /action-frame-validation\.json/)
   assert.match(html, /id="run-logs"/)
+  assert.match(html, /id="prompt-provenance-panel"/)
+  assert.match(html, /Prompt Provenance/)
   assert.equal(html.includes('apiKey'), false)
   assert.equal(/\bsk-[A-Za-z0-9_-]+/.test(html), false)
 })
@@ -2063,11 +2065,24 @@ test('creator studio service exposes run detail and logs for dashboard clients',
           backend: 'fixture',
           model: 'fixture-image',
           generatedAt: '2026-06-19T00:00:00.000Z',
+          prompt: [
+            '## Intent',
+            '- Safe line',
+            '## User Creative Brief',
+            '- sketch from /Users/mango/secret with token sk-test-secret'
+          ].join('\n'),
           outputs: [{
             dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
             mimeType: 'image/png',
             sha256: 'service-source-sha'
-          }]
+          }],
+          promptBuilder: {
+            version: 1,
+            mode: 'single-action',
+            actionId: 'shy-spin',
+            sections: ['Intent', 'User Creative Brief'],
+            warnings: ['creative_brief_sanitized']
+          }
         },
         actionFrames: {
           actionId: 'shy-spin',
@@ -2136,7 +2151,22 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     assert.equal(detail.run.artifacts.actionFrames.framesDir, undefined)
     assert.equal(detail.run.artifacts.actionFrames.qa, `runs/${run.runId}/qa/action-frame-validation.json`)
     assert.equal(detail.run.artifacts.generatedImage, undefined)
+    assert.deepEqual(detail.promptProvenance, {
+      version: 1,
+      mode: 'single-action',
+      actionId: 'shy-spin',
+      sections: ['Intent', 'User Creative Brief'],
+      warnings: ['creative_brief_sanitized'],
+      promptPreview: [
+        '## Intent',
+        '- Safe line',
+        '## User Creative Brief',
+        '- sketch from [redacted-path] with [redacted-token] [redacted-secret]'
+      ].join('\n')
+    })
     assert.equal(JSON.stringify(detail).includes(dataDir), false)
+    assert.equal(detail.promptProvenance.promptPreview.includes('/Users/mango'), false)
+    assert.equal(detail.promptProvenance.promptPreview.includes('sk-test-secret'), false)
     assert.equal(logs.ok, true)
     assert.deepEqual(logs.logs.map((entry) => entry.event), ['run.created'])
     assert.equal(JSON.stringify(logs).includes(dataDir), false)

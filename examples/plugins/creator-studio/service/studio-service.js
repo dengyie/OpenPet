@@ -5,6 +5,7 @@ const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = requir
 const { runGenerationStep } = require('../lib/backend-runner')
 const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun } = require('../lib/task-workflow')
+const { sanitizeCreativeBrief } = require('../lib/openpet-prompt-builder')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
 
@@ -134,6 +135,21 @@ const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
   return publicArtifacts
 }
 
+const createPromptProvenance = ({ run }) => {
+  const generatedImage = run.artifacts?.generatedImage
+  const promptBuilder = generatedImage?.promptBuilder
+  if (!generatedImage || !promptBuilder) return null
+  const promptPreview = sanitizeCreativeBrief(generatedImage.prompt || promptBuilder.promptPreview || '')
+  return {
+    version: promptBuilder.version,
+    mode: promptBuilder.mode,
+    actionId: promptBuilder.actionId,
+    sections: Array.isArray(promptBuilder.sections) ? promptBuilder.sections.slice() : [],
+    warnings: Array.isArray(promptBuilder.warnings) ? promptBuilder.warnings.slice() : [],
+    promptPreview
+  }
+}
+
 const createPublicRun = ({ dataDir, run }) => ({
   ...run,
   artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} })
@@ -231,7 +247,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       sendJson(response, 200, {
         ok: true,
         ...output,
-        run: createPublicRun({ dataDir, run: output.run })
+        run: createPublicRun({ dataDir, run: output.run }),
+        promptProvenance: createPromptProvenance({ run: output.run })
       })
       return true
     }
@@ -247,7 +264,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       sendJson(response, 200, {
         ok: true,
         ...output,
-        run: createPublicRun({ dataDir, run: output.run })
+        run: createPublicRun({ dataDir, run: output.run }),
+        promptProvenance: createPromptProvenance({ run: output.run })
       })
       return true
     }
@@ -261,7 +279,8 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       sendJson(response, 200, {
         ok: true,
         ...output,
-        run: createPublicRun({ dataDir, run: output.run })
+        run: createPublicRun({ dataDir, run: output.run }),
+        promptProvenance: createPromptProvenance({ run: output.run })
       })
       return true
     }
@@ -276,6 +295,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         run: createPublicRun({ dataDir, run: output.run }),
         actionReview: createActionReview({ dataDir, run: output.run }),
+        promptProvenance: createPromptProvenance({ run: output.run }),
         outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
       })
       return true
@@ -307,6 +327,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         run: createPublicRun({ dataDir, run }),
         actionReview: createActionReview({ dataDir, run }),
+        promptProvenance: createPromptProvenance({ run }),
         importCommand: run.artifacts?.actionFrames ? 'import-approved-action' : 'import-approved-pet'
       })
       return true
@@ -362,6 +383,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         ok: true,
         run: createPublicRun({ dataDir, run: nextRun }),
         actionReview: createActionReview({ dataDir, run: nextRun }),
+        promptProvenance: createPromptProvenance({ run: nextRun }),
         repair: {
           actionId: repair.actionId,
           fileName: repair.fileName,
@@ -409,7 +431,8 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
       sendJson(response, 200, {
         ok: true,
         run: createPublicRun({ dataDir, run }),
-        actionReview: createActionReview({ dataDir, run })
+        actionReview: createActionReview({ dataDir, run }),
+        promptProvenance: createPromptProvenance({ run })
       })
       return
     } catch (error) {

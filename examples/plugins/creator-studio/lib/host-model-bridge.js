@@ -72,7 +72,8 @@ const generateViaHostModelBridge = async ({ backend, run }) => {
       mode: promptBuild.mode,
       actionId: promptBuild.actionId,
       sections: promptBuild.sections,
-      warnings: promptBuild.warnings
+      warnings: promptBuild.warnings,
+      promptPreview: promptBuild.promptPreview
     }
   }
 }
