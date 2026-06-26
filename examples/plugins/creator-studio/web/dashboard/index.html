@@ -1373,7 +1373,8 @@
           renderRun()
           await refreshLogs()
           await refreshRunList()
-          setStatus(`Generated action output in ${payload.outputDir || 'run workspace'}.`, 'ok')
+          const outputLabel = isFullPetRun(payload.run) ? 'pet-pack' : 'action'
+          setStatus(`Generated ${outputLabel} output in ${payload.outputDir || 'run workspace'}.`, 'ok')
         } catch (error) {
           if (error.payload?.run) {
             state.run = error.payload.run

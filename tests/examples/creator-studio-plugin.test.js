@@ -632,6 +632,10 @@ test('creator studio backend runner generates fixture output through the selecte
   assert.equal(actionQa.actions[0].triggerProposal.type, 'click')
   assert.equal(actionQa.importPolicy.appliesTriggerAutomatically, false)
   assert.equal(actionQa.importPolicy.triggerProposalOwner, 'openpet-host')
+  assert.equal(Object.hasOwn(actionQa, 'originalPrompt'), false)
+  assert.equal(Object.hasOwn(actionQa, 'promptBuilder'), false)
+  assert.equal(JSON.stringify(actionQa).includes('被摸头后害羞转圈'), true)
+  assert.equal(JSON.stringify(actionQa).includes('给当前猫猫加一个“被摸头后害羞转圈”的动作，点击触发，风格保持一致。'), false)
   assert.equal(frameQa.ok, true)
   assert.equal(frameQa.actionId, confirmed.run.generationTask.actions[0].actionId)
   assert.equal(frameQa.frameCount, 16)
@@ -1252,6 +1256,120 @@ test('creator studio host-bridged local run can be approved and exported as a st
   } finally {
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
+  }
+})
+
+test('creator studio provider full-pet generation writes task qa without prompt text or prompt builder payload', async () => {
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-provider-full-pet-qa-'))
+  const created = runCreatorCommand({
+    command: 'create-run',
+    dataDir,
+    payload: {
+      petName: 'Provider QA Cat',
+      prompt: '生成一只完整的新桌宠。API key sk-test-secret 放在 /Users/mango/private/ref.png ，走 http://127.0.0.1:8317/v1。',
+      backend: 'local',
+      generationTask: normalizeGenerationTask({
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只圆滚滚的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      })
+    },
+    config: { backend: 'local' }
+  })
+  const { server } = createBridgeServer({
+    routes: [
+      {
+        path: '/creator/model-settings',
+        handler: () => ({
+          body: {
+            ok: true,
+            config: {
+              provider: 'openai-compatible',
+              baseUrl: 'http://127.0.0.1:7860/v1',
+              model: 'local-pet-sprite',
+              apiKeyRef: 'secret:model.image.openai.apiKey'
+            }
+          }
+        })
+      },
+      {
+        path: '/creator/model-image-generate',
+        handler: ({ payload }) => {
+          const dataRelativePath = `${payload.output.dataRelativeDir}/0001.png`
+          return {
+            body: {
+              ok: true,
+              result: {
+                ok: true,
+                backend: 'local',
+                model: 'local-pet-sprite',
+                generatedAt: '2026-06-27T00:00:00.000Z',
+                outputs: [{
+                  dataRelativePath,
+                  mimeType: 'image/png',
+                  sha256: 'provider-full-pet-sha'
+                }]
+              }
+            }
+          }
+        }
+      }
+    ]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const generatedImagePath = path.join(dataDir, 'runs', created.json.run.runId, 'frames', 'base', '0001.png')
+    fs.mkdirSync(path.dirname(generatedImagePath), { recursive: true })
+    await sharp({
+      create: {
+        width: 96,
+        height: 112,
+        channels: 4,
+        background: { r: 230, g: 130, b: 40, alpha: 1 }
+      }
+    }).png().toFile(generatedImagePath)
+
+    const generated = await runCreatorCommandAsync({
+      command: 'run-step',
+      dataDir,
+      payload: { runId: created.json.run.runId },
+      config: { backend: 'local' },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const actionTaskQaPath = generated.json.run.artifacts.actionTaskQa
+    const actionTaskQa = JSON.parse(fs.readFileSync(actionTaskQaPath, 'utf-8'))
+    const serialized = JSON.stringify(actionTaskQa)
+
+    assert.equal(generated.status, 0)
+    assert.equal(actionTaskQa.ok, true)
+    assert.equal(actionTaskQa.mode, 'full-pet')
+    assert.equal(actionTaskQa.targetPet, 'new')
+    assert.equal(actionTaskQa.styleSource, 'textOnly')
+    assert.equal(Object.hasOwn(actionTaskQa, 'originalPrompt'), false)
+    assert.equal(Object.hasOwn(actionTaskQa, 'promptBuilder'), false)
+    assert.equal(serialized.includes(dataDir), false)
+    assert.equal(serialized.includes('sk-test-secret'), false)
+    assert.equal(serialized.includes('/Users/mango/private/ref.png'), false)
+    assert.equal(serialized.includes('127.0.0.1:8317'), false)
+    assert.equal(serialized.includes('生成一只完整的新桌宠'), false)
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
   }
 })
 

@@ -46,6 +46,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Trigger pro
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard-first wizard display, prompt snapshot, wizard-step rail, retry/recover for failed provider runs, sanitized developer-mode prompt provenance, workflow smoke guidance, and structured approved action/pet import command handoff that tells the dashboard which Control Center plugin command to run while preserving command-scoped bridge-token boundaries.
 - Creator Studio fixture single-action runs now produce reviewable action-frame artifacts, contact-sheet QA, repairable frame previews, and an `Import Approved Action` dashboard handoff, so the dashboard can validate the action-specific review/import path without a live provider.
+- Creator Studio dashboard browser regressions now cover both single-action and full-pet fixture flows through draft/confirm/generate/review/approve to the correct host-owned import handoff, including mode-correct generation status copy and the `Import Approved Pet` full-pet review path.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` create host-owned durable trigger rules.
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
 - Creator Studio approved single-action imports now submit their generated `triggerProposal` into the host-owned trigger proposal inbox through the narrow `trigger-proposals:write` creator-tools bridge permission after action frames are imported; the plugin still does not directly apply trigger rules.
@@ -245,9 +246,9 @@ P2/P3:
 
 Choose one of these when starting the next development milestone:
 
-1. Creator Studio Dashboard Wizard Polish
-   - User value: users can drive custom action generation from dashboard instead of running individual commands.
-   - Main files: Creator Studio service/dashboard/commands, plugin tests, host bridge tests.
+1. Creator Studio Real Atlas Packaging
+   - User value: imported provider-generated pets use the real generated sprite instead of a placeholder atlas.
+   - Main files: `examples/plugins/creator-studio/lib/real-atlas-builder.js`, backend runner/import QA, Creator Studio dashboard review surfaces.
 
 2. Model Settings Product Polish
    - User value: provider setup is clearer for local and hosted image/chat gateways.

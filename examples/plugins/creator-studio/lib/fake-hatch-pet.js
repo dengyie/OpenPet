@@ -114,7 +114,6 @@ const generateFixtureActionOutput = async ({ dataDir, runId, now = () => new Dat
   if (creatorStudio) {
     writeJson(path.join(qaDir, 'action-generation-task.json'), {
       ok: true,
-      originalPrompt: run.input.originalPrompt || run.input.prompt || '',
       mode: creatorStudio.mode,
       targetPet: creatorStudio.targetPet,
       styleSource: creatorStudio.styleSource,
@@ -186,7 +185,6 @@ const generateFixturePetOutput = async ({ dataDir, runId, now = () => new Date()
   if (creatorStudio) {
     fs.writeFileSync(path.join(qaDir, 'action-generation-task.json'), `${JSON.stringify({
       ok: true,
-      originalPrompt: run.input.originalPrompt || run.input.prompt || '',
       mode: creatorStudio.mode,
       targetPet: creatorStudio.targetPet,
       styleSource: creatorStudio.styleSource,

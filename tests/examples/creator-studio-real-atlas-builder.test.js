@@ -204,3 +204,21 @@ test('real atlas builder rejects generated images with no visible pixels', async
     /Generated image contains no visible pixels/
   )
 })
+
+test('real atlas builder rejects generated images that exceed the size limit', async () => {
+  const dataDir = makeTempDataDir()
+  const relativePath = 'runs/run-1/frames/base/too-large.png'
+  const sourcePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true })
+  fs.writeFileSync(sourcePath, Buffer.alloc((25 * 1024 * 1024) + 1, 1))
+
+  await assert.rejects(
+    buildRealAtlasFromGeneratedImage({
+      dataDir,
+      generationResult: createGenerationResult(relativePath),
+      outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
+      qaDir: path.join(dataDir, 'runs', 'run-1', 'qa')
+    }),
+    /Generated image is too large to process/
+  )
+})
