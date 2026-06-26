@@ -21,6 +21,7 @@ const { createPluginCommandEntryProcessController } = require('./plugin-command-
 const { createPluginSetupProcessController } = require('./plugin-setup-process-controller')
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
 const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
+const { createPluginResolutionController } = require('./plugin-resolution-controller')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -781,24 +782,6 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     storage: getPluginStorageStats(plugin.manifest.id)
   }))
 
-  const getServiceEntry = (plugin, serviceId) => {
-    const serviceEntry = (plugin.manifest.entries?.services || []).find((entry) => entry.id === serviceId)
-    if (!serviceEntry) throw new Error(`Plugin service not found: ${serviceId}`)
-    return serviceEntry
-  }
-
-  const getSetupEntry = (plugin, setupId) => {
-    const setupEntry = (plugin.manifest.entries?.setup || []).find((entry) => entry.id === setupId)
-    if (!setupEntry) throw new Error(`Plugin setup entry not found: ${setupId}`)
-    return setupEntry
-  }
-
-  const getCommandEntry = (plugin, commandId) => {
-    const commandEntry = (plugin.manifest.entries?.commands || []).find((entry) => entry.id === commandId)
-    if (!commandEntry) throw new Error(`Plugin command entry not found: ${commandId}`)
-    return commandEntry
-  }
-
   const resolvePluginEntryCwd = (manifest, cwd, label) => {
     if (!manifest.basePath) throw new Error('Plugin services require a local plugin directory')
     const basePath = path.resolve(manifest.basePath)
@@ -821,13 +804,16 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const resolveCommandCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'command')
 
-  const findPluginForService = (pluginId, { requireEnabled = true } = {}) => {
-    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
-    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
-    assertPluginAllowed(plugin.manifest)
-    if (requireEnabled && !getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
-    return plugin
-  }
+  const resolutionController = createPluginResolutionController({
+    getPlugins,
+    getEnabledMap,
+    assertPluginAllowed
+  })
+
+  const findPluginForService = resolutionController.resolvePlugin
+  const getServiceEntry = resolutionController.getServiceEntry
+  const getSetupEntry = resolutionController.getSetupEntry
+  const getCommandEntry = resolutionController.getCommandEntry
 
   const getOrCreateServiceRuntime = (pluginId, serviceId, serviceEntry) => {
     return serviceRuntimeManager.getOrCreateRuntime(pluginId, serviceId, () => ({
@@ -1162,19 +1148,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const dashboardOpenController = createPluginDashboardOpenController({
     appendLog,
     openExternal,
-    getDashboardEntry: (plugin, dashboardId) => {
-      const dashboard = (plugin.manifest.entries?.dashboards || []).find((entry) => entry.id === dashboardId)
-      if (!dashboard) throw new Error(`Plugin dashboard not found: ${dashboardId}`)
-      return dashboard
-    }
+    getDashboardEntry: resolutionController.getDashboardEntry
   })
 
   const runCommand = async (pluginId, commandId, payload = {}) => {
     try {
-      const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
-      if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
-      assertPluginAllowed(plugin.manifest)
-      if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+      const plugin = findPluginForService(pluginId)
       return await commandRunController.run({
         plugin,
         pluginId,
@@ -1221,10 +1200,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const openDashboard = async (pluginId, dashboardId) => {
     const commandId = `dashboard:${dashboardId || ''}`
     try {
-      const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
-      if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
-      assertPluginAllowed(plugin.manifest)
-      if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+      const plugin = findPluginForService(pluginId)
       return await dashboardOpenController.open({
         plugin,
         pluginId,
@@ -1287,8 +1263,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   }
 
   const stopService = (pluginId, serviceId) => {
-    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
-    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    const plugin = findPluginForService(pluginId, { requireEnabled: false, requireAllowed: false })
     const serviceEntry = getServiceEntry(plugin, serviceId)
     const runtime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
     if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')

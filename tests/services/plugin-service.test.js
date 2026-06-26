@@ -3537,6 +3537,34 @@ test('plugin service blocks service starts when ecosystem policy denies the plug
   assert.deepEqual(spawned, [])
 })
 
+test('plugin service can stop a running service after ecosystem policy later blocks the plugin', () => {
+  let blocked = false
+  const child = createSlowStoppingServiceProcess()
+  const treeSignals = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: () => child,
+    getPluginBlockStatus: () => blocked ? { blocked: true, reasons: ['blocked for review'] } : { blocked: false, reasons: [] },
+    signalServiceProcessTree: (pid, signal) => {
+      treeSignals.push({ pid, signal })
+      return true
+    }
+  })
+
+  service.startService('weather-declaration', 'companion')
+  blocked = true
+
+  const stopped = service.stopService('weather-declaration', 'companion')
+
+  assert.equal(stopped.runtime.status, 'stopping')
+  assert.deepEqual(treeSignals, [{ pid: 4321, signal: 'SIGTERM' }])
+})
+
 test('plugin service rejects unknown service ids before spawning processes', () => {
   const spawned = []
   const service = createPluginService({
