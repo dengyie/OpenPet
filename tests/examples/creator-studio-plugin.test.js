@@ -1579,6 +1579,182 @@ test('creator studio approve-run rejects action frames without visible pixel evi
   assert.equal(stored.reviewStatus, 'pending')
 })
 
+test('creator studio approve-run rejects full-pet output without passing atlas qa', () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-approve-full-pet-qa-'))
+  const outputDir = path.join(dataDir, 'runs/demo/outputs')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: 'full-pet-qa-cat',
+    displayName: 'Full Pet QA Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'atlas-validation.json'),
+    `${JSON.stringify({
+      ok: false,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 0,
+      warnings: ['Atlas contained no visible pixels.']
+    }, null, 2)}\n`
+  )
+  fs.writeFileSync(
+    path.join(qaDir, 'source-image-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      sourceRelativePath: 'runs/demo/frames/base/0001.png',
+      width: 1024,
+      height: 1024,
+      visiblePixels: 1200,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Full Pet QA Cat',
+      petId: 'full-pet-qa-cat',
+      backend: 'cloud',
+      prompt: '生成一只完整的新桌宠。',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只软乎乎的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    }
+  })
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      reviewStatus: 'pending',
+      currentStep: 'review',
+      taskStatus: 'confirmed',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+      }
+    }
+  })
+
+  const approved = runCreatorCommand({
+    command: 'approve-run',
+    dataDir,
+    payload: { runId: run.runId }
+  })
+  const stored = readRun({ dataDir, runId: run.runId })
+
+  assert.equal(approved.status, 1)
+  assert.equal(approved.json.ok, false)
+  assert.match(approved.json.error, /Full-pet QA must pass before approval/)
+  assert.equal(stored.status, 'ready_for_review')
+  assert.equal(stored.reviewStatus, 'pending')
+})
+
+test('creator studio approve-run accepts full-pet output with source and atlas qa evidence', () => {
+  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-approve-full-pet-ok-'))
+  const outputDir = path.join(dataDir, 'runs/demo/outputs')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: 'full-pet-ok-cat',
+    displayName: 'Full Pet OK Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'atlas-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 6400,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  fs.writeFileSync(
+    path.join(qaDir, 'source-image-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      sourceRelativePath: 'runs/demo/frames/base/0001.png',
+      width: 1024,
+      height: 1024,
+      visiblePixels: 1200,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Full Pet OK Cat',
+      petId: 'full-pet-ok-cat',
+      backend: 'cloud',
+      prompt: '生成一只完整的新桌宠。',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只圆润的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    }
+  })
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      reviewStatus: 'pending',
+      currentStep: 'review',
+      taskStatus: 'confirmed',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+      }
+    }
+  })
+
+  const approved = runCreatorCommand({
+    command: 'approve-run',
+    dataDir,
+    payload: { runId: run.runId }
+  })
+
+  assert.equal(approved.status, 0)
+  assert.equal(approved.json.ok, true)
+  assert.equal(approved.json.run.status, 'approved')
+  assert.equal(approved.json.run.reviewStatus, 'approved')
+})
+
 test('creator studio import-approved-action rejects missing action frame files before bridge import', async () => {
   const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-action-missing-frame-'))

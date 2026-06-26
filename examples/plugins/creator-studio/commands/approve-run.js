@@ -1,5 +1,6 @@
 const { runCommand } = require('../lib/command-io')
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
+const { assertRunFullPetQaPassed } = require('../lib/full-pet-qa')
 const { readRun, resolveRunId, updateRunStatus } = require('../lib/run-store')
 
 runCommand(async (context) => {
@@ -12,6 +13,11 @@ runCommand(async (context) => {
   const current = readRun({ dataDir: process.env.OPENPET_DATA_DIR, runId })
   if (current.status !== 'ready_for_review') throw new Error(`Run must be ready_for_review before approval: ${current.status}`)
   assertRunActionFrameQaPassed({
+    dataDir: process.env.OPENPET_DATA_DIR,
+    run: current,
+    operation: 'approval'
+  })
+  assertRunFullPetQaPassed({
     dataDir: process.env.OPENPET_DATA_DIR,
     run: current,
     operation: 'approval'
