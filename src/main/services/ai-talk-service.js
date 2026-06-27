@@ -557,6 +557,17 @@ const getPetPackIdFromSessionId = (sessionId) => {
 
 const isControlCenterSessionId = (sessionId) => normalizeString(sessionId).startsWith('control-center:')
 
+const resolveTraceErrorCode = (error) => {
+  if (error?.providerCode) return sanitizeDiagnosticText(error.providerCode)
+  if (error?.providerStatus) return `provider_http_${Number(error.providerStatus) || 0}`
+  const message = normalizeString(error?.message).toLowerCase()
+  if (message.includes('disabled')) return 'chat_disabled'
+  if (message.includes('too long')) return 'message_too_long'
+  if (message.includes('empty')) return 'empty_message'
+  if (message.includes('timed out')) return 'provider_timeout'
+  return 'chat_failed'
+}
+
 const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService = null } = {}) => {
   if (!aiService) throw new Error('aiService is required')
   if (!aiTalkStore) throw new Error('aiTalkStore is required')
@@ -734,6 +745,24 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         appliedCount: Number.isFinite(Number(job?.appliedCount)) ? Number(job.appliedCount) : 0,
         filteredCount: Number.isFinite(Number(job?.filteredCount)) ? Number(job.filteredCount) : 0
       }))
+  }
+
+  const recordChatTrace = (trace = {}) => {
+    if (typeof aiTalkStore.recordTrace !== 'function') return null
+    try {
+      return aiTalkStore.recordTrace(trace)
+    } catch (_) {
+      return null
+    }
+  }
+
+  const getTraceExport = ({ limit = 20 } = {}) => {
+    const { petPackId } = resolveActivePack()
+    if (typeof aiTalkStore.listTraces !== 'function') return { petPackId, traces: [] }
+    return {
+      petPackId,
+      traces: aiTalkStore.listTraces({ petPackId, type: 'ai-talk-chat', limit })
+    }
   }
 
   const getMemoryProfile = () => {
@@ -923,17 +952,27 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
   const chat = async ({ message, entrypoint = 'control-center' } = {}) => {
     const startedAt = Date.now()
     const content = normalizeString(message)
+    let activePackDiagnostics = null
     const diagnostics = {
       entrypoint,
       messageChars: content.length
     }
     try {
+      try {
+        activePackDiagnostics = resolveActivePack()
+        diagnostics.petPackId = activePackDiagnostics.petPackId
+      } catch (_) {
+        activePackDiagnostics = null
+      }
       if (!content) throw new Error('AI chat message is empty')
       if (content.length > MAX_USER_MESSAGE_CHARS) throw new Error('AI chat message is too long')
       const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
+      diagnostics.provider = normalizeString(config.provider)
+      diagnostics.model = normalizeString(config.model)
       if (!config.enabled) throw new Error('AI chat is disabled')
-      const { manifest, petPackId } = resolveActivePack()
+      const { manifest, petPackId } = activePackDiagnostics || resolveActivePack()
       const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
+      diagnostics.personaHash = personaHash
       migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
       const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({
         entrypoint,
@@ -950,6 +989,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         const history = aiTalkStore.getMessages(sessionId, conversationId)
         const userMessage = { role: 'user', content }
         const memoryContext = getMemoryContext({ petPackId, userMessage: content, history })
+        const memoryIdsInjected = memoryContext.map((memory) => memory.id).filter(Boolean)
         const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
         const recentPetActivity = getRecentPetActivity(petPackId)
         const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
@@ -1026,6 +1066,25 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
             hasBehaviorIntent: Boolean(result.behaviorIntent)
           }
         })
+        recordChatTrace({
+          type: 'ai-talk-chat',
+          petPackId,
+          conversationId: conversationPublicId,
+          personaHash,
+          provider: normalizeString(config.provider),
+          model: normalizeString(config.model),
+          messagesCount: messages.length,
+          memoryContextCount: memoryContext.length,
+          memoryIdsInjected,
+          recentPetActivityCount: recentPetActivity.length,
+          toolsCount: tools.length,
+          replyChars: reply.length,
+          bubbleSegmentCount: bubbleSegments.length,
+          hasBehaviorIntent: Boolean(result.behaviorIntent),
+          behaviorIntentIntent: normalizeString(result.behaviorIntent?.intent),
+          success: true,
+          errorCode: ''
+        })
         return {
           conversationId: conversationPublicId,
           reply,
@@ -1051,6 +1110,26 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           providerCode: error?.providerCode || ''
         }
       })
+      recordChatTrace({
+        type: 'ai-talk-chat',
+        petPackId: diagnostics.petPackId || '',
+        conversationId: diagnostics.conversationId || '',
+        personaHash: diagnostics.personaHash || '',
+        provider: diagnostics.provider || '',
+        model: diagnostics.model || '',
+        messagesCount: diagnostics.messagesCount || 0,
+        memoryContextCount: diagnostics.memoryContextCount || 0,
+        memoryIdsInjected: [],
+        recentPetActivityCount: diagnostics.recentPetActivityCount || 0,
+        toolsCount: diagnostics.toolsCount || 0,
+        replyChars: 0,
+        bubbleSegmentCount: 0,
+        hasBehaviorIntent: false,
+        memoryJobId: '',
+        success: false,
+        errorCode: resolveTraceErrorCode(error),
+        providerStatus: error?.providerStatus || 0
+      })
       throw error
     }
   }
@@ -1065,6 +1144,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
     createBubbleSegments,
+    getTraceExport,
     generatePersonaDraft,
     getMemoryProfile,
     getPersonaProfile,

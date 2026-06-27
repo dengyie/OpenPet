@@ -431,3 +431,75 @@ test('ai talk store can filter trace diagnostics by pet pack and conversation id
   assert.deepEqual(sproutConversationOnly.memories.map((entry) => entry.conversationId), ['control-center:sprout-cat:main'])
   assert.deepEqual(sproutConversationOnly.memoryJobs.map((entry) => entry.conversationId), ['control-center:sprout-cat:main'])
 })
+
+test('ai talk store records and lists redacted chat traces by pet pack', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
+
+  store.recordTrace({
+    id: 'trace-a',
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    provider: 'openai-compatible',
+    model: 'gpt-5.5',
+    messagesCount: 4,
+    memoryIdsInjected: ['memory:1', 'memory:2'],
+    replyChars: 48,
+    hasBehaviorIntent: true,
+    behaviorIntentIntent: 'comfort'
+  })
+  store.recordTrace({
+    id: 'trace-b',
+    petPackId: 'sprout-cat',
+    conversationId: 'control-center:sprout-cat:main',
+    provider: 'openai-compatible',
+    model: 'gpt-5.5',
+    success: false,
+    errorCode: 'provider_http_500',
+    providerStatus: 500,
+    createdAt: '2026-06-20T00:00:01.000Z'
+  })
+
+  const traces = store.listTraces({ petPackId: 'mochi-cat', limit: 10 })
+
+  assert.equal(traces.length, 1)
+  assert.equal(traces[0].id, 'trace-a')
+  assert.deepEqual(traces[0].memoryIdsInjected, ['memory:1', 'memory:2'])
+  assert.equal(traces[0].behaviorIntentIntent, 'comfort')
+  assert.equal(traces[0].success, true)
+  assert.equal(JSON.stringify(traces).includes('prompt'), false)
+})
+
+test('ai talk store excludes non-chat traces from default trace export listing', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
+
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      {
+        operation: 'create',
+        scope: 'global',
+        text: 'API key sk-cpa-should-not-be-saved',
+        reason: 'sensitive'
+      }
+    ]
+  })
+  store.recordTrace({
+    id: 'trace-chat',
+    type: 'ai-talk-chat',
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    provider: 'openai-compatible',
+    model: 'gpt-5.5',
+    success: true
+  })
+
+  const defaultTraces = store.listTraces({ petPackId: 'mochi-cat', limit: 10 })
+  const memoryFilterTraces = store.listTraces({ petPackId: 'mochi-cat', type: 'ai-talk-memory-filter', limit: 10 })
+
+  assert.deepEqual(defaultTraces.map((trace) => trace.id), ['trace-chat'])
+  assert.equal(memoryFilterTraces.length, 1)
+  assert.equal(memoryFilterTraces[0].type, 'ai-talk-memory-filter')
+  assert.equal(JSON.stringify(memoryFilterTraces).includes('sk-cpa-should-not-be-saved'), false)
+})

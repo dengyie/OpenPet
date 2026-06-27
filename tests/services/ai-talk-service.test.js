@@ -405,6 +405,37 @@ test('ai talk service records chat lifecycle diagnostics without prompt text', a
   assert.equal(logs.at(-1).details.persistedMessageCount, 2)
 })
 
+test('ai talk service exports redacted traces for the active pet pack after a successful chat', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'gpt-5.5',
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async () => ({ reply: '我们先慢慢来。然后我陪你把事情拆开。', behaviorIntent: { intent: 'comfort' } })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  await service.chat({ message: '我有点乱' })
+  const exported = service.getTraceExport({ limit: 5 })
+
+  assert.equal(exported.petPackId, 'legacy-cat')
+  assert.equal(exported.traces.length, 1)
+  assert.equal(exported.traces[0].conversationId, 'control-center:legacy-cat:main')
+  assert.equal(exported.traces[0].provider, 'openai-compatible')
+  assert.equal(exported.traces[0].model, 'gpt-5.5')
+  assert.equal(exported.traces[0].hasBehaviorIntent, true)
+  assert.equal(exported.traces[0].behaviorIntentIntent, 'comfort')
+  assert.equal(exported.traces[0].success, true)
+  assert.equal(JSON.stringify(exported).includes('我有点乱'), false)
+  assert.equal(JSON.stringify(exported).includes('我们先慢慢来'), false)
+})
+
 test('ai talk service records failed chat diagnostics without prompt text', async () => {
   const logs = []
   const providerError = new Error('provider echoed hidden prompt')
@@ -433,6 +464,77 @@ test('ai talk service records failed chat diagnostics without prompt text', asyn
   assert.equal(serializedLogs.includes('provider echoed hidden prompt'), false)
   assert.equal(logs.at(-1).details.providerStatus, 500)
   assert.equal(logs.at(-1).details.providerCode, 'server_error')
+})
+
+test('ai talk service records a redacted failed trace without raw prompt or provider text', async () => {
+  const providerError = new Error('provider echoed hidden prompt')
+  providerError.providerStatus = 500
+  providerError.providerCode = 'server_error'
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'gpt-5.5',
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async () => {
+        throw providerError
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  await assert.rejects(
+    () => service.chat({ message: 'hidden prompt' }),
+    /provider echoed hidden prompt/
+  )
+
+  const exported = service.getTraceExport({ limit: 5 })
+
+  assert.equal(exported.traces.length, 1)
+  assert.equal(exported.traces[0].success, false)
+  assert.equal(exported.traces[0].provider, 'openai-compatible')
+  assert.equal(exported.traces[0].model, 'gpt-5.5')
+  assert.equal(exported.traces[0].errorCode, 'server_error')
+  assert.equal(exported.traces[0].providerStatus, 500)
+  assert.equal(JSON.stringify(exported).includes('hidden prompt'), false)
+  assert.equal(JSON.stringify(exported).includes('provider echoed hidden prompt'), false)
+})
+
+test('ai talk service exports pre-provider validation failures for the active pet pack', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: false,
+        provider: 'openai-compatible',
+        model: 'gpt-5.5',
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async () => {
+        throw new Error('provider should not be called')
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  await assert.rejects(
+    () => service.chat({ message: 'still blocked' }),
+    /AI chat is disabled/
+  )
+
+  const exported = service.getTraceExport({ limit: 5 })
+
+  assert.equal(exported.petPackId, 'legacy-cat')
+  assert.equal(exported.traces.length, 1)
+  assert.equal(exported.traces[0].petPackId, 'legacy-cat')
+  assert.equal(exported.traces[0].provider, 'openai-compatible')
+  assert.equal(exported.traces[0].model, 'gpt-5.5')
+  assert.equal(exported.traces[0].errorCode, 'chat_disabled')
 })
 
 test('ai talk service merges local persona override from store', async () => {

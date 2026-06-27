@@ -19,6 +19,8 @@ const MAX_PET_UTTERANCES_PER_PACK = 100
 const DEFAULT_RECENT_PET_UTTERANCE_LIMIT = 6
 const DEFAULT_RECENT_PET_UTTERANCE_CHARS = 1200
 const MAX_TRACE_ITEMS = 50
+const DEFAULT_TRACE_LIMIT = 20
+const MAX_TRACE_RECORDS = 200
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -223,6 +225,48 @@ const summarizeMemory = (memory) => {
     updatedAt: typeof normalized.updatedAt === 'string' ? normalized.updatedAt : '',
     lastUsedAt: typeof normalized.lastUsedAt === 'string' ? normalized.lastUsedAt : '',
     lastEvidenceAt: typeof normalized.lastEvidenceAt === 'string' ? normalized.lastEvidenceAt : ''
+  }
+}
+
+const normalizeTraceEntry = (trace = {}) => {
+  if (!isPlainObject(trace)) return null
+  const id = typeof trace.id === 'string' ? trace.id.trim() : ''
+  if (!id) return null
+  const explicitType = typeof trace.type === 'string' && trace.type.trim() ? trace.type.trim() : ''
+  const inferredType = explicitType || (Array.isArray(trace.filteredMemoryCandidates) ? 'ai-talk-memory-filter' : 'ai-talk-chat')
+  return {
+    id,
+    type: inferredType,
+    petPackId: typeof trace.petPackId === 'string' ? trace.petPackId.trim() : '',
+    conversationId: typeof trace.conversationId === 'string' ? trace.conversationId.trim() : '',
+    personaHash: typeof trace.personaHash === 'string' ? trace.personaHash.trim() : '',
+    provider: typeof trace.provider === 'string' ? trace.provider.trim() : '',
+    model: typeof trace.model === 'string' ? trace.model.trim() : '',
+    messagesCount: Math.max(0, Number(trace.messagesCount) || 0),
+    memoryContextCount: Math.max(0, Number(trace.memoryContextCount) || 0),
+    memoryIdsInjected: Array.isArray(trace.memoryIdsInjected)
+      ? trace.memoryIdsInjected.filter((memoryId) => typeof memoryId === 'string' && memoryId.trim())
+      : [],
+    recentPetActivityCount: Math.max(0, Number(trace.recentPetActivityCount) || 0),
+    toolsCount: Math.max(0, Number(trace.toolsCount) || 0),
+    replyChars: Math.max(0, Number(trace.replyChars) || 0),
+    bubbleSegmentCount: Math.max(0, Number(trace.bubbleSegmentCount) || 0),
+    hasBehaviorIntent: Boolean(trace.hasBehaviorIntent),
+    behaviorIntentIntent: typeof trace.behaviorIntentIntent === 'string' ? trace.behaviorIntentIntent.trim().slice(0, 120) : '',
+    memoryJobId: typeof trace.memoryJobId === 'string' ? trace.memoryJobId.trim() : '',
+    errorCode: typeof trace.errorCode === 'string' ? trace.errorCode.trim().slice(0, 120) : '',
+    providerStatus: Math.max(0, Number(trace.providerStatus) || 0),
+    success: trace.success !== false,
+    createdAt: typeof trace.createdAt === 'string' && trace.createdAt ? trace.createdAt : '',
+    filteredMemoryCandidates: Array.isArray(trace.filteredMemoryCandidates)
+      ? trace.filteredMemoryCandidates
+        .map((candidate) => ({
+          operation: typeof candidate?.operation === 'string' ? candidate.operation.trim().slice(0, 120) : '',
+          scope: typeof candidate?.scope === 'string' ? candidate.scope.trim().slice(0, 120) : '',
+          reason: typeof candidate?.reason === 'string' ? candidate.reason.trim().slice(0, 120) : ''
+        }))
+        .filter((candidate) => candidate.operation || candidate.scope || candidate.reason)
+      : []
   }
 }
 
@@ -479,6 +523,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       const traceId = createTraceId()
       state.traces[traceId] = {
         id: traceId,
+        type: 'ai-talk-memory-filter',
         petPackId: packId,
         conversationId,
         filteredMemoryCandidates: filtered,
@@ -589,6 +634,41 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     }
     persist()
     return clone(state.memoryJobs[jobId])
+  }
+
+  const pruneTraces = () => {
+    const traceEntries = Object.entries(state.traces || {})
+      .map(([traceId, trace]) => [traceId, normalizeTraceEntry(trace)])
+      .filter(([, trace]) => trace)
+      .sort((a, b) => String(b[1].createdAt || '').localeCompare(String(a[1].createdAt || '')))
+    const kept = traceEntries.slice(0, MAX_TRACE_RECORDS)
+    state.traces = Object.fromEntries(kept)
+  }
+
+  const recordTrace = (trace = {}) => {
+    const normalized = normalizeTraceEntry({
+      ...trace,
+      id: typeof trace.id === 'string' && trace.id.trim() ? trace.id.trim() : createTraceId(),
+      createdAt: typeof trace.createdAt === 'string' && trace.createdAt ? trace.createdAt : now()
+    })
+    if (!normalized) throw new Error('Valid AI talk trace is required')
+    state.traces[normalized.id] = normalized
+    pruneTraces()
+    persist()
+    return clone(normalized)
+  }
+
+  const listTraces = ({ petPackId = '', type = 'ai-talk-chat', limit = DEFAULT_TRACE_LIMIT } = {}) => {
+    const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
+    const typeFilter = typeof type === 'string' ? type.trim() : ''
+    const max = Math.max(0, Number(limit) || 0)
+    const traces = Object.values(state.traces || {})
+      .map(normalizeTraceEntry)
+      .filter(Boolean)
+      .filter((trace) => !typeFilter || trace.type === typeFilter)
+      .filter((trace) => !packId || trace.petPackId === packId)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    return clone(max ? traces.slice(0, max) : traces)
   }
 
   const migrateLegacyConversation = ({
@@ -784,9 +864,11 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     importMessagesIfEmpty,
     listRecentPetUtterances,
     listMemories,
+    listTraces,
     markMemoriesUsed,
     migrateLegacyConversation,
     persist,
+    recordTrace,
     recordPetUtterance,
     clearPetUtterances,
     savePersonaOverride
