@@ -740,16 +740,19 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
     }
   }
 
-  return {
-    summary: hostAction.required
-      ? 'This run now depends on a host-owned step outside the dashboard.'
-      : dashboardAction.available
-        ? 'This run still has a dashboard action you can take now.'
-        : 'This run currently has no direct dashboard action available.',
-    dashboardAction,
-    hostAction,
-    buttonStates
-  }
+  return createPublicLogValue({
+    dataDir,
+    value: {
+      summary: hostAction.required
+        ? 'This run now depends on a host-owned step outside the dashboard.'
+        : dashboardAction.available
+          ? 'This run still has a dashboard action you can take now.'
+          : 'This run currently has no direct dashboard action available.',
+      dashboardAction,
+      hostAction,
+      buttonStates
+    }
+  })
 }
 
 const createWorkflowGuidance = ({ dataDir, run }) => {

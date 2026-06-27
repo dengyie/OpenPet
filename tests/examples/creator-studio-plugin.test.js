@@ -4062,7 +4062,7 @@ test('creator studio service exposes workflow guidance for fixture and imported 
         importedActionId: 'shy-spin',
         triggerProposalSubmission: {
           ok: false,
-          error: 'proposal write failed'
+          error: 'proposal write failed via OPENPET_BRIDGE_TOKEN=bridge-secret at /Users/mango/private/proposal.json from http://127.0.0.1:8787/creator/trigger-proposals/submit'
         },
         artifacts: {
           actionFrames: {
@@ -4173,19 +4173,31 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedFailedActionDetail.ok, true)
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalStatus, 'failed')
     assert.match(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary, /proposal write failed/i)
+    assert.match(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary, /\[redacted-token\]/i)
+    assert.match(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary, /\[redacted-path\]/i)
+    assert.match(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary, /\[redacted-local-url\]/i)
+    assert.equal(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary.includes('bridge-secret'), false)
+    assert.equal(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(importedFailedActionDetail.run.workflowGuidance.import.triggerProposalSummary.includes('127.0.0.1:8787'), false)
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.resultCard.available, true)
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.resultCard.reviewLocation, 'Control Center -> Plugins')
     assert.match(importedFailedActionDetail.run.workflowGuidance.import.resultCard.entries[1].value, /handoff failed/i)
     assert.match(importedFailedActionDetail.run.workflowGuidance.import.resultCard.entries[1].value, /proposal write failed/i)
+    assert.match(importedFailedActionDetail.run.workflowGuidance.import.resultCard.entries[1].value, /\[redacted-token\]/i)
+    assert.equal(importedFailedActionDetail.run.workflowGuidance.import.resultCard.entries[1].value.includes('bridge-secret'), false)
     assert.equal(importedFailedActionDetail.run.wizardState.nextStep.label, 'Review import handoff')
     assert.equal(importedFailedActionDetail.run.wizardState.nextStep.blocked, true)
     assert.match(importedFailedActionDetail.run.wizardState.nextStep.reason, /Control Center -> Plugins/i)
     assert.match(importedFailedActionDetail.run.wizardState.nextStep.reason, /proposal write failed/i)
+    assert.match(importedFailedActionDetail.run.wizardState.nextStep.reason, /\[redacted-local-url\]/i)
+    assert.equal(importedFailedActionDetail.run.wizardState.nextStep.reason.includes('127.0.0.1:8787'), false)
     assert.equal(importedFailedActionDetail.run.actionLane.dashboardAction.available, false)
     assert.equal(importedFailedActionDetail.run.actionLane.hostAction.required, true)
     assert.equal(importedFailedActionDetail.run.actionLane.hostAction.label, 'Review import handoff')
     assert.equal(importedFailedActionDetail.run.actionLane.hostAction.location, 'Control Center -> Plugins')
     assert.match(importedFailedActionDetail.run.actionLane.hostAction.reason, /proposal write failed/i)
+    assert.match(importedFailedActionDetail.run.actionLane.hostAction.reason, /\[redacted-path\]/i)
+    assert.equal(importedFailedActionDetail.run.actionLane.hostAction.reason.includes('/Users/mango/private/proposal.json'), false)
     assert.equal(importedFailedSerialized.includes(dataDir), false)
 
     assert.equal(importedPetDetail.ok, true)

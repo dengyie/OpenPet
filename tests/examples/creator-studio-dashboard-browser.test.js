@@ -191,7 +191,7 @@ const seedImportedFailedActionRun = async (dataDir) => {
       importedActionId: 'shy-spin',
       triggerProposalSubmission: {
         ok: false,
-        error: 'proposal write failed'
+        error: 'proposal write failed via OPENPET_BRIDGE_TOKEN=bridge-secret at /Users/mango/private/proposal.json from http://127.0.0.1:8787/creator/trigger-proposals/submit'
       },
       artifacts: {
         generatedImage: {
@@ -445,22 +445,46 @@ test('creator studio dashboard shows imported action handoff failure details', a
     assert.match(handoffText, /Imported result details/i)
     assert.match(handoffText, /Review location: Control Center -> Plugins/i)
     assert.match(handoffText, /proposal write failed/i)
+    assert.match(handoffText, /\[redacted-token\]/i)
+    assert.match(handoffText, /\[redacted-path\]/i)
+    assert.match(handoffText, /\[redacted-local-url\]/i)
+    assert.equal(handoffText.includes('bridge-secret'), false)
+    assert.equal(handoffText.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(handoffText.includes('127.0.0.1:8787'), false)
 
     const reviewText = await page.locator('#action-review-panel').textContent()
     assert.match(reviewText, /Import completed/i)
     assert.match(reviewText, /Imported action: shy-spin/i)
     assert.match(reviewText, /Control Center -> Plugins/i)
     assert.match(reviewText, /proposal write failed/i)
+    assert.match(reviewText, /\[redacted-token\]/i)
+    assert.match(reviewText, /\[redacted-path\]/i)
+    assert.match(reviewText, /\[redacted-local-url\]/i)
+    assert.equal(reviewText.includes('bridge-secret'), false)
+    assert.equal(reviewText.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(reviewText.includes('127.0.0.1:8787'), false)
 
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review import handoff/i)
     assert.match(nextStepText, /Control Center -> Plugins/i)
     assert.match(nextStepText, /proposal write failed/i)
+    assert.match(nextStepText, /\[redacted-token\]/i)
+    assert.match(nextStepText, /\[redacted-path\]/i)
+    assert.match(nextStepText, /\[redacted-local-url\]/i)
+    assert.equal(nextStepText.includes('bridge-secret'), false)
+    assert.equal(nextStepText.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(nextStepText.includes('127.0.0.1:8787'), false)
 
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review import handoff/i)
     assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
     assert.match(actionLaneText, /proposal write failed/i)
+    assert.match(actionLaneText, /\[redacted-token\]/i)
+    assert.match(actionLaneText, /\[redacted-path\]/i)
+    assert.match(actionLaneText, /\[redacted-local-url\]/i)
+    assert.equal(actionLaneText.includes('bridge-secret'), false)
+    assert.equal(actionLaneText.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(actionLaneText.includes('127.0.0.1:8787'), false)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
