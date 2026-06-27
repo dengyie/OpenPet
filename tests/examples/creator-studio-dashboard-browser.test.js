@@ -131,6 +131,98 @@ const seedImportedActionRun = async (dataDir) => {
   return run
 }
 
+const seedImportedFailedActionRun = async (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      originalPrompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      backend: 'local',
+      generationTask: {
+        mode: 'single-action',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '先缩起来，再轻轻转一圈。',
+          loop: false,
+          frameCount: 1,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-27T01:05:00.000Z'
+  })
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const framesDir = path.join(runDir, 'frames', 'actions', 'shy-spin')
+  const qaDir = path.join(runDir, 'qa')
+  const baseDir = path.join(runDir, 'frames', 'base')
+  await writeSolidPng(path.join(framesDir, '0001.png'), {
+    width: 192,
+    height: 208,
+    background: { r: 240, g: 180, b: 150, alpha: 1 }
+  })
+  await writeSolidPng(path.join(qaDir, 'action-frame-contact-sheet.png'), {
+    width: 192,
+    height: 208,
+    background: { r: 255, g: 230, b: 215, alpha: 1 }
+  })
+  await writeSolidPng(path.join(baseDir, '0001.png'), {
+    width: 512,
+    height: 512,
+    background: { r: 240, g: 205, b: 170, alpha: 1 }
+  })
+  fs.writeFileSync(path.join(qaDir, 'action-frame-validation.json'), `${JSON.stringify({
+    ok: true,
+    loop: false,
+    warnings: [],
+    playback: {
+      frameDurationsMs: [160]
+    }
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'imported',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'imported',
+      reviewStatus: 'approved',
+      importStatus: 'imported',
+      importedActionId: 'shy-spin',
+      triggerProposalSubmission: {
+        ok: false,
+        error: 'proposal write failed'
+      },
+      artifacts: {
+        generatedImage: {
+          ok: true,
+          backend: 'local',
+          model: 'local-custom-sprite-v2',
+          generatedAt: '2026-06-27T01:06:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: 'dashboard-imported-failed-action-sha'
+          }]
+        },
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir,
+          qa: path.join(qaDir, 'action-frame-validation.json'),
+          contactSheet: path.join(qaDir, 'action-frame-contact-sheet.png'),
+          frameCount: 1,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now: () => '2026-06-27T01:07:00.000Z'
+  })
+  return run
+}
+
 const seedImportedFullPetRun = async (dataDir) => {
   const run = createRun({
     dataDir,
@@ -334,6 +426,41 @@ test('creator studio dashboard shows imported action review completion details',
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review trigger proposal/i)
     assert.match(actionLaneText, /Actions -> Trigger Proposal Inbox/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard shows imported action handoff failure details', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-failed-'))
+  await seedImportedFailedActionRun(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    assert.match(handoffText, /Imported result details/i)
+    assert.match(handoffText, /Review location: Control Center -> Plugins/i)
+    assert.match(handoffText, /proposal write failed/i)
+
+    const reviewText = await page.locator('#action-review-panel').textContent()
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Imported action: shy-spin/i)
+    assert.match(reviewText, /Control Center -> Plugins/i)
+    assert.match(reviewText, /proposal write failed/i)
+
+    const nextStepText = await page.locator('#next-step-panel').textContent()
+    assert.match(nextStepText, /Review import handoff/i)
+    assert.match(nextStepText, /Control Center -> Plugins/i)
+    assert.match(nextStepText, /proposal write failed/i)
+
+    const actionLaneText = await page.locator('#action-lane-panel').textContent()
+    assert.match(actionLaneText, /Host-owned action: Review import handoff/i)
+    assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /proposal write failed/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

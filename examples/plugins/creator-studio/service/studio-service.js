@@ -401,10 +401,13 @@ const createImportedFollowUp = (run) => {
       }
     }
     if (run.triggerProposalSubmission && run.triggerProposalSubmission.ok === false) {
+      const handoffError = String(run.triggerProposalSubmission.error || '').trim()
       return {
         label: 'Review import handoff',
         location: 'Control Center -> Plugins',
-        reason: 'The action import completed, but trigger proposal handoff failed. Review the command output in Control Center -> Plugins before applying trigger rules.'
+        reason: handoffError
+          ? `The action import completed, but trigger proposal handoff failed: ${handoffError}. Review the command output in Control Center -> Plugins before applying trigger rules.`
+          : 'The action import completed, but trigger proposal handoff failed. Review the command output in Control Center -> Plugins before applying trigger rules.'
       }
     }
     return {
@@ -804,7 +807,10 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
         triggerProposalSummary = `Trigger proposal handoff succeeded. Review it in Actions -> Trigger Proposal Inbox${run.triggerProposalSubmission?.proposal?.id ? ` (${run.triggerProposalSubmission.proposal.id})` : ''}.`
       } else if (run.triggerProposalSubmission && run.triggerProposalSubmission.ok === false) {
         triggerProposalStatus = 'failed'
-        triggerProposalSummary = 'Action import succeeded, but trigger proposal handoff failed. Re-run import or inspect the command output before applying trigger rules.'
+        const handoffError = String(run.triggerProposalSubmission.error || '').trim()
+        triggerProposalSummary = handoffError
+          ? `Action import succeeded, but trigger proposal handoff failed: ${handoffError}. Re-run import or inspect the command output before applying trigger rules.`
+          : 'Action import succeeded, but trigger proposal handoff failed. Re-run import or inspect the command output before applying trigger rules.'
       }
     } else if (run.activatedPackId) {
       triggerProposalSummary = `Activated pack: ${run.activatedPackId}.`
