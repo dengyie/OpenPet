@@ -1643,7 +1643,13 @@ test('creator studio import-approved-pet imports approved full-pet output when q
         spritesheet: path.join(outputDir, 'spritesheet.webp'),
         bundle: path.join(outputDir, `${run.petId}.codex-pet.zip`),
         qa: path.join(qaDir, 'atlas-validation.json'),
-        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          outputs: [{
+            mimeType: 'image/png',
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`
+          }]
+        }
       }
     },
     now: () => '2026-06-26T02:11:00.000Z'
@@ -1684,6 +1690,127 @@ test('creator studio import-approved-pet imports approved full-pet output when q
       '/creator/pet-pack/inspect-output',
       '/creator/pet-pack/import-output'
     ])
+  } finally {
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio import-approved-pet rejects full-pet output when qa source path mismatches current generated image', async () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-import-pet-source-mismatch-'))
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Import Source Mismatch Cat',
+      petId: 'import-source-mismatch-cat',
+      backend: 'cloud',
+      prompt: '生成一只完整的新桌宠。',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只圆滚滚的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-26T02:20:00.000Z'
+  })
+  const outputDir = path.join(dataDir, 'runs', run.runId, 'outputs')
+  const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: run.petId,
+    displayName: 'Import Source Mismatch Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'atlas-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 6400,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  fs.writeFileSync(
+    path.join(qaDir, 'source-image-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      sourceRelativePath: `runs/${run.runId}/frames/base/stale-source.png`,
+      width: 1024,
+      height: 1024,
+      visiblePixels: 2048,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'approved',
+    patch: {
+      reviewStatus: 'approved',
+      currentStep: 'approved',
+      taskStatus: 'confirmed',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          outputs: [{
+            mimeType: 'image/png',
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`
+          }]
+        }
+      }
+    },
+    now: () => '2026-06-26T02:21:00.000Z'
+  })
+  const { server, requests } = createBridgeServer({
+    routes: [
+      {
+        path: '/creator/pet-pack/inspect-output',
+        handler: () => ({ body: { ok: true, inspection: { valid: true, selectionId: 'selection-source-mismatch' } } })
+      },
+      {
+        path: '/creator/pet-pack/import-output',
+        handler: () => ({ body: { ok: true, imported: { pack: { id: 'import-source-mismatch-cat' } } } })
+      }
+    ]
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const imported = await runCreatorCommandAsync({
+      command: 'import-approved-pet',
+      dataDir,
+      payload: { runId: run.runId, activate: true },
+      env: {
+        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
+        OPENPET_BRIDGE_TOKEN: 'bridge-token'
+      }
+    })
+    const stored = readRun({ dataDir, runId: run.runId })
+
+    assert.equal(imported.status, 1)
+    assert.equal(imported.json.ok, false)
+    assert.match(imported.json.error, /Full-pet QA source path must match the current generated image before import/)
+    assert.equal(stored.status, 'approved')
+    assert.equal(stored.importStatus, 'not-imported')
+    assert.equal(requests.length, 0)
   } finally {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
@@ -2056,7 +2183,13 @@ test('creator studio approve-run rejects full-pet output without passing atlas q
         petJson: path.join(outputDir, 'pet.json'),
         spritesheet: path.join(outputDir, 'spritesheet.webp'),
         qa: path.join(qaDir, 'atlas-validation.json'),
-        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          outputs: [{
+            mimeType: 'image/png',
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`
+          }]
+        }
       }
     }
   })
@@ -2145,7 +2278,13 @@ test('creator studio approve-run accepts full-pet output with source and atlas q
         petJson: path.join(outputDir, 'pet.json'),
         spritesheet: path.join(outputDir, 'spritesheet.webp'),
         qa: path.join(qaDir, 'atlas-validation.json'),
-        sourceImageQa: path.join(qaDir, 'source-image-validation.json')
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          outputs: [{
+            mimeType: 'image/png',
+            dataRelativePath: 'runs/demo/frames/base/0001.png'
+          }]
+        }
       }
     }
   })
@@ -2160,6 +2299,101 @@ test('creator studio approve-run accepts full-pet output with source and atlas q
   assert.equal(approved.json.ok, true)
   assert.equal(approved.json.run.status, 'approved')
   assert.equal(approved.json.run.reviewStatus, 'approved')
+})
+
+test('creator studio approve-run rejects full-pet output when qa source path mismatches current generated image', () => {
+  const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-approve-full-pet-source-mismatch-'))
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Full Pet Source Mismatch Cat',
+      petId: 'full-pet-source-mismatch-cat',
+      backend: 'cloud',
+      prompt: '生成一只完整的新桌宠。',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只圆润的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'neutral idle pose',
+          frameCount: 12,
+          loop: true,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    }
+  })
+  const outputDir = path.join(dataDir, 'runs', run.runId, 'outputs')
+  const qaDir = path.join(dataDir, 'runs', run.runId, 'qa')
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: 'full-pet-source-mismatch-cat',
+    displayName: 'Full Pet Source Mismatch Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(
+    path.join(qaDir, 'atlas-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      width: 1536,
+      height: 1872,
+      visiblePixels: 6400,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  fs.writeFileSync(
+    path.join(qaDir, 'source-image-validation.json'),
+    `${JSON.stringify({
+      ok: true,
+      sourceRelativePath: `runs/${run.runId}/frames/base/stale-source.png`,
+      width: 1024,
+      height: 1024,
+      visiblePixels: 1200,
+      warnings: []
+    }, null, 2)}\n`
+  )
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      reviewStatus: 'pending',
+      currentStep: 'review',
+      taskStatus: 'confirmed',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          outputs: [{
+            mimeType: 'image/png',
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`
+          }]
+        }
+      }
+    }
+  })
+
+  const approved = runCreatorCommand({
+    command: 'approve-run',
+    dataDir,
+    payload: { runId: run.runId }
+  })
+  const stored = readRun({ dataDir, runId: run.runId })
+
+  assert.equal(approved.status, 1)
+  assert.equal(approved.json.ok, false)
+  assert.match(approved.json.error, /Full-pet QA source path must match the current generated image before approval/)
+  assert.equal(stored.status, 'ready_for_review')
+  assert.equal(stored.reviewStatus, 'pending')
 })
 
 test('creator studio import-approved-action rejects missing action frame files before bridge import', async () => {

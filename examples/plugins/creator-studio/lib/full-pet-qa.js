@@ -33,6 +33,11 @@ const assertPositiveInteger = ({ value, label, operation }) => {
   }
 }
 
+const normalizeQaRelativePath = (value) => {
+  if (typeof value !== 'string') return ''
+  return value.trim().replace(/\\/g, '/')
+}
+
 const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/import' }) => {
   if (!artifacts?.qa || !artifacts?.sourceImageQa) {
     throw new Error(`Full-pet QA must pass before ${operation}`)
@@ -83,7 +88,15 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
 
 const assertRunFullPetQaPassed = ({ dataDir, run, operation = 'approval/import' }) => {
   if (run?.generationTask?.mode !== 'full-pet') return null
-  return assertFullPetQaPassed({ dataDir, artifacts: run?.artifacts, operation })
+  const qa = assertFullPetQaPassed({ dataDir, artifacts: run?.artifacts, operation })
+  const generatedImagePath = normalizeQaRelativePath(run?.artifacts?.generatedImage?.outputs?.[0]?.dataRelativePath)
+  const sourceQaPath = normalizeQaRelativePath(qa.sourceQa?.sourceRelativePath)
+
+  if (!generatedImagePath || generatedImagePath !== sourceQaPath) {
+    throw new Error(`Full-pet QA source path must match the current generated image before ${operation}`)
+  }
+
+  return qa
 }
 
 module.exports = {
