@@ -165,7 +165,14 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   const windowState = state.window || {}
   const bubbleChat = renderer.bubbleChat || {}
   const legacyInlineBubble = renderer.legacyInlineBubble || {}
-  const floatingBubbleVisible = Boolean(bubbleChat.visible && renderer.sprite?.visible && legacyInlineBubble.visible !== true)
+  const bubbleItems = Array.isArray(bubbleChat.items) ? bubbleChat.items : []
+  const hasRenderedBubbleItem = bubbleItems.some((item) => hasText(item?.text))
+  const floatingBubbleVisible = Boolean(
+    bubbleChat.visible
+    && renderer.sprite?.visible
+    && legacyInlineBubble.visible !== true
+    && hasRenderedBubbleItem
+  )
 
   if (!merged.linkedEvidence || typeof merged.linkedEvidence !== 'object') merged.linkedEvidence = {}
   if (!Array.isArray(merged.linkedEvidence.screenshots)) merged.linkedEvidence.screenshots = []
@@ -204,8 +211,12 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
     merged,
     'speech-bubble-rendered',
     floatingBubbleVisible ? 'pass' : 'fail',
-    floatingBubbleVisible ? `Floating bubble chat visible with text=${JSON.stringify(bubbleChat.text || '')}; spriteVisible=${Boolean(renderer.sprite?.visible)}; legacyInlineVisible=${Boolean(legacyInlineBubble.visible)}${screenshot ? `; screenshot=${screenshot}` : ''}` : '',
-    floatingBubbleVisible ? 'Floating bubble chat was visible while the old inline pet bubble stayed hidden.' : 'Floating bubble chat evidence is missing or the old inline bubble is still visible.'
+    floatingBubbleVisible
+      ? `Floating bubble chat visible with text=${JSON.stringify(bubbleChat.text || '')}; items=${JSON.stringify(bubbleItems)}; noticeCount=${Number(bubbleChat.noticeCount || 0)}; dialogueCount=${Number(bubbleChat.dialogueCount || 0)}; spriteVisible=${Boolean(renderer.sprite?.visible)}; legacyInlineVisible=${Boolean(legacyInlineBubble.visible)}${screenshot ? `; screenshot=${screenshot}` : ''}`
+      : '',
+    floatingBubbleVisible
+      ? 'Floating bubble chat rendered item content while the old inline pet bubble stayed hidden.'
+      : 'Floating bubble chat evidence is missing rendered items or the old inline bubble is still visible.'
   )
   setCheck(
     merged,

@@ -2187,6 +2187,14 @@ export interface PackagedRuntimeSmokeStateRendererBubbleChat {
   hasWindow: boolean
   text: string
   source: string
+  items?: Array<{
+    kind: string
+    role: string
+    source: string
+    text: string
+  }>
+  noticeCount?: number
+  dialogueCount?: number
 }
 
 export interface PackagedRuntimeSmokeStateRendererAction {

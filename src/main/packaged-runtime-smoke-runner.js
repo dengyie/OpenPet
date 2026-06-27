@@ -27,6 +27,18 @@ const writeScreenshot = async (petWindow, screenshotPath) => {
   return path.resolve(screenshotPath)
 }
 
+const summarizeBubbleChatItems = (items = []) => (
+  (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === 'object')
+    .slice(-6)
+    .map((item) => ({
+      kind: String(item.kind || ''),
+      role: String(item.role || ''),
+      source: String(item.source || ''),
+      text: String(item.text || '')
+    }))
+)
+
 const inspectRenderer = async (petWindow) => petWindow.webContents.executeJavaScript(`(() => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const transparentColors = new Set(['transparent', 'rgba(0, 0, 0, 0)']);
@@ -155,11 +167,15 @@ const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackServ
     await sleep(300)
     const renderer = await inspectRenderer(petWindow)
     const bubbleChatState = petBubbleChatWindowService?.getState?.() || {}
+    const bubbleItems = summarizeBubbleChatItems(bubbleChatState.items)
     renderer.bubbleChat = {
       visible: Boolean(bubbleChatState.visible),
       hasWindow: Boolean(bubbleChatState.hasWindow),
       text: String(bubbleChatState.message?.text || ''),
-      source: String(bubbleChatState.message?.source || '')
+      source: String(bubbleChatState.message?.source || ''),
+      items: bubbleItems,
+      noticeCount: bubbleItems.filter((item) => item.kind === 'notice').length,
+      dialogueCount: bubbleItems.filter((item) => item.kind === 'dialogue').length
     }
     renderer.action.requested = actionId
     evidence.state.renderer = renderer
