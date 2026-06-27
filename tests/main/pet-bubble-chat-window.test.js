@@ -113,6 +113,30 @@ test('bubble chat item helpers classify ai as dialogue and other sources as noti
   ])
 })
 
+test('createDialogueItemsFromMessages keeps only the latest lightweight dialogue slice', () => {
+  const { createDialogueItemsFromMessages } = loadModuleWithElectron({ app: { on: () => {} } })
+
+  const dialogueItems = createDialogueItemsFromMessages([
+    { id: 'u1', role: 'user', content: '第1句', createdAt: '2026-06-24T00:00:00.000Z' },
+    { id: 'a1', role: 'assistant', content: '第2句', createdAt: '2026-06-24T00:00:01.000Z' },
+    { id: 'u2', role: 'user', content: '第3句', createdAt: '2026-06-24T00:00:02.000Z' },
+    { id: 'a2', role: 'assistant', content: '第4句', createdAt: '2026-06-24T00:00:03.000Z' },
+    { id: 'u3', role: 'user', content: '第5句', createdAt: '2026-06-24T00:00:04.000Z' },
+    { id: 'a3', role: 'assistant', content: '第6句', createdAt: '2026-06-24T00:00:05.000Z' },
+    { id: 'u4', role: 'user', content: '第7句', createdAt: '2026-06-24T00:00:06.000Z' },
+    { id: 'a4', role: 'assistant', content: '第8句', createdAt: '2026-06-24T00:00:07.000Z' }
+  ])
+
+  assert.deepEqual(dialogueItems.map((item) => item.text), [
+    '第3句',
+    '第4句',
+    '第5句',
+    '第6句',
+    '第7句',
+    '第8句'
+  ])
+})
+
 test('resolveBubbleBounds anchors above pet and flips below when needed', () => {
   const { resolveBubbleBounds } = loadModuleWithElectron({ app: { on: () => {} } })
 
@@ -308,6 +332,53 @@ test('pet bubble chat showMessage appends notices without dropping dialogue item
     ['notice', 'system', '插件提示']
   ])
   assert.equal(state.noticeItems.length, 1)
+})
+
+test('pet bubble chat manager keeps only the latest dialogue slice while preserving a small notice overlay', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.refreshItems({
+    reason: 'dialogue-slice',
+    conversationMessages: [
+      { id: 'u1', role: 'user', content: '第1句', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', role: 'assistant', content: '第2句', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'u2', role: 'user', content: '第3句', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', role: 'assistant', content: '第4句', createdAt: '2026-06-24T00:00:03.000Z' },
+      { id: 'u3', role: 'user', content: '第5句', createdAt: '2026-06-24T00:00:04.000Z' },
+      { id: 'a3', role: 'assistant', content: '第6句', createdAt: '2026-06-24T00:00:05.000Z' },
+      { id: 'u4', role: 'user', content: '第7句', createdAt: '2026-06-24T00:00:06.000Z' },
+      { id: 'a4', role: 'assistant', content: '第8句', createdAt: '2026-06-24T00:00:07.000Z' }
+    ]
+  })
+  manager.showMessage({ text: '提示1', source: 'plugin:weather', createdAt: '2026-06-24T00:00:08.000Z' })
+  manager.showMessage({ text: '提示2', source: 'plugin:mcp', createdAt: '2026-06-24T00:00:09.000Z' })
+  const state = manager.showMessage({ text: '提示3', source: 'pet-renderer', createdAt: '2026-06-24T00:00:10.000Z' })
+
+  assert.deepEqual(
+    state.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
+    ['第3句', '第4句', '第5句', '第6句', '第7句', '第8句']
+  )
+  assert.deepEqual(
+    state.items.filter((item) => item.kind === 'notice').map((item) => item.text),
+    ['提示1', '提示2', '提示3']
+  )
+  assert.equal(state.noticeItems.length, 3)
 })
 
 test('pet bubble chat showMessage compatibility path treats ai source as pet dialogue', () => {
