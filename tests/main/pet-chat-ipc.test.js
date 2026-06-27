@@ -346,6 +346,46 @@ test('pet chat state tracks latest pet bubble from say events', async () => {
   assert.deepEqual(refreshCalls, [{ conversationMessages, reason: 'pet-say' }])
 })
 
+test('pet chat does not record ai say events as pet utterances while still showing bubble chat', async () => {
+  let onSayHandler = null
+  const utterances = []
+  const bubbleChatMessages = []
+  const ipcMain = registerPetChatHandlers({
+    petService: {
+      ...createRequiredServices().petService,
+      onSay: (handler) => { onSayHandler = handler }
+    },
+    petPackService: {
+      getActivePetPack: () => ({ manifest: { id: 'legacy-cat' } })
+    },
+    petUtteranceLogService: {
+      record: (payload) => {
+        utterances.push(payload)
+        return payload
+      }
+    },
+    petBubbleChatWindowService: {
+      showMessage: (payload) => {
+        bubbleChatMessages.push(payload)
+        return { visible: true }
+      },
+      refreshItems: () => ({ visible: true })
+    }
+  })
+
+  onSayHandler({ text: '正式回复', ttlMs: 2000, source: 'ai' })
+
+  assert.deepEqual(utterances, [])
+  assert.deepEqual(bubbleChatMessages, [{
+    text: '正式回复',
+    ttlMs: 2000,
+    source: 'ai',
+    petPackId: 'legacy-cat'
+  }])
+  const state = await ipcMain.handlers.get(IPC.PET_CHAT_GET_STATE)()
+  assert.equal(state.bubble.text, '正式回复')
+})
+
 test('pet bubble chat IPC delegates state, open, local message, hide, pin and interaction updates', async () => {
   const calls = []
   const conversationMessages = [

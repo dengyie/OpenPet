@@ -539,7 +539,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   }
 
   petService.onSay?.((payload) => {
-    recordPetUtterance(payload)
+    if (payload?.source !== 'ai') {
+      recordPetUtterance(payload)
+    }
     capturePetBubble(payload)
     petBubbleChatWindowService?.showMessage?.({
       ...payload,
