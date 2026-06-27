@@ -3660,6 +3660,61 @@ test('creator studio service returns full-pet specific wizard and dashboard labe
     assert.match(reviewDetail.run.workflowGuidance.import.summary, /pet-pack output/i)
     assert.equal(reviewDetail.run.actionLane.buttonStates.generate.label, 'Generate pet pack')
     assert.equal(reviewDetail.run.actionLane.buttonStates.approve.label, 'Approve run')
+
+    const mismatchRun = createRun({
+      dataDir,
+      input: {
+        petName: 'Full Pet Mismatch Cat',
+        prompt: '生成一只完整的新桌宠。',
+        originalPrompt: '生成一只完整的新桌宠。',
+        backend: 'cloud',
+        generationTask: petTask
+      },
+      now: () => '2026-06-26T00:33:00.000Z'
+    })
+    updateRunStatus({
+      dataDir,
+      runId: mismatchRun.runId,
+      status: 'ready_for_review',
+      patch: {
+        taskStatus: 'confirmed',
+        currentStep: 'review',
+        reviewStatus: 'pending',
+        artifacts: {
+          outputDir: path.join(dataDir, 'runs', mismatchRun.runId, 'outputs'),
+          petJson: path.join(dataDir, 'runs', mismatchRun.runId, 'outputs', 'pet.json'),
+          spritesheet: path.join(dataDir, 'runs', mismatchRun.runId, 'outputs', 'spritesheet.webp'),
+          qa: path.join(dataDir, 'runs', mismatchRun.runId, 'qa', 'atlas-validation.json'),
+          sourceImageQa: path.join(dataDir, 'runs', mismatchRun.runId, 'qa', 'source-image-validation.json'),
+          generatedImage: {
+            outputs: [{
+              mimeType: 'image/png',
+              dataRelativePath: `runs/${mismatchRun.runId}/frames/base/0001.png`
+            }]
+          }
+        }
+      },
+      now: () => '2026-06-26T00:34:00.000Z'
+    })
+    fs.mkdirSync(path.join(dataDir, 'runs', mismatchRun.runId, 'outputs'), { recursive: true })
+    fs.mkdirSync(path.join(dataDir, 'runs', mismatchRun.runId, 'qa'), { recursive: true })
+    fs.writeFileSync(path.join(dataDir, 'runs', mismatchRun.runId, 'outputs', 'pet.json'), '{}\n')
+    fs.writeFileSync(path.join(dataDir, 'runs', mismatchRun.runId, 'outputs', 'spritesheet.webp'), createMinimalWebp())
+    fs.writeFileSync(path.join(dataDir, 'runs', mismatchRun.runId, 'qa', 'atlas-validation.json'), `${JSON.stringify({ ok: true, width: 1536, height: 1872, visiblePixels: 6400, warnings: [] }, null, 2)}\n`)
+    fs.writeFileSync(path.join(dataDir, 'runs', mismatchRun.runId, 'qa', 'source-image-validation.json'), `${JSON.stringify({ ok: true, sourceRelativePath: `runs/${mismatchRun.runId}/frames/base/stale-source.png`, width: 1024, height: 1024, visiblePixels: 1000, warnings: [] }, null, 2)}\n`)
+
+    const mismatchDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${mismatchRun.runId}`).then((response) => response.json())
+
+    assert.equal(mismatchDetail.ok, true)
+    assert.equal(mismatchDetail.fullPetReview.sourceImageMatchesCurrent, false)
+    assert.equal(mismatchDetail.run.wizardState.nextStep.label, 'Retry generation')
+    assert.equal(mismatchDetail.run.wizardState.nextStep.blocked, false)
+    assert.match(mismatchDetail.run.wizardState.nextStep.reason, /Retry generation on this same run before approval/i)
+    assert.equal(mismatchDetail.run.actionLane.dashboardAction.label, 'Retry generation')
+    assert.equal(mismatchDetail.run.actionLane.dashboardAction.buttonId, 'generate-button')
+    assert.equal(mismatchDetail.run.actionLane.buttonStates.generate.enabled, true)
+    assert.equal(mismatchDetail.run.actionLane.buttonStates.approve.enabled, false)
+    assert.match(mismatchDetail.run.actionLane.buttonStates.approve.reason, /Retry generation before approval/i)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

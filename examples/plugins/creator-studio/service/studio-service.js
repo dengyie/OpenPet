@@ -316,12 +316,89 @@ const createWizardSteps = (phase) => {
   }))
 }
 
+function createFullPetReviewGate ({ dataDir, run }) {
+  if (run.artifacts?.actionFrames) {
+    return {
+      requiresCurrentSourceMatch: false,
+      currentSourceImage: '',
+      qaSourceImage: '',
+      sourceImageMatchesCurrent: true,
+      sourceImageValidation: null,
+      reviewGate: {
+        status: 'ready',
+        ready: true,
+        reason: ''
+      }
+    }
+  }
+
+  if (run.generationTask?.mode !== 'full-pet') {
+    return {
+      requiresCurrentSourceMatch: false,
+      currentSourceImage: '',
+      qaSourceImage: '',
+      sourceImageMatchesCurrent: true,
+      sourceImageValidation: null,
+      reviewGate: {
+        status: 'ready',
+        ready: true,
+        reason: ''
+      }
+    }
+  }
+
+  const artifacts = run.artifacts || {}
+  const requiresCurrentSourceMatch = usesHostProviderBackend(run.backend || run.input?.backend)
+  const sourceImageValidation = readJsonArtifact({
+    dataDir,
+    targetPath: artifacts.sourceImageQa,
+    label: 'Full-pet source image QA'
+  })
+  const currentSourceImage = createPublicText({
+    dataDir,
+    value: artifacts.generatedImage?.outputs?.[0]?.dataRelativePath || ''
+  })
+  const qaSourceImage = createPublicText({
+    dataDir,
+    value: sourceImageValidation?.sourceRelativePath || ''
+  })
+  const normalizedCurrentSourceImage = normalizeRelativeArtifactPath(currentSourceImage)
+  const normalizedQaSourceImage = normalizeRelativeArtifactPath(qaSourceImage)
+  const sourceImageMatchesCurrent = !requiresCurrentSourceMatch || Boolean(
+    normalizedCurrentSourceImage &&
+    normalizedQaSourceImage &&
+    normalizedCurrentSourceImage === normalizedQaSourceImage
+  )
+  const reviewGate = sourceImageMatchesCurrent
+    ? {
+        status: 'ready',
+        ready: true,
+        reason: 'Full-pet review artifacts match the current generated image. You can approve the run when QA looks correct.'
+      }
+    : {
+        status: 'blocked',
+        ready: false,
+        reason: 'QA source image does not match the current generated image. Retry generation on this same run before approval or import.'
+      }
+
+  return {
+    requiresCurrentSourceMatch,
+    currentSourceImage,
+    qaSourceImage,
+    sourceImageMatchesCurrent,
+    sourceImageValidation,
+    reviewGate
+  }
+}
+
 const createWizardState = ({ dataDir, run }) => {
   const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const prompt = run.input?.originalPrompt || run.input?.prompt || ''
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
   const isFullPet = run.generationTask?.mode === 'full-pet'
+  const fullPetReviewGate = createFullPetReviewGate({ dataDir, run })
+  const requiresRetryBeforeApproval = status === 'ready_for_review' && fullPetReviewGate.reviewGate.ready === false
   let phase = 'draft'
   let summary = 'Draft a task to create a run snapshot.'
   let nextStepLabel = 'Draft task'
@@ -345,9 +422,15 @@ const createWizardState = ({ dataDir, run }) => {
     nextStepReason = 'Use the same run to retry generation after checking the failure details.'
   } else if (status === 'ready_for_review') {
     phase = 'ready-for-review'
-    summary = 'Review QA artifacts and approve the run for host-owned import.'
-    nextStepLabel = 'Approve run'
-    nextStepReason = 'Review the QA and approve this run to unlock host-owned import.'
+    if (requiresRetryBeforeApproval) {
+      summary = 'Review shows stale QA source artifacts. Retry generation on this same run before approval.'
+      nextStepLabel = 'Retry generation'
+      nextStepReason = 'Retry generation on this same run before approval so QA matches the current generated image.'
+    } else {
+      summary = 'Review QA artifacts and approve the run for host-owned import.'
+      nextStepLabel = 'Approve run'
+      nextStepReason = 'Review the QA and approve this run to unlock host-owned import.'
+    }
   } else if (status === 'approved') {
     phase = 'approved'
     summary = 'Run the host-owned import command from Control Center -> Plugins.'
@@ -488,13 +571,21 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
   const hasPendingQuestion = Boolean(run.generationTask?.questions?.[0])
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
-  const canRetryGeneration = Boolean(run.recovery?.canRetryGeneration || (status === 'failed' && taskStatus === 'confirmed'))
   const isFullPet = run.generationTask?.mode === 'full-pet'
+  const fullPetReviewGate = createFullPetReviewGate({ dataDir, run })
+  const requiresRetryBeforeApproval = status === 'ready_for_review' && fullPetReviewGate.reviewGate.ready === false
+  const canRetryGeneration = Boolean(
+    run.recovery?.canRetryGeneration ||
+    (status === 'failed' && taskStatus === 'confirmed') ||
+    (requiresRetryBeforeApproval && taskStatus === 'confirmed')
+  )
   const generateLabel = canRetryGeneration ? 'Retry generation' : (isFullPet ? 'Generate pet pack' : 'Generate action')
 
   const confirmEnabled = !hasPendingQuestion && taskStatus !== 'confirmed'
   const generateEnabled = !hasPendingQuestion && taskStatus === 'confirmed' && ['draft', 'failed'].includes(status)
-  const approveEnabled = status === 'ready_for_review'
+    ? true
+    : !hasPendingQuestion && requiresRetryBeforeApproval && taskStatus === 'confirmed'
+  const approveEnabled = status === 'ready_for_review' && !requiresRetryBeforeApproval
 
   return {
     confirm: {
@@ -529,7 +620,9 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
       enabled: approveEnabled,
       reason: approveEnabled
         ? 'QA is ready. Approve the run to unlock host-owned import.'
-        : status === 'imported'
+        : requiresRetryBeforeApproval
+          ? 'Retry generation before approval so QA matches the current generated image.'
+          : status === 'imported'
           ? 'This run is already imported.'
           : status === 'approved'
             ? 'This run is already approved. Finish host-owned import in OpenPet.'
@@ -913,44 +1006,13 @@ const createFullPetReview = ({ dataDir, run }) => {
   if (run.artifacts?.actionFrames) return null
   if (run.generationTask?.mode !== 'full-pet') return null
   const artifacts = run.artifacts || {}
-  const requiresCurrentSourceMatch = usesHostProviderBackend(run.backend || run.input?.backend)
-  const sourceImageValidation = readJsonArtifact({
-    dataDir,
-    targetPath: artifacts.sourceImageQa,
-    label: 'Full-pet source image QA'
-  })
+  const reviewState = createFullPetReviewGate({ dataDir, run })
   const atlasValidation = readJsonArtifact({
     dataDir,
     targetPath: artifacts.qa,
     label: 'Full-pet atlas QA'
   })
-  const currentSourceImage = createPublicText({
-    dataDir,
-    value: artifacts.generatedImage?.outputs?.[0]?.dataRelativePath || ''
-  })
-  const qaSourceImage = createPublicText({
-    dataDir,
-    value: sourceImageValidation?.sourceRelativePath || ''
-  })
-  const normalizedCurrentSourceImage = normalizeRelativeArtifactPath(currentSourceImage)
-  const normalizedQaSourceImage = normalizeRelativeArtifactPath(qaSourceImage)
-  const sourceImageMatchesCurrent = !requiresCurrentSourceMatch || Boolean(
-    normalizedCurrentSourceImage &&
-    normalizedQaSourceImage &&
-    normalizedCurrentSourceImage === normalizedQaSourceImage
-  )
-  const reviewGate = sourceImageMatchesCurrent
-    ? {
-        status: 'ready',
-        ready: true,
-        reason: 'Full-pet review artifacts match the current generated image. You can approve the run when QA looks correct.'
-      }
-    : {
-        status: 'blocked',
-        ready: false,
-        reason: 'QA source image does not match the current generated image. Retry generation on this same run before approval or import.'
-      }
-  const sourceImage = currentSourceImage || qaSourceImage
+  const sourceImage = reviewState.currentSourceImage || reviewState.qaSourceImage
   return {
     petId: createPublicText({ dataDir, value: run.petId || '' }),
     displayName: createPublicText({ dataDir, value: run.input?.petName || run.petId || '' }),
@@ -962,12 +1024,12 @@ const createFullPetReview = ({ dataDir, run }) => {
     sourceImageQa: toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa }),
     actionTaskQa: toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa }),
     sourceImage,
-    currentSourceImage,
-    qaSourceImage,
-    requiresCurrentSourceMatch,
-    sourceImageMatchesCurrent,
-    reviewGate,
-    sourceImageValidation: createPublicLogValue({ dataDir, value: sourceImageValidation }),
+    currentSourceImage: reviewState.currentSourceImage,
+    qaSourceImage: reviewState.qaSourceImage,
+    requiresCurrentSourceMatch: reviewState.requiresCurrentSourceMatch,
+    sourceImageMatchesCurrent: reviewState.sourceImageMatchesCurrent,
+    reviewGate: reviewState.reviewGate,
+    sourceImageValidation: createPublicLogValue({ dataDir, value: reviewState.sourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`

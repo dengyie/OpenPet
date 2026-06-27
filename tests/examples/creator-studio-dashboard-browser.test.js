@@ -9,6 +9,7 @@ const sharp = require('sharp')
 
 const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
+const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const openDashboardServer = async (dataDir) => {
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
@@ -22,6 +23,205 @@ const openDashboardPage = async (server) => {
   const page = await browser.newPage()
   await page.goto(`http://127.0.0.1:${server.address().port}`)
   return { browser, page }
+}
+
+const writeSolidPng = async (targetPath, { width, height, background }) => {
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+  await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background
+    }
+  }).png().toFile(targetPath)
+}
+
+const seedImportedActionRun = async (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      originalPrompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      backend: 'local',
+      generationTask: {
+        mode: 'single-action',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '先缩起来，再轻轻转一圈。',
+          loop: false,
+          frameCount: 1,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-27T01:00:00.000Z'
+  })
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const framesDir = path.join(runDir, 'frames', 'actions', 'shy-spin')
+  const qaDir = path.join(runDir, 'qa')
+  const baseDir = path.join(runDir, 'frames', 'base')
+  await writeSolidPng(path.join(framesDir, '0001.png'), {
+    width: 192,
+    height: 208,
+    background: { r: 255, g: 182, b: 145, alpha: 1 }
+  })
+  await writeSolidPng(path.join(qaDir, 'action-frame-contact-sheet.png'), {
+    width: 192,
+    height: 208,
+    background: { r: 255, g: 220, b: 205, alpha: 1 }
+  })
+  await writeSolidPng(path.join(baseDir, '0001.png'), {
+    width: 512,
+    height: 512,
+    background: { r: 250, g: 200, b: 160, alpha: 1 }
+  })
+  fs.writeFileSync(path.join(qaDir, 'action-frame-validation.json'), `${JSON.stringify({
+    ok: true,
+    loop: false,
+    warnings: [],
+    playback: {
+      frameDurationsMs: [160]
+    }
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'imported',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'imported',
+      reviewStatus: 'approved',
+      importStatus: 'imported',
+      importedActionId: 'shy-spin',
+      triggerProposalSubmission: {
+        ok: true,
+        proposal: {
+          id: 'proposal:click:shy-spin:dashboard'
+        }
+      },
+      artifacts: {
+        generatedImage: {
+          ok: true,
+          backend: 'local',
+          model: 'local-custom-sprite-v2',
+          generatedAt: '2026-06-27T01:01:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: 'dashboard-imported-action-sha'
+          }]
+        },
+        actionFrames: {
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          framesDir,
+          qa: path.join(qaDir, 'action-frame-validation.json'),
+          contactSheet: path.join(qaDir, 'action-frame-contact-sheet.png'),
+          frameCount: 1,
+          frameWidth: 192,
+          frameHeight: 208,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }
+      }
+    },
+    now: () => '2026-06-27T01:02:00.000Z'
+  })
+  return run
+}
+
+const seedImportedFullPetRun = async (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Imported Review Cat',
+      petId: 'imported-review-cat',
+      prompt: '生成一只完整的新桌宠。',
+      originalPrompt: '生成一只完整的新桌宠。',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只已经导入完成、等待最终复核的桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'soft breathing and a tiny tail sway',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-27T01:10:00.000Z'
+  })
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const outputDir = path.join(runDir, 'outputs')
+  const qaDir = path.join(runDir, 'qa')
+  const baseDir = path.join(runDir, 'frames', 'base')
+  await writeSolidPng(path.join(baseDir, '0001.png'), {
+    width: 1024,
+    height: 1024,
+    background: { r: 255, g: 194, b: 120, alpha: 1 }
+  })
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: 'imported-review-cat',
+    displayName: 'Imported Review Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+    ok: true,
+    width: 1536,
+    height: 1872,
+    visiblePixels: 8200,
+    warnings: []
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
+    ok: true,
+    sourceRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+    width: 1024,
+    height: 1024,
+    visiblePixels: 6400,
+    warnings: []
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'imported',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'imported',
+      reviewStatus: 'approved',
+      importStatus: 'imported',
+      importedPackId: 'imported-review-cat',
+      activatedPackId: 'imported-review-cat',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          ok: true,
+          backend: 'cloud',
+          model: 'gpt-image-2',
+          generatedAt: '2026-06-27T01:11:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: 'dashboard-imported-full-pet-sha'
+          }]
+        }
+      }
+    },
+    now: () => '2026-06-27T01:12:00.000Z'
+  })
+  return run
 }
 
 test('creator studio dashboard drives a single-action fixture run to the host import handoff', async () => {
@@ -109,8 +309,54 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
   }
 })
 
+test('creator studio dashboard shows imported action review completion details', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-'))
+  await seedImportedActionRun(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    assert.match(handoffText, /Imported result details/i)
+    assert.match(handoffText, /Review location: Actions -> Trigger Proposal Inbox/i)
+
+    const reviewText = await page.locator('#action-review-panel').textContent()
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Imported action: shy-spin/i)
+    assert.match(reviewText, /Actions -> Trigger Proposal Inbox/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard shows imported full-pet review completion details', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-'))
+  await seedImportedFullPetRun(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    assert.match(handoffText, /Imported result details/i)
+    assert.match(handoffText, /Imported pet pack: imported-review-cat/i)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Imported pet pack: imported-review-cat/i)
+    assert.match(reviewText, /Activated pack: imported-review-cat/i)
+    assert.match(reviewText, /Review location: OpenPet/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio dashboard surfaces full-pet qa source mismatch before approval', async () => {
-  const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-mismatch-'))
   const run = createRun({
     dataDir,
@@ -201,17 +447,17 @@ test('creator studio dashboard surfaces full-pet qa source mismatch before appro
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
     const reviewText = await page.locator('#full-pet-review-panel').textContent()
     assert.match(reviewText, /QA source image does not match the current generated image/i)
     assert.match(reviewText, /Retry generation on this same run before approval/i)
     assert.match(reviewText, /stale-source\.png/i)
     assert.match(reviewText, /0001\.png/i)
-
-    await page.locator('#approve-button').click()
-    await page.waitForFunction(() => /Full-pet QA source path must match the current generated image before approval/.test(document.querySelector('#status-line').textContent))
-
-    const postApproveReviewText = await page.locator('#full-pet-review-panel').textContent()
-    assert.match(postApproveReviewText, /QA source image does not match the current generated image/i)
+    await expectRetryButtonLabel(page, 'Retry generation')
+    assert.match(await page.locator('#next-step-panel').textContent(), /Retry generation/i)
+    assert.equal(await page.locator('#approve-button').isDisabled(), true)
+    assert.match(await page.locator('#action-lane-panel').textContent(), /Retry generation before approval/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

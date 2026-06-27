@@ -750,13 +750,31 @@
         ].join('')
       }
 
-      const renderFullPetReview = (review) => {
+      const renderImportedReviewNotice = (run) => {
+        if (run?.status !== 'imported') return ''
+        const importGuidance = run?.workflowGuidance?.import || {}
+        const resultCard = importGuidance.resultCard || {}
+        const entries = Array.isArray(resultCard.entries) ? resultCard.entries : []
+        return [
+          '<div class="notice">',
+          '<strong>Import completed.</strong>',
+          `<p>${escapeHtml(importGuidance.summary || 'The output has been imported through the host bridge.')}</p>`,
+          entries.map((entry) => `<p>${escapeHtml(entry.label || 'Result')}: ${escapeHtml(entry.value || '')}</p>`).join(''),
+          resultCard.reviewLocation
+            ? `<p>Review location: ${escapeHtml(resultCard.reviewLocation)}</p>`
+            : '',
+          '</div>'
+        ].join('')
+      }
+
+      const renderFullPetReview = (review, run) => {
         if (!review?.spritesheetUrl) return 'Generated pet-pack review artifacts will appear here before import.'
         const sourceValidation = review?.sourceImageValidation || {}
         const atlasValidation = review?.atlasValidation || {}
         const reviewGate = review?.reviewGate || {}
         const showsMismatch = review?.sourceImageMatchesCurrent === false
         return [
+          renderImportedReviewNotice(run),
           showsMismatch
             ? [
                 '<div class="notice error">',
@@ -1240,6 +1258,7 @@
           $('qa-panel').textContent = `Frame QA written: ${actionFrames.qa || 'action-frame-validation.json'}`
           $('playback-panel').innerHTML = renderPlaybackPanel(actionReview)
           $('action-review-panel').innerHTML = [
+            renderImportedReviewNotice(run),
             `<strong>${escapeHtml(actionFrames.name || actionFrames.actionId)}</strong>`,
             `<p>Frames: ${escapeHtml(actionFrames.frameCount)} at ${escapeHtml(actionFrames.frameWidth)}x${escapeHtml(actionFrames.frameHeight)}</p>`,
             `<p>QA: ${escapeHtml(actionFrames.qa || 'action-frame-validation.json')}</p>`,
@@ -1260,7 +1279,7 @@
           $('action-review-panel').textContent = isFullPetRun(run)
             ? 'Generated pet-pack review artifacts and atlas QA will appear here before import.'
             : 'Generated action frames and action-frame-validation.json will appear here before import.'
-          $('full-pet-review-panel').innerHTML = renderFullPetReview(fullPetReview)
+          $('full-pet-review-panel').innerHTML = renderFullPetReview(fullPetReview, run)
           stopPlaybackPreview()
           $('import-handoff-panel').innerHTML = renderImportHandoff(run)
         }
