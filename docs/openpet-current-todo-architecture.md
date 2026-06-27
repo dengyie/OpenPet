@@ -190,14 +190,14 @@ Current state:
 
 - Plugin commands/services are explicit, permission-gated, and logged.
 - Creator-tools routes support bounded action, asset, pack metadata, pet-pack import, and model-generation flows.
+- Bridge route docs and permission docs are now synchronized with the implemented surface through targeted route/permission regression coverage, including `trigger-proposals:write` for Creator Studio review handoff and `model:image-generate` for host-managed settings, health checks, and bounded image generation.
 - Secrets stay in host services.
+- Plugin-managed provider credentials are now explicitly documented as unsupported when an extension uses the host-managed generation surface.
 - Creator Studio dashboard cannot use command-scoped host bridge routes directly; explicit command runs remain the only path that receives bridge URL/token credentials.
 
 P1 work:
 
-- Keep bridge route docs synchronized with actual route coverage and permission names.
-- Add targeted tests whenever a new route is added to prevent IPC/bridge drift.
-- Document plugin-managed provider credentials as unsupported unless a future explicit trust model is designed.
+- Keep future bridge additions behind the same docs-and-tests lockstep instead of letting route/permission drift reappear.
 
 P2/P3:
 
