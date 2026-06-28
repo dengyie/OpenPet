@@ -502,6 +502,59 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     return { petPackId: packId, deletedCount }
   }
 
+  const saveTrace = (trace = {}) => {
+    const timestamp = now()
+    const traceId = typeof trace.id === 'string' && trace.id.trim() ? trace.id.trim() : createTraceId()
+    const conversationId = typeof trace.conversationId === 'string'
+      ? trace.conversationId.trim()
+      : ''
+    if (!conversationId) throw new Error('conversationId is required')
+    state.traces[traceId] = {
+      ...trace,
+      id: traceId,
+      conversationId,
+      createdAt: typeof trace.createdAt === 'string' && trace.createdAt ? trace.createdAt : timestamp,
+      updatedAt: timestamp
+    }
+    persist()
+    return clone(state.traces[traceId])
+  }
+
+  const getLatestTraceByConversation = (conversationId) => {
+    const normalizedConversationId = typeof conversationId === 'string' ? conversationId.trim() : ''
+    if (!normalizedConversationId) return null
+    const trace = Object.values(state.traces || {})
+      .filter((candidate) => candidate?.conversationId === normalizedConversationId)
+      .sort((left, right) => String(right?.updatedAt || right?.createdAt || '').localeCompare(String(left?.updatedAt || left?.createdAt || '')))[0]
+    return trace ? clone(trace) : null
+  }
+
+  const updateTrace = ({ traceId = '', conversationId = '', patch = {} } = {}) => {
+    const existing = traceId
+      ? state.traces[traceId]
+      : getLatestTraceByConversation(conversationId)
+    if (!existing?.id) return null
+    state.traces[existing.id] = {
+      ...existing,
+      ...patch,
+      memory: {
+        ...(existing.memory || {}),
+        ...(patch.memory || {})
+      },
+      behavior: {
+        ...(existing.behavior || {}),
+        ...(patch.behavior || {})
+      },
+      result: {
+        ...(existing.result || {}),
+        ...(patch.result || {})
+      },
+      updatedAt: now()
+    }
+    persist()
+    return clone(state.traces[existing.id])
+  }
+
   const createMemoryJob = ({ petPackId, conversationId } = {}) => {
     const id = `memory-job:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
     state.memoryJobs[id] = {
@@ -542,13 +595,16 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     getMessages,
     getPersonaOverride,
     getState,
+    getLatestTraceByConversation,
     listRecentPetUtterances,
     listMemories,
     markMemoriesUsed,
     persist,
     recordPetUtterance,
     clearPetUtterances,
-    savePersonaOverride
+    saveTrace,
+    savePersonaOverride,
+    updateTrace
   }
 }
 

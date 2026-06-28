@@ -185,6 +185,7 @@ export interface AiPaneProps {
   setReplayDraft: (value: string) => void
   replayResult: AiBehaviorResult | null
   onReplayBehaviorDecision: () => void | Promise<void>
+  onExportAiTalkTrace: () => void | Promise<void>
   onExportBehaviorDiagnostics: () => void | Promise<void>
   onClearBehaviorDecisions: () => void | Promise<void>
   onRefreshMemoryProfile: () => void | Promise<void>
@@ -256,6 +257,7 @@ export function AiPane({
   setReplayDraft,
   replayResult,
   onReplayBehaviorDecision,
+  onExportAiTalkTrace,
   onExportBehaviorDiagnostics,
   onClearBehaviorDecisions,
   onRefreshMemoryProfile,
@@ -874,7 +876,7 @@ export function AiPane({
         </div>
       </CollapsibleAiSection>
 
-      <CollapsibleAiSection title="聊天" note="默认在这里和宠物对话；需要长历史时可打开扩展聊天面板">
+      <CollapsibleAiSection title="聊天" note="默认在这里和宠物对话；需要长历史时可打开扩展聊天面板" defaultOpen>
         <div className="chat-panel">
           <div className="chat-meta-bar">
             <div>
@@ -886,6 +888,9 @@ export function AiPane({
               </span>
             </div>
             <div className="inline-action">
+              <button type="button" className="ghost" onClick={onExportAiTalkTrace}>
+                导出 AI Talk Trace
+              </button>
               <button type="button" className="ghost" onClick={onOpenBubbleChat}>
                 打开默认气泡聊天
               </button>

@@ -438,6 +438,20 @@ export function useAiPane(activeTab = 'ai') {
     }
   }
 
+  const onExportAiTalkTrace = async () => {
+    setStatus('')
+    try {
+      const conversationId = petChatState.petPack.id
+        ? `control-center:${petChatState.petPack.id}:main`
+        : undefined
+      const content = await api.exportAiTalkTrace(conversationId ? { conversationId } : undefined)
+      downloadTextFile('openpet-ai-talk-trace.json', content, 'application/json;charset=utf-8')
+      setStatus('AI Talk trace 已导出')
+    } catch (error) {
+      setStatus(messageFromError(error, 'AI Talk trace 导出失败'))
+    }
+  }
+
   const onClearBehaviorDecisions = async () => {
     if (!window.confirm('清空 AI 行为决策记录？')) return
     setStatus('')
@@ -800,6 +814,7 @@ export function useAiPane(activeTab = 'ai') {
     onTest,
     onDryRunBehavior,
     onReplayBehaviorDecision,
+    onExportAiTalkTrace,
     onExportBehaviorDiagnostics,
     onClearBehaviorDecisions,
     onRefreshMemoryProfile,

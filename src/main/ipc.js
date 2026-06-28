@@ -467,6 +467,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           actions: petService.getAnimations()?.actions || []
         })
         const behavior = executeBehaviorDecision(petService, decision)
+        aiTalkService?.recordTraceBehaviorOutcome?.({
+          conversationId: result.conversationId,
+          behavior
+        })
         const response = behavior?.matched && behavior.type === 'playAction'
           ? { ...result, behavior, action: behavior }
           : { ...result, behavior }
@@ -1332,6 +1336,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.AI_CLEAR_PET_PACK_MEMORIES, () => {
     if (!aiTalkService?.clearPetPackMemories) throw new Error('AI talk memory clearing is not available')
     return aiTalkService.clearPetPackMemories()
+  })
+
+  ipcMainService.handle(IPC.AI_TALK_EXPORT_TRACE, (_event, payload) => {
+    if (!aiTalkService?.exportTrace) throw new Error('AI talk trace export is not available')
+    return aiTalkService.exportTrace(payload || {})
   })
 
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => imageGenerationModelService.getConfig())

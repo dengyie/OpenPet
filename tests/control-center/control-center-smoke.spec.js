@@ -110,6 +110,13 @@ test.describe('Control Center smoke', () => {
     await expect(personaSection).toContainText('当前激活宠物包：Citrus Cat · citrus-cat')
   })
 
+  test('exports ai talk trace from the AI pane', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+    await page.getByRole('button', { name: '导出 AI Talk Trace' }).click()
+    await expect(page.locator('[data-testid="ai-status-line"]')).toContainText('AI Talk trace 已导出')
+  })
+
   test('applies an action trigger proposal through the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Actions' }).click()

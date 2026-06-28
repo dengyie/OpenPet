@@ -161,6 +161,10 @@ export interface AiMemoryProfileViewState {
   recentJobs: AiMemoryJobViewState[]
 }
 
+export interface AiTalkTraceExportRequest {
+  conversationId?: string
+}
+
 export interface AiPersona {
   name: string
   identity: string
@@ -2398,6 +2402,7 @@ export interface ControlCenterApi {
   getAiMemoryProfile: () => Promise<AiMemoryProfileViewState>
   deleteAiMemory: (memoryId: string) => Promise<AiMemoryProfileViewState>
   clearAiPetPackMemories: () => Promise<AiMemoryProfileViewState>
+  exportAiTalkTrace: (payload?: AiTalkTraceExportRequest) => Promise<string>
   getImageGenerationConfig: () => Promise<ImageGenerationConfigViewState>
   saveImageGenerationConfig: (config: Partial<ImageGenerationConfigViewState>) => Promise<ImageGenerationConfigViewState>
   saveImageGenerationApiKey: (apiKey: string) => Promise<ImageGenerationSaveApiKeyResult>

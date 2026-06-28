@@ -349,6 +349,47 @@ test('ai memory management IPC delegates to ai talk service when available', asy
   ])
 })
 
+test('ai talk trace export IPC delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const exportedTrace = JSON.stringify({
+    schemaVersion: 1,
+    trace: {
+      id: 'trace:test',
+      conversation: { conversationId: 'control-center:legacy-cat:main' },
+      provider: { model: 'gpt-5.5' }
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiTalkService: {
+      exportTrace: (payload) => {
+        calls.push(payload)
+        return exportedTrace
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.AI_TALK_EXPORT_TRACE)(null, { conversationId: 'control-center:legacy-cat:main' })
+
+  assert.equal(result, exportedTrace)
+  assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
+})
+
 test('ai provider settings IPC delegates config save key save and connection test', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []

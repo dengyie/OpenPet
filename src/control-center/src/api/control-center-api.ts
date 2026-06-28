@@ -1387,6 +1387,37 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return demoState.aiConfig.behavior
   },
+  exportAiTalkTrace: async ({ conversationId } = {}) => JSON.stringify({
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    trace: {
+      id: 'trace:demo',
+      conversationId: conversationId || `control-center:${demoState.petPacks.activePackId}:main`,
+      petPackId: demoState.petPacks.activePackId,
+      conversation: {
+        conversationId: conversationId || `control-center:${demoState.petPacks.activePackId}:main`,
+        petPackId: demoState.petPacks.activePackId,
+        petPackDisplayName: demoState.petPacks.packs.find((pack) => pack.id === demoState.petPacks.activePackId)?.displayName || demoState.petPacks.activePackId
+      },
+      provider: {
+        provider: demoState.aiConfig.provider,
+        baseUrl: demoState.aiConfig.baseUrl,
+        model: demoState.aiConfig.model
+      },
+      memory: {
+        injected: [],
+        used: []
+      },
+      behavior: {
+        providerIntent: null,
+        finalDecision: null
+      },
+      result: {
+        replyChars: cloneChatMessages(demoState.petChatMessages).at(-1)?.content?.length || 0,
+        persistedMessageCount: cloneChatMessages(demoState.petChatMessages).length
+      }
+    }
+  }, null, 2),
   dryRunAiBehavior: async ({ reply }) => ({ matched: Boolean(reply), reason: reply ? 'demo dry-run matched' : 'demo dry-run empty', actionId: reply ? 'wave' : '' }),
   replayAiBehaviorDecision: async (decisionId) => ({ replayOf: decisionId, matched: true, reason: 'demo replay matched', actionId: 'wave' }),
   exportAiBehaviorDiagnostics: async () => JSON.stringify({

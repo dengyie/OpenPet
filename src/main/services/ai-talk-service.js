@@ -349,6 +349,52 @@ const sanitizeDiagnosticText = (value) => String(value || '')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
   .slice(0, 240)
 
+const hashOptionalText = (value) => {
+  const text = normalizeString(value)
+  return text ? hashText(text) : ''
+}
+
+const sanitizeProviderBaseUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || ''))
+    parsed.username = ''
+    parsed.password = ''
+    parsed.search = ''
+    parsed.hash = ''
+    return parsed.toString().replace(/\/$/, '')
+  } catch (_) {
+    return ''
+  }
+}
+
+const summarizeTraceMemory = (memory = {}) => ({
+  id: normalizeString(memory?.id),
+  scope: normalizeString(memory?.scope),
+  petPackId: normalizeString(memory?.petPackId),
+  tags: Array.isArray(memory?.tags)
+    ? memory.tags.map((tag) => normalizeString(tag)).filter(Boolean)
+    : [],
+  confidence: Number.isFinite(Number(memory?.confidence)) ? Number(memory.confidence) : 0,
+  importance: Number.isFinite(Number(memory?.importance)) ? Number(memory.importance) : 0,
+  useCount: Math.max(0, Number(memory?.useCount) || 0),
+  lastUsedAt: normalizeString(memory?.lastUsedAt),
+  redactedTextHash: hashOptionalText(memory?.text),
+  sourceConversationId: normalizeString(memory?.sourceConversationId),
+  sourceMessageIds: Array.isArray(memory?.sourceMessageIds)
+    ? memory.sourceMessageIds.map((value) => normalizeString(value)).filter(Boolean)
+    : []
+})
+
+const summarizeBehavior = (value = {}) => ({
+  intent: normalizeString(value?.intent),
+  actionId: normalizeString(value?.actionId),
+  confidence: Number.isFinite(Number(value?.confidence)) ? Number(value.confidence) : 0,
+  matched: Boolean(value?.matched),
+  type: normalizeString(value?.type),
+  ruleId: normalizeString(value?.ruleId),
+  reason: sanitizeDiagnosticText(value?.reason || '')
+})
+
 const splitTalkConversationId = (conversationId) => {
   const normalized = normalizeString(conversationId)
   const match = normalized.match(/^(.+:.+):(main)$/)
@@ -628,6 +674,31 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     return aiTalkStore.getMessages(sessionId, mainConversationId)
   }
 
+  const recordTraceBehaviorOutcome = ({ conversationId, behavior } = {}) => {
+    if (typeof aiTalkStore.updateTrace !== 'function') return null
+    return aiTalkStore.updateTrace({
+      conversationId,
+      patch: {
+        behavior: {
+          finalDecision: summarizeBehavior(behavior)
+        }
+      }
+    })
+  }
+
+  const exportTrace = ({ conversationId } = {}) => {
+    if (typeof aiTalkStore.getLatestTraceByConversation !== 'function') {
+      throw new Error('AI talk trace export is not available')
+    }
+    const trace = aiTalkStore.getLatestTraceByConversation(conversationId)
+    if (!trace) throw new Error('AI talk trace was not found')
+    return JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      trace
+    }, null, 2)
+  }
+
   const chat = async ({ message, entrypoint = 'control-center' } = {}) => {
     const startedAt = Date.now()
     const content = normalizeString(message)
@@ -702,9 +773,9 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           userMessage,
           { role: 'assistant', content: reply }
         ])
-        if (injectedMemoryIds.length && typeof aiTalkStore.markMemoriesUsed === 'function') {
-          aiTalkStore.markMemoriesUsed(injectedMemoryIds)
-        }
+        const usedMemories = injectedMemoryIds.length && typeof aiTalkStore.markMemoriesUsed === 'function'
+          ? aiTalkStore.markMemoriesUsed(injectedMemoryIds)
+          : []
         const sourceMessages = nextMessages.slice(-2)
         scheduleMemoryExtraction({
           config,
@@ -715,6 +786,41 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           assistantReply: reply,
           persona
         })
+        if (typeof aiTalkStore.saveTrace === 'function') {
+          aiTalkStore.saveTrace({
+            conversationId: conversationPublicId,
+            petPackId,
+            conversation: {
+              conversationId: conversationPublicId,
+              petPackId,
+              petPackDisplayName: normalizeString(manifest.displayName) || petPackId
+            },
+            provider: {
+              provider: normalizeString(config.provider),
+              baseUrl: sanitizeProviderBaseUrl(config.baseUrl),
+              model: normalizeString(config.model)
+            },
+            request: {
+              entrypoint,
+              historyCount: history.length,
+              messagesCount: messages.length,
+              messageChars: content.length,
+              toolsCount: tools.length,
+              recentPetActivityCount: recentPetActivity.length
+            },
+            memory: {
+              injected: memoryContext.map(summarizeTraceMemory),
+              used: usedMemories.map(summarizeTraceMemory)
+            },
+            behavior: {
+              providerIntent: summarizeBehavior(result.behaviorIntent)
+            },
+            result: {
+              replyChars: reply.length,
+              persistedMessageCount: nextMessages.length
+            }
+          })
+        }
         recordLog({
           level: 'info',
           event: 'ai-talk.chat.completed',
@@ -760,12 +866,14 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     compileMemoryContextPrompt,
     clearPetPackMemories,
     deleteMemory,
+    exportTrace,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
     generatePersonaDraft,
     getMemoryProfile,
     getPersonaProfile,
     mergePersona,
+    recordTraceBehaviorOutcome,
     savePersonaOverride
   }
 }

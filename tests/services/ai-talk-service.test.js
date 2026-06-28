@@ -814,3 +814,86 @@ test('ai talk service updates lastUsedAt and useCount only for memories injected
   assert.equal(unrelated.useCount, 0)
   assert.equal(unrelated.lastUsedAt, '')
 })
+
+test('ai talk service exports a redacted trace linking provider conversation memory and behavior summaries', async () => {
+  const store = createAiTalkStore({
+    storePath: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-ai-talk-service-trace-')), 'ai-talk-store.json'),
+    now: (() => {
+      let call = 0
+      return () => {
+        call += 1
+        return call < 5 ? '2026-06-20T00:00:00.000Z' : '2026-06-28T09:00:00.000Z'
+      }
+    })()
+  })
+
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      {
+        operation: 'create',
+        scope: 'petPack',
+        text: 'Mochi starts coding sessions with a gentle focus check-in.',
+        tags: ['coding', 'focus'],
+        confidence: 0.82,
+        importance: 0.73,
+        reason: 'relevant to coding focus'
+      }
+    ]
+  })
+
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://api.example.test/v1',
+        model: 'gpt-5.5',
+        systemPrompt: 'Always answer in concise Chinese.',
+        memory: { enabled: true },
+        behavior: { enabled: true, useTools: true }
+      }),
+      complete: async () => ({
+        reply: '我们开始专注吧。',
+        behaviorIntent: {
+          intent: 'focus_start',
+          actionId: 'wave',
+          confidence: 0.91,
+          bubbleText: '开始专注吧'
+        }
+      })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', displayName: 'Mochi Cat' })
+  })
+
+  const result = await service.chat({ message: 'secret user prompt about coding focus' })
+  service.recordTraceBehaviorOutcome({
+    conversationId: result.conversationId,
+    behavior: {
+      matched: true,
+      type: 'playAction',
+      actionId: 'wave',
+      ruleId: 'rule:focus-wave',
+      reason: 'matched rule focus-wave',
+      intent: 'focus_start'
+    }
+  })
+
+  const exported = JSON.parse(service.exportTrace({ conversationId: result.conversationId }))
+  const serialized = JSON.stringify(exported)
+
+  assert.equal(exported.trace.conversation.conversationId, 'control-center:mochi-cat:main')
+  assert.equal(exported.trace.provider.model, 'gpt-5.5')
+  assert.equal(exported.trace.memory.injected.length, 1)
+  assert.equal(exported.trace.memory.injected[0].scope, 'petPack')
+  assert.equal(exported.trace.memory.used[0].useCount, 1)
+  assert.equal(exported.trace.behavior.providerIntent.intent, 'focus_start')
+  assert.equal(exported.trace.behavior.finalDecision.actionId, 'wave')
+  assert.equal(exported.trace.result.replyChars, '我们开始专注吧。'.length)
+  assert.equal(serialized.includes('secret user prompt about coding focus'), false)
+  assert.equal(serialized.includes('Mochi starts coding sessions with a gentle focus check-in.'), false)
+  assert.equal(serialized.includes('Always answer in concise Chinese.'), false)
+})
