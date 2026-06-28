@@ -1315,6 +1315,9 @@
         const run = state.run
         if (!run?.generationTask) {
           const buttonStates = run?.actionLane?.buttonStates || {}
+          const actionFrames = run.artifacts?.actionFrames
+          const actionReview = state.actionReview
+          const fullPetReview = state.fullPetReview
           syncDraftControlsFromRun(run)
           $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
           $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
@@ -1326,17 +1329,26 @@
           $('trigger-panel').textContent = 'No trigger proposal yet.'
           $('recovery-panel').innerHTML = renderRecoveryPanel(run)
           $('workflow-guidance-panel').innerHTML = renderWorkflowGuidance(run)
-          $('prompt-provenance-panel').textContent = 'Host prompt preview appears after provider generation.'
-          $('qa-panel').textContent = 'No generated QA yet.'
-          $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
-          $('action-review-panel').textContent = 'Generated review artifacts and QA will appear here before import.'
-          $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
-          $('import-handoff-panel').textContent = 'Generate and approve a run to unlock host-owned import.'
+          $('prompt-provenance-panel').innerHTML = renderPromptProvenance(run)
+          if (actionFrames) {
+            $('qa-panel').textContent = `Frame QA written: ${actionFrames.qa || 'action-frame-validation.json'}`
+            $('playback-panel').innerHTML = renderPlaybackPanel(actionReview)
+            $('action-review-panel').innerHTML = renderActionReview(actionReview, run, actionFrames, { triggerProposal: { type: 'unbound' } })
+            $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
+            startPlaybackPreview(actionReview)
+            $('import-handoff-panel').innerHTML = renderImportHandoff(run, actionFrames, actionReview, fullPetReview)
+          } else {
+            $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
+            $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
+            $('action-review-panel').textContent = 'Generated review artifacts and QA will appear here before import.'
+            $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
+            $('import-handoff-panel').textContent = 'Generate and approve a run to unlock host-owned import.'
+            stopPlaybackPreview()
+          }
           $('confirm-button').disabled = buttonStates.confirm ? !buttonStates.confirm.enabled : true
           $('generate-button').disabled = true
           $('generate-button').textContent = buttonStates.generate?.label || defaultGenerateLabel(run)
           $('approve-button').disabled = true
-          stopPlaybackPreview()
           return
         }
         const action = run.generationTask.actions[0]

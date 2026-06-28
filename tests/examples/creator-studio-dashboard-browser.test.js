@@ -9,7 +9,7 @@ const sharp = require('sharp')
 
 const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
-const { createRun, updateRunStatus, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+const { createRun, readRun, updateRunStatus, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const openDashboardServer = async (dataDir) => {
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
@@ -127,6 +127,21 @@ const seedImportedActionRun = async (dataDir) => {
       }
     },
     now: () => '2026-06-27T01:02:00.000Z'
+  })
+  return run
+}
+
+const seedLegacyImportedActionRunWithoutTask = async (dataDir) => {
+  const run = await seedImportedActionRun(dataDir)
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyImportedRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyImportedRun,
+      taskStatus: 'not_started',
+      currentStep: 'imported'
+    }
   })
   return run
 }
@@ -720,6 +735,27 @@ test('creator studio dashboard shows imported action review completion details',
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review trigger proposal/i)
     assert.match(actionLaneText, /Actions -> Trigger Proposal Inbox/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard preserves imported action follow-up for legacy runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-legacy-pre-task-'))
+  await seedLegacyImportedActionRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const reviewText = await page.locator('#action-review-panel').textContent()
+    assert.match(handoffText, /Imported result details/i)
+    assert.doesNotMatch(handoffText, /Generate and approve a run to unlock host-owned import\./i)
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Actions -> Trigger Proposal Inbox/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
