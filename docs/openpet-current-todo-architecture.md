@@ -45,7 +45,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Trigger pro
 - AI Provider smoke evidence now has a repeatable CLI entry point: `npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model> [--include-image] --image-model <model> --output <report.json>`. It probes `/models`, tests chat completions, keeps image generation opt-in, and writes a sanitized report without raw API keys.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, conservative legacy `settings.ai.conversations.control-center` migration, active pet-pack refresh signals for AI pane and desktop chat, redacted trace diagnostics export with pet-pack and conversation filters, trace-filter rebinding when the active pet-pack changes, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, provider behavior `reason` / `displayMode` preservation through behavior decisions, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
-- Bubble chat now has a transparent mini-dialogue implementation path in the current branch, but `main` still reflects a transitional dual-surface model where the lightweight bubble and full desktop chat coexist as separate primary entry points.
+- Bubble chat is now the default lightweight pet dialogue surface, with the standalone desktop chat positioned as an extended panel for longer history and advanced interaction.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard-first wizard display, prompt snapshot, wizard-step rail, retry/recover for failed provider runs, sanitized developer-mode prompt provenance, workflow smoke guidance, and structured approved action/pet import command handoff that tells the dashboard which Control Center plugin command to run while preserving command-scoped bridge-token boundaries.
 - Creator Studio fixture single-action runs now produce reviewable action-frame artifacts, contact-sheet QA, repairable frame previews, and an `Import Approved Action` dashboard handoff, so the dashboard can validate the action-specific review/import path without a live provider.
 - Creator Studio dashboard browser regressions now cover both single-action and full-pet fixture flows through draft/confirm/generate/review/approve to the correct host-owned import handoff, including mode-correct generation status copy, blocked action-frame QA recovery messaging, imported action handoff failure follow-up, and the `Import Approved Pet` full-pet review path.
@@ -104,12 +104,11 @@ Current state:
 - Trace diagnostics export already supports pet-pack-specific and conversation-specific slices.
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
 - User-facing chat entry wording now reflects the intended split: Bubble Chat is the default lightweight surface, while `PetChatWindow` is labeled as an extended panel rather than a parallel primary chat entry.
-- The lightweight pet bubble chat is the right product direction for default interaction, but `main` still needs an explicit convergence pass so the transparent bubble becomes the default entry while the desktop chat becomes an extended view instead of a second primary chat surface.
+- Chat surface convergence is implemented around one lightweight visible Bubble Chat surface, one extended desktop chat panel, one shared `AiTalkService` brain, and `PetService.say()` as the speech ingress.
+- Packaged runtime smoke evidence now aligns with the real lightweight chat surface: it records Bubble Chat visibility/item evidence, can capture a dedicated Bubble Chat screenshot, and treats the old renderer `#bubble` as a hidden compatibility node rather than the primary speech surface.
 
 P1 work:
 
-- Converge chat surfaces into one primary flow so the transparent bubble becomes the default entry anchored around the pet, while `PetChatWindow` remains an extended panel for longer history and advanced interaction.
-- Keep all lightweight pet speech routed through one visible surface, with `PetService.say()` as the single runtime speech entry and the old inline `#bubble` staying hidden as a compatibility node only.
 - Keep future trace UX aligned if trace volume or streaming surfaces expand beyond the current export and filter model.
 
 P2/P3:
