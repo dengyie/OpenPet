@@ -101,8 +101,8 @@ test('project-context indexes the archived provider smoke evidence and current s
 
   assert.match(
     docsReadme,
-    /release-evidence\/.*ai-provider-smoke\/.*creator-studio-provider-smoke\//is,
-    'docs/README.md should surface provider smoke archives in the release evidence map'
+    /release-evidence\/.*ai-provider-smoke\/.*creator-studio-provider-smoke\/.*packaged-runtime\/.*signed-release-closure\//is,
+    'docs/README.md should surface provider smoke and release-truth archives in the release evidence map'
   )
 })
 

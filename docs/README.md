@@ -40,7 +40,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
-- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including maintained real-provider smoke archives such as `ai-provider-smoke/` and `creator-studio-provider-smoke/`.
+- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including maintained real-provider smoke archives such as `ai-provider-smoke/` and `creator-studio-provider-smoke/`, packaged runtime smoke archives under `packaged-runtime/`, and release-claim closure archives under `signed-release-closure/`.
 - [`release-notes/`](./release-notes/) stores GitHub Release body drafts.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 
