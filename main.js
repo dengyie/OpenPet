@@ -115,6 +115,9 @@ const bootstrapOpenPet = () => {
     BrowserWindow,
     screen
   })
+  let ipcRuntimeHelpers = {
+    broadcastActivePetPackChanged: () => {}
+  }
   try {
     console.log(`OpenPet app log: ${appLogService.logPath}`)
   } catch (error) {
@@ -237,6 +240,7 @@ const bootstrapOpenPet = () => {
     onPetPackActivated: () => {
       reloadAndSendAnimations(getPetWindow, petService)
       triggerRuleRuntimeService.refresh()
+      ipcRuntimeHelpers.broadcastActivePetPackChanged({ source: 'plugin-service:onPetPackActivated' })
     },
     selectCreatorAssetFrameFolder: async () => {
       const selected = await dialog.showOpenDialog({
@@ -272,7 +276,7 @@ const bootstrapOpenPet = () => {
   triggerRuleRuntimeService.start()
 
   // 注册 IPC 处理器（依赖注入：主模块只负责"连接"，不负责"实现"）
-  registerIpcHandlers({
+  ipcRuntimeHelpers = registerIpcHandlers({
     getPetWindow,
     petService,
     petPackService,
@@ -300,7 +304,7 @@ const bootstrapOpenPet = () => {
     createSettingsWindow: () => createSettingsWindow(petWindow),
     petChatWindowService,
     petMovementPolicy
-  })
+  }) || ipcRuntimeHelpers
 
   petWindow = createWindow({ load: false })
 

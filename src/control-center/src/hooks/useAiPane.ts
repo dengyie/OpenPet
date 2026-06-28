@@ -242,6 +242,14 @@ export function useAiPane(activeTab = 'ai') {
     }))
   }
 
+  const refreshActivePetPackState = async () => {
+    await Promise.all([
+      loadPersonaProfile(),
+      loadMemoryProfile(),
+      loadPetChatState()
+    ])
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
@@ -282,6 +290,16 @@ export function useAiPane(activeTab = 'ai') {
     void loadMemoryProfile().catch(() => {})
     void loadPetChatState().catch(() => {})
   }, [activeTab])
+
+  useEffect(() => {
+    if (!api.onActivePetPackChanged) return undefined
+    const unsubscribe = api.onActivePetPackChanged(() => {
+      void refreshActivePetPackState().catch(() => {})
+    })
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   useEffect(() => {
     if (activeTab !== 'ai' || typeof window === 'undefined' || typeof document === 'undefined') return

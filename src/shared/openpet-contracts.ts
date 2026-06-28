@@ -2387,6 +2387,7 @@ export interface ControlCenterApi {
   exportPetPack: (packId: string) => Promise<PetPackExportResult>
   setActivePetPack: (packId: string) => Promise<PetPackMutationResult>
   removePetPack: (packId: string) => Promise<PetPackMutationResult>
+  onActivePetPackChanged?: (callback: (payload: PetPackMutationResult) => void) => (() => void)
   getAiConfig: () => Promise<AiConfigViewState>
   saveAiConfig: (config: Partial<AiConfigViewState>) => Promise<AiConfigViewState>
   saveAiApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>

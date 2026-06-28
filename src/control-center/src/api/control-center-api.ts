@@ -32,6 +32,7 @@ import type {
   PetChatBubbleViewState,
   PetChatStateViewState,
   PetPackSummary,
+  PetPackMutationResult,
   PetPacksViewState,
   PluginCommandRunResultViewState,
   PluginLogFilters,
@@ -99,6 +100,7 @@ const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult =>
 })
 
 const demoStorageKey = 'openpet.controlCenter.demoState'
+const demoActivePetPackChangedEvent = 'openpet:active-pet-pack-changed'
 
 const demoCatalogHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
@@ -713,6 +715,11 @@ const writeDemoState = () => {
   window.sessionStorage.setItem(demoStorageKey, JSON.stringify(demoState))
 }
 
+const emitDemoActivePetPackChanged = (payload: PetPackMutationResult) => {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(demoActivePetPackChangedEvent, { detail: payload }))
+}
+
 const demoState = readDemoState()
 const syncDemoStateFromStorage = () => {
   const nextState = readDemoState()
@@ -1201,14 +1208,25 @@ const demoApi: ControlCenterApi = {
     })
     writeDemoState()
     const activePack = getActiveDemoPetPack()
-    return {
+    const result = {
       pack: activePack,
       activePackId: demoState.petPacks.activePackId,
       petPacks: clonePetPacks(demoState.petPacks),
       animations: cloneActionsConfig(demoState.actionsConfig)
     }
+    emitDemoActivePetPackChanged(result)
+    return result
   },
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),
+  onActivePetPackChanged: (callback) => {
+    if (typeof window === 'undefined') return () => {}
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<PetPackMutationResult>
+      callback(customEvent.detail)
+    }
+    window.addEventListener(demoActivePetPackChangedEvent, handler)
+    return () => window.removeEventListener(demoActivePetPackChangedEvent, handler)
+  },
   getAiConfig: async () => cloneAiConfig(demoState.aiConfig),
   saveAiConfig: async (config) => {
     demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, ...config })
@@ -1681,4 +1699,10 @@ const demoApi: ControlCenterApi = {
   close: () => {}
 }
 
-export const controlCenterAPI: ControlCenterApi = window.controlCenterAPI || demoApi
+const resolvedControlCenterApi: ControlCenterApi = window.controlCenterAPI || demoApi
+
+if (typeof window !== 'undefined' && !window.controlCenterAPI) {
+  window.controlCenterAPI = resolvedControlCenterApi
+}
+
+export const controlCenterAPI: ControlCenterApi = resolvedControlCenterApi
