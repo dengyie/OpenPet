@@ -71,3 +71,23 @@ test('active TODO doc links archived OpenPet gateway provider smoke evidence tru
   assert.doesNotMatch(JSON.stringify(evidence), /sk-[A-Za-z0-9_-]{8,}/)
   assert.match(readme, /does not prove image generation output quality/i)
 })
+
+test('live docs link archived OpenPet gateway provider smoke evidence with the right claim boundary', () => {
+  const developmentSummary = readText('docs/development-summary.md')
+  const handoff = readText('docs/HANDOFF.md')
+  const projectStatusReview = readText('docs/project-status-review.md')
+
+  const archivePathPattern = /docs\/release-evidence\/ai-provider-smoke\/2026-06-28T11-08-10Z-openpet-gateway\//i
+  const verifiedFactsPattern = /gpt-5\.5[\s\S]*gpt-image-2[\s\S]*(?:chat completion smoke|chat smoke)[\s\S]*(?:intentionally opt-in and was skipped|intentionally skipped)/i
+  const claimBoundaryPattern = /does not prove image generation output quality|not of image output quality|not prove.*asset readiness/i
+
+  for (const [name, content] of [
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
+  ]) {
+    assert.match(content, archivePathPattern, `${name} should mention the archived AI provider smoke evidence path`)
+    assert.match(content, verifiedFactsPattern, `${name} should mention the verified AI provider smoke facts`)
+    assert.match(content, claimBoundaryPattern, `${name} should keep the AI provider smoke claim boundary explicit`)
+  }
+})

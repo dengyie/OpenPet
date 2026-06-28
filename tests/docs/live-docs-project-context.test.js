@@ -61,6 +61,76 @@ test('project-context describes the current Creator Studio review and trigger ha
   )
 })
 
+test('project-context indexes the archived provider smoke evidence and current smoke TypeScript boundary truthfully', () => {
+  const context = readProjectContext()
+  const facts = context.currentFacts.join('\n')
+  const docsReadme = fs.readFileSync(path.join(repoRoot, 'docs/README.md'), 'utf-8')
+
+  assert.equal(context.updated, '2026-06-28', 'project-context.json should carry the current live-doc update date')
+  assert.equal(
+    context.branch,
+    'main',
+    'project-context.json should describe the main-line context for merged live-doc facts'
+  )
+
+  assert.match(
+    facts,
+    /docs\/release-evidence\/ai-provider-smoke\/2026-06-28T11-08-10Z-openpet-gateway\//i,
+    'project-context.json should point to the archived AI provider smoke evidence path'
+  )
+  assert.match(
+    facts,
+    /gpt-5\.5[\s\S]*gpt-image-2[\s\S]*image generation remained intentionally opt-in and was skipped/i,
+    'project-context.json should capture the verified AI provider smoke facts and claim boundary'
+  )
+  assert.match(
+    facts,
+    /docs\/release-evidence\/creator-studio-provider-smoke\/2026-06-28T14-06-27-403Z\//i,
+    'project-context.json should point to the archived Creator Studio provider smoke evidence path'
+  )
+  assert.match(
+    facts,
+    /265s[\s\S]*420000ms timeout override[\s\S]*not production asset-quality approval/i,
+    'project-context.json should capture the Creator Studio provider smoke duration, timeout override, and claim boundary'
+  )
+  assert.match(
+    facts,
+    /AI provider smoke report contracts[\s\S]*Creator Studio provider smoke report contracts/i,
+    'project-context.json should include the current smoke report TypeScript contracts in the migration baseline'
+  )
+
+  assert.match(
+    docsReadme,
+    /release-evidence\/.*ai-provider-smoke\/.*creator-studio-provider-smoke\//is,
+    'docs/README.md should surface provider smoke archives in the release evidence map'
+  )
+})
+
+test('live docs keep main-line branch metadata aligned with project-context', () => {
+  const context = readProjectContext()
+  const developmentSummary = fs.readFileSync(path.join(repoRoot, 'docs/development-summary.md'), 'utf-8')
+  const handoff = fs.readFileSync(path.join(repoRoot, 'docs/HANDOFF.md'), 'utf-8')
+  const projectStatusReview = fs.readFileSync(path.join(repoRoot, 'docs/project-status-review.md'), 'utf-8')
+
+  assert.equal(
+    context.branch,
+    'main',
+    'project-context.json should keep live-doc metadata on the merged main-line baseline'
+  )
+
+  for (const [name, content] of [
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
+  ]) {
+    assert.match(
+      content,
+      /Branch:\s*`main`/i,
+      `${name} should keep the same main-line branch header as project-context.json`
+    )
+  }
+})
+
 test('live docs describe the current plugin host bridge generation boundary truthfully', () => {
   const context = readProjectContext()
   const facts = context.currentFacts.join('\n')
