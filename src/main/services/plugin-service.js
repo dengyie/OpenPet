@@ -24,6 +24,7 @@ const { createPluginSetupRuntimeController } = require('./plugin-setup-runtime-c
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
 const { createPluginCommandOrchestrationController } = require('./plugin-command-orchestration-controller')
 const { createPluginShutdownController } = require('./plugin-shutdown-controller')
+const { createPluginServiceRuntimeController } = require('./plugin-service-runtime-controller')
 const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
 const { createPluginResolutionController } = require('./plugin-resolution-controller')
 const { createPluginConfigStorageController } = require('./plugin-config-storage-controller')
@@ -712,6 +713,24 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     scheduleServiceHealthCheck
   })
 
+  const serviceRuntimeController = createPluginServiceRuntimeController({
+    resolvePlugin: findPluginForService,
+    getServiceEntry,
+    getRuntime: (pluginId, serviceId) => serviceRuntimeManager.getRuntime(pluginId, serviceId),
+    assertNotActive: (pluginId, serviceId) => serviceRuntimeManager.assertNotActive(pluginId, serviceId),
+    spawnRuntime: (args) => launchController.spawnRuntime(args),
+    createRuntime: (args) => lifecycleController.createRuntime(args),
+    setRuntime: (runtime) => serviceRuntimeManager.setRuntime(runtime),
+    attachChildHandlers: (args) => lifecycleController.attachChildHandlers(args),
+    appendLog,
+    scheduleHealthCheck: scheduleServiceHealthCheck,
+    createRuntimeView,
+    createHealthView: createServiceHealthView,
+    getOrCreateRuntime: getOrCreateServiceRuntime,
+    checkHealth: (pluginId, serviceId, runtime, serviceEntry, options) => healthController.checkHealth(pluginId, serviceId, runtime, serviceEntry, options),
+    stopRuntime: (pluginId, serviceId, runtime) => stopController.stopRuntime(pluginId, serviceId, runtime)
+  })
+
   const shutdownController = createPluginShutdownController({
     stopServices: (options) => serviceRuntimeManager.stopAll(options),
     stopSetups: (options) => setupRuntimeManager.stopAll(options),
@@ -768,81 +787,19 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   }
 
   const startService = (pluginId, serviceId) => {
-    const commandId = `service:${serviceId || ''}`
-    try {
-      const plugin = findPluginForService(pluginId)
-      const serviceEntry = getServiceEntry(plugin, serviceId)
-      const existingRuntime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
-      serviceRuntimeManager.assertNotActive(pluginId, serviceId)
-      const { child, cwd, declaration } = launchController.spawnRuntime({
-        pluginManifest: plugin.manifest,
-        serviceEntry
-      })
-      const runtime = serviceRuntimeManager.setRuntime(lifecycleController.createRuntime({
-        pluginId,
-        serviceId,
-        child,
-        command: declaration.command,
-        cwd,
-        existingHealth: existingRuntime?.health,
-        serviceEntry,
-        stopGracePeriodMs: serviceStopGracePeriodMs
-      }))
-
-      lifecycleController.attachChildHandlers({
-        pluginId,
-        serviceId,
-        runtime,
-        child
-      })
-
-      appendLog({ pluginId, commandId, level: 'info', message: 'Service started' })
-      scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
-      return {
-        ok: true,
-        pluginId,
-        serviceId,
-        runtime: createRuntimeView(runtime, serviceEntry)
-      }
-    } catch (error) {
-      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service start failed' })
-      throw error
-    }
+    return serviceRuntimeController.start({
+      pluginId,
+      serviceId,
+      stopGracePeriodMs: serviceStopGracePeriodMs
+    })
   }
 
   const stopService = (pluginId, serviceId) => {
-    const plugin = findPluginForService(pluginId, { requireEnabled: false, requireAllowed: false })
-    const serviceEntry = getServiceEntry(plugin, serviceId)
-    const runtime = serviceRuntimeManager.getRuntime(pluginId, serviceId)
-    if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')
-    stopController.stopRuntime(pluginId, serviceId, runtime)
-    return {
-      ok: true,
-      pluginId,
-      serviceId,
-      runtime: createRuntimeView(runtime, serviceEntry)
-    }
+    return serviceRuntimeController.stop({ pluginId, serviceId })
   }
 
   const checkServiceHealth = async (pluginId, serviceId, { reschedule = true } = {}) => {
-    const commandId = `service:${serviceId || ''}`
-    try {
-      const plugin = findPluginForService(pluginId)
-      const serviceEntry = getServiceEntry(plugin, serviceId)
-      const runtime = getOrCreateServiceRuntime(pluginId, serviceId, serviceEntry)
-      await healthController.checkHealth(pluginId, serviceId, runtime, serviceEntry, { reschedule })
-
-      return {
-        ok: true,
-        pluginId,
-        serviceId,
-        health: createServiceHealthView(runtime.health, serviceEntry),
-        runtime: createRuntimeView(runtime, serviceEntry)
-      }
-    } catch (error) {
-      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service health check failed' })
-      throw error
-    }
+    return serviceRuntimeController.check({ pluginId, serviceId, reschedule })
   }
 
   const stopAllServices = () => {
