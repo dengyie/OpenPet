@@ -956,6 +956,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
             dataDir,
             value: {
               label: importedFollowUp.label,
+              surface: importedFollowUp.surface,
               location: importedFollowUp.location,
               reason: importedFollowUp.reason
             }

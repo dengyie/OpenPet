@@ -4367,6 +4367,7 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedDetail.run.workflowGuidance.import.resultCard.reviewLocation, 'Actions -> Trigger Proposal Inbox')
     assert.deepEqual(importedDetail.run.workflowGuidance.import.followUp, {
       label: 'Review trigger proposal',
+      surface: 'control-center',
       location: 'Actions -> Trigger Proposal Inbox',
       reason: 'The action import is complete. Review the submitted trigger proposal in Actions -> Trigger Proposal Inbox.'
     })
@@ -4403,6 +4404,7 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.resultCard.available, true)
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.resultCard.reviewLocation, 'Control Center -> Plugins')
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.followUp.label, 'Review import handoff')
+    assert.equal(importedFailedActionDetail.run.workflowGuidance.import.followUp.surface, 'control-center')
     assert.equal(importedFailedActionDetail.run.workflowGuidance.import.followUp.location, 'Control Center -> Plugins')
     assert.match(importedFailedActionDetail.run.workflowGuidance.import.followUp.reason, /proposal write failed/i)
     assert.match(importedFailedActionDetail.run.workflowGuidance.import.followUp.reason, /\[redacted-local-url\]/i)
@@ -4443,6 +4445,7 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedPetDetail.run.workflowGuidance.import.resultCard.reviewLocation, 'OpenPet')
     assert.deepEqual(importedPetDetail.run.workflowGuidance.import.followUp, {
       label: 'Review imported result',
+      surface: 'openpet',
       location: 'OpenPet',
       reason: 'The host-owned import is complete. Review the imported result inside OpenPet.'
     })
@@ -4485,6 +4488,7 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.match(importedMissingSubmissionDetail.run.workflowGuidance.import.triggerProposalSummary, /no trigger proposal handoff record was saved/i)
     assert.equal(importedMissingSubmissionDetail.run.workflowGuidance.import.triggerProposalSummary.includes('runs during Import Approved Action'), false)
     assert.equal(importedMissingSubmissionDetail.run.workflowGuidance.import.followUp.label, 'Review import handoff')
+    assert.equal(importedMissingSubmissionDetail.run.workflowGuidance.import.followUp.surface, 'control-center')
     assert.match(importedMissingSubmissionDetail.run.workflowGuidance.import.followUp.reason, /no trigger proposal handoff record was saved/i)
     assert.equal(importedMissingSubmissionDetail.run.workflowGuidance.import.resultCard.reviewLocation, 'Control Center -> Plugins')
     assert.match(importedMissingSubmissionDetail.run.workflowGuidance.import.resultCard.entries[1].value, /no trigger proposal handoff record was saved/i)
