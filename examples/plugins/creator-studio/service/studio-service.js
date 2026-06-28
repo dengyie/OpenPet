@@ -1015,6 +1015,7 @@ const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
 
 const createPublicRun = ({ dataDir, run }) => {
   const publicRun = createPublicLogValue({ dataDir, value: run })
+  const normalizedBackend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const wizardState = createWizardState({ dataDir, run })
   const workflowGuidance = createWorkflowGuidance({ dataDir, run })
   const buttonStates = createDashboardButtonStates({
@@ -1035,6 +1036,16 @@ const createPublicRun = ({ dataDir, run }) => {
   })
   return {
     ...publicRun,
+    backend: normalizedBackend,
+    modelProvider: normalizedBackend,
+    input: {
+      ...(publicRun.input || {}),
+      backend: normalizedBackend
+    },
+    backendStatus: {
+      ...(publicRun.backendStatus || {}),
+      backend: normalizedBackend
+    },
     artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
     developerPrompt: createDeveloperPrompt({ dataDir, run }),
     recovery: createPublicRecovery({ dataDir, run }),
