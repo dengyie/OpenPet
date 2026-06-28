@@ -334,7 +334,15 @@ function createFullPetReviewGate ({ dataDir, run }) {
     }
   }
 
-  if (run.generationTask?.mode !== 'full-pet') {
+  const hasFullPetArtifacts = Boolean(
+    run.artifacts?.spritesheet ||
+    run.artifacts?.petJson ||
+    run.artifacts?.outputDir ||
+    run.importedPackId ||
+    run.activatedPackId
+  )
+
+  if (run.generationTask?.mode !== 'full-pet' && !hasFullPetArtifacts) {
     return {
       requiresCurrentSourceMatch: false,
       currentSourceImage: '',

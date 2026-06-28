@@ -478,6 +478,121 @@ const seedImportedFullPetRunWithSourceMismatch = async (dataDir) => {
   return run
 }
 
+const seedLegacyReadyForReviewFullPetRunWithoutTask = async (dataDir, { mismatchSourceImage = false } = {}) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: mismatchSourceImage ? 'Legacy Mismatch Cat' : 'Legacy Review Cat',
+      petId: mismatchSourceImage ? 'legacy-mismatch-cat' : 'legacy-review-cat',
+      prompt: '生成一只完整的新桌宠。',
+      originalPrompt: '生成一只完整的新桌宠。',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: mismatchSourceImage
+          ? '一只需要显示 legacy mismatch 提示的桌宠。'
+          : '一只已经生成完成、等待审批的 legacy 桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'soft breathing and a tiny tail sway',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T10:00:00.000Z'
+  })
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const outputDir = path.join(runDir, 'outputs')
+  const qaDir = path.join(runDir, 'qa')
+  const baseDir = path.join(runDir, 'frames', 'base')
+  await writeSolidPng(path.join(baseDir, '0001.png'), {
+    width: 1024,
+    height: 1024,
+    background: { r: 255, g: 194, b: 120, alpha: 1 }
+  })
+  if (mismatchSourceImage) {
+    await writeSolidPng(path.join(baseDir, '0002.png'), {
+      width: 1024,
+      height: 1024,
+      background: { r: 120, g: 194, b: 255, alpha: 1 }
+    })
+  }
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: mismatchSourceImage ? 'legacy-mismatch-cat' : 'legacy-review-cat',
+    displayName: mismatchSourceImage ? 'Legacy Mismatch Cat' : 'Legacy Review Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+    ok: true,
+    width: 1536,
+    height: 1872,
+    visiblePixels: 8200,
+    warnings: []
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
+    ok: true,
+    sourceRelativePath: mismatchSourceImage
+      ? `runs/${run.runId}/frames/base/0002.png`
+      : `runs/${run.runId}/frames/base/0001.png`,
+    width: 1024,
+    height: 1024,
+    visiblePixels: 6400,
+    warnings: []
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'review',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          ok: true,
+          backend: 'cloud',
+          model: 'gpt-image-2',
+          generatedAt: '2026-06-28T10:01:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: mismatchSourceImage ? 'legacy-full-pet-mismatch-sha' : 'legacy-full-pet-review-sha'
+          }]
+        }
+      }
+    },
+    now: () => '2026-06-28T10:01:30.000Z'
+  })
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyReviewRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyReviewRun,
+      backend: 'cloud',
+      input: {
+        ...persisted.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  return run
+}
+
 const seedImportedActionRunWithoutTriggerSubmission = async (dataDir) => {
   const run = createRun({
     dataDir,
@@ -1740,6 +1855,58 @@ test('creator studio dashboard enables approval for reviewable legacy action run
     assert.equal(await page.locator('#confirm-button').isDisabled(), true)
     assert.equal(await page.locator('#generate-button').isDisabled(), true)
     assert.equal(await page.locator('#approve-button').isDisabled(), false)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables approval for reviewable legacy full-pet runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-full-pet-review-approve-'))
+  const run = await seedLegacyReadyForReviewFullPetRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /Legacy Review Cat/i)
+    assert.match(reviewText, /Atlas QA/i)
+    assert.doesNotMatch(reviewText, /QA source image does not match the current generated image/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), true)
+    assert.equal(await page.locator('#approve-button').isDisabled(), false)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard preserves retry-before-approval guidance for legacy full-pet runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-full-pet-mismatch-'))
+  const run = await seedLegacyReadyForReviewFullPetRunWithoutTask(dataDir, { mismatchSourceImage: true })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /QA source image does not match the current generated image/i)
+    assert.match(reviewText, /Retry generation on this same run before approval/i)
+    assert.match(reviewText, /0002\.png/i)
+    assert.match(reviewText, /0001\.png/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), false)
+    assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+    assert.equal(await page.locator('#approve-button').isDisabled(), true)
+    assert.match(await page.locator('#next-step-panel').textContent(), /Retry generation/i)
+    assert.match(await page.locator('#action-lane-panel').textContent(), /Retry generation before approval/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
