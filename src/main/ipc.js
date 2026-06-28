@@ -9,10 +9,23 @@
 const { ipcMain, BrowserWindow, app, dialog, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
 const { sanitizeDetails } = require('./services/app-log-service')
-const { normalizeCursorSettingsState } = require('../shared/cursor-library')
 const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
 const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const { createBubbleRequestId } = require('./pet-bubble-chat-window')
+const { createLocalHttpToken } = require('./services/local-http-service')
+const { registerAiIpc } = require('./ipc/register-ai-ipc')
+const { registerCatalogIpc } = require('./ipc/register-catalog-ipc')
+const { registerPetRuntimeIpc } = require('./ipc/register-pet-runtime-ipc')
+const { registerPluginIpc } = require('./ipc/register-plugin-ipc')
+const { registerSettingsIpc } = require('./ipc/register-settings-ipc')
+const { registerServiceIpc } = require('./ipc/register-service-ipc')
+const { registerSystemIpc } = require('./ipc/register-system-ipc')
+const {
+  collectCustomCursorAssetPaths,
+  createPetRendererSettings,
+  mergePetSettingsViewIntoHostSettings,
+  normalizeLocalHttpConfig
+} = require('./ipc/pet-settings-adapter')
 const {
   createAiConfigView,
   createAiMemoryProfileView,
@@ -27,97 +40,24 @@ const {
   createImageGenerationApiKeyResult,
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
+  createPetChatMessageResultView,
+  createPetChatStateView,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
+  createPluginDashboardOpenResult,
   createPluginListView,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 } = require('./control-center-adapters')
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
-const { createLocalHttpToken } = require('./services/local-http-service')
 
 const MAX_PET_BUBBLE_CHARS = 80
 const MAX_PET_CHAT_MESSAGES = 100
-
-const createPetRendererSettings = (settings = {}) => {
-  const cursorState = normalizeCursorSettingsState(settings)
-  return {
-    scale: settings.scale,
-    walkSpeed: settings.walkSpeed,
-    walkDuration: settings.walkDuration,
-    bubbleDuration: settings.bubbleDuration,
-    menuPosition: settings.menuPosition || 'auto',
-    selectedCursorId: cursorState.selectedCursorId,
-    customCursor: cursorState.customCursor,
-    customCursors: cursorState.customCursors,
-    grounded: Boolean(settings.petBehavior?.grounded),
-    home: {
-      enabled: Boolean(settings.petBehavior?.home?.enabled),
-      radius: settings.petBehavior?.home?.radius || 'medium',
-      hasAnchor: Boolean(settings.petBehavior?.home?.anchor)
-    },
-    petBubbleChat: {
-      enabled: settings.petBubbleChat?.enabled !== false,
-      autoPopup: settings.petBubbleChat?.autoPopup !== false,
-      autoHide: settings.petBubbleChat?.autoHide !== false,
-      pinOnInteraction: settings.petBubbleChat?.pinOnInteraction !== false
-    }
-  }
-}
-
-const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings = {}) => {
-  const currentHome = currentSettings.petBehavior?.home || {}
-  const nextHome = nextSettings.home || {}
-  const cursorState = normalizeCursorSettingsState({
-    selectedCursorId: nextSettings.selectedCursorId ?? currentSettings.selectedCursorId,
-    customCursors: nextSettings.customCursors ?? currentSettings.customCursors,
-    customCursor: nextSettings.customCursor ?? currentSettings.customCursor
-  })
-
-  return {
-    ...currentSettings,
-    scale: Number(nextSettings.scale ?? currentSettings.scale ?? 1),
-    walkSpeed: Number(nextSettings.walkSpeed ?? currentSettings.walkSpeed ?? 2),
-    walkDuration: Number(nextSettings.walkDuration ?? currentSettings.walkDuration ?? 15000),
-    bubbleDuration: Number(nextSettings.bubbleDuration ?? currentSettings.bubbleDuration ?? 6000),
-    menuPosition: nextSettings.menuPosition || currentSettings.menuPosition || 'auto',
-    autoStart: Boolean(nextSettings.autoStart ?? currentSettings.autoStart),
-    selectedCursorId: cursorState.selectedCursorId,
-    customCursors: cursorState.customCursors,
-    customCursor: cursorState.customCursor,
-    petBubbleChat: {
-      ...(currentSettings.petBubbleChat || {}),
-      ...(nextSettings.petBubbleChat || {}),
-      enabled: nextSettings.petBubbleChat?.enabled ?? currentSettings.petBubbleChat?.enabled ?? true,
-      autoPopup: nextSettings.petBubbleChat?.autoPopup ?? currentSettings.petBubbleChat?.autoPopup ?? true,
-      autoHide: nextSettings.petBubbleChat?.autoHide ?? currentSettings.petBubbleChat?.autoHide ?? true,
-      pinOnInteraction: nextSettings.petBubbleChat?.pinOnInteraction ?? currentSettings.petBubbleChat?.pinOnInteraction ?? true
-    },
-    petBehavior: {
-      ...(currentSettings.petBehavior || {}),
-      grounded: Boolean(nextSettings.grounded),
-      home: {
-        ...(currentHome || {}),
-        enabled: Boolean(nextHome.enabled),
-        radius: nextHome.radius || currentHome.radius || 'medium',
-        anchor: currentHome.anchor || null
-      }
-    }
-  }
-}
-
-const normalizeLocalHttpConfig = (currentConfig = {}, nextConfig = {}) => {
-  const enabled = Boolean(nextConfig.enabled)
-  const token = nextConfig.token || currentConfig.token || (enabled ? createLocalHttpToken() : '')
-  return {
-    ...currentConfig,
-    ...nextConfig,
-    host: '127.0.0.1',
-    port: Number(nextConfig.port ?? currentConfig.port ?? 0),
-    enabled,
-    token
-  }
-}
 
 /**
  * 向宠物窗口安全推送消息的薄封装。
@@ -159,12 +99,6 @@ const executeBehaviorDecision = (petService, decision) => {
   }
   return decision
 }
-
-const collectCustomCursorAssetPaths = (cursors = []) => (
-  (Array.isArray(cursors) ? cursors : [])
-    .map((cursor) => (typeof cursor?.assetPath === 'string' ? cursor.assetPath : ''))
-    .filter(Boolean)
-)
 
 const sanitizeDiagnosticText = (value) => String(value || '')
   .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
@@ -293,9 +227,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const enabled = Boolean(config.enabled)
     const hasApiKey = Boolean(config.hasApiKey)
     const ready = enabled && hasApiKey
-    return {
-      available: Boolean(petChatWindowService),
+    return createPetChatStateView({
       ...windowState,
+      available: Boolean(petChatWindowService),
       conversationId,
       petPack: {
         id: profile.petPackId || '',
@@ -318,11 +252,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         hasWindow: Boolean(bubbleChatState.hasWindow)
       },
       messages: sanitizeChatMessages(messages)
-    }
+    })
   }
 
   const notifyPetChatStateChanged = (state = getPetChatState()) => {
-    petChatWindowService?.sendStateChanged?.(state)
+    petChatWindowService?.sendStateChanged?.(createPetChatStateView(state))
   }
 
   const notifyControlCenterActivePetPackChanged = (activePackId) => {
@@ -389,7 +323,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   const attachPetChatState = (response = {}, bubble = lastPetBubble) => {
     const state = getPetChatState()
     notifyPetChatStateChanged(state)
-    return { ...response, bubble, state }
+    return createPetChatMessageResultView({ ...response, bubble, state })
   }
 
   const assertPetChatReady = () => {
@@ -585,195 +519,35 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
   })
 
-  // 渲染进程启动时请求动作列表（通过 preload 暴露的 getAnimations 调用）
-  ipcMainService.handle(IPC.PET_GET_ANIMATIONS, () => petService.getAnimations())
-
-  // 拖拽开始时读取窗口位置，用于计算鼠标偏移
-  ipcMainService.handle(IPC.PET_GET_BOUNDS, (event) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    return win.getBounds()
+  registerPetRuntimeIpc({
+    ipcMainService,
+    browserWindowService,
+    petService,
+    appService,
+    screenService,
+    getPetWindow,
+    applyPetViewport,
+    clampToWorkArea,
+    getMovementState,
+    createSettingsWindow,
+    petMovementPolicy,
+    petChatWindowService,
+    petBubbleChatWindowService,
+    choosePetContextMenuPoint,
+    estimatePetContextMenuSize,
+    showContextMenuWindow,
+    createPetRendererSettings,
+    recordAppLog,
+    requestAppQuit,
+    sanitizeDetails,
+    sendToPetWindow
   })
 
-  // 散步启动时查询窗口是否贴边，用于决定初始方向
-  ipcMainService.handle(IPC.PET_GET_MOVEMENT_STATE, (event) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win) return null
-    return getMovementState(win)
-  })
-
-  ipcMainService.on(IPC.PET_SET_VIEWPORT, (event, viewport) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || !viewport) return
-    applyPetViewport(win, viewport)
-    petBubbleChatWindowService?.syncToPetWindow?.()
-  })
-
-  // 拖拽移动：直接设置窗口位置（主进程负责钳制到工作区）
-  ipcMainService.on(IPC.PET_SET_POSITION, (event, point) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || !point) return
-    const next = petMovementPolicy
-      ? petMovementPolicy.clampDragPosition({
-          windowBounds: win.getBounds(),
-          requestedTopLeft: { x: point.x, y: point.y },
-          settings: petService.getSettings().petBehavior
-        })
-      : clampToWorkArea(win, point.x, point.y)
-    win.setPosition(next.x, next.y)
-    petBubbleChatWindowService?.syncToPetWindow?.()
-  })
-
-  ipcMainService.on(IPC.PET_DRAG_ENDED, (event) => {
-    if (!petMovementPolicy) return
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win) return
-    const currentSettings = petService.getSettings()
-    const behavior = petMovementPolicy.normalizePetBehaviorSettings(currentSettings.petBehavior)
-    if (!behavior.home.enabled) return
-    const anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: win.getBounds() })
-    const savedSettings = petService.saveSettings({
-      ...currentSettings,
-      petBehavior: {
-        ...behavior,
-        home: {
-          ...behavior.home,
-          anchor
-        }
-      }
-    })
-    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(savedSettings))
-    petBubbleChatWindowService?.syncToPetWindow?.()
-  })
-
-  ipcMainService.on(IPC.PET_SET_MOUSE_PASSTHROUGH, (event, passthrough) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || typeof win.setIgnoreMouseEvents !== 'function') return
-    if (passthrough) win.setIgnoreMouseEvents(true, { forward: true })
-    else win.setIgnoreMouseEvents(false)
-  })
-
-  ipcMainService.on(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, (event) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || typeof win.focus !== 'function') return
-    if (win.contextMenuWindow && !win.contextMenuWindow.isDestroyed?.()) return
-    if (typeof win.isFocused === 'function' && win.isFocused()) return
-    if (typeof win.isMinimized === 'function' && win.isMinimized() && typeof win.restore === 'function') win.restore()
-    win.moveTop?.()
-    appService.focus?.({ steal: true })
-    win.focus()
-    recordAppLog({
-      scope: 'pet-window',
-      level: 'debug',
-      actor: 'system',
-      event: 'pet.cursor.focus.requested',
-      message: 'Pet window focus requested for custom cursor'
-    })
-  })
-
-  ipcMainService.on(IPC.PET_RECORD_APP_LOG, (_event, entry = {}) => {
-    if (!entry || typeof entry !== 'object') return
-    recordAppLog({
-      scope: 'pet-renderer',
-      level: entry.level,
-      actor: entry.actor,
-      event: entry.event,
-      message: entry.message,
-      details: sanitizeDetails(entry.details)
-    })
-  })
-
-  // 散步移动：增量偏移窗口，返回是否撞到边界供渲染进程决定掉头
-  ipcMainService.handle(IPC.PET_MOVE_BY, (event, delta) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || !delta) return null
-    const [x, y] = win.getPosition()
-    const next = petMovementPolicy
-      ? petMovementPolicy.clampMoveBy({
-          windowBounds: win.getBounds(),
-          delta,
-          settings: petService.getSettings().petBehavior
-        })
-      : clampToWorkArea(win, x + delta.x, y + delta.y)
-    win.setPosition(next.x, next.y)
-    petBubbleChatWindowService?.syncToPetWindow?.()
-    return next
-  })
-
-  // 右键菜单"退出"
-  ipcMainService.on(IPC.PET_QUIT, () => requestAppQuit('pet-renderer'))
-
-  ipcMainService.handle(IPC.PET_SHOW_CONTEXT_MENU, (event, point = {}) => {
-    const win = browserWindowService.fromWebContents(event.sender)
-    if (!win || win.isDestroyed()) return null
-    const actions = petService.getAnimations()?.actions || []
-    const bounds = win.getBounds()
-    const { workArea } = screenService.getDisplayMatching(bounds)
-    const menuSize = estimatePetContextMenuSize(actions, { extraItemCount: petChatWindowService ? 1 : 0 })
-    const settings = petService.getSettings?.() || {}
-    const requestedPoint = {
-      x: Number(point.x),
-      y: Number(point.y)
-    }
-    const placement = choosePetContextMenuPoint({
-      petBounds: bounds,
-      workArea,
-      menuSize,
-      menuPosition: settings.menuPosition,
-      preferredPoint: requestedPoint
-    })
-    const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
-    const template = [
-      ...actions.map((action) => ({
-        label: action.label || action.id,
-        click: () => sendMenuCommand({ command: 'action', actionId: action.id })
-      })),
-      { type: 'separator' },
-      { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
-      ...(petChatWindowService ? [{ label: '打开扩展聊天面板', click: () => petChatWindowService.open?.() }] : []),
-      { label: '设置', click: () => createSettingsWindow(win) },
-      { type: 'separator' },
-      { label: '退出', click: () => requestAppQuit('pet-context-menu') }
-    ]
-    recordAppLog({
-      scope: 'pet-menu',
-      level: 'info',
-      actor: 'user',
-      event: 'pet.menu.popup',
-      message: 'Pet context menu popup requested',
-      details: {
-        petX: bounds.x,
-        petY: bounds.y,
-        petWidth: bounds.width,
-        petHeight: bounds.height,
-        workAreaX: workArea.x,
-        workAreaY: workArea.y,
-        workAreaWidth: workArea.width,
-        workAreaHeight: workArea.height,
-        menuWidth: menuSize.width,
-        menuHeight: menuSize.height,
-        requestedX: requestedPoint.x,
-        requestedY: requestedPoint.y,
-        placement: placement.placement,
-        menuX: placement.screenPoint.x,
-        menuY: placement.screenPoint.y,
-        popupX: placement.windowPoint.x,
-        popupY: placement.windowPoint.y
-      }
-    })
-    showContextMenuWindow({
-      BrowserWindow: browserWindowService,
-      parentWindow: win,
-      items: template,
-      point: placement.screenPoint,
-      size: menuSize,
-      onSelect: (item) => item?.click?.()
-    })
-    return placement
-  })
-
-  // 右键菜单"设置"：打开设置面板
-  ipcMainService.on(IPC.SETTINGS_OPEN, () => {
-    createSettingsWindow(getPetWindow())
+  registerSystemIpc({
+    ipcMainService,
+    getPetWindow,
+    createSettingsWindow,
+    requestAppQuit
   })
 
   ipcMainService.handle(IPC.PET_CHAT_GET_STATE, () => {
@@ -949,7 +723,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           actionId: result.action?.actionId || result.behavior?.actionId || ''
         }
       })
-      return { ...result, state }
+      return createPetChatMessageResultView({ ...result, state })
     } catch (error) {
       recordAppLog({
         scope: 'pet-chat',
@@ -973,57 +747,19 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
   })
 
-  // 设置面板启动时读取当前设置
-  ipcMainService.handle(IPC.SETTINGS_GET, () => createPetRendererSettings(petService.getSettings()))
-
-  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
-    if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
-    recordAppLog({
-      scope: 'settings',
-      level: 'info',
-      actor: 'user',
-      event: 'settings.cursor.import.opened',
-      message: 'Cursor image picker opened'
-    })
-    try {
-      const selected = await showOpenDialogForEvent(event, {
-        title: '选择自定义鼠标指针图片',
-        properties: ['openFile'],
-        filters: [{ name: 'Cursor Images', extensions: ['png', 'webp'] }]
-      })
-      if (selected.canceled || !selected.filePaths[0]) {
-        recordAppLog({
-          scope: 'settings',
-          level: 'info',
-          actor: 'user',
-          event: 'settings.cursor.import.canceled',
-          message: 'Cursor image picker canceled'
-        })
-        return { canceled: true }
-      }
-      const cursor = await cursorAssetService.importCursor(selected.filePaths[0])
-      recordAppLog({
-        scope: 'settings',
-        level: 'info',
-        actor: 'system',
-        event: 'settings.cursor.import.completed',
-        message: 'Cursor image imported',
-        details: {
-          fileName: cursor.fileName,
-          enabled: cursor.enabled
-        }
-      })
-      return { canceled: false, cursor }
-    } catch (error) {
-      recordAppLog({
-        scope: 'settings',
-        level: 'error',
-        actor: 'system',
-        event: 'settings.cursor.import.failed',
-        message: error.message
-      })
-      throw error
-    }
+  registerSettingsIpc({
+    ipcMainService,
+    petService,
+    getPetWindow,
+    browserWindowService,
+    cursorAssetService,
+    petMovementPolicy,
+    showOpenDialogForEvent,
+    sendToPetWindow,
+    createPetRendererSettings,
+    collectCustomCursorAssetPaths,
+    mergePetSettingsViewIntoHostSettings,
+    recordAppLog
   })
 
   ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
@@ -1269,308 +1005,62 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return createPetPackMutationResult(result, petPackService.listPacks())
   })
 
-  // 设置面板点击"保存"：持久化并通知宠物窗口应用变更
-  ipcMainService.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
-    const petWindow = getPetWindow()
-    const previousSettings = petService.getSettings()
-    const nextSettings = mergePetSettingsViewIntoHostSettings(petService.getSettings(), settings)
-    if (petMovementPolicy && petWindow && !petWindow.isDestroyed()) {
-      const behavior = petMovementPolicy.normalizePetBehaviorSettings(nextSettings.petBehavior)
-      const currentBehavior = petMovementPolicy.normalizePetBehaviorSettings(previousSettings.petBehavior)
-      const needsInitialHomeAnchor = behavior.home.enabled && !behavior.home.anchor
-      if (needsInitialHomeAnchor || (!currentBehavior.home.enabled && behavior.home.enabled)) {
-        behavior.home.anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: petWindow.getBounds() })
-      }
-      nextSettings.petBehavior = behavior
-    }
-
-    const savedSettings = petService.saveSettings(nextSettings)
-    const previousAssetPaths = new Set(collectCustomCursorAssetPaths(previousSettings.customCursors))
-    const nextAssetPaths = new Set(collectCustomCursorAssetPaths(savedSettings.customCursors))
-    const orphanedAssetPaths = Array.from(previousAssetPaths).filter((assetPath) => !nextAssetPaths.has(assetPath))
-    if (orphanedAssetPaths.length > 0) cursorAssetService?.deleteAssets?.(orphanedAssetPaths)
-    const rendererSettings = createPetRendererSettings(savedSettings)
-    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, rendererSettings)
-    recordAppLog({
-      scope: 'settings',
-      level: 'info',
-      actor: 'user',
-      event: 'settings.saved',
-      message: 'Settings saved',
-      details: {
-        grounded: Boolean(savedSettings.petBehavior?.grounded),
-        homeEnabled: Boolean(savedSettings.petBehavior?.home?.enabled),
-        homeRadius: savedSettings.petBehavior?.home?.radius || 'medium',
-        customCursorEnabled: Boolean(savedSettings.customCursor?.enabled),
-        customCursorFileName: savedSettings.customCursor?.fileName || ''
-      }
-    })
-    return rendererSettings
-  })
-
-  ipcMainService.handle(IPC.AI_GET_CONFIG, () => createAiConfigView(aiService.getConfig()))
-
-  ipcMainService.handle(IPC.AI_SAVE_CONFIG, (_event, config) => createAiConfigView(aiService.saveConfig(config)))
-
-  ipcMainService.handle(IPC.AI_SAVE_API_KEY, (_event, apiKey) => aiService.saveApiKey(apiKey))
-
-  ipcMainService.handle(IPC.AI_TEST_CONNECTION, () => aiService.testConnection())
-
-  ipcMainService.handle(IPC.AI_GET_PERSONA_PROFILE, async () => {
-    if (!aiTalkService?.getPersonaProfile) throw new Error('AI talk persona profile is not available')
-    return createAiPersonaProfileView(await aiTalkService.getPersonaProfile())
-  })
-
-  ipcMainService.handle(IPC.AI_GENERATE_PERSONA_DRAFT, async (_event, request) => {
-    if (!aiTalkService?.generatePersonaDraft) throw new Error('AI talk persona generation is not available')
-    return createAiPersonaDraftView(await aiTalkService.generatePersonaDraft(request || {}))
-  })
-
-  ipcMainService.handle(IPC.AI_SAVE_PERSONA_OVERRIDE, async (_event, override) => {
-    if (!aiTalkService?.savePersonaOverride) throw new Error('AI talk persona overrides are not available')
-    return createAiPersonaProfileView(await aiTalkService.savePersonaOverride(override || {}))
-  })
-
-  ipcMainService.handle(IPC.AI_GET_MEMORY_PROFILE, async () => {
-    if (!aiTalkService?.getMemoryProfile) throw new Error('AI talk memories are not available')
-    return createAiMemoryProfileView(await aiTalkService.getMemoryProfile())
-  })
-
-  ipcMainService.handle(IPC.AI_DELETE_MEMORY, async (_event, payload) => {
-    if (!aiTalkService?.deleteMemory) throw new Error('AI talk memory deletion is not available')
-    return createAiMemoryProfileView(await aiTalkService.deleteMemory(payload?.memoryId || payload))
-  })
-
-  ipcMainService.handle(IPC.AI_CLEAR_PET_PACK_MEMORIES, async () => {
-    if (!aiTalkService?.clearPetPackMemories) throw new Error('AI talk memory clearing is not available')
-    return createAiMemoryProfileView(await aiTalkService.clearPetPackMemories())
-  })
-
-  ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => createImageGenerationConfigView(imageGenerationModelService.getConfig()))
-
-  ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_CONFIG, (_event, config) => {
-    return createImageGenerationConfigView(imageGenerationModelService.saveConfig(config))
-  })
-
-  ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_API_KEY, (_event, apiKey) => {
-    return createImageGenerationApiKeyResult(imageGenerationModelService.saveCloudApiKey(apiKey))
-  })
-
-  ipcMainService.handle(IPC.IMAGE_GENERATION_CLEAR_API_KEY, () => {
-    return createImageGenerationApiKeyResult(imageGenerationModelService.clearCloudApiKey())
-  })
-
-  ipcMainService.handle(IPC.IMAGE_GENERATION_CHECK_HEALTH, async (_event, payload) => {
-    return createImageGenerationHealthCheckResult(await imageGenerationModelService.checkHealth(payload || {}))
-  })
-
-  ipcMainService.handle(IPC.AI_GET_CONVERSATION, (_event, payload) => {
-    const conversationId = payload?.conversationId || payload
-    return (aiTalkService || aiService).getConversation(conversationId)
-  })
-
-  ipcMainService.handle(IPC.AI_CHAT, async (_event, payload) => runAiChatRequest(payload, { source: 'control-center' }))
-
-  ipcMainService.handle(IPC.AI_EXPORT_TRACE_DIAGNOSTICS, (_event, payload) => {
-    if (!aiTalkService?.exportTraceDiagnostics) throw new Error('AI talk trace diagnostics are not available')
-    return aiTalkService.exportTraceDiagnostics({
-      filters: payload || {},
-      behaviorDecisions: behaviorOrchestratorService.getConfig?.().decisions || []
-    })
-  })
-
-  ipcMainService.handle(IPC.AI_BEHAVIOR_GET, () => behaviorOrchestratorService.getConfig())
-
-  ipcMainService.handle(IPC.AI_BEHAVIOR_SAVE, (_event, payload) => behaviorOrchestratorService.saveConfig(payload))
-
-  ipcMainService.handle(IPC.AI_BEHAVIOR_DRY_RUN, (_event, payload) => {
-    return behaviorOrchestratorService.dryRun({
-      ...payload,
-      actions: petService.getAnimations()?.actions || []
-    })
-  })
-
-  ipcMainService.handle(IPC.AI_BEHAVIOR_REPLAY_DECISION, (_event, payload) => {
-    return behaviorOrchestratorService.replayDecision({
-      decisionId: payload?.decisionId,
-      actions: petService.getAnimations()?.actions || []
-    })
-  })
-
-  ipcMainService.handle(IPC.AI_BEHAVIOR_EXPORT_DIAGNOSTICS, () => behaviorOrchestratorService.exportDiagnostics())
-
-  ipcMainService.handle(IPC.AI_BEHAVIOR_CLEAR_DECISIONS, () => behaviorOrchestratorService.clearDecisions())
-
-  ipcMainService.handle(IPC.PLUGINS_LIST, () => createPluginListView(pluginService.listPlugins()))
-
-  ipcMainService.handle(IPC.PLUGINS_SET_ENABLED, (_event, payload) => {
-    return pluginService.setEnabled(payload.pluginId, payload.enabled)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_SAVE_CONFIG, (_event, payload) => {
-    return pluginService.saveConfig(payload.pluginId, payload.config)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_RUN_COMMAND, (_event, payload) => {
-    return pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_RUN_SETUP, (_event, payload) => {
-    return pluginService.runSetup(payload.pluginId, payload.setupId)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_OPEN_DASHBOARD, (_event, payload) => {
-    return pluginService.openDashboard(payload.pluginId, payload.dashboardId)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_START_SERVICE, (_event, payload) => {
-    return pluginService.startService(payload.pluginId, payload.serviceId)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_STOP_SERVICE, (_event, payload) => {
-    return pluginService.stopService(payload.pluginId, payload.serviceId)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_CHECK_SERVICE_HEALTH, (_event, payload) => {
-    return pluginService.checkServiceHealth(payload.pluginId, payload.serviceId)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY, (_event, payload) => {
-    return pluginService.saveServiceHealthPolicy(payload.pluginId, payload.serviceId, payload.policy)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_INSPECT_PACKAGE, async () => {
-    const selected = await dialogService.showOpenDialog({
-      title: '选择插件目录或 OpenPet 插件包',
-      properties: ['openFile', 'openDirectory'],
-      filters: [
-        { name: 'OpenPet Plugin Package', extensions: ['zip'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
-    })
-    if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-    return { canceled: false, ...pluginInstallService.inspectPluginPackage(selected.filePaths[0]) }
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_INSPECT_GITHUB_REPOSITORY, async (_event, payload) => {
-    if (!pluginGithubImportService?.inspectRepositoryUrl) throw new Error('GitHub plugin import is not available')
-    return { canceled: false, ...await pluginGithubImportService.inspectRepositoryUrl(payload?.repositoryUrl) }
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_CLEAR_SELECTION, (_event, payload) => {
-    return pluginInstallService.clearPendingSelection(payload?.selectionId)
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_INSTALL, (_event, payload) => {
-    const result = pluginInstallService.installPlugin(payload.selectionId)
-    return createPluginMutationResult(result, pluginService.listPlugins())
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_UPDATE, (_event, payload) => {
-    const result = pluginInstallService.updatePlugin(payload.selectionId)
-    return createPluginMutationResult(result, pluginService.listPlugins())
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_UNINSTALL, (_event, payload) => {
-    const result = pluginInstallService.uninstallPlugin(payload.pluginId, { removeStorage: Boolean(payload.removeStorage) })
-    return createPluginMutationResult(result, pluginService.listPlugins())
-  })
-
-  ipcMainService.handle(IPC.PLUGINS_GET_LOGS, (_event, filters) => pluginService.getLogs(filters))
-
-  ipcMainService.handle(IPC.PLUGINS_EXPORT_LOGS, (_event, filters) => pluginService.exportLogs(filters))
-
-  ipcMainService.handle(IPC.PLUGINS_CLEAR_LOGS, () => pluginService.clearLogs())
-
-  ipcMainService.handle(IPC.PLUGINS_CLEAR_STORAGE, (_event, payload) => pluginService.clearStorage(payload.pluginId))
-
-  const getServiceStatusView = () => createServiceStatusView(
-    petService.getSettings().localHttp,
-    localHttpService.getStatus()
-  )
-
-  ipcMainService.handle(IPC.SERVICE_GET_STATUS, getServiceStatusView)
-
-  ipcMainService.handle(IPC.SERVICE_GET_LOGS, (_event, filters) => localHttpService.getLogs(filters))
-
-  ipcMainService.handle(IPC.SERVICE_EXPORT_LOGS, (_event, filters) => localHttpService.exportLogs(filters))
-
-  ipcMainService.handle(IPC.SERVICE_CLEAR_LOGS, () => localHttpService.clearLogs())
-
-  ipcMainService.handle(IPC.SERVICE_ROTATE_TOKEN, async () => {
-    const currentSettings = petService.getSettings()
-    const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, {
-      ...currentSettings.localHttp,
-      token: createLocalHttpToken()
-    })
-    const runtime = nextConfig.enabled
-      ? await localHttpService.start(nextConfig)
-      : localHttpService.getStatus()
-    const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
-    return createServiceStatusView(savedSettings.localHttp, localHttpService.getStatus() || runtime)
-  })
-
-  ipcMainService.handle(IPC.SERVICE_REVOKE_MCP_SESSIONS, () => {
-    const mcp = localHttpService.revokeMcpSessions()
-    return createServiceStatusView(petService.getSettings().localHttp, { ...localHttpService.getStatus(), mcp })
-  })
-
-  ipcMainService.handle(IPC.SERVICE_SAVE_CONFIG, async (_event, config) => {
-    const currentSettings = petService.getSettings()
-    const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, config)
-    const runtime = nextConfig.enabled
-      ? await localHttpService.start(nextConfig)
-      : await localHttpService.stop()
-    const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
-    return createServiceStatusView(savedSettings.localHttp, localHttpService.getStatus() || runtime)
-  })
-
   ipcMainService.handle(IPC.ABOUT_GET_INFO, () => createAboutInfoView(aboutService.getInfo()))
 
   ipcMainService.handle(IPC.ABOUT_CHECK_UPDATES, async () => createUpdateCheckView(await aboutService.checkForUpdates()))
 
-  ipcMainService.handle(IPC.CATALOG_GET, () => createCatalogView(catalogService.listCatalog()))
-
-  ipcMainService.handle(IPC.CATALOG_PREPARE_INSTALL, (_event, payload) => catalogService.prepareInstall(payload))
-
-  ipcMainService.handle(IPC.CATALOG_INSTALL_SELECTION, (_event, payload) => {
-    const result = catalogService.installSelection(payload.selectionId)
-    if (result.kind === 'pet-pack' && result.petPacks?.activePackId === result.itemId) {
-      reloadAndSendAnimations(getPetWindow, petService)
-      return { ...result, animations: petService.getPreviewAnimations(), catalog: createCatalogView(catalogService.listCatalog()) }
-    }
-    return { ...result, catalog: createCatalogView(catalogService.listCatalog()) }
+  registerAiIpc({
+    ipcMainService,
+    aiService,
+    aiTalkService,
+    imageGenerationModelService,
+    behaviorOrchestratorService,
+    petService,
+    runAiChatRequest,
+    createAiConfigView,
+    createAiPersonaProfileView,
+    createAiPersonaDraftView,
+    createAiMemoryProfileView,
+    createImageGenerationConfigView,
+    createImageGenerationApiKeyResult,
+    createImageGenerationHealthCheckResult
   })
 
-  ipcMainService.handle(IPC.CATALOG_CLEAR_SELECTION, (_event, payload) => catalogService.clearSelection(payload?.selectionId))
-
-  ipcMainService.handle(IPC.CATALOG_ADD_BLOCKLIST, (_event, payload) => {
-    const blocklist = catalogService.addBlocklistEntry(payload)
-    return createCatalogBlocklistResult(catalogService.listCatalog(), blocklist)
+  registerPluginIpc({
+    ipcMainService,
+    dialogService,
+    pluginService,
+    pluginInstallService,
+    pluginGithubImportService,
+    createPluginListView,
+    createPluginMutationResult,
+    createPluginCommandRunResult,
+    createPluginSetupRunResult,
+    createPluginDashboardOpenResult,
+    createPluginServiceControlResult,
+    createPluginServiceHealthCheckResult,
+    createPluginViewState
   })
 
-  ipcMainService.handle(IPC.CATALOG_REMOVE_BLOCKLIST, (_event, payload) => {
-    const blocklist = catalogService.removeBlocklistEntry(payload)
-    return createCatalogBlocklistResult(catalogService.listCatalog(), blocklist)
+  registerServiceIpc({
+    ipcMainService,
+    petService,
+    localHttpService,
+    normalizeLocalHttpConfig,
+    createLocalHttpToken,
+    createServiceStatusView
   })
 
-  // 设置面板拖动滑块：实时预览缩放（不持久化）
-  ipcMainService.on(IPC.SETTINGS_PREVIEW_SCALE, (_event, scale) => {
-    petService.previewSettings({ scale })
-    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, { scale })
+  registerCatalogIpc({
+    ipcMainService,
+    catalogService,
+    getPetWindow,
+    petService,
+    reloadAndSendAnimations,
+    createCatalogView,
+    createCatalogBlocklistResult
   })
 
-  // 设置面板关闭：清理 settingsWindow 引用
-  ipcMainService.on(IPC.SETTINGS_CLOSE, (_event) => {
-    const win = browserWindowService.fromWebContents(_event.sender)
-    if (win) {
-      const petWindow = getPetWindow()
-      if (petWindow && petWindow.settingsWindow === win) {
-        petWindow.settingsWindow = null
-      }
-      win.close()
-    }
-  })
 }
 
 module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, reloadAndSendAnimations, registerIpcHandlers, triggerAiSemanticAction, executeBehaviorDecision }

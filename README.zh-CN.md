@@ -15,9 +15,25 @@
 
 OpenPet 会把一只小宠物放在你的桌面上。它能走动、说话、播放动作、切换宠物包，也可以通过 AI 回复触发行为，并通过面向开发者的本地扩展生态继续成长。
 
+如果你想找的不是一个简单渲染 demo，而是一个能被审查、扩展和逐步发布的桌宠项目，OpenPet 已经具备真实 service layer、可视化设置入口、插件生命周期控制、AI Provider 边界、宠物包工具链和可复现证据脚本。
+
 当前项目已经进入 release-candidate 桌面平台阶段，而不是一个简单 demo：它包含 Electron service layer、React Control Center、内置宠物包、OpenAI-compatible AI 设置、本地扩展运行时控制、loopback-only 自动化 API 和发布证据工具。
 
 当前发布轨道优先验证 macOS。Windows 的打包和证据工具已经在仓库里，但在真实签名安装包和冒烟报告归档前，不声明 Windows release-ready。
+
+## 为什么推荐 OpenPet
+
+- 它把桌宠从渲染玩具推进成一个可编程的本地桌面平台。
+- AI 和图片 Provider 的敏感凭据保留在 Electron 主进程，不暴露给 renderer 或普通插件。
+- 它支持真实用户内容：宠物包、Creator Studio、可审查的导入和审批流程。
+- 它诚实处理扩展安全边界：本地插件显式运行、记录日志、权限受控，但不夸大成完整任意进程沙箱。
+- 它有持续增长的回归测试和发布证据工具，适合长期维护和多人协作。
+
+## 适合谁
+
+- 想要 AI 对话、可切换宠物包和桌面陪伴体验的用户。
+- 想开发本地插件，并且需要清晰权限、生命周期和提交流程的扩展作者。
+- 想参考 Electron 主进程分层、renderer-safe IPC 合同和桌面发布证据链路的开发者。
 
 ## 能做什么
 
@@ -149,6 +165,7 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 
 - [CHANGELOG.md](./CHANGELOG.md)：版本记录。
 - [docs/README.md](./docs/README.md)：文档地图和阅读顺序。
+- [.github/REPOSITORY_PROFILE.md](./.github/REPOSITORY_PROFILE.md)：GitHub About、repository topics、短介绍和 release 页面素材。
 - [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md)：扩展生态边界、生命周期规则和三方作者指导。
 - [docs/HANDOFF.md](./docs/HANDOFF.md)：当前状态的维护交接文档。
 - [docs/project-context.json](./docs/project-context.json)：给程序/代理读取的紧凑项目上下文。

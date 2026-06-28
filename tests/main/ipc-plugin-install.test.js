@@ -1519,7 +1519,14 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
         listPlugins: () => [],
         openDashboard: async (pluginId, dashboardId) => {
           calls.push([pluginId, dashboardId])
-          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/' }
+          return {
+            ok: true,
+            pluginId,
+            dashboardId,
+            url: 'http://127.0.0.1:8787/',
+            localPath: '/Users/mango/private-plugin/index.html',
+            bridgeToken: 'secret-token'
+          }
         }
       },
       dialogService: {
@@ -1560,11 +1567,32 @@ test('plugin service lifecycle handlers delegate to plugin service', async () =>
         listPlugins: () => [],
         startService: (pluginId, serviceId) => {
           calls.push(['start', pluginId, serviceId])
-          return { ok: true, pluginId, serviceId, runtime: { status: 'running', pid: 4321 } }
+          return {
+            ok: true,
+            pluginId,
+            serviceId,
+            runtime: {
+              status: 'running',
+              pid: '4321',
+              cwd: '/Users/mango/private-plugin',
+              env: { OPENAI_API_KEY: 'sk-hidden' },
+              health: { status: 'healthy', statusCode: '200', rawHeaders: { authorization: 'Bearer secret-token' } }
+            }
+          }
         },
         stopService: (pluginId, serviceId) => {
           calls.push(['stop', pluginId, serviceId])
-          return { ok: true, pluginId, serviceId, runtime: { status: 'stopped' } }
+          return {
+            ok: true,
+            pluginId,
+            serviceId,
+            runtime: {
+              status: 'teleporting',
+              pid: 'bad',
+              exitCode: '1',
+              cwd: '/Users/mango/private-plugin'
+            }
+          }
         }
       },
       dialogService: {
@@ -1587,14 +1615,24 @@ test('plugin service lifecycle handlers delegate to plugin service', async () =>
     ok: true,
     pluginId: 'weather-declaration',
     serviceId: 'companion',
-    runtime: { status: 'running', pid: 4321 }
+    runtime: {
+      status: 'running',
+      pid: 4321,
+      health: { status: 'healthy', statusCode: 200 }
+    }
   })
   assert.deepEqual(stopResult, {
     ok: true,
     pluginId: 'weather-declaration',
     serviceId: 'companion',
-    runtime: { status: 'stopped' }
+    runtime: {
+      status: 'stopped',
+      pid: null,
+      exitCode: 1
+    }
   })
+  assert.equal(JSON.stringify(startResult).includes('/Users/mango/private-plugin'), false)
+  assert.equal(JSON.stringify(startResult).includes('sk-hidden'), false)
   assert.deepEqual(calls, [
     ['start', 'weather-declaration', 'companion'],
     ['stop', 'weather-declaration', 'companion']
@@ -1618,7 +1656,17 @@ test('plugin setup handler delegates to plugin service', async () => {
         listPlugins: () => [],
         runSetup: (pluginId, setupId) => {
           calls.push({ pluginId, setupId })
-          return { ok: true, pluginId, setupId, runtime: { status: 'succeeded' } }
+          return {
+            ok: true,
+            pluginId,
+            setupId,
+            runtime: {
+              status: 'succeeded',
+              exitCode: '0',
+              cwd: '/Users/mango/private-plugin',
+              env: { OPENAI_API_KEY: 'sk-hidden' }
+            }
+          }
         }
       },
       dialogService: {
@@ -1638,8 +1686,9 @@ test('plugin setup handler delegates to plugin service', async () => {
     ok: true,
     pluginId: 'weather-declaration',
     setupId: 'install-deps',
-    runtime: { status: 'succeeded' }
+    runtime: { status: 'succeeded', exitCode: 0 }
   })
+  assert.equal(JSON.stringify(result).includes('/Users/mango/private-plugin'), false)
 })
 
 test('plugin service health handler delegates to plugin service', async () => {
@@ -1663,8 +1712,18 @@ test('plugin service health handler delegates to plugin service', async () => {
             ok: true,
             pluginId,
             serviceId,
-            health: { status: 'healthy', url: 'http://127.0.0.1:8787/health', statusCode: 200 },
-            runtime: { status: 'running', health: { status: 'healthy' } }
+            health: {
+              status: 'healthy',
+              url: 'http://127.0.0.1:8787/health',
+              statusCode: '200',
+              rawBody: 'secret'
+            },
+            runtime: {
+              status: 'running',
+              pid: '4321',
+              cwd: '/Users/mango/private-plugin',
+              health: { status: 'healthy', statusCode: '200' }
+            }
           }
         }
       },
@@ -1685,8 +1744,9 @@ test('plugin service health handler delegates to plugin service', async () => {
     pluginId: 'weather-declaration',
     serviceId: 'companion',
     health: { status: 'healthy', url: 'http://127.0.0.1:8787/health', statusCode: 200 },
-    runtime: { status: 'running', health: { status: 'healthy' } }
+    runtime: { status: 'running', pid: 4321, health: { status: 'healthy', statusCode: 200 } }
   })
+  assert.equal(JSON.stringify(result).includes('/Users/mango/private-plugin'), false)
   assert.deepEqual(calls, [['weather-declaration', 'companion']])
 })
 
@@ -1709,8 +1769,11 @@ test('plugin service health policy handler delegates to plugin service', async (
           calls.push({ pluginId, serviceId, policy })
           return {
             id: pluginId,
+            name: 'Weather Declaration',
+            version: '1.0.0',
+            rootPath: '/Users/mango/private-plugin',
             entries: {
-              services: [{ id: serviceId, healthPolicy: policy }]
+              services: [{ id: serviceId, healthPolicy: policy, runtime: { status: 'running', cwd: '/Users/mango/private-plugin' } }]
             }
           }
         }
@@ -1735,10 +1798,92 @@ test('plugin service health policy handler delegates to plugin service', async (
   }])
   assert.deepEqual(result, {
     id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    source: '',
+    enabled: false,
+    runnable: false,
+    permissions: [],
+    commands: [],
     entries: {
-      services: [{ id: 'companion', healthPolicy: { enabled: true, intervalMs: 30000 } }]
+      setup: [],
+      commands: [],
+      services: [{
+        id: 'companion',
+        title: '',
+        command: '',
+        cwd: '',
+        healthPolicy: { enabled: true, intervalMs: 30000 },
+        runtime: { status: 'running' }
+      }],
+      dashboards: []
+    },
+    configSchema: { properties: [] },
+    config: {},
+    storage: { keyCount: 0, byteSize: 0 },
+    signatureStatus: {
+      status: '',
+      label: 'Signature unknown',
+      signer: '',
+      algorithm: '',
+      verified: false,
+      errors: []
     }
   })
+  assert.equal(JSON.stringify(result).includes('/Users/mango/private-plugin'), false)
+})
+
+test('plugin clear storage handler returns normalized plugin view payload', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        clearStorage: (pluginId) => {
+          calls.push(pluginId)
+          return {
+            id: pluginId,
+            name: 'Weather Declaration',
+            version: '1.0.0',
+            rootPath: '/Users/mango/private-plugin',
+            storage: { keyCount: '0', byteSize: '2', rawPath: '/Users/mango/private-storage.json' },
+            entries: {
+              services: [{ id: 'companion', runtime: { status: 'running', cwd: '/Users/mango/private-plugin' } }]
+            }
+          }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_STORAGE)(null, {
+    pluginId: 'weather-declaration'
+  })
+
+  assert.equal(result.id, 'weather-declaration')
+  assert.deepEqual(result.storage, { keyCount: 0, byteSize: 2 })
+  assert.deepEqual(result.entries.services[0], {
+    id: 'companion',
+    title: '',
+    command: '',
+    cwd: '',
+    runtime: { status: 'running' }
+  })
+  assert.equal(JSON.stringify(result).includes('/Users/mango/private'), false)
+  assert.deepEqual(calls, ['weather-declaration'])
 })
 
 test('pet-packs:inspect-directory opens native folder or zip picker and delegates selected source', async () => {
@@ -2118,8 +2263,12 @@ test('plugins:run-command delegates payloads to plugin service', async () => {
     ok: true,
     pluginId: 'weather-declaration',
     commandId: 'announce',
-    exitCode: 0,
-    result: { ok: true }
+    exitCode: '0',
+    stdout: 123,
+    stderr: null,
+    result: { ok: true, nested: ['safe'] },
+    runtime: { cwd: '/Users/mango/private-plugin', bridgeToken: 'secret-token' },
+    apiKey: 'sk-hidden'
   }
 
   registerIpcHandlers({
@@ -2151,7 +2300,17 @@ test('plugins:run-command delegates payloads to plugin service', async () => {
     payload: { city: 'Shanghai' }
   })
 
-  assert.deepEqual(result, commandResult)
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: 0,
+    stdout: '123',
+    stderr: '',
+    result: { ok: true, nested: ['safe'] }
+  })
+  assert.equal(JSON.stringify(result).includes('/Users/mango/private-plugin'), false)
+  assert.equal(JSON.stringify(result).includes('sk-hidden'), false)
   assert.deepEqual(calls, [{
     pluginId: 'weather-declaration',
     commandId: 'announce',

@@ -35,10 +35,13 @@ test('main configures legacy userData before requesting the single instance lock
 })
 
 test('main syncs bundled creator studio plugin before plugin services read pluginDir', () => {
-  const mainSource = fs.readFileSync(path.join(__dirname, '..', '..', 'main.js'), 'utf8')
-  const syncIndex = mainSource.indexOf('syncBundledPlugins({')
-  const installIndex = mainSource.indexOf('createPluginInstallService({')
-  const serviceIndex = mainSource.indexOf('createPluginService({')
+  const bootstrapSource = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'main', 'bootstrap', 'create-plugin-services.js'),
+    'utf8'
+  )
+  const syncIndex = bootstrapSource.indexOf('syncBundledPlugins({')
+  const installIndex = bootstrapSource.indexOf('createPluginInstallService({')
+  const serviceIndex = bootstrapSource.indexOf('createPluginService({')
 
   assert.notEqual(syncIndex, -1)
   assert.notEqual(installIndex, -1)

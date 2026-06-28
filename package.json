@@ -1,9 +1,28 @@
 {
   "name": "openpet",
   "version": "1.0.1-rc.3",
-  "description": "OpenPet Electron desktop pet platform with Control Center, AI, plugins, and local APIs.",
+  "description": "Programmable Electron desktop pet platform with Control Center, AI chat, Creator Studio, plugins, pet packs, and local agent APIs.",
   "author": "OpenPet contributors",
   "license": "MIT",
+  "homepage": "https://github.com/dengyie/OpenPet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dengyie/OpenPet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dengyie/OpenPet/issues"
+  },
+  "keywords": [
+    "electron",
+    "desktop-pet",
+    "ai-chat",
+    "plugins",
+    "pet-packs",
+    "creator-studio",
+    "local-first",
+    "mcp",
+    "openai-compatible"
+  ],
   "main": "main.js",
   "scripts": {
     "start": "node scripts/cleanup-dev-instances.js && npm run build:control-center && electron .",

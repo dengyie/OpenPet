@@ -4,16 +4,18 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const repoRoot = path.resolve(__dirname, '../..')
-const pluginServicePath = path.join(repoRoot, 'src', 'main', 'services', 'plugin-service.js')
+const pluginBridgeServerPath = path.join(repoRoot, 'src', 'main', 'services', 'plugin-command-bridge-server.js')
 const pluginDevelopmentDocPath = path.join(repoRoot, 'docs', 'plugin-development.md')
 const pluginRulesDocPath = path.join(repoRoot, 'docs', 'plugin-ecosystem-rules.md')
 
 const readText = (filePath) => fs.readFileSync(filePath, 'utf-8')
 
 const extractBridgeRoutesFromService = () => {
-  const source = readText(pluginServicePath)
-  const match = source.match(/url\.pathname\.match\(\s*\/\^\\\/plugins\\\/bridge\\\/\(\[\^\/\]\+\)\\\/\(\[\^\/\]\+\)\\\/\(\[\^\/\]\+\)\(([^)]+)\)\$\/\)/)
-  assert.ok(match, 'Expected plugin-service bridge route matcher to exist')
+  const source = readText(pluginBridgeServerPath)
+  const routePatternLine = source.split(/\r?\n/).find((line) => line.startsWith('const ROUTE_PATTERN = '))
+  assert.ok(routePatternLine, 'Expected plugin command bridge server route matcher to exist')
+  const match = routePatternLine.match(/\((\\\/context\|.*)\)\$\/$/)
+  assert.ok(match, 'Expected plugin command bridge server route group to exist')
   return match[1]
     .split('|')
     .map((entry) => entry.trim())

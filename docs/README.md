@@ -7,6 +7,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | Need | Read |
 | --- | --- |
 | User-facing overview and commands | [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) |
+| GitHub About, repository topics, and short promotional copy | [`../.github/REPOSITORY_PROFILE.md`](../.github/REPOSITORY_PROFILE.md) |
 | Current maintainer handoff | [`HANDOFF.md`](./HANDOFF.md) |
 | Short engineering summary | [`development-summary.md`](./development-summary.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |

@@ -15,9 +15,25 @@ An Electron desktop pet platform with a visual Control Center, AI chat, plugins,
 
 OpenPet puts a small animated pet on your desktop and gives it a real platform behind the scenes. The pet can walk, speak, play actions, switch character packs, react to AI replies, and grow through a developer-first local extension ecosystem.
 
+If you are looking for a desktop pet project that is more than a renderer demo, OpenPet is built to be inspected, extended, and shipped: the app has a real service layer, a visual settings surface, plugin lifecycle controls, AI provider boundaries, pet-pack tooling, and repeatable evidence scripts.
+
 The project is currently a release-candidate desktop platform rather than a toy demo: it has a real Electron service layer, a React Control Center, bundled pet packs, OpenAI-compatible AI settings, local extension runtime controls, loopback-only automation APIs, and release evidence tooling.
 
 The current release track is macOS-first. Windows build and validation tooling exists, but Windows is not advertised as release-ready until signed installer evidence and real smoke reports are archived.
+
+## Why Star OpenPet
+
+- It turns a desktop pet into a programmable local platform with explicit service boundaries.
+- It keeps sensitive AI and image-provider credentials in the Electron main process.
+- It supports real user content through pet packs, Creator Studio, and reviewable import flows.
+- It treats extension execution honestly: local plugins are explicit, logged, permission-gated, and never described as a complete arbitrary-process sandbox.
+- It comes with a growing regression and release-evidence suite, so contributors can change behavior without relying on screenshots and guesses.
+
+## Who It Is For
+
+- Users who want a desktop companion with AI-assisted dialogue and switchable pet packs.
+- Plugin authors who want a local-first extension host with clear permission and lifecycle rules.
+- Electron developers who want a concrete reference for main-process service layering, renderer-safe IPC contracts, and desktop release evidence.
 
 ## What You Get
 
@@ -150,6 +166,7 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 
 - [CHANGELOG.md](./CHANGELOG.md) - release notes.
 - [docs/README.md](./docs/README.md) - documentation map and reading order.
+- [.github/REPOSITORY_PROFILE.md](./.github/REPOSITORY_PROFILE.md) - GitHub About text, repository topics, short blurbs, and release-page copy.
 - [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - extension ecosystem boundary, lifecycle rules, and third-party author guidance.
 - [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff for the current state.
 - [docs/project-context.json](./docs/project-context.json) - compact machine-readable project context.

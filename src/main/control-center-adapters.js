@@ -9,6 +9,11 @@
  * @typedef {import('../shared/openpet-contracts').ServiceLogEntry} ServiceLogEntry
  * @typedef {import('../shared/openpet-contracts').ServiceStatusViewState} ServiceStatusViewState
  * @typedef {import('../shared/openpet-contracts').PluginMutationResult} PluginMutationResult
+ * @typedef {import('../shared/openpet-contracts').PluginCommandRunResultViewState} PluginCommandRunResultViewState
+ * @typedef {import('../shared/openpet-contracts').PluginDashboardOpenResult} PluginDashboardOpenResult
+ * @typedef {import('../shared/openpet-contracts').PluginServiceControlResult} PluginServiceControlResult
+ * @typedef {import('../shared/openpet-contracts').PluginServiceHealthCheckResult} PluginServiceHealthCheckResult
+ * @typedef {import('../shared/openpet-contracts').PluginSetupRunResultViewState} PluginSetupRunResultViewState
  * @typedef {import('../shared/openpet-contracts').PluginConfigFieldViewState} PluginConfigFieldViewState
  * @typedef {import('../shared/openpet-contracts').PluginConfigSchemaViewState} PluginConfigSchemaViewState
  * @typedef {import('../shared/openpet-contracts').PluginViewState} PluginViewState
@@ -19,6 +24,8 @@
  * @typedef {import('../shared/openpet-contracts').AboutUpdateInfo} AboutUpdateInfo
  * @typedef {import('../shared/openpet-contracts').PetPackMutationResult} PetPackMutationResult
  * @typedef {import('../shared/openpet-contracts').PetPacksViewState} PetPacksViewState
+ * @typedef {import('../shared/openpet-contracts').PetBubbleChatWindowStateViewState} PetBubbleChatWindowStateViewState
+ * @typedef {import('../shared/openpet-contracts').PetChatStateViewState} PetChatStateViewState
  * @typedef {import('../shared/openpet-contracts').UpdateCheckViewState} UpdateCheckViewState
  */
 
@@ -32,7 +39,12 @@ const TRIGGER_RULE_STATUSES = new Set(['active', 'disabled'])
 const MAX_TRIGGER_RULE_SPEC_TEXT_LENGTH = 240
 const PLUGIN_PROFILES = new Set(['runtime', 'creator-tools', 'hybrid'])
 const PLUGIN_CONFIG_FIELD_TYPES = new Set(['string', 'number', 'boolean'])
+const PLUGIN_SETUP_RUNTIME_STATUSES = new Set(['not-run', 'running', 'stopping', 'succeeded', 'failed'])
+const PLUGIN_SERVICE_RUNTIME_STATUSES = new Set(['stopped', 'starting', 'running', 'stopping', 'exited', 'failed'])
+const PLUGIN_SERVICE_HEALTH_STATUSES = new Set(['not-configured', 'unknown', 'checking', 'healthy', 'unhealthy'])
 const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed'])
+const AI_BEHAVIOR_DISPLAY_MODES = new Set(['none', 'bubble', 'action', 'event'])
+const MAX_PET_CHAT_MESSAGES = 100
 
 /**
  * @param {unknown} value
@@ -51,6 +63,25 @@ const toRecord = (value) => (
 const toNonNegativeInteger = (value) => {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) ? Math.max(0, Math.round(numberValue)) : 0
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+const toIntegerOrNull = (value) => {
+  if (value === null) return null
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? Math.round(numberValue) : null
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+const toNonNegativeIntegerOrNull = (value) => {
+  const numberValue = toIntegerOrNull(value)
+  return numberValue === null ? null : Math.max(0, numberValue)
 }
 
 /**
@@ -82,6 +113,20 @@ const toJsonValueArray = (value) => (
   Array.isArray(value)
     ? value.filter(isJsonValue)
     : []
+)
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+const toStringValue = (value) => (typeof value === 'string' ? value : '')
+
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+const toStringArray = (value) => (
+  Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item) : []
 )
 
 /**
@@ -463,6 +508,176 @@ const createImageGenerationHealthCheckResult = (result = {}) => {
 }
 
 /**
+ * @param {unknown} bubble
+ * @returns {import('../shared/openpet-contracts').PetChatBubbleViewState}
+ */
+const createPetChatBubbleView = (bubble = {}) => {
+  const input = toRecord(bubble)
+  return {
+    text: toStringValue(input.text),
+    source: toStringValue(input.source),
+    ttlMs: toNonNegativeInteger(input.ttlMs),
+    updatedAt: toStringValue(input.updatedAt)
+  }
+}
+
+/**
+ * @param {unknown} state
+ * @returns {PetBubbleChatWindowStateViewState}
+ */
+const createPetBubbleChatWindowStateView = (state = {}) => {
+  const input = toRecord(state)
+  return {
+    visible: Boolean(input.visible),
+    hasWindow: Boolean(input.hasWindow)
+  }
+}
+
+/**
+ * @param {unknown} message
+ * @returns {(import('../shared/openpet-contracts').ChatMessage & { id?: string, createdAt?: string }) | null}
+ */
+const createPetChatMessageView = (message = {}) => {
+  const input = toRecord(message)
+  if (!['user', 'assistant'].includes(input.role) || typeof input.content !== 'string') return null
+  return {
+    ...(typeof input.id === 'string' ? { id: input.id } : {}),
+    role: /** @type {'user' | 'assistant'} */ (input.role),
+    content: input.content,
+    ...(typeof input.createdAt === 'string' ? { createdAt: input.createdAt } : {})
+  }
+}
+
+/**
+ * @param {unknown} messages
+ * @returns {(import('../shared/openpet-contracts').ChatMessage & { id?: string, createdAt?: string })[]}
+ */
+const createPetChatMessagesView = (messages = []) => (
+  Array.isArray(messages)
+    ? messages
+      .slice(-MAX_PET_CHAT_MESSAGES)
+      .map((message) => createPetChatMessageView(message))
+      .filter(isPresent)
+    : []
+)
+
+/**
+ * @param {unknown} bounds
+ * @returns {PetChatStateViewState['bounds']}
+ */
+const createPetChatBoundsView = (bounds = {}) => {
+  if (!bounds || typeof bounds !== 'object' || Array.isArray(bounds)) return null
+  const input = toRecord(bounds)
+  return {
+    x: toFiniteNumber(input.x),
+    y: toFiniteNumber(input.y),
+    width: toNonNegativeInteger(input.width),
+    height: toNonNegativeInteger(input.height)
+  }
+}
+
+/**
+ * @param {unknown} state
+ * @returns {PetChatStateViewState}
+ */
+const createPetChatStateView = (state = {}) => {
+  const input = toRecord(state)
+  const petPack = toRecord(input.petPack)
+  const ai = toRecord(input.ai)
+  return {
+    available: Boolean(input.available),
+    visible: Boolean(input.visible),
+    hasWindow: Boolean(input.hasWindow),
+    alwaysOnTop: Boolean(input.alwaysOnTop),
+    hasUserBounds: Boolean(input.hasUserBounds),
+    conversationId: toStringValue(input.conversationId),
+    bounds: createPetChatBoundsView(input.bounds),
+    petPack: {
+      id: toStringValue(petPack.id),
+      displayName: toStringValue(petPack.displayName)
+    },
+    ai: {
+      enabled: Boolean(ai.enabled),
+      hasApiKey: Boolean(ai.hasApiKey),
+      ready: Boolean(ai.ready),
+      provider: toStringValue(ai.provider),
+      baseUrl: toStringValue(ai.baseUrl),
+      model: toStringValue(ai.model),
+      reason: toStringValue(ai.reason)
+    },
+    bubble: createPetChatBubbleView(input.bubble),
+    bubbleChat: createPetBubbleChatWindowStateView(input.bubbleChat),
+    messages: createPetChatMessagesView(input.messages)
+  }
+}
+
+/**
+ * @param {unknown} action
+ * @returns {{ actionId?: string, label?: string, error?: string } | undefined}
+ */
+const createPetChatActionView = (action) => {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return undefined
+  const input = toRecord(action)
+  return {
+    ...(typeof input.actionId === 'string' ? { actionId: input.actionId } : {}),
+    ...(typeof input.label === 'string' ? { label: input.label } : {}),
+    ...(typeof input.error === 'string' ? { error: input.error } : {})
+  }
+}
+
+/**
+ * @param {unknown} behavior
+ * @returns {Partial<import('../shared/openpet-contracts').AiBehaviorDecision> & {
+ *   text?: string,
+ *   event?: string,
+ *   message?: string,
+ *   error?: string
+ * } | undefined}
+ */
+const createPetChatBehaviorView = (behavior) => {
+  if (!behavior || typeof behavior !== 'object' || Array.isArray(behavior)) return undefined
+  const input = toRecord(behavior)
+  return {
+    ...(input.matched !== undefined ? { matched: Boolean(input.matched) } : {}),
+    ...(typeof input.type === 'string' ? { type: input.type } : {}),
+    ...(typeof input.actionId === 'string' ? { actionId: input.actionId } : {}),
+    ...(typeof input.label === 'string' ? { label: input.label } : {}),
+    ...(typeof input.reason === 'string' ? { reason: input.reason } : {}),
+    ...(typeof input.ruleId === 'string' ? { ruleId: input.ruleId } : {}),
+    ...(typeof input.intent === 'string' ? { intent: input.intent } : {}),
+    ...(typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+      ? { displayMode: /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode) }
+      : {}),
+    ...(typeof input.text === 'string' ? { text: input.text } : {}),
+    ...(typeof input.event === 'string' ? { event: input.event } : {}),
+    ...(typeof input.message === 'string' ? { message: input.message } : {}),
+    ...(typeof input.error === 'string' ? { error: input.error } : {})
+  }
+}
+
+/**
+ * @param {unknown} response
+ * @returns {import('../shared/openpet-contracts').AiChatResponse & { bubbleSegments?: string[], providerLatencyMs?: number }}
+ */
+const createPetChatMessageResultView = (response = {}) => {
+  const input = toRecord(response)
+  const providerLatencyMs = Number(input.providerLatencyMs)
+  const action = createPetChatActionView(input.action)
+  const behavior = createPetChatBehaviorView(input.behavior)
+  return {
+    ...(input.conversationId !== undefined ? { conversationId: toStringValue(input.conversationId) } : {}),
+    reply: toStringValue(input.reply),
+    ...(Array.isArray(input.messages) ? { messages: createPetChatMessagesView(input.messages) } : {}),
+    ...(input.bubble !== undefined ? { bubble: createPetChatBubbleView(input.bubble) } : {}),
+    ...(input.state !== undefined ? { state: createPetChatStateView(input.state) } : {}),
+    ...(action ? { action } : {}),
+    ...(behavior ? { behavior } : {}),
+    ...(Array.isArray(input.bubbleSegments) ? { bubbleSegments: toStringArray(input.bubbleSegments) } : {}),
+    ...(Number.isFinite(providerLatencyMs) ? { providerLatencyMs } : {})
+  }
+}
+
+/**
  * @param {unknown} blocklist
  * @returns {BlocklistState}
  */
@@ -624,6 +839,96 @@ const createPluginStorageView = (storage = {}) => {
 }
 
 /**
+ * @param {unknown} status
+ * @returns {import('../shared/openpet-contracts').PluginSetupRuntimeStatus}
+ */
+const toPluginSetupRuntimeStatus = (status) => (
+  typeof status === 'string' && PLUGIN_SETUP_RUNTIME_STATUSES.has(status)
+    ? /** @type {import('../shared/openpet-contracts').PluginSetupRuntimeStatus} */ (status)
+    : 'not-run'
+)
+
+/**
+ * @param {unknown} status
+ * @returns {import('../shared/openpet-contracts').PluginServiceRuntimeStatus}
+ */
+const toPluginServiceRuntimeStatus = (status) => (
+  typeof status === 'string' && PLUGIN_SERVICE_RUNTIME_STATUSES.has(status)
+    ? /** @type {import('../shared/openpet-contracts').PluginServiceRuntimeStatus} */ (status)
+    : 'stopped'
+)
+
+/**
+ * @param {unknown} status
+ * @returns {import('../shared/openpet-contracts').PluginServiceHealthStatus}
+ */
+const toPluginServiceHealthStatus = (status) => (
+  typeof status === 'string' && PLUGIN_SERVICE_HEALTH_STATUSES.has(status)
+    ? /** @type {import('../shared/openpet-contracts').PluginServiceHealthStatus} */ (status)
+    : 'unknown'
+)
+
+/**
+ * @param {unknown} runtime
+ * @returns {import('../shared/openpet-contracts').PluginSetupRuntimeViewState}
+ */
+const createPluginSetupRuntimeView = (runtime = {}) => {
+  const input = toRecord(runtime)
+  return {
+    status: toPluginSetupRuntimeStatus(input.status),
+    ...(input.lastRunAt !== undefined ? { lastRunAt: toStringValue(input.lastRunAt) } : {}),
+    ...(input.exitCode !== undefined ? { exitCode: toIntegerOrNull(input.exitCode) } : {}),
+    ...(input.error !== undefined ? { error: toStringValue(input.error) } : {})
+  }
+}
+
+/**
+ * @param {unknown} policy
+ * @returns {import('../shared/openpet-contracts').PluginServiceHealthPolicyViewState}
+ */
+const createPluginServiceHealthPolicyView = (policy = {}) => {
+  const input = toRecord(policy)
+  return {
+    enabled: Boolean(input.enabled),
+    intervalMs: toNonNegativeInteger(input.intervalMs)
+  }
+}
+
+/**
+ * @param {unknown} health
+ * @returns {import('../shared/openpet-contracts').PluginServiceHealthViewState}
+ */
+const createPluginServiceHealthView = (health = {}) => {
+  const input = toRecord(health)
+  return {
+    status: toPluginServiceHealthStatus(input.status),
+    ...(input.checkedAt !== undefined ? { checkedAt: toStringValue(input.checkedAt) } : {}),
+    ...(input.url !== undefined ? { url: toStringValue(input.url) } : {}),
+    ...(input.statusCode !== undefined ? { statusCode: toNonNegativeIntegerOrNull(input.statusCode) } : {}),
+    ...(input.message !== undefined ? { message: toStringValue(input.message) } : {})
+  }
+}
+
+/**
+ * @param {unknown} runtime
+ * @returns {import('../shared/openpet-contracts').PluginServiceRuntimeViewState}
+ */
+const createPluginServiceRuntimeView = (runtime = {}) => {
+  const input = toRecord(runtime)
+  return {
+    status: toPluginServiceRuntimeStatus(input.status),
+    ...(input.pid !== undefined ? { pid: toNonNegativeIntegerOrNull(input.pid) } : {}),
+    ...(input.startedAt !== undefined ? { startedAt: toStringValue(input.startedAt) } : {}),
+    ...(input.stoppedAt !== undefined ? { stoppedAt: toStringValue(input.stoppedAt) } : {}),
+    ...(input.command !== undefined ? { command: toStringValue(input.command) } : {}),
+    ...(input.exitCode !== undefined ? { exitCode: toIntegerOrNull(input.exitCode) } : {}),
+    ...(input.signal !== undefined ? { signal: toStringValue(input.signal) } : {}),
+    ...(input.error !== undefined ? { error: toStringValue(input.error) } : {}),
+    ...(input.health !== undefined ? { health: createPluginServiceHealthView(input.health) } : {})
+  }
+}
+
+/**
  * @param {unknown} signatureStatus
  * @returns {import('../shared/openpet-contracts').PluginSignatureStatusViewState}
  */
@@ -652,6 +957,99 @@ const createPluginBlockStatusView = (blockStatus) => {
     reasons: Array.isArray(input.reasons) ? input.reasons.filter((reason) => typeof reason === 'string') : []
   }
 }
+
+/**
+ * @param {unknown} command
+ * @returns {import('../shared/openpet-contracts').PluginCommandViewState | null}
+ */
+const createPluginCommandView = (command = {}) => {
+  const input = toRecord(command)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : ''
+  }
+}
+
+/**
+ * @param {unknown} command
+ * @returns {import('../shared/openpet-contracts').PluginCommandEntryViewState | null}
+ */
+const createPluginCommandEntryView = (command = {}) => {
+  const input = toRecord(command)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    command: typeof input.command === 'string' ? input.command : '',
+    cwd: ''
+  }
+}
+
+/**
+ * @param {unknown} setup
+ * @returns {import('../shared/openpet-contracts').PluginSetupEntryViewState | null}
+ */
+const createPluginSetupEntryView = (setup = {}) => {
+  const input = toRecord(setup)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    command: typeof input.command === 'string' ? input.command : '',
+    cwd: '',
+    ...(input.runtime !== undefined ? { runtime: createPluginSetupRuntimeView(input.runtime) } : {})
+  }
+}
+
+/**
+ * @param {unknown} service
+ * @returns {import('../shared/openpet-contracts').PluginServiceEntryViewState | null}
+ */
+const createPluginServiceEntryView = (service = {}) => {
+  const input = toRecord(service)
+  if (typeof input.id !== 'string' || !input.id) return null
+  const health = input.health && typeof input.health === 'object' && !Array.isArray(input.health)
+    ? toRecord(input.health)
+    : null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    command: typeof input.command === 'string' ? input.command : '',
+    cwd: '',
+    ...(health
+      ? {
+          health: {
+            type: typeof health.type === 'string' ? health.type : '',
+            ...(typeof health.url === 'string' ? { url: health.url } : {})
+          }
+        }
+      : {}),
+    ...(input.healthPolicy !== undefined ? { healthPolicy: createPluginServiceHealthPolicyView(input.healthPolicy) } : {}),
+    ...(input.runtime !== undefined ? { runtime: createPluginServiceRuntimeView(input.runtime) } : {})
+  }
+}
+
+/**
+ * @param {unknown} dashboard
+ * @returns {import('../shared/openpet-contracts').PluginDashboardEntryViewState | null}
+ */
+const createPluginDashboardEntryView = (dashboard = {}) => {
+  const input = toRecord(dashboard)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    url: typeof input.url === 'string' ? input.url : ''
+  }
+}
+
+/**
+ * @template T
+ * @param {T | null} value
+ * @returns {value is T}
+ */
+const isPresent = (value) => value !== null
 
 /**
  * @param {unknown} blockStatus
@@ -796,6 +1194,7 @@ const createPetPacksView = (petPacks = {}) => {
 const createPluginViewState = (plugin = {}) => {
   const input = toRecord(plugin)
   const blockStatus = createPluginBlockStatusView(input.blockStatus)
+  const entries = toRecord(input.entries)
   return {
     id: typeof input.id === 'string' ? input.id : '',
     name: typeof input.name === 'string' ? input.name : '',
@@ -807,12 +1206,14 @@ const createPluginViewState = (plugin = {}) => {
     enabled: Boolean(input.enabled),
     runnable: Boolean(input.runnable),
     permissions: Array.isArray(input.permissions) ? input.permissions.filter((permission) => typeof permission === 'string') : [],
-    commands: Array.isArray(input.commands) ? input.commands : [],
+    commands: Array.isArray(input.commands)
+      ? input.commands.map((command) => createPluginCommandView(command)).filter(isPresent)
+      : [],
     entries: {
-      setup: Array.isArray(input.entries?.setup) ? input.entries.setup : [],
-      commands: Array.isArray(input.entries?.commands) ? input.entries.commands : [],
-      services: Array.isArray(input.entries?.services) ? input.entries.services : [],
-      dashboards: Array.isArray(input.entries?.dashboards) ? input.entries.dashboards : []
+      setup: Array.isArray(entries.setup) ? entries.setup.map((entry) => createPluginSetupEntryView(entry)).filter(isPresent) : [],
+      commands: Array.isArray(entries.commands) ? entries.commands.map((entry) => createPluginCommandEntryView(entry)).filter(isPresent) : [],
+      services: Array.isArray(entries.services) ? entries.services.map((entry) => createPluginServiceEntryView(entry)).filter(isPresent) : [],
+      dashboards: Array.isArray(entries.dashboards) ? entries.dashboards.map((entry) => createPluginDashboardEntryView(entry)).filter(isPresent) : []
     },
     configSchema: createPluginConfigSchemaView(input.configSchema),
     config: toRecord(input.config),
@@ -829,6 +1230,80 @@ const createPluginViewState = (plugin = {}) => {
 const createPluginListView = (plugins) => (
   Array.isArray(plugins) ? plugins.map((plugin) => createPluginViewState(plugin)) : []
 )
+
+/**
+ * @param {unknown} result
+ * @returns {PluginCommandRunResultViewState}
+ */
+const createPluginCommandRunResult = (result = {}) => {
+  const input = toRecord(result)
+  return {
+    ok: Boolean(input.ok),
+    ...(input.pluginId !== undefined ? { pluginId: toStringValue(input.pluginId) } : {}),
+    ...(input.commandId !== undefined ? { commandId: toStringValue(input.commandId) } : {}),
+    ...(input.exitCode !== undefined ? { exitCode: toIntegerOrNull(input.exitCode) } : {}),
+    ...(input.stdout !== undefined ? { stdout: String(input.stdout ?? '') } : {}),
+    ...(input.stderr !== undefined ? { stderr: String(input.stderr ?? '') } : {}),
+    ...(isJsonValue(input.result) ? { result: input.result } : {})
+  }
+}
+
+/**
+ * @param {unknown} result
+ * @returns {PluginSetupRunResultViewState}
+ */
+const createPluginSetupRunResult = (result = {}) => {
+  const input = toRecord(result)
+  return {
+    ok: Boolean(input.ok),
+    pluginId: toStringValue(input.pluginId),
+    setupId: toStringValue(input.setupId),
+    runtime: createPluginSetupRuntimeView(input.runtime)
+  }
+}
+
+/**
+ * @param {unknown} result
+ * @returns {PluginDashboardOpenResult}
+ */
+const createPluginDashboardOpenResult = (result = {}) => {
+  const input = toRecord(result)
+  return {
+    ok: Boolean(input.ok),
+    pluginId: toStringValue(input.pluginId),
+    dashboardId: toStringValue(input.dashboardId),
+    url: toStringValue(input.url)
+  }
+}
+
+/**
+ * @param {unknown} result
+ * @returns {PluginServiceControlResult}
+ */
+const createPluginServiceControlResult = (result = {}) => {
+  const input = toRecord(result)
+  return {
+    ok: Boolean(input.ok),
+    pluginId: toStringValue(input.pluginId),
+    serviceId: toStringValue(input.serviceId),
+    runtime: createPluginServiceRuntimeView(input.runtime)
+  }
+}
+
+/**
+ * @param {unknown} result
+ * @returns {PluginServiceHealthCheckResult}
+ */
+const createPluginServiceHealthCheckResult = (result = {}) => {
+  const input = toRecord(result)
+  return {
+    ok: Boolean(input.ok),
+    pluginId: toStringValue(input.pluginId),
+    serviceId: toStringValue(input.serviceId),
+    health: createPluginServiceHealthView(input.health),
+    runtime: createPluginServiceRuntimeView(input.runtime)
+  }
+}
 
 /**
  * @param {Partial<PluginMutationResult>} result
@@ -1123,9 +1598,18 @@ module.exports = {
   createImageGenerationHealthCheckResult,
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
+  createPetBubbleChatWindowStateView,
+  createPetChatMessageResultView,
+  createPetChatStateView,
   createPetPackMutationResult,
   createPluginListView,
+  createPluginCommandRunResult,
+  createPluginDashboardOpenResult,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 }
