@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-28
+> Last updated: 2026-06-29
 > Current release track: `v1.0.1-rc.3`
 > Role: current-state maintainer handoff for the next development session.
 
@@ -85,10 +85,16 @@ If you are choosing the next milestone, start from `docs/openpet-current-todo-ar
 
 At the current repository level, the most important open engineering gaps are:
 
-1. richer AI Talk diagnostics, transcript shaping, longer-horizon chat controls, and related chat-state polish
+1. richer AI Talk diagnostics, legacy upgrade continuity, longer-horizon chat controls, and related chat-state polish
 2. Creator Studio UX convergence toward a smoother dashboard-first flow
 3. real signed / smoke evidence needed for stronger release claims
 4. follow-up refinement on trigger-rule observability and broader policy expansion after the runtime baseline
+
+Recent landed chat-state facts worth preserving:
+
+- `openpet_behavior` now supports `reason`, `displayMode`, and current-pet action candidate hints.
+- `AiTalkService` can return `bubbleSegments` while keeping the full assistant reply in the shared transcript.
+- Bubble Chat rebuilds segmented pet dialogue from stored conversation messages instead of owning a second transcript.
 
 Do not treat this list as a mandate to do everything at once. Pick one milestone, freeze scope, verify, review, then stop.
 

@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createAiService } = require('../../src/main/services/ai-service')
+const { createAiService, getBehaviorToolDefinition } = require('../../src/main/services/ai-service')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {
@@ -363,7 +363,9 @@ test('ai service sends behavior tool definition and parses tool call intent', as
                     intent: 'success',
                     actionId: 'done',
                     confidence: 0.9,
-                    bubbleText: '完成了'
+                    bubbleText: '完成了',
+                    reason: 'reply confirms the task is complete',
+                    displayMode: 'segmented'
                   })
                 }
               }]
@@ -377,12 +379,16 @@ test('ai service sends behavior tool definition and parses tool call intent', as
   const result = await service.chat({ message: 'Finish it' })
 
   assert.equal(requests[0].tools[0].function.name, 'openpet_behavior')
+  assert.equal(requests[0].tools[0].function.parameters.properties.reason.type, 'string')
+  assert.deepEqual(requests[0].tools[0].function.parameters.properties.displayMode.enum, ['auto', 'compact', 'full', 'segmented'])
   assert.equal(result.reply, '完成了')
   assert.deepEqual(result.behaviorIntent, {
     intent: 'success',
     actionId: 'done',
     confidence: 0.9,
-    bubbleText: '完成了'
+    bubbleText: '完成了',
+    reason: 'reply confirms the task is complete',
+    displayMode: 'segmented'
   })
 })
 
@@ -415,14 +421,16 @@ test('ai service accepts legacy ibot_behavior tool calls for compatibility', asy
             tool_calls: [{
               function: {
                 name: 'ibot_behavior',
-                arguments: JSON.stringify({
-                  intent: 'greeting',
-                  actionId: 'wave',
-                  confidence: 0.8,
-                  bubbleText: '你好'
-                })
-              }
-            }]
+                  arguments: JSON.stringify({
+                    intent: 'greeting',
+                    actionId: 'wave',
+                    confidence: 0.8,
+                    bubbleText: '你好',
+                    reason: 'short hello fits the wave animation',
+                    displayMode: 'compact'
+                  })
+                }
+              }]
           }
         }]
       })
@@ -436,8 +444,24 @@ test('ai service accepts legacy ibot_behavior tool calls for compatibility', asy
     intent: 'greeting',
     actionId: 'wave',
     confidence: 0.8,
-    bubbleText: '你好'
+    bubbleText: '你好',
+    reason: 'short hello fits the wave animation',
+    displayMode: 'compact'
   })
+})
+
+test('ai service behavior tool definition can advertise current pet action candidates', () => {
+  const tool = getBehaviorToolDefinition({
+    actionCandidates: [
+      { id: 'wave', label: '挥手', kind: 'greeting' },
+      { id: 'stretch', label: '伸懒腰', kind: 'custom' }
+    ]
+  })
+
+  assert.match(tool.function.description, /wave/)
+  assert.match(tool.function.description, /stretch/)
+  assert.match(tool.function.parameters.properties.actionId.description, /挥手/)
+  assert.match(tool.function.parameters.properties.actionId.description, /伸懒腰/)
 })
 
 test('ai service keeps message history by conversation id', async () => {

@@ -47,6 +47,29 @@ test('ai talk store persists and returns cloned messages by conversation scope',
   assert.deepEqual(reloaded.getMessages(sprout.sessionId, sprout.conversationId).map((message) => message.content), ['Hi sprout'])
 })
 
+test('ai talk store persists assistant bubble display metadata alongside the full transcript reply', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })
+
+  const session = store.ensureMainConversation({ entrypoint: 'control-center', petPackId: 'legacy-cat', personaHash: 'hash-a' })
+  store.appendMessages(session.sessionId, session.conversationId, [
+    { role: 'user', content: 'Explain it' },
+    {
+      role: 'assistant',
+      content: '第一句。第二句。第三句。',
+      bubbleSegments: ['第一句。', '第二句。', '第三句。'],
+      displayMode: 'segmented'
+    }
+  ])
+
+  const reloaded = createAiTalkStore({ storePath })
+  const messages = reloaded.getMessages(session.sessionId, session.conversationId)
+
+  assert.equal(messages[1].content, '第一句。第二句。第三句。')
+  assert.deepEqual(messages[1].bubbleSegments, ['第一句。', '第二句。', '第三句。'])
+  assert.equal(messages[1].displayMode, 'segmented')
+})
+
 test('ai talk store backs up corrupt data and starts from a safe empty state', () => {
   const storePath = createTempStorePath()
   fs.mkdirSync(path.dirname(storePath), { recursive: true })

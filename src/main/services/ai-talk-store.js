@@ -8,6 +8,9 @@ const DEFAULT_CONTEXT_POLICY = Object.freeze({
 })
 const MESSAGE_ROLES = new Set(['user', 'assistant'])
 const MAX_MESSAGE_CHARS = 8000
+const MAX_BUBBLE_SEGMENTS = 6
+const MAX_BUBBLE_SEGMENT_CHARS = 240
+const MESSAGE_DISPLAY_MODES = new Set(['auto', 'compact', 'full', 'segmented'])
 const MEMORY_SCOPES = new Set(['global', 'petPack'])
 const MEMORY_OPERATIONS = new Set(['create', 'update', 'reinforce', 'ignore'])
 const MEMORY_STATUSES = new Set(['active', 'superseded', 'deleted'])
@@ -57,11 +60,22 @@ const normalizeMessages = (messages) => {
     if (!isPlainObject(message) || !MESSAGE_ROLES.has(message.role)) return null
     const content = typeof message.content === 'string' ? message.content.trim().slice(0, MAX_MESSAGE_CHARS) : ''
     if (!content) return null
+    const bubbleSegments = message.role === 'assistant' && Array.isArray(message.bubbleSegments)
+      ? message.bubbleSegments
+        .map((segment) => (typeof segment === 'string' ? segment.trim().replace(/\s+/g, ' ').slice(0, MAX_BUBBLE_SEGMENT_CHARS) : ''))
+        .filter(Boolean)
+        .slice(0, MAX_BUBBLE_SEGMENTS)
+      : []
+    const displayMode = message.role === 'assistant' && typeof message.displayMode === 'string' && MESSAGE_DISPLAY_MODES.has(message.displayMode.trim())
+      ? message.displayMode.trim()
+      : ''
     return {
       id: typeof message.id === 'string' && message.id ? message.id : '',
       role: message.role,
       content,
-      createdAt: typeof message.createdAt === 'string' ? message.createdAt : ''
+      createdAt: typeof message.createdAt === 'string' ? message.createdAt : '',
+      ...(bubbleSegments.length ? { bubbleSegments } : {}),
+      ...(displayMode ? { displayMode } : {})
     }
   }).filter(Boolean)
 }

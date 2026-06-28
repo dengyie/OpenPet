@@ -1,6 +1,6 @@
 # OpenPet Current TODO Architecture
 
-> Date: 2026-06-28
+> Date: 2026-06-29
 > Baseline: `codex/dev2@12928c5a` (`feat(phase-1): harden trigger rule save flow`)
 > Status: live TODO entry point
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
@@ -19,7 +19,7 @@ This is not a promise to implement every item in one milestone. It is a map for 
 - P3: longer-term platform direction.
 - Manual-required: needs real provider accounts, signed artifacts, notarization, Windows machines, production credentials, or human review.
 
-Current P0 status: no known startup/build blocker in this TODO pass. The current highest-risk product gap is no longer basic AI Talk memory selection itself, but the remaining product polish around richer AI Talk diagnostics, transcript shaping, and longer-horizon chat controls.
+Current P0 status: no known startup/build blocker in this TODO pass. The current highest-risk product gap is no longer basic AI Talk memory selection itself, but the remaining product polish around richer AI Talk diagnostics, legacy upgrade continuity, and longer-horizon chat controls.
 
 ## Current Code Architecture
 
@@ -44,6 +44,8 @@ Current P0 status: no known startup/build blocker in this TODO pass. The current
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-based memory selection, injected-memory usage writeback, active pet-pack refresh propagation, redacted trace export, conservative legacy conversation migration, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Bubble chat now has a transparent mini-dialogue implementation path and serves as the default lightweight entry, while the standalone desktop chat remains an explicit extended panel.
+- AI Talk behavior tool metadata now supports `reason` and `displayMode`, and the current pet action candidate whitelist is injected into the tool contract.
+- Bubble chat transcript shaping now keeps the full assistant reply in the shared main transcript while allowing Bubble Chat to render assistant `bubbleSegments` from the same stored conversation message.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
 - Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` now save host-owned `triggerRules` with `rule_saved` semantics.
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane alongside the saved host rule list.
@@ -94,18 +96,21 @@ Current state:
 - Memory profile UI can show global and pet-pack memories, delete one memory, and clear current pet-pack relationship memories.
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
 - Bubble chat is now the default lightweight entry across pet double-click, the pet context menu primary chat action, and the Control Center AI page, while desktop chat is kept as an explicit extended panel.
+- The AI behavior tool contract now carries `reason`, `displayMode`, and current-pet action candidate hints.
+- Assistant transcript messages can persist `bubbleSegments` / `displayMode`, letting Bubble Chat rebuild segmented pet dialogue from the shared main conversation instead of a second transcript.
 
 P1 work:
 
-- Route all lightweight pet speech through one visible surface.
-  - Keep `PetService.say()` as the single runtime speech entry.
+- Preserve Bubble Chat as the single lightweight visible speech surface.
+  - Keep `PetService.say()` as the runtime speech ingress.
   - Keep old inline `#bubble` hidden as a compatibility node only; it must not reappear as a second visible chat box.
   - Continue classifying AI main replies as `dialogue` and plugin/http/mcp/renderer/event speech as `notice`.
-- Keep one shared conversation brain across all chat entry points.
+- Preserve one shared conversation brain across all chat entry points.
   - Bubble chat, desktop chat, and Control Center AI must keep using `control-center:{petPackId}:main`.
-  - Bubble chat should render a clipped recent dialogue stream plus lightweight notices instead of owning a second transcript.
-- Upgrade the action tool schema with `reason`, `displayMode`, and a current-pet action candidate whitelist.
-- Add reply bubble segmentation while keeping the full assistant reply in transcript.
+  - Bubble chat should keep rendering a clipped recent dialogue stream plus lightweight notices instead of owning a second transcript.
+- Finish legacy continuity and richer diagnostics polish.
+  - Keep the conservative legacy `settings.ai.conversations.control-center` migration path safe for upgraded users.
+  - Continue growing redacted AI Talk diagnostics without exposing prompt text, API keys, or raw memory text.
 
 P2/P3:
 

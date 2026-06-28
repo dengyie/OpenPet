@@ -17,6 +17,8 @@ const MAX_MEMORY_CONTEXT_ITEMS = 8
 const MAX_USER_MESSAGE_CHARS = 4000
 const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
 const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
+const MAX_BUBBLE_SEGMENTS = 6
+const MAX_BUBBLE_SEGMENT_CHARS = 120
 
 const MEMORY_CONCEPT_PATTERNS = Object.freeze({
   coding: [/\bcoding\b/i, /\bcode\b/i, /\bdebug\b/i, /写代码/, /编码/, /程序/, /开发/, /调试/],
@@ -243,6 +245,73 @@ const compileRecentPetActivityPrompt = (utterances = []) => {
     'Use this as lightweight recent context. Do not treat it as durable memory unless the user explicitly continues the topic.',
     ...lines
   ].join('\n')
+}
+
+const normalizeBubbleDisplayMode = (value) => {
+  const normalized = normalizeString(value)
+  return ['auto', 'compact', 'full', 'segmented'].includes(normalized) ? normalized : 'auto'
+}
+
+const buildBehaviorActionCandidates = (actions = []) => (
+  (Array.isArray(actions) ? actions : [])
+    .map((action) => {
+      const id = normalizeString(action?.id)
+      if (!id) return null
+      return {
+        id,
+        label: normalizeString(action?.label),
+        kind: normalizeString(action?.kind)
+      }
+    })
+    .filter(Boolean)
+)
+
+const splitBubbleReplySegments = (text) => {
+  const normalized = normalizeString(text).replace(/\s+/g, ' ')
+  if (!normalized) return []
+  const sentenceMatches = normalized.match(/[^。！？!?；;]+[。！？!?；;]?/g) || []
+  const baseSegments = sentenceMatches
+    .map((segment) => normalizeString(segment))
+    .filter(Boolean)
+  const segments = []
+  for (const segment of (baseSegments.length ? baseSegments : [normalized])) {
+    if (segment.length <= MAX_BUBBLE_SEGMENT_CHARS) {
+      segments.push(segment)
+      continue
+    }
+    const clauseMatches = segment.match(/[^，、,]+[，、,]?/g) || [segment]
+    let buffer = ''
+    for (const clause of clauseMatches.map((value) => normalizeString(value)).filter(Boolean)) {
+      if (!buffer) {
+        buffer = clause
+        continue
+      }
+      const next = `${buffer}${clause}`
+      if (next.length <= MAX_BUBBLE_SEGMENT_CHARS) {
+        buffer = next
+        continue
+      }
+      segments.push(buffer)
+      buffer = clause
+    }
+    if (buffer) segments.push(buffer)
+  }
+  return segments.slice(0, MAX_BUBBLE_SEGMENTS).filter(Boolean)
+}
+
+const buildBubbleSegments = ({ reply, behaviorIntent } = {}) => {
+  const displayMode = normalizeBubbleDisplayMode(behaviorIntent?.displayMode)
+  const bubbleText = normalizeString(behaviorIntent?.bubbleText)
+  const fullReply = normalizeString(reply)
+  const displayText = bubbleText || fullReply
+  if (!displayText) return { bubbleSegments: [], displayMode }
+  if (displayMode === 'full') return { bubbleSegments: [fullReply || displayText], displayMode }
+  if (displayMode === 'compact') return { bubbleSegments: [displayText], displayMode }
+  const segmented = splitBubbleReplySegments(fullReply || displayText)
+  return {
+    bubbleSegments: segmented.length ? segmented : [displayText],
+    displayMode: segmented.length > 1 ? 'segmented' : displayMode
+  }
 }
 
 const buildMemoryExtractionMessages = ({ userMessage, assistantReply, petPackId, persona }) => [
@@ -760,6 +829,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
         const recentPetActivity = getRecentPetActivity(petPackId)
         const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
+        const actionCandidates = buildBehaviorActionCandidates(manifest.actions)
         const messages = [
           { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
           ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
@@ -768,7 +838,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           userMessage
         ]
         const tools = config.behavior?.enabled && config.behavior?.useTools !== false
-          ? [getBehaviorToolDefinition()]
+          ? [getBehaviorToolDefinition({ actionCandidates })]
           : []
         Object.assign(diagnostics, {
           petPackId,
@@ -777,6 +847,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           messagesCount: messages.length,
           memoryContextCount: memoryContext.length,
           recentPetActivityCount: recentPetActivity.length,
+          actionCandidateCount: actionCandidates.length,
           toolsCount: tools.length,
           memoryEnabled: config.memory?.enabled === true,
           behaviorEnabled: config.behavior?.enabled === true
@@ -802,9 +873,15 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         const result = await aiService.complete({ messages, tools })
         const reply = normalizeString(result.reply)
         if (!reply) throw new Error('AI provider returned an empty response')
+        const bubbleMetadata = buildBubbleSegments({ reply, behaviorIntent: result.behaviorIntent })
         const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [
           userMessage,
-          { role: 'assistant', content: reply }
+          {
+            role: 'assistant',
+            content: reply,
+            bubbleSegments: bubbleMetadata.bubbleSegments,
+            displayMode: bubbleMetadata.displayMode
+          }
         ])
         const usedMemories = injectedMemoryIds.length && typeof aiTalkStore.markMemoriesUsed === 'function'
           ? aiTalkStore.markMemoriesUsed(injectedMemoryIds)
@@ -869,6 +946,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         return {
           conversationId: conversationPublicId,
           reply,
+          bubbleSegments: bubbleMetadata.bubbleSegments,
           behaviorIntent: result.behaviorIntent || undefined,
           messages: nextMessages
         }

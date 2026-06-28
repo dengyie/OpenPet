@@ -25,6 +25,7 @@ const MAX_STORED_MESSAGE_CHARS = 8000
 const MAX_USER_MESSAGE_CHARS = 4000
 const BEHAVIOR_TOOL_NAME = 'openpet_behavior'
 const LEGACY_BEHAVIOR_TOOL_NAME = 'ibot_behavior'
+const BEHAVIOR_DISPLAY_MODES = new Set(['auto', 'compact', 'full', 'segmented'])
 
 const HISTORY_ROLES = new Set(['user', 'assistant'])
 
@@ -62,11 +63,16 @@ const parseBehaviorToolArguments = (value) => {
   try {
     const parsed = JSON.parse(value)
     if (!isPlainObject(parsed)) return null
+    const displayMode = typeof parsed.displayMode === 'string' && BEHAVIOR_DISPLAY_MODES.has(parsed.displayMode.trim())
+      ? parsed.displayMode.trim()
+      : ''
     return {
       intent: typeof parsed.intent === 'string' ? parsed.intent : '',
       actionId: typeof parsed.actionId === 'string' ? parsed.actionId : '',
       confidence: Number.isFinite(Number(parsed.confidence)) ? Number(parsed.confidence) : 0,
-      bubbleText: typeof parsed.bubbleText === 'string' ? parsed.bubbleText : ''
+      bubbleText: typeof parsed.bubbleText === 'string' ? parsed.bubbleText : '',
+      reason: typeof parsed.reason === 'string' ? parsed.reason.trim().slice(0, 240) : '',
+      displayMode
     }
   } catch (_) {
     return null
@@ -97,23 +103,63 @@ const parseChatResult = (data) => {
   }
 }
 
-const getBehaviorToolDefinition = () => ({
-  type: 'function',
-  function: {
-    name: BEHAVIOR_TOOL_NAME,
-    description: 'Choose an OpenPet behavior for this assistant reply.',
-    parameters: {
-      type: 'object',
-      properties: {
-        intent: { type: 'string' },
-        actionId: { type: 'string' },
-        confidence: { type: 'number' },
-        bubbleText: { type: 'string' }
-      },
-      required: ['intent', 'confidence']
+const normalizeBehaviorActionCandidates = (actionCandidates = []) => (
+  (Array.isArray(actionCandidates) ? actionCandidates : [])
+    .map((candidate) => {
+      const id = typeof candidate?.id === 'string' ? candidate.id.trim() : ''
+      if (!id) return null
+      return {
+        id,
+        label: typeof candidate?.label === 'string' ? candidate.label.trim() : '',
+        kind: typeof candidate?.kind === 'string' ? candidate.kind.trim() : ''
+      }
+    })
+    .filter(Boolean)
+)
+
+const formatBehaviorActionCandidates = (actionCandidates = []) => {
+  const normalized = normalizeBehaviorActionCandidates(actionCandidates)
+  if (!normalized.length) return ''
+  return normalized
+    .map((candidate) => {
+      const suffix = [candidate.label, candidate.kind].filter(Boolean).join(' / ')
+      return suffix ? `${candidate.id} (${suffix})` : candidate.id
+    })
+    .join(', ')
+}
+
+const getBehaviorToolDefinition = ({ actionCandidates = [] } = {}) => {
+  const candidateSummary = formatBehaviorActionCandidates(actionCandidates)
+  return {
+    type: 'function',
+    function: {
+      name: BEHAVIOR_TOOL_NAME,
+      description: candidateSummary
+        ? `Choose an OpenPet behavior for this assistant reply. Only use one of these current pet actionId values: ${candidateSummary}.`
+        : 'Choose an OpenPet behavior for this assistant reply.',
+      parameters: {
+        type: 'object',
+        properties: {
+          intent: { type: 'string' },
+          actionId: {
+            type: 'string',
+            description: candidateSummary
+              ? `Optional current pet actionId. Allowed values come from the current pet only: ${candidateSummary}.`
+              : 'Optional current pet actionId.'
+          },
+          confidence: { type: 'number' },
+          bubbleText: { type: 'string' },
+          reason: { type: 'string' },
+          displayMode: {
+            type: 'string',
+            enum: ['auto', 'compact', 'full', 'segmented']
+          }
+        },
+        required: ['intent', 'confidence']
+      }
     }
   }
-})
+}
 
 const trimHistory = (messages, maxHistoryMessages) => {
   if (messages.length <= maxHistoryMessages) return messages

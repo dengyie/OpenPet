@@ -1,6 +1,6 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-06-28
+> Last updated: 2026-06-29
 > Current release track: `v1.0.1-rc.3`
 > Role: short English engineering summary for quick orientation.
 
@@ -53,9 +53,9 @@ npm run test:control-center -- --grep "trigger|Actions"
 ## Open Work
 
 - Windows is still not release-ready until real signed installer evidence and smoke reports are archived.
-- AI Talk has relevance-based memory scoring and selective injected-memory usage writeback; remaining work is focused on richer diagnostics, transcript shaping, and longer-horizon chat controls.
+- AI Talk has relevance-based memory scoring, selective injected-memory usage writeback, action-tool metadata with current-pet action hints, and shared-transcript bubble segmentation; remaining work is focused on richer diagnostics, legacy upgrade continuity, and longer-horizon chat controls.
 - Creator Studio still needs a smoother dashboard-first user flow; current command paths are functional but still operator-leaning.
-- Bubble chat is now the default lightweight chat entry across pet interaction paths, while the desktop chat window remains an explicit extended panel; remaining AI Talk work is focused on richer diagnostics, bubble/transcript shaping, and transcript/tooling polish rather than entry-point convergence.
+- Bubble chat is now the default lightweight chat entry across pet interaction paths, while the desktop chat window remains an explicit extended panel; Bubble Chat can now rebuild segmented assistant dialogue from the shared transcript instead of owning a second transcript, and remaining AI Talk work is focused on richer diagnostics, legacy upgrade continuity, and transcript/tooling polish rather than entry-point convergence.
 
 ## Read Next
 

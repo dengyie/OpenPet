@@ -664,7 +664,11 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   const animations = {
     defaultAction: 'idle',
     clickAction: 'wave',
-    actions: [{ id: 'wave', label: 'Wave' }]
+    actions: [{ id: 'wave', label: 'Wave' }],
+    triggerRuntimeDiagnostics: {
+      currentState: { actionId: '' },
+      decisions: []
+    }
   }
   const sourceDir = path.join(os.tmpdir(), 'openpet-action-frames-wave')
   const calls = []
@@ -1399,7 +1403,15 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
   const legacyPack = { id: 'legacy-cat', displayName: 'Legacy Cat', version: '1.0.0', source: 'built-in', rootPath: '/packs/legacy-cat', active: true }
   const pack = { id: 'doro', displayName: 'Doro', version: '1.0.0', source: 'bundled', rootPath: '/packs/doro' }
   const activePack = { ...pack, active: true }
-  const animations = { defaultAction: 'idle', clickAction: 'happy', actions: [{ id: 'idle', label: 'Idle' }] }
+  const animations = {
+    defaultAction: 'idle',
+    clickAction: 'happy',
+    actions: [{ id: 'idle', label: 'Idle' }],
+    triggerRuntimeDiagnostics: {
+      currentState: { actionId: '' },
+      decisions: []
+    }
+  }
   const calls = []
   const petWindowMessages = []
   const controlCenterMessages = []

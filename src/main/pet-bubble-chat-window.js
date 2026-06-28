@@ -166,22 +166,44 @@ const normalizeConversationMessage = (message = {}, index = 0) => {
   const text = String(message.content || '').trim().replace(/\s+/g, ' ')
   if (!text) return null
   const createdAt = typeof message.createdAt === 'string' && message.createdAt ? message.createdAt : new Date().toISOString()
-  return {
-    id: `dialogue:${message.id || index}`,
-    kind: 'dialogue',
-    role: message.role === 'user' ? 'user' : 'pet',
-    text: text.slice(0, 1000),
-    source: message.role === 'user' ? 'user' : 'ai',
-    createdAt,
-    conversationId: typeof message.conversationId === 'string' ? message.conversationId : '',
-    messageId: typeof message.id === 'string' ? message.id : '',
-    status: 'sent'
+  const messageId = typeof message.id === 'string' ? message.id : ''
+  const conversationId = typeof message.conversationId === 'string' ? message.conversationId : ''
+  if (message.role === 'user') {
+    return [{
+      id: `dialogue:${messageId || index}`,
+      kind: 'dialogue',
+      role: 'user',
+      text: text.slice(0, 1000),
+      source: 'user',
+      createdAt,
+      conversationId,
+      messageId,
+      status: 'sent'
+    }]
   }
+  const bubbleSegments = Array.isArray(message.bubbleSegments)
+    ? message.bubbleSegments
+      .map((segment) => String(segment || '').trim().replace(/\s+/g, ' '))
+      .filter(Boolean)
+    : []
+  const useSegments = bubbleSegments.length > 0 && String(message.displayMode || '').trim() !== 'full'
+  const segments = useSegments ? bubbleSegments : [text]
+  return segments.map((segment, segmentIndex) => ({
+    id: `dialogue:${messageId || index}:${segmentIndex + 1}`,
+    kind: 'dialogue',
+    role: 'pet',
+    text: segment.slice(0, 1000),
+    source: 'ai',
+    createdAt,
+    conversationId,
+    messageId,
+    status: 'sent'
+  }))
 }
 
 const createDialogueItemsFromMessages = (messages = []) => (
   (Array.isArray(messages) ? messages : [])
-    .map((message, index) => normalizeConversationMessage(message, index))
+    .flatMap((message, index) => normalizeConversationMessage(message, index) || [])
     .filter(Boolean)
     .slice(-MAX_DIALOGUE_ITEMS)
 )

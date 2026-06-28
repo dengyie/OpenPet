@@ -113,6 +113,27 @@ test('bubble chat item helpers classify ai as dialogue and other sources as noti
   ])
 })
 
+test('bubble chat item helpers expand assistant bubble segments while keeping one transcript message', () => {
+  const { createDialogueItemsFromMessages } = loadModuleWithElectron({ app: { on: () => {} } })
+
+  const dialogueItems = createDialogueItemsFromMessages([
+    {
+      id: 'a1',
+      role: 'assistant',
+      content: '第一句。第二句。第三句。',
+      bubbleSegments: ['第一句。', '第二句。', '第三句。'],
+      displayMode: 'segmented',
+      createdAt: '2026-06-24T00:00:01.000Z'
+    }
+  ])
+
+  assert.deepEqual(dialogueItems.map((item) => [item.role, item.messageId, item.text]), [
+    ['pet', 'a1', '第一句。'],
+    ['pet', 'a1', '第二句。'],
+    ['pet', 'a1', '第三句。']
+  ])
+})
+
 test('resolveBubbleBounds anchors above pet and flips below when needed', () => {
   const { resolveBubbleBounds } = loadModuleWithElectron({ app: { on: () => {} } })
 
@@ -257,13 +278,22 @@ test('pet bubble chat manager refreshes dialogue items from the active main conv
     reason: 'test',
     conversationMessages: [
       { id: 'u1', role: 'user', content: '你好', createdAt: '2026-06-24T00:00:00.000Z' },
-      { id: 'a1', role: 'assistant', content: '我在', createdAt: '2026-06-24T00:00:01.000Z' }
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '我在。先陪你。再继续。',
+        bubbleSegments: ['我在。', '先陪你。', '再继续。'],
+        displayMode: 'segmented',
+        createdAt: '2026-06-24T00:00:01.000Z'
+      }
     ]
   })
 
   assert.deepEqual(refreshed.items.map((item) => [item.kind, item.role, item.text]), [
     ['dialogue', 'user', '你好'],
-    ['dialogue', 'pet', '我在'],
+    ['dialogue', 'pet', '我在。'],
+    ['dialogue', 'pet', '先陪你。'],
+    ['dialogue', 'pet', '再继续。'],
     ['notice', 'system', '天气插件提示']
   ])
   assert.equal(refreshed.message.text, '天气插件提示')

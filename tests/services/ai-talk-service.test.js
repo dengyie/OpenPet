@@ -201,17 +201,74 @@ test('ai talk service preserves existing behavior tool request when enabled', as
       getConfig: () => ({ enabled: true, behavior: { enabled: true, useTools: true } }),
       complete: async (request) => {
         requests.push(request)
-        return { reply: 'Purr.', behaviorIntent: { intent: 'greet', confidence: 0.8 } }
+        return {
+          reply: 'Purr.',
+          behaviorIntent: {
+            intent: 'greet',
+            confidence: 0.8,
+            reason: 'short greeting matches the pet tone',
+            displayMode: 'compact'
+          }
+        }
       }
     },
     aiTalkStore: createStore(),
-    petPackService: createPetPackService({ id: 'legacy-cat' })
+    petPackService: createPetPackService({
+      id: 'legacy-cat',
+      actions: [
+        { id: 'wave', label: '挥手', kind: 'greeting' },
+        { id: 'stretch', label: '伸懒腰', kind: 'custom' }
+      ]
+    })
   })
 
   const result = await service.chat({ message: 'Hi' })
 
   assert.equal(requests[0].tools[0].function.name, 'openpet_behavior')
-  assert.deepEqual(result.behaviorIntent, { intent: 'greet', confidence: 0.8 })
+  assert.match(requests[0].tools[0].function.description, /wave/)
+  assert.match(requests[0].tools[0].function.description, /stretch/)
+  assert.deepEqual(result.behaviorIntent, {
+    intent: 'greet',
+    confidence: 0.8,
+    reason: 'short greeting matches the pet tone',
+    displayMode: 'compact'
+  })
+})
+
+test('ai talk service returns segmented bubble metadata while keeping the transcript reply complete', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: true, useTools: true } }),
+      complete: async () => ({
+        reply: '第一句先轻轻回应。第二句继续解释为什么这样做。最后一句收尾。',
+        behaviorIntent: {
+          intent: 'explain',
+          confidence: 0.72,
+          bubbleText: '第一句先轻轻回应。第二句继续解释为什么这样做。最后一句收尾。',
+          displayMode: 'segmented'
+        }
+      })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const result = await service.chat({ message: '展开说说' })
+  const storedMessages = store.getMessages('control-center:legacy-cat', 'main')
+
+  assert.deepEqual(result.bubbleSegments, [
+    '第一句先轻轻回应。',
+    '第二句继续解释为什么这样做。',
+    '最后一句收尾。'
+  ])
+  assert.equal(storedMessages[1].content, '第一句先轻轻回应。第二句继续解释为什么这样做。最后一句收尾。')
+  assert.deepEqual(storedMessages[1].bubbleSegments, [
+    '第一句先轻轻回应。',
+    '第二句继续解释为什么这样做。',
+    '最后一句收尾。'
+  ])
+  assert.equal(storedMessages[1].displayMode, 'segmented')
 })
 
 test('ai talk service injects recent pet activity without polluting transcript or memory extraction', async () => {
