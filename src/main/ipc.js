@@ -133,6 +133,14 @@ const reloadAndSendAnimations = (getPetWindow, petService) => {
   return animations
 }
 
+const createActionsViewState = (petService, triggerRuleRuntimeService = null, animations = null) => ({
+  ...(animations || petService.getPreviewAnimations()),
+  triggerRuntimeDiagnostics: triggerRuleRuntimeService?.getDiagnostics?.() || {
+    currentState: { actionId: '' },
+    decisions: []
+  }
+})
+
 const triggerAiSemanticAction = (petService, reply) => {
   const action = findSemanticAction(reply, petService.getAnimations()?.actions || [])
   if (!action) return null
@@ -1041,7 +1049,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
   })
 
-  ipcMainService.handle(IPC.ACTIONS_GET, () => petService.getPreviewAnimations())
+  ipcMainService.handle(IPC.ACTIONS_GET, () => createActionsViewState(petService, triggerRuleRuntimeService))
 
   ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, async (event, payload) => {
     const selected = await showOpenDialogForEvent(event, {
@@ -1082,7 +1090,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     })
     pendingActionFrameSelection = null
     reloadAndSendAnimations(getPetWindow, petService)
-    return createActionFrameImportResult({ ok: true, canceled: false, result }, petService.getPreviewAnimations())
+    return createActionFrameImportResult(
+      { ok: true, canceled: false, result },
+      createActionsViewState(petService, triggerRuleRuntimeService)
+    )
   })
 
   ipcMainService.handle(IPC.ACTIONS_SAVE_CONFIG, async (_event, payload) => {
@@ -1110,12 +1121,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           sourceCommandId: triggerProposal.sourceCommandId || ''
         }
       })
-      return createActionsMutationResult(animations, { triggerProposal })
+      return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations), { triggerProposal })
     }
     await actionImportService.updateActionConfig(payload)
     reloadAndSendAnimations(getPetWindow, petService)
     refreshTriggerRuleRuntime()
-    return createActionsMutationResult(petService.getPreviewAnimations())
+    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService))
   })
 
   ipcMainService.handle(IPC.ACTIONS_SUBMIT_TRIGGER_PROPOSAL, async (_event, payload) => {
@@ -1136,7 +1147,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         sourceCommandId: result.proposal.sourceCommandId || ''
       }
     })
-    return createActionsMutationResult(result.animations, { proposal: result.proposal })
+    return createActionsMutationResult(
+      createActionsViewState(petService, triggerRuleRuntimeService, result.animations),
+      { proposal: result.proposal }
+    )
   })
 
   ipcMainService.handle(IPC.ACTIONS_ACCEPT_TRIGGER_PROPOSAL, async (_event, payload) => {
@@ -1160,7 +1174,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         code: result.triggerProposal?.code || ''
       }
     })
-    return createActionsMutationResult(animations, { proposal: result.proposal, triggerProposal: result.triggerProposal })
+    return createActionsMutationResult(
+      createActionsViewState(petService, triggerRuleRuntimeService, animations),
+      { proposal: result.proposal, triggerProposal: result.triggerProposal }
+    )
   })
 
   ipcMainService.handle(IPC.ACTIONS_REJECT_TRIGGER_PROPOSAL, async (_event, payload) => {
@@ -1178,13 +1195,17 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         type: result.proposal.type
       }
     })
-    return createActionsMutationResult(result.animations, { proposal: result.proposal })
+    return createActionsMutationResult(
+      createActionsViewState(petService, triggerRuleRuntimeService, result.animations),
+      { proposal: result.proposal }
+    )
   })
 
   ipcMainService.handle(IPC.ACTIONS_DELETE, async (_event, payload) => {
     await actionImportService.deleteAction(payload.actionId)
     reloadAndSendAnimations(getPetWindow, petService)
-    return createActionsMutationResult(petService.getPreviewAnimations())
+    refreshTriggerRuleRuntime()
+    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService))
   })
 
   ipcMainService.handle(IPC.PET_PACKS_LIST, () => petPackService.listPacks())
@@ -1213,10 +1234,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       if (previousActivePackId !== petPacks.activePackId) {
         broadcastActivePetPackChanged({
           source: IPC.PET_PACKS_IMPORT,
-          payload: createPetPackMutationResult(result, petPacks, animations)
+          payload: createPetPackMutationResult(
+            result,
+            petPacks,
+            createActionsViewState(petService, triggerRuleRuntimeService, animations)
+          )
         })
       }
-      return createPetPackMutationResult(result, petPacks, animations)
+      return createPetPackMutationResult(
+        result,
+        petPacks,
+        createActionsViewState(petService, triggerRuleRuntimeService, animations)
+      )
     }
     return createPetPackMutationResult(result, petPacks)
   })
@@ -1235,7 +1264,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const result = petPackService.setActivePack(payload.packId)
     reloadAndSendAnimations(getPetWindow, petService)
     refreshTriggerRuleRuntime()
-    const animations = petService.getPreviewAnimations()
+    const animations = createActionsViewState(petService, triggerRuleRuntimeService)
     const petPacks = petPackService.listPacks()
     const mutationResult = createPetPackMutationResult(result, petPacks, animations)
     if (previousActivePackId !== petPacks.activePackId) {
@@ -1519,7 +1548,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const result = catalogService.installSelection(payload.selectionId)
     if (result.kind === 'pet-pack' && result.petPacks?.activePackId === result.itemId) {
       reloadAndSendAnimations(getPetWindow, petService)
-      return { ...result, animations: petService.getPreviewAnimations(), catalog: catalogService.listCatalog() }
+      refreshTriggerRuleRuntime()
+      return {
+        ...result,
+        animations: createActionsViewState(petService, triggerRuleRuntimeService),
+        catalog: catalogService.listCatalog()
+      }
     }
     return { ...result, catalog: catalogService.listCatalog() }
   })

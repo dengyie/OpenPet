@@ -272,17 +272,36 @@ export interface ActionEntry {
   [key: string]: unknown
 }
 
+export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
+export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected' | 'applied' | 'pending-host-rule'
+export type ActionTriggerRuleType = 'random' | 'state' | 'event'
+export type ActionTriggerRuntimeOutcome = 'matched' | 'skipped' | 'blocked'
+
+export interface ActionTriggerRuntimeDecisionViewState {
+  ruleId: string
+  triggerType: ActionTriggerRuleType
+  actionId: string
+  binding: string
+  source: string
+  outcome: ActionTriggerRuntimeOutcome
+  reason: string
+}
+
+export interface ActionTriggerRuntimeDiagnosticsViewState {
+  currentState: {
+    actionId: string
+  }
+  decisions: ActionTriggerRuntimeDecisionViewState[]
+}
+
 export interface ActionsConfigViewState {
   defaultAction: string
   clickAction: string
   actions: ActionEntry[]
   triggerRules: ActionTriggerRule[]
   triggerProposalInbox: ActionTriggerProposalInboxItem[]
+  triggerRuntimeDiagnostics: ActionTriggerRuntimeDiagnosticsViewState
 }
-
-export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
-export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected' | 'applied' | 'pending-host-rule'
-export type ActionTriggerRuleType = 'random' | 'state' | 'event'
 
 export interface ActionTriggerRule {
   id: string

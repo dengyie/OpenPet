@@ -160,6 +160,13 @@ const pluginCommandRunFixture = {
   }
 } satisfies PluginCommandRunResultViewState
 
+const emptyTriggerRuntimeDiagnosticsFixture = {
+  currentState: {
+    actionId: 'idle'
+  },
+  decisions: []
+}
+
 const creatorActionsReadFixture = {
   ok: true,
   actions: {
@@ -167,6 +174,7 @@ const creatorActionsReadFixture = {
     clickAction: 'wave',
     triggerRules: [],
     triggerProposalInbox: [],
+    triggerRuntimeDiagnostics: emptyTriggerRuntimeDiagnosticsFixture,
     actions: [
       { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', previewSprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
       { id: 'wave', label: 'Wave', sprite: 'file:///packs/cat/sprites/wave.png', previewSprite: 'file:///packs/cat/sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 }
@@ -185,6 +193,7 @@ const creatorActionsMutationFixture = {
       clickAction: 'wave',
       triggerRules: [],
       triggerProposalInbox: [],
+      triggerRuntimeDiagnostics: emptyTriggerRuntimeDiagnosticsFixture,
       actions: [
         { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
         { id: 'wave', label: 'Wave Updated', sprite: 'file:///packs/cat/sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 }
@@ -196,6 +205,7 @@ const creatorActionsMutationFixture = {
     clickAction: 'wave',
     triggerRules: [],
     triggerProposalInbox: [],
+    triggerRuntimeDiagnostics: emptyTriggerRuntimeDiagnosticsFixture,
     actions: [
       { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
       { id: 'wave', label: 'Wave Updated', sprite: 'file:///packs/cat/sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 }
@@ -242,6 +252,7 @@ const creatorAssetsImportFramesResponseFixture = {
     clickAction: 'wave',
     triggerRules: [],
     triggerProposalInbox: [],
+    triggerRuntimeDiagnostics: emptyTriggerRuntimeDiagnosticsFixture,
     actions: [
       { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
       { id: 'wave', label: 'Wave Hello', sprite: 'file:///packs/cat/sprites/wave.png', frameCount: 2, frameMs: 95, frameWidth: 8, frameHeight: 8 }

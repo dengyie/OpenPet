@@ -49,6 +49,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The current
 - Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane alongside the saved host rule list.
 - The Actions pane now shows explicit preview summaries before saving non-click rules, and edited `triggerRules` reuse strict host validation through the generic save path instead of bypassing the proposal acceptance flow.
 - Saved non-click trigger rules now execute at runtime with a host-owned executor. The current baseline policy is config-order first match wins, `random` cooldown uses each rule's own `intervalMs`, and `state` rules match against the current action state rather than a broader behavior taxonomy.
+- The Actions pane now surfaces trigger-rule runtime diagnostics: current action state plus recent `matched` / `skipped` / `blocked` decisions are visible through the same actions view contract used by Control Center and demo fixtures.
 
 ## P1 Architecture TODOs
 
@@ -178,7 +179,6 @@ Current state:
 P1 work:
 
 - Keep the runtime executor aligned with saved action config mutations, pack switches, and plugin-driven pack activation.
-- Harden diagnostics ergonomics so matched, skipped, and blocked rule decisions are easier to inspect during behavior debugging.
 - Revisit policy only if real product needs appear beyond the current first-match-wins, per-rule cooldown, and current-action-state semantics.
 
 P2/P3:

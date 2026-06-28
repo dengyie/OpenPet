@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerRuntimeDecisionViewState,
+  ActionTriggerRuntimeDiagnosticsViewState,
   ActionTriggerRule,
   ActionTriggerProposalInboxItem,
   ActionTriggerProposalAcceptanceResult,
@@ -116,6 +118,12 @@ const triggerRuleTypeLabel: Record<ActionTriggerRule['type'], string> = {
   random: '随机',
   state: '状态',
   event: '事件'
+}
+
+const triggerRuntimeOutcomeLabel: Record<ActionTriggerRuntimeDecisionViewState['outcome'], string> = {
+  matched: 'matched',
+  skipped: 'skipped',
+  blocked: 'blocked'
 }
 
 const getTriggerResultTitle = (result: ActionTriggerProposalAcceptanceResult) => {
@@ -327,6 +335,67 @@ function TriggerRulesCard({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function TriggerRuntimeDiagnosticsCard({
+  diagnostics,
+  actions
+}: {
+  diagnostics: ActionTriggerRuntimeDiagnosticsViewState
+  actions: ActionEntry[]
+}) {
+  const decisions = Array.isArray(diagnostics.decisions) ? diagnostics.decisions : []
+  const counts = decisions.reduce((summary, entry) => {
+    summary[entry.outcome] += 1
+    return summary
+  }, { matched: 0, skipped: 0, blocked: 0 })
+
+  return (
+    <div className="trigger-inbox-card" aria-label="触发规则运行时诊断">
+      <div className="trigger-review-header">
+        <div>
+          <strong>触发规则运行时诊断</strong>
+          <span>当前动作：{diagnostics.currentState?.actionId || '未记录'} · 最近 {decisions.length} 条</span>
+        </div>
+        <span className="trigger-badge pending">Runtime</span>
+      </div>
+
+      <div className="trigger-diagnostics-summary">
+        <span>matched {counts.matched}</span>
+        <span>skipped {counts.skipped}</span>
+        <span>blocked {counts.blocked}</span>
+      </div>
+
+      {decisions.length ? (
+        <div className="trigger-inbox-grid">
+          {decisions.map((entry, index) => {
+            const actionLabel = actions.find((action) => action.id === entry.actionId)?.label || entry.actionId
+            return (
+              <div className={`trigger-inbox-item ${entry.outcome === 'blocked' ? 'rejected' : (entry.outcome === 'matched' ? 'pending' : '')}`} key={`${entry.ruleId}:${index}`}>
+                <div className="trigger-inbox-main">
+                  <div>
+                    <strong>{entry.ruleId}</strong>
+                    <span>{triggerRuleTypeLabel[entry.triggerType]} · {triggerRuntimeOutcomeLabel[entry.outcome]}</span>
+                  </div>
+                  <span className={`trigger-badge ${entry.outcome === 'blocked' ? 'rejected' : (entry.outcome === 'matched' ? 'applied' : 'pending')}`}>
+                    {triggerRuntimeOutcomeLabel[entry.outcome]}
+                  </span>
+                </div>
+                <div className="trigger-inbox-meta">
+                  <span>动作：{actionLabel || '未找到动作'}</span>
+                  <span>绑定：{entry.binding || '-'}</span>
+                  <span>来源：{entry.source || '-'}</span>
+                  <span>原因：{entry.reason || '-'}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="empty-chat">暂无运行时决策记录</div>
+      )}
     </div>
   )
 }
@@ -805,6 +874,11 @@ export function ActionsPane({
           working={working}
           onChangeRule={onChangeTriggerRule}
           onRemoveRule={onRemoveTriggerRule}
+        />
+
+        <TriggerRuntimeDiagnosticsCard
+          diagnostics={actionsConfig.triggerRuntimeDiagnostics}
+          actions={actionsConfig.actions}
         />
       </div>
 
