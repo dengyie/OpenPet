@@ -8,6 +8,11 @@ const { hasOwn, cloneJsonValue, getJsonByteSize } = require('./plugin-json-utils
 const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = require('./plugin-log-store')
 const { normalizeNetworkRequest, readLimitedResponseText } = require('./plugin-network-client')
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
+const {
+  createPluginEntryCwdResolver,
+  createPluginProcessEnv,
+  parsePluginProcessCommand
+} = require('./plugin-process-support')
 const { readLocalPluginManifests } = require('./plugin-discovery')
 const { createPluginCommandRuntimeManager } = require('./plugin-command-runtime-manager')
 const { createPluginCommandBridgeService } = require('./plugin-command-bridge-service')
@@ -110,61 +115,6 @@ const createServiceHealthView = (health = {}, serviceEntry = {}) => {
     statusCode: Number.isFinite(statusCode) ? statusCode : null,
     message: health.message || ''
   }
-}
-
-const parseServiceCommand = (command) => {
-  const input = String(command || '').trim()
-  if (!input) throw new Error('Plugin service command is required')
-  const parts = []
-  let current = ''
-  let quote = ''
-  let escaping = false
-
-  for (const char of input) {
-    if (escaping) {
-      current += char
-      escaping = false
-      continue
-    }
-    if (char === '\\') {
-      escaping = true
-      continue
-    }
-    if (quote) {
-      if (char === quote) quote = ''
-      else current += char
-      continue
-    }
-    if (char === '"' || char === "'") {
-      quote = char
-      continue
-    }
-    if (/\s/.test(char)) {
-      if (current) {
-        parts.push(current)
-        current = ''
-      }
-      continue
-    }
-    current += char
-  }
-
-  if (escaping) current += '\\'
-  if (quote) throw new Error('Plugin service command has an unterminated quote')
-  if (current) parts.push(current)
-  if (!parts.length) throw new Error('Plugin service command is required')
-  const [file, ...args] = parts
-  return { file, args }
-}
-
-const createServiceProcessEnv = () => {
-  const env = {}
-  if (process.env.PATH) env.PATH = process.env.PATH
-  if (process.platform === 'win32') {
-    if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot
-    if (process.env.WINDIR) env.WINDIR = process.env.WINDIR
-  }
-  return env
 }
 
 const appendLimitedOutput = (current, chunk) => {
@@ -461,21 +411,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const decorateEntriesWithRuntime = listingController.decorateEntriesWithRuntime
   const listPlugins = () => listingController.listPlugins(getPlugins())
 
-  const resolvePluginEntryCwd = (manifest, cwd, label) => {
-    if (!manifest.basePath) throw new Error('Plugin services require a local plugin directory')
-    const basePath = path.resolve(manifest.basePath)
-    const targetPath = path.resolve(basePath, cwd || '.')
-    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
-      throw new Error(`Plugin ${label} cwd must stay inside the plugin directory`)
-    }
-    if (!fs.existsSync(targetPath)) throw new Error(`Plugin ${label} cwd does not exist`)
-    const realTargetPath = fs.realpathSync(targetPath)
-    const realBasePath = fs.realpathSync(basePath)
-    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
-      throw new Error(`Plugin ${label} cwd must stay inside the plugin directory`)
-    }
-    return realTargetPath
-  }
+  const resolvePluginEntryCwd = createPluginEntryCwdResolver()
+  const createServiceProcessEnv = () => createPluginProcessEnv()
 
   const resolveServiceCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'service')
 
@@ -602,7 +539,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   })
 
   const launchController = createPluginServiceLaunchController({
-    parseCommand: parseServiceCommand,
+    parseCommand: parsePluginProcessCommand,
     resolveCwd: resolveServiceCwd,
     createEnv: createServiceProcessEnv,
     spawnServiceProcess
@@ -617,7 +554,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     createBridgeHandlers: createPluginBridgeHandlers,
     ensureCreatorDirs: ensurePluginCreatorDirs,
     createEnv: createServiceProcessEnv,
-    parseCommand: parseServiceCommand,
+    parseCommand: parsePluginProcessCommand,
     resolveCwd: resolveCommandCwd,
     spawnCommandProcess,
     setRuntime: (runtime) => commandRuntimeManager.setRuntime(runtime),
@@ -629,7 +566,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const setupProcessController = createPluginSetupProcessController({
     appendLog,
-    parseCommand: parseServiceCommand,
+    parseCommand: parsePluginProcessCommand,
     resolveCwd: resolveSetupCwd,
     createEnv: createServiceProcessEnv,
     spawnSetupProcess,
