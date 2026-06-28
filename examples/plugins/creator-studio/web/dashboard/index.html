@@ -1390,6 +1390,7 @@
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
+          syncDraftControlsFromRun(run)
           $('run-snapshot-panel').textContent = 'Prompt snapshot and wizard state appear after you draft or load a run.'
           $('wizard-steps-panel').textContent = 'Draft a task to see the workflow rail.'
           $('action-lane-panel').textContent = 'Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.'

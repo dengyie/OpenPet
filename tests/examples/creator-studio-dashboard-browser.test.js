@@ -1418,6 +1418,86 @@ test('creator studio dashboard normalizes legacy run backends when syncing loade
   }
 })
 
+test('creator studio dashboard syncs legacy pre-task run controls when loading a run without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-legacy-pre-task-'))
+  const standardRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：普通害羞转圈。',
+      originalPrompt: '新增一个自定义动作：普通害羞转圈。',
+      backend: 'fixture',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'normal-spin',
+          name: '普通害羞转圈',
+          motionPrompt: '轻轻转一圈。',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:08:00.000Z'
+  })
+  const legacyPreTaskRun = createRun({
+    dataDir,
+    input: {
+      prompt: 'Legacy pre-task prompt should still sync.',
+      originalPrompt: 'Legacy pre-task prompt should still sync.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-pre-task',
+          name: 'Legacy Pre Task',
+          motionPrompt: 'placeholder',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:09:00.000Z'
+  })
+  const { generationTask: _generationTask, ...legacyPreTaskRunWithoutTask } = legacyPreTaskRun
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyPreTaskRunWithoutTask,
+      backend: 'cloud',
+      input: {
+        ...legacyPreTaskRun.input,
+        backend: 'cloud'
+      },
+      taskStatus: 'not_started',
+      currentStep: 'draft'
+    }
+  })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(standardRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, standardRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('普通害羞转圈'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'fixture')
+
+    await page.locator('#run-select').selectOption(legacyPreTaskRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyPreTaskRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('Legacy pre-task prompt'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio dashboard shows failed generation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-retry-'))
   let generationAttempts = 0
