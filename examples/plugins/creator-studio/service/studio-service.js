@@ -690,6 +690,7 @@ const createImportHandoff = ({ dataDir, run, importStatus }) => {
 }
 
 const createDashboardButtonStates = ({ dataDir, run }) => {
+  const hasGenerationTask = Boolean(run.generationTask)
   const hasPendingQuestion = Boolean(run.generationTask?.questions?.[0])
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
@@ -706,7 +707,7 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
   )
   const generateLabel = canRetryGeneration ? 'Retry generation' : (isFullPet ? 'Generate pet pack' : 'Generate action')
 
-  const confirmEnabled = !hasPendingQuestion && taskStatus !== 'confirmed'
+  const confirmEnabled = hasGenerationTask && !hasPendingQuestion && taskStatus !== 'confirmed'
   const generateEnabled = !hasPendingQuestion && taskStatus === 'confirmed' && ['draft', 'failed'].includes(status)
     ? true
     : !hasPendingQuestion && requiresRetryBeforeApproval && taskStatus === 'confirmed'
@@ -719,6 +720,8 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
       enabled: confirmEnabled,
       reason: confirmEnabled
         ? 'The task is drafted and can now be confirmed in the dashboard.'
+        : !hasGenerationTask
+          ? 'This legacy run has no drafted task to confirm.'
         : hasPendingQuestion
           ? 'Answer the pending follow-up question before confirming the task.'
           : taskStatus === 'confirmed'
