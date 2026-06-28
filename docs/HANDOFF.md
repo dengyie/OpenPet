@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-06-24 | Branch: `codex/todo-architecture-refactor`
+> Last updated: 2026-06-28 | Release track: `v1.0.1-rc.3`
 
 ## Current Snapshot
 
@@ -19,11 +19,12 @@ OpenPet is a desktop pet platform with:
 ## Read First
 
 1. [`docs/development-summary.md`](./development-summary.md)
-2. [`docs/project-context.json`](./project-context.json)
-3. [`docs/project-status-review.md`](./project-status-review.md)
-4. [`docs/openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md)
-5. [`docs/productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md)
-6. [`docs/project-documentation-design.md`](./project-documentation-design.md)
+2. [`docs/jishuwendang.md`](./jishuwendang.md)
+3. [`docs/project-context.json`](./project-context.json)
+4. [`docs/project-status-review.md`](./project-status-review.md)
+5. [`docs/openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md)
+6. [`docs/productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md)
+7. [`docs/project-documentation-design.md`](./project-documentation-design.md)
 
 ## Facts To Preserve
 
@@ -33,7 +34,7 @@ OpenPet is a desktop pet platform with:
 - API keys must stay out of the renderer.
 - AI chat provider settings use a draft/active split. Saving and testing must go through main-process `AiService`, return sanitized structured diagnostics, and must not expose API keys, Authorization headers, prompts, or credentialed Base URLs to renderer/plugin contexts.
 - Image generation for Creator Studio is host-owned at the provider boundary. Control Center can configure default backend plus cloud/local model settings, `ImageGenerationModelService` owns provider calls and output writes, and Creator Studio consumes host-mediated outputs instead of receiving provider credentials.
-- Action trigger proposals are review inputs, not plugin-owned mutations. The host can currently apply `click` proposals to `clickAction`, acknowledge `manual`/`unbound`, and must keep `random`/`state`/`event` pending until a host trigger-rule editor/schema exists.
+- Action trigger proposals are review inputs, not plugin-owned mutations. The host can currently apply `click` proposals to `clickAction`, acknowledge `manual`/`unbound`, queue Creator Studio approved-import proposals into the persistent inbox with source provenance, and must keep `random`/`state`/`event` pending until a host trigger-rule editor/schema exists.
 - Extension docs must be honest: OpenPet now parses declarations, can explicitly run `entries.setup` for enabled policy-allowed local plugins, can run `entries.commands` through the JavaScript compatibility runner when `main` exists, can explicitly run declaration-only local `entries.commands` as short-lived processes with JSON stdin context, can inject short-lived bridge URL/token plus host-owned data/cache/log env vars for those declaration-only command runs, can expose bounded creator-tools action reads / validation / apply, active installed user pack metadata workflows, package-local frame inspection/import, and user-approved picker frame inspection/import through the same short-lived bridge, can explicitly open declared HTTP/HTTPS dashboards for enabled plugins, can explicitly start/stop declared local service entries, can manually check declared loopback service health endpoints, can host-manage periodic health checks for running services through Control Center, attempts best-effort process-group cleanup when stopping service entries, only reports setup/command/service stop completion after child exit confirmation, will attempt one bounded host-side force stop if the service ignores the grace-period stop request, now tries a host-owned process-tree fallback before direct child kill across service/setup/declaration-command stop paths, and can record/update/collect/run/archive bounded cleanup evidence through controlled host fixtures, generated collector helpers, runner transcripts, structured readiness reports, archive manifests, and validation-first report updates. Submission bundles can now also receive a separate structured maintainer approval record. Approval remains a human review decision and not signing trust, catalog publication, runtime safety, or release readiness proof. Command, setup, and service processes are spawned without shell expansion. Services do not auto-start, setup and command entries do not run during install or enable, background checks stay opt-in and runtime-bound, picker frame import and pack metadata workflows do not imply raw filesystem grants, raw file writes, plugin-selected output paths, built-in pack edits, arbitrary pack targeting, general pet-pack writes, or universal process-tree cleanup guarantees, and OpenPet does not claim complete sandboxing for arbitrary local processes.
 - `cat_anime/` structure is unchanged.
 - Windows is not release-ready yet.

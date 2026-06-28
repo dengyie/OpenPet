@@ -8,6 +8,7 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | --- | --- |
 | User-facing overview and commands | [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) |
 | Current maintainer handoff | [`HANDOFF.md`](./HANDOFF.md) |
+| Detailed maintainer/developer guide | [`jishuwendang.md`](./jishuwendang.md) |
 | Short engineering summary | [`development-summary.md`](./development-summary.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Current platform status and remaining gaps | [`project-status-review.md`](./project-status-review.md) |
@@ -48,12 +49,14 @@ Historical documents are intentionally retained. When facts conflict, prefer cur
 
 1. [`project-context.json`](./project-context.json) for machine-readable facts.
 2. [`HANDOFF.md`](./HANDOFF.md) for maintainer continuation.
-3. [`development-summary.md`](./development-summary.md) and [`project-status-review.md`](./project-status-review.md) for human summaries.
-4. Phase/review docs for audit history only.
+3. [`jishuwendang.md`](./jishuwendang.md) for current developer-facing architecture and workflow.
+4. [`development-summary.md`](./development-summary.md) and [`project-status-review.md`](./project-status-review.md) for human summaries.
+5. Phase/review docs for audit history only.
 
 ## Maintenance Rules
 
 - Keep README files short and user-facing.
+- Keep `jishuwendang.md` as the single detailed maintainer/developer guide; do not split the same architecture overview across multiple live docs.
 - Keep HANDOFF focused on current state, commands, facts to preserve, and next steps.
 - Keep project-context compact and valid JSON.
 - Do not update every historical phase/review doc when current facts change.

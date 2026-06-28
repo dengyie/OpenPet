@@ -1,6 +1,6 @@
 # OpenPet Current TODO Architecture
 
-> Date: 2026-06-24
+> Date: 2026-06-28
 > Baseline: `main@a317ec5` (`feat(chat): unify pet chat surfaces`)
 > Status: live TODO entry point
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
@@ -19,7 +19,7 @@ This is not a promise to implement every item in one milestone. It is a map for 
 - P3: longer-term platform direction.
 - Manual-required: needs real provider accounts, signed artifacts, notarization, Windows machines, production credentials, or human review.
 
-Current P0 status: no known startup/build blocker in this TODO pass. The highest-risk current gap is the half-wired trigger proposal inbox surface, but it is not yet the primary UI path.
+Current P0 status: no known startup/build blocker in this TODO pass. The highest-risk current gap is still the missing durable host trigger-rule schema for `random`, `state`, and `event`, but it is not a startup blocker.
 
 ## Current Code Architecture
 
@@ -171,6 +171,7 @@ Current state:
 - `triggerProposalInbox` is part of the action config view state and host service contract.
 - `ActionService.submitTriggerProposal`, `acceptTriggerProposalItem`, and `rejectTriggerProposalItem` persist proposal status: pending, accepted, rejected, applied, or pending-host-rule.
 - Control Center Actions pane shows a trigger proposal inbox and can accept/reject queued proposals.
+- Creator Studio approved action imports now submit their generated trigger proposals into the same host inbox with source plugin/run/command provenance.
 - Legacy action regeneration preserves the trigger proposal inbox.
 
 P1 work:
@@ -178,7 +179,6 @@ P1 work:
 - Define durable trigger-rule schema for `random`, `state`, and `event`.
 - Add validation that every trigger rule references an existing imported action.
 - Add simulation/preview before applying non-click triggers.
-- Connect Creator Studio imports to submit generated trigger proposals into the host inbox instead of only showing them in the plugin dashboard.
 
 P2/P3:
 
@@ -197,7 +197,7 @@ Current state:
 - Question answer and task confirmation commands exist.
 - `openpet-prompt-builder` compiles OpenPet-specific prompts.
 - Host model bridge sends built prompts to host-owned image generation.
-- Run persistence, logs, QA metadata, dashboard preview, and approved action import paths exist.
+- Run persistence, logs, QA metadata, dashboard preview, approved action import paths, and host inbox submission for imported trigger proposals exist.
 
 P1 work:
 
@@ -205,7 +205,6 @@ P1 work:
 - Preserve the current command paths as automation/test entry points while improving user-facing dashboard affordances.
 - Add explicit retry/recover flows for failed cloud/local generation without silently falling back to fixture.
 - Surface prompt-builder provenance in the dashboard, including sanitized final prompt preview for developer mode.
-- Connect generated trigger proposals to the host trigger proposal inbox after the inbox service/UI is complete.
 - Add realistic smoke guidance for configured host image Provider generation.
 
 P2/P3:

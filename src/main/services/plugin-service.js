@@ -28,6 +28,7 @@ const MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 15000
 const DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 30000
 const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
 const PLUGIN_BRIDGE_HOST = '127.0.0.1'
+const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
 
 const ACTIVE_SERVICE_STATUSES = new Set(['running', 'stopping'])
@@ -231,6 +232,17 @@ const readCommandResult = (stdoutText) => {
   return null
 }
 
+const isRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const toSafeProposalSegment = (value, fallback = 'unknown') => {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+  return normalized || fallback
+}
+
 const getSignatureStatus = (manifest) => {
   if (manifest.source === 'official') {
     return { status: 'official', label: 'Official plugin', signer: 'openpet', algorithm: 'bundled' }
@@ -412,7 +424,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     }
   }
 
-  const createPluginBridgeHandlers = (plugin, commandId) => ({
+  const createPluginBridgeHandlers = (plugin, commandId, bridgeState = { importedActionIds: new Set() }) => ({
     context: async () => {
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge context requested' })
       return { ok: true, context: createPluginBridgeContext() }
@@ -489,6 +501,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       assertCreatorAssetImportWithinLimits(preflight.inspection, sourceDir)
       const result = await actionImportService.importActionFrames({ sourceDir, actionId, label })
       const { importedAction, ...actions } = result
+      if (importedAction?.id) bridgeState.importedActionIds.add(String(importedAction.id))
       return { ok: true, actions, importedAction }
     },
     creatorAssetsPickFramesInspect: async (payload = {}) => {
@@ -517,6 +530,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       assertCreatorAssetImportWithinLimits(preflight.inspection, selected.sourceDir)
       const result = await actionImportService.importActionFrames({ sourceDir: selected.sourceDir, actionId, label })
       const { importedAction, ...actions } = result
+      if (importedAction?.id) bridgeState.importedActionIds.add(String(importedAction.id))
       return { ok: true, canceled: false, actions, importedAction }
     },
     creatorPetPackInspectOutput: async (payload = {}) => {
@@ -1364,6 +1378,68 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
 
+  const getExistingTriggerProposalItem = (proposalId) => {
+    const currentConfig = actionService?.getConfig?.() || actionService?.getPreviewConfig?.() || {}
+    const inbox = Array.isArray(currentConfig.triggerProposalInbox) ? currentConfig.triggerProposalInbox : []
+    return inbox.find((item) => item?.id === proposalId) || null
+  }
+
+  const buildImportedTriggerProposalSubmission = ({ pluginId, commandId, parsedResult, importedActionIds }) => {
+    if (!actionService?.submitTriggerProposal || !isRecord(parsedResult)) return null
+    const candidate = isRecord(parsedResult.triggerProposal) ? parsedResult.triggerProposal : null
+    if (!candidate) return null
+    const type = String(candidate.type || '')
+    if (!TRIGGER_PROPOSAL_TYPES.has(type)) return null
+    const observedActionIds = Array.isArray(importedActionIds) ? importedActionIds.filter(Boolean) : []
+    if (observedActionIds.length < 1) return null
+    const run = isRecord(parsedResult.run) ? parsedResult.run : null
+    const runActionId = typeof run?.importedActionId === 'string' ? run.importedActionId : ''
+    const candidateActionId = typeof candidate.actionId === 'string' ? candidate.actionId : ''
+    const actionId = observedActionIds.includes(candidateActionId)
+      ? candidateActionId
+      : (observedActionIds.includes(runActionId) ? runActionId : (observedActionIds.length === 1 ? observedActionIds[0] : ''))
+    if (!actionId || !observedActionIds.includes(actionId)) return null
+    const runId = typeof run?.runId === 'string' ? run.runId : ''
+    return {
+      id: [
+        'proposal',
+        'auto',
+        toSafeProposalSegment(pluginId),
+        toSafeProposalSegment(commandId),
+        toSafeProposalSegment(runId, 'no-run'),
+        toSafeProposalSegment(type),
+        toSafeProposalSegment(actionId)
+      ].join(':').slice(0, 160),
+      actionId,
+      type,
+      binding: typeof candidate.binding === 'string' ? candidate.binding : '',
+      sourcePluginId: pluginId,
+      sourceRunId: runId,
+      sourceCommandId: commandId,
+      message: typeof candidate.notes === 'string' && candidate.notes
+        ? candidate.notes
+        : (typeof candidate.message === 'string' ? candidate.message : '')
+    }
+  }
+
+  const attachQueuedTriggerProposal = ({ pluginId, commandId, parsedResult, importedActionIds }) => {
+    const submission = buildImportedTriggerProposalSubmission({ pluginId, commandId, parsedResult, importedActionIds })
+    if (!submission) return parsedResult
+    const existingProposal = getExistingTriggerProposalItem(submission.id)
+    const proposal = existingProposal || actionService.submitTriggerProposal(submission).proposal
+    appendLog({
+      pluginId,
+      commandId,
+      level: 'info',
+      message: existingProposal
+        ? `Trigger proposal already queued: ${proposal.id}`
+        : `Trigger proposal queued: ${proposal.id}`
+    })
+    return isRecord(parsedResult)
+      ? { ...parsedResult, proposal }
+      : parsedResult
+  }
+
   const createSdk = (plugin) => {
     const manifest = plugin.manifest
     const registeredCommands = {}
@@ -1455,6 +1531,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const bridgeRuntimeKey = createPluginBridgeKey(pluginId, commandId, bridgeRunId)
     const bridgeBaseUrl = `http://${PLUGIN_BRIDGE_HOST}:${bridgePort}/plugins/bridge/${pluginId}/${commandId}/${bridgeRunId}`
     const creatorDirs = ensurePluginCreatorDirs(plugin.manifest)
+    const bridgeState = {
+      importedActionIds: new Set()
+    }
     const commandContext = {
       pluginId,
       commandId,
@@ -1496,7 +1575,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       runId: bridgeRunId,
       token: bridgeToken,
       status: 'running',
-      handlers: createPluginBridgeHandlers(plugin, commandId)
+      handlers: createPluginBridgeHandlers(plugin, commandId, bridgeState)
     })
     commandRuntimes.set(runtimeKey, runtime)
     let stdoutText = ''
@@ -1583,7 +1662,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             reject(new Error(message))
             return
           }
-          const parsedResult = readCommandResult(stdoutText)
+          const parsedResult = attachQueuedTriggerProposal({
+            pluginId,
+            commandId,
+            parsedResult: readCommandResult(stdoutText),
+            importedActionIds: Array.from(bridgeState.importedActionIds)
+          })
           resolve({
             ok: true,
             pluginId,

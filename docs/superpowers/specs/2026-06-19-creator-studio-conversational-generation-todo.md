@@ -229,14 +229,12 @@ For `full-pet`, import through the approved pet-pack import bridge.
 - Preserve command paths as automation/test entry points while improving user-facing dashboard affordances.
 - Add explicit retry/recover flows for failed cloud/local generation without silently falling back to fixture.
 - Surface prompt-builder provenance in the dashboard, including sanitized final prompt preview for developer mode.
-- Connect generated trigger proposals to the host trigger proposal inbox after that host inbox service/UI is complete.
 - Add realistic smoke guidance for configured host image Provider generation.
 
 ## TODO: Host / Main UI Work
 
 - Define host-owned trigger rule schema.
 - Add Control Center UI for trigger rules and accepted trigger proposals.
-- Complete the trigger proposal inbox service/UI/API closed loop.
 - Keep bridge route coverage for current pet/action context aligned with the plugin wizard.
 - Add bridge route for accepting a plugin trigger proposal after user review when inbox persistence is ready.
 - Add validation that trigger bindings reference existing imported actions.
@@ -250,10 +248,10 @@ Completed host slice:
 - `manual` and `unbound` proposals are confirmed without mutating bindings.
 - `random`, `state`, and `event` proposals remain visible as pending host-rule work until the full trigger-rule schema/editor exists.
 - Actions UI now makes this distinction explicit: `click` is shown as an immediate `clickAction` mutation, while `random`, `state`, and `event` are shown as accepted-but-pending host-rule proposals.
+- Creator Studio approved action imports now submit generated trigger proposals into the persistent host inbox with source plugin/run/command provenance.
 
 Remaining host/main UI request:
 
-- Add a persistent trigger proposal inbox/editor in Control Center so users can review, edit, accept, or reject proposals submitted directly from Creator Studio and other plugins rather than manually choosing the current action/type. Channel names and data fields already exist in parts of the codebase, but `ActionService` still needs the submit/accept/reject item methods and the UI needs the actual inbox list.
 - Define the durable trigger-rule schema for `random`, `state`, and `event` rules.
 - Add simulation/preview before applying non-click triggers.
 - Keep final trigger persistence host-owned; plugins should continue to propose rather than directly mutate rules.

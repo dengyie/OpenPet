@@ -74,3 +74,39 @@ test('toCommandResultPreview summarizes Creator Studio run results', () => {
     { label: '导出包', value: '/tmp/openpet/runs/2026-06-19-creator-studio-pet-008/outputs/creator-studio-pet.codex-pet.zip' }
   ])
 })
+
+test('toCommandResultPreview includes queued trigger proposal details for Creator Studio action imports', () => {
+  const preview = toCommandResultPreview({
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'import-approved-action',
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    result: {
+      ok: true,
+      message: 'Imported action shy-spin',
+      run: {
+        runId: 'run-creator-action-01',
+        status: 'imported',
+        currentStep: 'imported',
+        importedActionId: 'shy-spin'
+      },
+      proposal: {
+        id: 'proposal:auto:openpet-creator-studio:import-approved-action:run-creator-action-01:click:shy-spin',
+        actionId: 'shy-spin',
+        type: 'click',
+        status: 'pending'
+      }
+    }
+  })
+
+  assert.deepEqual(preview.details, [
+    { label: 'Run', value: 'run-creator-action-01' },
+    { label: '状态', value: 'imported' },
+    { label: '步骤', value: 'imported' },
+    { label: '已导入动作', value: 'shy-spin' },
+    { label: '触发建议', value: 'click' },
+    { label: '入队状态', value: 'pending' }
+  ])
+})

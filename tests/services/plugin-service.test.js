@@ -1512,6 +1512,183 @@ test('declaration-only creator asset import bridge imports generated data frame 
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'cat_anime', 'animations.json'), 'utf-8')).actions[0].id, 'generated-wave')
 })
 
+test('declaration-only creator asset import bridge queues imported trigger proposals into the host inbox without duplicates', async () => {
+  const spawned = []
+  const children = [createFakeServiceProcess(), createFakeServiceProcess()]
+  const root = createDeclarationOnlyPluginDir({
+    profile: 'creator-tools',
+    permissions: ['assets:generate']
+  })
+  await createPluginAssetFrame(root, 'assets/actions/shy-spin', '01_no_bg.png')
+  const inbox = []
+  const submitted = []
+  const actionService = {
+    getConfig: () => ({ triggerProposalInbox: inbox.map((item) => ({ ...item })) }),
+    submitTriggerProposal: (payload) => {
+      submitted.push({ ...payload })
+      const proposal = {
+        id: payload.id,
+        actionId: payload.actionId,
+        type: payload.type,
+        binding: payload.binding || '',
+        sourcePluginId: payload.sourcePluginId || '',
+        sourceRunId: payload.sourceRunId || '',
+        sourceCommandId: payload.sourceCommandId || '',
+        message: payload.message || '',
+        status: 'pending',
+        createdAt: '2026-06-28T00:00:00.000Z',
+        updatedAt: '2026-06-28T00:00:00.000Z'
+      }
+      inbox.push(proposal)
+      return {
+        proposal,
+        animations: {
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [{ id: 'idle', label: 'Idle' }, { id: 'shy-spin', label: 'Shy Spin' }],
+          triggerProposalInbox: inbox.map((item) => ({ ...item }))
+        }
+      }
+    }
+  }
+  const actionImportService = {
+    inspectActionFrames: async () => ({
+      inspection: {
+        valid: true,
+        frameCount: 1,
+        maxWidth: 8,
+        maxHeight: 8
+      }
+    }),
+    importActionFrames: async ({ actionId, label }) => ({
+      importedAction: {
+        id: actionId,
+        label: label || actionId
+      },
+      defaultAction: 'idle',
+      clickAction: 'wave',
+      actions: [{ id: 'idle', label: 'Idle' }, { id: actionId, label: label || actionId }]
+    })
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionService,
+    actionImportService,
+    officialPlugins: [],
+    pluginDirs: [root],
+    spawnCommandProcess: (file, args, options) => {
+      const child = children.shift()
+      spawned.push({ child, file, args, options })
+      return child
+    }
+  })
+
+  const runImportCommand = async () => {
+    const startedAt = spawned.length
+    const commandRun = service.runCommand('weather-declaration', 'announce')
+    await waitFor(() => spawned.length === startedAt + 1 && spawned.at(-1).child.listenerCount('exit') > 0)
+    const runtime = spawned.at(-1)
+    const importResponse = await requestBridge(`${runtime.options.env.OPENPET_BRIDGE_URL}/creator/assets/import-frames`, {
+      method: 'POST',
+      token: runtime.options.env.OPENPET_BRIDGE_TOKEN,
+      body: {
+        relativePath: 'assets/actions/shy-spin',
+        actionId: 'shy-spin',
+        label: 'Shy Spin'
+      }
+    })
+    runtime.child.stdout.write(`${JSON.stringify({
+      ok: true,
+      message: 'Imported action shy-spin',
+      run: {
+        runId: 'run-creator-action-01',
+        status: 'imported',
+        currentStep: 'imported',
+        importedActionId: 'shy-spin'
+      },
+      triggerProposal: {
+        type: 'click',
+        binding: 'clickAction',
+        notes: 'User requested click trigger'
+      }
+    })}\n`)
+    runtime.child.emit('exit', 0, null)
+    const result = await commandRun
+    return { importResponse, result }
+  }
+
+  const first = await runImportCommand()
+  const second = await runImportCommand()
+
+  assert.equal(first.importResponse.status, 200)
+  assert.equal(second.importResponse.status, 200)
+  assert.equal(submitted.length, 1)
+  assert.deepEqual(submitted[0], {
+    id: 'proposal:auto:weather-declaration:announce:run-creator-action-01:click:shy-spin',
+    actionId: 'shy-spin',
+    type: 'click',
+    binding: 'clickAction',
+    sourcePluginId: 'weather-declaration',
+    sourceRunId: 'run-creator-action-01',
+    sourceCommandId: 'announce',
+    message: 'User requested click trigger'
+  })
+  assert.equal(inbox.length, 1)
+  assert.equal(first.result.result.proposal.id, submitted[0].id)
+  assert.equal(second.result.result.proposal.id, submitted[0].id)
+  assert.equal(first.result.result.proposal.actionId, 'shy-spin')
+  assert.equal(second.result.result.proposal.actionId, 'shy-spin')
+})
+
+test('declaration-only command results do not queue trigger proposals without an observed host import', async () => {
+  const child = createFakeServiceProcess()
+  const submitted = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    actionService: {
+      getConfig: () => ({ triggerProposalInbox: [] }),
+      submitTriggerProposal: (payload) => {
+        submitted.push(payload)
+        return { proposal: payload, animations: {} }
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      profile: 'creator-tools',
+      permissions: ['assets:generate']
+    })],
+    spawnCommandProcess: () => child
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.listenerCount('exit') > 0)
+  child.stdout.write(`${JSON.stringify({
+    ok: true,
+    message: 'Imported action shy-spin',
+    run: {
+      runId: 'run-creator-action-02',
+      status: 'imported',
+      currentStep: 'imported',
+      importedActionId: 'shy-spin'
+    },
+    triggerProposal: {
+      type: 'click',
+      binding: 'clickAction'
+    }
+  })}\n`)
+  child.emit('exit', 0, null)
+  const result = await commandRun
+
+  assert.equal(submitted.length, 0)
+  assert.equal(result.result.proposal, undefined)
+})
+
 test('declaration-only creator asset import bridge rejects missing generation permission', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

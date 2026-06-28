@@ -33,6 +33,7 @@ const extractCreatorStudioDetails = (resultRecord) => {
   const artifacts = isRecord(run?.artifacts) ? run.artifacts : {}
   const imported = isRecord(resultRecord.imported) ? resultRecord.imported : null
   const importedPack = isRecord(imported?.pack) ? imported.pack : null
+  const proposal = isRecord(resultRecord.proposal) ? resultRecord.proposal : null
   const bundle = isRecord(resultRecord.bundle) ? resultRecord.bundle : null
   const details = []
 
@@ -40,6 +41,9 @@ const extractCreatorStudioDetails = (resultRecord) => {
   addDetail(details, '状态', run?.status)
   addDetail(details, '步骤', run?.currentStep)
   addDetail(details, '已导入 Pack', run?.importedPackId || importedPack?.id)
+  addDetail(details, '已导入动作', run?.importedActionId)
+  addDetail(details, '触发建议', proposal?.type)
+  addDetail(details, '入队状态', proposal?.status)
   addDetail(details, '输出目录', artifacts.outputDir || resultRecord.outputDir)
   addDetail(details, '导出包', artifacts.bundle || bundle?.path)
   return details
