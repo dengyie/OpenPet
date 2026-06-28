@@ -424,6 +424,30 @@ const seedImportedFullPetRun = async (dataDir) => {
   return run
 }
 
+const seedImportedFullPetRunWithSourceMismatch = async (dataDir) => {
+  const run = await seedImportedFullPetRun(dataDir)
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const baseDir = path.join(runDir, 'frames', 'base')
+  const qaDir = path.join(runDir, 'qa')
+
+  await writeSolidPng(path.join(baseDir, '0002.png'), {
+    width: 1024,
+    height: 1024,
+    background: { r: 120, g: 194, b: 255, alpha: 1 }
+  })
+
+  fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
+    ok: true,
+    sourceRelativePath: `runs/${run.runId}/frames/base/0002.png`,
+    width: 1024,
+    height: 1024,
+    visiblePixels: 6400,
+    warnings: []
+  }, null, 2)}\n`)
+
+  return run
+}
+
 const seedImportedActionRunWithoutTriggerSubmission = async (dataDir) => {
   const run = createRun({
     dataDir,
@@ -924,6 +948,27 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(checkpointText, /Owner: host/i)
     assert.match(checkpointText, /Location: OpenPet/i)
     assert.match(checkpointText, /Imported: yes/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard hides stale full-pet source mismatch warnings after import', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-mismatch-'))
+  await seedImportedFullPetRunWithSourceMismatch(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Imported pet pack: imported-review-cat/i)
+    assert.match(reviewText, /Review location: OpenPet/i)
+    assert.doesNotMatch(reviewText, /QA source image does not match the current generated image/i)
+    assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

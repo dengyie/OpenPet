@@ -823,7 +823,7 @@
         const sourceValidation = review?.sourceImageValidation || {}
         const atlasValidation = review?.atlasValidation || {}
         const reviewGate = review?.reviewGate || {}
-        const showsMismatch = review?.sourceImageMatchesCurrent === false
+        const showsMismatch = run?.status === 'ready_for_review' && review?.sourceImageMatchesCurrent === false
         return [
           renderImportedReviewNotice(run),
           showsMismatch
