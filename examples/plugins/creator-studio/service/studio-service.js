@@ -680,6 +680,7 @@ const createImportHandoff = ({ dataDir, run, importStatus }) => {
     commandTitle: createPublicText({ dataDir, value: resolveImportCommandTitle(commandId) }),
     payload,
     payloadJson: createPublicText({ dataDir, value: JSON.stringify(payload) }),
+    surface: 'control-center',
     location: 'Control Center -> Plugins',
     dashboardCanImport: false,
     reason: ready
