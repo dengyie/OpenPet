@@ -59,6 +59,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Trigger pro
 - Creator Studio approved single-action imports now submit their generated `triggerProposal` into the host-owned trigger proposal inbox through the narrow `trigger-proposals:write` creator-tools bridge permission after action frames are imported; the plugin still does not directly apply trigger rules.
 - Creator Studio imported follow-up routing is now outcome-specific across `nextStep`, `actionLane`, `workflowGuidance.import.followUp`, and imported result review surfaces: imported action success routes the next review step to `Actions -> Trigger Proposal Inbox`, imported action handoff failures route follow-up to `Control Center -> Plugins`, and imported pet follow-up remains `OpenPet` through `Import Approved Pet`.
 - Creator Studio imported review surfaces are now phase-aware: once a run is `imported`, the dashboard keeps imported result and follow-up guidance visible but no longer mixes in pre-import QA blocked notices, repair controls, or retry-generation cues from the approval phase.
+- Creator Studio dashboard service now exposes a unified `reviewSnapshot` for each run so dashboard panels, service clients, and browser regressions read the same review gate, import state, next-action owner, and trigger handoff status for blocked QA, imported action success, and import handoff failure paths.
 - Creator Studio dashboard service only exposes local task/run/review routes, returns explicit JSON `404` for unknown `/api/*` paths, and cannot invoke command-scoped host bridge routes outside explicit command runs.
 - Creator Studio generation remains host-owned at the provider boundary; plugin-managed provider credentials are unsupported in the current trust model.
 
@@ -213,6 +214,7 @@ Current state:
 - Creator Studio review/recovery state is now outcome-specific across service and dashboard surfaces: blocked action-frame QA points to `Review and repair frames`, stale full-pet QA source mismatches point to `Retry generation`, imported action handoff failures point to `Review import handoff`, and successful imported action follow-up points to `Actions -> Trigger Proposal Inbox`.
 - Imported action success follow-up now points reviewers to `Actions -> Trigger Proposal Inbox`, imported action handoff failures now point to `Control Center -> Plugins`, and imported pet follow-up stays in `OpenPet` for `Import Approved Pet`.
 - Creator Studio review surfaces now expose a shared `reviewSummary` and top-level `reviewCheckpoint` for dashboard and service clients, so review owner, review status, next review action, host-owned location, and blocked reason stay consistent across ready-for-review, approved, imported, and handoff-failure states.
+- Creator Studio review surfaces now also expose a top-level `reviewSnapshot` that packages the active phase, review gate, import status, next-action owner/location, dashboard/host-action flags, and trigger handoff status into one stable dashboard/service contract.
 
 P1 work:
 

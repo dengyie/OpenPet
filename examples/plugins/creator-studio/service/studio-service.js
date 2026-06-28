@@ -940,6 +940,55 @@ const createReviewCheckpoint = ({ dataDir, run, wizardState, workflowGuidance, a
   })
 }
 
+const createReviewSnapshot = ({ dataDir, run, wizardState, workflowGuidance, actionLane, reviewCheckpoint }) => {
+  const importGuidance = workflowGuidance?.import || {}
+  const reviewSummary = importGuidance.reviewSummary || {}
+  const dashboardAction = actionLane?.dashboardAction || {}
+  const hostAction = actionLane?.hostAction || {}
+  const checkpoint = reviewCheckpoint || {}
+
+  return createPublicLogValue({
+    dataDir,
+    value: {
+      schemaVersion: 1,
+      runId: run.runId || '',
+      phase: wizardState?.phase || 'draft',
+      status: run.status || 'draft',
+      review: {
+        status: checkpoint.reviewStatus || reviewSummary.reviewGateStatus || run.reviewStatus || 'pending',
+        gateStatus: reviewSummary.reviewGateStatus || 'unknown',
+        readyForApproval: Boolean(checkpoint.readyForApproval || reviewSummary.readyForApproval),
+        blockedReason: checkpoint.blockedReason || reviewSummary.blockedReason || ''
+      },
+      import: {
+        status: checkpoint.importStatus || importGuidance.status || run.importStatus || 'not-imported',
+        command: importGuidance.command || '',
+        readyForImport: Boolean(checkpoint.readyForImport || reviewSummary.readyForImport),
+        imported: Boolean(checkpoint.imported || reviewSummary.imported),
+        triggerProposalStatus: importGuidance.triggerProposalStatus || 'not-applicable',
+        resultLocation: importGuidance.resultCard?.reviewLocation || reviewSummary.reviewLocation || checkpoint.location || ''
+      },
+      nextAction: {
+        owner: checkpoint.owner || 'workflow',
+        label: checkpoint.label || reviewSummary.nextReviewAction || wizardState?.nextStep?.label || 'Continue workflow',
+        location: checkpoint.location || reviewSummary.reviewLocation || 'Creator Studio',
+        reason: checkpoint.reason || reviewSummary.summary || wizardState?.nextStep?.reason || '',
+        availableInDashboard: Boolean(checkpoint.availableInDashboard || dashboardAction.available),
+        requiresHostAction: Boolean(checkpoint.requiresHostAction || hostAction.required),
+        blocked: Boolean(checkpoint.blocked || reviewSummary.blockedReason || wizardState?.nextStep?.blocked)
+      },
+      flags: {
+        availableInDashboard: Boolean(checkpoint.availableInDashboard || dashboardAction.available),
+        requiresHostAction: Boolean(checkpoint.requiresHostAction || hostAction.required),
+        readyForApproval: Boolean(checkpoint.readyForApproval || reviewSummary.readyForApproval),
+        readyForImport: Boolean(checkpoint.readyForImport || reviewSummary.readyForImport),
+        imported: Boolean(checkpoint.imported || reviewSummary.imported),
+        blocked: Boolean(checkpoint.blocked || reviewSummary.blockedReason)
+      }
+    }
+  })
+}
+
 const createWorkflowGuidance = ({ dataDir, run }) => {
   const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const modelSnapshot = run.modelSnapshot || run.artifacts?.generatedImage?.modelSnapshot || {}
@@ -1125,6 +1174,14 @@ const createPublicRun = ({ dataDir, run }) => {
     workflowGuidance,
     actionLane
   })
+  const reviewSnapshot = createReviewSnapshot({
+    dataDir,
+    run,
+    wizardState,
+    workflowGuidance,
+    actionLane,
+    reviewCheckpoint
+  })
   return {
     ...publicRun,
     artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
@@ -1133,6 +1190,7 @@ const createPublicRun = ({ dataDir, run }) => {
     wizardState,
     workflowGuidance,
     reviewCheckpoint,
+    reviewSnapshot,
     actionLane
   }
 }

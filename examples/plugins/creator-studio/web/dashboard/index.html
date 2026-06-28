@@ -543,6 +543,10 @@
             <section id="review-checkpoint-panel">Draft or load a run to see the current review owner and next review location.</section>
           </section>
           <section>
+            <h2>Review Snapshot</h2>
+            <section id="review-snapshot-panel">Draft or load a run to see the unified review snapshot.</section>
+          </section>
+          <section>
             <h2>Next Step</h2>
             <section id="next-step-panel">Draft a task to see the next recommended action.</section>
           </section>
@@ -1207,6 +1211,38 @@
         ].join('')
       }
 
+      const renderReviewSnapshot = (run) => {
+        const snapshot = run?.reviewSnapshot || {}
+        const review = snapshot.review || {}
+        const importState = snapshot.import || {}
+        const nextAction = snapshot.nextAction || {}
+        const flags = snapshot.flags || {}
+        const blocked = Boolean(flags.blocked || review.blockedReason || nextAction.blocked)
+        return [
+          `<div class="notice ${blocked ? 'error' : ''}">`,
+          `<strong>${escapeHtml(nextAction.label || 'Continue workflow')}</strong>`,
+          '<div class="meta-list">',
+          `<span>Snapshot v${escapeHtml(snapshot.schemaVersion || 1)} / Run: ${escapeHtml(snapshot.runId || run?.runId || 'unknown')}</span>`,
+          `<span>Phase: ${escapeHtml(snapshot.phase || 'draft')} / Status: ${escapeHtml(snapshot.status || run?.status || 'draft')}</span>`,
+          `<span>Review gate: ${escapeHtml(review.gateStatus || 'unknown')} / Review status: ${escapeHtml(review.status || 'pending')}</span>`,
+          `<span>Import: ${escapeHtml(importState.status || 'not-imported')} / Command: ${escapeHtml(importState.command || 'n/a')}</span>`,
+          `<span>Owner: ${escapeHtml(nextAction.owner || 'workflow')} / Location: ${escapeHtml(nextAction.location || 'Creator Studio')}</span>`,
+          `<span>Available in dashboard: ${flags.availableInDashboard ? 'yes' : 'no'} / Host action: ${flags.requiresHostAction ? 'yes' : 'no'}</span>`,
+          flags.readyForApproval ? '<span>Ready for approval: yes</span>' : '',
+          flags.readyForImport ? '<span>Ready for import: yes</span>' : '',
+          flags.imported ? '<span>Imported: yes</span>' : '',
+          importState.triggerProposalStatus
+            ? `<span>Trigger handoff: ${escapeHtml(importState.triggerProposalStatus)}</span>`
+            : '',
+          '</div>',
+          `<p>${escapeHtml(nextAction.reason || 'Continue the Creator Studio workflow.')}</p>`,
+          review.blockedReason
+            ? `<p>Blocked reason: ${escapeHtml(review.blockedReason)}</p>`
+            : '',
+          '</div>'
+        ].join('')
+      }
+
       const renderImportHandoff = (run, actionFrames = null, actionReview = null, fullPetReview = null) => {
         const importGuidance = run?.workflowGuidance?.import || {}
         const handoff = importGuidance.handoff || {}
@@ -1306,6 +1342,7 @@
           $('wizard-steps-panel').textContent = 'Draft a task to see the workflow rail.'
           $('action-lane-panel').textContent = 'Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.'
           $('review-checkpoint-panel').textContent = 'Draft or load a run to see the current review owner and next review location.'
+          $('review-snapshot-panel').textContent = 'Draft or load a run to see the unified review snapshot.'
           $('next-step-panel').textContent = 'Draft a task to see the next recommended action.'
           $('task-preview').textContent = 'No task drafted yet.'
           $('task-edit-panel').textContent = 'Draft a task to edit action details before confirmation.'
@@ -1333,6 +1370,7 @@
         $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
         $('action-lane-panel').innerHTML = renderActionLane(run)
         $('review-checkpoint-panel').innerHTML = renderReviewCheckpoint(run)
+        $('review-snapshot-panel').innerHTML = renderReviewSnapshot(run)
         $('next-step-panel').innerHTML = renderNextStep(run)
         $('task-edit-panel').innerHTML = renderTaskEditPanel(run)
         if (isFullPetRun(run) && run.generationTask.characterBrief) {
