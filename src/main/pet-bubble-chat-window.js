@@ -26,12 +26,15 @@ const normalizeBubbleChatSettings = (settings = {}) => ({
   pinOnInteraction: settings.pinOnInteraction !== false
 })
 
-const calculateBubbleTtlMs = ({ text = '', ttlMs = 0 } = {}) => {
+const calculateBubbleTtlMs = ({ text = '', ttlMs = 0, source = '' } = {}) => {
   const requested = Number(ttlMs)
   if (Number.isFinite(requested) && requested > 0) return clamp(Math.round(requested), MIN_TTL_MS, MAX_TTL_MS)
-  const base = 5200
-  const perChar = 85
-  return clamp(base + Math.min(String(text || '').length, 180) * perChar, MIN_TTL_MS, 24000)
+  const isDialogue = String(source || '').trim() === 'ai'
+  const base = isDialogue ? 8600 : 5200
+  const perChar = isDialogue ? 95 : 85
+  const min = isDialogue ? 9000 : MIN_TTL_MS
+  const max = isDialogue ? 24000 : 18000
+  return clamp(base + Math.min(String(text || '').length, 180) * perChar, min, max)
 }
 
 const normalizePetBounds = (bounds) => {
@@ -117,7 +120,7 @@ const normalizeMessagePayload = (payload = {}) => {
   return {
     text: text.slice(0, 1000),
     source: String(payload.source || '').trim().slice(0, 120),
-    ttlMs: calculateBubbleTtlMs({ text, ttlMs: payload.ttlMs }),
+    ttlMs: calculateBubbleTtlMs({ text, ttlMs: payload.ttlMs, source: payload.source }),
     petPackId: String(payload.petPackId || '').trim(),
     createdAt: typeof payload.createdAt === 'string' && payload.createdAt ? payload.createdAt : new Date().toISOString()
   }

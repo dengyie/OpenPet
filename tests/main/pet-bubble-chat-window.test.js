@@ -62,12 +62,15 @@ test('calculateBubbleTtlMs scales with message length and clamps explicit ttl va
   const empty = calculateBubbleTtlMs({ text: '' })
   const short = calculateBubbleTtlMs({ text: 'hi' })
   const long = calculateBubbleTtlMs({ text: 'x'.repeat(120) })
+  const dialogueShort = calculateBubbleTtlMs({ text: 'hi', source: 'ai' })
   const clampedLow = calculateBubbleTtlMs({ text: 'hello', ttlMs: 800 })
   const clampedHigh = calculateBubbleTtlMs({ text: 'hello', ttlMs: 999999 })
 
   assert.equal(empty, 6000)
   assert.ok(short >= empty)
   assert.ok(long > short)
+  assert.ok(dialogueShort > short)
+  assert.equal(dialogueShort, 9000)
   assert.equal(clampedLow, 6000)
   assert.equal(clampedHigh, 30000)
 })
@@ -251,6 +254,52 @@ test('pet bubble chat manager shows latest message and auto hides when idle', ()
     timers.at(-1).callback()
     assert.equal(manager.getState().visible, false)
     assert.equal(instances[0].visible, false)
+  } finally {
+    global.setTimeout = originalSetTimeout
+    global.clearTimeout = originalClearTimeout
+  }
+})
+
+test('pet bubble chat manager keeps ai dialogue visible longer than lightweight notices', () => {
+  const timers = []
+  const originalSetTimeout = global.setTimeout
+  const originalClearTimeout = global.clearTimeout
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, cleared: false }
+    timers.push(timer)
+    return timer
+  }
+  global.clearTimeout = (timer) => {
+    if (timer) timer.cleared = true
+  }
+  try {
+    const { FakeBrowserWindow } = createFakeBrowserWindow()
+    const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+      BrowserWindow: FakeBrowserWindow,
+      app: { on: () => {} },
+      screen: {
+        getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+      }
+    })
+    const manager = createPetBubbleChatWindowManager({
+      BrowserWindow: FakeBrowserWindow,
+      screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+      settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+      getPetWindow: () => ({
+        isDestroyed: () => false,
+        getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+      })
+    })
+
+    manager.showMessage({ text: '天气提醒', source: 'plugin:weather' })
+    const noticeTimer = timers.at(-1)
+    manager.showMessage({ text: '你好呀～🐾', source: 'ai' })
+    const dialogueTimer = timers.at(-1)
+
+    assert.equal(noticeTimer.delay, 6000)
+    assert.ok(dialogueTimer.delay >= 9000)
+    assert.ok(dialogueTimer.delay > noticeTimer.delay)
+    assert.equal(manager.getState().message.source, 'ai')
   } finally {
     global.setTimeout = originalSetTimeout
     global.clearTimeout = originalClearTimeout
