@@ -223,7 +223,10 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   const history = await ipcMain.handlers.get(IPC.AI_GET_CONVERSATION)(null, 'control-center')
 
   assert.deepEqual(talkCalls, [{ message: 'hi', conversationId: 'ignored' }])
-  assert.deepEqual(sayCalls, [{ text: 'talk reply', source: 'ai' }])
+  assert.equal(sayCalls.length, 1)
+  assert.equal(sayCalls[0].text, 'talk reply')
+  assert.equal(sayCalls[0].source, 'ai')
+  assert.match(sayCalls[0].requestId, /^chat-/)
   assert.equal(result.reply, 'talk reply')
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
   assert.equal(result.bubble.text, 'talk reply')
@@ -1473,7 +1476,11 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
   })
 
   const importResult = await ipcMain.handlers.get(IPC.PET_PACKS_IMPORT)(null, { selectionId: 'selection-doro' })
-  const activeResult = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)(null, { packId: 'doro' })
+  const activeResult = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)({
+    sender: {
+      send: (...args) => controlCenterMessages.push(args)
+    }
+  }, { packId: 'doro' })
   const removeResult = await ipcMain.handlers.get(IPC.PET_PACKS_REMOVE)(null, { packId: 'doro' })
 
   assert.deepEqual(importResult, { pack, petPacks, animations })
@@ -1490,7 +1497,11 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
   }])
   assert.equal(chatStateChanges.length, 1)
   assert.deepEqual(chatStateChanges[0].petPack, { id: 'doro', displayName: 'Doro' })
-  assert.deepEqual(controlCenterMessages, [[IPC.PET_PACKS_ACTIVE_CHANGED, { activePackId: 'doro' }]])
+  assert.equal(controlCenterMessages.length, 1)
+  assert.equal(controlCenterMessages[0][0], IPC.PET_PACKS_ACTIVE_CHANGED)
+  assert.equal(controlCenterMessages[0][1].activePackId, 'doro')
+  assert.deepEqual(controlCenterMessages[0][1].pack, activePack)
+  assert.deepEqual(controlCenterMessages[0][1].petChatState.petPack, { id: 'doro', displayName: 'Doro' })
   assert.equal(petWindowMessages.length, 2)
   assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
   assert.equal(petWindowMessages[1][0], IPC.PET_ANIMATIONS_CHANGED)
