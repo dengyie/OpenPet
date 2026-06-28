@@ -362,9 +362,9 @@ test.describe('Control Center smoke', () => {
     await expect(cursorHeader).toContainText('预览会模拟真实指针落点')
     await expect(cursorOptionsRow).toBeVisible()
     await expect(cursorOptionCards).toHaveCount(7)
-    await expect(cursorOptionCards.first()).toHaveCSS('width', '124px')
-    await expect(cursorOptionCards.first().locator('.cursor-card-preview')).toHaveCSS('min-height', '78px')
-    await expect(cursorOptionCards.first().locator('img')).toHaveCSS('width', '9px')
+    await expect(cursorOptionCards.first()).toHaveCSS('width', '86px')
+    await expect(cursorOptionCards.first().locator('.cursor-card-preview')).toHaveCSS('min-height', '56px')
+    await expect(cursorOptionCards.first().locator('img')).toHaveCSS('width', '44px')
     await expect(page.getByRole('button', { name: '系统默认' })).toHaveCount(0)
     await expect(cursorLibraryPanel).toHaveCount(0)
 
