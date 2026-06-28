@@ -1,8 +1,8 @@
 # OpenPet Project Status Review
 
-> Date: 2026-06-26
+> Date: 2026-06-28
 > Branch: `codex/plugin-command-runtime-split`
-> Release track: `v1.0.1-rc.2`
+> Release track: `v1.0.1-rc.3`
 
 This document is the current status snapshot. Detailed implementation history belongs in `docs/phases/`; detailed review findings belong in `docs/reviews/`.
 
@@ -23,7 +23,7 @@ The plugin host internals have also reached a clearer architecture checkpoint: `
 | Desktop pet runtime | Transparent Electron pet window with movement, actions, speech bubbles, pet pack switching, optional grounded movement, and optional home-anchor roaming constraints | `main.js`, `renderer.js`, `src/main/services/pet-service.js`, `src/main/pet-movement-policy.js` |
 | Control Center | React + Vite app with Pet, Actions, AI, Plugins, Catalog, Service, and About tabs | `src/control-center/`, `tests/control-center/` |
 | Pet packs | Legacy cat, OpenPet packs, Codex pet directory/zip import, bundled read-only packs, export/provenance | `src/main/pet-pack/`, `src/main/services/pet-pack-service.js` |
-| AI | OpenAI-compatible chat, main-process secret storage, grouped model-settings UI with preset-driven drafts and discovered-model apply actions, AI Talk persona/history/memory, desktop chat, behavior decisions, replay, redacted diagnostics | `src/main/services/ai-service.js`, `src/main/services/ai-talk-service.js`, `src/main/services/ai-talk-store.js`, `src/main/pet-chat-window.js`, `src/main/services/behavior-orchestrator-service.js` |
+| AI | OpenAI-compatible chat, main-process secret storage, grouped model-settings UI with preset-driven drafts and discovered-model apply actions, AI Talk persona/history/memory, desktop chat, behavior decisions, replay, redacted diagnostics, memory explainability, and Control Center trace export | `src/main/services/ai-service.js`, `src/main/services/ai-talk-service.js`, `src/main/services/ai-talk-store.js`, `src/main/pet-chat-window.js`, `src/main/services/behavior-orchestrator-service.js` |
 | Extensions | Developer-first ecosystem docs, current legacy SDK compatibility, normalized `entries` declarations including explicit setup execution, `entries.commands` support through the existing JavaScript compatibility runner and explicit short-lived process execution for declaration-only local extensions, command result feedback in Control Center, short-lived bridge access for declaration-only commands, host-owned creator data/cache/log directories for declaration-only command runs, creator-tools action reads / validation / bounded writes, active installed user pack metadata workflows, package-local frame inspection/import, user-approved picker frame inspection/import through the short-lived bridge, Control Center declaration visibility, explicit HTTP/HTTPS dashboard opening, explicit `entries.services` start/stop with runtime state and logs, manual loopback-only service health checks, opt-in host-managed periodic health checks for running services, best-effort process-group cleanup, exit-confirmed setup/command/service stop semantics, bounded host-side force stop for stubborn services, host-owned process-tree fallback cleanup across explicit service/setup/declaration-command stop paths, structured cleanup evidence tooling with validation-first updates, helper generation, runner archives, packaged-app cleanup evidence runner archives, and archive manifests, validation, submission tooling, catalog install, scaffold author rehearsal, existing-plugin real-world submission rehearsal, remote-source submission rehearsal, community-source discovery reporting, community-source invitation kits, community-source candidate intake reporting, compatible-intake-to-submission bridge tooling, community-source submission evidence, maintainer approval rehearsal, and a dashboard-first Creator Studio wizard with host-owned retry/import boundaries; command/setup/service spawns do not use shell expansion, setup and commands never run during install/enable, services do not auto-start, maintainer approval remains a human review artifact, and packaged cleanup evidence still proves only the observed packaged run rather than universal process-tree guarantees | `docs/plugin-development.md`, `docs/plugin-ecosystem-rules.md`, `docs/plugin-submission-workflow-playbook.md`, `src/main/plugins/manifest.js`, `src/main/services/plugin-service.js`, `src/main/services/action-service.js`, `src/main/services/pet-pack-service.js`, `src/main/services/service-process-tree.js` |
 | Local API | Loopback-only HTTP and MCP, token gated, logged, disabled by default | `src/main/services/local-http-service.js` |
 | Release evidence | Packaged runtime evidence tooling, runtime/picker evidence-link gate, Windows smoke and desktop picker evidence summary/archive manifests, macOS codesign/notarization/Gatekeeper evidence capture with workflow artifact upload and permanent artifact archive handoff, release archive reviewed-archive gates, signed release closure gate, Windows smoke/report tooling | `scripts/create-*-smoke-*`, `scripts/create-macos-release-evidence.js`, `scripts/create-macos-release-evidence-archive.js`, `.github/workflows/release.yml`, `docs/release-evidence/` |
@@ -52,13 +52,14 @@ npm run pack                 # electron-builder directory package
 
 ## Remaining Work
 
-The active product gaps are evidence, trigger-rule host closure, and ecosystem maturity, not a rewrite of the platform:
+The active product gaps are release evidence, ecosystem maturity, and selective platform follow-through, not a rewrite of the platform:
 
 1. Run `npm run create-macos-release-evidence-archive` on the macOS release workflow's uploaded evidence artifact for the official signed run and verify passing codesign, notarization, and Gatekeeper evidence through the release archive / signed closure flow.
 2. Produce signed Windows artifacts and real Windows smoke reports before changing Windows wording.
 3. Fill Windows smoke and native picker smoke evidence from launched or packaged app runs, archive each with its summary and archive manifest, and keep the release archive / signed closure flow pointed at those reviewed archive manifests.
 4. Continue toward a compatible live third-party extension source: Phase 105 archived invitation materials after Phase 104 reported `compatible-source-not-found`, Phase 106 typed those invitation summaries, Phase 102 archived a real public adjacent OpenPets candidate as `incompatible-package-model`, and Phase 103 provides the bridge for a future compatible `plugin.json` package to pass Phase 100 intake and enter Phase 99 community-source evidence.
 5. Continue TypeScript migration into other high-drift main-process adapter boundaries after the plugin submission evidence and packaged runtime/report boundaries.
+6. Keep the plugin host checkpoint intact: further `PluginService` splitting needs a new independently testable or security-sensitive cluster, not another mechanical extraction pass.
 
 ## Documentation Map
 

@@ -57,6 +57,7 @@ Historical documents are intentionally retained. When facts conflict, prefer cur
 
 - Keep README files short and user-facing.
 - Keep HANDOFF focused on current state, commands, facts to preserve, and next steps.
+- Keep `development-summary.md` and `project-status-review.md` aligned with the current branch version/date and the live TODO architecture before editing historical docs.
 - Keep project-context compact and valid JSON.
 - Do not update every historical phase/review doc when current facts change.
 - When a new phase changes current capabilities, update only the live docs that carry that fact.
