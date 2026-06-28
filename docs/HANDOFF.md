@@ -96,6 +96,12 @@ Recent landed chat-state facts worth preserving:
 - `AiTalkService` can return `bubbleSegments` while keeping the full assistant reply in the shared transcript.
 - Bubble Chat rebuilds segmented pet dialogue from stored conversation messages instead of owning a second transcript.
 
+Recent desktop interaction facts worth preserving:
+
+- The pet context menu now keeps a compact first level and moves manual pet actions behind a click-open cascaded `动作` submenu.
+- `散步` lives inside that action submenu, while `和宠物聊天` stays as the single first-level chat entry.
+- Context-menu regressions should keep the targeted menu suites green before broader runtime claims are made.
+
 Do not treat this list as a mandate to do everything at once. Pick one milestone, freeze scope, verify, review, then stop.
 
 ## Working Rules For The Next Maintainer

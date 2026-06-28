@@ -15,6 +15,16 @@ This suite protects the desktop pet's core flows:
 - plugin manifest/install/runtime permission boundaries and example plugin smoke paths;
 - shared IPC/channel/cursor/hitbox contracts used across Electron boundaries.
 
+For pet context menu changes, keep targeted regression coverage in:
+
+- `tests/main/ipc-context-menu.test.js`
+- `tests/main/pet-context-menu.test.js`
+- `tests/main/pet-context-menu-window.test.js`
+- `tests/renderer-menu-viewport.test.js`
+
+These tests should continue to lock menu information architecture, cascade
+open/close semantics, edge-aware placement, and renderer hit-testing behavior.
+
 Run `npm run test:core:all` before merging user-facing runtime changes. It runs
 `test:core` plus the Control Center Playwright regression suite.
 

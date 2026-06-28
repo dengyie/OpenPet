@@ -22,7 +22,7 @@ OpenPet is an Electron desktop pet platform with:
 
 ## Current Capability Summary
 
-- Pet behavior: scaling, movement tuning, grounded roaming, home-anchor behavior, bubble timing, and startup preferences.
+- Pet behavior: scaling, movement tuning, grounded roaming, home-anchor behavior, bubble timing, startup preferences, and a compact custom pet context menu with a cascaded manual-action submenu.
 - Actions: pack-owned action config, host-mediated frame import, persistent trigger proposal inbox, review/apply flow for `click`, acknowledgement flow for `manual` and `unbound`, host-owned `triggerRules` for `random` / `state` / `event` with Actions-pane editing, save-before-save preview summaries, strict host validation on edited rule saves, host-owned runtime execution for saved non-click rules, and Creator Studio approved-import proposals queued into the same inbox with provenance.
 - AI: active/draft provider settings, save/test separation, sanitized diagnostics, AI Talk persona/history/memory, and host-owned image generation for Creator Studio.
 - Plugins: explicit `entries.setup`, `entries.commands`, and `entries.services`; short-lived command bridge access; bounded creator-tools asset/action/pack-manifest workflows; dashboard open; loopback health checks; periodic health policy; and cleanup evidence/report tooling.
@@ -41,6 +41,12 @@ npm run check:syntax
 
 Use `docs/testing-strategy.md` when deciding whether a change needs only a
 targeted suite, all core tests, or the full broader regression set.
+
+For pet context menu changes, the targeted regression baseline is:
+
+```bash
+node --test tests/main/ipc-context-menu.test.js tests/main/pet-context-menu.test.js tests/main/pet-context-menu-window.test.js tests/renderer-menu-viewport.test.js
+```
 
 For the current actions and trigger-rule slice, the targeted regression
 baseline is:

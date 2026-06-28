@@ -156,6 +156,7 @@ Current implementation status:
 - Pet double-click opens `BubbleChatWindow` by default.
 - The pet context menu primary chat entry opens `BubbleChatWindow` when available.
 - The pet context menu keeps a single `和宠物聊天` entry and falls back to the standalone desktop chat only when Bubble Chat is unavailable.
+- The pet context menu keeps a compact first level and exposes manual pet actions through a click-open cascaded `动作` submenu; `散步` now lives inside that submenu.
 - The Control Center AI pane labels the desktop window as an extended panel and keeps Bubble Chat as the default lightweight entry.
 
 Out of scope for this convergence pass:
