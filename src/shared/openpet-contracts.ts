@@ -2026,8 +2026,10 @@ export interface AboutInfoViewState {
 }
 
 export interface UpdateAssetViewState {
-  name?: string
-  [key: string]: unknown
+  name: string
+  url: string
+  size: number
+  contentType: string
 }
 
 export interface UpdateCheckViewState {

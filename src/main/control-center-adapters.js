@@ -343,6 +343,17 @@ const createAboutInfoView = (info = {}) => ({
 })
 
 /**
+ * @param {Partial<import('../shared/openpet-contracts').UpdateAssetViewState> | undefined} asset
+ * @returns {import('../shared/openpet-contracts').UpdateAssetViewState}
+ */
+const createUpdateAssetView = (asset = {}) => ({
+  name: typeof asset.name === 'string' ? asset.name : '',
+  url: typeof asset.url === 'string' ? asset.url : '',
+  size: Number.isFinite(Number(asset.size)) ? Math.max(0, Math.round(Number(asset.size))) : 0,
+  contentType: typeof asset.contentType === 'string' ? asset.contentType : ''
+})
+
+/**
  * @param {Partial<UpdateCheckViewState> | undefined} result
  * @returns {UpdateCheckViewState}
  */
@@ -354,7 +365,9 @@ const createUpdateCheckView = (result = {}) => ({
   updateAvailable: Boolean(result.updateAvailable),
   prerelease: Boolean(result.prerelease),
   releaseUrl: typeof result.releaseUrl === 'string' ? result.releaseUrl : '',
-  assets: Array.isArray(result.assets) ? result.assets : [],
+  assets: Array.isArray(result.assets)
+    ? /** @type {import('../shared/openpet-contracts').UpdateAssetViewState[]} */ (result.assets.map((asset) => createUpdateAssetView(asset || {})))
+    : [],
   checkedAt: typeof result.checkedAt === 'string' ? result.checkedAt : '',
   message: typeof result.message === 'string' ? result.message : ''
 })

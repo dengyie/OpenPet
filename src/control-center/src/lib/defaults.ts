@@ -16,6 +16,7 @@ import type {
   PetPacksViewState,
   ServiceLogEntry,
   ServiceStatusViewState,
+  UpdateAssetViewState,
   UpdateCheckViewState
 } from '../../../shared/openpet-contracts'
 import {
@@ -462,8 +463,20 @@ export const cloneAboutInfo = (info: Partial<AboutInfoViewState> | null | undefi
   }
 })
 
+export const cloneUpdateAsset = (asset: Partial<UpdateAssetViewState> | null | undefined): UpdateAssetViewState => {
+  const size = Number(asset?.size)
+  return {
+    name: typeof asset?.name === 'string' ? asset.name : '',
+    url: typeof asset?.url === 'string' ? asset.url : '',
+    size: Number.isFinite(size) ? Math.max(0, Math.round(size)) : 0,
+    contentType: typeof asset?.contentType === 'string' ? asset.contentType : ''
+  }
+}
+
 export const cloneUpdateCheck = (result: Partial<UpdateCheckViewState> | null | undefined): UpdateCheckViewState => ({
   ...defaultUpdateCheck,
   ...(result || {}),
-  assets: Array.isArray(result?.assets) ? result.assets : []
+  assets: Array.isArray(result?.assets)
+    ? result.assets.map((asset) => cloneUpdateAsset(asset ?? {}))
+    : []
 })

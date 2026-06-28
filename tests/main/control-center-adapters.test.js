@@ -447,3 +447,62 @@ test('about adapters provide stable defaults for partial info and update checks'
     message: 'Update feed is not configured.'
   })
 })
+
+test('createUpdateCheckView normalizes update assets to a stable renderer-safe shape', () => {
+  assert.deepEqual(createUpdateCheckView({
+    status: 'ok',
+    configured: true,
+    currentVersion: '1.0.1',
+    latestVersion: '1.0.2',
+    updateAvailable: true,
+    prerelease: false,
+    releaseUrl: 'https://github.com/dengyie/OpenPet/releases/tag/v1.0.2',
+    assets: [
+      {
+        name: 'OpenPet-1.0.2-mac-arm64.dmg',
+        url: 'https://example.com/OpenPet-1.0.2-mac-arm64.dmg',
+        size: '134799501',
+        contentType: 'application/x-apple-diskimage',
+        extraInternalField: 'ignore-me'
+      },
+      'legacy-asset-string',
+      {
+        name: '',
+        url: 123,
+        size: 'oops'
+      }
+    ],
+    checkedAt: '2026-06-29T00:00:00.000Z',
+    message: 'A newer version is available.'
+  }), {
+    status: 'ok',
+    configured: true,
+    currentVersion: '1.0.1',
+    latestVersion: '1.0.2',
+    updateAvailable: true,
+    prerelease: false,
+    releaseUrl: 'https://github.com/dengyie/OpenPet/releases/tag/v1.0.2',
+    assets: [
+      {
+        name: 'OpenPet-1.0.2-mac-arm64.dmg',
+        url: 'https://example.com/OpenPet-1.0.2-mac-arm64.dmg',
+        size: 134799501,
+        contentType: 'application/x-apple-diskimage'
+      },
+      {
+        name: '',
+        url: '',
+        size: 0,
+        contentType: ''
+      },
+      {
+        name: '',
+        url: '',
+        size: 0,
+        contentType: ''
+      }
+    ],
+    checkedAt: '2026-06-29T00:00:00.000Z',
+    message: 'A newer version is available.'
+  })
+})
