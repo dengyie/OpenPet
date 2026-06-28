@@ -781,7 +781,7 @@
           followUp.reason
             ? `<p>${escapeHtml(followUp.reason)}</p>`
             : '',
-          renderFollowUpCta(followUp, { tagName: 'p' }),
+          renderSurfaceCta(followUp, { tagName: 'p' }),
           '</div>'
         ].join('')
       }
@@ -1064,6 +1064,7 @@
         const guidance = run?.workflowGuidance || {}
         const generation = guidance.generation || {}
         const importGuidance = guidance.import || {}
+        const handoff = importGuidance.handoff || {}
         const followUp = importGuidance.followUp || {}
         const reviewSummary = importGuidance.reviewSummary || {}
         const usageSummary = generation.usageSummary || {}
@@ -1090,6 +1091,11 @@
                   : '',
                 '</div>'
               ].join('')
+          handoff.ready && handoff.reason
+            ? `<p>${escapeHtml(handoff.reason)}</p>`
+            : '',
+          handoff.ready
+            ? renderSurfaceCta(handoff, { tagName: 'p' })
             : '',
           importGuidance.triggerProposalSummary
             ? `<p>${escapeHtml(importGuidance.triggerProposalSummary)}</p>`
@@ -1100,7 +1106,7 @@
           followUp.reason
             ? `<p>${escapeHtml(followUp.reason)}</p>`
             : '',
-          renderFollowUpCta(followUp, { tagName: 'p' }),
+          renderSurfaceCta(followUp, { tagName: 'p' }),
           '</div>'
         ].join('')
       }
@@ -1165,18 +1171,18 @@
         ].join('')
       }
 
-      const formatFollowUpCta = (followUp = {}) => {
-        if (followUp.surface === 'control-center' && followUp.location) {
-          return `Continue in Control Center at ${followUp.location}.`
+      const formatSurfaceCta = (target = {}) => {
+        if (target.surface === 'control-center' && target.location) {
+          return `Continue in Control Center at ${target.location}.`
         }
-        if (followUp.surface === 'openpet') {
+        if (target.surface === 'openpet') {
           return 'Continue in OpenPet.'
         }
         return ''
       }
 
-      const renderFollowUpCta = (followUp = {}, { tagName = 'p' } = {}) => {
-        const cta = formatFollowUpCta(followUp)
+      const renderSurfaceCta = (target = {}, { tagName = 'p' } = {}) => {
+        const cta = formatSurfaceCta(target)
         return cta ? `<${tagName}>${escapeHtml(cta)}</${tagName}>` : ''
       }
 
@@ -1284,6 +1290,7 @@
             handoff.payloadJson
               ? `<p>Payload JSON: <code>${escapeHtml(handoff.payloadJson)}</code></p>`
               : '',
+            renderSurfaceCta(handoff, { tagName: 'p' }),
             '</div>'
           ].join('')
         }
@@ -1300,7 +1307,7 @@
             followUp.reason
               ? `<p>${escapeHtml(followUp.reason)}</p>`
               : '',
-            renderFollowUpCta(followUp, { tagName: 'p' }),
+            renderSurfaceCta(followUp, { tagName: 'p' }),
             renderImportedResultCard(run),
             '</div>'
           ].join('')
@@ -1358,7 +1365,7 @@
           followUp.reason
             ? `<span>${escapeHtml(followUp.reason)}</span>`
             : '',
-          renderFollowUpCta(followUp, { tagName: 'span' }),
+          renderSurfaceCta(followUp, { tagName: 'span' }),
           '</div>',
           '</div>'
         ].join('')
