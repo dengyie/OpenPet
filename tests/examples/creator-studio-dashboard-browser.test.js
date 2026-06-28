@@ -568,6 +568,124 @@ const seedImportedActionRunWithoutTriggerSubmission = async (dataDir) => {
   return run
 }
 
+const seedLegacyFailedRunWithoutTask = (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      prompt: 'Legacy failed provider run should allow retry.',
+      originalPrompt: 'Legacy failed provider run should allow retry.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-failed-retry',
+          name: 'Legacy Failed Retry',
+          motionPrompt: 'placeholder',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T09:30:00.000Z'
+  })
+  const failedRun = updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'failed',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'generate',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      backendStatus: {
+        backend: 'provider',
+        state: 'failed',
+        message: 'Provider queue overloaded',
+        updatedAt: '2026-06-28T09:31:00.000Z'
+      },
+      recovery: {
+        canRetryGeneration: true,
+        backend: {
+          backend: 'provider',
+          state: 'failed'
+        },
+        failureKind: 'provider',
+        failureReason: 'Provider queue overloaded',
+        guidance: 'Review the provider failure details, then retry generation on this same run when the backend is ready.',
+        qaFocus: 'No QA artifacts were produced before the generation failure.'
+      },
+      error: 'Provider queue overloaded'
+    },
+    now: () => '2026-06-28T09:31:00.000Z'
+  })
+  const { generationTask: _generationTask, ...legacyFailedRun } = failedRun
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyFailedRun,
+      backend: 'cloud',
+      input: {
+        ...failedRun.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  return run
+}
+
+const seedLegacyReadyForReviewActionRunWithoutTask = async (dataDir) => {
+  const run = await seedImportedActionRun(dataDir)
+  const qaPath = path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json')
+  fs.writeFileSync(qaPath, `${JSON.stringify({
+    ok: true,
+    actionId: 'shy-spin',
+    frameCount: 1,
+    frameWidth: 192,
+    frameHeight: 208,
+    frames: [{
+      fileName: '0001.png',
+      width: 192,
+      height: 208,
+      visiblePixels: 3200
+    }],
+    warnings: [],
+    repairs: [],
+    playback: {
+      frameDurationsMs: [160]
+    }
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'review',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      triggerProposalSubmission: undefined,
+      importedActionId: ''
+    },
+    now: () => '2026-06-28T09:40:00.000Z'
+  })
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyReviewRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyReviewRun,
+      input: {
+        ...persisted.input,
+        backend: 'local'
+      }
+    }
+  })
+  return run
+}
+
 test('creator studio dashboard drives a single-action fixture run to the host import handoff', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-'))
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
@@ -1577,6 +1695,51 @@ test('creator studio dashboard syncs legacy pre-task run controls when loading a
     assert.match(nextStepText, /Start from a natural-language action prompt to draft a Creator Studio task\./i)
     assert.equal(await page.locator('#confirm-button').isDisabled(), true)
     assert.doesNotMatch(actionLaneText, /Dashboard action: Confirm task/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables retry generation for failed legacy runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-failed-retry-'))
+  const run = seedLegacyFailedRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const recoveryText = await page.locator('#recovery-panel').textContent()
+    assert.match(recoveryText, /Generation failed/i)
+    assert.match(recoveryText, /Provider queue overloaded/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), false)
+    assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables approval for reviewable legacy action runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-review-approve-'))
+  const run = await seedLegacyReadyForReviewActionRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const reviewText = await page.locator('#action-review-panel').textContent()
+    assert.match(reviewText, /Review status: pending/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), true)
+    assert.equal(await page.locator('#approve-button').isDisabled(), false)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

@@ -1431,9 +1431,9 @@
             stopPlaybackPreview()
           }
           $('confirm-button').disabled = buttonStates.confirm ? !buttonStates.confirm.enabled : true
-          $('generate-button').disabled = true
+          $('generate-button').disabled = buttonStates.generate ? !buttonStates.generate.enabled : true
           $('generate-button').textContent = buttonStates.generate?.label || defaultGenerateLabel(run)
-          $('approve-button').disabled = true
+          $('approve-button').disabled = buttonStates.approve ? !buttonStates.approve.enabled : true
           return
         }
         const action = run.generationTask.actions[0]
