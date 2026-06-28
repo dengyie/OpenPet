@@ -6,6 +6,7 @@ const reuseExistingControlCenterServer = process.env.OPENPET_CONTROL_CENTER_REUS
 
 module.exports = defineConfig({
   testDir: './tests/control-center',
+  testMatch: /.*\.spec\.[jt]s/,
   timeout: 30_000,
   expect: {
     timeout: 5_000
