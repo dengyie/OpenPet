@@ -688,6 +688,17 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: '检查图片健康' }).click()
     await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('当前保存的图片 Model 未出现在 /models 返回列表中')
     await expect(page.getByTestId('image-model-discovery')).toContainText('当前保存的图片 Model 未出现在探测列表中')
+
+    await page.getByLabel('图片 Model').fill('draft-only-image-model')
+    await expect(imageProviderSection.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片配置草稿未保存')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('当前有未保存的图片草稿')
+    await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
+
+    await page.getByLabel('图片 Model').fill('missing-image-model')
+    await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-draft-only-9999')
+    await expect(imageProviderSection.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片密钥草稿未保存')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('当前有未保存的图片草稿')
+    await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
   })
 
   test('shows chat provider model discovery results in the demo API', async ({ page }) => {
@@ -714,6 +725,15 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前保存的聊天 Model 未出现在 /models 返回列表中')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('当前保存的聊天 Model 未出现在探测列表中')
+
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('draft-only-chat-model')
+    await expect(chatProviderSection.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('配置草稿未保存')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
+
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('missing-chat-model')
+    await apiKeyRow.getByPlaceholder('输入新密钥覆盖').fill('sk-chat-draft-only-9999')
+    await expect(chatProviderSection.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('密钥草稿未保存')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
   })
 
   test('shows chat model compatibility hints for default and custom models in the demo API', async ({ page }) => {
@@ -844,6 +864,27 @@ test.describe('Control Center smoke', () => {
 
     await filterSelect.selectOption('conversation')
     await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:legacy-cat:main')
+  })
+
+  test('rebinds AI trace conversation filter after switching the active pet pack', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const memorySection = await expandAiSection(page, '长期记忆')
+    const filterSelect = memorySection.getByTestId('ai-trace-filter-select')
+
+    await filterSelect.selectOption('conversation')
+    await expect(filterSelect).toHaveValue('conversation')
+    await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:legacy-cat:main')
+
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('button', { name: '启用' }).filter({ hasText: /^启用$/ }).nth(0).click()
+    await expect(page.locator('.status-line')).toContainText('已启用 Citrus Cat')
+
+    await page.getByRole('button', { name: 'AI' }).click()
+    const refreshedMemorySection = await expandAiSection(page, '长期记忆')
+    await expect(refreshedMemorySection.getByTestId('ai-trace-filter-select')).toHaveValue('conversation')
+    await expect(refreshedMemorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:citrus-cat:main')
   })
 
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {

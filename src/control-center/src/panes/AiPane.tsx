@@ -238,7 +238,11 @@ const describeChatModelCompatibility = (baseUrl: string, model: string) => {
   }
 }
 
-const renderImageModelDiscovery = (result: ImageGenerationHealthCheckResult | null, currentModel: string) => {
+const renderImageModelDiscovery = (
+  result: ImageGenerationHealthCheckResult | null,
+  currentModel: string,
+  hasUnsavedDraft: boolean
+) => {
   const normalizedCurrentModel = String(currentModel || '').trim()
   if (!result) {
     return (
@@ -255,8 +259,9 @@ const renderImageModelDiscovery = (result: ImageGenerationHealthCheckResult | nu
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="image-model-discovery">
         <strong>模型列表探测成功</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的模型列表结果仍对应已保存配置，保存后请重新检查图片健康。</span> : null}
         <span>共发现 {discoveredModels.length} 个模型。</span>
-        <span>{currentModelIncluded ? '已包含当前模型' : '当前保存的图片 Model 未出现在探测列表中'}</span>
+        <span>{hasUnsavedDraft ? '当前草稿模型是否在列表中仍未重新验证' : (currentModelIncluded ? '已包含当前模型' : '当前保存的图片 Model 未出现在探测列表中')}</span>
         {discoveredModels.length ? (
           <div className="model-chip-list">
             {discoveredModels.map((modelName) => (
@@ -274,6 +279,7 @@ const renderImageModelDiscovery = (result: ImageGenerationHealthCheckResult | nu
     return (
       <div className="provider-feedback" data-testid="image-model-discovery">
         <strong>模型列表探测不可用</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的探测状态仍对应已保存配置，保存后请重新检查图片健康。</span> : null}
         <span>当前 Provider 可达，但没有开放 /models；请手动确认模型名称。</span>
       </div>
     )
@@ -282,12 +288,13 @@ const renderImageModelDiscovery = (result: ImageGenerationHealthCheckResult | nu
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="image-model-discovery">
       <strong>模型列表探测未返回结果</strong>
+      {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的探测状态仍对应已保存配置。</span> : null}
       <span>{result.message || '本次健康检查没有拿到模型列表。'}</span>
     </div>
   )
 }
 
-const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null) => {
+const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null, hasUnsavedDraft: boolean) => {
   const estimatedCost = result?.usage?.estimatedCostUsd
   const hasUsage = result != null && result.usage != null && typeof estimatedCost === 'number'
 
@@ -305,13 +312,18 @@ const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null
   return (
     <div className={`provider-feedback ${result?.ok ? 'ok' : ''}`} data-testid="image-usage-summary">
       <strong>使用量摘要</strong>
+      {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的 usage 结果仍对应已保存配置，保存后请重新检查图片健康。</span> : null}
       <span>{`当前健康检查返回的 usage.estimatedCostUsd：USD ${formattedCost}`}</span>
       <span>这只是健康检查返回值，不代表完整生成流程的真实计费结算。</span>
     </div>
   )
 }
 
-const renderChatModelDiscovery = (result: AiConnectionTestResult | null, currentModel: string) => {
+const renderChatModelDiscovery = (
+  result: AiConnectionTestResult | null,
+  currentModel: string,
+  hasUnsavedDraft: boolean
+) => {
   const normalizedCurrentModel = String(currentModel || '').trim()
   if (!result) {
     return (
@@ -328,8 +340,9 @@ const renderChatModelDiscovery = (result: AiConnectionTestResult | null, current
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="chat-model-discovery">
         <strong>模型列表探测成功</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的聊天草稿；下面的模型列表结果仍对应已保存配置，保存后请重新测试已保存配置。</span> : null}
         <span>共发现 {discoveredModels.length} 个模型。</span>
-        <span>{currentModelIncluded ? '已包含当前模型' : '当前保存的聊天 Model 未出现在探测列表中'}</span>
+        <span>{hasUnsavedDraft ? '当前草稿模型是否在列表中仍未重新验证' : (currentModelIncluded ? '已包含当前模型' : '当前保存的聊天 Model 未出现在探测列表中')}</span>
         {discoveredModels.length ? (
           <div className="model-chip-list">
             {discoveredModels.map((modelName) => (
@@ -347,6 +360,7 @@ const renderChatModelDiscovery = (result: AiConnectionTestResult | null, current
     return (
       <div className="provider-feedback" data-testid="chat-model-discovery">
         <strong>模型列表探测不可用</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的聊天草稿；下面的探测状态仍对应已保存配置，保存后请重新测试已保存配置。</span> : null}
         <span>当前 Provider 可达，但没有开放 /models；请手动确认模型名称。</span>
       </div>
     )
@@ -355,6 +369,7 @@ const renderChatModelDiscovery = (result: AiConnectionTestResult | null, current
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="chat-model-discovery">
       <strong>模型列表探测未返回结果</strong>
+      {hasUnsavedDraft ? <span>当前有未保存的聊天草稿；下面的探测状态仍对应已保存配置。</span> : null}
       <span>{result.message || '本次连接测试没有拿到模型列表。'}</span>
     </div>
   )
@@ -484,6 +499,7 @@ export interface AiPaneProps {
   hasUnsavedConfigChanges: boolean
   hasUnsavedApiKeyDraft: boolean
   hasUnsavedImageGenerationChanges: boolean
+  hasUnsavedImageApiKeyDraft: boolean
   apiKeyDraft: string
   setApiKeyDraft: (value: string) => void
   imageApiKeyDraft: string
@@ -558,6 +574,7 @@ export function AiPane({
   hasUnsavedConfigChanges,
   hasUnsavedApiKeyDraft,
   hasUnsavedImageGenerationChanges,
+  hasUnsavedImageApiKeyDraft,
   apiKeyDraft,
   setApiKeyDraft,
   imageApiKeyDraft,
@@ -603,9 +620,15 @@ export function AiPane({
     hasUnsavedConfigChanges ? '配置草稿未保存' : '',
     hasUnsavedApiKeyDraft ? '密钥草稿未保存' : ''
   ].filter(Boolean).join(' · ')
+  const imageDraftSummary = [
+    hasUnsavedImageGenerationChanges ? '图片配置草稿未保存' : '',
+    hasUnsavedImageApiKeyDraft ? '图片密钥草稿未保存' : ''
+  ].filter(Boolean).join(' · ')
   const imageTargetSummary = `${activeImageGenerationConfig.provider} · ${activeImageGenerationConfig.baseUrl} · ${activeImageGenerationConfig.model} · ${activeImageGenerationConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
   const imageModelCompatibility = describeImageModelCompatibility(imageGenerationConfig.baseUrl, imageGenerationConfig.model)
   const chatModelCompatibility = describeChatModelCompatibility(config.baseUrl, config.model)
+  const hasUnsavedChatProbeInputs = hasUnsavedConfigChanges || hasUnsavedApiKeyDraft
+  const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
   const applyChatProviderPreset = (preset: typeof chatProviderPresets[number]) => onChange({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
@@ -778,7 +801,7 @@ export function AiPane({
           </div>
         ) : null}
 
-        {renderChatModelDiscovery(connectionTestResult, config.model)}
+        {renderChatModelDiscovery(connectionTestResult, config.model, hasUnsavedChatProbeInputs)}
 
         <div className="provider-feedback" data-testid="chat-model-compatibility">
           <strong>{chatModelCompatibility.title}</strong>
@@ -820,7 +843,7 @@ export function AiPane({
 
           <div className="readonly-row">
             <strong>图片草稿状态</strong>
-            <span>{hasUnsavedImageGenerationChanges ? '图片配置草稿未保存；健康检查使用当前已保存配置。' : '当前没有未保存的图片配置修改'}</span>
+            <span>{imageDraftSummary ? `${imageDraftSummary}；健康检查使用当前已保存配置。` : '当前没有未保存的图片配置修改'}</span>
           </div>
 
           <div className="readonly-row">
@@ -861,9 +884,9 @@ export function AiPane({
             </div>
           ) : null}
 
-          {renderImageModelDiscovery(imageHealthResult, imageGenerationConfig.model)}
+          {renderImageModelDiscovery(imageHealthResult, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
 
-          {renderImageUsageSummary(imageHealthResult)}
+          {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
 
           <div className="provider-feedback" data-testid="image-model-compatibility">
             <strong>{imageModelCompatibility.title}</strong>
