@@ -149,6 +149,25 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '更新状态' })).toContainText('Update feed is not configured.')
   })
 
+  test('refreshes AI persona and memory sections when the active pet pack changes', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const memorySection = page.locator('[data-testid="ai-memory-profile"]')
+    const personaSection = await expandAiSection(page, 'Pet Persona Override')
+    await expect(memorySection).toContainText('Legacy Cat · legacy-cat')
+    await expect(personaSection).toContainText('当前激活宠物包：Legacy Cat · legacy-cat')
+
+    await page.evaluate(async () => {
+      const api = window.controlCenterAPI
+      if (!api?.setActivePetPack) throw new Error('controlCenterAPI.setActivePetPack is unavailable')
+      await api.setActivePetPack('citrus-cat')
+    })
+
+    await expect(memorySection).toContainText('Citrus Cat · citrus-cat')
+    await expect(personaSection).toContainText('当前激活宠物包：Citrus Cat · citrus-cat')
+  })
+
   test('applies an action trigger proposal through the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Actions' }).click()

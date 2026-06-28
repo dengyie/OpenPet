@@ -215,6 +215,9 @@ const createOpenPetRuntime = ({
 
   registerCursorRepair({ cursorAssetService, petService, appLogService })
 
+  let ipcRuntimeHelpers = {
+    broadcastActivePetPackChanged: () => {}
+  }
   const pluginServices = createPluginServices({
     app,
     projectRoot,
@@ -237,7 +240,8 @@ const createOpenPetRuntime = ({
     createPluginGithubImportService: factories.createPluginGithubImportService,
     createPluginService: factories.createPluginService,
     createCatalogService: factories.createCatalogService,
-    reloadAndSendAnimations
+    reloadAndSendAnimations,
+    onActivePetPackChanged: () => ipcRuntimeHelpers.broadcastActivePetPackChanged({ source: 'plugin-service:onPetPackActivated' })
   })
   pluginService = pluginServices.pluginService
   setCatalogService(pluginServices.catalogService)
@@ -250,7 +254,7 @@ const createOpenPetRuntime = ({
   syncLoginItemSettings(petService.getSettings().autoStart)
   triggerRuleRuntimeService.start()
 
-  registerIpcHandlers({
+  ipcRuntimeHelpers = registerIpcHandlers({
     getPetWindow,
     petService,
     petPackService,
@@ -279,7 +283,7 @@ const createOpenPetRuntime = ({
     createSettingsWindow: () => createSettingsWindow(getPetWindow()),
     petMovementPolicy,
     petChatWindowService
-  })
+  }) || ipcRuntimeHelpers
 
   let petWindow = createWindow({ load: false })
   setPetWindow(petWindow)

@@ -42,7 +42,8 @@ const createPluginServices = ({
   createPluginGithubImportService,
   createPluginService,
   createCatalogService,
-  reloadAndSendAnimations
+  reloadAndSendAnimations,
+  onActivePetPackChanged = () => {}
 }) => {
   const pluginDir = path.join(app.getPath('userData'), 'plugins')
   const bundledCreatorStudioDir = path.join(projectRoot, 'examples', 'plugins', 'creator-studio')
@@ -80,6 +81,7 @@ const createPluginServices = ({
     onPetPackActivated: () => {
       reloadAndSendAnimations(getPetWindow, petService)
       triggerRuleRuntimeService?.refresh?.()
+      onActivePetPackChanged()
     },
     selectCreatorAssetFrameFolder: async () => {
       const selected = await dialog.showOpenDialog({

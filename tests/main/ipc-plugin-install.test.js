@@ -1940,8 +1940,16 @@ test('pet-packs:inspect-directory opens native folder or zip picker and delegate
   assert.deepEqual(dialogCalls[0].filters[0], { name: 'Pet Pack Package', extensions: ['zip'] })
 })
 
-test('pet pack mutation handlers return refreshed pet pack views and active animations', async () => {
+test('pet pack mutation handlers broadcast active pack refresh to control center and chat surfaces', async () => {
   const ipcMain = createIpcMainStub()
+  const legacyPack = {
+    id: 'legacy-cat',
+    displayName: 'Legacy Cat',
+    version: '1.0.0',
+    source: 'built-in',
+    rootPath: '/packs/legacy-cat',
+    active: 1
+  }
   const pack = {
     id: 'doro',
     displayName: 'Doro',
@@ -1965,16 +1973,13 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
     provenance: { sourceUrl: 'https://example.com/doro', originalFormat: 'directory', rawPath: '/Users/mango/private' },
     conflict: { installed: 1, decision: 'upgrade', requiresReview: '', installedVersion: '0.9.0', incomingVersion: '1.0.0' }
   }
-  const petPacks = { activePackId: 'doro', packs: [activePack] }
   const animations = { defaultAction: 'idle', clickAction: 'happy', actions: [{ id: 'idle', label: 'Idle' }] }
-  const normalizedActivePack = {
+  const normalizedPack = {
     id: 'doro',
     displayName: 'Doro',
     version: '1.0.0',
     source: 'bundled',
     rootPath: '/packs/doro',
-    active: true,
-    provenance: { sourceUrl: 'https://example.com/doro', originalFormat: 'directory' },
     actionCount: 4,
     previewAction: {
       id: 'idle',
@@ -1984,7 +1989,12 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
       frameMs: 120,
       frameDurations: [120, 0]
     },
-    blockStatus: { blocked: false, reasons: ['ok'] },
+    blockStatus: { blocked: false, reasons: ['ok'] }
+  }
+  const normalizedActivePack = {
+    ...normalizedPack,
+    active: true,
+    provenance: { sourceUrl: 'https://example.com/doro', originalFormat: 'directory' },
     conflict: {
       installed: true,
       decision: 'upgrade',
@@ -1993,11 +2003,21 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
       incomingVersion: '1.0.0'
     }
   }
+  const normalizedLegacyPack = {
+    id: 'legacy-cat',
+    displayName: 'Legacy Cat',
+    version: '1.0.0',
+    source: 'built-in',
+    rootPath: '/packs/legacy-cat',
+    active: true
+  }
   const calls = []
   const petWindowMessages = []
-  const chatStateChanges = []
-  const bubbleRefreshCalls = []
   const controlCenterMessages = []
+  const petChatStateChanges = []
+  const bubbleRefreshCalls = []
+  const rendererEvents = []
+  let currentPetPacks = { activePackId: 'legacy-cat', packs: [legacyPack] }
   const services = createRequiredServices({
     pluginInstallService: {
       inspectPluginPackage: () => ({}),
@@ -2024,6 +2044,12 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
       isDestroyed: () => false,
       webContents: {
         send: (...args) => petWindowMessages.push(args)
+      },
+      settingsWindow: {
+        isDestroyed: () => false,
+        webContents: {
+          send: (...args) => controlCenterMessages.push(args)
+        }
       }
     }),
     browserWindowService: {
@@ -2037,37 +2063,46 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
       }]
     },
     petPackService: {
-      listPacks: () => petPacks,
+      listPacks: () => currentPetPacks,
       inspectPackDirectory: () => ({}),
       inspectPackSource: () => ({}),
       clearPendingSelection: () => ({ ok: true }),
       importPack: (selectionId) => {
         calls.push(['import', selectionId])
+        currentPetPacks = { activePackId: 'doro', packs: [activePack, { ...legacyPack, active: 0 }] }
         return { pack }
       },
       exportPack: () => ({}),
       setActivePack: (packId) => {
         calls.push(['set-active', packId])
+        currentPetPacks = { activePackId: 'doro', packs: [activePack, { ...legacyPack, active: 0 }] }
         return { activePackId: packId, pack: activePack }
       },
       removePack: (packId) => {
         calls.push(['remove', packId])
-        return {}
+        currentPetPacks = { activePackId: 'legacy-cat', packs: [legacyPack] }
+        return { removedPackId: packId }
       }
     },
     aiTalkService: {
-      getPersonaProfile: () => ({ petPackId: 'doro', petPackDisplayName: 'Doro' }),
-      getConversation: () => [{ id: 'a1', role: 'assistant', content: 'hi from doro', createdAt: '2026-06-27T00:00:00.000Z' }]
+      getPersonaProfile: () => {
+        const activePackId = currentPetPacks.activePackId
+        return {
+          petPackId: activePackId,
+          petPackDisplayName: activePackId === 'doro' ? 'Doro' : 'Legacy Cat'
+        }
+      },
+      getConversation: () => ([{ id: `message:${currentPetPacks.activePackId}`, role: 'assistant', content: `hello from ${currentPetPacks.activePackId}` }])
     },
     petChatWindowService: {
       getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true }),
-      sendStateChanged: (state) => chatStateChanges.push(state)
+      sendStateChanged: (state) => petChatStateChanges.push(state)
     },
     petBubbleChatWindowService: {
-      getState: () => ({ visible: true, hasWindow: true }),
-      refreshItems: (payload) => {
-        bubbleRefreshCalls.push(payload)
-        return { visible: true, items: payload.conversationMessages }
+      getState: () => ({ visible: false, hasWindow: true }),
+      rebuildItems: ({ conversationMessages, noticeItems, reason }) => {
+        bubbleRefreshCalls.push({ conversationMessages, noticeItems, reason })
+        return { visible: false, hasWindow: true }
       }
     },
     ipcMainService: ipcMain
@@ -2076,58 +2111,53 @@ test('pet pack mutation handlers return refreshed pet pack views and active anim
   const importResult = await ipcMain.handlers.get(IPC.PET_PACKS_IMPORT)(null, { selectionId: 'selection-doro' })
   const activeResult = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)({
     sender: {
-      send: (...args) => controlCenterMessages.push(args)
+      send: (...args) => rendererEvents.push(args)
     }
   }, { packId: 'doro' })
   const removeResult = await ipcMain.handlers.get(IPC.PET_PACKS_REMOVE)(null, { packId: 'doro' })
 
   assert.deepEqual(importResult, {
-    pack: {
-      id: 'doro',
-      displayName: 'Doro',
-      version: '1.0.0',
-      source: 'bundled',
-      rootPath: '/packs/doro',
-      actionCount: 4,
-      previewAction: {
-        id: 'idle',
-        frameCount: 4,
-        frameWidth: 64,
-        frameHeight: 64,
-        frameMs: 120,
-        frameDurations: [120, 0]
-      },
-      blockStatus: { blocked: false, reasons: ['ok'] }
-    },
-    petPacks: { activePackId: 'doro', packs: [normalizedActivePack] },
+    pack: normalizedPack,
+    petPacks: { activePackId: 'doro', packs: [normalizedActivePack, { ...normalizedLegacyPack, active: false }] },
     animations
   })
   assert.deepEqual(activeResult, {
     activePackId: 'doro',
     pack: normalizedActivePack,
-    petPacks: { activePackId: 'doro', packs: [normalizedActivePack] },
+    petPacks: { activePackId: 'doro', packs: [normalizedActivePack, { ...normalizedLegacyPack, active: false }] },
     animations
   })
-  assert.deepEqual(removeResult, { petPacks: { activePackId: 'doro', packs: [normalizedActivePack] } })
+  assert.deepEqual(removeResult, { petPacks: { activePackId: 'legacy-cat', packs: [normalizedLegacyPack] } })
   assert.deepEqual(calls, [
     ['import', 'selection-doro'],
     ['set-active', 'doro'],
     ['remove', 'doro']
   ])
-  assert.deepEqual(bubbleRefreshCalls, [{
-    conversationMessages: [{ id: 'a1', role: 'assistant', content: 'hi from doro', createdAt: '2026-06-27T00:00:00.000Z' }],
-    reason: 'pet-pack-set-active'
-  }])
-  assert.equal(chatStateChanges.length, 1)
-  assert.deepEqual(chatStateChanges[0].petPack, { id: 'doro', displayName: 'Doro' })
-  assert.equal(controlCenterMessages.length, 1)
-  assert.equal(controlCenterMessages[0][0], IPC.PET_PACKS_ACTIVE_CHANGED)
-  assert.equal(controlCenterMessages[0][1].activePackId, 'doro')
-  assert.deepEqual(controlCenterMessages[0][1].pack, activePack)
-  assert.deepEqual(controlCenterMessages[0][1].petChatState.petPack, { id: 'doro', displayName: 'Doro' })
+  assert.deepEqual(rendererEvents.map(([channel, payload]) => [channel, payload.activePackId]), [
+    [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro']
+  ])
+  assert.deepEqual(rendererEvents[0][1].petChatState.petPack, { id: 'doro', displayName: 'Doro' })
   assert.equal(petWindowMessages.length, 2)
   assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
   assert.equal(petWindowMessages[1][0], IPC.PET_ANIMATIONS_CHANGED)
+  assert.deepEqual(controlCenterMessages.map(([channel, payload]) => [channel, payload.activePackId || payload.petChatState?.petPack?.id]), [
+    [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro'],
+    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'doro'],
+    [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro'],
+    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'doro'],
+    [IPC.PET_PACKS_ACTIVE_CHANGED, 'legacy-cat'],
+    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'legacy-cat']
+  ])
+  assert.deepEqual(petChatStateChanges.map((state) => state.petPack.id), ['doro', 'doro', 'legacy-cat'])
+  assert.deepEqual(bubbleRefreshCalls.map((call) => ({
+    reason: call.reason,
+    noticeItems: call.noticeItems,
+    firstMessage: call.conversationMessages[0]?.content
+  })), [
+    { reason: 'active-pet-pack-changed:pet-packs:import', noticeItems: [], firstMessage: 'hello from doro' },
+    { reason: 'active-pet-pack-changed:pet-packs:set-active', noticeItems: [], firstMessage: 'hello from doro' },
+    { reason: 'active-pet-pack-changed:pet-packs:remove', noticeItems: [], firstMessage: 'hello from legacy-cat' }
+  ])
 })
 
 test('pet-packs:export opens native output folder picker and delegates selected pack id', async () => {

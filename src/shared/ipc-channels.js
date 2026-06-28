@@ -65,6 +65,7 @@ const IPC = Object.freeze({
   PET_PACKS_SET_ACTIVE: 'pet-packs:set-active',
   PET_PACKS_ACTIVE_CHANGED: 'pet-packs:active-changed',
   PET_PACKS_REMOVE: 'pet-packs:remove',
+  CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED: 'control-center:active-pet-pack-changed',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
   AI_SAVE_API_KEY: 'ai:save-api-key',

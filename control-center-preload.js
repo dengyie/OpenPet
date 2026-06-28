@@ -33,6 +33,7 @@ const IPC = {
   PET_PACKS_SET_ACTIVE: 'pet-packs:set-active',
   PET_PACKS_ACTIVE_CHANGED: 'pet-packs:active-changed',
   PET_PACKS_REMOVE: 'pet-packs:remove',
+  CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED: 'control-center:active-pet-pack-changed',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
   AI_SAVE_API_KEY: 'ai:save-api-key',
@@ -130,6 +131,11 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
     return () => ipcRenderer.removeListener(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
   },
   removePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_REMOVE, { packId }),
+  onActivePetPackChanged: (callback) => {
+    const handler = (_event, payload) => callback(payload)
+    ipcRenderer.on(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
+  },
   getAiConfig: () => ipcRenderer.invoke(IPC.AI_GET_CONFIG),
   saveAiConfig: (config) => ipcRenderer.invoke(IPC.AI_SAVE_CONFIG, config),
   saveAiApiKey: (apiKey) => ipcRenderer.invoke(IPC.AI_SAVE_API_KEY, apiKey),

@@ -62,6 +62,14 @@ const sendToPetWindow = (getPetWindow, channel, data) => {
   }
 }
 
+const sendToControlCenterWindow = (getPetWindow, channel, data) => {
+  const petWindow = getPetWindow()
+  const controlCenterWindow = petWindow?.settingsWindow
+  if (controlCenterWindow && !controlCenterWindow.isDestroyed?.()) {
+    controlCenterWindow.webContents?.send?.(channel, data)
+  }
+}
+
 const reloadAndSendAnimations = (getPetWindow, petService) => {
   const animations = petService.reloadAnimations()
   sendToPetWindow(getPetWindow, IPC.PET_ANIMATIONS_CHANGED, animations)
@@ -284,6 +292,27 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   }
 
   const refreshBubbleChatItems = ({ reason = 'refresh' } = {}) => {
+    if (petBubbleChatWindowService?.rebuildItems) {
+      let conversationMessages = []
+      try {
+        conversationMessages = (aiTalkService || aiService)?.getConversation?.('') || []
+      } catch (error) {
+        recordAppLog({
+          scope: 'pet-bubble-chat',
+          level: 'warn',
+          actor: 'system',
+          event: 'pet-bubble-chat.items.refresh-failed',
+          message: 'Pet bubble chat items refresh failed',
+          details: {
+            reason,
+            errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+            errorMessage: sanitizeDiagnosticText(error?.message)
+          }
+        })
+        conversationMessages = []
+      }
+      return petBubbleChatWindowService.rebuildItems({ conversationMessages, noticeItems: [], reason })
+    }
     if (!petBubbleChatWindowService?.refreshItems) return petBubbleChatWindowService?.getState?.() || null
     let conversationMessages = []
     try {
@@ -314,6 +343,20 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       petChatState: state
     })
     return state
+  }
+
+  const broadcastActivePetPackChanged = ({ source = 'pet-pack-change', payload = null } = {}) => {
+    const listedPetPacks = petPackService?.listPacks?.() || { activePackId: '', packs: [] }
+    const nextPetPacks = payload?.petPacks || listedPetPacks
+    const activePackPayload = {
+      ...(payload || {}),
+      activePackId: payload?.activePackId || nextPetPacks?.activePackId || '',
+      petPacks: nextPetPacks
+    }
+    notifyControlCenterActivePetPackChanged(activePackPayload.activePackId)
+    sendToControlCenterWindow(getPetWindow, IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, activePackPayload)
+    refreshPetPackScopedChatState({ reason: `active-pet-pack-changed:${source}` })
+    return activePackPayload
   }
 
   const capturePetBubble = (payload = {}, { notify = true } = {}) => {
@@ -1075,11 +1118,18 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.PET_PACKS_IMPORT, (_event, payload) => {
+    const previousActivePackId = petPackService?.listPacks?.()?.activePackId || ''
     const result = petPackService.importPack(payload.selectionId)
     const petPacks = petPackService.listPacks()
     if (result?.pack?.id && petPacks?.activePackId === result.pack.id) {
       const animations = reloadAndSendAnimations(getPetWindow, petService)
       refreshTriggerRuleRuntime()
+      if (previousActivePackId !== petPacks.activePackId) {
+        broadcastActivePetPackChanged({
+          source: IPC.PET_PACKS_IMPORT,
+          payload: createPetPackMutationResult(result, petPacks, animations)
+        })
+      }
       return createPetPackMutationResult(result, petPacks, animations)
     }
     return createPetPackMutationResult(result, petPacks)
@@ -1100,14 +1150,20 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     refreshTriggerRuleRuntime()
     const animations = petService.getPreviewAnimations()
     const petPacks = petPackService.listPacks()
-    refreshPetPackScopedChatState({ reason: 'pet-pack-set-active' })
-    notifyActivePetPackChanged(event, result)
-    return createPetPackMutationResult(result, petPacks, animations)
+    const mutationResult = createPetPackMutationResult(result, petPacks, animations)
+    notifyActivePetPackChanged(event, mutationResult)
+    broadcastActivePetPackChanged({ source: IPC.PET_PACKS_SET_ACTIVE, payload: mutationResult })
+    return mutationResult
   })
 
   ipcMainService.handle(IPC.PET_PACKS_REMOVE, (_event, payload) => {
+    const previousActivePackId = petPackService?.listPacks?.()?.activePackId || ''
     const result = petPackService.removePack(payload.packId)
-    return createPetPackMutationResult(result, petPackService.listPacks())
+    const mutationResult = createPetPackMutationResult(result, petPackService.listPacks())
+    if (previousActivePackId !== mutationResult.petPacks?.activePackId) {
+      broadcastActivePetPackChanged({ source: IPC.PET_PACKS_REMOVE, payload: mutationResult })
+    }
+    return mutationResult
   })
 
   ipcMainService.handle(IPC.ABOUT_GET_INFO, () => createAboutInfoView(aboutService.getInfo()))
@@ -1161,6 +1217,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     createCatalogBlocklistResult
   })
 
+  return {
+    broadcastActivePetPackChanged
+  }
 }
 
 module.exports = { createPetRendererSettings, normalizeLocalHttpConfig, reloadAndSendAnimations, registerIpcHandlers, triggerAiSemanticAction, executeBehaviorDecision }

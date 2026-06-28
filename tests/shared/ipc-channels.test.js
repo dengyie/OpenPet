@@ -6,6 +6,7 @@ const { IPC } = require('../../src/shared/ipc-channels')
 test('shared IPC contract exports stable frozen channel names', () => {
   assert.equal(IPC.PET_PACKS_SET_ACTIVE, 'pet-packs:set-active')
   assert.equal(IPC.PET_PACKS_ACTIVE_CHANGED, 'pet-packs:active-changed')
+  assert.equal(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'control-center:active-pet-pack-changed')
   assert.equal(IPC.PET_SHOW_CONTEXT_MENU, 'pet:show-context-menu')
   assert.equal(IPC.PET_MENU_COMMAND, 'pet:menu-command')
   assert.equal(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, 'pet:request-focus-for-cursor')

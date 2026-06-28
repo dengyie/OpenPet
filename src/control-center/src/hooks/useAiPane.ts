@@ -335,6 +335,14 @@ export function useAiPane(activeTab = 'ai') {
     }
   }
 
+  const refreshActivePetPackState = async () => {
+    await Promise.all([
+      loadPersonaProfile(),
+      loadMemoryProfile(),
+      loadPetChatState()
+    ])
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
@@ -377,15 +385,12 @@ export function useAiPane(activeTab = 'ai') {
   useEffect(() => {
     const unsubscribe = api.onActivePetPackChanged?.(({ activePackId }) => {
       if (!activePackId) return
-      void loadPersonaProfile().catch(() => {})
-      void loadMemoryProfile().catch(() => {})
-      void loadPetChatState().catch(() => {})
       setGeneratedPersonaDraft(null)
       setPersonaGenerationInstruction('')
-      setStatus('')
+      void refreshActivePetPackAiContext('active-pet-pack-changed').catch(() => {})
     })
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe()
+      unsubscribe?.()
     }
   }, [])
 

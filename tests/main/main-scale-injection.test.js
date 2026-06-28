@@ -24,6 +24,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
   let createdCreatorStudioDefaultFlowDependencies = null
   let createdTriggerRuleRuntimeDependencies = null
   let triggerRuleRuntimeRefreshCalls = 0
+  let activePetPackBroadcastCalls = 0
   let createdAiTalkStorePath = null
   let createdAiTalkDependencies = null
   let bundledPluginSyncDependencies = null
@@ -72,7 +73,12 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
           animationReloadCalls.push({ petWindow: getPetWindow(), petService })
           return { actions: [] }
         },
-        registerIpcHandlers: (dependencies) => { registeredIpcDependencies = dependencies }
+        registerIpcHandlers: (dependencies) => {
+          registeredIpcDependencies = dependencies
+          return {
+            broadcastActivePetPackChanged: () => { activePetPackBroadcastCalls += 1 }
+          }
+        }
       }
     }
 
@@ -240,6 +246,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     assert.equal(animationReloadCalls.length, 1)
     assert.equal(animationReloadCalls[0].petWindow, petWindow)
     assert.equal(triggerRuleRuntimeRefreshCalls, 1)
+    assert.equal(activePetPackBroadcastCalls, 1)
     assert.equal(createdAiTalkStorePath, path.join(__dirname, '..', '.tmp-main-scale-injection', 'ai-talk-store.json'))
     assert.equal(createdAiTalkDependencies.aiService.id, 'ai-service')
     assert.equal(createdAiTalkDependencies.aiTalkStore.id, 'ai-talk-store')
