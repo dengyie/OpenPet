@@ -162,7 +162,7 @@ const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackServ
     }
 
     await waitForSprite(petWindow)
-    petService.say({ text: 'OpenPet runtime smoke', ttlMs: 5000, source: 'packaged-runtime-smoke' })
+    petService.say({ text: 'OpenPet runtime smoke', ttlMs: 5000, source: 'packaged-runtime-smoke', sourceSurface: 'packaged-runtime-smoke' })
     const animations = petService.getAnimations()
     const actionId = animations.clickAction || animations.defaultAction || animations.actions?.[0]?.id || ''
     if (actionId) petService.playAction({ actionId, source: 'packaged-runtime-smoke' })

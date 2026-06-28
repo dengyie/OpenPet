@@ -2476,7 +2476,7 @@ test('declaration-only command bridge forwards pet mutations through PetService'
   assert.equal(eventResult.status, 200)
   assert.equal(eventResult.body.ok, true)
   assert.deepEqual(petService.calls, [
-    ['say', { text: 'Bridge says hi', ttlMs: 1500, source: 'plugin:weather-declaration:bridge' }],
+    ['say', { text: 'Bridge says hi', ttlMs: 1500, source: 'plugin:weather-declaration:bridge', sourceSurface: 'plugin-bridge' }],
     ['action', { actionId: 'wave', source: 'plugin:weather-declaration:bridge' }],
     ['event', { type: 'weather', message: 'Rain soon', ttlMs: 3000, source: 'plugin:weather-declaration:bridge' }]
   ])
@@ -4374,7 +4374,8 @@ test('plugin service runs enabled official commands through a permissioned pet s
   assert.deepEqual(await service.runCommand('official.basic-behavior', 'greet'), { ok: true })
   assert.deepEqual(petEvents, [{
     text: '你好，我在这里',
-    source: 'plugin:official.basic-behavior'
+    source: 'plugin:official.basic-behavior',
+    sourceSurface: 'plugin-runtime'
   }])
 })
 
@@ -4440,7 +4441,7 @@ test('plugin service runs extension command entries through the compatibility ru
   assert.equal(plugin.entries.dashboards[0].id, 'main')
 
   assert.deepEqual(await service.runCommand('extension-runner', 'announce'), { ok: true })
-  assert.deepEqual(petEvents, [{ text: 'Extension command ran', source: 'plugin:extension-runner' }])
+  assert.deepEqual(petEvents, [{ text: 'Extension command ran', source: 'plugin:extension-runner', sourceSurface: 'plugin-runtime' }])
 })
 
 test('plugin service runs local plugin commands inside the restricted sdk', async () => {
@@ -4482,7 +4483,8 @@ test('plugin service runs local plugin commands inside the restricted sdk', asyn
   assert.equal(result.processType, 'undefined')
   assert.deepEqual(petEvents, [{
     text: 'Focus mode started',
-    source: 'plugin:local-runner'
+    source: 'plugin:local-runner',
+    sourceSurface: 'plugin-runtime'
   }])
 })
 
@@ -4623,7 +4625,8 @@ test('plugin service exposes schema-backed config to local plugins', async () =>
   assert.deepEqual(result.config, plugin.config)
   assert.deepEqual(petEvents, [{
     text: 'Deep work:3:true:calm',
-    source: 'plugin:local-runner'
+    source: 'plugin:local-runner',
+    sourceSurface: 'plugin-runtime'
   }])
 })
 

@@ -170,7 +170,7 @@ test('local http service updates token in place when restarting the same fixed p
     assert.equal(restarted.port, port)
     assert.equal(oldTokenResult.status, 401)
     assert.equal(newTokenResult.status, 200)
-    assert.deepEqual(sayEvents, [{ text: 'new token', ttlMs: undefined, source: 'http' }])
+    assert.deepEqual(sayEvents, [{ text: 'new token', ttlMs: undefined, source: 'http', sourceSurface: 'local-http' }])
   } finally {
     await service.stop()
   }
@@ -213,9 +213,9 @@ test('local http service exposes pet say endpoint', async () => {
     assert.equal(result.status, 200)
     assert.deepEqual(result.body, {
       ok: true,
-      result: { text: 'hello api', ttlMs: 1200, source: 'http' }
+      result: { text: 'hello api', ttlMs: 1200, source: 'http', sourceSurface: 'local-http' }
     })
-    assert.deepEqual(sayEvents, [{ text: 'hello api', ttlMs: 1200, source: 'http' }])
+    assert.deepEqual(sayEvents, [{ text: 'hello api', ttlMs: 1200, source: 'http', sourceSurface: 'local-http' }])
   } finally {
     await service.stop()
   }
@@ -535,8 +535,8 @@ test('local http service exposes mcp tools behind token and session', async () =
       'openpet.set_event'
     ])
     assert.equal(call.status, 200)
-    assert.deepEqual(call.body.result.structuredContent, { text: 'hello mcp', ttlMs: 700, source: 'mcp' })
-    assert.deepEqual(sayEvents, [{ text: 'hello mcp', ttlMs: 700, source: 'mcp' }])
+    assert.deepEqual(call.body.result.structuredContent, { text: 'hello mcp', ttlMs: 700, source: 'mcp', sourceSurface: 'mcp-tool' })
+    assert.deepEqual(sayEvents, [{ text: 'hello mcp', ttlMs: 700, source: 'mcp', sourceSurface: 'mcp-tool' }])
   } finally {
     await service.stop()
   }

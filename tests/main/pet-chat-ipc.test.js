@@ -196,6 +196,7 @@ test('pet chat send uses shared control-center entrypoint and compact pet bubble
   assert.equal(result.state.bubble.source, 'ai')
   assert.equal(sayCalls.length, 1)
   assert.equal(sayCalls[0].source, 'ai')
+  assert.equal(sayCalls[0].sourceSurface, 'pet-chat')
   assert.equal(sayCalls[0].text, bubbleSegments[0])
   assert.equal(JSON.stringify(logs).includes(prompt), false)
   assert.deepEqual(logs.map((entry) => entry.event), [

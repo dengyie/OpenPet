@@ -140,7 +140,7 @@ const createMcpTransportService = ({
     if (!tool) throw new Error(`Unknown MCP tool: ${name}`)
     validateInputSchema(tool.inputSchema, args)
     if (normalizedName === 'openpet.status') return petService.getSnapshot()
-    if (normalizedName === 'openpet.say') return petService.say({ text: args.text, ttlMs: args.ttlMs, source: 'mcp' })
+    if (normalizedName === 'openpet.say') return petService.say({ text: args.text, ttlMs: args.ttlMs, source: 'mcp', sourceSurface: 'mcp-tool' })
     if (normalizedName === 'openpet.play_action') return petService.playAction({ actionId: args.actionId, source: 'mcp' })
     if (normalizedName === 'openpet.set_event') return petService.setEvent({ ...args, source: 'mcp' })
     throw new Error(`Unknown MCP tool: ${name}`)

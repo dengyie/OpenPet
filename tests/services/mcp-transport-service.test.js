@@ -74,8 +74,8 @@ test('mcp transport tools call uses pet service and rejects invalid args', () =>
   })
 
   assert.deepEqual(calls, [
-    { text: 'hello', ttlMs: undefined, source: 'mcp' },
-    { text: 'legacy', ttlMs: undefined, source: 'mcp' }
+    { text: 'hello', ttlMs: undefined, source: 'mcp', sourceSurface: 'mcp-tool' },
+    { text: 'legacy', ttlMs: undefined, source: 'mcp', sourceSurface: 'mcp-tool' }
   ])
   assert.equal(ok.body.result.structuredContent.text, 'hello')
   assert.equal(bad.body.error.code, -32602)

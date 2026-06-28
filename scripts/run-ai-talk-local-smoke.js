@@ -361,7 +361,8 @@ const createBubbleDispatchHarness = ({
   const petService = createPetServiceImpl({
     eventBus,
     settingsService,
-    actionService: createNullActionService()
+    actionService: createNullActionService(),
+    appLogService
   })
   let latestConversationMessages = []
   let observedSayPayload = null
@@ -424,7 +425,7 @@ const createBubbleDispatchHarness = ({
           refreshCount: 0
         }
       }
-      petService.say({ text: bubbleText, source: 'ai', requestId })
+      petService.say({ text: bubbleText, source: 'ai', sourceSurface: 'local-smoke', requestId })
       const state = bubbleManager.getState()
       const items = Array.isArray(state.items) ? state.items : []
       const latestItem = items.at(-1) || null
@@ -438,6 +439,7 @@ const createBubbleDispatchHarness = ({
         bubblePreview: sanitizeText(bubbleText, 120),
         petSayReceived: Boolean(observedSayPayload?.text),
         petSaySource: sanitizeText(observedSayPayload?.source || '', 80),
+        petSaySourceSurface: sanitizeText(observedSayPayload?.sourceSurface || '', 80),
         bubbleStateVisible: Boolean(state.visible),
         itemCount: items.length,
         dialogueCount: items.filter((item) => item?.kind === 'dialogue').length,
@@ -446,7 +448,8 @@ const createBubbleDispatchHarness = ({
         latestItemSource: sanitizeText(latestItem?.source || '', 80),
         refreshCount: bubbleRefreshCount,
         correlatedLogCount: correlatedLogs.length,
-        correlatedLogEvents: correlatedLogs.map((entry) => sanitizeText(entry.event || '', 120))
+        correlatedLogEvents: correlatedLogs.map((entry) => sanitizeText(entry.event || '', 120)),
+        correlatedSourceSurfaces: correlatedLogs.map((entry) => sanitizeText(entry?.details?.sourceSurface || '', 80)).filter(Boolean)
       }
     }
   }

@@ -226,6 +226,7 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   assert.equal(sayCalls.length, 1)
   assert.equal(sayCalls[0].text, 'talk reply')
   assert.equal(sayCalls[0].source, 'ai')
+  assert.equal(sayCalls[0].sourceSurface, 'control-center')
   assert.match(sayCalls[0].requestId, /^chat-/)
   assert.equal(result.reply, 'talk reply')
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')

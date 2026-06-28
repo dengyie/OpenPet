@@ -269,7 +269,7 @@ const createLocalHttpService = ({ petService, settingsService, maxAccessLogs = D
 
       if (request.method === 'POST' && url.pathname === '/api/pet/say') {
         const body = await readJsonBody(request)
-        const result = petService.say({ text: body.text, ttlMs: body.ttlMs, source: 'http' })
+        const result = petService.say({ text: body.text, ttlMs: body.ttlMs, source: 'http', sourceSurface: 'local-http' })
         respond(request, response, runtime, 200, { ok: true, result }, { path, authorized })
         return
       }

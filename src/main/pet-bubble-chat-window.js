@@ -120,6 +120,7 @@ const normalizeMessagePayload = (payload = {}) => {
   return {
     text: text.slice(0, 1000),
     source: String(payload.source || '').trim().slice(0, 120),
+    sourceSurface: String(payload.sourceSurface || payload.source || '').trim().slice(0, 120),
     ttlMs: calculateBubbleTtlMs({ text, ttlMs: payload.ttlMs, source: payload.source }),
     petPackId: String(payload.petPackId || '').trim(),
     createdAt: typeof payload.createdAt === 'string' && payload.createdAt ? payload.createdAt : new Date().toISOString()
@@ -157,6 +158,7 @@ const normalizeBubbleChatItem = (payload = {}) => {
     role,
     text: message.text,
     source: message.source || (kind === 'dialogue' ? 'ai' : 'pet'),
+    sourceSurface: message.sourceSurface || message.source || (kind === 'dialogue' ? 'ai' : 'pet'),
     createdAt,
     conversationId: typeof payload.conversationId === 'string' ? payload.conversationId : '',
     messageId: typeof payload.messageId === 'string' ? payload.messageId : '',
@@ -489,6 +491,7 @@ const createPetBubbleChatWindowManager = ({
         message: 'Pet bubble chat notice buffered',
         details: {
           source: item.source,
+          sourceSurface: item.sourceSurface || item.source,
           textChars: item.text.length,
           noticeCount: noticeItems.length,
           requestId: item.requestId || ''
@@ -512,6 +515,7 @@ const createPetBubbleChatWindowManager = ({
           enabled: Boolean(settings.enabled),
           autoPopup: Boolean(settings.autoPopup),
           source: String(payload?.source || '').slice(0, 120),
+          sourceSurface: String(payload?.sourceSurface || payload?.source || '').slice(0, 120),
           textChars: String(payload?.text || '').length,
           requestId: typeof payload?.requestId === 'string' ? payload.requestId.slice(0, 120) : ''
         }
@@ -539,6 +543,7 @@ const createPetBubbleChatWindowManager = ({
       message: 'Pet bubble chat message displayed',
       details: {
         source: message.source,
+        sourceSurface: message.sourceSurface || message.source,
         textChars: message.text.length,
         ttlMs: message.ttlMs,
         requestId: typeof payload?.requestId === 'string' ? payload.requestId.slice(0, 120) : ''

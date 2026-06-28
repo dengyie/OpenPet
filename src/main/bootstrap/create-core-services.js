@@ -54,11 +54,11 @@ const createCoreServices = ({
       return config
     }
   })
-  const petService = createPetService({ eventBus, settingsService, actionService })
   const secretService = createSecretService()
   const appLogService = createAppLogService({
     logDir: path.join(app.getPath('userData'), 'logs')
   })
+  const petService = createPetService({ eventBus, settingsService, actionService, appLogService })
   const aiService = createAiService({ settingsService, secretService, appLogService })
   const aiTalkStore = createAiTalkStore({ storePath: path.join(app.getPath('userData'), 'ai-talk-store.json') })
   const petUtteranceLogService = createPetUtteranceLogService({ aiTalkStore, appLogService })

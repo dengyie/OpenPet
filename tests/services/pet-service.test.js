@@ -58,10 +58,15 @@ test('pet service delegates settings and action operations', () => {
 
 test('pet service emits say events through the runtime event bus', () => {
   const events = []
+  const logs = []
   const service = createPetService({
     eventBus: {
       emit: (eventName, payload) => events.push([eventName, payload])
     },
+    appLogService: {
+      record: (entry) => logs.push(entry)
+    },
+    requestIdFactory: () => 'pet-test-1',
     settingsService: {
       get: () => ({ scale: 1 })
     },
@@ -70,16 +75,32 @@ test('pet service emits say events through the runtime event bus', () => {
     }
   })
 
-  assert.deepEqual(service.say({ text: 'hi', source: 'test' }), {
+  assert.deepEqual(service.say({ text: 'hi', source: 'test', sourceSurface: 'unit-test' }), {
     text: 'hi',
     ttlMs: undefined,
     source: 'test',
-    requestId: undefined
+    sourceSurface: 'unit-test',
+    requestId: 'pet-test-1'
   })
   assert.deepEqual(events, [[
     'pet:say',
-    { text: 'hi', ttlMs: undefined, source: 'test', requestId: undefined }
+    { text: 'hi', ttlMs: undefined, source: 'test', sourceSurface: 'unit-test', requestId: 'pet-test-1' }
   ]])
+  assert.deepEqual(logs, [{
+    actor: 'system',
+    scope: 'pet',
+    level: 'info',
+    event: 'pet.say.ingress',
+    message: 'Pet say ingress received',
+    details: {
+      requestId: 'pet-test-1',
+      source: 'test',
+      sourceSurface: 'unit-test',
+      textChars: 2,
+      hasTtl: false,
+      ttlMs: 0
+    }
+  }])
 })
 
 test('pet service emits action and event intents through the runtime event bus', () => {

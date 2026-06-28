@@ -471,7 +471,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         result: petService.say({
           text: payload.text,
           ttlMs: payload.ttlMs,
-          source: `plugin:${plugin.manifest.id}:bridge`
+          source: `plugin:${plugin.manifest.id}:bridge`,
+          sourceSurface: 'plugin-bridge'
         })
       }
     },
@@ -1002,7 +1003,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         say: async (payload) => {
           assertPermission(manifest, 'pet:say')
           const normalizedPayload = typeof payload === 'string' ? { text: payload } : { ...payload }
-          return petService.say({ ...normalizedPayload, source: `plugin:${manifest.id}` })
+          return petService.say({ ...normalizedPayload, source: `plugin:${manifest.id}`, sourceSurface: 'plugin-runtime' })
         },
         playAction: async (actionIdOrPayload) => {
           assertPermission(manifest, 'pet:action')
