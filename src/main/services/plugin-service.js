@@ -20,6 +20,7 @@ const { createPluginServiceLaunchController } = require('./plugin-service-launch
 const { createPluginCommandEntryProcessController } = require('./plugin-command-entry-process-controller')
 const { createPluginSetupProcessController } = require('./plugin-setup-process-controller')
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
+const { createPluginCommandOrchestrationController } = require('./plugin-command-orchestration-controller')
 const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
 const { createPluginResolutionController } = require('./plugin-resolution-controller')
 const { createPluginConfigStorageController } = require('./plugin-config-storage-controller')
@@ -255,6 +256,15 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     logs.unshift(entry)
     saveLogStore(logs)
     return entry
+  }
+
+  const getLogs = (filters = {}) => filterLogs(getLogStore(), filters).map((entry) => ({ ...entry }))
+
+  const exportLogEntries = ({ format = 'json', ...filters } = {}) => exportLogs(getLogs(filters), format)
+
+  const clearLogs = () => {
+    saveLogStore([])
+    return getLogs()
   }
 
   const commandBridgeService = createPluginCommandBridgeService({ appendLog })
@@ -665,6 +675,17 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     getCommandEntry,
     getRegisteredCommands: (sdk) => sdk[runtimeSdkController.registeredCommandsSymbol]?.() || {}
   })
+  const commandOrchestrationController = createPluginCommandOrchestrationController({
+    resolvePlugin: findPluginForService,
+    runCommand: ({ plugin, pluginId, commandId, payload }) => commandRunController.run({
+      plugin,
+      pluginId,
+      commandId,
+      payload
+    }),
+    appendLog,
+    getLogs
+  })
 
   const dashboardOpenController = createPluginDashboardOpenController({
     appendLog,
@@ -697,31 +718,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const clearStorage = managementController.clearStorage
 
   const runCommand = async (pluginId, commandId, payload = {}) => {
-    try {
-      const plugin = findPluginForService(pluginId)
-      return await commandRunController.run({
-        plugin,
-        pluginId,
-        commandId,
-        payload
-      })
-    } catch (error) {
-      if (error?.openpetLogged) throw error
-      const hasErrorLog = getLogs({
-        level: 'error',
-        pluginId,
-        commandId
-      }).some((entry) => entry.message === (error.message || 'Command failed'))
-      if (!hasErrorLog) {
-        appendLog({
-          pluginId,
-          commandId,
-          level: 'error',
-          message: error.message || 'Command failed'
-        })
-      }
-      throw error
-    }
+    return commandOrchestrationController.run(pluginId, commandId, payload)
   }
 
   const runSetup = (pluginId, setupId) => {
@@ -840,15 +837,6 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service health check failed' })
       throw error
     }
-  }
-
-  const getLogs = (filters = {}) => filterLogs(getLogStore(), filters).map((entry) => ({ ...entry }))
-
-  const exportLogEntries = ({ format = 'json', ...filters } = {}) => exportLogs(getLogs(filters), format)
-
-  const clearLogs = () => {
-    saveLogStore([])
-    return getLogs()
   }
 
   const stopAllServices = () => {
