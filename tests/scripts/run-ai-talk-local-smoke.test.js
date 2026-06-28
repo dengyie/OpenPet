@@ -138,6 +138,7 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
           details: { replyChars: 4 }
         })
         return {
+          requestId: 'chat-req-1',
           conversationId: 'control-center:legacy-cat:main',
           reply: '烟测完成',
           bubbleSegments: ['烟测完成'],
@@ -154,6 +155,7 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
           success: true,
           provider: 'openai-compatible',
           model: 'gpt-5.5',
+          requestId: 'chat-req-1',
           messagesCount: 3,
           memoryContextCount: 0,
           recentPetActivityCount: 0,
@@ -178,6 +180,9 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.equal(result.bubbleDispatch.correlatedLogCount >= 2, true)
   assert.equal(result.bubbleDispatch.correlatedLogEvents.includes('pet-bubble-chat.message.displayed'), true)
   assert.equal(result.traces.length, 1)
+  assert.equal(result.traces[0].requestId, 'chat-req-1')
+  assert.equal(result.traceRequestIds.includes('chat-req-1'), true)
+  assert.equal(result.bubbleDispatch.requestId, 'chat-req-1')
   assert.equal(result.logs.some((entry) => entry.scope === 'ai-talk'), true)
   assert.equal(result.logs.some((entry) => entry.scope === 'pet-bubble-chat'), true)
   assert.equal(fs.existsSync(result.resultPath), true)

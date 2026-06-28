@@ -257,6 +257,7 @@ const normalizeTraceEntry = (trace = {}) => {
     errorCode: typeof trace.errorCode === 'string' ? trace.errorCode.trim().slice(0, 120) : '',
     providerStatus: Math.max(0, Number(trace.providerStatus) || 0),
     success: trace.success !== false,
+    requestId: typeof trace.requestId === 'string' ? trace.requestId.trim().slice(0, 120) : '',
     createdAt: typeof trace.createdAt === 'string' && trace.createdAt ? trace.createdAt : '',
     filteredMemoryCandidates: Array.isArray(trace.filteredMemoryCandidates)
       ? trace.filteredMemoryCandidates

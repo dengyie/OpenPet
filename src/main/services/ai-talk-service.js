@@ -949,13 +949,14 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     return aiTalkStore.getMessages(sessionId, mainConversationId)
   }
 
-  const chat = async ({ message, entrypoint = 'control-center' } = {}) => {
+  const chat = async ({ message, entrypoint = 'control-center', requestId } = {}) => {
     const startedAt = Date.now()
     const content = normalizeString(message)
     let activePackDiagnostics = null
     const diagnostics = {
       entrypoint,
-      messageChars: content.length
+      messageChars: content.length,
+      requestId: typeof requestId === 'string' && requestId.trim() ? requestId.trim().slice(0, 120) : ''
     }
     try {
       try {
@@ -1067,6 +1068,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           }
         })
         recordChatTrace({
+          requestId: diagnostics.requestId,
           type: 'ai-talk-chat',
           petPackId,
           conversationId: conversationPublicId,
@@ -1091,7 +1093,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           bubble,
           bubbleSegments,
           behaviorIntent: result.behaviorIntent || undefined,
-          messages: nextMessages
+          messages: nextMessages,
+          requestId: diagnostics.requestId
         }
       })
     } catch (error) {
@@ -1111,6 +1114,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         }
       })
       recordChatTrace({
+        requestId: diagnostics.requestId,
         type: 'ai-talk-chat',
         petPackId: diagnostics.petPackId || '',
         conversationId: diagnostics.conversationId || '',

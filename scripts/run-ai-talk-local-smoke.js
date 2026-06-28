@@ -376,7 +376,9 @@ const createBubbleDispatchHarness = ({
   return {
     dispatchAiReply(result = {}) {
       const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent, result.bubbleSegments)
-      const requestId = createBubbleRequestId()
+      const requestId = typeof result.requestId === 'string' && result.requestId.trim()
+        ? result.requestId.trim().slice(0, 120)
+        : createBubbleRequestId()
       latestConversationMessages = Array.isArray(result.messages)
         ? result.messages.map((message, index, list) => (
             message?.role === 'assistant' && index === list.length - 1
@@ -565,6 +567,7 @@ const runAiTalkLocalSmoke = async ({
             success: Boolean(trace.success),
             provider: sanitizeText(trace.provider || '', 80),
             model: sanitizeText(trace.model || '', 120),
+            requestId: sanitizeText(trace.requestId || '', 120),
             messagesCount: Number(trace.messagesCount) || 0,
             memoryContextCount: Number(trace.memoryContextCount) || 0,
             recentPetActivityCount: Number(trace.recentPetActivityCount) || 0,
@@ -573,6 +576,9 @@ const runAiTalkLocalSmoke = async ({
             errorCode: sanitizeText(trace.errorCode || '', 80)
           }))
         : []
+      summary.traceRequestIds = summary.traces
+        .map((trace) => trace.requestId)
+        .filter(Boolean)
     }
 
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })

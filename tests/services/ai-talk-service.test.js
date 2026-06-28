@@ -421,7 +421,7 @@ test('ai talk service exports redacted traces for the active pet pack after a su
     petPackService: createPetPackService({ id: 'legacy-cat' })
   })
 
-  await service.chat({ message: '我有点乱' })
+  await service.chat({ message: '我有点乱', requestId: 'chat-cmd-1' })
   const exported = service.getTraceExport({ limit: 5 })
 
   assert.equal(exported.petPackId, 'legacy-cat')
@@ -434,6 +434,30 @@ test('ai talk service exports redacted traces for the active pet pack after a su
   assert.equal(exported.traces[0].success, true)
   assert.equal(JSON.stringify(exported).includes('我有点乱'), false)
   assert.equal(JSON.stringify(exported).includes('我们先慢慢来'), false)
+})
+
+test('ai talk service exports trace with matching requestId from request payload', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'gpt-5.5',
+        behavior: { enabled: false, useTools: true }
+      }),
+      complete: async () => ({ reply: '收到。' })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const result = await service.chat({ message: '测试 requestId', requestId: 'chat-smoke-123' })
+  const exported = service.getTraceExport({ limit: 5 })
+
+  assert.equal(exported.traces.length, 1)
+  assert.equal(exported.traces[0].requestId, 'chat-smoke-123')
+  assert.equal(result.requestId, 'chat-smoke-123')
 })
 
 test('ai talk service records failed chat diagnostics without prompt text', async () => {

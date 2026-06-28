@@ -467,6 +467,10 @@ test('ai talk store records and lists redacted chat traces by pet pack', () => {
   assert.equal(traces[0].behaviorIntentIntent, 'comfort')
   assert.equal(traces[0].success, true)
   assert.equal(JSON.stringify(traces).includes('prompt'), false)
+  const tracesByPetPack = store.listTraces({ petPackId: 'sprout-cat', limit: 10 })
+
+  assert.equal(tracesByPetPack.length, 1)
+  assert.equal(tracesByPetPack[0].requestId, '')
 })
 
 test('ai talk store excludes non-chat traces from default trace export listing', () => {
