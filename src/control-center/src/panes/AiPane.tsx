@@ -495,7 +495,9 @@ export interface AiPaneProps {
   saving: boolean
   status: string
   connectionStatus: string
+  imageStatus: string
   imageHealthStatus: string
+  chatStatus: string
   hasUnsavedConfigChanges: boolean
   hasUnsavedApiKeyDraft: boolean
   hasUnsavedImageGenerationChanges: boolean
@@ -525,6 +527,7 @@ export interface AiPaneProps {
   replayDraft: string
   setReplayDraft: (value: string) => void
   replayResult: AiBehaviorResult | null
+  behaviorStatus: string
   onReplayBehaviorDecision: () => void | Promise<void>
   traceDiagnosticsFilters: AiTalkTraceDiagnosticsFilters
   onChangeTraceDiagnosticsFilters: (partial: AiTalkTraceDiagnosticsFilters) => void
@@ -570,7 +573,9 @@ export function AiPane({
   saving,
   status,
   connectionStatus,
+  imageStatus,
   imageHealthStatus,
+  chatStatus,
   hasUnsavedConfigChanges,
   hasUnsavedApiKeyDraft,
   hasUnsavedImageGenerationChanges,
@@ -600,6 +605,7 @@ export function AiPane({
   replayDraft,
   setReplayDraft,
   replayResult,
+  behaviorStatus,
   onReplayBehaviorDecision,
   traceDiagnosticsFilters,
   onChangeTraceDiagnosticsFilters,
@@ -881,6 +887,13 @@ export function AiPane({
             <div className="readonly-row">
               <strong>图片健康状态</strong>
               <span>{imageHealthStatus}</span>
+            </div>
+          ) : null}
+
+          {imageStatus ? (
+            <div className="provider-feedback" data-testid="ai-image-status" aria-live="polite">
+              <strong>图片 Provider 状态</strong>
+              <span>{imageStatus}</span>
             </div>
           ) : null}
 
@@ -1216,6 +1229,12 @@ export function AiPane({
 
       <CollapsibleAiSection title="Behavior" note="AI 回复到宠物动作的编排与诊断">
         <div className="section">
+        {behaviorStatus ? (
+          <div className="provider-feedback" data-testid="ai-behavior-status" aria-live="polite">
+            <strong>Behavior 状态</strong>
+            <span>{behaviorStatus}</span>
+          </div>
+        ) : null}
         <div className="field-row">
           <div>
             <div className="field-label">Behavior</div>
@@ -1340,6 +1359,12 @@ export function AiPane({
 
       <CollapsibleAiSection title="聊天" note="用当前已保存 Provider 和宠物对话">
         <div className="chat-panel">
+          {chatStatus ? (
+            <div className="provider-feedback" data-testid="ai-chat-status" aria-live="polite">
+              <strong>聊天状态</strong>
+              <span>{chatStatus}</span>
+            </div>
+          ) : null}
           <div className="chat-meta-bar">
             <div>
               <strong>{petChatState.petPack.displayName || '当前宠物'}</strong>

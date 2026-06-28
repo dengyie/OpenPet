@@ -247,8 +247,10 @@ export function useAiPane(activeTab = 'ai') {
   const [status, setStatus] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('')
   const [connectionTestResult, setConnectionTestResult] = useState<AiConnectionTestResult | null>(null)
+  const [imageStatus, setImageStatus] = useState('')
   const [imageHealthStatus, setImageHealthStatus] = useState('')
   const [imageHealthResult, setImageHealthResult] = useState<ImageGenerationHealthCheckResult | null>(null)
+  const [chatStatus, setChatStatus] = useState('')
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
@@ -260,6 +262,7 @@ export function useAiPane(activeTab = 'ai') {
   const [dryRunResult, setDryRunResult] = useState<AiBehaviorResult | null>(null)
   const [replayDraft, setReplayDraft] = useState('')
   const [replayResult, setReplayResult] = useState<AiBehaviorResult | null>(null)
+  const [behaviorStatus, setBehaviorStatus] = useState('')
 
   const loadPersonaProfile = async () => {
     const profile = cloneAiPersonaProfile(await api.getAiPersonaProfile())
@@ -418,7 +421,7 @@ export function useAiPane(activeTab = 'ai') {
 
   const onSaveImageGeneration = async () => {
     setSaving(true)
-    setStatus('')
+    setImageStatus('')
     setImageHealthStatus('')
     setImageHealthResult(null)
     try {
@@ -427,9 +430,9 @@ export function useAiPane(activeTab = 'ai') {
       const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(imageGenerationConfig))
       setImageGenerationConfig(savedConfig)
       setActiveImageGenerationConfig(savedConfig)
-      setStatus('图片 Provider 配置已保存')
+      setImageStatus('图片 Provider 配置已保存')
     } catch (error) {
-      setStatus(messageFromError(error, '图片 Provider 配置保存失败'))
+      setImageStatus(messageFromError(error, '图片 Provider 配置保存失败'))
     } finally {
       setSaving(false)
     }
@@ -437,16 +440,16 @@ export function useAiPane(activeTab = 'ai') {
 
   const onSaveBehavior = async () => {
     setSaving(true)
-    setStatus('')
+    setBehaviorStatus('')
     try {
       const parsedRules = parseBehaviorRules(behaviorRulesText)
       const savedBehavior = cloneAiBehavior(await api.saveAiBehavior({ ...behavior, rules: parsedRules }))
       setBehavior(savedBehavior)
       setBehaviorRulesText(JSON.stringify(savedBehavior.rules || [], null, 2))
       setConfig({ ...config, behavior: savedBehavior })
-      setStatus('Behavior 配置已保存')
+      setBehaviorStatus('Behavior 配置已保存')
     } catch (error) {
-      setStatus(messageFromError(error, 'Behavior 配置保存失败'))
+      setBehaviorStatus(messageFromError(error, 'Behavior 配置保存失败'))
     } finally {
       setSaving(false)
     }
@@ -455,57 +458,57 @@ export function useAiPane(activeTab = 'ai') {
   const onDryRunBehavior = async () => {
     const reply = dryRunText.trim()
     if (!reply) return
-    setStatus('')
+    setBehaviorStatus('')
     try {
       const parsedRules = parseBehaviorRules(behaviorRulesText)
       const result = await api.dryRunAiBehavior({ reply, behavior: { ...behavior, rules: parsedRules } })
       setDryRunResult(result)
-      setStatus(result.matched ? `Dry run 命中：${result.reason}` : `Dry run 未命中：${result.reason}`)
+      setBehaviorStatus(result.matched ? `Dry run 命中：${result.reason}` : `Dry run 未命中：${result.reason}`)
     } catch (error) {
       setDryRunResult(null)
-      setStatus(messageFromError(error, 'Dry run 失败'))
+      setBehaviorStatus(messageFromError(error, 'Dry run 失败'))
     }
   }
 
   const onReplayBehaviorDecision = async () => {
     const decisionId = Number(replayDraft.trim())
     if (!Number.isFinite(decisionId) || decisionId <= 0) {
-      setStatus('请输入有效的决策 ID')
+      setBehaviorStatus('请输入有效的决策 ID')
       return
     }
-    setStatus('')
+    setBehaviorStatus('')
     try {
       const result = await api.replayAiBehaviorDecision(decisionId)
       setReplayResult(result)
-      setStatus(result.matched ? `Replay 命中：${result.reason}` : `Replay 未命中：${result.reason}`)
+      setBehaviorStatus(result.matched ? `Replay 命中：${result.reason}` : `Replay 未命中：${result.reason}`)
     } catch (error) {
       setReplayResult(null)
-      setStatus(messageFromError(error, 'Replay 失败'))
+      setBehaviorStatus(messageFromError(error, 'Replay 失败'))
     }
   }
 
   const onExportBehaviorDiagnostics = async () => {
-    setStatus('')
+    setBehaviorStatus('')
     try {
       const content = await api.exportAiBehaviorDiagnostics()
       downloadTextFile('openpet-ai-behavior-diagnostics.json', content, 'application/json;charset=utf-8')
-      setStatus('Behavior 诊断已导出')
+      setBehaviorStatus('Behavior 诊断已导出')
     } catch (error) {
-      setStatus(messageFromError(error, 'Behavior 诊断导出失败'))
+      setBehaviorStatus(messageFromError(error, 'Behavior 诊断导出失败'))
     }
   }
 
   const onClearBehaviorDecisions = async () => {
     if (!window.confirm('清空 AI 行为决策记录？')) return
-    setStatus('')
+    setBehaviorStatus('')
     try {
       await api.clearAiBehaviorDecisions()
       await loadBehavior()
       setReplayResult(null)
       setDryRunResult(null)
-      setStatus('Behavior 决策已清空')
+      setBehaviorStatus('Behavior 决策已清空')
     } catch (error) {
-      setStatus(messageFromError(error, '清空失败'))
+      setBehaviorStatus(messageFromError(error, '清空失败'))
     }
   }
 
@@ -530,7 +533,7 @@ export function useAiPane(activeTab = 'ai') {
 
   const onSaveImageGenerationApiKey = async () => {
     setSaving(true)
-    setStatus('')
+    setImageStatus('')
     setImageHealthStatus('')
     setImageHealthResult(null)
     try {
@@ -545,9 +548,9 @@ export function useAiPane(activeTab = 'ai') {
       setImageGenerationConfig(applyKeyResult)
       setActiveImageGenerationConfig(applyKeyResult)
       setImageApiKeyDraft('')
-      setStatus('图片 API Key 已保存')
+      setImageStatus('图片 API Key 已保存')
     } catch (error) {
-      setStatus(messageFromError(error, '图片 API Key 保存失败'))
+      setImageStatus(messageFromError(error, '图片 API Key 保存失败'))
     } finally {
       setSaving(false)
     }
@@ -555,7 +558,7 @@ export function useAiPane(activeTab = 'ai') {
 
   const onClearImageGenerationApiKey = async () => {
     setSaving(true)
-    setStatus('')
+    setImageStatus('')
     setImageHealthStatus('')
     setImageHealthResult(null)
     try {
@@ -568,9 +571,9 @@ export function useAiPane(activeTab = 'ai') {
       setImageGenerationConfig(applyKeyResult)
       setActiveImageGenerationConfig(applyKeyResult)
       setImageApiKeyDraft('')
-      setStatus('图片 API Key 已清除')
+      setImageStatus('图片 API Key 已清除')
     } catch (error) {
-      setStatus(messageFromError(error, '图片 API Key 清除失败'))
+      setImageStatus(messageFromError(error, '图片 API Key 清除失败'))
     } finally {
       setSaving(false)
     }
@@ -734,7 +737,7 @@ export function useAiPane(activeTab = 'ai') {
     const message = chatDraft.trim()
     if (!message || chatting) return
     if (!petChatState.ai.ready) {
-      setStatus(petChatState.ai.reason || '请先配置 AI Provider')
+      setChatStatus(petChatState.ai.reason || '请先配置 AI Provider')
       return
     }
     const nextMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }]
@@ -742,7 +745,7 @@ export function useAiPane(activeTab = 'ai') {
     setPetChatState((current) => clonePetChatState({ ...current, messages: nextMessages }))
     setChatDraft('')
     setChatting(true)
-    setStatus('')
+    setChatStatus('')
     try {
       const result = await api.sendPetChatMessage({ message, entrypoint: 'control-center' })
       const fallbackMessages: ChatMessage[] = Array.isArray(result.messages)
@@ -756,14 +759,14 @@ export function useAiPane(activeTab = 'ai') {
         ? nextState.messages
         : fallbackMessages)
       if (result.action?.actionId) {
-        setStatus(result.action.error
+        setChatStatus(result.action.error
           ? `动作触发失败：${result.action.error}`
           : `已触发动作：${result.action.label || result.action.actionId}`)
       }
       await loadBehavior()
       void loadMemoryProfile().catch(() => {})
     } catch (error) {
-      setStatus(messageFromError(error, '发送失败'))
+      setChatStatus(messageFromError(error, '发送失败'))
     } finally {
       setChatting(false)
     }
@@ -773,9 +776,9 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const nextState = clonePetChatState(await api.openPetChatWindow())
       setPetChatState(nextState)
-      setStatus('已打开桌面聊天框')
+      setChatStatus('已打开桌面聊天框')
     } catch (error) {
-      setStatus(messageFromError(error, '打开桌面聊天框失败'))
+      setChatStatus(messageFromError(error, '打开桌面聊天框失败'))
     }
   }
 
@@ -810,8 +813,10 @@ export function useAiPane(activeTab = 'ai') {
     saving,
     status,
     connectionStatus,
+    imageStatus,
     imageHealthStatus,
     imageHealthResult,
+    chatStatus,
     hasUnsavedConfigChanges,
     hasUnsavedApiKeyDraft,
     hasUnsavedImageGenerationChanges,
@@ -835,6 +840,7 @@ export function useAiPane(activeTab = 'ai') {
     dryRunResult,
     replayDraft,
     replayResult,
+    behaviorStatus,
     traceDiagnosticsFilters,
     setDryRunText,
     setReplayDraft,
