@@ -17,6 +17,8 @@ const DEFAULT_PROMPT = '新增一个自定义动作：开心挥手，菜单手�
 const DEFAULT_ACTION_ID = 'provider-smoke-wave'
 const DEFAULT_ACTION_NAME = '开心挥手'
 const DEFAULT_FRAME_COUNT = 16
+const DEFAULT_IMAGE_WIDTH = 1024
+const DEFAULT_IMAGE_HEIGHT = 1024
 
 const usage = () => [
   'Usage: node scripts/run-creator-studio-provider-smoke.js [options]',
@@ -30,6 +32,9 @@ const usage = () => [
   '  --action-id <id>           Safe action id for the generated action. Default: provider-smoke-wave',
   '  --action-name <name>       Action display name. Default: 开心挥手',
   '  --frame-count <n>          Frame count for action-frame QA. Default: 16',
+  `  --width <n>                Generation width. Default: ${DEFAULT_IMAGE_WIDTH}`,
+  `  --height <n>               Generation height. Default: ${DEFAULT_IMAGE_HEIGHT}`,
+  '  --timeout-ms <n>           Temporary image Provider timeout for this smoke run only.',
   '  --skip-health-check        Skip image Provider health check and run generation directly.',
   '  --log-limit <n>            Number of redacted log entries to include. Default: 20',
   '  --help',
@@ -134,6 +139,9 @@ const parseArgs = (argv) => {
     actionId: DEFAULT_ACTION_ID,
     actionName: DEFAULT_ACTION_NAME,
     frameCount: DEFAULT_FRAME_COUNT,
+    width: DEFAULT_IMAGE_WIDTH,
+    height: DEFAULT_IMAGE_HEIGHT,
+    timeoutMs: 0,
     skipHealthCheck: false,
     logLimit: DEFAULT_LOG_LIMIT,
     help: false
@@ -168,6 +176,15 @@ const parseArgs = (argv) => {
     } else if (arg === '--frame-count') {
       options.frameCount = readValue(index, arg)
       index += 1
+    } else if (arg === '--width') {
+      options.width = readValue(index, arg)
+      index += 1
+    } else if (arg === '--height') {
+      options.height = readValue(index, arg)
+      index += 1
+    } else if (arg === '--timeout-ms') {
+      options.timeoutMs = readValue(index, arg)
+      index += 1
     } else if (arg === '--skip-health-check') {
       options.skipHealthCheck = true
     } else if (arg === '--log-limit') {
@@ -191,6 +208,9 @@ const parseArgs = (argv) => {
   options.actionName = String(options.actionName || '').trim()
   if (!options.actionName) throw new Error('--action-name must not be empty')
   options.frameCount = parsePositiveInt(options.frameCount, '--frame-count')
+  options.width = parsePositiveInt(options.width, '--width')
+  options.height = parsePositiveInt(options.height, '--height')
+  options.timeoutMs = Number(options.timeoutMs) === 0 ? 0 : parsePositiveInt(options.timeoutMs, '--timeout-ms')
   options.logLimit = parsePositiveInt(options.logLimit, '--log-limit')
   return options
 }
@@ -251,6 +271,9 @@ const runCreatorStudioProviderSmoke = async ({
   actionId = DEFAULT_ACTION_ID,
   actionName = DEFAULT_ACTION_NAME,
   frameCount = DEFAULT_FRAME_COUNT,
+  width = DEFAULT_IMAGE_WIDTH,
+  height = DEFAULT_IMAGE_HEIGHT,
+  timeoutMs = 0,
   skipHealthCheck = false,
   logLimit = DEFAULT_LOG_LIMIT,
   now = () => new Date(),
@@ -261,6 +284,9 @@ const runCreatorStudioProviderSmoke = async ({
 } = {}) => {
   const normalizedPrompt = String(prompt || '').trim()
   if (!normalizedPrompt) throw new Error('Smoke prompt is required')
+  const normalizedWidth = parsePositiveInt(width, '--width')
+  const normalizedHeight = parsePositiveInt(height, '--height')
+  const normalizedTimeoutMs = Number(timeoutMs) === 0 ? 0 : parsePositiveInt(timeoutMs, '--timeout-ms')
 
   const sessionPaths = createSessionPaths({ outputDir, now })
   fs.mkdirSync(sessionPaths.sessionDir, { recursive: true })
@@ -268,6 +294,19 @@ const runCreatorStudioProviderSmoke = async ({
   const settingsPath = path.join(userDataDir, 'settings.json')
   const secretsPath = path.join(userDataDir, 'secrets.json')
   const settingsService = createFileBackedSettingsService({ settingsPath })
+  if (normalizedTimeoutMs > 0) {
+    const currentSettings = settingsService.get()
+    settingsService.save({
+      ...currentSettings,
+      models: {
+        ...(isObject(currentSettings.models) ? currentSettings.models : {}),
+        imageGeneration: {
+          ...(isObject(currentSettings.models?.imageGeneration) ? currentSettings.models.imageGeneration : {}),
+          timeoutMs: normalizedTimeoutMs
+        }
+      }
+    })
+  }
   const appLogService = createAppLogServiceImpl({ logDir: sessionPaths.logDir, maxEntries: Math.max(logLimit * 5, 200) })
   const secretService = createSecretServiceImpl({ storePath: secretsPath })
   const imageGenerationModelService = createImageGenerationModelServiceImpl({
@@ -328,6 +367,12 @@ const runCreatorStudioProviderSmoke = async ({
       loop: Boolean(action.loop),
       triggerType: sanitizeText(action.triggerProposal?.type || '', 40)
     },
+    generationConstraints: {
+      width: normalizedWidth,
+      height: normalizedHeight,
+      transparent: true,
+      timeoutOverrideMs: normalizedTimeoutMs
+    },
     healthCheck: {
       skipped: Boolean(skipHealthCheck),
       ok: false
@@ -371,8 +416,8 @@ const runCreatorStudioProviderSmoke = async ({
         dataRelativeDir: path.join('frames', 'base')
       },
       constraints: {
-        width: 1024,
-        height: 1024,
+        width: normalizedWidth,
+        height: normalizedHeight,
         transparent: true
       }
     })

@@ -31,6 +31,9 @@ test('parseArgs accepts creator studio smoke options and normalizes legacy backe
     '--action-id', 'wave',
     '--action-name', '挥手',
     '--frame-count', '12',
+    '--width', '768',
+    '--height', '512',
+    '--timeout-ms', '180000',
     '--skip-health-check',
     '--log-limit', '9'
   ])
@@ -42,6 +45,9 @@ test('parseArgs accepts creator studio smoke options and normalizes legacy backe
   assert.equal(options.actionId, 'wave')
   assert.equal(options.actionName, '挥手')
   assert.equal(options.frameCount, 12)
+  assert.equal(options.width, 768)
+  assert.equal(options.height, 512)
+  assert.equal(options.timeoutMs, 180000)
   assert.equal(options.skipHealthCheck, true)
   assert.equal(options.logLimit, 9)
 })
@@ -93,63 +99,71 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
     prompt: '给当前宠物加一个挥手动作 sk-real-secret-value http://127.0.0.1:8317/v1',
     userDataDir,
     outputDir,
+    width: 768,
+    height: 512,
+    timeoutMs: 180000,
     now: () => new Date('2026-06-28T12:34:56.789Z'),
     createSecretServiceImpl: () => ({
       getSecretValue: () => 'sk-real-secret-value'
     }),
-    createImageGenerationModelServiceImpl: ({ appLogService }) => ({
-      getConfig: () => ({
-        provider: 'openai-compatible',
-        baseUrl: 'http://127.0.0.1:8317/v1',
-        model: 'gpt-image-2',
-        hasApiKey: true,
-        timeoutMs: 30000,
-        maxConcurrentJobs: 1
-      }),
-      checkHealth: async () => {
-        appLogService.record({
-          scope: 'image-generation',
-          level: 'info',
-          event: 'imageGeneration.health.completed',
-          message: 'Image Provider health check completed',
-          details: { requestId: 'health-1', status: 200 }
-        })
-        return {
-          ok: true,
-          code: 'provider_healthy',
-          message: 'Image Provider is reachable',
-          modelsProbe: 'available',
-          availableModels: ['gpt-image-2'],
-          currentModelDiscovered: true
-        }
-      },
-      generateImage: async ({ prompt, output, constraints }) => {
-        assert.match(prompt, /Action Requirements/)
-        assert.equal(output.dataRelativeDir, path.join('frames', 'base'))
-        assert.equal(constraints.transparent, true)
-        appLogService.record({
-          scope: 'image-generation',
-          level: 'info',
-          event: 'imageGeneration.generate.completed',
-          message: 'Image generation completed',
-          details: { requestId: 'gen-1', outputs: 1 }
-        })
-        return {
-          requestId: 'gen-1',
+    createImageGenerationModelServiceImpl: ({ appLogService, settingsService }) => {
+      const timeoutSeen = settingsService.get().models.imageGeneration.timeoutMs
+      return {
+        getConfig: () => ({
           provider: 'openai-compatible',
+          baseUrl: 'http://127.0.0.1:8317/v1',
           model: 'gpt-image-2',
-          generatedAt: '2026-06-28T12:34:57.000Z',
-          outputs: [{
-            dataRelativePath: 'frames/base/0001.png',
-            mimeType: 'image/png',
-            sha256: 'abc123'
-          }],
-          usage: {
-            estimatedCostUsd: 0.12
+          hasApiKey: true,
+          timeoutMs: timeoutSeen,
+          maxConcurrentJobs: 1
+        }),
+        checkHealth: async () => {
+          appLogService.record({
+            scope: 'image-generation',
+            level: 'info',
+            event: 'imageGeneration.health.completed',
+            message: 'Image Provider health check completed',
+            details: { requestId: 'health-1', status: 200 }
+          })
+          return {
+            ok: true,
+            code: 'provider_healthy',
+            message: 'Image Provider is reachable',
+            modelsProbe: 'available',
+            availableModels: ['gpt-image-2'],
+            currentModelDiscovered: true
+          }
+        },
+        generateImage: async ({ prompt, output, constraints }) => {
+          assert.match(prompt, /Action Requirements/)
+          assert.equal(output.dataRelativeDir, path.join('frames', 'base'))
+          assert.equal(constraints.transparent, true)
+          assert.equal(constraints.width, 768)
+          assert.equal(constraints.height, 512)
+          appLogService.record({
+            scope: 'image-generation',
+            level: 'info',
+            event: 'imageGeneration.generate.completed',
+            message: 'Image generation completed',
+            details: { requestId: 'gen-1', outputs: 1 }
+          })
+          return {
+            requestId: 'gen-1',
+            provider: 'openai-compatible',
+            model: 'gpt-image-2',
+            generatedAt: '2026-06-28T12:34:57.000Z',
+            outputs: [{
+              dataRelativePath: 'frames/base/0001.png',
+              mimeType: 'image/png',
+              sha256: 'abc123'
+            }],
+            usage: {
+              estimatedCostUsd: 0.12
+            }
           }
         }
       }
-    }),
+    },
     buildActionFramesFromGeneratedImageImpl: async ({ dataDir, action, outputFramesDir, qaDir }) => {
       assert.equal(path.resolve(dataDir).startsWith(path.resolve(outputDir)), true)
       fs.mkdirSync(outputFramesDir, { recursive: true })
@@ -186,6 +200,13 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
   assert.equal(result.generation.outputCount, 1)
   assert.equal(result.action.actionId, DEFAULT_ACTION_ID)
   assert.equal(result.action.name, DEFAULT_ACTION_NAME)
+  assert.deepEqual(result.generationConstraints, {
+    width: 768,
+    height: 512,
+    transparent: true,
+    timeoutOverrideMs: 180000
+  })
+  assert.equal(result.config.timeoutMs, 180000)
   assert.equal(result.actionFrames.ok, true)
   assert.equal(result.actionFrames.frameCount, 16)
   assert.equal(result.actionFrames.visibleFrameCount, 16)
@@ -198,6 +219,8 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
   assert.equal(fs.existsSync(result.resultPath), true)
   const persisted = fs.readFileSync(result.resultPath, 'utf-8')
   assert.doesNotMatch(persisted, /sk-real-secret-value/)
+  const persistedSettings = JSON.parse(fs.readFileSync(path.join(userDataDir, 'settings.json'), 'utf-8'))
+  assert.equal(persistedSettings.models.imageGeneration.timeoutMs, 30000)
 })
 
 test('runCreatorStudioProviderSmoke fails honestly when the saved image provider API key is missing', async () => {
