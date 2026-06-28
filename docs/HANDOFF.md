@@ -85,7 +85,7 @@ If you are choosing the next milestone, start from `docs/openpet-current-todo-ar
 
 At the current repository level, the most important open engineering gaps are:
 
-1. AI Talk memory scoring, injected-memory usage writeback, richer trace export, and related chat-state polish
+1. richer AI Talk diagnostics, transcript shaping, longer-horizon chat controls, and related chat-state polish
 2. Creator Studio UX convergence toward a smoother dashboard-first flow
 3. real signed / smoke evidence needed for stronger release claims
 4. follow-up refinement on trigger-rule observability and broader policy expansion after the runtime baseline

@@ -19,7 +19,7 @@ This is not a promise to implement every item in one milestone. It is a map for 
 - P3: longer-term platform direction.
 - Manual-required: needs real provider accounts, signed artifacts, notarization, Windows machines, production credentials, or human review.
 
-Current P0 status: no known startup/build blocker in this TODO pass. The current highest-risk product gap is in AI Talk memory quality: memory injection still relies on static store ordering rather than request-aware relevance scoring, and injected-memory usage is not yet written back selectively.
+Current P0 status: no known startup/build blocker in this TODO pass. The current highest-risk product gap is no longer basic AI Talk memory selection itself, but the remaining product polish around richer AI Talk diagnostics, transcript shaping, and longer-horizon chat controls.
 
 ## Current Code Architecture
 
@@ -41,7 +41,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. The current
 
 - Chat provider UX has separate `保存聊天 Provider` and `测试已保存配置` actions. Saving does not require a successful test, and testing uses the active saved config.
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
-- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, memory profile UI, delete memory, and clear current pet-pack memories.
+- AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, relevance-based memory selection, injected-memory usage writeback, active pet-pack refresh propagation, redacted trace export, conservative legacy conversation migration, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Bubble chat now has a transparent mini-dialogue implementation path and serves as the default lightweight entry, while the standalone desktop chat remains an explicit extended panel.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
@@ -103,13 +103,8 @@ P1 work:
 - Keep one shared conversation brain across all chat entry points.
   - Bubble chat, desktop chat, and Control Center AI must keep using `control-center:{petPackId}:main`.
   - Bubble chat should render a clipped recent dialogue stream plus lightweight notices instead of owning a second transcript.
-- Add relevant memory scoring before injection. Score by current user message, recent history, tags, scope, importance, confidence, recency, and use count.
-- Mark injected memories as used by updating `lastUsedAt` and `useCount`.
 - Upgrade the action tool schema with `reason`, `displayMode`, and a current-pet action candidate whitelist.
 - Add reply bubble segmentation while keeping the full assistant reply in transcript.
-- Add explicit active pet-pack refresh signals so AI pane and desktop chat reload persona, history, memory profile, and chat state when the active pack changes.
-- Add redacted AI Talk trace export that links provider, conversation, memory, and behavior decisions without exposing full prompts, API keys, or raw memory text.
-- Add conservative legacy migration from old `settings.ai.conversations.control-center` into `ai-talk-store.json` only when the new store has no messages.
 
 P2/P3:
 
