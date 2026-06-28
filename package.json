@@ -69,6 +69,7 @@
     "create-plugin-maintainer-approval": "node scripts/create-plugin-maintainer-approval.js",
     "validate-plugin-maintainer-approval": "node scripts/validate-plugin-maintainer-approval.js",
     "generate-sprites": "node scripts/generate-sprites.js",
+    "check:docs-drift": "node scripts/check-docs-drift.js",
     "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests examples -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
     "typecheck": "tsc --noEmit",
     "check:syntax": "npm run check:node && npm run typecheck && npm run build:control-center",

@@ -9,6 +9,7 @@ test('package scripts expose core and auxiliary test suites separately', () => {
   const scripts = packageJson.scripts || {}
 
   assert.equal(scripts.test, 'node --test "tests/**/*.test.js"')
+  assert.equal(scripts['check:docs-drift'], 'node scripts/check-docs-drift.js')
   assert.match(scripts['test:core'], /tests\/main\/\*\.test\.js/)
   assert.match(scripts['test:core'], /tests\/services\/\*\.test\.js/)
   assert.match(scripts['test:core'], /tests\/shared\/\*\.test\.js/)

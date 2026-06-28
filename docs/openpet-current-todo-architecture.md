@@ -289,12 +289,13 @@ P1 work:
 
 - Treat this document as the active TODO index.
 - Keep `docs/README.md`, `docs/HANDOFF.md`, `docs/development-summary.md`, and `docs/project-status-review.md` short and current.
+- A lightweight docs drift checker now exists at `npm run check:docs-drift` to guard known live-doc regressions such as stale `save-and-test` wording, older `codex/dev` branch metadata, and missing release-evidence archive index entries in `docs/README.md`.
 - Do not rewrite historical phase/review docs unless they are linked as live planning inputs.
 - When a feature lands, move it from "TODO" to "Current landed facts" here instead of letting multiple stale TODO lists diverge.
 
 P2/P3:
 
-- Generate a lightweight docs drift checker for known stale phrases such as `save-and-test`, obsolete `cloud/local` wording, or completed "missing UI" claims.
+- Expand the docs drift checker beyond current live-doc stale phrases and release-evidence indexing into broader historical-doc linting only if it stays low-noise.
 
 ## Recommended Next Milestone Options
 
