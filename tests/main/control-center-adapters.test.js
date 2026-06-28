@@ -120,20 +120,91 @@ test('local HTTP view adapters provide stable defaults for missing fields', () =
   })
 })
 
-test('createCatalogBlocklistResult preserves catalog and blocklist payload identity', () => {
+test('createCatalogBlocklistResult normalizes catalog and blocklist payloads for Control Center', () => {
   const catalog = {
-    schemaVersion: 1,
+    schemaVersion: '1',
     updatedAt: '2026-06-17T00:00:00.000Z',
-    feedbackUrl: '',
-    localBlocklist: { pluginIds: [], packIds: [], sha256: [] },
-    catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
-    blocklist: { pluginIds: [], packIds: [], sha256: [] },
-    plugins: [],
-    petPacks: []
+    feedbackUrl: 42,
+    localBlocklist: { pluginIds: ['local-block'], packIds: [7], sha256: ['hash-a'], internal: 'ignore-me' },
+    catalogBlocklist: { pluginIds: [], packIds: ['pack-a'], sha256: [false] },
+    blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: ['hash-b'], raw: 'ignore-me' },
+    plugins: [{
+      id: 'openpet.demo.weather',
+      name: 'Demo Weather',
+      version: '1.0.0',
+      author: 'OpenPet',
+      description: 'Weather demo',
+      openpetApiVersion: '1.0',
+      permissions: ['pet:say', 42],
+      downloadable: 1,
+      installed: '',
+      installedVersion: 9,
+      updateAvailable: 'yes',
+      sha256: 'plugin-hash',
+      reportUrl: 'https://example.com/report',
+      blockStatus: { blocked: 0, reasons: ['ok', 7], internal: 'ignore-me' },
+      serviceOnly: 'ignore-me'
+    }],
+    petPacks: [{
+      id: 'openpet.demo.pixel-cat',
+      displayName: 'Pixel Cat',
+      version: '1.0.0',
+      author: 'OpenPet',
+      description: 'Pet pack demo',
+      actionCount: '3',
+      downloadable: 1,
+      installed: '',
+      installedVersion: 7,
+      updateAvailable: 'yes',
+      sha256: 'pack-hash',
+      reportUrl: 'https://example.com/pack-report',
+      blockStatus: { blocked: 1, reasons: ['blocked', 9], internal: 'ignore-me' },
+      previewPath: '/Users/mango/private'
+    }],
+    privateCatalogCache: '/tmp/openpet'
   }
-  const blocklist = { pluginIds: ['openpet.demo'], packIds: [], sha256: [] }
+  const blocklist = { pluginIds: ['openpet.demo', 1], packIds: ['demo-pack'], sha256: ['hash-z', false], raw: 'ignore-me' }
 
-  assert.deepEqual(createCatalogBlocklistResult(catalog, blocklist), { catalog, blocklist })
+  assert.deepEqual(createCatalogBlocklistResult(catalog, blocklist), {
+    catalog: {
+      schemaVersion: 1,
+      updatedAt: '2026-06-17T00:00:00.000Z',
+      feedbackUrl: '',
+      localBlocklist: { pluginIds: ['local-block'], packIds: [], sha256: ['hash-a'] },
+      catalogBlocklist: { pluginIds: [], packIds: ['pack-a'], sha256: [] },
+      blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: ['hash-b'] },
+      plugins: [{
+        id: 'openpet.demo.weather',
+        name: 'Demo Weather',
+        version: '1.0.0',
+        author: 'OpenPet',
+        description: 'Weather demo',
+        openpetApiVersion: '1.0',
+        permissions: ['pet:say'],
+        downloadable: true,
+        installed: false,
+        updateAvailable: true,
+        sha256: 'plugin-hash',
+        reportUrl: 'https://example.com/report',
+        blockStatus: { blocked: false, reasons: ['ok'] }
+      }],
+      petPacks: [{
+        id: 'openpet.demo.pixel-cat',
+        displayName: 'Pixel Cat',
+        version: '1.0.0',
+        author: 'OpenPet',
+        description: 'Pet pack demo',
+        actionCount: 3,
+        downloadable: true,
+        installed: false,
+        updateAvailable: true,
+        sha256: 'pack-hash',
+        reportUrl: 'https://example.com/pack-report',
+        blockStatus: { blocked: true, reasons: ['blocked'] }
+      }]
+    },
+    blocklist: { pluginIds: ['openpet.demo'], packIds: ['demo-pack'], sha256: ['hash-z'] }
+  })
 })
 
 test('createPluginMutationResult packages mutation metadata with refreshed plugins', () => {

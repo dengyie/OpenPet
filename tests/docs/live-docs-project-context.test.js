@@ -131,6 +131,59 @@ test('project-context validation commands include the AI Talk Bubble Chat smoke 
   )
 })
 
+test('live docs describe the typed plugin view payload boundary truthfully', () => {
+  const context = readProjectContext()
+  const facts = context.currentFacts.join('\n')
+  const todoArchitecture = fs.readFileSync(path.join(repoRoot, 'docs/openpet-current-todo-architecture.md'), 'utf-8')
+  const developmentSummary = fs.readFileSync(path.join(repoRoot, 'docs/development-summary.md'), 'utf-8')
+  const handoff = fs.readFileSync(path.join(repoRoot, 'docs/HANDOFF.md'), 'utf-8')
+  const projectStatusReview = fs.readFileSync(path.join(repoRoot, 'docs/project-status-review.md'), 'utf-8')
+
+  for (const [name, content] of [
+    ['project-context.json', facts],
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
+  ]) {
+    assert.match(
+      content,
+      /typed plugin view config schema\/storage\/signature payloads/i,
+      `${name} should include the typed plugin view payload boundary in the TypeScript baseline`
+    )
+    assert.match(
+      content,
+      /action-frame `?inspectionResult`? payloads/i,
+      `${name} should include the typed action-frame inspectionResult payload boundary in the TypeScript baseline`
+    )
+    assert.match(
+      content,
+      /pet-pack mutation view payloads/i,
+      `${name} should include the typed pet-pack mutation view payload boundary in the TypeScript baseline`
+    )
+  }
+
+  assert.match(
+    todoArchitecture,
+    /Plugin list and plugin mutation payloads[\s\S]*config schema fields[\s\S]*storage stats[\s\S]*signature status/i,
+    'openpet-current-todo-architecture.md should record the landed plugin view payload normalization'
+  )
+  assert.match(
+    todoArchitecture,
+    /plugin view config\/storage\/signature slice[\s\S]*complete/i,
+    'openpet-current-todo-architecture.md should not make this completed plugin view slice the next adapter target again'
+  )
+  assert.match(
+    todoArchitecture,
+    /action-frame `inspectionResult` slice[\s\S]*complete/i,
+    'openpet-current-todo-architecture.md should not make this completed action-frame inspectionResult slice the next adapter target again'
+  )
+  assert.match(
+    todoArchitecture,
+    /pet-pack mutation view slice[\s\S]*complete/i,
+    'openpet-current-todo-architecture.md should not make this completed pet-pack mutation slice the next adapter target again'
+  )
+})
+
 test('project-context indexes archived release-truth evidence and blockers truthfully', () => {
   const context = readProjectContext()
   const facts = context.currentFacts.join('\n')
