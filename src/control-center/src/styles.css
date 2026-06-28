@@ -449,6 +449,7 @@ button {
 
 .trigger-review-header div,
 .trigger-review-copy,
+.trigger-preview-card,
 .trigger-result {
   display: grid;
   gap: 5px;
@@ -463,11 +464,24 @@ button {
 
 .trigger-review-header span,
 .trigger-review-copy span,
+.trigger-preview-card span,
 .trigger-result span {
   color: #4b5563;
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.trigger-preview-card {
+  padding: 10px 12px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 10px;
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.trigger-preview-card strong {
+  color: #1d4ed8;
+  font-size: 13px;
 }
 
 .trigger-review-copy strong {

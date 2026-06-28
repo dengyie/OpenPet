@@ -784,6 +784,58 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   ])
 })
 
+test('actions save config IPC surfaces trigger rule validation failures', async () => {
+  const ipcMain = createIpcMainStub()
+  const services = createRequiredServices({
+    pluginInstallService: {
+      inspectPluginPackage: () => ({}),
+      clearPendingSelection: () => ({ ok: true }),
+      installPlugin: () => ({ ok: true }),
+      updatePlugin: () => ({ ok: true }),
+      uninstallPlugin: () => ({ ok: true })
+    },
+    pluginService: { listPlugins: () => [] },
+    dialogService: {
+      showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+    }
+  })
+
+  registerIpcHandlers({
+    ...services,
+    actionImportService: {
+      inspectActionFrames: () => ({ inspection: { valid: true } }),
+      importActionFrames: () => ({ ok: true }),
+      updateActionConfig: async () => {
+        throw new Error('Trigger rule action does not exist: missing')
+      },
+      deleteAction: () => ({ ok: true })
+    },
+    ipcMainService: ipcMain
+  })
+
+  await assert.rejects(
+    () => ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+      defaultAction: 'idle',
+      clickAction: 'wave',
+      triggerRules: [{
+        id: 'rule:event:missing:1',
+        type: 'event',
+        actionId: 'missing',
+        enabled: true,
+        binding: 'plugin:event',
+        intervalMs: 0,
+        notes: '',
+        sourcePluginId: '',
+        sourceRunId: '',
+        sourceCommandId: '',
+        createdAt: '2026-06-22T00:00:00.000Z',
+        updatedAt: '2026-06-22T00:00:00.000Z'
+      }]
+    }),
+    /does not exist/
+  )
+})
+
 test('catalog blocklist handlers return catalog plus updated blocklist view result', async () => {
   const ipcMain = createIpcMainStub()
   const catalog = {

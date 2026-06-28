@@ -124,6 +124,72 @@ const getTriggerResultTitle = (result: ActionTriggerProposalAcceptanceResult) =>
   return '最近结果：已确认'
 }
 
+const getTriggerRulePreview = ({
+  type,
+  action,
+  notes
+}: {
+  type: ActionTriggerProposalType
+  action?: ActionEntry
+  notes: string
+}) => {
+  const trimmedNotes = notes.trim()
+  if (type === 'click') {
+    return {
+      title: '立即应用',
+      rows: [
+        `类型：点击`,
+        `目标动作：${action?.label || action?.id || '未选择'}`,
+        '绑定：clickAction',
+        '结果：立即改写点击动作'
+      ],
+      notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+    }
+  }
+  if (type === 'manual') {
+    return {
+      title: '仅确认提案',
+      rows: [
+        '类型：菜单',
+        `目标动作：${action?.label || action?.id || '未选择'}`,
+        '绑定：无需自动绑定',
+        '结果：保留在动作菜单中手动触发'
+      ],
+      notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+    }
+  }
+  if (type === 'unbound') {
+    return {
+      title: '保留未绑定',
+      rows: [
+        '类型：不绑定',
+        `目标动作：${action?.label || action?.id || '未选择'}`,
+        '绑定：无',
+        '结果：仅导入动作，不创建自动触发'
+      ],
+      notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+    }
+  }
+
+  const binding = type === 'state' ? 'idle' : (type === 'event' ? 'plugin:event' : '每 60000ms')
+  const outcome = type === 'random'
+    ? '保存宿主随机规则，不修改点击动作'
+    : (type === 'state'
+        ? '保存宿主状态规则，不修改点击动作'
+        : '保存宿主事件规则，不修改点击动作')
+
+  return {
+    title: '保存前预览',
+    rows: [
+      `类型：${type === 'random' ? '随机' : (type === 'state' ? '状态' : '事件')}`,
+      `目标动作：${action?.label || action?.id || '未选择'}`,
+      `绑定：${binding}`,
+      `结果：${outcome}`
+    ],
+    notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+  }
+}
+
 function TriggerRulesCard({
   rules,
   actions,
@@ -569,6 +635,11 @@ export function ActionsPane({
     || actionsConfig.actions[0]
   const selectedActionLabel = selectedAction?.label || selectedAction?.id || '未选择'
   const triggerDetails = triggerProposalDetails[triggerProposalType]
+  const triggerPreview = getTriggerRulePreview({
+    type: triggerProposalType,
+    action: selectedAction,
+    notes: triggerProposalNotes
+  })
 
   return (
     <section className="pane">
@@ -695,6 +766,14 @@ export function ActionsPane({
             <span><strong>含义</strong>{triggerDetails.summary}</span>
             <span><strong>接受结果</strong>{triggerDetails.outcome}</span>
             <span><strong>边界</strong>{triggerDetails.boundary}</span>
+          </div>
+
+          <div className="trigger-preview-card">
+            <strong>{triggerPreview.title}</strong>
+            {triggerPreview.rows.map((row) => (
+              <span key={row}>{row}</span>
+            ))}
+            <span>{triggerPreview.notes}</span>
           </div>
 
           {lastTriggerProposalResult ? (

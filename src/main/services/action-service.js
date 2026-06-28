@@ -238,6 +238,64 @@ const normalizeTriggerRuleItem = (item = {}, validActionIds = [], { strict = fal
   }
 }
 
+const createTriggerRuleIdWithNow = (rules, type, actionId, nowProvider = () => new Date().toISOString()) => {
+  const createdAt = nowProvider().replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'now'
+  const baseId = `rule:${type}:${actionId}:${createdAt}`
+  const usedIds = new Set((rules || []).map((item) => item.id))
+  if (!usedIds.has(baseId)) return baseId
+  let index = 2
+  while (usedIds.has(`${baseId}:${index}`)) index += 1
+  return `${baseId}:${index}`
+}
+
+const normalizeTriggerRulesForConfig = ({
+  rules = [],
+  actions = [],
+  now = () => new Date().toISOString()
+} = {}) => {
+  if (!Array.isArray(rules)) return []
+  const validActionIds = actions.map((action) => action?.id).filter(Boolean)
+  let nextRules = []
+  for (const rule of rules) {
+    const actionId = normalizeActionId(rule?.actionId, 'trigger rule action id')
+    const type = String(rule?.type || '')
+    if (!TRIGGER_RULE_TYPES.has(type)) {
+      throw new Error(`Unsupported trigger rule type: ${type || 'unknown'}`)
+    }
+    if (!validActionIds.includes(actionId)) {
+      throw new Error(`Trigger rule action does not exist: ${actionId}`)
+    }
+    const nextRule = normalizeTriggerRuleItem({
+      id: rule?.id
+        ? normalizeTriggerRuleId(rule.id)
+        : createTriggerRuleIdWithNow(nextRules, type, actionId, now),
+      type,
+      actionId,
+      enabled: rule?.enabled,
+      binding: rule?.binding,
+      intervalMs: rule?.intervalMs,
+      notes: rule?.notes,
+      sourcePluginId: rule?.sourcePluginId,
+      sourceRunId: rule?.sourceRunId,
+      sourceCommandId: rule?.sourceCommandId,
+      createdAt: rule?.createdAt || now(),
+      updatedAt: now()
+    }, validActionIds, { strict: true })
+
+    const duplicate = nextRules.find((item) => (
+      item.id !== nextRule.id
+      && item.type === nextRule.type
+      && item.actionId === nextRule.actionId
+      && item.binding === nextRule.binding
+    ))
+    if (duplicate) {
+      throw new Error(`Trigger rule already exists: ${duplicate.id}`)
+    }
+    nextRules = [...nextRules, nextRule]
+  }
+  return nextRules
+}
+
 const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations = getLegacyPetAnimations, saveLegacyAnimations, projectRoot = path.join(__dirname, '..', '..', '..'), now = () => new Date().toISOString() }) => {
   let cachedPetPack = null
   let legacyConfigOverride = null
@@ -406,13 +464,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
   }
 
   const createTriggerRuleId = (rules, type, actionId) => {
-    const createdAt = now().replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'now'
-    const baseId = `rule:${type}:${actionId}:${createdAt}`
-    const usedIds = new Set((rules || []).map((item) => item.id))
-    if (!usedIds.has(baseId)) return baseId
-    let index = 2
-    while (usedIds.has(`${baseId}:${index}`)) index += 1
-    return `${baseId}:${index}`
+    return createTriggerRuleIdWithNow(rules, type, actionId, now)
   }
 
   const buildTriggerRuleItem = (payload = {}, current, { preserveId = false } = {}) => {
@@ -486,6 +538,11 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       triggerRules: nextRules
     })
     return { rule: nextRule, animations }
+  }
+
+  const normalizeTriggerRulesForSave = (rules = []) => {
+    const current = getMutableConfig()
+    return normalizeTriggerRulesForConfig({ rules, actions: current.actions, now })
   }
 
   const removeTriggerRule = (ruleId) => {
@@ -702,6 +759,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     validateCreatorActionMutation,
     applyCreatorActionMutation,
     acceptTriggerProposal,
+    normalizeTriggerRulesForSave,
     saveTriggerRule,
     removeTriggerRule,
     submitTriggerProposal,
@@ -710,4 +768,4 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
   }
 }
 
-module.exports = { createActionService }
+module.exports = { createActionService, normalizeTriggerRulesForConfig }

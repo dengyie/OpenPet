@@ -209,6 +209,76 @@ test('action import service preserves valid trigger rules and prunes removed act
   assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerRules.length, 1)
 })
 
+test('action import service rejects invalid edited trigger rules on save', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-trigger-rules-invalid-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+
+  await assert.rejects(
+    () => service.updateActionConfig({
+      defaultAction: 'idle',
+      clickAction: 'wave',
+      triggerRules: [
+        {
+          id: 'rule:event:missing:1',
+          type: 'event',
+          actionId: 'missing',
+          enabled: true,
+          binding: 'plugin:event',
+          intervalMs: 0,
+          notes: '',
+          sourcePluginId: '',
+          sourceRunId: '',
+          sourceCommandId: '',
+          createdAt: '2026-06-22T00:00:00.000Z',
+          updatedAt: '2026-06-22T00:00:00.000Z'
+        }
+      ]
+    }),
+    /does not exist/
+  )
+})
+
+test('action import service rejects invalid random trigger rule intervals on save', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-trigger-rules-interval-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+
+  await assert.rejects(
+    () => service.updateActionConfig({
+      defaultAction: 'idle',
+      clickAction: 'wave',
+      triggerRules: [
+        {
+          id: 'rule:random:wave:1',
+          type: 'random',
+          actionId: 'wave',
+          enabled: true,
+          binding: '',
+          intervalMs: 500,
+          notes: '',
+          sourcePluginId: '',
+          sourceRunId: '',
+          sourceCommandId: '',
+          createdAt: '2026-06-22T00:00:00.000Z',
+          updatedAt: '2026-06-22T00:00:00.000Z'
+        }
+      ]
+    }),
+    /interval/
+  )
+})
+
 test('action import service preserves custom labels after regenerating config', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-label-'))
   const sourceDir = path.join(root, 'source-wave')

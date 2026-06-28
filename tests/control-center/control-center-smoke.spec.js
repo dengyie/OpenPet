@@ -122,6 +122,10 @@ test.describe('Control Center smoke', () => {
 
     await reviewCard.locator('select').selectOption('state')
     await expect(reviewCard).toContainText('状态条件和优先级仍由 host 控制，这一轮只补持久化和编辑闭环。')
+    await expect(reviewCard).toContainText('保存前预览')
+    await expect(reviewCard).toContainText('类型：状态')
+    await expect(reviewCard).toContainText('目标动作：Sleep')
+    await expect(reviewCard).toContainText('绑定：idle')
     await page.getByRole('button', { name: '保存状态规则' }).click()
 
     await expect(page.locator('.status-line')).toContainText('已应用 触发建议')
@@ -133,6 +137,21 @@ test.describe('Control Center smoke', () => {
     await expect(rulesCard).toContainText('1 条已保存规则')
     await expect(rulesCard).toContainText('Sleep')
     await expect(rulesCard).toContainText('状态')
+  })
+
+  test('shows event trigger preview details before saving in the Actions review UI', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    await page.getByRole('button', { name: /Sleep/ }).click()
+    const reviewCard = page.locator('[aria-label="触发建议审阅"]')
+
+    await reviewCard.locator('select').selectOption('event')
+    await expect(reviewCard).toContainText('保存前预览')
+    await expect(reviewCard).toContainText('类型：事件')
+    await expect(reviewCard).toContainText('目标动作：Sleep')
+    await expect(reviewCard).toContainText('绑定：plugin:event')
+    await expect(reviewCard).toContainText('结果：保存宿主事件规则，不修改点击动作')
   })
 
   test('reviews queued trigger proposals from the Actions inbox', async ({ page }) => {

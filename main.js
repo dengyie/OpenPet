@@ -129,7 +129,8 @@ const bootstrapOpenPet = () => {
   const actionImportService = createActionImportService({
     framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
     spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
-    configPath: path.join(__dirname, 'cat_anime', 'animations.json')
+    configPath: path.join(__dirname, 'cat_anime', 'animations.json'),
+    normalizeTriggerRulesForSave: actionService.normalizeTriggerRulesForSave
   })
   const cursorAssetService = createCursorAssetService({
     cursorDir: path.join(app.getPath('userData'), 'cursors')

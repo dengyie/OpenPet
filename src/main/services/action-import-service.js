@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { normalizeTriggerRulesForConfig } = require('./action-service')
 
 const isSafeActionId = (actionId) => /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(actionId || '')
 
@@ -19,7 +20,7 @@ const moveIfExists = (sourcePath, targetPath) => {
   return true
 }
 
-const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
+const createActionImportService = ({ framesRoot, spritesDir, configPath, normalizeTriggerRulesForSave }) => {
   const readCurrentConfig = () => {
     try {
       return JSON.parse(fs.readFileSync(configPath, 'utf-8'))
@@ -81,6 +82,14 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
 
   const regenerate = async (overrides = {}) => {
     const currentConfig = readCurrentConfig()
+    const normalizedTriggerRules = Array.isArray(overrides.triggerRules)
+      ? (typeof normalizeTriggerRulesForSave === 'function'
+          ? normalizeTriggerRulesForSave(overrides.triggerRules)
+          : normalizeTriggerRulesForConfig({
+              rules: overrides.triggerRules,
+              actions: currentConfig.actions || []
+            }))
+      : undefined
     const { generateSpritesFromFrames } = loadSpriteGenerator()
     const generated = await generateSpritesFromFrames({
       framesRoot,
@@ -92,7 +101,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     })
     const preserved = preserveHostTriggerData({
       ...generated,
-      ...(Array.isArray(overrides.triggerRules) ? { triggerRules: overrides.triggerRules } : {})
+      ...(Array.isArray(normalizedTriggerRules) ? { triggerRules: normalizedTriggerRules } : {})
     }, currentConfig)
     if (preserved !== generated) {
       fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')
