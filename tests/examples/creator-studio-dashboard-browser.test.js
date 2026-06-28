@@ -9,7 +9,7 @@ const sharp = require('sharp')
 
 const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
-const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+const { createRun, updateRunStatus, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const openDashboardServer = async (dataDir) => {
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
@@ -1180,6 +1180,96 @@ test('creator studio dashboard syncs prompt and backend controls when loading ex
     await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, fixtureRun.runId)
     await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('原地打滚'))
     assert.equal(await page.locator('#backend-select').inputValue(), 'fixture')
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard normalizes legacy run backends when syncing loaded runs', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-legacy-backend-'))
+  const legacyCloudRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：云端害羞转圈。',
+      originalPrompt: '新增一个自定义动作：云端害羞转圈。',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-cloud-spin',
+          name: '云端害羞转圈',
+          motionPrompt: '点击后轻轻转一圈。',
+          loop: false,
+          frameCount: 16,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:06:00.000Z'
+  })
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyCloudRun,
+      backend: 'cloud',
+      input: {
+        ...legacyCloudRun.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  const legacyLocalRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：本地打哈欠。',
+      originalPrompt: '新增一个自定义动作：本地打哈欠。',
+      backend: 'local',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-local-yawn',
+          name: '本地打哈欠',
+          motionPrompt: '慢慢张嘴打哈欠。',
+          loop: false,
+          frameCount: 16,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:07:00.000Z'
+  })
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyLocalRun,
+      backend: 'local',
+      input: {
+        ...legacyLocalRun.input,
+        backend: 'local'
+      }
+    }
+  })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('本地打哈欠'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    await page.locator('#run-select').selectOption(legacyCloudRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyCloudRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('云端害羞转圈'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    await page.locator('#run-select').selectOption(legacyLocalRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyLocalRun.runId)
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

@@ -606,6 +606,12 @@
       const $ = (id) => document.getElementById(id)
       const isFullPetRun = (run) => run?.generationTask?.mode === 'full-pet'
       const defaultGenerateLabel = (run = state.run) => (isFullPetRun(run) ? 'Generate pet pack' : 'Generate action')
+      const normalizeDashboardBackend = (value) => {
+        const normalized = String(value || '').trim().toLowerCase()
+        if (normalized === 'fixture') return 'fixture'
+        if (['provider', 'cloud', 'local'].includes(normalized)) return 'provider'
+        return 'fixture'
+      }
       const formatTriggerSummary = (triggerProposal = {}) => {
         const type = triggerProposal?.type || 'unbound'
         return triggerProposal?.binding ? `${type} (${triggerProposal.binding})` : type
@@ -688,10 +694,7 @@
         if (typeof promptValue === 'string') {
           $('prompt-input').value = promptValue
         }
-        const backendValue = run?.backend || run?.input?.backend || 'fixture'
-        if (backendValue === 'fixture' || backendValue === 'provider') {
-          $('backend-select').value = backendValue
-        }
+        $('backend-select').value = normalizeDashboardBackend(run?.backend || run?.input?.backend || 'fixture')
       }
 
       const loadRun = async (runId, statusMessage = '') => {
