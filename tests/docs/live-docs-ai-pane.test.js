@@ -100,21 +100,39 @@ test('live docs surface the AI Talk bubble acceptance smoke entrypoint with the 
   const developmentSummary = readText('docs/development-summary.md')
   const handoff = readText('docs/HANDOFF.md')
   const docsReadme = readText('docs/README.md')
+  const projectStatusReview = readText('docs/project-status-review.md')
+  const smokeEvidence = readJson('docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
+  const smokeReadme = readText('docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/README.md')
 
   assert.match(
     docsReadme,
     /2026-06-28-real-provider-chat-acceptance-runbook\.md/i,
     'docs/README.md should index the real-provider Bubble Chat acceptance runbook'
   )
+  assert.match(
+    docsReadme,
+    /ai-talk-local-smoke\//i,
+    'docs/README.md should surface ai-talk-local-smoke as a maintained release-evidence class'
+  )
+
+  assert.equal(smokeEvidence.ok, true)
+  assert.equal(smokeEvidence.config.model, 'gpt-5.5')
+  assert.equal(smokeEvidence.bubbleAcceptance.providerLatencyMs, 2141)
+  assert.equal(smokeEvidence.bubbleDispatch.petSayReceived, true)
+  assert.equal(smokeEvidence.bubbleDispatch.bubbleStateVisible, true)
+  assert.equal(smokeEvidence.manualAcceptanceTemplate.requestId, smokeEvidence.bubbleAcceptance.requestId)
+  assert.match(smokeReadme, /ttlMs = 9835/i)
+  assert.match(smokeReadme, /does not by itself prove/i)
 
   for (const [name, content] of [
     ['openpet-current-todo-architecture.md', todoArchitecture],
     ['development-summary.md', developmentSummary],
-    ['HANDOFF.md', handoff]
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
   ]) {
     assert.match(
       content,
-      /run-ai-talk-local-smoke[\s\S]*bubbleAcceptance[\s\S]*providerLatencyMs[\s\S]*manualAcceptanceTemplate/i,
+      /run-ai-talk-local-smoke[\s\S]*bubbleAcceptance[\s\S]*providerLatencyMs[\s\S]*(manualAcceptanceTemplate|ai-talk-local-smoke\/2026-06-28T15-35-59-210Z)/i,
       `${name} should mention the AI Talk Bubble Chat smoke entrypoint and its key acceptance fields`
     )
     assert.match(

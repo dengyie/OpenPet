@@ -10,6 +10,7 @@ const {
   defaultAppDataDir,
   defaultUserDataDir,
   parseArgs,
+  sanitizeArchiveSummary,
   runAiTalkLocalSmoke
 } = require('../../scripts/run-ai-talk-local-smoke')
 
@@ -58,6 +59,24 @@ test('createSessionPaths creates deterministic artifact paths', () => {
   assert.equal(paths.sessionId, '2026-06-28T12-34-56-789Z')
   assert.equal(paths.resultPath.endsWith(path.join('2026-06-28T12-34-56-789Z', 'ai-talk-local-smoke-result.json')), true)
   assert.equal(paths.aiTalkStorePath.endsWith(path.join('2026-06-28T12-34-56-789Z', 'ai-talk-store.json')), true)
+})
+
+test('sanitizeArchiveSummary redacts local absolute paths for persisted evidence', () => {
+  const sanitized = sanitizeArchiveSummary({
+    userDataDir: '/Users/mango/Library/Application Support/ibot',
+    sessionDir: '/repo/tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z',
+    liveAiTalkStorePath: '/Users/mango/Library/Application Support/ibot/ai-talk-store.json',
+    tempAiTalkStorePath: '/repo/tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/ai-talk-store.json',
+    logPath: '/repo/tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/logs/openpet-app.jsonl',
+    resultPath: '/repo/tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/ai-talk-local-smoke-result.json'
+  }, { projectRoot: '/repo' })
+
+  assert.equal(sanitized.userDataDir, '[redacted-local-user-data]')
+  assert.equal(sanitized.liveAiTalkStorePath, '[redacted-local-user-data]/ai-talk-store.json')
+  assert.equal(sanitized.sessionDir, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z')
+  assert.equal(sanitized.tempAiTalkStorePath, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/ai-talk-store.json')
+  assert.equal(sanitized.logPath, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/logs/openpet-app.jsonl')
+  assert.equal(sanitized.resultPath, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/ai-talk-local-smoke-result.json')
 })
 
 test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host services', async () => {
@@ -204,4 +223,8 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.equal(persisted.bubbleDispatch.bubbleStateVisible, true)
   assert.equal(persisted.bubbleAcceptance.providerLatencyMs, 820)
   assert.equal(persisted.manualAcceptanceTemplate.requestId, persisted.bubbleAcceptance.requestId)
+  assert.equal(persisted.userDataDir, '[redacted-local-user-data]')
+  assert.equal(persisted.liveAiTalkStorePath, '[redacted-local-user-data]/ai-talk-store.json')
+  assert.match(persisted.sessionDir, /openpet-ai-talk-output-/)
+  assert.doesNotMatch(JSON.stringify(persisted), /Library\/Application Support\/ibot/)
 })

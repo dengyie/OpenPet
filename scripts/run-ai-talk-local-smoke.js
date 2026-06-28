@@ -92,6 +92,30 @@ const sanitizeError = (error) => ({
   providerCode: sanitizeText(error?.providerCode || '', 80)
 })
 
+const toRepoRelativePath = (filePath, projectRoot) => {
+  const rawPath = String(filePath || '').trim()
+  const rootPath = String(projectRoot || '').trim()
+  if (!rawPath || !rootPath) return sanitizeText(rawPath, 240)
+  const resolvedFilePath = path.resolve(rawPath)
+  const resolvedProjectRoot = path.resolve(rootPath)
+  if (resolvedFilePath === resolvedProjectRoot) return '.'
+  if (!resolvedFilePath.startsWith(`${resolvedProjectRoot}${path.sep}`)) return sanitizeText(rawPath, 240)
+  return path.relative(resolvedProjectRoot, resolvedFilePath) || '.'
+}
+
+const sanitizeArchiveSummary = (summary = {}, { projectRoot } = {}) => {
+  const userDataMarker = '[redacted-local-user-data]'
+  return {
+    ...summary,
+    userDataDir: userDataMarker,
+    sessionDir: toRepoRelativePath(summary.sessionDir, projectRoot),
+    liveAiTalkStorePath: `${userDataMarker}/ai-talk-store.json`,
+    tempAiTalkStorePath: toRepoRelativePath(summary.tempAiTalkStorePath, projectRoot),
+    logPath: toRepoRelativePath(summary.logPath, projectRoot),
+    resultPath: toRepoRelativePath(summary.resultPath, projectRoot)
+  }
+}
+
 const normalizeMessageText = (value) => String(value || '').trim().replace(/\s+/g, ' ')
 
 const createPetBubbleText = (reply, behaviorIntent, bubbleSegments = []) => {
@@ -614,8 +638,9 @@ const runAiTalkLocalSmoke = async ({
     summary.ok = false
   }
 
-  fs.writeFileSync(sessionPaths.resultPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf-8')
   summary.resultPath = sessionPaths.resultPath
+  const persistedSummary = sanitizeArchiveSummary(summary, { projectRoot })
+  fs.writeFileSync(sessionPaths.resultPath, `${JSON.stringify(persistedSummary, null, 2)}\n`, 'utf-8')
   return summary
 }
 
@@ -654,5 +679,6 @@ module.exports = {
   defaultAppDataDir,
   defaultUserDataDir,
   parseArgs,
+  sanitizeArchiveSummary,
   runAiTalkLocalSmoke
 }

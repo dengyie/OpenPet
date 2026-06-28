@@ -105,14 +105,19 @@ test('project-context indexes the archived provider smoke evidence and current s
   )
   assert.match(
     facts,
+    /docs\/release-evidence\/ai-talk-local-smoke\/2026-06-28T15-35-59-210Z\/[\s\S]*providerLatencyMs was 2141[\s\S]*bubbleDispatch\.petSayReceived was true[\s\S]*bubbleDispatch\.bubbleStateVisible was true/i,
+    'project-context.json should point to the archived AI Talk Bubble Chat smoke evidence path and key verified telemetry'
+  )
+  assert.match(
+    facts,
     /does not by itself prove[\s\S]*transparent popup placement|does not by itself prove[\s\S]*full human acceptance/i,
     'project-context.json should keep the AI Talk Bubble Chat smoke claim boundary explicit'
   )
 
   assert.match(
     docsReadme,
-    /release-evidence\/.*ai-provider-smoke\/.*creator-studio-provider-smoke\/.*packaged-runtime\/.*signed-release-closure\//is,
-    'docs/README.md should surface provider smoke and release-truth archives in the release evidence map'
+    /release-evidence\/.*ai-provider-smoke\/.*ai-talk-local-smoke\/.*creator-studio-provider-smoke\/.*packaged-runtime\/.*signed-release-closure\//is,
+    'docs/README.md should surface provider smoke, AI Talk smoke, and release-truth archives in the release evidence map'
   )
 })
 
