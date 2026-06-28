@@ -352,6 +352,7 @@ export interface ActionTriggerProposalInboxItem {
   actionId: string
   type: ActionTriggerProposalType
   binding: string
+  condition?: ActionTriggerRuleCondition
   sourcePluginId: string
   sourceRunId: string
   sourceCommandId: string
@@ -371,11 +372,17 @@ export interface ActionTriggerProposalAcceptanceRequest {
   type: ActionTriggerProposalType
   id?: string
   binding?: string
+  condition?: ActionTriggerRuleCondition
   sourcePluginId?: string
   sourceRunId?: string
   sourceCommandId?: string
   message?: string
   notes?: string
+}
+
+export interface ActionTriggerRuleUpdateRequest {
+  ruleId: string
+  condition?: ActionTriggerRuleCondition
 }
 
 export interface ActionTriggerRuleCondition {
@@ -486,6 +493,7 @@ export interface ActionsSaveConfigRequest {
   defaultAction?: string
   clickAction?: string
   triggerProposal?: ActionTriggerProposalAcceptanceRequest
+  triggerRuleUpdate?: ActionTriggerRuleUpdateRequest
 }
 
 export interface ActionsMutationResult {

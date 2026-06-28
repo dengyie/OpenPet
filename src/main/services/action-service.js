@@ -157,6 +157,9 @@ const normalizeTriggerProposalInboxItem = (item = {}) => {
     actionId: normalizeOptionalText(actionId),
     type,
     binding: normalizeOptionalText(item.binding),
+    ...(item.condition && typeof item.condition === 'object'
+      ? { condition: normalizeTriggerRuleCondition(type, item.condition) }
+      : {}),
     sourcePluginId: normalizeOptionalText(item.sourcePluginId),
     sourceRunId: normalizeOptionalText(item.sourceRunId),
     sourceCommandId: normalizeOptionalText(item.sourceCommandId),
@@ -611,6 +614,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       actionId: proposal.actionId,
       type: proposal.type,
       binding: proposal.binding,
+      condition: proposal.condition,
       sourcePluginId: proposal.sourcePluginId,
       sourceRunId: proposal.sourceRunId,
       sourceCommandId: proposal.sourceCommandId,
@@ -658,6 +662,37 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
       triggerProposalInbox: nextInbox
     })
     return { proposal: nextProposal, animations }
+  }
+
+  const updateTriggerRule = (ruleId, condition = {}) => {
+    const id = normalizeTriggerProposalId(ruleId, 'trigger rule id')
+    const current = getMutableConfig()
+    const existingRules = (current.triggerRules || []).map(normalizeTriggerRule)
+    const index = existingRules.findIndex((rule) => rule.id === id)
+    if (index < 0) {
+      throw new Error(`Trigger rule does not exist: ${id}`)
+    }
+    const currentRule = existingRules[index]
+    const nextRule = normalizeTriggerRule({
+      ...currentRule,
+      condition: normalizeTriggerRuleCondition(currentRule.type, condition)
+    })
+    const duplicateRule = existingRules.find((rule, ruleIndex) => (
+      ruleIndex !== index
+      && rule.type === nextRule.type
+      && rule.actionId === nextRule.actionId
+      && areTriggerRuleConditionsEqual(rule.type, rule.condition, nextRule.condition)
+    ))
+    if (duplicateRule) {
+      throw new Error(`Trigger rule condition duplicates existing rule: ${duplicateRule.id}`)
+    }
+    const nextRules = existingRules.map((rule, ruleIndex) => (
+      ruleIndex === index ? nextRule : rule
+    ))
+    return persistMutableConfig({
+      ...current,
+      triggerRules: nextRules
+    })
   }
 
   const removeTriggerRule = (ruleId) => {
@@ -709,6 +744,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     submitTriggerProposal,
     acceptTriggerProposalItem,
     rejectTriggerProposalItem,
+    updateTriggerRule,
     removeTriggerRule,
     setTriggerRuleEnabled
   }

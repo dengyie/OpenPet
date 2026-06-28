@@ -3,6 +3,8 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
+  ActionTriggerRule,
+  ActionTriggerRuleCondition,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalType,
   ActionsConfigViewState,
@@ -11,6 +13,20 @@ import type {
   PetPacksViewState
 } from '../../../shared/openpet-contracts'
 import type { ActionImportDraft, ActionsPaneProps } from '../panes/ActionsPane'
+
+const defaultTriggerProposalCondition = (type: ActionTriggerProposalType): ActionTriggerRuleCondition => {
+  if (type === 'random') return { probability: 0.15 }
+  if (type === 'state') return { stateKey: 'posture', equals: 'resting' }
+  if (type === 'event') return { eventName: 'pet.greeting.completed' }
+  return {}
+}
+
+const cloneTriggerCondition = (condition: ActionTriggerRuleCondition | null | undefined): ActionTriggerRuleCondition => ({
+  ...(condition?.stateKey ? { stateKey: condition.stateKey } : {}),
+  ...(condition?.equals ? { equals: condition.equals } : {}),
+  ...(condition?.eventName ? { eventName: condition.eventName } : {}),
+  ...(Number.isFinite(Number(condition?.probability)) ? { probability: Number(condition?.probability) } : {})
+})
 
 export function useActionsPane() {
   const [loading, setLoading] = useState(true)
@@ -21,6 +37,8 @@ export function useActionsPane() {
   const [importDraft, setImportDraft] = useState<ActionImportDraft>({ actionId: '', label: '' })
   const [importInspection, setImportInspection] = useState<CompletedActionFrameInspectionResult | null>(null)
   const [triggerProposalType, setTriggerProposalType] = useState<ActionTriggerProposalType>('click')
+  const [triggerProposalCondition, setTriggerProposalCondition] = useState<ActionTriggerRuleCondition>(defaultTriggerProposalCondition('click'))
+  const [editingTriggerRuleId, setEditingTriggerRuleId] = useState<string | null>(null)
   const [triggerProposalNotes, setTriggerProposalNotes] = useState('')
   const [lastTriggerProposalResult, setLastTriggerProposalResult] = useState<ActionTriggerProposalAcceptanceResult | null>(null)
   const [status, setStatus] = useState('')
@@ -64,7 +82,18 @@ export function useActionsPane() {
   }
 
   const onChangeTriggerProposalType = (value: ActionTriggerProposalType) => {
+    setEditingTriggerRuleId(null)
     setTriggerProposalType(value)
+    setTriggerProposalCondition(defaultTriggerProposalCondition(value))
+    setLastTriggerProposalResult(null)
+  }
+
+  const onChangeTriggerProposalCondition = (partial: Partial<ActionTriggerRuleCondition>) => {
+    setTriggerProposalCondition((current) => ({
+      ...defaultTriggerProposalCondition(triggerProposalType),
+      ...current,
+      ...partial
+    }))
     setLastTriggerProposalResult(null)
   }
 
@@ -105,6 +134,9 @@ export function useActionsPane() {
           actionId,
           type: triggerProposalType,
           binding: triggerProposalType === 'click' ? 'clickAction' : undefined,
+          condition: ['random', 'state', 'event'].includes(triggerProposalType)
+            ? cloneTriggerCondition(triggerProposalCondition)
+            : undefined,
           notes: triggerProposalNotes.trim() || undefined
         }
       })
@@ -116,6 +148,43 @@ export function useActionsPane() {
         : '触发建议已保存')
     } catch (error) {
       setStatus(messageFromError(error, '应用触发建议失败'))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const onStartEditTriggerRule = (rule: ActionTriggerRule) => {
+    setEditingTriggerRuleId(rule.id)
+    setSelectedActionId(rule.actionId)
+    setTriggerProposalType(rule.type)
+    setTriggerProposalCondition(cloneTriggerCondition(rule.condition))
+    setLastTriggerProposalResult(null)
+    setStatus(`正在编辑触发规则 ${rule.id}`)
+  }
+
+  const onCancelEditTriggerRule = () => {
+    setEditingTriggerRuleId(null)
+    setTriggerProposalCondition(defaultTriggerProposalCondition(triggerProposalType))
+    setLastTriggerProposalResult(null)
+    setStatus('')
+  }
+
+  const onSaveTriggerRuleEdit = async () => {
+    if (!editingTriggerRuleId) return
+    setWorking(true)
+    setStatus('')
+    try {
+      const response = await api.saveActionsConfig({
+        triggerRuleUpdate: {
+          ruleId: editingTriggerRuleId,
+          condition: cloneTriggerCondition(triggerProposalCondition)
+        }
+      })
+      setActionsConfig(cloneActionsConfig(response.animations))
+      setEditingTriggerRuleId(null)
+      setStatus(`已更新触发规则 ${editingTriggerRuleId}`)
+    } catch (error) {
+      setStatus(messageFromError(error, '更新触发规则失败'))
     } finally {
       setWorking(false)
     }
@@ -263,6 +332,10 @@ export function useActionsPane() {
     try {
       const response = await api.deleteActionTriggerRule(ruleId)
       setActionsConfig(cloneActionsConfig(response.animations))
+      if (editingTriggerRuleId === ruleId) {
+        setEditingTriggerRuleId(null)
+        setTriggerProposalCondition(defaultTriggerProposalCondition(triggerProposalType))
+      }
       setStatus(`已删除触发规则 ${ruleId}`)
     } catch (error) {
       setStatus(messageFromError(error, '删除触发规则失败'))
@@ -406,8 +479,14 @@ export function useActionsPane() {
     onApplyTriggerProposal,
     onAcceptTriggerProposal,
     onRejectTriggerProposal,
+    onStartEditTriggerRule,
+    onCancelEditTriggerRule,
+    onSaveTriggerRuleEdit,
     triggerProposalType,
     setTriggerProposalType: onChangeTriggerProposalType,
+    triggerProposalCondition,
+    setTriggerProposalCondition: onChangeTriggerProposalCondition,
+    editingTriggerRuleId,
     triggerProposalNotes,
     setTriggerProposalNotes: onChangeTriggerProposalNotes,
     lastTriggerProposalResult

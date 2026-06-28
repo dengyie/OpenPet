@@ -121,12 +121,15 @@ test.describe('Control Center smoke', () => {
     const reviewCard = page.locator('[aria-label="触发建议审阅"]')
 
     await reviewCard.locator('select').selectOption('state')
-    await expect(reviewCard).toContainText('状态条件和优先级必须由 host 统一校验和持久化。')
-    await page.getByRole('button', { name: '确认待规则' }).click()
+    await reviewCard.getByLabel('状态键').fill('mood')
+    await reviewCard.getByLabel('命中值').fill('focused')
+    await expect(reviewCard).toContainText('当 mood = focused 时触发 sleep。')
+    await page.getByRole('button', { name: '保存状态规则' }).click()
 
     await expect(page.locator('.status-line')).toContainText('已确认 触发建议')
     await expect(reviewCard).toContainText('最近结果：已确认')
     await expect(reviewCard).toContainText('结果码：rule_saved')
+    await expect(reviewCard).toContainText('When mood is focused, play sleep.')
     await expect(clickAction).toHaveValue(beforeClickAction)
   })
 
@@ -285,6 +288,51 @@ test.describe('Control Center smoke', () => {
     await rulesCard.getByRole('button', { name: '启用规则' }).click()
     await expect(page.locator('.status-line')).toContainText('已更新触发规则')
     await expect(rulesCard).toContainText('启用')
+  })
+
+  test('edits persisted trigger rule conditions in the Actions pane', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        actionsConfig: {
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
+            { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+            { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
+          ],
+          triggerProposalInbox: [],
+          triggerRules: [
+            {
+              id: 'rule:state:sleep',
+              type: 'state',
+              actionId: 'sleep',
+              enabled: true,
+              condition: {
+                stateKey: 'posture',
+                equals: 'resting'
+              }
+            }
+          ]
+        }
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    const rulesCard = page.locator('[aria-label="已保存触发规则"]')
+    await rulesCard.getByRole('button', { name: '编辑条件' }).click()
+
+    const reviewCard = page.locator('[aria-label="触发建议审阅"]')
+    await expect(reviewCard).toContainText('编辑宿主规则')
+    await reviewCard.getByLabel('状态键').fill('energy')
+    await reviewCard.getByLabel('命中值').fill('low')
+    await expect(reviewCard).toContainText('当 energy = low 时触发 sleep。')
+    await reviewCard.getByRole('button', { name: '保存规则条件' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('已更新触发规则 rule:state:sleep')
+    await expect(rulesCard).toContainText('energy = low')
   })
 
   test('persists Pet settings in the demo API session', async ({ page }) => {

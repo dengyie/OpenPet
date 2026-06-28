@@ -171,6 +171,7 @@ const createTriggerProposalInboxItem = (proposal = {}) => ({
   actionId: typeof proposal.actionId === 'string' ? proposal.actionId : '',
   type: typeof proposal.type === 'string' && TRIGGER_PROPOSAL_TYPES.has(proposal.type) ? proposal.type : 'unbound',
   binding: typeof proposal.binding === 'string' ? proposal.binding : '',
+  ...(proposal.condition && typeof proposal.condition === 'object' ? { condition: { ...proposal.condition } } : {}),
   sourcePluginId: typeof proposal.sourcePluginId === 'string' ? proposal.sourcePluginId : '',
   sourceRunId: typeof proposal.sourceRunId === 'string' ? proposal.sourceRunId : '',
   sourceCommandId: typeof proposal.sourceCommandId === 'string' ? proposal.sourceCommandId : '',

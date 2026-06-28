@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerRuleCondition,
   ActionTriggerRule,
   ActionTriggerProposalInboxItem,
   ActionTriggerProposalAcceptanceResult,
@@ -46,8 +47,14 @@ export interface ActionsPaneProps {
   onApplyTriggerProposal: () => void | Promise<void>
   onAcceptTriggerProposal: (proposalId: string) => void | Promise<void>
   onRejectTriggerProposal: (proposalId: string) => void | Promise<void>
+  onStartEditTriggerRule: (rule: ActionTriggerRule) => void | Promise<void>
+  onCancelEditTriggerRule: () => void | Promise<void>
+  onSaveTriggerRuleEdit: () => void | Promise<void>
   triggerProposalType: ActionTriggerProposalType
   setTriggerProposalType: (value: ActionTriggerProposalType) => void
+  triggerProposalCondition: ActionTriggerRuleCondition
+  setTriggerProposalCondition: (partial: Partial<ActionTriggerRuleCondition>) => void
+  editingTriggerRuleId: string | null
   triggerProposalNotes: string
   setTriggerProposalNotes: (value: string) => void
   lastTriggerProposalResult: ActionTriggerProposalAcceptanceResult | null
@@ -77,23 +84,23 @@ const triggerProposalDetails: Record<ActionTriggerProposalType, {
   random: {
     label: '随机',
     summary: '建议作为随机/周期性行为使用。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '随机频率、冷却和冲突处理需要后续 host trigger-rule schema。',
-    buttonLabel: '确认待规则'
+    outcome: '保存后会写入宿主规则，并可继续调整条件。',
+    boundary: '本轮只落宿主持久化条件，不扩到冲突解算、优先级或运行时调度。',
+    buttonLabel: '保存随机规则'
   },
   state: {
     label: '状态',
     summary: '建议由 hover、idle、心情、靠近等运行状态触发。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '状态条件和优先级必须由 host 统一校验和持久化。',
-    buttonLabel: '确认待规则'
+    outcome: '保存后会写入宿主规则，并可继续调整条件。',
+    boundary: '状态条件由 host 校验并持久化，当前不扩展到多规则优先级。',
+    buttonLabel: '保存状态规则'
   },
   event: {
     label: '事件',
     summary: '建议由插件事件、本地 API 事件或系统事件触发。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '事件来源、权限和参数匹配需要 host 规则编辑器确认。',
-    buttonLabel: '确认待规则'
+    outcome: '保存后会写入宿主规则，并可继续调整条件。',
+    boundary: '事件名由 host 保存，本轮不扩到事件参数匹配与权限映射。',
+    buttonLabel: '保存事件规则'
   },
   unbound: {
     label: '不绑定',
@@ -202,13 +209,17 @@ function TriggerProposalInbox({
 function TriggerRuleList({
   rules,
   actions,
+  editingRuleId,
   working,
+  onEdit,
   onSetEnabled,
   onDelete
 }: {
   rules: ActionTriggerRule[]
   actions: ActionEntry[]
+  editingRuleId: string | null
   working: boolean
+  onEdit: (rule: ActionTriggerRule) => void | Promise<void>
   onSetEnabled: (ruleId: string, enabled: boolean) => void | Promise<void>
   onDelete: (ruleId: string) => void | Promise<void>
 }) {
@@ -257,6 +268,9 @@ function TriggerRuleList({
               </div>
               <p>{summary}</p>
               <div className="inline-action">
+                <button type="button" className="ghost" disabled={working} onClick={() => onEdit(rule)}>
+                  {editingRuleId === rule.id ? '编辑中' : '编辑条件'}
+                </button>
                 <button
                   type="button"
                   className="ghost"
@@ -275,6 +289,92 @@ function TriggerRuleList({
       </div>
     </div>
   )
+}
+
+const summarizeTriggerDraft = (type: ActionTriggerProposalType, actionId: string, condition: ActionTriggerRuleCondition) => {
+  if (!actionId || !['random', 'state', 'event'].includes(type)) return ''
+  if (type === 'random') {
+    return `预计以 ${(Number(condition.probability || 0) * 100).toFixed(0)}% 概率触发 ${actionId}。`
+  }
+  if (type === 'state') {
+    return `当 ${condition.stateKey || 'state'} = ${condition.equals || 'active'} 时触发 ${actionId}。`
+  }
+  return `当事件 ${condition.eventName || 'event'} 发生时触发 ${actionId}。`
+}
+
+function TriggerRuleConditionEditor({
+  type,
+  condition,
+  disabled,
+  onChange
+}: {
+  type: ActionTriggerProposalType
+  condition: ActionTriggerRuleCondition
+  disabled: boolean
+  onChange: (partial: Partial<ActionTriggerRuleCondition>) => void
+}) {
+  if (type === 'random') {
+    return (
+      <label className="field-row trigger-review-row">
+        <span className="field-label">触发概率（%）</span>
+        <input
+          className="text-input"
+          type="number"
+          min="1"
+          max="100"
+          step="1"
+          value={Math.round(Number(condition.probability || 0.15) * 100)}
+          disabled={disabled}
+          onChange={(event) => {
+            const nextPercent = Number(event.target.value)
+            const clampedPercent = Number.isFinite(nextPercent) ? Math.min(100, Math.max(1, nextPercent)) : 15
+            onChange({ probability: clampedPercent / 100 })
+          }}
+        />
+      </label>
+    )
+  }
+
+  if (type === 'state') {
+    return (
+      <>
+        <label className="field-row trigger-review-row">
+          <span className="field-label">状态键</span>
+          <input
+            className="text-input"
+            value={condition.stateKey || ''}
+            disabled={disabled}
+            onChange={(event) => onChange({ stateKey: event.target.value })}
+          />
+        </label>
+        <label className="field-row trigger-review-row">
+          <span className="field-label">命中值</span>
+          <input
+            className="text-input"
+            value={condition.equals || ''}
+            disabled={disabled}
+            onChange={(event) => onChange({ equals: event.target.value })}
+          />
+        </label>
+      </>
+    )
+  }
+
+  if (type === 'event') {
+    return (
+      <label className="field-row trigger-review-row">
+        <span className="field-label">事件名</span>
+        <input
+          className="text-input"
+          value={condition.eventName || ''}
+          disabled={disabled}
+          onChange={(event) => onChange({ eventName: event.target.value })}
+        />
+      </label>
+    )
+  }
+
+  return null
 }
 
 function ActionPreview({ action }: { action?: ActionEntry }) {
@@ -483,8 +583,14 @@ export function ActionsPane({
   onApplyTriggerProposal,
   onAcceptTriggerProposal,
   onRejectTriggerProposal,
+  onStartEditTriggerRule,
+  onCancelEditTriggerRule,
+  onSaveTriggerRuleEdit,
   triggerProposalType,
   setTriggerProposalType,
+  triggerProposalCondition,
+  setTriggerProposalCondition,
+  editingTriggerRuleId,
   triggerProposalNotes,
   setTriggerProposalNotes,
   lastTriggerProposalResult
@@ -494,6 +600,7 @@ export function ActionsPane({
     || actionsConfig.actions[0]
   const selectedActionLabel = selectedAction?.label || selectedAction?.id || '未选择'
   const triggerDetails = triggerProposalDetails[triggerProposalType]
+  const draftSummary = summarizeTriggerDraft(triggerProposalType, selectedAction?.id || '', triggerProposalCondition)
 
   return (
     <section className="pane">
@@ -582,7 +689,7 @@ export function ActionsPane({
         <div className="trigger-review-card" aria-label="触发建议审阅">
           <div className="trigger-review-header">
             <div>
-              <strong>触发建议审阅</strong>
+              <strong>{editingTriggerRuleId ? '编辑宿主规则' : '触发建议审阅'}</strong>
               <span>目标动作：{selectedActionLabel}</span>
             </div>
             <span className={triggerProposalType === 'click' ? 'trigger-badge applied' : 'trigger-badge pending'}>
@@ -595,6 +702,7 @@ export function ActionsPane({
             <select
               className="text-input"
               value={triggerProposalType}
+              disabled={Boolean(editingTriggerRuleId)}
               onChange={(event) => setTriggerProposalType(event.target.value as ActionTriggerProposalType)}
             >
               <option value="click">点击</option>
@@ -616,10 +724,19 @@ export function ActionsPane({
             />
           </label>
 
+          <TriggerRuleConditionEditor
+            type={triggerProposalType}
+            condition={triggerProposalCondition}
+            disabled={working}
+            onChange={setTriggerProposalCondition}
+          />
+
           <div className="trigger-review-copy">
             <span><strong>含义</strong>{triggerDetails.summary}</span>
             <span><strong>接受结果</strong>{triggerDetails.outcome}</span>
             <span><strong>边界</strong>{triggerDetails.boundary}</span>
+            {draftSummary ? <span><strong>当前条件</strong>{draftSummary}</span> : null}
+            {editingTriggerRuleId ? <span><strong>编辑目标</strong>{editingTriggerRuleId}</span> : null}
           </div>
 
           {lastTriggerProposalResult ? (
@@ -627,13 +744,25 @@ export function ActionsPane({
               <strong>{lastTriggerProposalResult.applied ? '最近结果：已应用' : '最近结果：已确认'}</strong>
               <span>{lastTriggerProposalResult.message}</span>
               <span>结果码：{lastTriggerProposalResult.code}</span>
+              {lastTriggerProposalResult.preview?.summary ? <span>{lastTriggerProposalResult.preview.summary}</span> : null}
             </div>
           ) : null}
 
           <div className="inline-action">
-            <button type="button" className="ghost" onClick={onApplyTriggerProposal} disabled={working || !selectedAction?.id}>
-              {triggerDetails.buttonLabel}
-            </button>
+            {editingTriggerRuleId ? (
+              <>
+                <button type="button" className="ghost" onClick={onCancelEditTriggerRule} disabled={working}>
+                  取消编辑
+                </button>
+                <button type="button" className="primary" onClick={onSaveTriggerRuleEdit} disabled={working || !selectedAction?.id}>
+                  保存规则条件
+                </button>
+              </>
+            ) : (
+              <button type="button" className="ghost" onClick={onApplyTriggerProposal} disabled={working || !selectedAction?.id}>
+                {triggerDetails.buttonLabel}
+              </button>
+            )}
           </div>
         </div>
 
@@ -648,7 +777,9 @@ export function ActionsPane({
         <TriggerRuleList
           rules={actionsConfig.triggerRules || []}
           actions={actionsConfig.actions}
+          editingRuleId={editingTriggerRuleId}
           working={working}
+          onEdit={onStartEditTriggerRule}
           onSetEnabled={onSetTriggerRuleEnabled}
           onDelete={onDeleteTriggerRule}
         />

@@ -970,6 +970,124 @@ test('action service toggles persisted trigger rules by id', () => {
   assert.equal(savedConfig.triggerRules[0].enabled, true)
 })
 
+test('action service updates persisted trigger rule conditions by id', () => {
+  let savedConfig = null
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => savedConfig || ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ],
+      triggerRules: [{
+        id: 'rule:state:wave',
+        type: 'state',
+        actionId: 'wave',
+        enabled: true,
+        condition: { stateKey: 'posture', equals: 'resting' }
+      }]
+    }),
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const updated = service.updateTriggerRule('rule:state:wave', {
+    stateKey: 'mood',
+    equals: 'focused'
+  })
+
+  assert.deepEqual(updated.triggerRules[0].condition, {
+    stateKey: 'mood',
+    equals: 'focused'
+  })
+  assert.deepEqual(savedConfig.triggerRules[0].condition, {
+    stateKey: 'mood',
+    equals: 'focused'
+  })
+})
+
+test('action service rejects trigger rule condition updates that duplicate another rule', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        },
+        {
+          id: 'wave',
+          label: 'Wave',
+          kind: 'custom',
+          loop: false,
+          frameCount: 8,
+          frameMs: 90,
+          frameWidth: 192,
+          frameHeight: 208,
+          sprite: 'cat_anime/sprites/wave.png'
+        }
+      ],
+      triggerRules: [
+        {
+          id: 'rule:state:wave',
+          type: 'state',
+          actionId: 'wave',
+          enabled: true,
+          condition: { stateKey: 'posture', equals: 'resting' }
+        },
+        {
+          id: 'rule:state:wave:2',
+          type: 'state',
+          actionId: 'wave',
+          enabled: true,
+          condition: { stateKey: 'mood', equals: 'focused' }
+        }
+      ]
+    })
+  })
+
+  assert.throws(
+    () => service.updateTriggerRule('rule:state:wave:2', {
+      stateKey: 'posture',
+      equals: 'resting'
+    }),
+    /duplicates existing rule/
+  )
+})
+
 test('action service rejects unsafe trigger proposal inbox mutations', () => {
   const service = createActionService({
     projectRoot: '/app/openpet',

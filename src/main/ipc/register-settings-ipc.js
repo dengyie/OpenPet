@@ -147,6 +147,21 @@ const registerSettingsIpc = (context) => {
       })
       return createActionsMutationResult(animations, { triggerProposal })
     }
+    if (payload?.triggerRuleUpdate) {
+      if (!actionService?.updateTriggerRule) throw new Error('Action trigger rule update is not available')
+      const animations = actionService.updateTriggerRule(payload.triggerRuleUpdate.ruleId, payload.triggerRuleUpdate.condition)
+      recordAppLog({
+        scope: 'actions',
+        level: 'info',
+        actor: 'user',
+        event: 'actions.trigger-rule.updated',
+        message: 'Action trigger rule condition updated',
+        details: {
+          ruleId: String(payload.triggerRuleUpdate.ruleId || '')
+        }
+      })
+      return createActionsMutationResult(animations)
+    }
     await actionImportService.updateActionConfig(payload)
     reloadAndSendAnimations(getPetWindow, petService)
     return createActionsMutationResult(petService.getPreviewAnimations())
