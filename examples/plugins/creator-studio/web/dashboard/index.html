@@ -1337,6 +1337,13 @@
             $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
             startPlaybackPreview(actionReview)
             $('import-handoff-panel').innerHTML = renderImportHandoff(run, actionFrames, actionReview, fullPetReview)
+          } else if (fullPetReview) {
+            $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
+            $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
+            $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+            $('full-pet-review-panel').innerHTML = renderFullPetReview(fullPetReview, run)
+            $('import-handoff-panel').innerHTML = renderImportHandoff(run, null, null, fullPetReview)
+            stopPlaybackPreview()
           } else {
             $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
             $('playback-panel').textContent = 'Generate output to inspect review artifacts.'

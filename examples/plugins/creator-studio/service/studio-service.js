@@ -1175,7 +1175,14 @@ const createActionReview = ({ dataDir, run }) => {
 
 const createFullPetReview = ({ dataDir, run }) => {
   if (run.artifacts?.actionFrames) return null
-  if (run.generationTask?.mode !== 'full-pet') return null
+  const hasFullPetArtifacts = Boolean(
+    run.artifacts?.spritesheet ||
+    run.artifacts?.petJson ||
+    run.artifacts?.outputDir ||
+    run.importedPackId ||
+    run.activatedPackId
+  )
+  if (run.generationTask?.mode !== 'full-pet' && !hasFullPetArtifacts) return null
   const artifacts = run.artifacts || {}
   const reviewState = createFullPetReviewGate({ dataDir, run })
   const importedPhase = run.status === 'imported'

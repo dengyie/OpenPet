@@ -431,6 +431,21 @@ const seedImportedFullPetRun = async (dataDir) => {
   return run
 }
 
+const seedLegacyImportedFullPetRunWithoutTask = async (dataDir) => {
+  const run = await seedImportedFullPetRun(dataDir)
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyImportedRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyImportedRun,
+      taskStatus: 'not_started',
+      currentStep: 'imported'
+    }
+  })
+  return run
+}
+
 const seedImportedFullPetRunWithSourceMismatch = async (dataDir) => {
   const run = await seedImportedFullPetRun(dataDir)
   const runDir = path.join(dataDir, 'runs', run.runId)
@@ -888,6 +903,27 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(actionLaneText, /Host-owned action: Review imported result/i)
     assert.match(actionLaneText, /Location: OpenPet/i)
     assert.match(actionLaneText, /Continue in OpenPet\./i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard preserves imported full-pet follow-up for legacy runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-legacy-pre-task-'))
+  await seedLegacyImportedFullPetRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(handoffText, /Imported pet pack: imported-review-cat/i)
+    assert.doesNotMatch(handoffText, /Generate and approve a run to unlock host-owned import\./i)
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Review location: OpenPet/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
