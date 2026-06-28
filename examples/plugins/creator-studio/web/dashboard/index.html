@@ -1209,6 +1209,7 @@
                 `<strong>Host-owned action: ${escapeHtml(hostAction.label || 'OpenPet step')}</strong>`,
                 `<p>${escapeHtml(hostAction.reason || 'Continue inside OpenPet.')}</p>`,
                 `<p>Location: <code>${escapeHtml(hostAction.location || 'OpenPet')}</code></p>`,
+                renderSurfaceCta(hostAction, { tagName: 'p' }),
                 '</div>'
               ].join('')
             : '',

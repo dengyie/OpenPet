@@ -576,6 +576,7 @@ test('creator studio dashboard drives a single-action fixture run to the host im
 
     const handoffText = await page.locator('#import-handoff-panel').textContent()
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(await page.locator('#status-line').textContent(), /import-approved-action/i)
     assert.match(handoffText, /Import Approved Action/i)
     assert.match(handoffText, /Control Center -> Plugins/i)
@@ -584,6 +585,9 @@ test('creator studio dashboard drives a single-action fixture run to the host im
     assert.match(workflowGuidanceText, /Import state: ready \/ Command: import-approved-action/i)
     assert.match(workflowGuidanceText, /Run Import Approved Action from Control Center -> Plugins/i)
     assert.match(workflowGuidanceText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(actionLaneText, /Host-owned action: Import Approved Action/i)
+    assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
@@ -621,6 +625,7 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
     const handoffText = await page.locator('#import-handoff-panel').textContent()
     const nextStepText = await page.locator('#next-step-panel').textContent()
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(await page.locator('#status-line').textContent(), /import-approved-pet/i)
     assert.match(handoffText, /Import Approved Pet/i)
     assert.match(handoffText, /Control Center -> Plugins/i)
@@ -633,6 +638,9 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
     assert.match(workflowGuidanceText, /Import state: ready \/ Command: import-approved-pet/i)
     assert.match(workflowGuidanceText, /Run Import Approved Pet from Control Center -> Plugins/i)
     assert.match(workflowGuidanceText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(actionLaneText, /Host-owned action: Import Approved Pet/i)
+    assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
@@ -888,6 +896,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review import handoff/i)
     assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.match(actionLaneText, /proposal write failed/i)
     assert.match(actionLaneText, /\[redacted-token\]/i)
     assert.match(actionLaneText, /\[redacted-path\]/i)
@@ -968,6 +977,7 @@ test('creator studio dashboard shows imported full-pet review completion details
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review imported result/i)
     assert.match(actionLaneText, /Location: OpenPet/i)
+    assert.match(actionLaneText, /Continue in OpenPet\./i)
 
     const checkpointText = await page.locator('#review-checkpoint-panel').textContent()
     assert.match(checkpointText, /Review imported result/i)
@@ -1044,6 +1054,7 @@ test('creator studio dashboard shows imported action missing trigger handoff rec
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review import handoff/i)
     assert.match(actionLaneText, /Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.match(actionLaneText, /no trigger proposal handoff record was saved/i)
 
     const checkpointText = await page.locator('#review-checkpoint-panel').textContent()
