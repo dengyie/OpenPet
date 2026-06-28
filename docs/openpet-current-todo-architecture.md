@@ -1,7 +1,7 @@
 # OpenPet Current TODO Architecture
 
 > Date: 2026-06-28
-> Baseline: `main@a317ec5` (`feat(chat): unify pet chat surfaces`)
+> Baseline: `codex/dev2@12928c5a` (`feat(phase-1): harden trigger rule save flow`)
 > Status: live TODO entry point
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
 
@@ -19,7 +19,7 @@ This is not a promise to implement every item in one milestone. It is a map for 
 - P3: longer-term platform direction.
 - Manual-required: needs real provider accounts, signed artifacts, notarization, Windows machines, production credentials, or human review.
 
-Current P0 status: no known startup/build blocker in this TODO pass. The highest-risk current gap is still the missing durable host trigger-rule schema for `random`, `state`, and `event`, but it is not a startup blocker.
+Current P0 status: no known startup/build blocker in this TODO pass. The current highest-risk product gap is in AI Talk memory quality: memory injection still relies on static store ordering rather than request-aware relevance scoring, and injected-memory usage is not yet written back selectively.
 
 ## Current Code Architecture
 
@@ -43,10 +43,12 @@ Current P0 status: no known startup/build blocker in this TODO pass. The highest
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, background memory extraction, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
-- Bubble chat now has a transparent mini-dialogue implementation path in the current branch, but `main` still reflects a transitional dual-surface model where the lightweight bubble and full desktop chat coexist as separate primary entry points.
+- Bubble chat now has a transparent mini-dialogue implementation path and serves as the default lightweight entry, while the standalone desktop chat remains an explicit extended panel.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard display, and action import command paths.
-- Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` remain pending host-rule work.
-- Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane.
+- Action trigger review exists for the manually selected action path: `click` can update `clickAction`; `manual` and `unbound` are acknowledged; `random`, `state`, and `event` now save host-owned `triggerRules` with `rule_saved` semantics.
+- Trigger proposal inbox now has a host-owned service/API/UI closed loop: proposals can be submitted, persisted, accepted, rejected, preserved through action regeneration, and reviewed from the Actions pane alongside the saved host rule list.
+- The Actions pane now shows explicit preview summaries before saving non-click rules, and edited `triggerRules` reuse strict host validation through the generic save path instead of bypassing the proposal acceptance flow.
+- Saved non-click trigger rules now execute at runtime with a host-owned executor. The current baseline policy is config-order first match wins, `random` cooldown uses each rule's own `intervalMs`, and `state` rules match against the current action state rather than a broader behavior taxonomy.
 
 ## P1 Architecture TODOs
 
@@ -90,14 +92,10 @@ Current state:
 - Memory is automatically extracted in the background and injected as dynamic context without blocking the main reply.
 - Memory profile UI can show global and pet-pack memories, delete one memory, and clear current pet-pack relationship memories.
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
-- The lightweight pet bubble chat is the right product direction for default interaction, but `main` still needs an explicit convergence pass so the transparent bubble becomes the default entry while the desktop chat becomes an extended view instead of a second primary chat surface.
+- Bubble chat is now the default lightweight entry across pet double-click, the pet context menu primary chat action, and the Control Center AI page, while desktop chat is kept as an explicit extended panel.
 
 P1 work:
 
-- Converge chat surfaces into one primary flow:
-  - `BubbleChatWindow` becomes the default user-facing chat entry anchored around the pet.
-  - `PetChatWindow` stays as an extended desktop panel for longer history and advanced interaction, not a competing default entry.
-  - Double-click on the pet should open the same bubble chat surface by default.
 - Route all lightweight pet speech through one visible surface.
   - Keep `PetService.say()` as the single runtime speech entry.
   - Keep old inline `#bubble` hidden as a compatibility node only; it must not reappear as a second visible chat box.
@@ -152,6 +150,13 @@ Convergence rules:
 - One speech ingress: `PetService.say()`.
 - One main conversation id per active pack: `control-center:{petPackId}:main`.
 
+Current implementation status:
+
+- Pet double-click opens `BubbleChatWindow` by default.
+- The pet context menu primary chat entry opens `BubbleChatWindow` when available.
+- The pet context menu exposes the standalone desktop chat only as `打开扩展聊天面板`.
+- The Control Center AI pane labels the desktop window as an extended panel and keeps Bubble Chat as the default lightweight entry.
+
 Out of scope for this convergence pass:
 
 - Streaming UI.
@@ -167,23 +172,23 @@ Current state:
 
 - Manual trigger review card can apply `click` to `clickAction`.
 - `manual` and `unbound` proposals are acknowledged without mutating bindings.
-- `random`, `state`, and `event` proposals return pending-host-rule semantics.
+- `random`, `state`, and `event` proposals now save host-owned `triggerRules` and return `rule_saved`.
 - `triggerProposalInbox` is part of the action config view state and host service contract.
-- `ActionService.submitTriggerProposal`, `acceptTriggerProposalItem`, and `rejectTriggerProposalItem` persist proposal status: pending, accepted, rejected, applied, or pending-host-rule.
-- Control Center Actions pane shows a trigger proposal inbox and can accept/reject queued proposals.
+- `ActionService.submitTriggerProposal`, `acceptTriggerProposalItem`, and `rejectTriggerProposalItem` persist proposal status and result metadata; non-click rule saves currently resolve to `applied` inbox status plus `rule_saved` result code.
+- Control Center Actions pane shows preview summaries, the trigger proposal inbox, and the editable saved host rule list.
 - Creator Studio approved action imports now submit their generated trigger proposals into the same host inbox with source plugin/run/command provenance.
-- Legacy action regeneration preserves the trigger proposal inbox.
+- Legacy action regeneration preserves both saved trigger rules and the trigger proposal inbox.
+- Generic action-config saves now reuse strict host-side trigger-rule validation for edited `triggerRules`, so invalid action ids and invalid random intervals fail before persistence.
 
 P1 work:
 
-- Define durable trigger-rule schema for `random`, `state`, and `event`.
-- Add validation that every trigger rule references an existing imported action.
-- Add simulation/preview before applying non-click triggers.
+- Keep the runtime executor aligned with saved action config mutations, pack switches, and plugin-driven pack activation.
+- Harden diagnostics ergonomics so matched, skipped, and blocked rule decisions are easier to inspect during behavior debugging.
+- Revisit policy only if real product needs appear beyond the current first-match-wins, per-rule cooldown, and current-action-state semantics.
 
 P2/P3:
 
-- Conflict resolution between multiple rules.
-- Cooldowns, priorities, and per-pet-pack trigger profiles.
+- Per-pet-pack trigger profiles.
 - Import/export of trigger-rule presets.
 
 ### 4. Creator Studio Plugin
@@ -277,7 +282,8 @@ Owner boundary: live docs under `docs/`, historical records under `docs/phases/`
 P1 work:
 
 - Treat this document as the active TODO index.
-- Keep `docs/README.md`, `docs/HANDOFF.md`, `docs/development-summary.md`, and `docs/project-status-review.md` short and current.
+- Keep `docs/README.md`, `docs/HANDOFF.md`, and `docs/development-summary.md` short and current.
+- Keep `docs/project-status-review.md` explicitly checkpoint-oriented rather than treating it as a live per-milestone scratchpad.
 - Do not rewrite historical phase/review docs unless they are linked as live planning inputs.
 - When a feature lands, move it from "TODO" to "Current landed facts" here instead of letting multiple stale TODO lists diverge.
 
@@ -289,25 +295,25 @@ P2/P3:
 
 Choose one of these when starting the next development milestone:
 
-1. Trigger Proposal Inbox Closure
-   - User value: Creator Studio and future plugins can submit action trigger proposals into a real host review queue.
-   - Main files: `ActionService`, `ipc.js`, Actions pane, shared contracts, action tests, Control Center smoke.
-
-2. AI Talk Relevance And Bubble UX
+1. AI Talk Relevance And Bubble UX
    - User value: pet conversations feel more contextual and more pet-like without changing provider setup.
    - Main files: `AiTalkService`, `AiTalkStore`, AI pane, pet chat renderer, service tests.
 
-3. Creator Studio Dashboard Wizard Polish
+2. Creator Studio Dashboard Wizard Polish
    - User value: users can drive custom action generation from dashboard instead of running individual commands.
    - Main files: Creator Studio service/dashboard/commands, plugin tests, host bridge tests.
 
-4. Model Settings Product Polish
+3. Model Settings Product Polish
    - User value: provider setup is clearer for local and hosted image/chat gateways.
    - Main files: AI pane, `ImageGenerationModelService`, `AiService`, Control Center smoke tests.
 
-5. Release Evidence Closure
+4. Release Evidence Closure
    - User value: release readiness claims can be upgraded only when real evidence exists.
    - Main files: release scripts/docs. This is mostly Manual-required.
+
+5. Trigger-Rule Runtime Diagnostics Polish
+   - User value: behavior debugging is easier when runtime decisions can be inspected without guessing why a rule did not fire.
+   - Main files: `trigger-rule-runtime-service.js`, `ipc.js`, Actions diagnostics surfaces, service tests.
 
 ## Verification Commands For Future Milestones
 
