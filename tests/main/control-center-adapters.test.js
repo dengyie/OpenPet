@@ -3,6 +3,9 @@ const assert = require('node:assert/strict')
 
 const {
   createAiConfigView,
+  createAiMemoryProfileView,
+  createAiPersonaDraftView,
+  createAiPersonaProfileView,
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
@@ -54,6 +57,159 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       decisions: [],
     },
     hasApiKey: true
+  })
+})
+
+test('AI talk persona adapters normalize payloads for Control Center', () => {
+  assert.deepEqual(createAiPersonaProfileView({
+    petPackId: 'legacy-cat',
+    petPackDisplayName: 7,
+    packPersona: {
+      name: 'OpenPet',
+      identity: 'pet',
+      tone: 'warm',
+      coreTraits: ['friendly', 42],
+      speakingStyle: 'Short.',
+      relationshipToUser: 'Companion.',
+      actionStyle: 'Use actions.',
+      boundaries: ['No secrets.', false],
+      internal: 'ignore-me'
+    },
+    overridePersona: {
+      tone: 'sleepy',
+      coreTraits: ['calm', null],
+      hiddenPrompt: 'ignore-me'
+    },
+    effectivePersona: {
+      name: 'OpenPet',
+      identity: 'pet',
+      tone: 'sleepy',
+      coreTraits: ['friendly'],
+      speakingStyle: 'Short.',
+      relationshipToUser: 'Companion.',
+      actionStyle: 'Use actions.',
+      boundaries: ['No secrets.']
+    },
+    compiledPersonaPrompt: ['bad'],
+    compiledSystemPrompt: '# system',
+    secretValue: 'sk-hidden'
+  }), {
+    petPackId: 'legacy-cat',
+    petPackDisplayName: '',
+    packPersona: {
+      name: 'OpenPet',
+      identity: 'pet',
+      tone: 'warm',
+      coreTraits: ['friendly'],
+      speakingStyle: 'Short.',
+      relationshipToUser: 'Companion.',
+      actionStyle: 'Use actions.',
+      boundaries: ['No secrets.']
+    },
+    overridePersona: {
+      tone: 'sleepy',
+      coreTraits: ['calm']
+    },
+    effectivePersona: {
+      name: 'OpenPet',
+      identity: 'pet',
+      tone: 'sleepy',
+      coreTraits: ['friendly'],
+      speakingStyle: 'Short.',
+      relationshipToUser: 'Companion.',
+      actionStyle: 'Use actions.',
+      boundaries: ['No secrets.']
+    },
+    compiledPersonaPrompt: '',
+    compiledSystemPrompt: '# system'
+  })
+
+  assert.deepEqual(createAiPersonaDraftView({
+    petPackId: 'legacy-cat',
+    petPackDisplayName: 'Legacy Cat',
+    draftPersona: { tone: 'generated', boundaries: ['No secrets.', 9], hiddenPrompt: 'ignore-me' },
+    compiledPersonaPrompt: '# Pet Persona\nTone: generated',
+    rawProviderReply: 'ignore-me'
+  }), {
+    petPackId: 'legacy-cat',
+    petPackDisplayName: 'Legacy Cat',
+    draftPersona: { tone: 'generated', boundaries: ['No secrets.'] },
+    compiledPersonaPrompt: '# Pet Persona\nTone: generated'
+  })
+})
+
+test('AI talk memory adapter normalizes payloads for Control Center', () => {
+  assert.deepEqual(createAiMemoryProfileView({
+    petPackId: 'legacy-cat',
+    petPackDisplayName: 42,
+    globalMemories: [{
+      id: 'memory-global',
+      scope: 'bad',
+      petPackId: null,
+      text: 'User likes focus.',
+      tags: ['focus', 7],
+      confidence: '0.8',
+      importance: '0.7',
+      sourceConversationId: 9,
+      sourceMessageIds: ['m1', false],
+      createdAt: 'created',
+      updatedAt: 'updated',
+      lastUsedAt: 10,
+      lastEvidenceAt: 'evidence',
+      useCount: '2',
+      status: 'superseded',
+      supersedes: 5,
+      reason: 'merged',
+      rawEvidence: 'ignore-me'
+    }],
+    petPackMemories: [],
+    recentJobs: [{
+      id: 'job-1',
+      petPackId: 'legacy-cat',
+      conversationId: 9,
+      status: 'done',
+      createdAt: '',
+      updatedAt: '',
+      errorCode: null,
+      appliedCount: '3',
+      filteredCount: '1',
+      raw: 'ignore-me'
+    }],
+    secretValue: 'sk-hidden'
+  }), {
+    petPackId: 'legacy-cat',
+    petPackDisplayName: '',
+    globalMemories: [{
+      id: 'memory-global',
+      scope: 'global',
+      petPackId: '',
+      text: 'User likes focus.',
+      tags: ['focus'],
+      confidence: 0.8,
+      importance: 0.7,
+      sourceConversationId: '',
+      sourceMessageIds: ['m1'],
+      createdAt: 'created',
+      updatedAt: 'updated',
+      lastUsedAt: '',
+      lastEvidenceAt: 'evidence',
+      useCount: 2,
+      status: 'superseded',
+      supersedes: '',
+      reason: 'merged'
+    }],
+    petPackMemories: [],
+    recentJobs: [{
+      id: 'job-1',
+      petPackId: 'legacy-cat',
+      conversationId: '',
+      status: 'done',
+      createdAt: '',
+      updatedAt: '',
+      errorCode: '',
+      appliedCount: 3,
+      filteredCount: 1
+    }]
   })
 })
 

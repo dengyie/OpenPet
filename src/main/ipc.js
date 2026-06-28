@@ -15,6 +15,9 @@ const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const { createBubbleRequestId } = require('./pet-bubble-chat-window')
 const {
   createAiConfigView,
+  createAiMemoryProfileView,
+  createAiPersonaDraftView,
+  createAiPersonaProfileView,
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
@@ -1315,32 +1318,32 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.AI_GET_PERSONA_PROFILE, () => {
     if (!aiTalkService?.getPersonaProfile) throw new Error('AI talk persona profile is not available')
-    return aiTalkService.getPersonaProfile()
+    return createAiPersonaProfileView(aiTalkService.getPersonaProfile())
   })
 
   ipcMainService.handle(IPC.AI_GENERATE_PERSONA_DRAFT, (_event, request) => {
     if (!aiTalkService?.generatePersonaDraft) throw new Error('AI talk persona generation is not available')
-    return aiTalkService.generatePersonaDraft(request || {})
+    return createAiPersonaDraftView(aiTalkService.generatePersonaDraft(request || {}))
   })
 
   ipcMainService.handle(IPC.AI_SAVE_PERSONA_OVERRIDE, (_event, override) => {
     if (!aiTalkService?.savePersonaOverride) throw new Error('AI talk persona overrides are not available')
-    return aiTalkService.savePersonaOverride(override || {})
+    return createAiPersonaProfileView(aiTalkService.savePersonaOverride(override || {}))
   })
 
   ipcMainService.handle(IPC.AI_GET_MEMORY_PROFILE, () => {
     if (!aiTalkService?.getMemoryProfile) throw new Error('AI talk memories are not available')
-    return aiTalkService.getMemoryProfile()
+    return createAiMemoryProfileView(aiTalkService.getMemoryProfile())
   })
 
   ipcMainService.handle(IPC.AI_DELETE_MEMORY, (_event, payload) => {
     if (!aiTalkService?.deleteMemory) throw new Error('AI talk memory deletion is not available')
-    return aiTalkService.deleteMemory(payload?.memoryId || payload)
+    return createAiMemoryProfileView(aiTalkService.deleteMemory(payload?.memoryId || payload))
   })
 
   ipcMainService.handle(IPC.AI_CLEAR_PET_PACK_MEMORIES, () => {
     if (!aiTalkService?.clearPetPackMemories) throw new Error('AI talk memory clearing is not available')
-    return aiTalkService.clearPetPackMemories()
+    return createAiMemoryProfileView(aiTalkService.clearPetPackMemories())
   })
 
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => createImageGenerationConfigView(imageGenerationModelService.getConfig()))

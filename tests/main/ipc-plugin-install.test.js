@@ -253,7 +253,9 @@ test('ai persona profile IPC delegates to ai talk service when available', async
     overridePersona: { tone: 'sleepy' },
     effectivePersona: { name: 'OpenPet', identity: 'pet', tone: 'sleepy', coreTraits: ['friendly'], speakingStyle: 'Short.', relationshipToUser: 'Companion.', actionStyle: 'Use actions.', boundaries: ['No secrets.'] },
     compiledPersonaPrompt: '# Pet Persona\nTone: sleepy',
-    compiledSystemPrompt: '# Global Instructions\nTest\n\n# Pet Persona\nTone: sleepy'
+    compiledSystemPrompt: '# Global Instructions\nTest\n\n# Pet Persona\nTone: sleepy',
+    rawProviderReply: 'do-not-forward',
+    secretValue: 'sk-hidden'
   }
 
   registerIpcHandlers({
@@ -277,8 +279,9 @@ test('ai persona profile IPC delegates to ai talk service when available', async
         return {
           petPackId: 'legacy-cat',
           petPackDisplayName: 'Legacy Cat',
-          draftPersona: { tone: 'generated' },
-          compiledPersonaPrompt: '# Pet Persona\nTone: generated'
+          draftPersona: { tone: 'generated', hiddenPrompt: 'do-not-forward' },
+          compiledPersonaPrompt: '# Pet Persona\nTone: generated',
+          rawProviderReply: 'do-not-forward'
         }
       },
       savePersonaOverride: (override) => {
@@ -297,10 +300,15 @@ test('ai persona profile IPC delegates to ai talk service when available', async
   assert.equal(loaded.petPackDisplayName, 'Legacy Cat')
   assert.equal(loaded.effectivePersona.tone, 'sleepy')
   assert.match(loaded.compiledSystemPrompt, /# Global Instructions/)
+  assert.equal('rawProviderReply' in loaded, false)
+  assert.equal('secretValue' in loaded, false)
   assert.deepEqual(generateCalls, [{ instruction: 'make it calmer' }])
   assert.equal(generated.draftPersona.tone, 'generated')
+  assert.equal('hiddenPrompt' in generated.draftPersona, false)
+  assert.equal('rawProviderReply' in generated, false)
   assert.deepEqual(saveCalls, [{ tone: 'playful' }])
   assert.equal(saved.overridePersona.tone, 'playful')
+  assert.equal('rawProviderReply' in saved, false)
 })
 
 test('ai memory management IPC delegates to ai talk service when available', async () => {
@@ -309,9 +317,10 @@ test('ai memory management IPC delegates to ai talk service when available', asy
   const profile = {
     petPackId: 'legacy-cat',
     petPackDisplayName: 'Legacy Cat',
-    globalMemories: [{ id: 'memory-global', scope: 'global', petPackId: '', text: 'User likes focus.', tags: [], confidence: 0.8, importance: 0.7, sourceConversationId: '', sourceMessageIds: [], createdAt: '', updatedAt: '', lastUsedAt: '', lastEvidenceAt: '', useCount: 0, status: 'active', supersedes: '', reason: '' }],
+    globalMemories: [{ id: 'memory-global', scope: 'global', petPackId: '', text: 'User likes focus.', tags: [], confidence: 0.8, importance: 0.7, sourceConversationId: '', sourceMessageIds: [], createdAt: '', updatedAt: '', lastUsedAt: '', lastEvidenceAt: '', useCount: 0, status: 'active', supersedes: '', reason: '', rawEvidence: 'do-not-forward' }],
     petPackMemories: [{ id: 'memory-pack', scope: 'petPack', petPackId: 'legacy-cat', text: 'Legacy likes greetings.', tags: [], confidence: 0.7, importance: 0.6, sourceConversationId: '', sourceMessageIds: [], createdAt: '', updatedAt: '', lastUsedAt: '', lastEvidenceAt: '', useCount: 0, status: 'active', supersedes: '', reason: '' }],
-    recentJobs: []
+    recentJobs: [{ id: 'job-1', petPackId: 'legacy-cat', conversationId: 'main', status: 'done', createdAt: '', updatedAt: '', errorCode: '', appliedCount: 1, filteredCount: 0, raw: 'do-not-forward' }],
+    secretValue: 'sk-hidden'
   }
 
   registerIpcHandlers({
@@ -351,6 +360,9 @@ test('ai memory management IPC delegates to ai talk service when available', asy
 
   assert.equal(loaded.petPackId, 'legacy-cat')
   assert.equal(loaded.globalMemories[0].text, 'User likes focus.')
+  assert.equal('rawEvidence' in loaded.globalMemories[0], false)
+  assert.equal('raw' in loaded.recentJobs[0], false)
+  assert.equal('secretValue' in loaded, false)
   assert.deepEqual(afterDelete.globalMemories, [])
   assert.deepEqual(afterClear.petPackMemories, [])
   assert.deepEqual(calls, [

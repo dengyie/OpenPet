@@ -55,6 +55,15 @@ const toNonNegativeInteger = (value) => {
 
 /**
  * @param {unknown} value
+ * @returns {number}
+ */
+const toFiniteNumber = (value) => {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+/**
+ * @param {unknown} value
  * @param {number} [depth]
  * @returns {value is import('../shared/openpet-contracts').JsonValue}
  */
@@ -265,6 +274,135 @@ const uniqueStrings = (items) => {
     values.push(item)
   }
   return values
+}
+
+/**
+ * @param {unknown} persona
+ * @returns {import('../shared/openpet-contracts').AiPersona}
+ */
+const createAiPersonaView = (persona = {}) => {
+  const input = toRecord(persona)
+  return {
+    name: typeof input.name === 'string' ? input.name : '',
+    identity: typeof input.identity === 'string' ? input.identity : '',
+    tone: typeof input.tone === 'string' ? input.tone : '',
+    coreTraits: uniqueStrings(input.coreTraits),
+    speakingStyle: typeof input.speakingStyle === 'string' ? input.speakingStyle : '',
+    relationshipToUser: typeof input.relationshipToUser === 'string' ? input.relationshipToUser : '',
+    actionStyle: typeof input.actionStyle === 'string' ? input.actionStyle : '',
+    boundaries: uniqueStrings(input.boundaries)
+  }
+}
+
+/**
+ * @param {unknown} persona
+ * @returns {import('../shared/openpet-contracts').AiPersonaOverride}
+ */
+const createAiPersonaOverrideView = (persona = {}) => {
+  const input = toRecord(persona)
+  return {
+    ...(typeof input.name === 'string' ? { name: input.name } : {}),
+    ...(typeof input.identity === 'string' ? { identity: input.identity } : {}),
+    ...(typeof input.tone === 'string' ? { tone: input.tone } : {}),
+    ...(Array.isArray(input.coreTraits) ? { coreTraits: uniqueStrings(input.coreTraits) } : {}),
+    ...(typeof input.speakingStyle === 'string' ? { speakingStyle: input.speakingStyle } : {}),
+    ...(typeof input.relationshipToUser === 'string' ? { relationshipToUser: input.relationshipToUser } : {}),
+    ...(typeof input.actionStyle === 'string' ? { actionStyle: input.actionStyle } : {}),
+    ...(Array.isArray(input.boundaries) ? { boundaries: uniqueStrings(input.boundaries) } : {})
+  }
+}
+
+/**
+ * @param {unknown} profile
+ * @returns {import('../shared/openpet-contracts').AiPersonaProfileViewState}
+ */
+const createAiPersonaProfileView = (profile = {}) => {
+  const input = toRecord(profile)
+  return {
+    petPackId: typeof input.petPackId === 'string' ? input.petPackId : '',
+    petPackDisplayName: typeof input.petPackDisplayName === 'string' ? input.petPackDisplayName : '',
+    packPersona: createAiPersonaView(input.packPersona),
+    overridePersona: createAiPersonaOverrideView(input.overridePersona),
+    effectivePersona: createAiPersonaView(input.effectivePersona),
+    compiledPersonaPrompt: typeof input.compiledPersonaPrompt === 'string' ? input.compiledPersonaPrompt : '',
+    compiledSystemPrompt: typeof input.compiledSystemPrompt === 'string' ? input.compiledSystemPrompt : ''
+  }
+}
+
+/**
+ * @param {unknown} draft
+ * @returns {import('../shared/openpet-contracts').AiPersonaDraftViewState}
+ */
+const createAiPersonaDraftView = (draft = {}) => {
+  const input = toRecord(draft)
+  return {
+    petPackId: typeof input.petPackId === 'string' ? input.petPackId : '',
+    petPackDisplayName: typeof input.petPackDisplayName === 'string' ? input.petPackDisplayName : '',
+    draftPersona: createAiPersonaOverrideView(input.draftPersona),
+    compiledPersonaPrompt: typeof input.compiledPersonaPrompt === 'string' ? input.compiledPersonaPrompt : ''
+  }
+}
+
+/**
+ * @param {unknown} memory
+ * @returns {import('../shared/openpet-contracts').AiMemoryItemViewState}
+ */
+const createAiMemoryItemView = (memory = {}) => {
+  const input = toRecord(memory)
+  const status = ['active', 'superseded', 'deleted'].includes(input.status) ? input.status : 'active'
+  return {
+    id: typeof input.id === 'string' ? input.id : '',
+    scope: input.scope === 'petPack' ? 'petPack' : 'global',
+    petPackId: typeof input.petPackId === 'string' ? input.petPackId : '',
+    text: typeof input.text === 'string' ? input.text : '',
+    tags: uniqueStrings(input.tags),
+    confidence: toFiniteNumber(input.confidence),
+    importance: toFiniteNumber(input.importance),
+    sourceConversationId: typeof input.sourceConversationId === 'string' ? input.sourceConversationId : '',
+    sourceMessageIds: uniqueStrings(input.sourceMessageIds),
+    createdAt: typeof input.createdAt === 'string' ? input.createdAt : '',
+    updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
+    lastUsedAt: typeof input.lastUsedAt === 'string' ? input.lastUsedAt : '',
+    lastEvidenceAt: typeof input.lastEvidenceAt === 'string' ? input.lastEvidenceAt : '',
+    useCount: toNonNegativeInteger(input.useCount),
+    status: /** @type {'active' | 'superseded' | 'deleted'} */ (status),
+    supersedes: typeof input.supersedes === 'string' ? input.supersedes : '',
+    reason: typeof input.reason === 'string' ? input.reason : ''
+  }
+}
+
+/**
+ * @param {unknown} job
+ * @returns {import('../shared/openpet-contracts').AiMemoryJobViewState}
+ */
+const createAiMemoryJobView = (job = {}) => {
+  const input = toRecord(job)
+  return {
+    id: typeof input.id === 'string' ? input.id : '',
+    petPackId: typeof input.petPackId === 'string' ? input.petPackId : '',
+    conversationId: typeof input.conversationId === 'string' ? input.conversationId : '',
+    status: typeof input.status === 'string' ? input.status : 'unknown',
+    createdAt: typeof input.createdAt === 'string' ? input.createdAt : '',
+    updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : '',
+    errorCode: typeof input.errorCode === 'string' ? input.errorCode : '',
+    appliedCount: toNonNegativeInteger(input.appliedCount),
+    filteredCount: toNonNegativeInteger(input.filteredCount)
+  }
+}
+
+/**
+ * @param {unknown} profile
+ * @returns {import('../shared/openpet-contracts').AiMemoryProfileViewState}
+ */
+const createAiMemoryProfileView = (profile = {}) => {
+  const input = toRecord(profile)
+  return {
+    petPackId: typeof input.petPackId === 'string' ? input.petPackId : '',
+    petPackDisplayName: typeof input.petPackDisplayName === 'string' ? input.petPackDisplayName : '',
+    globalMemories: Array.isArray(input.globalMemories) ? input.globalMemories.map(createAiMemoryItemView) : [],
+    petPackMemories: Array.isArray(input.petPackMemories) ? input.petPackMemories.map(createAiMemoryItemView) : [],
+    recentJobs: Array.isArray(input.recentJobs) ? input.recentJobs.map(createAiMemoryJobView) : []
+  }
 }
 
 /**
@@ -970,6 +1108,9 @@ const createUpdateCheckView = (result = {}) => ({
 
 module.exports = {
   createAiConfigView,
+  createAiMemoryProfileView,
+  createAiPersonaDraftView,
+  createAiPersonaProfileView,
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
