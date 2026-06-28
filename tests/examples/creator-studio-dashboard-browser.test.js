@@ -614,12 +614,15 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
     await page.waitForFunction(() => /Run approved/.test(document.querySelector('#status-line').textContent))
 
     const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(await page.locator('#status-line').textContent(), /import-approved-pet/i)
     assert.match(handoffText, /Import Approved Pet/i)
     assert.match(handoffText, /Control Center -> Plugins/i)
     assert.match(handoffText, /Command ID: import-approved-pet/i)
     assert.match(handoffText, /Payload JSON:/i)
     assert.match(handoffText, /"runId":"[^"]+"/i)
+    assert.match(nextStepText, /Import Approved Pet/i)
+    assert.match(nextStepText, /Continue in Control Center at Control Center -> Plugins\./i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
@@ -776,6 +779,7 @@ test('creator studio dashboard shows imported action review completion details',
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review trigger proposal/i)
     assert.match(nextStepText, /Actions -> Trigger Proposal Inbox/i)
+    assert.match(nextStepText, /Continue in Control Center at Actions -> Trigger Proposal Inbox\./i)
 
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review trigger proposal/i)
@@ -856,6 +860,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review import handoff/i)
     assert.match(nextStepText, /Control Center -> Plugins/i)
+    assert.match(nextStepText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.match(nextStepText, /proposal write failed/i)
     assert.match(nextStepText, /\[redacted-token\]/i)
     assert.match(nextStepText, /\[redacted-path\]/i)
@@ -938,6 +943,7 @@ test('creator studio dashboard shows imported full-pet review completion details
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review imported result/i)
     assert.match(nextStepText, /OpenPet/i)
+    assert.match(nextStepText, /Continue in OpenPet\./i)
 
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review imported result/i)

@@ -1142,13 +1142,23 @@
       const renderNextStep = (run) => {
         const snapshot = run?.wizardState || {}
         const nextStep = snapshot.nextStep || {}
+        let availabilityMessage = 'This step is available directly in the dashboard.'
+
+        if (nextStep.blocked) {
+          if (nextStep.surface === 'control-center' && nextStep.location) {
+            availabilityMessage = `Continue in Control Center at ${nextStep.location}.`
+          } else if (nextStep.surface === 'openpet') {
+            availabilityMessage = 'Continue in OpenPet.'
+          } else {
+            availabilityMessage = 'This step is host-owned or gated outside the dashboard.'
+          }
+        }
+
         return [
           `<div class="notice ${nextStep.blocked ? 'error' : ''}">`,
           `<strong>${escapeHtml(nextStep.label || 'Draft task')}</strong>`,
           `<p>${escapeHtml(nextStep.reason || 'Draft a task to see the next recommended action.')}</p>`,
-          nextStep.blocked
-            ? '<p>This step is host-owned or gated outside the dashboard.</p>'
-            : '<p>This step is available directly in the dashboard.</p>',
+          `<p>${escapeHtml(availabilityMessage)}</p>`,
           '</div>'
         ].join('')
       }

@@ -459,6 +459,7 @@ const createImportedFollowUp = (run) => {
     if (run.triggerProposalSubmission?.ok === true) {
       return {
         label: 'Review trigger proposal',
+        surface: 'control-center',
         location: 'Actions -> Trigger Proposal Inbox',
         reason: 'The action import is complete. Review the submitted trigger proposal in Actions -> Trigger Proposal Inbox.'
       }
@@ -467,6 +468,7 @@ const createImportedFollowUp = (run) => {
       const handoffError = String(run.triggerProposalSubmission.error || '').trim()
       return {
         label: 'Review import handoff',
+        surface: 'control-center',
         location: 'Control Center -> Plugins',
         reason: handoffError
           ? `The action import completed, but trigger proposal handoff failed: ${handoffError}. Review the command output in Control Center -> Plugins before applying trigger rules.`
@@ -476,12 +478,14 @@ const createImportedFollowUp = (run) => {
     if (!run.triggerProposalSubmission) {
       return {
         label: 'Review import handoff',
+        surface: 'control-center',
         location: 'Control Center -> Plugins',
         reason: 'The action import completed, but no trigger proposal handoff record was saved. Review the command output in Control Center -> Plugins before applying trigger rules.'
       }
     }
     return {
       label: 'Review import handoff',
+      surface: 'control-center',
       location: 'Control Center -> Plugins',
       reason: 'The action import is complete. Review the import handoff details in Control Center -> Plugins.'
     }
@@ -489,6 +493,7 @@ const createImportedFollowUp = (run) => {
 
   return {
     label: 'Review imported result',
+    surface: 'openpet',
     location: 'OpenPet',
     reason: 'The host-owned import is complete. Review the imported result inside OpenPet.'
   }
@@ -509,6 +514,8 @@ const createWizardState = ({ dataDir, run }) => {
   let nextStepLabel = 'Draft task'
   let nextStepReason = 'Start from a natural-language action prompt to draft a Creator Studio task.'
   let nextStepBlocked = false
+  let nextStepLocation = 'Creator Studio'
+  let nextStepSurface = 'dashboard'
 
   if (taskStatus === 'needs_input') {
     phase = 'needs-input'
@@ -546,6 +553,8 @@ const createWizardState = ({ dataDir, run }) => {
     nextStepLabel = run.artifacts?.actionFrames ? 'Import Approved Action' : 'Import Approved Pet'
     nextStepReason = 'Use Control Center -> Plugins to run the host-owned import command.'
     nextStepBlocked = true
+    nextStepLocation = 'Control Center -> Plugins'
+    nextStepSurface = 'control-center'
   } else if (status === 'imported') {
     const importedFollowUp = createImportedFollowUp(run)
     phase = 'imported'
@@ -553,6 +562,8 @@ const createWizardState = ({ dataDir, run }) => {
     nextStepLabel = importedFollowUp.label
     nextStepReason = `The dashboard cannot apply post-import host actions; ${importedFollowUp.reason}`
     nextStepBlocked = true
+    nextStepLocation = importedFollowUp.location
+    nextStepSurface = importedFollowUp.surface || 'dashboard'
   } else if (taskStatus === 'confirmed') {
     phase = 'ready-to-generate'
     summary = isFullPet
@@ -575,6 +586,8 @@ const createWizardState = ({ dataDir, run }) => {
     nextStep: {
       label: createPublicText({ dataDir, value: nextStepLabel }),
       reason: createPublicText({ dataDir, value: nextStepReason }),
+      location: createPublicText({ dataDir, value: nextStepLocation }),
+      surface: createPublicText({ dataDir, value: nextStepSurface }),
       blocked: Boolean(nextStepBlocked)
     }
   }
