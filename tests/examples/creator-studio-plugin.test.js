@@ -2292,6 +2292,8 @@ test('creator studio dashboard asset exists and service script is declared', () 
   assert.match(html, /id="generation-usage-panel"/)
   assert.match(html, /id="backend-recovery-panel"/)
   assert.match(html, /id="provider-smoke-panel"/)
+  assert.match(html, /data-answer-question-id/)
+  assert.match(html, /data-retry-generation="true"/)
   assert.match(html, /Generation Recovery/)
   assert.match(html, /Generation Usage/)
   assert.match(html, /Provider Smoke/)
@@ -2520,7 +2522,11 @@ test('creator studio service exposes run detail and logs for dashboard clients',
       taskStatus: 'ready_for_confirmation',
       runStatus: 'ready_for_review',
       reviewStatus: 'pending',
-      importStatus: 'not-imported'
+      importStatus: 'not-imported',
+      recommendedAction: {
+        kind: 'approve',
+        label: 'Approve run'
+      }
     })
     assert.deepEqual(detail.promptProvenance, {
       version: 1,
@@ -2655,6 +2661,24 @@ test('creator studio service exposes task review routes for dashboard clients', 
     assert.equal(draft.ok, true)
     assert.equal(draft.run.taskStatus, 'needs_input')
     assert.equal(draft.run.generationTask.questions[0].id, 'trigger')
+    assert.deepEqual(draft.wizardState, {
+      stage: 'needs_input',
+      label: 'Needs Input',
+      nextStep: 'Answer the pending question: How should this custom action be triggered?',
+      taskStatus: 'needs_input',
+      runStatus: 'draft',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      pendingQuestion: {
+        id: 'trigger',
+        prompt: 'How should this custom action be triggered?',
+        options: ['manual', 'click', 'random', 'state', 'event', 'unbound']
+      },
+      recommendedAction: {
+        kind: 'answer_question',
+        label: 'Answer pending question'
+      }
+    })
     assert.equal(earlyApproval.response.status, 400)
     assert.equal(earlyApproval.body.ok, false)
     assert.match(earlyApproval.body.error, /ready_for_review/)
@@ -2675,7 +2699,11 @@ test('creator studio service exposes task review routes for dashboard clients', 
       taskStatus: 'confirmed',
       runStatus: 'ready_for_review',
       reviewStatus: 'pending',
-      importStatus: 'not-imported'
+      importStatus: 'not-imported',
+      recommendedAction: {
+        kind: 'approve',
+        label: 'Approve run'
+      }
     })
     assert.equal(approved.ok, true)
     assert.equal(approved.run.status, 'approved')
@@ -2689,12 +2717,77 @@ test('creator studio service exposes task review routes for dashboard clients', 
       taskStatus: 'confirmed',
       runStatus: 'approved',
       reviewStatus: 'approved',
-      importStatus: 'not-imported'
+      importStatus: 'not-imported',
+      recommendedAction: {
+        kind: 'import',
+        label: 'Import Approved Pet'
+      }
     })
     assert.equal(approved.importCommand, 'import-approved-pet')
     assert.equal(approved.actionReview, null)
     assert.equal(JSON.stringify(approved).includes(dataDir), false)
     assert.equal(logs.logs.at(-1).event, 'run.approved')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio service accepts answering a pending question by its actual question id', async () => {
+  const { draftTaskRun } = require('../../examples/plugins/creator-studio/lib/task-workflow')
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-question-id-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+  const drafted = draftTaskRun({
+    dataDir,
+    payload: {
+      prompt: 'Generate a custom action with an explicit palette choice.',
+      backend: 'fixture',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'palette-spark',
+          name: 'Palette Spark',
+          motionPrompt: 'Palette spark action',
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }],
+        questions: [{
+          id: 'palette-choice',
+          question: 'Which palette should this action follow?',
+          options: ['warm', 'cool']
+        }]
+      }
+    }
+  })
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const answered = await fetch(`http://127.0.0.1:${port}/api/runs/${drafted.run.runId}/questions/palette-choice/answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answer: 'warm' })
+    }).then((response) => response.json())
+
+    assert.equal(answered.ok, true)
+    assert.equal(answered.run.taskStatus, 'ready_for_confirmation')
+    assert.equal(answered.run.generationTask.questions.length, 0)
+    assert.deepEqual(answered.wizardState, {
+      stage: 'ready_for_confirmation',
+      label: 'Ready For Confirmation',
+      nextStep: 'Confirm the drafted task before generation.',
+      taskStatus: 'ready_for_confirmation',
+      runStatus: 'draft',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      recommendedAction: {
+        kind: 'confirm',
+        label: 'Confirm task'
+      }
+    })
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }

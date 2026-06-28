@@ -436,7 +436,9 @@
           `<p><strong>${escapeHtml(recovery.backend || 'backend')}</strong> / ${escapeHtml(recovery.state || 'failed')}</p>`,
           `<p>${escapeHtml(recovery.summary || 'Generation failed.')}</p>`,
           `<p>${escapeHtml(recovery.guidance || 'Retry after fixing the backend issue.')}</p>`,
-          recovery.canRetry ? `<p>Use <strong>${escapeHtml(recovery.actionLabel || 'Retry generation')}</strong> to try this run again.</p>` : ''
+          recovery.canRetry
+            ? `<div class="actions"><button type="button" class="secondary" data-retry-generation="true">${escapeHtml(recovery.actionLabel || 'Retry generation')}</button></div>`
+            : ''
         ].join('')
       }
 
@@ -470,7 +472,23 @@
         return [
           `<p><strong>${escapeHtml(wizardState.label || wizardState.stage || 'Stage')}</strong></p>`,
           `<p>Next: ${escapeHtml(wizardState.nextStep || 'No next step available.')}</p>`,
-          `<p>Task: ${escapeHtml(wizardState.taskStatus || 'unknown')} / Run: ${escapeHtml(wizardState.runStatus || 'unknown')} / Review: ${escapeHtml(wizardState.reviewStatus || 'unknown')} / Import: ${escapeHtml(wizardState.importStatus || 'unknown')}</p>`
+          `<p>Task: ${escapeHtml(wizardState.taskStatus || 'unknown')} / Run: ${escapeHtml(wizardState.runStatus || 'unknown')} / Review: ${escapeHtml(wizardState.reviewStatus || 'unknown')} / Import: ${escapeHtml(wizardState.importStatus || 'unknown')}</p>`,
+          wizardState.recommendedAction?.label
+            ? `<p><strong>Recommended action:</strong> ${escapeHtml(wizardState.recommendedAction.label)}</p>`
+            : ''
+        ].join('')
+      }
+
+      const renderQuestionPanel = (wizardState) => {
+        const question = wizardState?.pendingQuestion
+        if (!question) return 'No pending question.'
+        return [
+          `<p><strong>${escapeHtml(question.prompt || question.id || 'Pending question')}</strong></p>`,
+          Array.isArray(question.options) && question.options.length
+            ? `<div class="actions">${question.options.map((option) => (
+              `<button type="button" data-answer-question-id="${escapeHtml(question.id)}" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`
+            )).join('')}</div>`
+            : '<p>No answer options available.</p>'
         ].join('')
       }
 
@@ -533,7 +551,7 @@
           $('approve-button').disabled = true
           return
         }
-        const question = run.generationTask.questions[0]
+        const pendingQuestion = state.wizardState?.pendingQuestion || null
         const action = run.generationTask.actions[0]
         const hasActionFrames = Boolean(run.artifacts?.actionFrames)
         $('task-preview').innerHTML = renderTaskPreview(run)
@@ -544,15 +562,9 @@
         $('backend-recovery-panel').innerHTML = renderBackendRecovery(state.backendRecovery)
         $('provider-smoke-panel').innerHTML = renderProviderSmokeGuidance(state.providerSmokeGuidance)
         setGenerateButtonLabel(run)
-        if (question) {
-          $('question-panel').innerHTML = question.options.map((option) => (
-            `<button data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`
-          )).join(' ')
-        } else {
-          $('question-panel').textContent = 'No pending question.'
-        }
-        $('confirm-button').disabled = Boolean(question) || run.taskStatus === 'confirmed'
-        $('generate-button').disabled = Boolean(question) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status)
+        $('question-panel').innerHTML = renderQuestionPanel(state.wizardState)
+        $('confirm-button').disabled = Boolean(pendingQuestion) || run.taskStatus === 'confirmed'
+        $('generate-button').disabled = Boolean(pendingQuestion) || run.taskStatus !== 'confirmed' || !['draft', 'failed'].includes(run.status)
         $('approve-button').disabled = run.status !== 'ready_for_review'
         const actionFrames = run.artifacts?.actionFrames
         const actionReview = state.actionReview
@@ -652,9 +664,10 @@
 
       $('question-panel').addEventListener('click', async (event) => {
         const answer = event.target?.dataset?.answer
-        if (!answer || !state.run?.runId) return
+        const questionId = event.target?.dataset?.answerQuestionId || state.wizardState?.pendingQuestion?.id
+        if (!answer || !questionId || !state.run?.runId) return
         try {
-          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/questions/trigger/answer`, { answer })
+          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/questions/${encodeURIComponent(questionId)}/answer`, { answer })
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.promptProvenance = payload.promptProvenance || null
@@ -666,6 +679,28 @@
           await refreshLogs()
           await refreshRunList()
           setStatus('Question answered.', 'ok')
+        } catch (error) {
+          setStatus(error.message, 'error')
+        }
+      })
+
+      $('backend-recovery-panel').addEventListener('click', async (event) => {
+        const retry = event.target?.dataset?.retryGeneration
+        if (!retry || !state.run?.runId) return
+        try {
+          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/generate-action`)
+          state.run = payload.run
+          state.actionReview = payload.actionReview || null
+          state.promptProvenance = payload.promptProvenance || null
+          state.imageUsageSummary = payload.imageUsageSummary || null
+          state.wizardState = payload.wizardState || null
+          state.backendRecovery = payload.backendRecovery || null
+          state.providerSmokeGuidance = payload.providerSmokeGuidance || null
+          if (!state.actionReview) await fetchRunDetail()
+          renderRun()
+          await refreshLogs()
+          await refreshRunList()
+          setStatus(`Retried ${isFullPetRun(state.run) ? 'pet' : 'action'} generation.`, 'ok')
         } catch (error) {
           setStatus(error.message, 'error')
         }

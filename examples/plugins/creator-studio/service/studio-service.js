@@ -241,7 +241,8 @@ const createWizardState = ({ run }) => {
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      recommendedAction: null
     }
   }
   if (run.status === 'approved') {
@@ -254,7 +255,11 @@ const createWizardState = ({ run }) => {
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      recommendedAction: {
+        kind: 'import',
+        label: run.artifacts?.actionFrames ? 'Import Approved Action' : 'Import Approved Pet'
+      }
     }
   }
   if (run.status === 'ready_for_review') {
@@ -267,7 +272,11 @@ const createWizardState = ({ run }) => {
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      recommendedAction: {
+        kind: 'approve',
+        label: 'Approve run'
+      }
     }
   }
   if (run.status === 'failed') {
@@ -278,7 +287,11 @@ const createWizardState = ({ run }) => {
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      recommendedAction: {
+        kind: 'retry_generate',
+        label: 'Retry generation'
+      }
     }
   }
   if (run.taskStatus === 'confirmed') {
@@ -289,20 +302,34 @@ const createWizardState = ({ run }) => {
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      recommendedAction: {
+        kind: 'generate',
+        label: run.generationTask?.mode === 'full-pet' ? 'Generate pet' : 'Generate action'
+      }
     }
   }
   if (run.taskStatus === 'needs_input') {
+    const questionPrompt = question ? String(question.prompt || question.question || question.id || '') : ''
     return {
       stage: 'needs_input',
       label: 'Needs Input',
       nextStep: question
-        ? `Answer the pending question: ${question.prompt || question.id}`
+        ? `Answer the pending question: ${questionPrompt}`
         : 'Answer the remaining task questions before confirmation.',
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      pendingQuestion: question ? {
+        id: String(question.id || ''),
+        prompt: String(question.prompt || question.question || question.id || ''),
+        options: Array.isArray(question.options) ? question.options.map((option) => String(option)) : []
+      } : null,
+      recommendedAction: {
+        kind: 'answer_question',
+        label: 'Answer pending question'
+      }
     }
   }
   if (run.taskStatus === 'ready_for_confirmation') {
@@ -313,7 +340,11 @@ const createWizardState = ({ run }) => {
       taskStatus: String(run.taskStatus || ''),
       runStatus: String(run.status || ''),
       reviewStatus: String(run.reviewStatus || ''),
-      importStatus: String(run.importStatus || '')
+      importStatus: String(run.importStatus || ''),
+      recommendedAction: {
+        kind: 'confirm',
+        label: 'Confirm task'
+      }
     }
   }
   return {
@@ -323,7 +354,11 @@ const createWizardState = ({ run }) => {
     taskStatus: String(run.taskStatus || ''),
     runStatus: String(run.status || ''),
     reviewStatus: String(run.reviewStatus || ''),
-    importStatus: String(run.importStatus || '')
+    importStatus: String(run.importStatus || ''),
+    recommendedAction: {
+      kind: 'draft',
+      label: 'Draft task'
+    }
   }
 }
 
