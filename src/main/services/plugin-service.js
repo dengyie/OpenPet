@@ -20,6 +20,7 @@ const { createPluginServiceLaunchController } = require('./plugin-service-launch
 const { createPluginCommandEntryProcessController } = require('./plugin-command-entry-process-controller')
 const { createPluginDeclarationCommandController } = require('./plugin-declaration-command-controller')
 const { createPluginSetupProcessController } = require('./plugin-setup-process-controller')
+const { createPluginSetupRuntimeController } = require('./plugin-setup-runtime-controller')
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
 const { createPluginCommandOrchestrationController } = require('./plugin-command-orchestration-controller')
 const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
@@ -635,9 +636,14 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     createRuntimeView: createSetupRuntimeView
   })
 
+  const setupRuntimeController = createPluginSetupRuntimeController({
+    runtimeManager: setupRuntimeManager,
+    processController: setupProcessController
+  })
+
   const stopPluginServices = (pluginId, options = {}) => serviceRuntimeManager.stopPlugin(pluginId, options)
 
-  const stopPluginSetups = (pluginId, options = {}) => setupRuntimeManager.stopPlugin(pluginId, options)
+  const stopPluginSetups = (pluginId, options = {}) => setupRuntimeController.stopPlugin(pluginId, options)
 
   const runtimeSdkController = createPluginRuntimeSdkController({
     getConfig: getPluginConfig,
@@ -719,8 +725,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     try {
       const plugin = findPluginForService(pluginId)
       const setupEntry = getSetupEntry(plugin, setupId)
-      setupRuntimeManager.assertNotActive(pluginId, setupId)
-      return setupProcessController.run({
+      return setupRuntimeController.run({
         pluginId,
         manifest: plugin.manifest,
         setupId,
