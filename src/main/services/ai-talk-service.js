@@ -429,6 +429,31 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
   const pendingMemoryJobs = new Set()
   const conversationQueues = new Map()
 
+  const maybeMigrateLegacyConversation = ({ sessionId, conversationId, petPackId } = {}) => {
+    if (!sessionId || !conversationId || !petPackId) return []
+    const currentMessages = aiTalkStore.getMessages(sessionId, conversationId)
+    if (currentMessages.length > 0) return currentMessages
+    if (typeof aiService.getConversation !== 'function') return currentMessages
+    const legacyMessages = aiService.getConversation('control-center')
+    if (!Array.isArray(legacyMessages) || legacyMessages.length === 0) return currentMessages
+    const migratedMessages = aiTalkStore.appendMessages(sessionId, conversationId, legacyMessages)
+    if (typeof aiService.clearConversation === 'function') {
+      aiService.clearConversation('control-center')
+    }
+    recordLog({
+      level: 'info',
+      event: 'ai-talk.legacy-conversation.migrated',
+      message: 'Legacy AI conversation migrated into AI Talk store',
+      details: {
+        petPackId,
+        sessionId,
+        conversationId,
+        messageCount: migratedMessages.length
+      }
+    })
+    return migratedMessages
+  }
+
   const enqueueConversation = (conversationKey, task) => {
     if (!conversationKey) return task()
     const previous = conversationQueues.get(conversationKey) || Promise.resolve()
@@ -671,7 +696,11 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       petPackId,
       personaHash
     })
-    return aiTalkStore.getMessages(sessionId, mainConversationId)
+    return maybeMigrateLegacyConversation({
+      sessionId,
+      conversationId: mainConversationId,
+      petPackId
+    })
   }
 
   const recordTraceBehaviorOutcome = ({ conversationId, behavior } = {}) => {
@@ -720,7 +749,11 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       })
       const conversationPublicId = `${sessionId}:${conversationId}`
       return await enqueueConversation(conversationPublicId, async () => {
-        const history = aiTalkStore.getMessages(sessionId, conversationId)
+        const history = maybeMigrateLegacyConversation({
+          sessionId,
+          conversationId,
+          petPackId
+        })
         const userMessage = { role: 'user', content }
         const memoryContext = getMemoryContext({ petPackId, userMessage: content, history })
         const injectedMemoryIds = memoryContext.map((memory) => normalizeString(memory?.id)).filter(Boolean)

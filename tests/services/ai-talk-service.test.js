@@ -897,3 +897,97 @@ test('ai talk service exports a redacted trace linking provider conversation mem
   assert.equal(serialized.includes('Mochi starts coding sessions with a gentle focus check-in.'), false)
   assert.equal(serialized.includes('Always answer in concise Chinese.'), false)
 })
+
+test('ai talk service migrates legacy control-center conversation into the active pet-pack main session when the new store is empty', () => {
+  const store = createStore()
+  const cleared = []
+  const service = createAiTalkService({
+    aiService: {
+      getConversation: (conversationId) => {
+        if (conversationId === 'control-center') {
+          return [
+            { role: 'user', content: 'legacy hello' },
+            { role: 'assistant', content: 'legacy reply' }
+          ]
+        }
+        return []
+      },
+      clearConversation: (conversationId) => {
+        cleared.push(conversationId)
+        return []
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', displayName: 'Mochi Cat' })
+  })
+
+  const messages = service.getConversation('')
+
+  assert.deepEqual(messages.map((message) => message.content), ['legacy hello', 'legacy reply'])
+  assert.deepEqual(store.getMessages('control-center:mochi-cat', 'main').map((message) => message.content), ['legacy hello', 'legacy reply'])
+  assert.deepEqual(cleared, ['control-center'])
+})
+
+test('ai talk service does not migrate legacy control-center conversation when the new store already has messages', () => {
+  const store = createStore()
+  store.ensureMainConversation({ entrypoint: 'control-center', petPackId: 'mochi-cat', personaHash: 'hash-a' })
+  store.appendMessages('control-center:mochi-cat', 'main', [
+    { role: 'user', content: 'new hello' },
+    { role: 'assistant', content: 'new reply' }
+  ])
+  const cleared = []
+  const service = createAiTalkService({
+    aiService: {
+      getConversation: () => [
+        { role: 'user', content: 'legacy hello' },
+        { role: 'assistant', content: 'legacy reply' }
+      ],
+      clearConversation: (conversationId) => {
+        cleared.push(conversationId)
+        return []
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', displayName: 'Mochi Cat' })
+  })
+
+  const messages = service.getConversation('')
+
+  assert.deepEqual(messages.map((message) => message.content), ['new hello', 'new reply'])
+  assert.deepEqual(cleared, [])
+})
+
+test('ai talk service migrates legacy control-center conversation only once and does not re-import it for another pet pack', () => {
+  const store = createStore()
+  let legacyConversation = [
+    { role: 'user', content: 'legacy hello' },
+    { role: 'assistant', content: 'legacy reply' }
+  ]
+  let activePackId = 'mochi-cat'
+  const service = createAiTalkService({
+    aiService: {
+      getConversation: (conversationId) => conversationId === 'control-center' ? legacyConversation : [],
+      clearConversation: (conversationId) => {
+        if (conversationId === 'control-center') legacyConversation = []
+        return []
+      }
+    },
+    aiTalkStore: store,
+    petPackService: {
+      getActivePetPack: () => ({
+        manifest: {
+          id: activePackId,
+          displayName: activePackId,
+          persona: null,
+          actions: []
+        }
+      })
+    }
+  })
+
+  assert.deepEqual(service.getConversation('').map((message) => message.content), ['legacy hello', 'legacy reply'])
+  activePackId = 'sprout-cat'
+
+  assert.deepEqual(service.getConversation(''), [])
+  assert.deepEqual(store.getMessages('control-center:sprout-cat', 'main'), [])
+})
