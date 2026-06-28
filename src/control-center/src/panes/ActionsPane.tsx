@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerRule,
   ActionTriggerProposalInboxItem,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalType,
@@ -43,6 +44,8 @@ export interface ActionsPaneProps {
   onApplyTriggerProposal: () => void | Promise<void>
   onAcceptTriggerProposal: (proposalId: string) => void | Promise<void>
   onRejectTriggerProposal: (proposalId: string) => void | Promise<void>
+  onChangeTriggerRule: (ruleId: string, partial: Partial<ActionTriggerRule>) => void
+  onRemoveTriggerRule: (ruleId: string) => void
   triggerProposalType: ActionTriggerProposalType
   setTriggerProposalType: (value: ActionTriggerProposalType) => void
   triggerProposalNotes: string
@@ -74,23 +77,23 @@ const triggerProposalDetails: Record<ActionTriggerProposalType, {
   random: {
     label: '随机',
     summary: '建议作为随机/周期性行为使用。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '随机频率、冷却和冲突处理需要后续 host trigger-rule schema。',
-    buttonLabel: '确认待规则'
+    outcome: '接受后会保存一条宿主随机规则，后续可在下方规则列表继续编辑。',
+    boundary: '当前只持久化规则配置，不在这个里程碑里实现运行时执行器。',
+    buttonLabel: '保存随机规则'
   },
   state: {
     label: '状态',
     summary: '建议由 hover、idle、心情、靠近等运行状态触发。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '状态条件和优先级必须由 host 统一校验和持久化。',
-    buttonLabel: '确认待规则'
+    outcome: '接受后会保存一条宿主状态规则，后续可在下方规则列表继续编辑。',
+    boundary: '状态条件和优先级仍由 host 控制，这一轮只补持久化和编辑闭环。',
+    buttonLabel: '保存状态规则'
   },
   event: {
     label: '事件',
     summary: '建议由插件事件、本地 API 事件或系统事件触发。',
-    outcome: '接受后会标记为待主程序规则，不会立即生效。',
-    boundary: '事件来源、权限和参数匹配需要 host 规则编辑器确认。',
-    buttonLabel: '确认待规则'
+    outcome: '接受后会保存一条宿主事件规则，后续可在下方规则列表继续编辑。',
+    boundary: '事件来源与匹配仍由 host 约束，这一轮只补持久化配置面。',
+    buttonLabel: '保存事件规则'
   },
   unbound: {
     label: '不绑定',
@@ -107,6 +110,159 @@ const triggerProposalStatusLabel: Record<ActionTriggerProposalInboxItem['status'
   rejected: '已拒绝',
   applied: '已应用',
   'pending-host-rule': '待规则'
+}
+
+const triggerRuleTypeLabel: Record<ActionTriggerRule['type'], string> = {
+  random: '随机',
+  state: '状态',
+  event: '事件'
+}
+
+const getTriggerResultTitle = (result: ActionTriggerProposalAcceptanceResult) => {
+  if (result.code === 'rule_saved') return '最近结果：已保存规则'
+  if (result.applied) return '最近结果：已应用'
+  return '最近结果：已确认'
+}
+
+function TriggerRulesCard({
+  rules,
+  actions,
+  working,
+  onChangeRule,
+  onRemoveRule
+}: {
+  rules: ActionTriggerRule[]
+  actions: ActionEntry[]
+  working: boolean
+  onChangeRule: (ruleId: string, partial: Partial<ActionTriggerRule>) => void
+  onRemoveRule: (ruleId: string) => void
+}) {
+  if (!rules.length) {
+    return (
+      <div className="trigger-inbox-card" aria-label="宿主触发规则">
+        <div className="trigger-review-header">
+          <div>
+            <strong>宿主触发规则</strong>
+            <span>这里显示已保存的 random / state / event 规则。修改后通过上方“保存配置”落盘。</span>
+          </div>
+          <span className="trigger-badge applied">空</span>
+        </div>
+        <div className="empty-chat">暂无已保存规则</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="trigger-inbox-card" aria-label="宿主触发规则">
+      <div className="trigger-review-header">
+        <div>
+          <strong>宿主触发规则</strong>
+          <span>{rules.length} 条已保存规则 · 修改后需要点击“保存配置”</span>
+        </div>
+        <span className="trigger-badge pending">Host owned</span>
+      </div>
+      <div className="trigger-rules-grid">
+        {rules.map((rule) => (
+          <div className="trigger-rule-item" key={rule.id}>
+            <div className="trigger-inbox-main">
+              <div>
+                <strong>{actions.find((action) => action.id === rule.actionId)?.label || rule.actionId}</strong>
+                <span>{triggerRuleTypeLabel[rule.type]} · {rule.id}</span>
+              </div>
+              <span className={`trigger-badge ${rule.enabled ? 'applied' : 'rejected'}`}>
+                {rule.enabled ? '已启用' : '已停用'}
+              </span>
+            </div>
+
+            <div className="readonly-row trigger-review-row">
+              <span>类型</span>
+              <select
+                className="text-input"
+                value={rule.type}
+                disabled
+              >
+                <option value={rule.type}>{triggerRuleTypeLabel[rule.type]}</option>
+              </select>
+            </div>
+
+            <div className="readonly-row trigger-review-row">
+              <span>动作</span>
+              <select
+                className="text-input"
+                value={rule.actionId}
+                disabled={working}
+                onChange={(event) => onChangeRule(rule.id, { actionId: event.target.value })}
+              >
+                {actions.map((action) => (
+                  <option value={action.id || ''} key={`${rule.id}:${action.id || action.label}`}>{action.label || action.id}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="readonly-row trigger-review-row">
+              <span>启用</span>
+              <select
+                className="text-input"
+                value={rule.enabled ? 'enabled' : 'disabled'}
+                disabled={working}
+                onChange={(event) => onChangeRule(rule.id, { enabled: event.target.value === 'enabled' })}
+              >
+                <option value="enabled">启用</option>
+                <option value="disabled">停用</option>
+              </select>
+            </div>
+
+            {rule.type === 'random' ? (
+              <label className="field-row trigger-review-row">
+                <span className="field-label">间隔毫秒</span>
+                <input
+                  className="text-input"
+                  type="number"
+                  min={1000}
+                  step={1000}
+                  value={String(rule.intervalMs || 60000)}
+                  onChange={(event) => onChangeRule(rule.id, { intervalMs: Math.max(1000, Number(event.target.value || 60000)) })}
+                />
+              </label>
+            ) : (
+              <label className="field-row trigger-review-row">
+                <span className="field-label">{rule.type === 'state' ? '状态绑定' : '事件绑定'}</span>
+                <input
+                  className="text-input"
+                  value={rule.binding}
+                  placeholder={rule.type === 'state' ? 'idle' : 'plugin:event'}
+                  onChange={(event) => onChangeRule(rule.id, { binding: event.target.value })}
+                />
+              </label>
+            )}
+
+            <label className="field-row trigger-review-row">
+              <span className="field-label">备注</span>
+              <input
+                className="text-input"
+                value={rule.notes}
+                placeholder="记录触发规则用途"
+                onChange={(event) => onChangeRule(rule.id, { notes: event.target.value })}
+              />
+            </label>
+
+            <div className="trigger-inbox-meta">
+              {rule.sourcePluginId ? <span>来源：{rule.sourcePluginId}</span> : null}
+              {rule.sourceRunId ? <span>Run：{rule.sourceRunId}</span> : null}
+              {rule.sourceCommandId ? <span>命令：{rule.sourceCommandId}</span> : null}
+              <span>更新：{rule.updatedAt || rule.createdAt || '-'}</span>
+            </div>
+
+            <div className="inline-action">
+              <button type="button" className="ghost" disabled={working} onClick={() => onRemoveRule(rule.id)}>
+                从配置中移除
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function TriggerProposalInbox({
@@ -400,6 +556,8 @@ export function ActionsPane({
   onApplyTriggerProposal,
   onAcceptTriggerProposal,
   onRejectTriggerProposal,
+  onChangeTriggerRule,
+  onRemoveTriggerRule,
   triggerProposalType,
   setTriggerProposalType,
   triggerProposalNotes,
@@ -541,7 +699,7 @@ export function ActionsPane({
 
           {lastTriggerProposalResult ? (
             <div className={lastTriggerProposalResult.applied ? 'trigger-result applied' : 'trigger-result pending'}>
-              <strong>{lastTriggerProposalResult.applied ? '最近结果：已应用' : '最近结果：已确认'}</strong>
+              <strong>{getTriggerResultTitle(lastTriggerProposalResult)}</strong>
               <span>{lastTriggerProposalResult.message}</span>
               <span>结果码：{lastTriggerProposalResult.code}</span>
             </div>
@@ -560,6 +718,14 @@ export function ActionsPane({
           working={working}
           onAccept={onAcceptTriggerProposal}
           onReject={onRejectTriggerProposal}
+        />
+
+        <TriggerRulesCard
+          rules={actionsConfig.triggerRules || []}
+          actions={actionsConfig.actions}
+          working={working}
+          onChangeRule={onChangeTriggerRule}
+          onRemoveRule={onRemoveTriggerRule}
         />
       </div>
 

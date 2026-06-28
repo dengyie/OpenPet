@@ -177,6 +177,9 @@ const normalizePetPackManifest = (manifest) => {
   if (Array.isArray(manifest.triggerProposalInbox)) {
     normalized.triggerProposalInbox = manifest.triggerProposalInbox.map((proposal) => ({ ...proposal }))
   }
+  if (Array.isArray(manifest.triggerRules)) {
+    normalized.triggerRules = manifest.triggerRules.map((rule) => ({ ...rule }))
+  }
   return normalized
 }
 

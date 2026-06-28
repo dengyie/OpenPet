@@ -34,6 +34,26 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       .map((action) => [action.id, action.label])
   )
 
+  const preserveHostTriggerData = (nextConfig, currentConfig = nextConfig) => {
+    const validActionIds = new Set(Array.isArray(nextConfig.actions) ? nextConfig.actions.map((action) => action.id).filter(Boolean) : [])
+    const sourceTriggerRules = Array.isArray(nextConfig.triggerRules)
+      ? nextConfig.triggerRules
+      : currentConfig.triggerRules
+    return {
+      ...nextConfig,
+      ...(Array.isArray(sourceTriggerRules)
+        ? {
+            triggerRules: sourceTriggerRules.filter((rule) => validActionIds.has(rule?.actionId))
+          }
+        : {}),
+      ...(Array.isArray(currentConfig.triggerProposalInbox)
+        ? {
+            triggerProposalInbox: currentConfig.triggerProposalInbox
+          }
+        : {})
+    }
+  }
+
   const actionExists = (actionId) => {
     const existsInConfig = (readCurrentConfig().actions || [])
       .some((action) => action.id === actionId)
@@ -70,12 +90,10 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       clickAction: overrides.clickAction ?? currentConfig.clickAction,
       labels: getExistingLabels()
     })
-    const preserved = {
+    const preserved = preserveHostTriggerData({
       ...generated,
-      ...(Array.isArray(currentConfig.triggerProposalInbox)
-        ? { triggerProposalInbox: currentConfig.triggerProposalInbox }
-        : {})
-    }
+      ...(Array.isArray(overrides.triggerRules) ? { triggerRules: overrides.triggerRules } : {})
+    }, currentConfig)
     if (preserved !== generated) {
       fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')
     }
@@ -94,16 +112,21 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     const targetDir = path.join(framesRoot, actionId)
     copyDirectory(sourceDir, targetDir)
     const { generateSpritesFromFrames } = loadSpriteGenerator()
+    const currentConfig = readCurrentConfig()
     const config = await generateSpritesFromFrames({
       framesRoot,
       spritesDir,
       configPath,
-      defaultAction: readCurrentConfig().defaultAction,
-      clickAction: readCurrentConfig().clickAction,
+      defaultAction: currentConfig.defaultAction,
+      clickAction: currentConfig.clickAction,
       labels: { ...getExistingLabels(), ...(label ? { [actionId]: label } : {}) }
     })
-    const importedAction = config.actions.find((action) => action.id === actionId)
-    return { ...config, importedAction }
+    const preserved = preserveHostTriggerData(config, currentConfig)
+    if (preserved !== config) {
+      fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')
+    }
+    const importedAction = preserved.actions.find((action) => action.id === actionId)
+    return { ...preserved, importedAction }
   }
 
   const inspectActionFrames = async ({ sourceDir, actionId }) => {
@@ -117,7 +140,7 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
     return { actionId, folderName: path.basename(sourceDir || ''), inspection }
   }
 
-  const updateActionConfig = async ({ defaultAction, clickAction }) => regenerate({ defaultAction, clickAction })
+  const updateActionConfig = async ({ defaultAction, clickAction, triggerRules }) => regenerate({ defaultAction, clickAction, triggerRules })
 
   const deleteAction = async (actionId) => {
     if (!isSafeActionId(actionId)) throw new Error('Invalid action id')

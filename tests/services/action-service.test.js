@@ -19,6 +19,7 @@ test('action service returns legacy animation config as runtime actions', () => 
   assert.deepEqual(service.getConfig(), {
     defaultAction: 'idle',
     clickAction: 'eat',
+    triggerRules: [],
     triggerProposalInbox: [],
     actions: [
       {
@@ -71,6 +72,7 @@ test('action service can expose the normalized pet pack while preserving animati
   assert.deepEqual(service.getConfig(), {
     defaultAction: 'idle',
     clickAction: 'eat',
+    triggerRules: [],
     triggerProposalInbox: [],
     actions: [
       { id: 'idle', sprite: 'file:///packs/cat/sprites/idle.png' },
@@ -504,11 +506,12 @@ test('action service accepts review-only trigger proposals without mutating acti
 
   assert.equal(manual.applied, false)
   assert.equal(manual.code, 'no_binding_required')
-  assert.equal(state.applied, false)
-  assert.equal(state.code, 'pending_host_rule')
+  assert.equal(state.applied, true)
+  assert.equal(state.code, 'rule_saved')
   assert.equal(state.sourcePluginId, '')
   assert.equal(state.sourceRunId.length, 160)
-  assert.equal(savedConfig, null)
+  assert.equal(savedConfig.triggerRules.length, 1)
+  assert.equal(savedConfig.triggerRules[0].type, 'state')
   assert.equal(service.getConfig().clickAction, 'idle')
 })
 
@@ -577,7 +580,7 @@ test('action service persists trigger proposals through inbox submit and accept'
   assert.equal(service.getConfig().triggerProposalInbox[0].status, 'applied')
 })
 
-test('action service persists pending-host-rule and rejected inbox proposals', () => {
+test('action service persists saved host rules and rejected inbox proposals', () => {
   let savedConfig = null
   const service = createActionService({
     projectRoot: '/app/openpet',
@@ -631,15 +634,17 @@ test('action service persists pending-host-rule and rejected inbox proposals', (
   const accepted = service.acceptTriggerProposalItem(stateProposal.proposal.id)
   const rejected = service.rejectTriggerProposalItem(randomProposal.proposal.id, 'Not for this pet.')
 
-  assert.equal(accepted.triggerProposal.applied, false)
-  assert.equal(accepted.triggerProposal.code, 'pending_host_rule')
-  assert.equal(accepted.proposal.status, 'pending-host-rule')
+  assert.equal(accepted.triggerProposal.applied, true)
+  assert.equal(accepted.triggerProposal.code, 'rule_saved')
+  assert.equal(accepted.proposal.status, 'applied')
   assert.equal(rejected.proposal.status, 'rejected')
   assert.equal(rejected.proposal.rejectionReason, 'Not for this pet.')
   assert.equal(savedConfig.clickAction, 'idle')
+  assert.equal(savedConfig.triggerRules.length, 1)
+  assert.equal(savedConfig.triggerRules[0].type, 'state')
   assert.deepEqual(
     savedConfig.triggerProposalInbox.map((proposal) => proposal.status),
-    ['pending-host-rule', 'rejected']
+    ['applied', 'rejected']
   )
 })
 

@@ -42,6 +42,7 @@ const loadLegacyPetPack = ({ id = 'legacy-cat', displayName = 'Legacy Cat', getP
     defaultAction: config.defaultAction,
     clickAction: config.clickAction,
     actions: Array.isArray(config.actions) ? config.actions.map(withLegacyActionDefaults) : [],
+    ...(Array.isArray(config.triggerRules) ? { triggerRules: config.triggerRules } : {}),
     ...(Array.isArray(config.triggerProposalInbox) ? { triggerProposalInbox: config.triggerProposalInbox } : {})
   })
 
@@ -64,6 +65,7 @@ const getLegacyPetAnimations = ({ configPath = LEGACY_ANIMATIONS_PATH } = {}) =>
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
       actions: Array.isArray(config.actions) ? config.actions : [],
+      ...(Array.isArray(config.triggerRules) ? { triggerRules: config.triggerRules } : {}),
       ...(Array.isArray(config.triggerProposalInbox) ? { triggerProposalInbox: config.triggerProposalInbox } : {})
     }
   } catch (error) {

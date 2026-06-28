@@ -5,6 +5,8 @@ import type {
   ActionFrameInspectionResult,
   ActionFrameImportRequest,
   ActionFrameReinspectRequest,
+  ActionTriggerRule,
+  ActionTriggerProposalAcceptanceRequest,
   ActionTriggerProposalInboxStatus,
   ActionsConfigViewState,
   AiChatRequest,
@@ -154,12 +156,52 @@ const createDemoPetPacks = (): PetPacksViewState => clonePetPacks({
 const createDemoActionsConfig = (): ActionsConfigViewState => cloneActionsConfig({
   defaultAction: 'idle',
   clickAction: 'wave',
+  triggerRules: [],
   triggerProposalInbox: [],
   actions: [
     { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
     { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
     { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
   ]
+})
+
+const createDemoTriggerRule = ({
+  id,
+  type,
+  actionId,
+  binding,
+  intervalMs,
+  notes,
+  sourcePluginId,
+  sourceRunId,
+  sourceCommandId,
+  enabled = true,
+  createdAt = '2026-06-22T00:00:00.000Z',
+  updatedAt = createdAt
+}: Partial<ActionTriggerRule> & Pick<ActionTriggerRule, 'type' | 'actionId'>): ActionTriggerRule => ({
+  id: id || `rule:${type}:${actionId}`,
+  type,
+  actionId,
+  enabled,
+  binding: type === 'random' ? '' : (binding || (type === 'state' ? 'idle' : 'plugin:event')),
+  intervalMs: type === 'random' ? Math.max(1000, Number(intervalMs || 60000)) : 0,
+  notes: notes || '',
+  sourcePluginId: sourcePluginId || '',
+  sourceRunId: sourceRunId || '',
+  sourceCommandId: sourceCommandId || '',
+  createdAt,
+  updatedAt
+})
+
+const createDemoTriggerRuleFromProposal = (proposal: ActionTriggerProposalAcceptanceRequest): ActionTriggerRule => createDemoTriggerRule({
+  type: proposal.type as ActionTriggerRule['type'],
+  actionId: proposal.actionId,
+  binding: proposal.binding,
+  notes: proposal.notes || proposal.message || '',
+  sourcePluginId: proposal.sourcePluginId || '',
+  sourceRunId: proposal.sourceRunId || '',
+  sourceCommandId: proposal.sourceCommandId || '',
+  updatedAt: '2026-06-22T00:00:00.000Z'
 })
 
 const compileDemoPersonaPrompt = (persona: AiPersona) => [
@@ -1021,6 +1063,16 @@ const demoApi: ControlCenterApi = {
         ...demoState.actionsConfig,
         clickAction: triggerProposal.actionId
       })
+    } else if (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)) {
+      const nextRule = createDemoTriggerRuleFromProposal(triggerProposal)
+      const nextRules = [
+        ...demoState.actionsConfig.triggerRules.filter((rule) => rule.id !== nextRule.id),
+        nextRule
+      ]
+      demoState.actionsConfig = cloneActionsConfig({
+        ...demoState.actionsConfig,
+        triggerRules: nextRules
+      })
     } else if (!triggerProposal) {
       demoState.actionsConfig = cloneActionsConfig({
         ...demoState.actionsConfig,
@@ -1030,11 +1082,11 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     const triggerCode = triggerProposal?.type === 'click'
       ? 'applied'
-      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type) ? 'pending_host_rule' : 'no_binding_required')
+      : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type) ? 'rule_saved' : 'no_binding_required')
     const triggerMessage = triggerProposal?.type === 'click'
       ? `Click trigger now uses action: ${triggerProposal.actionId}`
       : (triggerProposal && ['random', 'state', 'event'].includes(triggerProposal.type)
-          ? `Trigger type ${triggerProposal.type} requires a host trigger-rule editor before it can be applied.`
+          ? `Host trigger rule saved for ${triggerProposal.type}: ${triggerProposal.actionId}`
           : `Action trigger proposal accepted for ${triggerProposal?.actionId || ''}`)
     return {
       animations: cloneActionsConfig(demoState.actionsConfig),
@@ -1042,10 +1094,14 @@ const demoApi: ControlCenterApi = {
         ? {
             triggerProposal: {
               ok: true,
-              applied: triggerProposal.type === 'click',
+              applied: triggerProposal.type === 'click' || ['random', 'state', 'event'].includes(triggerProposal.type),
               actionId: triggerProposal.actionId,
               type: triggerProposal.type,
-              binding: triggerProposal.type === 'click' ? 'clickAction' : '',
+              binding: triggerProposal.type === 'click'
+                ? 'clickAction'
+                : (['random', 'state', 'event'].includes(triggerProposal.type)
+                    ? createDemoTriggerRuleFromProposal(triggerProposal).binding
+                    : ''),
               code: triggerCode,
               message: triggerMessage,
               acceptedAt: '2026-06-22T00:00:00.000Z',

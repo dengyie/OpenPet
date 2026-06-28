@@ -657,6 +657,9 @@ const createPetPackService = ({
       defaultAction: nextManifest.defaultAction ?? currentManifest.defaultAction,
       clickAction: nextManifest.clickAction ?? currentManifest.clickAction,
       actions: nextActions,
+      ...(nextManifest.triggerRules !== undefined
+        ? { triggerRules: Array.isArray(nextManifest.triggerRules) ? nextManifest.triggerRules : [] }
+        : {}),
       ...(nextManifest.triggerProposalInbox !== undefined
         ? { triggerProposalInbox: Array.isArray(nextManifest.triggerProposalInbox) ? nextManifest.triggerProposalInbox : [] }
         : {})

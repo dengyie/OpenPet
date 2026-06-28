@@ -190,6 +190,7 @@ export const defaultActionsConfig = {
   defaultAction: '',
   clickAction: '',
   actions: [],
+  triggerRules: [],
   triggerProposalInbox: []
 } satisfies ActionsConfigViewState
 
@@ -386,6 +387,7 @@ export const cloneActionsConfig = (config: Partial<ActionsConfigViewState> | nul
   ...defaultActionsConfig,
   ...(config || {}),
   actions: Array.isArray(config?.actions) ? config.actions : [],
+  triggerRules: Array.isArray(config?.triggerRules) ? config.triggerRules : [],
   triggerProposalInbox: Array.isArray(config?.triggerProposalInbox) ? config.triggerProposalInbox : []
 })
 

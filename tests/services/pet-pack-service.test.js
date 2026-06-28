@@ -553,6 +553,44 @@ test('pet pack service updates the active installed pack manifest action fields'
   assert.equal(persisted.actions.find((action) => action.id === 'wave').label, 'Wave Updated')
 })
 
+test('pet pack service persists trigger rules on the active installed pack manifest', () => {
+  const sourceDir = createTempDir('pet-pack-update-trigger-rules')
+  createPetPackDirectory(sourceDir, { id: 'trigger-cat', displayName: 'Trigger Cat' })
+  const settingsService = createSettingsService()
+  const petPackService = createService(settingsService)
+
+  const inspection = petPackService.inspectPackDirectory(sourceDir)
+  petPackService.importPack(inspection.selectionId)
+  petPackService.setActivePack('trigger-cat')
+
+  const updated = petPackService.updateActivePetPackManifest({
+    triggerRules: [
+      {
+        id: 'rule:state:wave:1',
+        type: 'state',
+        actionId: 'wave',
+        enabled: true,
+        binding: 'idle',
+        intervalMs: 0,
+        notes: 'Host owned rule',
+        sourcePluginId: 'openpet.creator-studio',
+        sourceRunId: 'run-1',
+        sourceCommandId: 'import-approved-action',
+        createdAt: '2026-06-22T00:00:00.000Z',
+        updatedAt: '2026-06-22T00:00:00.000Z'
+      }
+    ]
+  })
+
+  const installedManifestPath = path.join(petPackService.listPacks().packs.find((pack) => pack.id === 'trigger-cat').rootPath, 'pet.json')
+  const persisted = JSON.parse(fs.readFileSync(installedManifestPath, 'utf-8'))
+
+  assert.equal(updated.triggerRules.length, 1)
+  assert.equal(updated.triggerRules[0].type, 'state')
+  assert.equal(persisted.triggerRules.length, 1)
+  assert.equal(persisted.triggerRules[0].actionId, 'wave')
+})
+
 test('pet pack service reads validates and applies creator pack manifest metadata for the active installed pack', () => {
   const sourceDir = createTempDir('pet-pack-creator-view')
   createPetPackDirectory(sourceDir, {

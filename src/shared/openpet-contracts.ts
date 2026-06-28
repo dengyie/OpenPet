@@ -272,11 +272,28 @@ export interface ActionsConfigViewState {
   defaultAction: string
   clickAction: string
   actions: ActionEntry[]
+  triggerRules: ActionTriggerRule[]
   triggerProposalInbox: ActionTriggerProposalInboxItem[]
 }
 
 export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
 export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected' | 'applied' | 'pending-host-rule'
+export type ActionTriggerRuleType = 'random' | 'state' | 'event'
+
+export interface ActionTriggerRule {
+  id: string
+  type: ActionTriggerRuleType
+  actionId: string
+  enabled: boolean
+  binding: string
+  intervalMs: number
+  notes: string
+  sourcePluginId: string
+  sourceRunId: string
+  sourceCommandId: string
+  createdAt: string
+  updatedAt: string
+}
 
 export interface ActionTriggerProposalInboxItem {
   id: string
@@ -315,7 +332,7 @@ export interface ActionTriggerProposalAcceptanceResult {
   actionId: string
   type: ActionTriggerProposalType
   binding: string
-  code: 'applied' | 'no_binding_required' | 'pending_host_rule'
+  code: 'applied' | 'no_binding_required' | 'pending_host_rule' | 'rule_saved'
   message: string
   acceptedAt: string
   sourcePluginId?: string
@@ -395,6 +412,7 @@ export interface ActionFrameImportResult {
 export interface ActionsSaveConfigRequest {
   defaultAction?: string
   clickAction?: string
+  triggerRules?: ActionTriggerRule[]
   triggerProposal?: ActionTriggerProposalAcceptanceRequest
 }
 

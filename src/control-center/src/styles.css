@@ -532,6 +532,12 @@ button {
   gap: 12px;
 }
 
+.trigger-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
 .trigger-inbox-item {
   display: grid;
   gap: 10px;
@@ -545,6 +551,16 @@ button {
 .trigger-inbox-item.pending {
   border-color: rgba(217, 119, 6, 0.3);
   background: rgba(255, 251, 235, 0.88);
+}
+
+.trigger-rule-item {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .trigger-inbox-item.rejected {

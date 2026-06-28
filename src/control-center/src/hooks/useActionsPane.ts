@@ -3,6 +3,7 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
+  ActionTriggerRule,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalType,
   ActionsConfigViewState,
@@ -79,7 +80,8 @@ export function useActionsPane() {
     try {
       const response = await api.saveActionsConfig({
         defaultAction: actionsConfig.defaultAction,
-        clickAction: actionsConfig.clickAction
+        clickAction: actionsConfig.clickAction,
+        triggerRules: actionsConfig.triggerRules
       })
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus('动作配置已保存')
@@ -132,9 +134,7 @@ export function useActionsPane() {
       setLastTriggerProposalResult(response.triggerProposal || null)
       const proposal = response.proposal
       const actionLabel = proposal?.actionId || proposalId
-      const outcome = proposal?.status === 'applied'
-        ? '已应用'
-        : (proposal?.status === 'pending-host-rule' ? '已标记待规则' : '已接受')
+      const outcome = proposal?.status === 'applied' ? '已应用' : '已接受'
       setStatus(`${outcome}触发提案：${actionLabel}`)
     } catch (error) {
       setStatus(messageFromError(error, '接受触发提案失败'))
@@ -157,6 +157,35 @@ export function useActionsPane() {
     } finally {
       setWorking(false)
     }
+  }
+
+  const onChangeTriggerRule = (ruleId: string, partial: Partial<ActionTriggerRule>) => {
+    setActionsConfig((current) => cloneActionsConfig({
+      ...current,
+      triggerRules: current.triggerRules.map((rule) => {
+        if (rule.id !== ruleId) return rule
+        const nextType = partial.type || rule.type
+        return {
+          ...rule,
+          ...partial,
+          binding: nextType === 'random'
+            ? ''
+            : (partial.binding !== undefined ? partial.binding : rule.binding),
+          intervalMs: nextType === 'random'
+            ? (partial.intervalMs !== undefined ? partial.intervalMs : rule.intervalMs)
+            : 0
+        }
+      })
+    }))
+    setStatus('')
+  }
+
+  const onRemoveTriggerRule = (ruleId: string) => {
+    setActionsConfig((current) => cloneActionsConfig({
+      ...current,
+      triggerRules: current.triggerRules.filter((rule) => rule.id !== ruleId)
+    }))
+    setStatus('已从待保存配置中移除规则')
   }
 
   const onInspect = async () => {
@@ -375,6 +404,8 @@ export function useActionsPane() {
     onApplyTriggerProposal,
     onAcceptTriggerProposal,
     onRejectTriggerProposal,
+    onChangeTriggerRule,
+    onRemoveTriggerRule,
     triggerProposalType,
     setTriggerProposalType: onChangeTriggerProposalType,
     triggerProposalNotes,

@@ -133,12 +133,12 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
   actionService: {
     acceptTriggerProposal: (proposal) => ({
       ok: true,
-      applied: proposal.type === 'click',
+      applied: proposal.type === 'click' || ['random', 'state', 'event'].includes(proposal.type),
       actionId: proposal.actionId,
       type: proposal.type,
       binding: proposal.binding || '',
-      code: proposal.type === 'click' ? 'applied' : 'pending_host_rule',
-      message: proposal.type === 'click' ? 'applied' : 'pending',
+      code: proposal.type === 'click' ? 'applied' : (['random', 'state', 'event'].includes(proposal.type) ? 'rule_saved' : 'no_binding_required'),
+      message: proposal.type === 'click' ? 'applied' : (['random', 'state', 'event'].includes(proposal.type) ? 'rule saved' : 'accepted'),
       acceptedAt: '2026-06-22T10:00:00.000Z',
       sourcePluginId: proposal.sourcePluginId || '',
       sourceRunId: proposal.sourceRunId || '',

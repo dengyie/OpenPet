@@ -154,6 +154,61 @@ test('action import service preserves trigger proposal inbox while regenerating 
   assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerProposalInbox[0].actionId, 'wave')
 })
 
+test('action import service preserves valid trigger rules and prunes removed action ids', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-trigger-rules-'))
+  const framesRoot = path.join(root, 'cat_anime', 'flames')
+  const spritesDir = path.join(root, 'cat_anime', 'sprites')
+  const configPath = path.join(root, 'cat_anime', 'animations.json')
+  await createActionFolder(framesRoot, 'idle')
+  await createActionFolder(framesRoot, 'wave')
+  const service = createActionImportService({ framesRoot, spritesDir, configPath })
+  await service.regenerate()
+
+  const current = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    ...current,
+    triggerRules: [
+      {
+        id: 'rule:state:wave:1',
+        type: 'state',
+        actionId: 'wave',
+        enabled: true,
+        binding: 'idle',
+        intervalMs: 0,
+        notes: '',
+        sourcePluginId: '',
+        sourceRunId: '',
+        sourceCommandId: '',
+        createdAt: '2026-06-22T00:00:00.000Z',
+        updatedAt: '2026-06-22T00:00:00.000Z'
+      },
+      {
+        id: 'rule:event:missing:1',
+        type: 'event',
+        actionId: 'missing',
+        enabled: true,
+        binding: 'plugin:event',
+        intervalMs: 0,
+        notes: '',
+        sourcePluginId: '',
+        sourceRunId: '',
+        sourceCommandId: '',
+        createdAt: '2026-06-22T00:00:00.000Z',
+        updatedAt: '2026-06-22T00:00:00.000Z'
+      }
+    ]
+  }, null, 2)}\n`, 'utf-8')
+
+  const result = await service.updateActionConfig({
+    defaultAction: 'wave',
+    clickAction: 'idle'
+  })
+
+  assert.equal(result.triggerRules.length, 1)
+  assert.equal(result.triggerRules[0].actionId, 'wave')
+  assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf-8')).triggerRules.length, 1)
+})
+
 test('action import service preserves custom labels after regenerating config', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-label-'))
   const sourceDir = path.join(root, 'source-wave')

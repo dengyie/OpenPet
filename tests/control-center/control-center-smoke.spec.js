@@ -111,7 +111,7 @@ test.describe('Control Center smoke', () => {
     await expect(reviewCard).not.toContainText('最近结果：已应用')
   })
 
-  test('keeps host-rule trigger proposals pending in the Actions review UI', async ({ page }) => {
+  test('saves host trigger rules in the Actions review UI', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Actions' }).click()
 
@@ -121,13 +121,18 @@ test.describe('Control Center smoke', () => {
     const reviewCard = page.locator('[aria-label="触发建议审阅"]')
 
     await reviewCard.locator('select').selectOption('state')
-    await expect(reviewCard).toContainText('状态条件和优先级必须由 host 统一校验和持久化。')
-    await page.getByRole('button', { name: '确认待规则' }).click()
+    await expect(reviewCard).toContainText('状态条件和优先级仍由 host 控制，这一轮只补持久化和编辑闭环。')
+    await page.getByRole('button', { name: '保存状态规则' }).click()
 
-    await expect(page.locator('.status-line')).toContainText('已确认 触发建议')
-    await expect(reviewCard).toContainText('最近结果：已确认')
-    await expect(reviewCard).toContainText('结果码：pending_host_rule')
+    await expect(page.locator('.status-line')).toContainText('已应用 触发建议')
+    await expect(reviewCard).toContainText('最近结果：已保存规则')
+    await expect(reviewCard).toContainText('结果码：rule_saved')
     await expect(clickAction).toHaveValue(beforeClickAction)
+
+    const rulesCard = page.locator('[aria-label="宿主触发规则"]')
+    await expect(rulesCard).toContainText('1 条已保存规则')
+    await expect(rulesCard).toContainText('Sleep')
+    await expect(rulesCard).toContainText('状态')
   })
 
   test('reviews queued trigger proposals from the Actions inbox', async ({ page }) => {
@@ -136,6 +141,7 @@ test.describe('Control Center smoke', () => {
         actionsConfig: {
           defaultAction: 'idle',
           clickAction: 'wave',
+          triggerRules: [],
           actions: [
             { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
             { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
@@ -191,9 +197,13 @@ test.describe('Control Center smoke', () => {
     const sleepProposal = inbox.locator('.trigger-inbox-item', { hasText: 'Sleep' })
     await expect(sleepProposal).toContainText('待审核')
     await sleepProposal.getByRole('button', { name: '接受提案' }).click()
-    await expect(page.locator('.status-line')).toContainText('已标记待规则触发提案：sleep')
-    await expect(sleepProposal).toContainText('待规则')
-    await expect(sleepProposal).toContainText('pending_host_rule')
+    await expect(page.locator('.status-line')).toContainText('已应用触发提案：sleep')
+    await expect(sleepProposal).toContainText('已应用')
+    await expect(sleepProposal).toContainText('rule_saved')
+
+    const rulesCard = page.locator('[aria-label="宿主触发规则"]')
+    await expect(rulesCard).toContainText('Sleep')
+    await expect(rulesCard).toContainText('状态')
 
     const waveProposal = inbox.locator('.trigger-inbox-item', { hasText: 'Wave' })
     page.once('dialog', (dialog) => dialog.accept('Not for this pack'))
