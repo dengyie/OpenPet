@@ -5099,6 +5099,150 @@ test('creator studio service exposes failed generation recovery and retries the 
   }
 })
 
+test('creator studio service exposes retry recovery for legacy failed runs without generationTask', async () => {
+  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
+  const { createRun, readRun, updateRunStatus, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-legacy-failed-'))
+  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
+
+  const seedLegacyFailedRunWithoutTask = ({ input, now, failedAt }) => {
+    const run = createRun({ dataDir, input, now })
+    const failedRun = updateRunStatus({
+      dataDir,
+      runId: run.runId,
+      status: 'failed',
+      patch: {
+        taskStatus: 'confirmed',
+        currentStep: 'generate',
+        reviewStatus: 'pending',
+        importStatus: 'not-imported',
+        backendStatus: {
+          backend: 'provider',
+          state: 'failed',
+          message: 'Provider queue overloaded',
+          updatedAt: failedAt
+        },
+        recovery: {
+          canRetryGeneration: true,
+          backend: {
+            backend: 'provider',
+            state: 'failed'
+          },
+          failureKind: 'provider',
+          failureReason: 'Provider queue overloaded',
+          guidance: 'Review the provider failure details, then retry generation on this same run when the backend is ready.',
+          qaFocus: 'No QA artifacts were produced before the generation failure.'
+        },
+        error: 'Provider queue overloaded'
+      },
+      now: () => failedAt
+    })
+    const persisted = readRun({ dataDir, runId: run.runId })
+    const { generationTask: _generationTask, ...legacyFailedRun } = persisted || failedRun
+    writeRun({
+      dataDir,
+      run: {
+        ...legacyFailedRun,
+        backend: 'cloud',
+        input: {
+          ...failedRun.input,
+          backend: 'cloud'
+        }
+      }
+    })
+    return run
+  }
+
+  const actionRun = seedLegacyFailedRunWithoutTask({
+    input: {
+      prompt: 'Legacy failed provider run should allow retry.',
+      originalPrompt: 'Legacy failed provider run should allow retry.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-failed-retry',
+          name: 'Legacy Failed Retry',
+          motionPrompt: 'placeholder',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T09:30:00.000Z',
+    failedAt: '2026-06-28T09:31:00.000Z'
+  })
+
+  const fullPetRun = seedLegacyFailedRunWithoutTask({
+    input: {
+      petName: 'Legacy Failed Full Pet Cat',
+      petId: 'legacy-failed-full-pet-cat',
+      prompt: 'Legacy failed full-pet provider run should allow retry.',
+      originalPrompt: 'Legacy failed full-pet provider run should allow retry.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只 provider 失败后需要继续重试的 legacy 桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'soft breathing with a tiny tail sway',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T09:32:00.000Z',
+    failedAt: '2026-06-28T09:33:00.000Z'
+  })
+
+  const server = createCreatorStudioServer({ dataDir, dashboardPath })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+
+  try {
+    const actionDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${actionRun.runId}`).then((response) => response.json())
+    const fullPetDetail = await fetch(`http://127.0.0.1:${port}/api/runs/${fullPetRun.runId}`).then((response) => response.json())
+
+    assert.equal(actionDetail.ok, true)
+    assert.equal(actionDetail.run.status, 'failed')
+    assert.equal(actionDetail.run.recovery.canRetryGeneration, true)
+    assert.equal(actionDetail.run.recovery.actionLabel, 'Retry generation')
+    assert.equal(actionDetail.run.wizardState.nextStep.label, 'Retry generation')
+    assert.equal(actionDetail.run.wizardState.nextStep.blocked, false)
+    assert.equal(actionDetail.run.actionLane.dashboardAction.available, true)
+    assert.equal(actionDetail.run.actionLane.dashboardAction.label, 'Retry generation')
+    assert.equal(actionDetail.run.actionLane.buttonStates.generate.enabled, true)
+    assert.equal(actionDetail.run.actionLane.buttonStates.generate.label, 'Retry generation')
+    assert.equal(actionDetail.run.actionLane.buttonStates.approve.enabled, false)
+    assert.equal(actionDetail.run.backend, 'provider')
+
+    assert.equal(fullPetDetail.ok, true)
+    assert.equal(fullPetDetail.run.status, 'failed')
+    assert.equal(fullPetDetail.run.recovery.canRetryGeneration, true)
+    assert.equal(fullPetDetail.run.recovery.actionLabel, 'Retry generation')
+    assert.equal(fullPetDetail.run.recovery.failureKind, 'provider')
+    assert.equal(fullPetDetail.run.wizardState.nextStep.label, 'Retry generation')
+    assert.equal(fullPetDetail.run.wizardState.nextStep.blocked, false)
+    assert.equal(fullPetDetail.run.actionLane.dashboardAction.available, true)
+    assert.equal(fullPetDetail.run.actionLane.dashboardAction.label, 'Retry generation')
+    assert.equal(fullPetDetail.run.actionLane.buttonStates.generate.enabled, true)
+    assert.equal(fullPetDetail.run.actionLane.buttonStates.generate.label, 'Retry generation')
+    assert.equal(fullPetDetail.run.actionLane.buttonStates.approve.enabled, false)
+    assert.equal(fullPetDetail.run.backend, 'provider')
+    assert.equal(fullPetDetail.fullPetReview, null)
+    assert.equal(JSON.stringify({ actionDetail, fullPetDetail }).includes(dataDir), false)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio service rejects invalid dashboard JSON bodies', async () => {
   const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-service-invalid-json-'))
