@@ -390,6 +390,78 @@ test('ai talk trace export IPC delegates to ai talk service when available', asy
   assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
 })
 
+test('ai talk trace summary IPC delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const summary = {
+    traceId: 'trace:legacy',
+    createdAt: '2026-06-29T10:00:00.000Z',
+    updatedAt: '2026-06-29T10:00:00.000Z',
+    conversation: {
+      conversationId: 'control-center:legacy-cat:main',
+      petPackId: 'legacy-cat',
+      petPackDisplayName: 'Legacy Cat'
+    },
+    provider: {
+      provider: 'openai-compatible',
+      baseUrl: 'https://ai.example.test/v1',
+      model: 'gpt-5.5'
+    },
+    request: {
+      entrypoint: 'control-center',
+      historyCount: 2,
+      messagesCount: 4,
+      messageChars: 18,
+      toolsCount: 1,
+      recentPetActivityCount: 0
+    },
+    memory: {
+      injectedCount: 1,
+      usedCount: 1,
+      injectedScopes: ['petPack'],
+      usedScopes: ['petPack']
+    },
+    behavior: {
+      providerIntent: null,
+      finalDecision: null
+    },
+    result: {
+      replyChars: 8,
+      persistedMessageCount: 2,
+      bubbleSegmentCount: 1,
+      displayMode: 'auto'
+    }
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiTalkService: {
+      getLatestTraceSummary: (payload) => {
+        calls.push(payload)
+        return summary
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.AI_TALK_GET_TRACE_SUMMARY)(null, { conversationId: 'control-center:legacy-cat:main' })
+
+  assert.deepEqual(result, summary)
+  assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
+})
+
 test('ai provider settings IPC delegates config save key save and connection test', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []

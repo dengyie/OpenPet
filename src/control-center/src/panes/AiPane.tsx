@@ -8,6 +8,7 @@ import type {
   AiMemoryProfileViewState,
   AiPersonaDraftViewState,
   AiPersonaProfileViewState,
+  AiTalkTraceSummaryViewState,
   ChatMessage,
   ImageGenerationConfigViewState,
   PetChatStateViewState
@@ -171,6 +172,7 @@ export interface AiPaneProps {
   setChatDraft: (value: string) => void
   chatMessages: ChatMessage[]
   petChatState: PetChatStateViewState
+  traceSummary: AiTalkTraceSummaryViewState | null
   chatting: boolean
   behavior: AiBehaviorConfig
   behaviorRulesText: string
@@ -243,6 +245,7 @@ export function AiPane({
   setChatDraft,
   chatMessages,
   petChatState,
+  traceSummary,
   chatting,
   behavior,
   behaviorRulesText,
@@ -276,6 +279,7 @@ export function AiPane({
     hasUnsavedApiKeyDraft ? '密钥草稿未保存' : ''
   ].filter(Boolean).join(' · ')
   const imageTargetSummary = `${activeImageGenerationConfig.provider} · ${activeImageGenerationConfig.baseUrl} · ${activeImageGenerationConfig.model} · ${activeImageGenerationConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
+  const traceScopeLabel = (scopes: string[]) => scopes.length ? scopes.join(' / ') : 'none'
   const applyImageProviderPreset = (preset: typeof imageProviderPresets[number]) => onChangeImageGeneration({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
@@ -905,6 +909,58 @@ export function AiPane({
               <span>{petChatState.bubble.text}</span>
             </div>
           ) : null}
+          <div className="section" data-testid="ai-trace-summary">
+            <div className="readonly-row">
+              <strong>当前 Trace</strong>
+              {traceSummary ? (
+                <span>
+                  {traceSummary.conversation.petPackDisplayName || traceSummary.conversation.petPackId || 'Unknown pet'}
+                  {' · '}
+                  {traceSummary.conversation.conversationId || 'no-conversation'}
+                </span>
+              ) : <span>暂无 AI Talk trace</span>}
+            </div>
+            <div className="readonly-row">
+              <strong>Provider</strong>
+              <span>
+                {traceSummary
+                  ? `${traceSummary.provider.provider || 'unknown'} · ${traceSummary.provider.baseUrl || 'n/a'} · ${traceSummary.provider.model || 'n/a'}`
+                  : 'n/a'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>请求摘要</strong>
+              <span>
+                {traceSummary
+                  ? `消息数 ${traceSummary.request.messagesCount} · history ${traceSummary.request.historyCount} · tools ${traceSummary.request.toolsCount} · recent pet activity ${traceSummary.request.recentPetActivityCount}`
+                  : '暂无请求摘要'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>记忆摘要</strong>
+              <span>
+                {traceSummary
+                  ? `injected ${traceSummary.memory.injectedCount} (${traceScopeLabel(traceSummary.memory.injectedScopes)}) · used ${traceSummary.memory.usedCount} (${traceScopeLabel(traceSummary.memory.usedScopes)})`
+                  : '暂无记忆注入'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>行为摘要</strong>
+              <span>
+                {traceSummary
+                  ? `intent ${traceSummary.behavior.providerIntent?.intent || 'none'} · final ${traceSummary.behavior.finalDecision?.actionId || 'none'} · display ${traceSummary.result.displayMode || 'auto'}`
+                  : '暂无行为结果'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>结果摘要</strong>
+              <span>
+                {traceSummary
+                  ? `reply chars ${traceSummary.result.replyChars} · persisted ${traceSummary.result.persistedMessageCount} · bubble segments ${traceSummary.result.bubbleSegmentCount}`
+                  : '暂无结果摘要'}
+              </span>
+            </div>
+          </div>
           <div className="readonly-row" data-testid="ai-bubble-chat-state">
             <strong>默认气泡聊天</strong>
             <span>{petChatState.bubbleChat.visible ? '当前已显示' : '当前未显示'}</span>

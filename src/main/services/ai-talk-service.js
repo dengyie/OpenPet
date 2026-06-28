@@ -461,7 +461,8 @@ const summarizeBehavior = (value = {}) => ({
   matched: Boolean(value?.matched),
   type: normalizeString(value?.type),
   ruleId: normalizeString(value?.ruleId),
-  reason: sanitizeDiagnosticText(value?.reason || '')
+  reason: sanitizeDiagnosticText(value?.reason || ''),
+  displayMode: normalizeBubbleDisplayMode(value?.displayMode)
 })
 
 const splitTalkConversationId = (conversationId) => {
@@ -470,6 +471,12 @@ const splitTalkConversationId = (conversationId) => {
   if (!match) return null
   return { sessionId: match[1], conversationId: match[2] }
 }
+
+const uniqueScopes = (items = []) => Array.from(new Set(
+  (Array.isArray(items) ? items : [])
+    .map((item) => normalizeString(item?.scope))
+    .filter((scope) => scope === 'global' || scope === 'petPack')
+))
 
 const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService = null } = {}) => {
   if (!aiService) throw new Error('aiService is required')
@@ -797,6 +804,72 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }, null, 2)
   }
 
+  const getLatestTraceSummary = ({ conversationId } = {}) => {
+    if (typeof aiTalkStore.getLatestTraceByConversation !== 'function') {
+      throw new Error('AI talk trace summary is not available')
+    }
+    const trace = aiTalkStore.getLatestTraceByConversation(conversationId)
+    if (!trace) throw new Error('AI talk trace was not found')
+    const parsedConversation = splitTalkConversationId(trace.conversationId || conversationId)
+    const messages = parsedConversation && typeof aiTalkStore.getMessages === 'function'
+      ? aiTalkStore.getMessages(parsedConversation.sessionId, parsedConversation.conversationId)
+      : []
+    const latestAssistantMessage = messages
+      .filter((message) => message?.role === 'assistant')
+      .at(-1) || null
+    const bubbleSegmentCount = Array.isArray(latestAssistantMessage?.bubbleSegments)
+      ? latestAssistantMessage.bubbleSegments.length
+      : 0
+    const displayMode = normalizeString(latestAssistantMessage?.displayMode)
+      || normalizeString(trace?.behavior?.providerIntent?.displayMode)
+      || normalizeString(trace?.behavior?.finalDecision?.displayMode)
+      || 'auto'
+
+    return {
+      traceId: normalizeString(trace.id),
+      createdAt: normalizeString(trace.createdAt),
+      updatedAt: normalizeString(trace.updatedAt || trace.createdAt),
+      conversation: {
+        conversationId: normalizeString(trace?.conversation?.conversationId || trace.conversationId),
+        petPackId: normalizeString(trace?.conversation?.petPackId || trace.petPackId),
+        petPackDisplayName: normalizeString(trace?.conversation?.petPackDisplayName || trace.petPackId)
+      },
+      provider: {
+        provider: normalizeString(trace?.provider?.provider),
+        baseUrl: sanitizeProviderBaseUrl(trace?.provider?.baseUrl),
+        model: normalizeString(trace?.provider?.model)
+      },
+      request: {
+        entrypoint: normalizeString(trace?.request?.entrypoint),
+        historyCount: Number.isFinite(Number(trace?.request?.historyCount)) ? Number(trace.request.historyCount) : 0,
+        messagesCount: Number.isFinite(Number(trace?.request?.messagesCount)) ? Number(trace.request.messagesCount) : 0,
+        messageChars: Number.isFinite(Number(trace?.request?.messageChars)) ? Number(trace.request.messageChars) : 0,
+        toolsCount: Number.isFinite(Number(trace?.request?.toolsCount)) ? Number(trace.request.toolsCount) : 0,
+        recentPetActivityCount: Number.isFinite(Number(trace?.request?.recentPetActivityCount)) ? Number(trace.request.recentPetActivityCount) : 0
+      },
+      memory: {
+        injectedCount: Array.isArray(trace?.memory?.injected) ? trace.memory.injected.length : 0,
+        usedCount: Array.isArray(trace?.memory?.used) ? trace.memory.used.length : 0,
+        injectedScopes: uniqueScopes(trace?.memory?.injected),
+        usedScopes: uniqueScopes(trace?.memory?.used)
+      },
+      behavior: {
+        providerIntent: trace?.behavior?.providerIntent
+          ? summarizeBehavior(trace.behavior.providerIntent)
+          : null,
+        finalDecision: trace?.behavior?.finalDecision
+          ? summarizeBehavior(trace.behavior.finalDecision)
+          : null
+      },
+      result: {
+        replyChars: Number.isFinite(Number(trace?.result?.replyChars)) ? Number(trace.result.replyChars) : 0,
+        persistedMessageCount: Number.isFinite(Number(trace?.result?.persistedMessageCount)) ? Number(trace.result.persistedMessageCount) : 0,
+        bubbleSegmentCount,
+        displayMode
+      }
+    }
+  }
+
   const chat = async ({ message, entrypoint = 'control-center' } = {}) => {
     const startedAt = Date.now()
     const content = normalizeString(message)
@@ -978,6 +1051,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     clearPetPackMemories,
     deleteMemory,
     exportTrace,
+    getLatestTraceSummary,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     getConversation,
     generatePersonaDraft,

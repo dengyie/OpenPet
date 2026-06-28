@@ -1360,6 +1360,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return aiTalkService.clearPetPackMemories()
   })
 
+  ipcMainService.handle(IPC.AI_TALK_GET_TRACE_SUMMARY, (_event, payload) => {
+    if (!aiTalkService?.getLatestTraceSummary) throw new Error('AI talk trace summary is not available')
+    return aiTalkService.getLatestTraceSummary(payload || {})
+  })
+
   ipcMainService.handle(IPC.AI_TALK_EXPORT_TRACE, (_event, payload) => {
     if (!aiTalkService?.exportTrace) throw new Error('AI talk trace export is not available')
     return aiTalkService.exportTrace(payload || {})

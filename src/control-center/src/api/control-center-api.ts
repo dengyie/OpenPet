@@ -1,4 +1,4 @@
-import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneCatalog, cloneChatMessages, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
@@ -17,6 +17,7 @@ import type {
   AiPersona,
   AiPersonaOverride,
   AiPersonaProfileViewState,
+  AiTalkTraceSummaryViewState,
   CatalogBlocklistEntry,
   CatalogInstallRequest,
   CatalogInstallSelection,
@@ -343,6 +344,56 @@ const createDemoPetChatState = (): PetChatStateViewState => {
       hasWindow: Boolean(demoState.petBubbleChatState?.hasWindow)
     },
     messages: demoState.petChatMessages
+  })
+}
+
+const createDemoAiTalkTraceSummary = (
+  { conversationId }: { conversationId?: string } = {}
+): AiTalkTraceSummaryViewState => {
+  const activePack = getActiveDemoPetPack()
+  const resolvedConversationId = conversationId || `control-center:${demoState.petPacks.activePackId}:main`
+  const messages = cloneChatMessages(demoState.petChatMessages)
+  const lastAssistantMessage = messages.filter((message) => message.role === 'assistant').at(-1)
+  const lastUserMessage = messages.filter((message) => message.role === 'user').at(-1)
+  return cloneAiTalkTraceSummary({
+    ...defaultAiTalkTraceSummary,
+    traceId: 'trace:demo',
+    createdAt: '2026-06-29T10:00:00.000Z',
+    updatedAt: '2026-06-29T10:00:00.000Z',
+    conversation: {
+      conversationId: resolvedConversationId,
+      petPackId: demoState.petPacks.activePackId,
+      petPackDisplayName: activePack?.displayName || demoState.petPacks.activePackId
+    },
+    provider: {
+      provider: demoState.aiConfig.provider,
+      baseUrl: demoState.aiConfig.baseUrl,
+      model: demoState.aiConfig.model
+    },
+    request: {
+      entrypoint: 'control-center',
+      historyCount: Math.max(0, messages.length - 1),
+      messagesCount: messages.length + 2,
+      messageChars: lastUserMessage?.content?.length || 0,
+      toolsCount: demoState.aiConfig.behavior.enabled && demoState.aiConfig.behavior.useTools !== false ? 1 : 0,
+      recentPetActivityCount: 0
+    },
+    memory: {
+      injectedCount: 0,
+      usedCount: 0,
+      injectedScopes: [],
+      usedScopes: []
+    },
+    behavior: {
+      providerIntent: null,
+      finalDecision: null
+    },
+    result: {
+      replyChars: lastAssistantMessage?.content?.length || 0,
+      persistedMessageCount: messages.length,
+      bubbleSegmentCount: lastAssistantMessage?.content ? 1 : 0,
+      displayMode: 'auto'
+    }
   })
 }
 
@@ -1387,6 +1438,7 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return demoState.aiConfig.behavior
   },
+  getAiTalkTraceSummary: async ({ conversationId } = {}) => createDemoAiTalkTraceSummary({ conversationId }),
   exportAiTalkTrace: async ({ conversationId } = {}) => JSON.stringify({
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
