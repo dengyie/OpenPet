@@ -812,6 +812,7 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
   let hostAction = {
     required: false,
     label: '',
+    surface: '',
     location: '',
     reason: ''
   }
@@ -820,6 +821,7 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
     hostAction = {
       required: true,
       label: importHandoff.commandTitle,
+      surface: importHandoff.surface,
       location: importHandoff.location,
       reason: importHandoff.reason
     }
@@ -828,6 +830,7 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
     hostAction = {
       required: true,
       label: importedFollowUp.label,
+      surface: importedFollowUp.surface,
       location: importedFollowUp.location,
       reason: importedFollowUp.reason
     }
