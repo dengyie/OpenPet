@@ -260,7 +260,7 @@ test('pet context menu hides the action submenu when no manual actions are avail
   assert.deepEqual(menuWindowRequest.items.map((item) => item.label || item.type), ['设置', 'separator', '退出'])
 })
 
-test('pet context menu prefers bubble chat for the primary chat entry and keeps desktop chat as an extended panel', async () => {
+test('pet context menu keeps only the primary chat entry when bubble chat is available', async () => {
   const ipcMain = createIpcMainStub()
   const petWindow = {
     isDestroyed: () => false,
@@ -309,22 +309,20 @@ test('pet context menu prefers bubble chat for the primary chat entry and keeps 
   }, { x: 70, y: 80 })
 
   const chatItem = menuWindowRequest.items.find((item) => item.label === '和宠物聊天')
-  const desktopChatItem = menuWindowRequest.items.find((item) => item.label === '打开扩展聊天面板')
   const actionItem = menuWindowRequest.items.find((item) => item.label === '动作')
   assert.ok(chatItem)
-  assert.ok(desktopChatItem)
+  assert.equal(menuWindowRequest.items.some((item) => item.label === '打开扩展聊天面板'), false)
   assert.ok(actionItem)
   assert.deepEqual(actionItem.submenu.map((item) => item.label), ['散步', '挥手'])
-  assert.equal(menuWindowRequest.size.height, 206)
+  assert.equal(menuWindowRequest.size.height, 176)
 
   menuWindowRequest.onSelect(chatItem)
-  menuWindowRequest.onSelect(desktopChatItem)
 
   assert.equal(openBubbleChatCalls, 1)
-  assert.equal(openDesktopChatCalls, 1)
+  assert.equal(openDesktopChatCalls, 0)
 })
 
-test('pet context menu falls back to the extended desktop chat when bubble chat is disabled', async () => {
+test('pet context menu falls back through the primary chat entry when bubble chat is disabled', async () => {
   const ipcMain = createIpcMainStub()
   const petWindow = {
     isDestroyed: () => false,
@@ -374,6 +372,7 @@ test('pet context menu falls back to the extended desktop chat when bubble chat 
 
   const chatItem = menuWindowRequest.items.find((item) => item.label === '和宠物聊天')
   assert.ok(chatItem)
+  assert.equal(menuWindowRequest.items.some((item) => item.label === '打开扩展聊天面板'), false)
 
   menuWindowRequest.onSelect(chatItem)
 

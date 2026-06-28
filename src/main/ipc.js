@@ -737,13 +737,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           petChatWindowService?.open?.()
         }
       })
-      if (petChatWindowService) {
-        template.push({
-          type: 'action',
-          label: '打开扩展聊天面板',
-          onSelect: () => petChatWindowService.open?.()
-        })
-      }
     }
     if (template.length > 0) template.push({ type: 'separator' })
     template.push({
