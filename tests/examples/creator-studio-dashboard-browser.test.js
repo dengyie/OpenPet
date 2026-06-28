@@ -743,6 +743,77 @@ const seedLegacyFailedRunWithoutTask = (dataDir) => {
   return run
 }
 
+const seedLegacyFailedFullPetRunWithoutTask = (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Legacy Failed Full Pet Cat',
+      petId: 'legacy-failed-full-pet-cat',
+      prompt: 'Legacy failed full-pet provider run should allow retry.',
+      originalPrompt: 'Legacy failed full-pet provider run should allow retry.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只 provider 失败后需要继续重试的 legacy 桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'soft breathing with a tiny tail sway',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T09:32:00.000Z'
+  })
+  const failedRun = updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'failed',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'generate',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      backendStatus: {
+        backend: 'provider',
+        state: 'failed',
+        message: 'Provider queue overloaded',
+        updatedAt: '2026-06-28T09:33:00.000Z'
+      },
+      recovery: {
+        canRetryGeneration: true,
+        backend: {
+          backend: 'provider',
+          state: 'failed'
+        },
+        failureKind: 'provider',
+        failureReason: 'Provider queue overloaded',
+        guidance: 'Review the provider failure details, then retry generation on this same run when the backend is ready.',
+        qaFocus: 'No QA artifacts were produced before the generation failure.'
+      },
+      error: 'Provider queue overloaded'
+    },
+    now: () => '2026-06-28T09:33:00.000Z'
+  })
+  const { generationTask: _generationTask, ...legacyFailedRun } = failedRun
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyFailedRun,
+      backend: 'cloud',
+      input: {
+        ...failedRun.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  return run
+}
+
 const seedLegacyReadyForReviewActionRunWithoutTask = async (dataDir) => {
   const run = await seedImportedActionRun(dataDir)
   const qaPath = path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json')
@@ -1691,6 +1762,32 @@ test('creator studio dashboard enables retry generation for failed legacy runs w
     assert.equal(await page.locator('#confirm-button').isDisabled(), true)
     assert.equal(await page.locator('#generate-button').isDisabled(), false)
     assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables retry generation for failed legacy full-pet runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-failed-full-pet-retry-'))
+  const run = seedLegacyFailedFullPetRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const recoveryText = await page.locator('#recovery-panel').textContent()
+    assert.match(recoveryText, /Generation failed/i)
+    assert.match(recoveryText, /Provider queue overloaded/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), false)
+    assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+    assert.equal(await page.locator('#approve-button').isDisabled(), true)
+    assert.match(await page.locator('#next-step-panel').textContent(), /Retry generation/i)
+    assert.match(await page.locator('#action-lane-panel').textContent(), /Retry generation/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
