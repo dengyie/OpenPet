@@ -836,6 +836,58 @@ test('actions save config IPC surfaces trigger rule validation failures', async 
   )
 })
 
+test('actions save config IPC refreshes trigger rule runtime after saving edited host rules', async () => {
+  const ipcMain = createIpcMainStub()
+  let refreshCalls = 0
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    actionImportService: {
+      inspectActionFrames: () => ({ inspection: { valid: true } }),
+      importActionFrames: () => ({ ok: true }),
+      updateActionConfig: async () => ({ ok: true }),
+      deleteAction: () => ({ ok: true })
+    },
+    triggerRuleRuntimeService: {
+      refresh: () => { refreshCalls += 1 }
+    },
+    ipcMainService: ipcMain
+  })
+
+  await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    triggerRules: [{
+      id: 'rule:event:wave:1',
+      type: 'event',
+      actionId: 'wave',
+      enabled: true,
+      binding: 'plugin:event',
+      intervalMs: 0,
+      notes: '',
+      sourcePluginId: '',
+      sourceRunId: '',
+      sourceCommandId: '',
+      createdAt: '2026-06-22T00:00:00.000Z',
+      updatedAt: '2026-06-22T00:00:00.000Z'
+    }]
+  })
+
+  assert.equal(refreshCalls, 1)
+})
+
 test('catalog blocklist handlers return catalog plus updated blocklist view result', async () => {
   const ipcMain = createIpcMainStub()
   const catalog = {

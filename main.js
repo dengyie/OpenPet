@@ -28,6 +28,7 @@ const { createAiTalkStore } = require('./src/main/services/ai-talk-store')
 const { createAiTalkService } = require('./src/main/services/ai-talk-service')
 const { createPetUtteranceLogService } = require('./src/main/services/pet-utterance-log-service')
 const { createImageGenerationModelService } = require('./src/main/services/image-generation-model-service')
+const { createTriggerRuleRuntimeService } = require('./src/main/services/trigger-rule-runtime-service')
 const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
 const { createPluginInstallService } = require('./src/main/services/plugin-install-service')
@@ -93,6 +94,7 @@ const bootstrapOpenPet = () => {
   const petUtteranceLogService = createPetUtteranceLogService({ aiTalkStore, appLogService })
   const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService })
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
+  const triggerRuleRuntimeService = createTriggerRuleRuntimeService({ actionService, petService, appLogService })
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
@@ -123,6 +125,7 @@ const bootstrapOpenPet = () => {
     app,
     appLogService,
     onBeforeQuit: () => {
+      triggerRuleRuntimeService?.stop?.()
       pluginService?.stopAllServices?.()
     }
   })
@@ -231,7 +234,10 @@ const bootstrapOpenPet = () => {
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
     openExternal: (url) => shell.openExternal(url),
-    onPetPackActivated: () => reloadAndSendAnimations(getPetWindow, petService),
+    onPetPackActivated: () => {
+      reloadAndSendAnimations(getPetWindow, petService)
+      triggerRuleRuntimeService.refresh()
+    },
     selectCreatorAssetFrameFolder: async () => {
       const selected = await dialog.showOpenDialog({
         title: '选择动作帧文件夹',
@@ -263,6 +269,7 @@ const bootstrapOpenPet = () => {
   }
 
   syncLoginItemSettings(petService.getSettings().autoStart)
+  triggerRuleRuntimeService.start()
 
   // 注册 IPC 处理器（依赖注入：主模块只负责"连接"，不负责"实现"）
   registerIpcHandlers({
@@ -275,6 +282,7 @@ const bootstrapOpenPet = () => {
     petBubbleChatWindowService,
     imageGenerationModelService,
     behaviorOrchestratorService,
+    triggerRuleRuntimeService,
     pluginService,
     pluginInstallService,
     pluginGithubImportService,
