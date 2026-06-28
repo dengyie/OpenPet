@@ -10,7 +10,7 @@ const { ipcMain, BrowserWindow, app, dialog, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
 const { sanitizeDetails } = require('./services/app-log-service')
 const { normalizeCursorSettingsState } = require('../shared/cursor-library')
-const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
+const { choosePetContextMenuPoint, estimatePetContextMenuSize, filterManualPetActions } = require('./pet-context-menu')
 const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const {
   createActionFrameImportResult,
@@ -646,14 +646,54 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const win = browserWindowService.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return null
     const actions = petService.getAnimations()?.actions || []
+    const manualActions = filterManualPetActions(actions)
     const bounds = win.getBounds()
     const { workArea } = screenService.getDisplayMatching(bounds)
-    const menuSize = estimatePetContextMenuSize(actions, { extraItemCount: petChatWindowService ? 1 : 0 })
     const settings = petService.getSettings?.() || {}
     const requestedPoint = {
       x: Number(point.x),
       y: Number(point.y)
     }
+    const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
+    const template = []
+    if (manualActions.length > 0) {
+      template.push({
+        type: 'submenu',
+        label: '动作',
+        submenu: [
+          {
+            type: 'action',
+            label: '散步',
+            onSelect: () => sendMenuCommand({ command: 'walk' })
+          },
+          ...manualActions.map((action) => ({
+            type: 'action',
+            label: action.label || action.id,
+            onSelect: () => sendMenuCommand({ command: 'action', actionId: action.id })
+          }))
+        ]
+      })
+    }
+    if (petChatWindowService) {
+      template.push({
+        type: 'action',
+        label: '和宠物聊天',
+        onSelect: () => petChatWindowService.open?.()
+      })
+    }
+    if (template.length > 0) template.push({ type: 'separator' })
+    template.push({
+      type: 'action',
+      label: '设置',
+      onSelect: () => createSettingsWindow(win)
+    })
+    template.push({ type: 'separator' })
+    template.push({
+      type: 'action',
+      label: '退出',
+      onSelect: () => requestAppQuit('pet-context-menu')
+    })
+    const menuSize = estimatePetContextMenuSize(template)
     const placement = choosePetContextMenuPoint({
       petBounds: bounds,
       workArea,
@@ -661,19 +701,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       menuPosition: settings.menuPosition,
       preferredPoint: requestedPoint
     })
-    const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
-    const template = [
-      ...actions.map((action) => ({
-        label: action.label || action.id,
-        click: () => sendMenuCommand({ command: 'action', actionId: action.id })
-      })),
-      { type: 'separator' },
-      { label: '散步', click: () => sendMenuCommand({ command: 'walk' }) },
-      ...(petChatWindowService ? [{ label: '和宠物聊天', click: () => petChatWindowService.open?.() }] : []),
-      { label: '设置', click: () => createSettingsWindow(win) },
-      { type: 'separator' },
-      { label: '退出', click: () => requestAppQuit('pet-context-menu') }
-    ]
     recordAppLog({
       scope: 'pet-menu',
       level: 'info',
@@ -706,7 +733,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       items: template,
       point: placement.screenPoint,
       size: menuSize,
-      onSelect: (item) => item?.click?.()
+      onSelect: (item) => item?.onSelect?.()
     })
     return placement
   })

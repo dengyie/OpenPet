@@ -1,11 +1,15 @@
+const { inferActionKind } = require('./pet-pack/schema')
+
 const MENU_GAP = 12
 const MENU_MARGIN = 8
 const MENU_MIN_WIDTH = 112
 const MENU_MAX_WIDTH = 220
-const MENU_VERTICAL_PADDING = 12
+const MENU_VERTICAL_PADDING = 26
 const MENU_ROW_HEIGHT = 30
-const MENU_DIVIDER_HEIGHT = 7
+const MENU_DIVIDER_HEIGHT = 15
+const MENU_INNER_PADDING = 6
 const MENU_PLACEMENTS = ['right', 'left', 'above', 'below']
+const HIDDEN_MANUAL_ACTION_KINDS = new Set(['idle', 'working', 'waiting', 'failure'])
 const MENU_POSITION_ALIASES = {
   auto: null,
   right: 'right',
@@ -18,13 +22,23 @@ const MENU_POSITION_ALIASES = {
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
-const estimatePetContextMenuSize = (actions = [], { extraItemCount = 0 } = {}) => {
-  const longestLabel = actions.reduce((length, action) => {
-    return Math.max(length, String(action?.label || '').length)
+const filterManualPetActions = (actions = []) => {
+  return actions.filter((action) => {
+    if (!action || !action.id) return false
+    const kind = String(action.kind || inferActionKind(action.id) || 'custom')
+    return !HIDDEN_MANUAL_ACTION_KINDS.has(kind)
+  })
+}
+
+const estimatePetContextMenuSize = (items = []) => {
+  const longestLabel = items.reduce((length, item) => {
+    if (!item || item.type === 'separator') return length
+    return Math.max(length, String(item.label || '').length)
   }, 0)
   const width = clamp(84 + longestLabel * 8, MENU_MIN_WIDTH, MENU_MAX_WIDTH)
-  const itemCount = actions.length + 3 + Math.max(0, Number(extraItemCount) || 0)
-  const height = MENU_VERTICAL_PADDING + itemCount * MENU_ROW_HEIGHT + 2 * MENU_DIVIDER_HEIGHT
+  const actionItemCount = items.filter((item) => item && item.type !== 'separator').length
+  const separatorCount = items.filter((item) => item && item.type === 'separator').length
+  const height = MENU_VERTICAL_PADDING + actionItemCount * MENU_ROW_HEIGHT + separatorCount * MENU_DIVIDER_HEIGHT
   return { width, height }
 }
 
@@ -150,8 +164,28 @@ const choosePetContextMenuPoint = ({ petBounds, workArea, menuSize, preferredPoi
   }
 }
 
+const choosePetContextSubmenuPoint = ({ parentMenuBounds, workArea, submenuSize, anchorOffsetTop = MENU_INNER_PADDING, anchorHeight = MENU_ROW_HEIGHT }) => {
+  const minY = workArea.y + MENU_MARGIN
+  const maxY = workArea.y + workArea.height - submenuSize.height - MENU_MARGIN
+  const desiredY = parentMenuBounds.y + anchorOffsetTop - MENU_INNER_PADDING
+  const rightX = parentMenuBounds.x + parentMenuBounds.width + MENU_GAP
+  const leftX = parentMenuBounds.x - submenuSize.width - MENU_GAP
+  const rightFits = rightX + submenuSize.width <= workArea.x + workArea.width - MENU_MARGIN
+  const placement = rightFits ? 'right' : 'left'
+  return {
+    placement,
+    screenPoint: {
+      x: placement === 'right' ? rightX : Math.max(workArea.x + MENU_MARGIN, leftX),
+      y: Math.round(clamp(desiredY, minY, Math.max(minY, maxY)))
+    },
+    anchorHeight
+  }
+}
+
 module.exports = {
   choosePetContextMenuPoint,
+  choosePetContextSubmenuPoint,
   estimatePetContextMenuSize,
+  filterManualPetActions,
   normalizeMenuPosition
 }
