@@ -836,7 +836,9 @@ test('creator studio dashboard hides stale full-pet source mismatch warnings aft
     assert.match(reviewText, /Imported pet pack: imported-review-cat/i)
     assert.match(reviewText, /Review location: OpenPet/i)
     assert.doesNotMatch(reviewText, /QA source image does not match the current generated image/i)
+    assert.doesNotMatch(reviewText, /QA source reference/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
+    assert.doesNotMatch(reviewText, /0002\.png/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

@@ -4113,6 +4113,18 @@ test('creator studio service exposes workflow guidance for fixture and imported 
       },
       now: () => '2026-06-26T00:01:30.000Z'
     })
+    fs.mkdirSync(path.join(dataDir, 'runs', importedPetRun.runId, 'qa'), { recursive: true })
+    fs.writeFileSync(
+      path.join(dataDir, 'runs', importedPetRun.runId, 'qa', 'source-image-validation.json'),
+      `${JSON.stringify({
+        ok: true,
+        sourceRelativePath: `runs/${importedPetRun.runId}/frames/base/stale-source.png`,
+        width: 1024,
+        height: 1024,
+        visiblePixels: 1000,
+        warnings: []
+      }, null, 2)}\n`
+    )
     updateRunStatus({
       dataDir,
       runId: fixtureRun.runId,
@@ -4247,7 +4259,8 @@ test('creator studio service exposes workflow guidance for fixture and imported 
               mimeType: 'image/png',
               sha256: 'imported-pet-provider-sha'
             }]
-          }
+          },
+          sourceImageQa: path.join(dataDir, 'runs', importedPetRun.runId, 'qa', 'source-image-validation.json')
         }
       },
       now: () => '2026-06-26T00:03:30.000Z'
@@ -4437,8 +4450,27 @@ test('creator studio service exposes workflow guidance for fixture and imported 
     assert.equal(importedPetDetail.run.actionLane.hostAction.required, true)
     assert.equal(importedPetDetail.run.actionLane.hostAction.label, 'Review imported result')
     assert.equal(importedPetDetail.run.actionLane.hostAction.location, 'OpenPet')
+    assert.equal(importedPetDetail.fullPetReview.sourceImage, `runs/${importedPetRun.runId}/frames/base/0001.png`)
+    assert.equal(importedPetDetail.fullPetReview.currentSourceImage, '')
+    assert.equal(importedPetDetail.fullPetReview.qaSourceImage, '')
+    assert.equal(importedPetDetail.fullPetReview.requiresCurrentSourceMatch, false)
+    assert.equal(importedPetDetail.fullPetReview.sourceImageMatchesCurrent, true)
+    assert.deepEqual(importedPetDetail.fullPetReview.reviewGate, {
+      status: 'ready',
+      ready: true,
+      reason: ''
+    })
+    assert.deepEqual(importedPetDetail.fullPetReview.sourceImageValidation, {
+      ok: true,
+      sourceRelativePath: '',
+      width: 1024,
+      height: 1024,
+      visiblePixels: 1000,
+      warnings: []
+    })
     assert.equal(importedPetSerialized.includes('127.0.0.1:7860'), false)
     assert.equal(importedPetSerialized.includes(dataDir), false)
+    assert.equal(importedPetSerialized.includes('stale-source.png'), false)
 
     assert.equal(importedMissingSubmissionDetail.ok, true)
     assert.equal(importedMissingSubmissionDetail.run.workflowGuidance.import.triggerProposalStatus, 'missing')

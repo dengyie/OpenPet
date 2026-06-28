@@ -1157,12 +1157,34 @@ const createFullPetReview = ({ dataDir, run }) => {
   if (run.generationTask?.mode !== 'full-pet') return null
   const artifacts = run.artifacts || {}
   const reviewState = createFullPetReviewGate({ dataDir, run })
+  const importedPhase = run.status === 'imported'
   const atlasValidation = readJsonArtifact({
     dataDir,
     targetPath: artifacts.qa,
     label: 'Full-pet atlas QA'
   })
-  const sourceImage = reviewState.currentSourceImage || reviewState.qaSourceImage
+  const publicSourceImageValidation = importedPhase && reviewState.sourceImageValidation
+    ? {
+        ...reviewState.sourceImageValidation,
+        sourceRelativePath: ''
+      }
+    : reviewState.sourceImageValidation
+  const publicReviewState = importedPhase
+    ? {
+        currentSourceImage: '',
+        qaSourceImage: '',
+        requiresCurrentSourceMatch: false,
+        sourceImageMatchesCurrent: true,
+        reviewGate: {
+          status: 'ready',
+          ready: true,
+          reason: ''
+        }
+      }
+    : reviewState
+  const sourceImage = importedPhase
+    ? reviewState.currentSourceImage
+    : (reviewState.currentSourceImage || reviewState.qaSourceImage)
   return {
     petId: createPublicText({ dataDir, value: run.petId || '' }),
     displayName: createPublicText({ dataDir, value: run.input?.petName || run.petId || '' }),
@@ -1174,12 +1196,12 @@ const createFullPetReview = ({ dataDir, run }) => {
     sourceImageQa: toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa }),
     actionTaskQa: toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa }),
     sourceImage,
-    currentSourceImage: reviewState.currentSourceImage,
-    qaSourceImage: reviewState.qaSourceImage,
-    requiresCurrentSourceMatch: reviewState.requiresCurrentSourceMatch,
-    sourceImageMatchesCurrent: reviewState.sourceImageMatchesCurrent,
-    reviewGate: reviewState.reviewGate,
-    sourceImageValidation: createPublicLogValue({ dataDir, value: reviewState.sourceImageValidation }),
+    currentSourceImage: publicReviewState.currentSourceImage,
+    qaSourceImage: publicReviewState.qaSourceImage,
+    requiresCurrentSourceMatch: publicReviewState.requiresCurrentSourceMatch,
+    sourceImageMatchesCurrent: publicReviewState.sourceImageMatchesCurrent,
+    reviewGate: publicReviewState.reviewGate,
+    sourceImageValidation: createPublicLogValue({ dataDir, value: publicSourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`
