@@ -1,30 +1,15 @@
-const ACTIVE_COMMAND_STATUSES = new Set(['running', 'stopping'])
+const { ACTIVE_PLUGIN_RUNTIME_STATUSES } = require('./plugin-runtime-status')
+const { createPluginRuntimeKey, createPluginRuntimeRegistry } = require('./plugin-runtime-registry')
 
-const createPluginCommandRuntimeKey = (pluginId, commandId) => `${pluginId}:${commandId}`
+const ACTIVE_COMMAND_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+
+const createPluginCommandRuntimeKey = createPluginRuntimeKey
 
 const createPluginCommandRuntimeManager = ({
   appendLog = () => {},
   stopRuntimeProcess
 } = {}) => {
   if (typeof stopRuntimeProcess !== 'function') throw new Error('stopRuntimeProcess is required')
-
-  const runtimes = new Map()
-
-  const getRuntime = (pluginId, commandId) => runtimes.get(createPluginCommandRuntimeKey(pluginId, commandId))
-
-  const setRuntime = (runtime) => {
-    if (!runtime?.pluginId) throw new Error('Plugin command runtime pluginId is required')
-    if (!runtime?.commandId) throw new Error('Plugin command runtime commandId is required')
-    runtimes.set(createPluginCommandRuntimeKey(runtime.pluginId, runtime.commandId), runtime)
-    return runtime
-  }
-
-  const deleteRuntime = (pluginId, commandId) => runtimes.delete(createPluginCommandRuntimeKey(pluginId, commandId))
-
-  const assertNotActive = (pluginId, commandId, message = 'Plugin command is already running') => {
-    const existingRuntime = getRuntime(pluginId, commandId)
-    if (ACTIVE_COMMAND_STATUSES.has(existingRuntime?.status)) throw new Error(message)
-  }
 
   const stopRuntime = (pluginId, commandId, runtime = getRuntime(pluginId, commandId)) => {
     if (!runtime || runtime.status !== 'running') return runtime
@@ -41,6 +26,21 @@ const createPluginCommandRuntimeManager = ({
     return runtime
   }
 
+  const runtimeRegistry = createPluginRuntimeRegistry({
+    runtimeIdKey: 'commandId',
+    alreadyRunningMessage: 'Plugin command is already running',
+    stopRuntime
+  })
+  const {
+    assertNotActive,
+    deleteRuntime,
+    getRuntime,
+    setRuntime,
+    size,
+    stopAll,
+    stopPlugin
+  } = runtimeRegistry
+
   const attachStopHandler = (runtime) => {
     runtime.stop = ({ reason = 'Command stopped', signal = 'SIGTERM' } = {}) => {
       runtime.status = 'stopping'
@@ -51,22 +51,6 @@ const createPluginCommandRuntimeManager = ({
     }
     return runtime
   }
-
-  const stopPlugin = (pluginId) => {
-    for (const [key, runtime] of runtimes.entries()) {
-      if (key.startsWith(`${pluginId}:`)) {
-        stopRuntime(pluginId, runtime.commandId, runtime)
-      }
-    }
-  }
-
-  const stopAll = () => {
-    for (const runtime of runtimes.values()) {
-      stopRuntime(runtime.pluginId, runtime.commandId, runtime)
-    }
-  }
-
-  const size = () => runtimes.size
 
   return {
     assertNotActive,

@@ -1,6 +1,9 @@
-const ACTIVE_SETUP_STATUSES = new Set(['running', 'stopping'])
+const { ACTIVE_PLUGIN_RUNTIME_STATUSES } = require('./plugin-runtime-status')
+const { createPluginRuntimeKey, createPluginRuntimeRegistry } = require('./plugin-runtime-registry')
 
-const createPluginSetupRuntimeKey = (pluginId, setupId) => `${pluginId}:${setupId}`
+const ACTIVE_SETUP_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+
+const createPluginSetupRuntimeKey = createPluginRuntimeKey
 
 const createPluginSetupRuntimeManager = ({
   appendLog = () => {},
@@ -8,22 +11,6 @@ const createPluginSetupRuntimeManager = ({
   stopRuntimeProcess
 } = {}) => {
   if (typeof stopRuntimeProcess !== 'function') throw new Error('stopRuntimeProcess is required')
-
-  const runtimes = new Map()
-
-  const getRuntime = (pluginId, setupId) => runtimes.get(createPluginSetupRuntimeKey(pluginId, setupId))
-
-  const setRuntime = (runtime) => {
-    if (!runtime?.pluginId) throw new Error('Plugin setup runtime pluginId is required')
-    if (!runtime?.setupId) throw new Error('Plugin setup runtime setupId is required')
-    runtimes.set(createPluginSetupRuntimeKey(runtime.pluginId, runtime.setupId), runtime)
-    return runtime
-  }
-
-  const assertNotActive = (pluginId, setupId, message = 'Plugin setup is already running') => {
-    const existingRuntime = getRuntime(pluginId, setupId)
-    if (ACTIVE_SETUP_STATUSES.has(existingRuntime?.status)) throw new Error(message)
-  }
 
   const attachStopHandler = (runtime) => {
     runtime.stop = ({ signal = 'SIGTERM' } = {}) => {
@@ -55,21 +42,19 @@ const createPluginSetupRuntimeManager = ({
     return runtime
   }
 
-  const stopPlugin = (pluginId, options = {}) => {
-    for (const runtime of runtimes.values()) {
-      if (runtime.pluginId === pluginId) {
-        stopRuntime(pluginId, runtime.setupId, runtime, options)
-      }
-    }
-  }
-
-  const stopAll = (options = {}) => {
-    for (const runtime of runtimes.values()) {
-      stopRuntime(runtime.pluginId, runtime.setupId, runtime, options)
-    }
-  }
-
-  const size = () => runtimes.size
+  const runtimeRegistry = createPluginRuntimeRegistry({
+    runtimeIdKey: 'setupId',
+    alreadyRunningMessage: 'Plugin setup is already running',
+    stopRuntime
+  })
+  const {
+    assertNotActive,
+    getRuntime,
+    setRuntime,
+    size,
+    stopAll,
+    stopPlugin
+  } = runtimeRegistry
 
   return {
     assertNotActive,
