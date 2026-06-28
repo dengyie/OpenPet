@@ -685,6 +685,14 @@ const createPluginViewState = (plugin = {}) => {
 }
 
 /**
+ * @param {unknown} plugins
+ * @returns {PluginViewState[]}
+ */
+const createPluginListView = (plugins) => (
+  Array.isArray(plugins) ? plugins.map((plugin) => createPluginViewState(plugin)) : []
+)
+
+/**
  * @param {Partial<PluginMutationResult>} result
  * @param {unknown[]} plugins
  * @returns {PluginMutationResult}
@@ -695,7 +703,7 @@ const createPluginMutationResult = (result, plugins) => ({
   ...(result.installMode !== undefined ? { installMode: result.installMode } : {}),
   ...(result.disabled !== undefined ? { disabled: result.disabled } : {}),
   ...(result.storageRemoved !== undefined ? { storageRemoved: result.storageRemoved } : {}),
-  plugins: Array.isArray(plugins) ? plugins.map((plugin) => createPluginViewState(plugin)) : []
+  plugins: createPluginListView(plugins)
 })
 
 /**
@@ -975,6 +983,7 @@ module.exports = {
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
+  createPluginListView,
   createPluginMutationResult,
   createServiceStatusView,
   createUpdateCheckView

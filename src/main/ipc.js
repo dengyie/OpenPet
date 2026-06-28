@@ -25,6 +25,7 @@ const {
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
   createPetPackMutationResult,
+  createPluginListView,
   createPluginMutationResult,
   createServiceStatusView,
   createUpdateCheckView
@@ -1397,7 +1398,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.handle(IPC.AI_BEHAVIOR_CLEAR_DECISIONS, () => behaviorOrchestratorService.clearDecisions())
 
-  ipcMainService.handle(IPC.PLUGINS_LIST, () => pluginService.listPlugins())
+  ipcMainService.handle(IPC.PLUGINS_LIST, () => createPluginListView(pluginService.listPlugins()))
 
   ipcMainService.handle(IPC.PLUGINS_SET_ENABLED, (_event, payload) => {
     return pluginService.setEnabled(payload.pluginId, payload.enabled)

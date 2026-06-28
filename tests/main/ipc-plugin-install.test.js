@@ -1229,6 +1229,120 @@ test('catalog install selection handlers return normalized catalog payloads', as
   })
 })
 
+test('plugins:list returns normalized plugin view payloads', async () => {
+  const ipcMain = createIpcMainStub()
+  const plugins = [{
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    profile: 'creator-tools',
+    source: 'local',
+    enabled: 1,
+    runnable: '',
+    permissions: ['pet:say', 42],
+    commands: [{ id: 'run', title: 'Run' }],
+    entries: {
+      setup: [],
+      commands: [],
+      services: [],
+      dashboards: []
+    },
+    configSchema: {
+      title: 'Demo Config',
+      description: 'Safe renderer fields only.',
+      properties: [{
+        key: 'tone',
+        title: 'Tone',
+        type: 'string',
+        enum: ['soft', 'direct'],
+        required: 1,
+        secretPath: '/Users/mango/private/key'
+      }]
+    },
+    config: { tone: 'soft' },
+    storage: {
+      keyCount: '2',
+      byteSize: '4096',
+      valid: 1,
+      rawPath: '/Users/mango/private/storage.json'
+    },
+    signatureStatus: {
+      status: 'hash-verified',
+      label: 'Verified package hash',
+      signer: 'OpenPet Maintainer',
+      algorithm: 'sha256',
+      verified: 1,
+      errors: [''],
+      certificatePath: '/Users/mango/private/cert.pem'
+    },
+    blockStatus: { blocked: false, reasons: [], internal: 'ignore-me' },
+    privateRuntime: { pid: 1234 }
+  }]
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => plugins },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_LIST)()
+
+  assert.deepEqual(result, [{
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    profile: 'creator-tools',
+    source: 'local',
+    enabled: true,
+    runnable: false,
+    permissions: ['pet:say'],
+    commands: [{ id: 'run', title: 'Run' }],
+    entries: {
+      setup: [],
+      commands: [],
+      services: [],
+      dashboards: []
+    },
+    configSchema: {
+      title: 'Demo Config',
+      description: 'Safe renderer fields only.',
+      properties: [{
+        key: 'tone',
+        title: 'Tone',
+        type: 'string',
+        enum: ['soft', 'direct'],
+        required: true
+      }]
+    },
+    config: { tone: 'soft' },
+    storage: {
+      keyCount: 2,
+      byteSize: 4096,
+      valid: true
+    },
+    signatureStatus: {
+      status: 'hash-verified',
+      label: 'Verified package hash',
+      signer: 'OpenPet Maintainer',
+      algorithm: 'sha256',
+      verified: true,
+      errors: []
+    },
+    blockStatus: { blocked: false, reasons: [] }
+  }])
+})
+
 test('plugin mutation handlers return plugin mutation result with refreshed plugin list', async () => {
   const ipcMain = createIpcMainStub()
   const plugins = [{ id: 'focus-timer', enabled: false }]
