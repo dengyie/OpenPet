@@ -224,6 +224,35 @@ const createServiceStatusView = (config, runtime) => ({
 })
 
 /**
+ * @param {unknown} config
+ * @returns {import('../shared/openpet-contracts').AiConfigViewState}
+ */
+const createAiConfigView = (config = {}) => {
+  const input = toRecord(config)
+  const memory = toRecord(input.memory)
+  const behavior = toRecord(input.behavior)
+  return {
+    enabled: Boolean(input.enabled),
+    provider: typeof input.provider === 'string' ? input.provider : '',
+    baseUrl: typeof input.baseUrl === 'string' ? input.baseUrl : '',
+    model: typeof input.model === 'string' ? input.model : '',
+    apiKeyRef: typeof input.apiKeyRef === 'string' ? input.apiKeyRef : '',
+    systemPrompt: typeof input.systemPrompt === 'string' ? input.systemPrompt : '',
+    memory: {
+      enabled: Boolean(memory.enabled)
+    },
+    behavior: {
+      enabled: Boolean(behavior.enabled),
+      useTools: Boolean(behavior.useTools),
+      cooldownMs: toNonNegativeInteger(behavior.cooldownMs),
+      rules: Array.isArray(behavior.rules) ? behavior.rules.filter((item) => item && typeof item === 'object') : [],
+      decisions: Array.isArray(behavior.decisions) ? behavior.decisions.filter((item) => item && typeof item === 'object') : []
+    },
+    hasApiKey: Boolean(input.hasApiKey)
+  }
+}
+
+/**
  * @param {unknown} blocklist
  * @returns {BlocklistState}
  */
@@ -860,6 +889,7 @@ const createUpdateCheckView = (result = {}) => ({
 })
 
 module.exports = {
+  createAiConfigView,
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,

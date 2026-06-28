@@ -14,6 +14,7 @@ const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet
 const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const { createBubbleRequestId } = require('./pet-bubble-chat-window')
 const {
+  createAiConfigView,
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
@@ -1300,9 +1301,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return rendererSettings
   })
 
-  ipcMainService.handle(IPC.AI_GET_CONFIG, () => aiService.getConfig())
+  ipcMainService.handle(IPC.AI_GET_CONFIG, () => createAiConfigView(aiService.getConfig()))
 
-  ipcMainService.handle(IPC.AI_SAVE_CONFIG, (_event, config) => aiService.saveConfig(config))
+  ipcMainService.handle(IPC.AI_SAVE_CONFIG, (_event, config) => createAiConfigView(aiService.saveConfig(config)))
 
   ipcMainService.handle(IPC.AI_SAVE_API_KEY, (_event, apiKey) => aiService.saveApiKey(apiKey))
 

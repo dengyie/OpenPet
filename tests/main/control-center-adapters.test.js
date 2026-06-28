@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  createAiConfigView,
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
@@ -14,6 +15,44 @@ const {
   createServiceStatusView,
   createUpdateCheckView
 } = require('../../src/main/control-center-adapters')
+
+test('createAiConfigView normalizes AI config payloads for Control Center', () => {
+  assert.deepEqual(createAiConfigView({
+    enabled: 1,
+    provider: 'openai-compatible',
+    baseUrl: 42,
+    model: 'gpt-5.5',
+    apiKeyRef: null,
+    systemPrompt: ['bad'],
+    memory: { enabled: 'yes', internal: 'ignore-me' },
+    behavior: {
+      enabled: 1,
+      useTools: '',
+      cooldownMs: '2500',
+      rules: [{ id: 'rule-1' }],
+      decisions: ['bad'],
+      internal: 'ignore-me'
+    },
+    hasApiKey: 'yes',
+    secretValue: 'sk-hidden'
+  }), {
+    enabled: true,
+    provider: 'openai-compatible',
+    baseUrl: '',
+    model: 'gpt-5.5',
+    apiKeyRef: '',
+    systemPrompt: '',
+    memory: { enabled: true },
+    behavior: {
+      enabled: true,
+      useTools: false,
+      cooldownMs: 2500,
+      rules: [{ id: 'rule-1' }],
+      decisions: [],
+    },
+    hasApiKey: true
+  })
+})
 
 test('createServiceStatusView normalizes local HTTP config and runtime for Control Center', () => {
   const status = createServiceStatusView(

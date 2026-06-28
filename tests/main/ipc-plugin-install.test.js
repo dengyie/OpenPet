@@ -371,7 +371,24 @@ test('ai provider settings IPC delegates config save key save and connection tes
       ...services.aiService,
       getConfig: () => {
         calls.push(['getConfig'])
-        return { provider: 'openai-compatible', baseUrl: 'https://ai.example.test/v1', model: 'saved-model', hasApiKey: false }
+        return {
+          enabled: 1,
+          provider: 'openai-compatible',
+          baseUrl: 'https://ai.example.test/v1',
+          model: 'saved-model',
+          apiKeyRef: null,
+          systemPrompt: ['bad'],
+          memory: { enabled: 'yes', internal: 'ignore-me' },
+          behavior: {
+            enabled: 1,
+            useTools: '',
+            cooldownMs: '2500',
+            rules: [{ id: 'rule-1' }],
+            decisions: ['bad']
+          },
+          hasApiKey: false,
+          secretValue: 'sk-hidden'
+        }
       },
       saveConfig: (config) => {
         calls.push(['saveConfig', config])
@@ -403,7 +420,23 @@ test('ai provider settings IPC delegates config save key save and connection tes
   const savedKey = await ipcMain.handlers.get(IPC.AI_SAVE_API_KEY)(null, 'sk-demo-secret')
   const connection = await ipcMain.handlers.get(IPC.AI_TEST_CONNECTION)()
 
-  assert.deepEqual(config, { provider: 'openai-compatible', baseUrl: 'https://ai.example.test/v1', model: 'saved-model', hasApiKey: false })
+  assert.deepEqual(config, {
+    enabled: true,
+    provider: 'openai-compatible',
+    baseUrl: 'https://ai.example.test/v1',
+    model: 'saved-model',
+    apiKeyRef: '',
+    systemPrompt: '',
+    memory: { enabled: true },
+    behavior: {
+      enabled: true,
+      useTools: false,
+      cooldownMs: 2500,
+      rules: [{ id: 'rule-1' }],
+      decisions: []
+    },
+    hasApiKey: false
+  })
   assert.deepEqual(savedConfig, { model: 'next-model', hasApiKey: false })
   assert.deepEqual(savedKey, { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
   assert.deepEqual(connection, {
