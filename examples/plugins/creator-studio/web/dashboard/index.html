@@ -1390,29 +1390,29 @@
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
+          const buttonStates = run?.actionLane?.buttonStates || {}
           syncDraftControlsFromRun(run)
-          $('run-snapshot-panel').textContent = 'Prompt snapshot and wizard state appear after you draft or load a run.'
-          $('wizard-steps-panel').textContent = 'Draft a task to see the workflow rail.'
-          $('action-lane-panel').textContent = 'Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.'
-          $('review-checkpoint-panel').textContent = 'Draft or load a run to see the current review owner and next review location.'
-          $('review-snapshot-panel').textContent = 'Draft or load a run to see the unified review snapshot.'
-          $('next-step-panel').textContent = 'Draft a task to see the next recommended action.'
+          $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
+          $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
+          $('action-lane-panel').innerHTML = renderActionLane(run)
+          $('review-checkpoint-panel').innerHTML = renderReviewCheckpoint(run)
+          $('review-snapshot-panel').innerHTML = renderReviewSnapshot(run)
+          $('next-step-panel').innerHTML = renderNextStep(run)
           $('task-preview').textContent = 'No task drafted yet.'
           $('task-edit-panel').textContent = 'Draft a task to edit action details before confirmation.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
-          $('recovery-panel').textContent = 'No failed generation to recover.'
-          $('workflow-guidance-panel').textContent = 'Use fixture for workflow QA first. Before provider smoke, go to Control Center -> AI -> Test saved image Provider.'
+          $('recovery-panel').innerHTML = renderRecoveryPanel(run)
+          $('workflow-guidance-panel').innerHTML = renderWorkflowGuidance(run)
           $('prompt-provenance-panel').textContent = 'Host prompt preview appears after provider generation.'
           $('qa-panel').textContent = 'No generated QA yet.'
           $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
           $('action-review-panel').textContent = 'Generated review artifacts and QA will appear here before import.'
           $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
           $('import-handoff-panel').textContent = 'Generate and approve a run to unlock host-owned import.'
-          $('run-logs').textContent = 'No logs yet.'
-          $('confirm-button').disabled = true
+          $('confirm-button').disabled = buttonStates.confirm ? !buttonStates.confirm.enabled : true
           $('generate-button').disabled = true
-          $('generate-button').textContent = defaultGenerateLabel()
+          $('generate-button').textContent = buttonStates.generate?.label || defaultGenerateLabel(run)
           $('approve-button').disabled = true
           stopPlaybackPreview()
           return

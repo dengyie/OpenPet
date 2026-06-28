@@ -1492,6 +1492,16 @@ test('creator studio dashboard syncs legacy pre-task run controls when loading a
     await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyPreTaskRun.runId)
     await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('Legacy pre-task prompt'))
     assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    const snapshotText = await page.locator('#run-snapshot-panel').textContent()
+    const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    const nextStepText = await page.locator('#next-step-panel').textContent()
+    assert.match(snapshotText, /Legacy pre-task prompt should still sync\./i)
+    assert.match(snapshotText, /Backend: provider/i)
+    assert.match(snapshotText, /Task: not_started/i)
+    assert.match(workflowGuidanceText, /host-owned image Provider/i)
+    assert.doesNotMatch(workflowGuidanceText, /Use fixture for workflow QA first/i)
+    assert.match(nextStepText, /Start from a natural-language action prompt to draft a Creator Studio task\./i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
