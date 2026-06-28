@@ -392,6 +392,10 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                 <div className="plugin-commands">
                   {plugin.entries.dashboards.map((dashboard) => {
                     const dashboardKey = `${plugin.id}:${dashboard.id}`
+                    const creatorStudioService = plugin.id === 'openpet.creator-studio'
+                      ? plugin.entries?.services?.find((service) => service.id === 'studio')
+                      : null
+                    const requiresServiceStart = creatorStudioService?.runtime?.status !== 'running'
                     return (
                       <button
                         type="button"
@@ -399,12 +403,16 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                         key={dashboard.id}
                         disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === dashboardKey}
                         onClick={() => onOpenDashboard(plugin.id, dashboard.id)}
+                        title={requiresServiceStart ? '请先启动 Creator Studio Service' : ''}
                       >
                         {openingDashboard === dashboardKey ? '打开中' : dashboard.title}
                       </button>
                     )
                   })}
                 </div>
+              ) : null}
+              {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (
+                <div className="field-note">Creator Studio Dashboard 依赖 Creator Studio Service；请先启动服务，再打开面板。</div>
               ) : null}
               {plugin.source === 'local' ? (
                 <div className="plugin-commands">

@@ -32,6 +32,17 @@ const parseCommandPayload = (draft: string): JsonObject | undefined => {
   return parsed as JsonObject
 }
 
+const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
+const CREATOR_STUDIO_SERVICE_ID = 'studio'
+
+const findPluginById = (plugins: PluginViewState[], pluginId: string) => (
+  plugins.find((plugin) => plugin.id === pluginId) || null
+)
+
+const getPluginServiceRuntimeStatus = (plugin: PluginViewState | null, serviceId: string) => (
+  plugin?.entries?.services?.find((service) => service.id === serviceId)?.runtime?.status || 'stopped'
+)
+
 export function usePluginsPane() {
   const [loading, setLoading] = useState(true)
   const [plugins, setPlugins] = useState<PluginViewState[]>([])
@@ -258,6 +269,14 @@ export function usePluginsPane() {
   }
 
   const onOpenDashboard = async (pluginId: string, dashboardId: string) => {
+    if (pluginId === CREATOR_STUDIO_PLUGIN_ID) {
+      const plugin = findPluginById(plugins, pluginId)
+      const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+      if (runtimeStatus !== 'running') {
+        setStatus('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
+        return
+      }
+    }
     const dashboardKey = `${pluginId}:${dashboardId}`
     setOpeningDashboard(dashboardKey)
     setStatus('')

@@ -1198,7 +1198,21 @@ test.describe('Control Center smoke', () => {
                 { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
                 { id: 'import-approved-pet', title: 'Import Approved Pet', command: 'node ./commands/import-approved-pet.js', cwd: '.' }
               ],
-              services: [],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-28T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
               dashboards: [
                 { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
               ]
@@ -1220,11 +1234,77 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('Dashboard entries')
     await expect(pluginRow).toContainText('main')
 
-    await pluginRow.getByRole('button', { name: 'Creator Studio' }).click()
+    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
 
     await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('openpet.creator-studio')
+  })
+
+  test('guides users to start the Creator Studio service before opening its dashboard in the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['pet-pack:import', 'model:image-generate', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'stopped',
+                    health: { status: 'unknown', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    const serviceControl = pluginRow.locator('.plugin-service-control', { hasText: 'Creator Studio Service' })
+
+    await expect(serviceControl).toContainText('Service status: stopped')
+    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await expect(page.locator('.status-line')).toContainText('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toHaveCount(0)
+
+    await serviceControl.getByRole('button', { name: 'Start Creator Studio Service' }).click()
+    await expect(page.locator('.status-line')).toContainText('Service 已启动')
+    await expect(serviceControl).toContainText('Service status: running')
+
+    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
   })
 
   test('shows structured Creator Studio command results in the Plugins pane with the demo API', async ({ page }) => {
