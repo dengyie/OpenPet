@@ -132,6 +132,115 @@ test('pet chat state exposes provider readiness and current pet-pack main conver
   assert.deepEqual(conversationRequests, [''])
 })
 
+test('pet chat IPC returns adapter-shaped state without service-only chat fields', async () => {
+  let onSayHandler = null
+  const stateChangedPayloads = []
+  const windowCalls = []
+  const ipcMain = registerPetChatHandlers({
+    petService: {
+      ...createRequiredServices().petService,
+      onSay: (handler) => { onSayHandler = handler }
+    },
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        hasApiKey: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        apiKey: 'sk-hidden',
+        rawPrompt: 'do not leak'
+      })
+    },
+    aiTalkService: {
+      getPersonaProfile: () => ({
+        petPackId: 'legacy-cat',
+        petPackDisplayName: 'Legacy Cat',
+        rootPath: '/Users/mango/private-pack'
+      }),
+      getConversation: () => [
+        {
+          id: 'm1',
+          role: 'assistant',
+          content: 'safe reply',
+          createdAt: '2026-06-24T00:00:00.000Z',
+          metadata: { rawPrompt: 'do not leak' },
+          providerRaw: { apiKey: 'sk-hidden' }
+        },
+        { id: 'm2', role: 'system', content: 'drop me', createdAt: '2026-06-24T00:00:01.000Z' }
+      ]
+    },
+    petChatWindowService: {
+      getState: () => ({
+        available: false,
+        alwaysOnTop: true,
+        visible: true,
+        hasWindow: true,
+        hasUserBounds: true,
+        bounds: { x: '10', y: '20', width: '320', height: '480', secret: 'ignore-me' },
+        bridgeToken: 'secret-token',
+        localPath: '/Users/mango/private-window-state'
+      }),
+      open: () => {
+        windowCalls.push(['open'])
+      },
+      setAlwaysOnTop: (alwaysOnTop) => {
+        windowCalls.push(['setAlwaysOnTop', alwaysOnTop])
+      },
+      sendStateChanged: (state) => stateChangedPayloads.push(state)
+    },
+    petBubbleChatWindowService: {
+      getState: () => ({
+        visible: true,
+        hasWindow: true,
+        items: [{ providerRaw: { apiKey: 'sk-hidden' } }],
+        bridgeToken: 'secret-token'
+      }),
+      showMessage: () => ({ visible: true, hasWindow: true }),
+      refreshItems: () => ({ visible: true, hasWindow: true })
+    }
+  })
+
+  const state = await ipcMain.handlers.get(IPC.PET_CHAT_GET_STATE)()
+  const opened = await ipcMain.handlers.get(IPC.PET_CHAT_OPEN)()
+  const pinned = await ipcMain.handlers.get(IPC.PET_CHAT_SET_ALWAYS_ON_TOP)(null, { alwaysOnTop: false })
+  onSayHandler({ text: 'hello', source: 'pet:event', ttlMs: 1000, bridgeToken: 'secret-token' })
+
+  const expected = {
+    available: true,
+    visible: true,
+    hasWindow: true,
+    alwaysOnTop: true,
+    hasUserBounds: true,
+    conversationId: 'control-center:legacy-cat:main',
+    bounds: { x: 10, y: 20, width: 320, height: 480 },
+    petPack: { id: 'legacy-cat', displayName: 'Legacy Cat' },
+    ai: {
+      enabled: true,
+      hasApiKey: true,
+      ready: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5',
+      reason: ''
+    },
+    bubble: { text: '', source: '', ttlMs: 0, updatedAt: '' },
+    bubbleChat: { visible: true, hasWindow: true },
+    messages: [{ id: 'm1', role: 'assistant', content: 'safe reply', createdAt: '2026-06-24T00:00:00.000Z' }]
+  }
+  assert.deepEqual(state, expected)
+  assert.deepEqual(opened, expected)
+  assert.deepEqual(pinned, expected)
+  assert.deepEqual(windowCalls, [['open'], ['setAlwaysOnTop', false]])
+  assert.equal(stateChangedPayloads.length, 1)
+  assert.equal(stateChangedPayloads[0].bubble.text, 'hello')
+  assert.equal(stateChangedPayloads[0].available, true)
+  assert.equal(JSON.stringify(stateChangedPayloads[0]).includes('secret-token'), false)
+  assert.equal(JSON.stringify(stateChangedPayloads[0]).includes('/Users/mango/private'), false)
+  assert.equal(JSON.stringify(state).includes('rawPrompt'), false)
+  assert.equal(JSON.stringify(state).includes('sk-hidden'), false)
+})
+
 test('pet chat send uses shared control-center entrypoint and compact pet bubble', async () => {
   const prompt = 'secret phrase should not be logged'
   const longReply = 'This is a very long desktop pet reply that should remain complete in the chat panel but short inside the speech bubble.'

@@ -40,9 +40,17 @@ const {
   createImageGenerationApiKeyResult,
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
+  createPetChatMessageResultView,
+  createPetChatStateView,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
+  createPluginDashboardOpenResult,
   createPluginListView,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 } = require('./control-center-adapters')
@@ -219,9 +227,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const enabled = Boolean(config.enabled)
     const hasApiKey = Boolean(config.hasApiKey)
     const ready = enabled && hasApiKey
-    return {
-      available: Boolean(petChatWindowService),
+    return createPetChatStateView({
       ...windowState,
+      available: Boolean(petChatWindowService),
       conversationId,
       petPack: {
         id: profile.petPackId || '',
@@ -244,11 +252,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         hasWindow: Boolean(bubbleChatState.hasWindow)
       },
       messages: sanitizeChatMessages(messages)
-    }
+    })
   }
 
   const notifyPetChatStateChanged = (state = getPetChatState()) => {
-    petChatWindowService?.sendStateChanged?.(state)
+    petChatWindowService?.sendStateChanged?.(createPetChatStateView(state))
   }
 
   const notifyControlCenterActivePetPackChanged = (activePackId) => {
@@ -315,7 +323,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   const attachPetChatState = (response = {}, bubble = lastPetBubble) => {
     const state = getPetChatState()
     notifyPetChatStateChanged(state)
-    return { ...response, bubble, state }
+    return createPetChatMessageResultView({ ...response, bubble, state })
   }
 
   const assertPetChatReady = () => {
@@ -715,7 +723,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           actionId: result.action?.actionId || result.behavior?.actionId || ''
         }
       })
-      return { ...result, state }
+      return createPetChatMessageResultView({ ...result, state })
     } catch (error) {
       recordAppLog({
         scope: 'pet-chat',
@@ -1025,7 +1033,13 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     pluginInstallService,
     pluginGithubImportService,
     createPluginListView,
-    createPluginMutationResult
+    createPluginMutationResult,
+    createPluginCommandRunResult,
+    createPluginSetupRunResult,
+    createPluginDashboardOpenResult,
+    createPluginServiceControlResult,
+    createPluginServiceHealthCheckResult,
+    createPluginViewState
   })
 
   registerServiceIpc({

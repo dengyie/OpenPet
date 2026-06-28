@@ -17,7 +17,14 @@ const {
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
+  createPetBubbleChatWindowStateView,
+  createPetChatStateView,
+  createPluginCommandRunResult,
+  createPluginDashboardOpenResult,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
   createServiceStatusView,
   createUpdateCheckView
 } = require('../../src/main/control-center-adapters')
@@ -306,6 +313,230 @@ test('createServiceStatusView normalizes local HTTP config and runtime for Contr
       port: 4318,
       mcp: { activeSessions: 2, sessionTtlMs: 30000 }
     }
+  })
+})
+
+test('pet chat adapters strip service-only state from renderer payloads', () => {
+  const state = createPetChatStateView({
+    available: 1,
+    visible: 1,
+    hasWindow: 1,
+    alwaysOnTop: 1,
+    hasUserBounds: 0,
+    bounds: { x: '10', y: '20', width: '320', height: '480', secret: 'ignore-me' },
+    conversationId: 42,
+    petPack: { id: 'legacy-cat', displayName: 7, rootPath: '/Users/mango/private-pack' },
+    ai: {
+      enabled: 1,
+      hasApiKey: 'yes',
+      ready: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5',
+      reason: ['bad'],
+      apiKey: 'sk-hidden',
+      rawPrompt: 'do not leak'
+    },
+    bubble: {
+      text: 'hello',
+      source: 'pet:event',
+      ttlMs: '1200',
+      updatedAt: '2026-06-24T00:00:00.000Z',
+      bridgeToken: 'secret-token'
+    },
+    bubbleChat: {
+      visible: true,
+      hasWindow: true,
+      items: [{ metadata: { rawPrompt: 'do not leak' } }],
+      pid: 123
+    },
+    messages: [
+      { id: 'm1', role: 'assistant', content: 'safe', createdAt: '2026-06-24T00:00:00.000Z', metadata: { raw: 'x' }, providerRaw: { apiKey: 'sk-hidden' } },
+      { id: 'm2', role: 'system', content: 'drop me', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 3, role: 'user', content: 123, createdAt: false }
+    ],
+    rawPrompt: 'do not leak',
+    apiKey: 'sk-hidden'
+  })
+
+  assert.deepEqual(state, {
+    available: true,
+    visible: true,
+    hasWindow: true,
+    alwaysOnTop: true,
+    hasUserBounds: false,
+    conversationId: '',
+    bounds: { x: 10, y: 20, width: 320, height: 480 },
+    petPack: { id: 'legacy-cat', displayName: '' },
+    ai: {
+      enabled: true,
+      hasApiKey: true,
+      ready: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5',
+      reason: ''
+    },
+    bubble: {
+      text: 'hello',
+      source: 'pet:event',
+      ttlMs: 1200,
+      updatedAt: '2026-06-24T00:00:00.000Z'
+    },
+    bubbleChat: {
+      visible: true,
+      hasWindow: true
+    },
+    messages: [{ id: 'm1', role: 'assistant', content: 'safe', createdAt: '2026-06-24T00:00:00.000Z' }]
+  })
+
+  assert.deepEqual(createPetBubbleChatWindowStateView({
+    visible: 1,
+    hasWindow: '',
+    bridgeToken: 'secret-token',
+    items: [{ providerRaw: 'ignore-me' }]
+  }), {
+    visible: true,
+    hasWindow: false
+  })
+  assert.equal(JSON.stringify(state).includes('sk-hidden'), false)
+  assert.equal(JSON.stringify(state).includes('/Users/mango/private-pack'), false)
+  assert.equal(JSON.stringify(state).includes('rawPrompt'), false)
+})
+
+test('plugin runtime result adapters normalize IPC payloads and strip private fields', () => {
+  assert.deepEqual(createPluginCommandRunResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: '0',
+    stdout: 123,
+    stderr: null,
+    result: { safe: true, nested: ['ok'] },
+    runtime: { cwd: '/Users/mango/plugin', bridgeToken: 'secret-token' },
+    apiKey: 'sk-hidden'
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: 0,
+    stdout: '123',
+    stderr: '',
+    result: { safe: true, nested: ['ok'] }
+  })
+
+  assert.deepEqual(createPluginCommandRunResult({
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'bad-result',
+    result: { unsafe: () => 'nope' }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'bad-result'
+  })
+
+  assert.deepEqual(createPluginSetupRunResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: {
+      status: 'succeeded',
+      lastRunAt: '2026-06-24T00:00:00.000Z',
+      exitCode: '0',
+      error: 42,
+      cwd: '/Users/mango/private-plugin'
+    },
+    bridgeToken: 'secret-token'
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: {
+      status: 'succeeded',
+      lastRunAt: '2026-06-24T00:00:00.000Z',
+      exitCode: 0,
+      error: ''
+    }
+  })
+
+  assert.deepEqual(createPluginServiceControlResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: {
+      status: 'running',
+      pid: '4321',
+      startedAt: '2026-06-24T00:00:00.000Z',
+      stoppedAt: 7,
+      command: 'node server.js',
+      cwd: '/Users/mango/private-plugin',
+      exitCode: null,
+      signal: 'SIGTERM',
+      error: ['bad'],
+      health: {
+        status: 'healthy',
+        checkedAt: '2026-06-24T00:00:01.000Z',
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: '200',
+        message: 'ok',
+        rawHeaders: { authorization: 'Bearer secret-token' }
+      },
+      env: { OPENAI_API_KEY: 'sk-hidden' }
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: {
+      status: 'running',
+      pid: 4321,
+      startedAt: '2026-06-24T00:00:00.000Z',
+      stoppedAt: '',
+      command: 'node server.js',
+      exitCode: null,
+      signal: 'SIGTERM',
+      error: '',
+      health: {
+        status: 'healthy',
+        checkedAt: '2026-06-24T00:00:01.000Z',
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: 200,
+        message: 'ok'
+      }
+    }
+  })
+
+  assert.deepEqual(createPluginServiceHealthCheckResult({
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: { status: 'surprising', statusCode: 'bad', message: 7 },
+    runtime: { status: 'teleporting', pid: 'bad', health: { status: 'surprising' } },
+    rawResponseBody: 'secret'
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: { status: 'unknown', statusCode: null, message: '' },
+    runtime: {
+      status: 'stopped',
+      pid: null,
+      health: { status: 'unknown' }
+    }
+  })
+
+  assert.deepEqual(createPluginDashboardOpenResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    dashboardId: 'main',
+    url: 'http://127.0.0.1:8787/',
+    localPath: '/Users/mango/private-plugin/index.html'
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    dashboardId: 'main',
+    url: 'http://127.0.0.1:8787/'
   })
 })
 

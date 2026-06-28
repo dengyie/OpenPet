@@ -1493,7 +1493,7 @@ export interface PluginServiceHealthPolicyViewState {
 
 export interface PluginServiceRuntimeViewState {
   status: PluginServiceRuntimeStatus
-  pid?: number
+  pid?: number | null
   startedAt?: string
   stoppedAt?: string
   command?: string
