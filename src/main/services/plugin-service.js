@@ -23,6 +23,7 @@ const { createPluginSetupProcessController } = require('./plugin-setup-process-c
 const { createPluginSetupRuntimeController } = require('./plugin-setup-runtime-controller')
 const { createPluginCommandRunController } = require('./plugin-command-run-controller')
 const { createPluginCommandOrchestrationController } = require('./plugin-command-orchestration-controller')
+const { createPluginShutdownController } = require('./plugin-shutdown-controller')
 const { createPluginDashboardOpenController } = require('./plugin-dashboard-open-controller')
 const { createPluginResolutionController } = require('./plugin-resolution-controller')
 const { createPluginConfigStorageController } = require('./plugin-config-storage-controller')
@@ -711,6 +712,13 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     scheduleServiceHealthCheck
   })
 
+  const shutdownController = createPluginShutdownController({
+    stopServices: (options) => serviceRuntimeManager.stopAll(options),
+    stopSetups: (options) => setupRuntimeManager.stopAll(options),
+    stopCommands: () => declarationCommandController.stopAll(),
+    closeCommandBridge: () => commandBridgeService.close()
+  })
+
   const setEnabled = managementController.setEnabled
   const saveConfig = managementController.saveConfig
   const saveServiceHealthPolicy = managementController.saveServiceHealthPolicy
@@ -838,11 +846,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   }
 
   const stopAllServices = () => {
-    serviceRuntimeManager.stopAll({ log: false })
-    setupRuntimeManager.stopAll({ log: false })
-    declarationCommandController.stopAll()
-    commandBridgeService.close()
-    return { ok: true }
+    return shutdownController.stopAll()
   }
 
   return { listPlugins, setEnabled, saveConfig, saveServiceHealthPolicy, clearStorage, runCommand, runSetup, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
