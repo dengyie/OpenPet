@@ -33,6 +33,7 @@ const createPluginServices = ({
   aiService,
   aiTalkService,
   imageGenerationModelService,
+  triggerRuleRuntimeService,
   settingsService,
   appLogService,
   createBasicBehaviorPlugin,
@@ -76,7 +77,10 @@ const createPluginServices = ({
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
     openExternal: (url) => shell.openExternal(url),
-    onPetPackActivated: () => reloadAndSendAnimations(getPetWindow, petService),
+    onPetPackActivated: () => {
+      reloadAndSendAnimations(getPetWindow, petService)
+      triggerRuleRuntimeService?.refresh?.()
+    },
     selectCreatorAssetFrameFolder: async () => {
       const selected = await dialog.showOpenDialog({
         title: '选择动作帧文件夹',

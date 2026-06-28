@@ -29,6 +29,7 @@ const { createAiTalkStore } = require('./src/main/services/ai-talk-store')
 const { createAiTalkService } = require('./src/main/services/ai-talk-service')
 const { createPetUtteranceLogService } = require('./src/main/services/pet-utterance-log-service')
 const { createImageGenerationModelService } = require('./src/main/services/image-generation-model-service')
+const { createTriggerRuleRuntimeService } = require('./src/main/services/trigger-rule-runtime-service')
 const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createCreatorStudioDefaultFlowService } = require('./src/main/services/creator-studio-default-flow-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
@@ -109,6 +110,7 @@ const bootstrapOpenPet = () => {
       createAiTalkService,
       createPetUtteranceLogService,
       createImageGenerationModelService,
+      createTriggerRuleRuntimeService,
       createBehaviorOrchestratorService,
       createCreatorStudioDefaultFlowService,
       createPluginService,

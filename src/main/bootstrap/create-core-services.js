@@ -21,6 +21,7 @@ const createCoreServices = ({
     createAiTalkService,
     createPetUtteranceLogService,
     createImageGenerationModelService,
+    createTriggerRuleRuntimeService,
     createBehaviorOrchestratorService,
     createLocalHttpService,
     createActionImportService,
@@ -64,6 +65,7 @@ const createCoreServices = ({
   const petUtteranceLogService = createPetUtteranceLogService({ aiTalkStore, appLogService })
   const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService })
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
+  const triggerRuleRuntimeService = createTriggerRuleRuntimeService({ actionService, petService, appLogService })
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
@@ -93,6 +95,7 @@ const createCoreServices = ({
       behaviorOrchestratorService,
       cursorAssetService,
       imageGenerationModelService,
+      triggerRuleRuntimeService,
       localHttpService,
       petMovementPolicy,
       petPackService,

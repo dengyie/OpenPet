@@ -145,7 +145,7 @@ const sanitizeChatMessages = (messages = []) => (
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, creatorStudioDefaultFlowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
   let lastPetBubble = createEmptyPetBubble()
@@ -166,6 +166,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     } catch (_) {
       // Logging must never break the user action that triggered it.
     }
+  }
+
+  const refreshTriggerRuleRuntime = () => {
+    triggerRuleRuntimeService?.refresh?.()
   }
 
   const getActivePetPackId = () => {
@@ -909,6 +913,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       const animations = triggerProposal.applied
         ? reloadAndSendAnimations(getPetWindow, petService)
         : petService.getPreviewAnimations()
+      if (triggerProposal.applied) refreshTriggerRuleRuntime()
       recordAppLog({
         scope: 'actions',
         level: 'info',
@@ -930,6 +935,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
     await actionImportService.updateActionConfig(payload)
     reloadAndSendAnimations(getPetWindow, petService)
+    refreshTriggerRuleRuntime()
     return createActionsMutationResult(petService.getPreviewAnimations())
   })
 
@@ -966,6 +972,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const animations = result.triggerProposal?.applied
       ? reloadAndSendAnimations(getPetWindow, petService)
       : result.animations
+    if (result.triggerProposal?.applied) refreshTriggerRuleRuntime()
     recordAppLog({
       scope: 'actions',
       level: 'info',
@@ -1072,6 +1079,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const petPacks = petPackService.listPacks()
     if (result?.pack?.id && petPacks?.activePackId === result.pack.id) {
       const animations = reloadAndSendAnimations(getPetWindow, petService)
+      refreshTriggerRuleRuntime()
       return createPetPackMutationResult(result, petPacks, animations)
     }
     return createPetPackMutationResult(result, petPacks)
@@ -1089,6 +1097,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (event, payload) => {
     const result = petPackService.setActivePack(payload.packId)
     reloadAndSendAnimations(getPetWindow, petService)
+    refreshTriggerRuleRuntime()
     const animations = petService.getPreviewAnimations()
     const petPacks = petPackService.listPacks()
     refreshPetPackScopedChatState({ reason: 'pet-pack-set-active' })

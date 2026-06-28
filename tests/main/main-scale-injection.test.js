@@ -22,6 +22,8 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
   let registeredIpcDependencies = null
   let registeredPluginDependencies = null
   let createdCreatorStudioDefaultFlowDependencies = null
+  let createdTriggerRuleRuntimeDependencies = null
+  let triggerRuleRuntimeRefreshCalls = 0
   let createdAiTalkStorePath = null
   let createdAiTalkDependencies = null
   let bundledPluginSyncDependencies = null
@@ -159,6 +161,17 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
           return { id: 'ai-talk-service' }
         }
       },
+      './src/main/services/trigger-rule-runtime-service': {
+        createTriggerRuleRuntimeService: (dependencies) => {
+          createdTriggerRuleRuntimeDependencies = dependencies
+          return {
+            start: () => {},
+            stop: () => {},
+            refresh: () => { triggerRuleRuntimeRefreshCalls += 1 },
+            getDiagnostics: () => ({ decisions: [] })
+          }
+        }
+      },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
       './src/main/services/creator-studio-default-flow-service': {
         createCreatorStudioDefaultFlowService: (dependencies) => {
@@ -226,9 +239,13 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     assert.deepEqual(scaleCalls, [{ targetWindow: ipcWindow, scale: 0.5 }])
     assert.equal(animationReloadCalls.length, 1)
     assert.equal(animationReloadCalls[0].petWindow, petWindow)
+    assert.equal(triggerRuleRuntimeRefreshCalls, 1)
     assert.equal(createdAiTalkStorePath, path.join(__dirname, '..', '.tmp-main-scale-injection', 'ai-talk-store.json'))
     assert.equal(createdAiTalkDependencies.aiService.id, 'ai-service')
     assert.equal(createdAiTalkDependencies.aiTalkStore.id, 'ai-talk-store')
+    assert.ok(createdTriggerRuleRuntimeDependencies)
+    assert.equal(createdTriggerRuleRuntimeDependencies.actionService.getConfig().actions.length, 0)
+    assert.equal(typeof createdTriggerRuleRuntimeDependencies.petService.playAction, 'function')
     assert.equal(registeredIpcDependencies.aiTalkService.id, 'ai-talk-service')
     assert.equal(registeredIpcDependencies.creatorStudioDefaultFlowService.id, 'creator-studio-default-flow-service')
     assert.equal(createdCreatorStudioDefaultFlowDependencies.pluginService.stopAllServices != null, true)

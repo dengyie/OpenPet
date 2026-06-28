@@ -131,6 +131,7 @@ const createOpenPetRuntime = ({
       petPackService,
       petService,
       petUtteranceLogService,
+      triggerRuleRuntimeService,
       settingsService
     },
     syncLoginItemSettings,
@@ -165,6 +166,18 @@ const createOpenPetRuntime = ({
       if (pluginShutdownInFlight) return
       pluginShutdownInFlight = true
       event?.preventDefault?.()
+
+      try {
+        triggerRuleRuntimeService?.stop?.()
+      } catch (error) {
+        safeRecordAppLog(appLogService, {
+          scope: 'pet-runtime',
+          level: 'error',
+          actor: 'system',
+          event: 'trigger-rule.runtime.stop.failed',
+          message: error?.message || 'Trigger rule runtime stop failed before app quit'
+        })
+      }
 
       const pluginShutdown = Promise.resolve()
         .then(() => pluginService?.stopAllServices?.())
@@ -215,6 +228,7 @@ const createOpenPetRuntime = ({
     aiService,
     aiTalkService,
     imageGenerationModelService,
+    triggerRuleRuntimeService,
     settingsService,
     appLogService,
     createBasicBehaviorPlugin: factories.createBasicBehaviorPlugin,
@@ -234,6 +248,7 @@ const createOpenPetRuntime = ({
 
   maybeStartLocalHttp({ petService, localHttpService, normalizeLocalHttpConfig })
   syncLoginItemSettings(petService.getSettings().autoStart)
+  triggerRuleRuntimeService.start()
 
   registerIpcHandlers({
     getPetWindow,
@@ -245,6 +260,7 @@ const createOpenPetRuntime = ({
     petBubbleChatWindowService,
     imageGenerationModelService,
     behaviorOrchestratorService,
+    triggerRuleRuntimeService,
     creatorStudioDefaultFlowService,
     pluginService,
     pluginInstallService: pluginServices.pluginInstallService,
