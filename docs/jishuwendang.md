@@ -15,12 +15,36 @@
 
 它不是阶段历史，也不是 release 证据归档。那些内容分别放在：
 
+- `../README.md` / `../README.zh-CN.md`：对外项目说明和快速开始。
+- `docs/README.md`：开发文档地图和阅读顺序。
 - `docs/HANDOFF.md`：继续当前工作的接力说明。
 - `docs/development-summary.md`：英文短摘要。
+- `docs/testing-strategy.md`：测试分层、核心流程覆盖和删测规则。
 - `docs/openpet-current-todo-architecture.md`：按架构边界维护的当前 TODO。
 - `docs/phases/` 与 `docs/reviews/`：历史实施记录与 review 结论。
 
-## 2. 开发入口
+## 2. 开发文档职责分工
+
+OpenPet 的开发文档现在固定为一条主链，不再鼓励并行维护多份“总览”：
+
+- `docs/README.md`：唯一入口，负责阅读顺序和文档归属。
+- `docs/jishuwendang.md`：唯一详细开发文档，负责架构、命令、边界、工作流。
+- `docs/testing-strategy.md`：唯一测试策略文档，负责回归范围和删测规则。
+- `docs/HANDOFF.md`：只负责“现在是什么状态、下一步从哪开始”。
+- `docs/openpet-current-todo-architecture.md`：只负责当前 TODO 和下一里程碑选择。
+- `docs/project-documentation-design.md`：负责“什么时候该新建文档、什么时候不该”。
+
+写文档前先决定 owner doc。不要把一段现状同时铺到 `README`、`HANDOFF`、
+`jishuwendang` 和 status review 里。
+
+## 3. 开发入口
+
+建议阅读顺序：
+
+1. 先看 `docs/README.md`，确认当前 live docs 的职责边界。
+2. 再看本文，建立代码结构和工程约束的整体模型。
+3. 改代码前看 `docs/testing-strategy.md`，决定回归范围。
+4. 如果是在接手上一个会话，再补看 `docs/HANDOFF.md`。
 
 ### 启动与构建
 
@@ -61,7 +85,7 @@ npm run generate-sprites
 - 从 `cat_anime/flames/` 重新生成精灵图和动作配置。
 - 不要手改 `cat_anime/` 的素材组织方式。
 
-## 3. 架构总览
+## 4. 架构总览
 
 OpenPet 现在不是单窗口 demo，而是一个分层的桌面宠物平台：
 
@@ -105,7 +129,7 @@ src/main/plugins/
 | 本地服务 | `local-http-service.js` `mcp-transport-service.js` | loopback HTTP / MCP | 不默认暴露公网服务 |
 | 控制中心 | `src/control-center/src/` | 所有用户可操作配置界面 | 不偷存主进程机密 |
 
-## 4. 必须保持的工程约束
+## 5. 必须保持的工程约束
 
 这些约束在做功能时不能被稀释：
 
@@ -118,7 +142,7 @@ src/main/plugins/
 - Local HTTP / MCP 只能是 loopback only，默认关闭。
 - Creator Studio 负责提示词、任务、QA、导入请求；宿主负责模型调用、结果写入、最终导入和触发规则持久化。
 
-## 5. 目录速览
+## 6. 目录速览
 
 ```text
 main.js
@@ -162,9 +186,9 @@ assets/pet-packs/
 docs/
 ```
 
-## 6. 关键业务面应该怎么理解
+## 7. 关键业务面应该怎么理解
 
-### 6.1 宠物与动作
+### 7.1 宠物与动作
 
 - 宠物窗口负责渲染，不负责保存真状态。
 - 动作配置来源于当前 active pet pack。
@@ -175,17 +199,20 @@ docs/
   - 可在 Actions pane 审核
   - `click` 可直接应用到 `clickAction`
   - `manual` / `unbound` 只做确认
+  - `random` / `state` / `event` 已可保存为宿主 `triggerRules`，并可在 Actions pane 继续编辑
+  - 保存前预览摘要、编辑后严格宿主校验，以及保存错误透传也已经打通
   - Creator Studio 已批准导入的动作会把生成的 `triggerProposal` 自动入队
-  - `random` / `state` / `event` 仍然缺 durable host schema/editor
+  - 已保存的非点击规则现在由宿主运行时执行器驱动，当前 `state` 语义收敛为“当前动作状态”，并保留诊断、冷却和冲突拦截记录
+  - 当前剩余缺口主要转到 AI Talk 记忆相关打分、可观测性完善，以及后续更细粒度的触发策略扩展
 
-### 6.2 AI 与聊天
+### 7.2 AI 与聊天
 
 - 聊天 Provider 配置采用 draft / active 分离。
 - 保存与测试连接是两个动作，测试使用已保存配置。
 - AI Talk 负责 persona、history、memory，不应该再在 renderer 里复制一套对话逻辑。
 - 桌宠气泡聊天和桌面聊天窗口应该共享同一个会话脑，而不是各自演化。
 
-### 6.3 Creator Studio
+### 7.3 Creator Studio
 
 - Creator Studio 不是宿主内建页面，而是当前插件体系上的一条能力链。
 - 插件负责任务编排、提示词构造、QA 和导入决策。
@@ -196,7 +223,7 @@ docs/
   - action / pet-pack 导入
   - trigger proposal 入队和最终审核
 
-### 6.4 插件系统
+### 7.4 插件系统
 
 - 插件支持显式 `entries.setup`、`entries.commands`、`entries.services`。
 - declaration-only command 通过短生命周期 bridge 访问有限宿主能力。
@@ -207,7 +234,9 @@ docs/
   - active installed user pack manifest workflow
 - 插件现在依然不是“完全沙箱”；它只是被显式约束、审计和最小能力暴露。
 
-## 7. 测试策略
+## 8. 测试策略
+
+测试策略的主文档在 `docs/testing-strategy.md`。这里不重复维护完整测试分类，只保留开发时必须记住的工程规则。
 
 ### 核心流程必须有测试
 
@@ -229,38 +258,41 @@ docs/
 - 纯文案、纯布局、纯展示辅助函数不需要机械地堆测试。
 - 如果某个测试只是在重复更高层已经稳定覆盖的路径，可以删减。
 
-## 8. 当前已知重点缺口
+## 9. 当前已知重点缺口
 
 当前文档层面已经明确的工程缺口只有这些高优先项：
 
-1. `random` / `state` / `event` 触发规则还没有宿主持久化 schema 与编辑器。
+1. AI Talk 记忆注入仍然缺少基于当前消息与近期上下文的相关性打分，以及“仅对实际注入记忆回写使用统计”的闭环。
 2. Windows 仍未达到真实签名与真实 smoke evidence 意义上的 release-ready。
 3. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
 4. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
 
 这份文档不维护长期愿景列表；更完整的待办请看 `docs/openpet-current-todo-architecture.md`。
 
-## 9. 文档维护规则
+## 10. 文档维护规则
 
 如果你改了下面内容，请同步更新对应文档：
 
 | 变更内容 | 至少更新这些文档 |
 | --- | --- |
+| 文档阅读顺序、职责边界 | `docs/README.md` |
 | 服务职责、IPC 边界、开发命令 | `docs/jishuwendang.md` |
 | 当前可用能力、验证基线、主要风险 | `docs/development-summary.md` |
+| 测试分层、回归入口、删测规则 | `docs/testing-strategy.md` |
 | 当前接手信息、继续工作的导读 | `docs/HANDOFF.md` |
 | 当前 TODO 和下一里程碑边界 | `docs/openpet-current-todo-architecture.md` |
 | 历史实施与 review 结论 | `docs/phases/` 与 `docs/reviews/` |
 
 优先保持一份文档说清一个主题，不要把同一段大篇幅现状复制到四五个文件里。
 
-## 10. 建议阅读顺序
+## 11. 建议阅读顺序
 
 1. `AGENTS.md`
 2. `docs/README.md`
 3. `docs/HANDOFF.md`
 4. `docs/jishuwendang.md`
-5. `docs/development-summary.md`
-6. `docs/openpet-current-todo-architecture.md`
+5. `docs/testing-strategy.md`
+6. `docs/development-summary.md`
+7. `docs/openpet-current-todo-architecture.md`
 
 如果只是继续一个具体里程碑，再补读对应的 `docs/phases/`、`docs/reviews/`、`docs/superpowers/specs/` 即可。

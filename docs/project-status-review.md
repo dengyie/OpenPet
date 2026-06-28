@@ -4,7 +4,7 @@
 > Branch: `main`
 > Release track: `v1.0.1-rc.2`
 
-This document is the current status snapshot. Detailed implementation history belongs in `docs/phases/`; detailed review findings belong in `docs/reviews/`.
+This document is a periodic status audit snapshot, not the primary day-to-day live source. For current continuation and current engineering truth, prefer `docs/README.md`, `docs/HANDOFF.md`, `docs/jishuwendang.md`, and `docs/openpet-current-todo-architecture.md`. Detailed implementation history belongs in `docs/phases/`; detailed review findings belong in `docs/reviews/`.
 
 ## Executive Summary
 

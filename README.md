@@ -148,13 +148,32 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 
 ## Documentation
 
-- [CHANGELOG.md](./CHANGELOG.md) - release notes.
-- [docs/README.md](./docs/README.md) - documentation map and reading order.
-- [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - extension ecosystem boundary, lifecycle rules, and third-party author guidance.
-- [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff for the current state.
-- [docs/project-context.json](./docs/project-context.json) - compact machine-readable project context.
+For development work, start at [docs/README.md](./docs/README.md). It is the
+single developer-doc entry point and defines the canonical live-doc set.
 
-Use `docs/README.md` instead of browsing every file under `docs/`; historical phase and review records are retained as audit history.
+Suggested reading order:
+
+1. [docs/README.md](./docs/README.md)
+2. [docs/jishuwendang.md](./docs/jishuwendang.md)
+3. [docs/testing-strategy.md](./docs/testing-strategy.md)
+4. [docs/HANDOFF.md](./docs/HANDOFF.md) when continuing in-flight work
+5. [docs/openpet-current-todo-architecture.md](./docs/openpet-current-todo-architecture.md)
+   when choosing the next milestone
+
+Canonical live developer docs:
+
+- [docs/README.md](./docs/README.md) - developer doc index and ownership map
+- [docs/jishuwendang.md](./docs/jishuwendang.md) - detailed developer guide
+- [docs/testing-strategy.md](./docs/testing-strategy.md) - testing policy and merge gates
+- [docs/HANDOFF.md](./docs/HANDOFF.md) - current continuation context
+- [docs/openpet-current-todo-architecture.md](./docs/openpet-current-todo-architecture.md) - live milestone map
+- [docs/development-summary.md](./docs/development-summary.md) - short English engineering sync
+- [docs/project-context.json](./docs/project-context.json) - machine-readable project facts
+- [docs/project-documentation-design.md](./docs/project-documentation-design.md) - documentation governance and ownership rules
+
+Historical implementation and audit material stays under
+`docs/phases/`, `docs/reviews/`, and `docs/release-evidence/`.
+Public release notes stay in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Validation Baseline
 

@@ -39,6 +39,24 @@ The design intent is a small documentation operating system, not a pile of notes
 
 If a proposed document does not answer one of those questions better than an existing document, extend the existing document instead of adding another top-level file.
 
+### 2.1 Day-To-Day Development Doc Contract
+
+The day-to-day development-doc stack is intentionally fixed:
+
+- `docs/README.md` is the only developer-doc entry point.
+- `docs/jishuwendang.md` is the only detailed architecture and workflow guide.
+- `docs/testing-strategy.md` owns regression selection and merge expectations.
+- `docs/HANDOFF.md` owns current continuation context only.
+- `docs/openpet-current-todo-architecture.md` owns the live next-milestone map.
+- `docs/development-summary.md` and `docs/project-context.json` are short sync
+  surfaces, not alternate architecture manuals.
+- `README.md` and `README.zh-CN.md` stay product-facing and should link inward
+  instead of duplicating deep developer material.
+
+Do not create another top-level "developer overview", "engineering status", or
+"current architecture summary" file unless one of these owners can no longer
+hold the fact cleanly.
+
 ## 3. Documentation Design Principles
 
 Use these principles before creating, moving, or rewriting documentation:
@@ -69,7 +87,8 @@ Document lifecycles are intentionally different:
 
 | Lifecycle | Examples | Update Pattern |
 |-----------|----------|----------------|
-| Live status | README, HANDOFF, status review, release checklist | Keep current; update whenever the claim changes. |
+| Live status | README, HANDOFF, release checklist | Keep current; update whenever the claim changes. |
+| Periodic status audit | `docs/project-status-review.md` | Refresh only at explicit status checkpoints, release checkpoints, or major readiness shifts. |
 | Normative rules | This document, AGENTS | Update only when project rules, scope, or invariants change. |
 | Technical reference | Architecture docs, MCP docs, catalog docs | Update when the subsystem contract changes. |
 | Evidence | Release reports, smoke reports, generated manifests | Append or regenerate from tooling; do not hand-wave the result. |
@@ -84,7 +103,8 @@ The docs should be read as layered sources of truth, not as interchangeable note
 | Layer | Documents | Owns | Detail Level |
 |-------|-----------|------|--------------|
 | Product entry | `README.md`, `README.zh-CN.md`, `docs/README.md` | Public feature list, quick start, support claims, documentation index, maintainer reading order | Broad, user-facing, concise |
-| Current state | `docs/HANDOFF.md`, `docs/project-status-review.md` | What is true now, what is verified, what remains risky | Operational handoff and status snapshot |
+| Current state | `docs/HANDOFF.md` | What is true now, what is verified, what remains risky for the next work session | Operational handoff |
+| Periodic status audit | `docs/project-status-review.md` | checkpoint-style assessment against the broader product goal | milestone-level status snapshot |
 | Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants | Normative project rules |
 | Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md`, `docs/productization-next-steps-design.md`, `docs/productization-todo-design.md` | System design, completed productization arc, near-term productization sequence, prioritized TODO implementation design, planned enhancements | Architecture and sequencing |
 | Release operations | `docs/desktop-release-design.md`, `docs/release-checklist.md`, `docs/release-evidence/*.json` | macOS/Windows release gates, signing, smoke evidence, operator checklist | Evidence and release procedure |
@@ -95,7 +115,8 @@ The docs should be read as layered sources of truth, not as interchangeable note
 When documents disagree, prefer the narrowest factual source for the topic:
 
 - Release readiness: `docs/desktop-release-design.md` and `docs/release-checklist.md`.
-- Current project status: `docs/HANDOFF.md` and `docs/project-status-review.md`.
+- Current project status for day-to-day continuation: `docs/HANDOFF.md`.
+- Periodic broader status audit: `docs/project-status-review.md`.
 - Original goal, documentation governance, and support wording: this document.
 - Implementation history: phase docs and review docs.
 - Contributor constraints: `AGENTS.md`.
@@ -114,7 +135,7 @@ docs/jishuwendang.md               # Chinese technical architecture reference
 docs/productization-roadmap.md     # productization sequence and long-running risks
 docs/productization-next-steps-design.md # near-term productization design
 docs/productization-todo-design.md # implementation-oriented TODO breakdown
-docs/project-status-review.md      # milestone-level project assessment
+docs/project-status-review.md      # periodic checkpoint assessment
 docs/desktop-release-design.md     # macOS + Windows release architecture
 docs/release-checklist.md          # release operator checklist
 docs/release-evidence/             # structured release and smoke evidence
@@ -138,7 +159,7 @@ New folders should earn their place by having a distinct lifecycle. For example,
 | `docs/productization-roadmap.md` | Productization roadmap and long-running risks | Roadmap sequencing, risk status, or release-track scope changes |
 | `docs/productization-next-steps-design.md` | Near-term productization design | Next-phase sequencing and acceptance gates |
 | `docs/productization-todo-design.md` | Prioritized TODO implementation design | TODO priority, phase breakdown, or acceptance contracts change |
-| `docs/project-status-review.md` | Snapshot assessment of implementation vs original goal | Major status checkpoints, release candidates, or readiness claims |
+| `docs/project-status-review.md` | Periodic assessment of implementation vs original goal | Major status checkpoints, release candidates, or readiness claims |
 | `docs/jishuwendang.md` | Chinese technical architecture reference | Service structure, IPC surface, commands, or technical status changes |
 | `docs/desktop-release-design.md` | macOS + Windows desktop release design and acceptance gates | Packaging, CI, signing, update, or platform support status changes |
 | `docs/release-checklist.md` | Operator checklist for producing and validating releases | Build/signing inputs, artifact sets, or smoke checks change |
@@ -153,7 +174,7 @@ Use this matrix to decide where a fact belongs before editing multiple documents
 | Fact Type | Primary Owner | Secondary Mentions |
 |-----------|---------------|--------------------|
 | Original product goal | `docs/project-documentation-design.md` | README overview, `docs/HANDOFF.md` |
-| Current project status | `docs/HANDOFF.md` | `docs/project-status-review.md`, README badges/status |
+| Current project status | `docs/HANDOFF.md` | `docs/development-summary.md`, `docs/project-status-review.md`, README badges/status |
 | Service architecture | `docs/jishuwendang.md` | `docs/HANDOFF.md`, `AGENTS.md` |
 | Productization sequence | `docs/productization-roadmap.md` | phase docs, status review |
 | Near-term productization sequence | `docs/productization-next-steps-design.md` | `docs/productization-roadmap.md`, latest phase and review docs |
@@ -482,7 +503,7 @@ Update:
 - The relevant `docs/phases/phase-*.md` implementation record.
 - The paired `docs/reviews/phase-*-review.md` review section.
 - `docs/HANDOFF.md` if current state, next work, metrics, service map, commands, or file maps changed.
-- `docs/project-status-review.md` for major checkpoints or readiness changes.
+- `docs/project-status-review.md` only for major checkpoints or readiness changes.
 - `docs/productization-roadmap.md` if roadmap sequencing, risk status, or release baseline changed.
 - README files only for public status, command, roadmap, or support-claim changes.
 
@@ -495,7 +516,8 @@ Update:
 - `docs/desktop-release-design.md` for release model and acceptance gates.
 - `docs/release-checklist.md` for operator steps.
 - `docs/project-documentation-design.md` if support wording changes.
-- `README.md`, `README.zh-CN.md`, `docs/HANDOFF.md`, and `docs/project-status-review.md` for public/current status.
+- `README.md`, `README.zh-CN.md`, and `docs/HANDOFF.md` for public/current status.
+- `docs/project-status-review.md` only when the release/platform change represents a checkpoint-level status shift.
 - `docs/release-evidence/` when a new template or real report is introduced.
 
 ### Test Count Or Verification Change
@@ -504,7 +526,7 @@ Update:
 
 - `README.md` and `README.zh-CN.md` badges and test section.
 - `docs/HANDOFF.md` current metrics and command notes.
-- `docs/project-status-review.md` quality metrics.
+- `docs/project-status-review.md` quality metrics only when doing a broader checkpoint refresh.
 - `docs/productization-roadmap.md` current baseline and final status.
 - `docs/jishuwendang.md` technical status.
 - `AGENTS.md` development instructions.
@@ -517,7 +539,8 @@ Update:
 
 - `docs/project-documentation-design.md` for the rule, matrix, reader path, or support wording being changed.
 - README files only if navigation, badges, support scope, or public status changes.
-- `docs/HANDOFF.md`, `docs/project-status-review.md`, and `docs/productization-roadmap.md` when the latest phase pointer or current documentation status changes.
+- `docs/HANDOFF.md` and `docs/productization-roadmap.md` when the latest phase pointer or current documentation status changes.
+- `docs/project-status-review.md` only if the documentation-only change is itself a checkpoint-level governance reset.
 - A phase doc and paired review when the change establishes durable project governance.
 
 Verification for documentation-only phases should include `git diff --check` and a targeted `rg` drift audit. Run heavier commands only when scripts, package commands, code snippets that must execute, or generated artifacts changed.

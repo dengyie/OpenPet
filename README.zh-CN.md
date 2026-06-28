@@ -147,13 +147,29 @@ npm run validate-plugin-submission-bundle -- plugin-submission-bundle --require-
 
 ## 文档
 
-- [CHANGELOG.md](./CHANGELOG.md)：版本记录。
-- [docs/README.md](./docs/README.md)：文档地图和阅读顺序。
-- [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md)：扩展生态边界、生命周期规则和三方作者指导。
-- [docs/HANDOFF.md](./docs/HANDOFF.md)：当前状态的维护交接文档。
-- [docs/project-context.json](./docs/project-context.json)：给程序/代理读取的紧凑项目上下文。
+开发工作先从 [docs/README.md](./docs/README.md) 进入。它是唯一的开发文档入口，并定义当前 live docs 的职责边界。
 
-优先从 `docs/README.md` 进入，不需要逐个浏览 `docs/` 下所有文件；历史 phase / review 文档保留为审计记录。
+建议阅读顺序：
+
+1. [docs/README.md](./docs/README.md)
+2. [docs/jishuwendang.md](./docs/jishuwendang.md)
+3. [docs/testing-strategy.md](./docs/testing-strategy.md)
+4. 需要接手当前工作时再看 [docs/HANDOFF.md](./docs/HANDOFF.md)
+5. 需要挑选下一里程碑时再看 [docs/openpet-current-todo-architecture.md](./docs/openpet-current-todo-architecture.md)
+
+当前 canonical live developer docs：
+
+- [docs/README.md](./docs/README.md)：开发文档索引和职责地图
+- [docs/jishuwendang.md](./docs/jishuwendang.md)：详细开发文档
+- [docs/testing-strategy.md](./docs/testing-strategy.md)：测试策略和合入门槛
+- [docs/HANDOFF.md](./docs/HANDOFF.md)：当前接手上下文
+- [docs/openpet-current-todo-architecture.md](./docs/openpet-current-todo-architecture.md)：当前里程碑和架构 TODO 地图
+- [docs/development-summary.md](./docs/development-summary.md)：英文快速工程摘要
+- [docs/project-context.json](./docs/project-context.json)：给程序/代理读取的机器上下文
+- [docs/project-documentation-design.md](./docs/project-documentation-design.md)：文档治理和归属规则
+
+历史实施与审计材料保留在 `docs/phases/`、`docs/reviews/` 和
+`docs/release-evidence/`。公开版本记录继续放在 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 验证基线
 
