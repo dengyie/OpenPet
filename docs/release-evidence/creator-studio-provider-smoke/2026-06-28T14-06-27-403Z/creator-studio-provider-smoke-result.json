@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "generatedAt": "2026-06-28T14:06:27.408Z",
+  "evidenceType": "creator-studio-provider-smoke",
+  "claimBoundary": "Creator Studio host-owned provider-path validation only; generated image and action-frame artifacts still require human review before any production asset-quality claim.",
+  "source": "scripts/run-creator-studio-provider-smoke.js",
+  "sessionId": "2026-06-28T14-06-27-403Z",
+  "sessionDir": "docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z",
+  "logPath": "docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/logs/openpet-app.jsonl",
+  "config": {
+    "provider": "openai-compatible",
+    "baseUrl": "[redacted-local-url]",
+    "model": "gpt-image-2",
+    "hasApiKey": true,
+    "timeoutMs": 420000,
+    "maxConcurrentJobs": 1
+  },
+  "backend": {
+    "requested": "provider"
+  },
+  "promptBuilder": {
+    "version": 1,
+    "mode": "single-action",
+    "actionId": "provider-smoke-wave",
+    "sectionCount": 11,
+    "warnings": [],
+    "promptPreview": "## Intent - You are generating an OpenPet desktop pet sprite asset. - This image is for a small floating desktop pet window, not a poster, wallpaper, avatar, scene illustration, sticker sheet, UI mockup, or character sheet. ## OpenPet Runtime Contract - Create exactly one pet character. - The pet must remain readable at 128px to 256px. - Use a clean sprite-like silhouette suitable for later action-frame generation and packaging. - Backend: provider. Model: gpt-image-2. ## Canvas And Boundary Rules - The complete pet character must be fully visible and centered. - Keep 8-12% safe padding on all sides. - Use no cropped ears, tail, paws, limbs, accessories, props, or motion arcs. - No body part may touch the image edge. - Use a stable body center, simple orthographic or mild 3/4 view, and avoid extreme perspective, close-up framing, half-body framing, or dynamic camera angles. ## Background And Transparency Policy - Make a clean PNG-friendly sprite source. - Use a plain clean background or transparent-friendly, easy cutout silhouette. - No scene background. - Use transparent-friendly, easy cutout silhouette wording; do not depend on a provider alpha-channel parameter. ## Character Shape Language - Use a compact desktop-pet body with a slightly oversized head for readability. - Keep a clear face, simple readable expression, simple limbs, visible paws, ears, tail, or equivalent identity features. - Prefer large readable shapes instead of tiny details. - Keep stable ground contact or a stable floating posture. - Avoid extra limbs, duplicate heads, merged paws, malformed tail, or unclear face. ## Generation Mode - Mode: single-action - Target: current - Style source: currentPet - Create an action pose that stays readable as an OpenPet sprite. - Do not redesign the pet; only change the required pose/action. ## Action Requirements - Action ID: provider-smoke-wave - Action name: 开心挥手 - Motion intent: 新增一个自定义动作：开心挥手，菜单手动触发，保持当前宠物风格。 - Loop policy: one-shot - Frame count intent",
+    "promptChars": 3322
+  },
+  "action": {
+    "actionId": "provider-smoke-wave",
+    "name": "开心挥手",
+    "frameCount": 16,
+    "loop": false,
+    "triggerType": "manual"
+  },
+  "generationConstraints": {
+    "width": 512,
+    "height": 512,
+    "transparent": true,
+    "timeoutOverrideMs": 420000
+  },
+  "healthCheck": {
+    "skipped": false,
+    "ok": true,
+    "code": "provider_healthy",
+    "message": "Image Provider is reachable",
+    "modelsProbe": "ok",
+    "availableModelCount": 46,
+    "currentModelDiscovered": true
+  },
+  "generation": {
+    "ok": true,
+    "requestId": "acd3d278-d947-4a5e-8c12-f6b6aa09c891",
+    "provider": "openai-compatible",
+    "model": "gpt-image-2",
+    "generatedAt": "2026-06-28T14:10:52.485Z",
+    "outputCount": 1,
+    "outputs": [
+      {
+        "dataRelativePath": "frames/base/0001.png",
+        "mimeType": "image/png",
+        "sha256": "7688eec3ad612adc55662341f81b24dcbc12ca98911cdf6de6d88fa09c054bb1"
+      }
+    ],
+    "usageEstimatedCostUsd": 0
+  },
+  "actionFrames": {
+    "ok": true,
+    "actionId": "provider-smoke-wave",
+    "frameCount": 16,
+    "frameWidth": 192,
+    "frameHeight": 208,
+    "framesDir": "frames/actions/provider-smoke-wave",
+    "qaPath": "qa/action-frame-validation.json",
+    "contactSheetPath": "qa/action-frame-contact-sheet.png",
+    "visibleFrameCount": 16,
+    "warningCount": 0,
+    "warnings": []
+  },
+  "manualReviewChecklist": [
+    "Inspect the contact sheet before claiming production asset quality.",
+    "Review QA JSON and generated frame readability before import or release evidence claims.",
+    "Treat this smoke as provider-path validation, not automatic artistic approval."
+  ],
+  "logs": [
+    {
+      "id": "b30ef4ea-72b5-4553-ac40-84b3bb47f9ca",
+      "timestamp": "2026-06-28T14:06:27.412Z",
+      "level": "info",
+      "actor": "system",
+      "scope": "image-generation",
+      "event": "imageGeneration.health.started",
+      "message": "Image Provider health check started",
+      "details": {
+        "requestId": "29dce617-4a7e-428b-8ecb-c35ca169fdf6",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2",
+        "baseUrlHost": "127.0.0.1:8317"
+      }
+    },
+    {
+      "id": "9ba8f53d-94c8-40ee-8b01-691956d9f873",
+      "timestamp": "2026-06-28T14:06:27.479Z",
+      "level": "info",
+      "actor": "system",
+      "scope": "image-generation",
+      "event": "imageGeneration.health.completed",
+      "message": "Image Provider health check completed",
+      "details": {
+        "requestId": "29dce617-4a7e-428b-8ecb-c35ca169fdf6",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2",
+        "baseUrlHost": "127.0.0.1:8317",
+        "durationMs": 68,
+        "errorCode": "",
+        "status": 200,
+        "modelsProbe": "ok",
+        "discoveredModelCount": 46
+      }
+    },
+    {
+      "id": "c01381bb-de58-459a-a6a3-7b289882a150",
+      "timestamp": "2026-06-28T14:06:27.480Z",
+      "level": "info",
+      "actor": "system",
+      "scope": "image-generation",
+      "event": "imageGeneration.request.started",
+      "message": "Image generation request started",
+      "details": {
+        "requestId": "acd3d278-d947-4a5e-8c12-f6b6aa09c891",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2",
+        "width": 512,
+        "height": 512,
+        "requestedTransparent": true
+      }
+    },
+    {
+      "id": "d073cac3-cea2-4639-9935-0cd41eb37e51",
+      "timestamp": "2026-06-28T14:06:27.480Z",
+      "level": "info",
+      "actor": "system",
+      "scope": "image-generation",
+      "event": "imageGeneration.provider.request.started",
+      "message": "Image Provider request started",
+      "details": {
+        "requestId": "acd3d278-d947-4a5e-8c12-f6b6aa09c891",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2",
+        "baseUrlHost": "127.0.0.1:8317",
+        "width": 512,
+        "height": 512,
+        "requestedTransparent": true,
+        "backgroundMode": "omitted",
+        "timeoutMs": 420000
+      }
+    },
+    {
+      "id": "8a9529a2-70da-424c-9109-c7fb1accba40",
+      "timestamp": "2026-06-28T14:10:52.484Z",
+      "level": "info",
+      "actor": "system",
+      "scope": "image-generation",
+      "event": "imageGeneration.provider.request.completed",
+      "message": "Image Provider request completed",
+      "details": {
+        "requestId": "acd3d278-d947-4a5e-8c12-f6b6aa09c891",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2",
+        "baseUrlHost": "127.0.0.1:8317",
+        "status": 200,
+        "durationMs": 265004,
+        "outputCount": 1
+      }
+    },
+    {
+      "id": "a1cfddd4-eb42-4c50-8966-9a70da16b73c",
+      "timestamp": "2026-06-28T14:10:52.485Z",
+      "level": "info",
+      "actor": "system",
+      "scope": "image-generation",
+      "event": "imageGeneration.request.completed",
+      "message": "Image generation request completed",
+      "details": {
+        "requestId": "acd3d278-d947-4a5e-8c12-f6b6aa09c891",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2",
+        "durationMs": 265005,
+        "outputCount": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,251 @@
+{
+  "ok": true,
+  "actionId": "provider-smoke-wave",
+  "name": "开心挥手",
+  "sourceRelativePath": "frames/base/0001.png",
+  "frameCount": 16,
+  "frameWidth": 192,
+  "frameHeight": 208,
+  "loop": false,
+  "playback": {
+    "loop": false,
+    "frameDurationsMs": [
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      120,
+      220
+    ],
+    "holdLastFrameMs": 220,
+    "totalDurationMs": 2020,
+    "timeline": [
+      {
+        "fileName": "0001.png",
+        "frameIndex": 0,
+        "durationMs": 120,
+        "startMs": 0,
+        "endMs": 120
+      },
+      {
+        "fileName": "0002.png",
+        "frameIndex": 1,
+        "durationMs": 120,
+        "startMs": 120,
+        "endMs": 240
+      },
+      {
+        "fileName": "0003.png",
+        "frameIndex": 2,
+        "durationMs": 120,
+        "startMs": 240,
+        "endMs": 360
+      },
+      {
+        "fileName": "0004.png",
+        "frameIndex": 3,
+        "durationMs": 120,
+        "startMs": 360,
+        "endMs": 480
+      },
+      {
+        "fileName": "0005.png",
+        "frameIndex": 4,
+        "durationMs": 120,
+        "startMs": 480,
+        "endMs": 600
+      },
+      {
+        "fileName": "0006.png",
+        "frameIndex": 5,
+        "durationMs": 120,
+        "startMs": 600,
+        "endMs": 720
+      },
+      {
+        "fileName": "0007.png",
+        "frameIndex": 6,
+        "durationMs": 120,
+        "startMs": 720,
+        "endMs": 840
+      },
+      {
+        "fileName": "0008.png",
+        "frameIndex": 7,
+        "durationMs": 120,
+        "startMs": 840,
+        "endMs": 960
+      },
+      {
+        "fileName": "0009.png",
+        "frameIndex": 8,
+        "durationMs": 120,
+        "startMs": 960,
+        "endMs": 1080
+      },
+      {
+        "fileName": "0010.png",
+        "frameIndex": 9,
+        "durationMs": 120,
+        "startMs": 1080,
+        "endMs": 1200
+      },
+      {
+        "fileName": "0011.png",
+        "frameIndex": 10,
+        "durationMs": 120,
+        "startMs": 1200,
+        "endMs": 1320
+      },
+      {
+        "fileName": "0012.png",
+        "frameIndex": 11,
+        "durationMs": 120,
+        "startMs": 1320,
+        "endMs": 1440
+      },
+      {
+        "fileName": "0013.png",
+        "frameIndex": 12,
+        "durationMs": 120,
+        "startMs": 1440,
+        "endMs": 1560
+      },
+      {
+        "fileName": "0014.png",
+        "frameIndex": 13,
+        "durationMs": 120,
+        "startMs": 1560,
+        "endMs": 1680
+      },
+      {
+        "fileName": "0015.png",
+        "frameIndex": 14,
+        "durationMs": 120,
+        "startMs": 1680,
+        "endMs": 1800
+      },
+      {
+        "fileName": "0016.png",
+        "frameIndex": 15,
+        "durationMs": 220,
+        "startMs": 1800,
+        "endMs": 2020
+      }
+    ]
+  },
+  "triggerProposal": {
+    "type": "manual",
+    "notes": "Creator Studio provider smoke uses a review-only manual trigger."
+  },
+  "contactSheetRelativePath": "qa/action-frame-contact-sheet.png",
+  "frames": [
+    {
+      "fileName": "0001.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 20381
+    },
+    {
+      "fileName": "0002.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 20926
+    },
+    {
+      "fileName": "0003.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 21519
+    },
+    {
+      "fileName": "0004.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 22143
+    },
+    {
+      "fileName": "0005.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 22819
+    },
+    {
+      "fileName": "0006.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 23745
+    },
+    {
+      "fileName": "0007.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 24573
+    },
+    {
+      "fileName": "0008.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 25151
+    },
+    {
+      "fileName": "0009.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 25154
+    },
+    {
+      "fileName": "0010.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 24575
+    },
+    {
+      "fileName": "0011.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 23742
+    },
+    {
+      "fileName": "0012.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 22809
+    },
+    {
+      "fileName": "0013.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 22140
+    },
+    {
+      "fileName": "0014.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 21516
+    },
+    {
+      "fileName": "0015.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 20937
+    },
+    {
+      "fileName": "0016.png",
+      "width": 192,
+      "height": 208,
+      "visiblePixels": 20377
+    }
+  ],
+  "warnings": []
+}

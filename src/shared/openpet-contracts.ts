@@ -233,6 +233,158 @@ export interface AiPersonaDraftViewState {
   compiledPersonaPrompt: string
 }
 
+export type AiProviderSmokeCheckStatus = 'pass' | 'fail' | 'warning' | 'skipped'
+
+export interface AiProviderSmokeSecretSummary {
+  apiKeyConfigured: boolean
+  apiKeyPreview: string
+}
+
+export interface AiProviderSmokeCheck {
+  id: 'models' | 'chat-completions' | 'image-generations' | string
+  status: AiProviderSmokeCheckStatus
+  statusCode?: number
+  elapsedMs?: number
+  message: string
+  discoveredModelCount?: number
+  containsChatModel?: boolean
+  containsImageModel?: boolean
+  models?: string[]
+  replyChars?: number
+  imageCount?: number
+  backgroundMode?: string
+}
+
+export interface AiProviderSmokeReport {
+  schemaVersion: number
+  generatedAt: string
+  evidenceType: 'ai-provider-smoke'
+  claimBoundary: string
+  provider: string
+  baseUrl: string
+  chatModel: string
+  imageModel: string
+  includeImage: boolean
+  secret: AiProviderSmokeSecretSummary
+  checks: AiProviderSmokeCheck[]
+  ok: boolean
+}
+
+export interface CreatorStudioProviderSmokeConfig {
+  provider: string
+  baseUrl: string
+  model: string
+  hasApiKey: boolean
+  timeoutMs: number
+  maxConcurrentJobs: number
+}
+
+export interface CreatorStudioProviderSmokePromptBuilderSummary {
+  version: number
+  mode: string
+  actionId: string
+  sectionCount: number
+  warnings: string[]
+  promptPreview: string
+  promptChars: number
+}
+
+export interface CreatorStudioProviderSmokeActionSummary {
+  actionId: string
+  name: string
+  frameCount: number
+  loop: boolean
+  triggerType: string
+}
+
+export interface CreatorStudioProviderSmokeGenerationConstraints {
+  width: number
+  height: number
+  transparent: boolean
+  timeoutOverrideMs: number
+}
+
+export interface CreatorStudioProviderSmokeHealthCheck {
+  skipped: boolean
+  ok: boolean
+  code?: string
+  message?: string
+  modelsProbe?: string
+  availableModelCount?: number
+  currentModelDiscovered?: boolean
+}
+
+export interface CreatorStudioProviderSmokeOutput {
+  dataRelativePath: string
+  mimeType: string
+  sha256: string
+}
+
+export interface CreatorStudioProviderSmokeGenerationSummary {
+  ok: boolean
+  requestId?: string
+  provider?: string
+  model?: string
+  generatedAt?: string
+  outputCount: number
+  outputs?: CreatorStudioProviderSmokeOutput[]
+  usageEstimatedCostUsd?: number
+}
+
+export interface CreatorStudioProviderSmokeActionFramesSummary {
+  ok: boolean
+  actionId?: string
+  frameCount?: number
+  frameWidth?: number
+  frameHeight?: number
+  framesDir?: string
+  qaPath?: string
+  contactSheetPath?: string
+  visibleFrameCount?: number
+  warningCount?: number
+  warnings?: string[]
+}
+
+export interface CreatorStudioProviderSmokeLogEntry {
+  id: string
+  timestamp: string
+  level: string
+  actor: string
+  scope: string
+  event: string
+  message: string
+  details: JsonObject
+}
+
+export interface CreatorStudioProviderSmokeReport {
+  schemaVersion: number
+  ok: boolean
+  generatedAt: string
+  evidenceType: 'creator-studio-provider-smoke'
+  claimBoundary: string
+  source: string
+  sessionId: string
+  sessionDir: string
+  logPath: string
+  resultPath?: string
+  config: CreatorStudioProviderSmokeConfig
+  backend: {
+    requested: string
+  }
+  promptBuilder: CreatorStudioProviderSmokePromptBuilderSummary
+  action: CreatorStudioProviderSmokeActionSummary
+  generationConstraints: CreatorStudioProviderSmokeGenerationConstraints
+  healthCheck: CreatorStudioProviderSmokeHealthCheck
+  generation: CreatorStudioProviderSmokeGenerationSummary
+  actionFrames: CreatorStudioProviderSmokeActionFramesSummary
+  manualReviewChecklist: string[]
+  logs: CreatorStudioProviderSmokeLogEntry[]
+  error?: {
+    name: string
+    message: string
+  }
+}
+
 export interface AiConfigViewState {
   enabled: boolean
   provider: string

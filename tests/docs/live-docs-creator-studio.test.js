@@ -6,6 +6,15 @@ const path = require('node:path')
 const repoRoot = path.resolve(__dirname, '../..')
 
 const readText = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf-8')
+const readJson = (relativePath) => JSON.parse(readText(relativePath))
+const fileExists = (relativePath) => fs.existsSync(path.join(repoRoot, relativePath))
+const readPngDimensions = (relativePath) => {
+  const buffer = fs.readFileSync(path.join(repoRoot, relativePath))
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20)
+  }
+}
 
 test('live docs describe real-atlas full-pet packaging as landed Creator Studio behavior', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
@@ -84,6 +93,62 @@ test('live docs mention the Creator Studio provider smoke CLI as the current hos
       `${name} should mention the Creator Studio provider smoke CLI`
     )
   }
+})
+
+test('live docs mention archived real Creator Studio provider smoke evidence and its claim boundary', () => {
+  const evidenceDir = 'docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z'
+  const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
+  const developmentSummary = readText('docs/development-summary.md')
+  const handoff = readText('docs/HANDOFF.md')
+  const projectStatusReview = readText('docs/project-status-review.md')
+  const evidenceReadme = readText(`${evidenceDir}/README.md`)
+  const evidenceReportRaw = readText(`${evidenceDir}/creator-studio-provider-smoke-result.json`)
+  const evidenceReport = readJson(`${evidenceDir}/creator-studio-provider-smoke-result.json`)
+  const evidenceLogs = readText(`${evidenceDir}/logs/openpet-app.jsonl`)
+  const evidenceQaRaw = readText(`${evidenceDir}/qa/action-frame-validation.json`)
+
+  const archivePathPattern = /docs\/release-evidence\/creator-studio-provider-smoke\/2026-06-28T14-06-27-403Z\//i
+  const timeoutPattern = /420000ms|420000ms timeout override/i
+  const claimBoundaryPattern = /not a production asset-quality approval|human review of generated image quality|human review of the generated image and contact sheet/i
+  const sensitiveEvidencePattern = /sk-[A-Za-z0-9_-]+|Authorization|Bearer|\/Users\/mango|\.codex\/worktrees|release\/creator-studio-provider-smoke/i
+
+  for (const [name, content] of [
+    ['openpet-current-todo-architecture.md', todoArchitecture],
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
+  ]) {
+    assert.match(
+      content,
+      archivePathPattern,
+      `${name} should mention the archived real Creator Studio provider smoke evidence path`
+    )
+  }
+
+  assert.match(evidenceReadme, /265s|265004ms/i, 'evidence README should record the long-running provider duration')
+  assert.match(evidenceReadme, timeoutPattern, 'evidence README should record the timeout override used for the successful smoke run')
+  assert.match(evidenceReadme, /1254x1254/i, 'evidence README should record the archived source PNG dimensions')
+  assert.match(evidenceReadme, claimBoundaryPattern, 'evidence README should keep the asset-quality claim boundary explicit')
+  assert.doesNotMatch(
+    [evidenceReadme, evidenceReportRaw, evidenceLogs, evidenceQaRaw].join('\n'),
+    sensitiveEvidencePattern,
+    'text evidence should not archive raw secrets or local worktree paths'
+  )
+  assert.equal(evidenceReport.ok, true, 'evidence report should record a successful smoke run')
+  assert.equal(evidenceReport.config.model, 'gpt-image-2', 'evidence report should record the verified image model')
+  assert.equal(evidenceReport.generationConstraints.width, 512, 'evidence report should record the verified width')
+  assert.equal(evidenceReport.generationConstraints.height, 512, 'evidence report should record the verified height')
+  assert.equal(evidenceReport.generationConstraints.timeoutOverrideMs, 420000, 'evidence report should record the temporary timeout override')
+  assert.equal(evidenceReport.actionFrames.warningCount, 0, 'evidence report should preserve action-frame QA warnings')
+  assert.deepEqual(
+    readPngDimensions(`${evidenceDir}/frames/base/0001.png`),
+    { width: 1254, height: 1254 },
+    'source image artifact dimensions should be recorded separately from requested constraints'
+  )
+  assert.equal(fileExists(`${evidenceDir}/frames/base/0001.png`), true, 'source image artifact should be archived')
+  assert.equal(fileExists(`${evidenceDir}/qa/action-frame-contact-sheet.png`), true, 'contact-sheet artifact should be archived')
+  assert.equal(fileExists(`${evidenceDir}/qa/action-frame-validation.json`), true, 'action-frame QA JSON should be archived')
+  assert.equal(fileExists(`${evidenceDir}/logs/openpet-app.jsonl`), true, 'redacted image-generation logs should be archived')
 })
 
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {

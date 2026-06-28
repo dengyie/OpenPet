@@ -192,6 +192,9 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
   })
 
   assert.equal(result.ok, true)
+  assert.equal(result.schemaVersion, 1)
+  assert.equal(result.evidenceType, 'creator-studio-provider-smoke')
+  assert.match(result.claimBoundary, /provider-path validation only/i)
   assert.equal(result.config.provider, 'openai-compatible')
   assert.equal(result.config.model, 'gpt-image-2')
   assert.equal(result.healthCheck.ok, true)
@@ -245,6 +248,9 @@ test('runCreatorStudioProviderSmoke fails honestly when the saved image provider
   })
 
   assert.equal(result.ok, false)
+  assert.equal(result.schemaVersion, 1)
+  assert.equal(result.evidenceType, 'creator-studio-provider-smoke')
+  assert.match(result.claimBoundary, /provider-path validation only/i)
   assert.equal(result.healthCheck.skipped, false)
   assert.equal(result.healthCheck.ok, false)
   assert.match(result.healthCheck.message, /API key is missing/i)

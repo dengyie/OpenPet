@@ -1,5 +1,6 @@
 import type {
   ActionTriggerProposalPreviewResult,
+  AiProviderSmokeReport,
   ControlCenterSettings,
   CatalogInstallSelection,
   CreatorActionsMutationResult,
@@ -14,6 +15,7 @@ import type {
   CreatorPackManifestMutationRequest,
   CreatorPackManifestMutationResult,
   CreatorPackManifestReadResponse,
+  CreatorStudioProviderSmokeReport,
   DesktopPickerArchiveManifest,
   DesktopPickerSmokeReport,
   DesktopPickerEvidenceSummary,
@@ -238,6 +240,153 @@ const triggerProposalPreviewFixture = {
     updatedAt: '2026-06-22T10:00:00.000Z'
   }
 } satisfies ActionTriggerProposalPreviewResult
+
+const aiProviderSmokeFixture = {
+  schemaVersion: 1,
+  generatedAt: '2026-06-28T11:08:10.554Z',
+  evidenceType: 'ai-provider-smoke',
+  claimBoundary: 'OpenPet development gateway model discovery and chat completion smoke only; image generation was not executed.',
+  provider: 'openai-compatible',
+  baseUrl: 'http://127.0.0.1:8317/v1',
+  chatModel: 'gpt-5.5',
+  imageModel: 'gpt-image-2',
+  includeImage: false,
+  secret: {
+    apiKeyConfigured: true,
+    apiKeyPreview: 'redacted'
+  },
+  checks: [
+    {
+      id: 'models',
+      status: 'pass',
+      statusCode: 200,
+      elapsedMs: 150,
+      discoveredModelCount: 45,
+      containsChatModel: true,
+      containsImageModel: true,
+      models: ['gpt-5.5', 'gpt-image-2'],
+      message: 'selected models are present or image check is disabled'
+    },
+    {
+      id: 'chat-completions',
+      status: 'pass',
+      statusCode: 200,
+      elapsedMs: 2780,
+      replyChars: 2,
+      message: 'chat completion returned text'
+    },
+    {
+      id: 'image-generations',
+      status: 'skipped',
+      message: 'image generation is opt-in; pass --include-image to run this potentially billable check'
+    }
+  ],
+  ok: true
+} satisfies AiProviderSmokeReport
+
+const creatorStudioProviderSmokeFixture = {
+  schemaVersion: 1,
+  ok: true,
+  generatedAt: '2026-06-28T14:06:27.408Z',
+  evidenceType: 'creator-studio-provider-smoke',
+  claimBoundary: 'Creator Studio host-owned provider-path validation only; generated image and action-frame artifacts still require human review before any production asset-quality claim.',
+  source: 'scripts/run-creator-studio-provider-smoke.js',
+  sessionId: '2026-06-28T14-06-27-403Z',
+  sessionDir: 'docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z',
+  logPath: 'docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/logs/openpet-app.jsonl',
+  resultPath: 'docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/creator-studio-provider-smoke-result.json',
+  config: {
+    provider: 'openai-compatible',
+    baseUrl: '[redacted-local-url]',
+    model: 'gpt-image-2',
+    hasApiKey: true,
+    timeoutMs: 420000,
+    maxConcurrentJobs: 1
+  },
+  backend: {
+    requested: 'provider'
+  },
+  promptBuilder: {
+    version: 1,
+    mode: 'single-action',
+    actionId: 'provider-smoke-wave',
+    sectionCount: 11,
+    warnings: [],
+    promptPreview: '## Intent - You are generating an OpenPet desktop pet sprite asset.',
+    promptChars: 3322
+  },
+  action: {
+    actionId: 'provider-smoke-wave',
+    name: '开心挥手',
+    frameCount: 16,
+    loop: false,
+    triggerType: 'manual'
+  },
+  generationConstraints: {
+    width: 512,
+    height: 512,
+    transparent: true,
+    timeoutOverrideMs: 420000
+  },
+  healthCheck: {
+    skipped: false,
+    ok: true,
+    code: 'provider_healthy',
+    message: 'Image Provider is reachable',
+    modelsProbe: 'ok',
+    availableModelCount: 46,
+    currentModelDiscovered: true
+  },
+  generation: {
+    ok: true,
+    requestId: 'acd3d278-d947-4a5e-8c12-f6b6aa09c891',
+    provider: 'openai-compatible',
+    model: 'gpt-image-2',
+    generatedAt: '2026-06-28T14:10:52.485Z',
+    outputCount: 1,
+    outputs: [{
+      dataRelativePath: 'frames/base/0001.png',
+      mimeType: 'image/png',
+      sha256: '7688eec3ad612adc55662341f81b24dcbc12ca98911cdf6de6d88fa09c054bb1'
+    }],
+    usageEstimatedCostUsd: 0
+  },
+  actionFrames: {
+    ok: true,
+    actionId: 'provider-smoke-wave',
+    frameCount: 16,
+    frameWidth: 192,
+    frameHeight: 208,
+    framesDir: 'frames/actions/provider-smoke-wave',
+    qaPath: 'qa/action-frame-validation.json',
+    contactSheetPath: 'qa/action-frame-contact-sheet.png',
+    visibleFrameCount: 16,
+    warningCount: 0,
+    warnings: []
+  },
+  manualReviewChecklist: [
+    'Inspect the contact sheet before claiming production asset quality.',
+    'Review QA JSON and generated frame readability before import or release evidence claims.',
+    'Treat this smoke as provider-path validation, not automatic artistic approval.'
+  ],
+  logs: [
+    {
+      id: 'b30ef4ea-72b5-4553-ac40-84b3bb47f9ca',
+      timestamp: '2026-06-28T14:06:27.412Z',
+      level: 'info',
+      actor: 'system',
+      scope: 'image-generation',
+      event: 'imageGeneration.health.started',
+      message: 'Image Provider health check started',
+      details: {
+        requestId: '29dce617-4a7e-428b-8ecb-c35ca169fdf6',
+        provider: 'openai-compatible',
+        model: 'gpt-image-2',
+        baseUrlHost: '127.0.0.1:8317'
+      }
+    }
+  ]
+} satisfies CreatorStudioProviderSmokeReport
 
 const creatorAssetsInspectFramesRequestFixture = {
   relativePath: 'assets/actions/wave',

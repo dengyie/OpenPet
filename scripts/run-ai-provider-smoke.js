@@ -340,7 +340,12 @@ const runAiProviderSmoke = async ({
     await checkImage(context)
   ]
   const report = {
+    schemaVersion: 1,
     generatedAt: now().toISOString(),
+    evidenceType: 'ai-provider-smoke',
+    claimBoundary: includeImage
+      ? 'OpenPet development gateway model discovery, chat completion, and opt-in image generation smoke only; image quality and asset readiness still require human review.'
+      : 'OpenPet development gateway model discovery and chat completion smoke only; image generation was not executed.',
     provider: 'openai-compatible',
     baseUrl: normalizedBaseUrl,
     chatModel: normalizedChatModel,

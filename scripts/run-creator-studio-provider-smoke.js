@@ -334,8 +334,11 @@ const runCreatorStudioProviderSmoke = async ({
   })
 
   const summary = {
+    schemaVersion: 1,
     ok: false,
     generatedAt,
+    evidenceType: 'creator-studio-provider-smoke',
+    claimBoundary: 'Creator Studio host-owned provider-path validation only; generated image and action-frame artifacts still require human review before any production asset-quality claim.',
     source: 'scripts/run-creator-studio-provider-smoke.js',
     sessionId: sessionPaths.sessionId,
     sessionDir: sessionPaths.sessionDir,

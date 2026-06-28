@@ -110,6 +110,9 @@ test('runAiProviderSmoke writes a sanitized report for chat and opt-in image che
     })
 
     assert.equal(report.ok, true)
+    assert.equal(report.schemaVersion, 1)
+    assert.equal(report.evidenceType, 'ai-provider-smoke')
+    assert.match(report.claimBoundary, /image quality and asset readiness still require human review/i)
     assert.equal(report.generatedAt, '2026-06-27T00:00:00.000Z')
     assert.equal(report.provider, 'openai-compatible')
     assert.equal(report.baseUrl, provider.baseUrl)
@@ -146,6 +149,9 @@ test('runAiProviderSmoke skips image generation unless explicitly requested', as
     })
 
     assert.equal(report.ok, true)
+    assert.equal(report.schemaVersion, 1)
+    assert.equal(report.evidenceType, 'ai-provider-smoke')
+    assert.match(report.claimBoundary, /image generation was not executed/i)
     assert.equal(report.checks.find((check) => check.id === 'image-generations').status, 'skipped')
     assert.deepEqual(provider.requests.map((request) => `${request.method} ${request.url}`), [
       'GET /v1/models',
