@@ -210,7 +210,57 @@ test('pet context menu opens a positioned menu window and sends action commands 
   }])
 })
 
-test('pet context menu exposes desktop chat entry when chat window service is available', async () => {
+test('pet context menu hides the action submenu when no manual actions are available', async () => {
+  const ipcMain = createIpcMainStub()
+  const petWindow = {
+    isDestroyed: () => false,
+    getBounds: () => ({ x: 520, y: 240, width: 150, height: 150 }),
+    webContents: {
+      send: () => {}
+    }
+  }
+  let menuWindowRequest = null
+  const browserWindowService = {
+    fromWebContents: () => petWindow
+  }
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: browserWindowService,
+    app: { quit: () => {} },
+    dialog: {},
+    Menu: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      petService: {
+        ...createRequiredServices().petService,
+        getAnimations: () => ({
+          actions: [
+            { id: 'idle', label: '待机', kind: 'idle' },
+            { id: 'running', label: '奔跑', kind: 'working' }
+          ]
+        })
+      }
+    }),
+    getPetWindow: () => petWindow,
+    ipcMainService: ipcMain,
+    showContextMenuWindow: (request) => {
+      menuWindowRequest = request
+    }
+  })
+
+  await ipcMain.handlers.get(IPC.PET_SHOW_CONTEXT_MENU)({
+    sender: petWindow.webContents
+  }, { x: 70, y: 80 })
+
+  assert.deepEqual(menuWindowRequest.items.map((item) => item.label || item.type), ['设置', 'separator', '退出'])
+})
+
+test('pet context menu prefers bubble chat for the primary chat entry and keeps desktop chat as an extended panel', async () => {
   const ipcMain = createIpcMainStub()
   const petWindow = {
     isDestroyed: () => false,
@@ -219,7 +269,8 @@ test('pet context menu exposes desktop chat entry when chat window service is av
       send: () => {}
     }
   }
-  let openChatCalls = 0
+  let openBubbleChatCalls = 0
+  let openDesktopChatCalls = 0
   let menuWindowRequest = null
   const browserWindowService = {
     fromWebContents: () => petWindow
@@ -239,8 +290,14 @@ test('pet context menu exposes desktop chat entry when chat window service is av
     ...createRequiredServices(),
     getPetWindow: () => petWindow,
     ipcMainService: ipcMain,
+    petBubbleChatWindowService: {
+      open: () => {
+        openBubbleChatCalls += 1
+        return { visible: true, hasWindow: true }
+      }
+    },
     petChatWindowService: {
-      open: () => { openChatCalls += 1 }
+      open: () => { openDesktopChatCalls += 1 }
     },
     showContextMenuWindow: (request) => {
       menuWindowRequest = request
@@ -252,15 +309,76 @@ test('pet context menu exposes desktop chat entry when chat window service is av
   }, { x: 70, y: 80 })
 
   const chatItem = menuWindowRequest.items.find((item) => item.label === '和宠物聊天')
+  const desktopChatItem = menuWindowRequest.items.find((item) => item.label === '打开扩展聊天面板')
   const actionItem = menuWindowRequest.items.find((item) => item.label === '动作')
   assert.ok(chatItem)
+  assert.ok(desktopChatItem)
   assert.ok(actionItem)
   assert.deepEqual(actionItem.submenu.map((item) => item.label), ['散步', '挥手'])
-  assert.equal(menuWindowRequest.size.height, 176)
+  assert.equal(menuWindowRequest.size.height, 206)
+
+  menuWindowRequest.onSelect(chatItem)
+  menuWindowRequest.onSelect(desktopChatItem)
+
+  assert.equal(openBubbleChatCalls, 1)
+  assert.equal(openDesktopChatCalls, 1)
+})
+
+test('pet context menu falls back to the extended desktop chat when bubble chat is disabled', async () => {
+  const ipcMain = createIpcMainStub()
+  const petWindow = {
+    isDestroyed: () => false,
+    getBounds: () => ({ x: 500, y: 240, width: 150, height: 150 }),
+    webContents: {
+      send: () => {}
+    }
+  }
+  let openBubbleChatCalls = 0
+  let openDesktopChatCalls = 0
+  let menuWindowRequest = null
+  const browserWindowService = {
+    fromWebContents: () => petWindow
+  }
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: browserWindowService,
+    app: { quit: () => {} },
+    dialog: {},
+    Menu: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices(),
+    getPetWindow: () => petWindow,
+    ipcMainService: ipcMain,
+    petBubbleChatWindowService: {
+      open: () => {
+        openBubbleChatCalls += 1
+        return { visible: false, hasWindow: false }
+      }
+    },
+    petChatWindowService: {
+      open: () => { openDesktopChatCalls += 1 }
+    },
+    showContextMenuWindow: (request) => {
+      menuWindowRequest = request
+    }
+  })
+
+  await ipcMain.handlers.get(IPC.PET_SHOW_CONTEXT_MENU)({
+    sender: petWindow.webContents
+  }, { x: 70, y: 80 })
+
+  const chatItem = menuWindowRequest.items.find((item) => item.label === '和宠物聊天')
+  assert.ok(chatItem)
 
   menuWindowRequest.onSelect(chatItem)
 
-  assert.equal(openChatCalls, 1)
+  assert.equal(openBubbleChatCalls, 1)
+  assert.equal(openDesktopChatCalls, 1)
 })
 
 test('pet context menu hides the action submenu when no manual actions are available', async () => {
