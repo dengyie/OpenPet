@@ -8,9 +8,6 @@
  * 不包含：窗口创建细节、IPC 处理、设置读写、屏幕计算 —— 均在 src/main/ 中。
  */
 const { app, BrowserWindow, dialog, shell, screen } = require('electron')
-const fs = require('fs')
-const path = require('path')
-const { IPC } = require('./src/shared/ipc-channels')
 const { clampToWorkArea, getMovementState } = require('./src/main/screen')
 const { applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow } = require('./src/main/window')
 const { createPetChatWindowManager } = require('./src/main/pet-chat-window')
@@ -45,334 +42,81 @@ const { configureSingleInstanceLock } = require('./src/main/single-instance')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
 const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
+const { createOpenPetRuntime } = require('./src/main/bootstrap/create-openpet-runtime')
 const packageJson = require('./package.json')
 
 let petWindow = null
 const getPetWindow = () => petWindow
 
-// Keep the pre-OpenPet userData directory so upgrades retain settings,
-// secrets, installed plugins, pet packs, and local service state.
-// Electron's single-instance lock is scoped by app identity/user data,
-// so configure this before requesting the lock.
 configureUserDataPath({ app })
 
-// ── 单实例锁：同一时间只允许一个宠物窗口 ──
 const canBootstrap = configureSingleInstanceLock({ app, getPetWindow })
 
 const bootstrapOpenPet = () => {
   const { loadSettings, saveSettings, syncLoginItemSettings } = require('./src/main/settings')
-  const eventBus = createEventBus()
-  const settingsService = createSettingsService({
-    eventBus,
-    loadSettings,
-    saveSettings,
-    syncSideEffects: (settings) => syncLoginItemSettings(settings.autoStart)
-  })
-  let catalogService = null
-  const petPackService = createPetPackService({
-    settingsService,
-    userPacksDir: path.join(app.getPath('userData'), 'pet-packs'),
-    projectRoot: __dirname,
-    getPetPackBlockStatus: (candidate) => catalogService?.getPetPackBlockStatus(candidate) || { blocked: false, reasons: [] }
-  })
-  const actionService = createActionService({
-    petPackService,
-    saveLegacyAnimations: (config) => {
-      const configPath = path.join(__dirname, 'cat_anime', 'animations.json')
-      fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`)
-      return config
-    }
-  })
-  const petService = createPetService({ eventBus, settingsService, actionService })
-  const secretService = createSecretService()
-  const appLogService = createAppLogService({
-    logDir: path.join(app.getPath('userData'), 'logs')
-  })
-  const aiService = createAiService({ settingsService, secretService, appLogService })
-  const legacySettings = settingsService.get()
-  const aiTalkStore = createAiTalkStore({
-    storePath: path.join(app.getPath('userData'), 'ai-talk-store.json'),
-    legacyConversationMigration: {
-      petPackId: legacySettings?.petPacks?.activePackId || 'legacy-cat',
-      conversations: legacySettings?.ai?.conversations || {}
-    }
-  })
-  const petUtteranceLogService = createPetUtteranceLogService({ aiTalkStore, appLogService })
-  const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService })
-  const aiTalkMigration = aiTalkStore.getMigrationSummary?.()
-  if (aiTalkMigration?.migrated) {
-    appLogService.record({
-      scope: 'ai-talk',
-      level: 'info',
-      actor: 'system',
-      event: 'ai-talk.migration.legacy-conversations',
-      message: 'Legacy AI conversations migrated into AI Talk store',
-      details: aiTalkMigration
-    })
-  }
-  const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
-  const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
-  const localHttpService = createLocalHttpService({ petService, settingsService })
-  const aboutService = createAboutService({ app, packageJson })
-  const petMovementPolicy = createPetMovementPolicy({ screen })
-  const petChatWindowService = createPetChatWindowManager({
-    getPetWindow,
-    settingsService,
-    appLogService,
+
+  return createOpenPetRuntime({
+    app,
     BrowserWindow,
+    dialog,
+    shell,
     screen,
-    app,
-    createSettingsWindow: () => createSettingsWindow(petWindow)
-  })
-  const petBubbleChatWindowService = createPetBubbleChatWindowManager({
-    getPetWindow,
-    settingsService,
-    appLogService,
-    BrowserWindow,
-    screen
-  })
-  try {
-    console.log(`OpenPet app log: ${appLogService.logPath}`)
-  } catch (error) {
-    console.warn(`OpenPet app log unavailable: ${error.message}`)
-  }
-  let pluginService = null
-  registerAppLifecycleLogs({
-    app,
-    appLogService,
-    onBeforeQuit: () => {
-      pluginService?.stopAllServices?.()
-    }
-  })
-  const actionImportService = createActionImportService({
-    framesRoot: path.join(__dirname, 'cat_anime', 'flames'),
-    spritesDir: path.join(__dirname, 'cat_anime', 'sprites'),
-    configPath: path.join(__dirname, 'cat_anime', 'animations.json')
-  })
-  const cursorAssetService = createCursorAssetService({
-    cursorDir: path.join(app.getPath('userData'), 'cursors')
-  })
-  const hasCursorRepairChanged = (before = {}, after = {}) => (
-    ['assetPath', 'assetUrl', 'fileName', 'width', 'height', 'hotspotX', 'hotspotY']
-      .some((key) => before?.[key] !== after?.[key])
-  )
-  const applyCursorRepairToCollection = (customCursors = [], previousCursor = {}, repairedCursor = {}) => (
-    Array.isArray(customCursors)
-      ? customCursors.map((cursor) => {
-        const isSameAssetPath = Boolean(previousCursor.assetPath && cursor?.assetPath === previousCursor.assetPath)
-        const isSameAssetUrl = Boolean(previousCursor.assetUrl && cursor?.assetUrl === previousCursor.assetUrl)
-        const isRepairedCursor = isSameAssetPath || isSameAssetUrl
-        return isRepairedCursor
-          ? {
-              ...cursor,
-              assetPath: repairedCursor.assetPath,
-              assetUrl: repairedCursor.assetUrl,
-              fileName: repairedCursor.fileName,
-              width: repairedCursor.width,
-              height: repairedCursor.height,
-              hotspotX: repairedCursor.hotspotX,
-              hotspotY: repairedCursor.hotspotY
-            }
-          : cursor
-      })
-      : []
-  )
-  const cursorBeforeRepair = petService.getSettings().customCursor
-  cursorAssetService.repairCursor(cursorBeforeRepair).then((customCursor) => {
-    const currentSettings = petService.getSettings()
-    if (customCursor.assetPath && hasCursorRepairChanged(cursorBeforeRepair, customCursor)) {
-      petService.saveSettings({
-        ...currentSettings,
-        customCursor,
-        customCursors: applyCursorRepairToCollection(currentSettings.customCursors, cursorBeforeRepair, customCursor)
-      })
-      appLogService.record({
-        scope: 'settings',
-        level: 'info',
-        actor: 'system',
-        event: 'settings.cursor.asset.repaired',
-        message: 'Cursor asset resized for browser compatibility',
-        details: { fileName: customCursor.fileName, enabled: customCursor.enabled }
-      })
-    }
-  }).catch((error) => {
-    appLogService.record({
-      scope: 'settings',
-      level: 'error',
-      actor: 'system',
-      event: 'settings.cursor.asset.repair.failed',
-      message: error.message
-    })
-  })
-  const pluginDir = path.join(app.getPath('userData'), 'plugins')
-  const bundledCreatorStudioDir = path.join(__dirname, 'examples', 'plugins', 'creator-studio')
-  const bundledPluginSync = syncBundledPlugins({
-    pluginDir,
-    bundledPluginDirs: [bundledCreatorStudioDir],
-    settingsService
-  })
-  for (const syncedPlugin of bundledPluginSync.synced) {
-    try {
-      appLogService.record({
-        scope: 'plugins',
-        level: 'info',
-        actor: 'system',
-        event: 'plugins.bundled.synced',
-        message: 'Bundled plugin synchronized',
-        details: {
-          pluginId: syncedPlugin.pluginId,
-          removedCount: syncedPlugin.removed.length
-        }
-      })
-    } catch (error) {
-      console.warn(`OpenPet bundled plugin sync log unavailable: ${error.message}`)
-    }
-  }
-  const pluginInstallService = createPluginInstallService({
-    settingsService,
-    pluginDir,
-    getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
-  })
-  const pluginGithubImportService = createPluginGithubImportService({
-    pluginInstallService
-  })
-  pluginService = createPluginService({
-    settingsService,
-    petService,
-    actionService,
-    actionImportService,
-    petPackService,
-    aiService,
-    aiTalkService,
-    imageGenerationModelService,
-    pluginDirs: [pluginDir],
-    officialPlugins: [createBasicBehaviorPlugin()],
-    openExternal: (url) => shell.openExternal(url),
-    onPetPackActivated: () => reloadAndSendAnimations(getPetWindow, petService),
-    selectCreatorAssetFrameFolder: async () => {
-      const selected = await dialog.showOpenDialog({
-        title: '选择动作帧文件夹',
-        properties: ['openDirectory']
-      })
-      if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-      return { canceled: false, sourceDir: selected.filePaths[0] }
+    projectRoot: __dirname,
+    packageJson,
+    settingsRuntime: {
+      loadSettings,
+      saveSettings,
+      syncLoginItemSettings
     },
-    getPluginBlockStatus: (candidate) => catalogService?.getPluginBlockStatus(candidate) || { blocked: false, reasons: [] }
-  })
-  catalogService = createCatalogService({
-    settingsService,
-    pluginInstallService,
-    pluginService,
-    petPackService,
-    catalogPath: path.join(__dirname, 'catalog', 'openpet-catalog.json')
-  })
-  let localHttpConfig = petService.getSettings().localHttp
-  if (localHttpConfig?.enabled) {
-    const normalizedConfig = normalizeLocalHttpConfig(localHttpConfig, localHttpConfig)
-    if (normalizedConfig.token !== localHttpConfig.token) {
-      const currentSettings = petService.getSettings()
-      petService.saveSettings({ ...currentSettings, localHttp: normalizedConfig })
-      localHttpConfig = normalizedConfig
-    }
-    localHttpService.start(localHttpConfig).catch((error) => {
-      console.error('Failed to start local HTTP service:', error.message)
-    })
-  }
-
-  syncLoginItemSettings(petService.getSettings().autoStart)
-
-  // 注册 IPC 处理器（依赖注入：主模块只负责"连接"，不负责"实现"）
-  registerIpcHandlers({
     getPetWindow,
-    petService,
-    petPackService,
-    aiService,
-    aiTalkService,
-    petUtteranceLogService,
-    petBubbleChatWindowService,
-    imageGenerationModelService,
-    behaviorOrchestratorService,
-    pluginService,
-    pluginInstallService,
-    pluginGithubImportService,
-    catalogService,
-    localHttpService,
-    aboutService,
-    actionService,
-    actionImportService,
-    cursorAssetService,
-    appLogService,
-    applyWindowScale: (targetWindow, scale) => applyWindowScale(targetWindow, scale),
+    setPetWindow: (nextPetWindow) => {
+      petWindow = nextPetWindow
+    },
+    createSettingsWindow,
+    createWindow,
+    loadPetWindow,
+    registerAppLifecycleLogs,
+    registerIpcHandlers,
+    createPetRendererSettings,
+    normalizeLocalHttpConfig,
+    reloadAndSendAnimations,
+    applyWindowScale,
     applyPetViewport,
     clampToWorkArea,
     getMovementState,
-    createSettingsWindow: () => createSettingsWindow(petWindow),
-    petChatWindowService,
-    petMovementPolicy
-  })
-
-  petWindow = createWindow({ load: false })
-
-  const normalizePetWindowForDisplayChange = () => {
-    if (!petWindow || petWindow.isDestroyed()) return
-    const currentSettings = petService.getSettings()
-    const next = petMovementPolicy.normalizeWindowForDisplay({
-      windowBounds: petWindow.getBounds(),
-      settings: currentSettings.petBehavior
-    })
-    petWindow.setPosition(next.x, next.y)
-
-    const behavior = petMovementPolicy.normalizePetBehaviorSettings(currentSettings.petBehavior)
-    if (!behavior.home.enabled || !behavior.home.anchor) return
-    const display = petMovementPolicy.resolveDisplayForWindow(petWindow.getBounds())
-    const anchor = petMovementPolicy.normalizeAnchorForDisplay({
-      anchor: behavior.home.anchor,
-      display,
-      windowBounds: petWindow.getBounds()
-    })
-
-    if (
-      anchor.displayId !== behavior.home.anchor.displayId
-      || anchor.x !== behavior.home.anchor.x
-      || anchor.y !== behavior.home.anchor.y
-    ) {
-      petService.saveSettings({
-        ...currentSettings,
-        petBehavior: {
-          ...behavior,
-          home: {
-            ...behavior.home,
-            anchor
-          }
-        }
-      })
-      petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(petService.getSettings()))
-    }
-  }
-
-  screen?.on?.('display-metrics-changed', normalizePetWindowForDisplayChange)
-  screen?.on?.('display-removed', normalizePetWindowForDisplayChange)
-  screen?.on?.('display-added', normalizePetWindowForDisplayChange)
-
-  // 页面加载完成后推送初始设置到渲染进程
-  petWindow.webContents.on('did-finish-load', () => {
-    const settings = petService.getSettings()
-    applyWindowScale(petWindow, settings.scale)
-    petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(settings))
-    maybeRunPackagedRuntimeSmoke({ app, petWindow, petService, petPackService, petBubbleChatWindowService })
-    maybeRunPackagedPluginCleanupEvidence({ app, pluginInstallService, pluginService })
-  })
-  loadPetWindow(petWindow)
-
-  // macOS：Dock 图标点击时若窗口已关闭则重建
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      petWindow = createWindow()
+    maybeRunPackagedRuntimeSmoke,
+    maybeRunPackagedPluginCleanupEvidence,
+    factories: {
+      createAboutService,
+      createActionImportService,
+      createActionService,
+      createAiService,
+      createAiTalkService,
+      createAiTalkStore,
+      createAppLogService,
+      createBasicBehaviorPlugin,
+      createBehaviorOrchestratorService,
+      createCatalogService,
+      createCursorAssetService,
+      createEventBus,
+      createImageGenerationModelService,
+      createLocalHttpService,
+      createPetBubbleChatWindowManager,
+      createPetChatWindowManager,
+      createPetMovementPolicy,
+      createPetPackService,
+      createPetService,
+      createPetUtteranceLogService,
+      createPluginGithubImportService,
+      createPluginInstallService,
+      createPluginService,
+      createSecretService,
+      createSettingsService,
+      syncBundledPlugins
     }
   })
 }
 
-// ── 应用就绪 ──
 canBootstrap.then((canStart) => {
   if (!canStart) return null
   return app.whenReady().then(bootstrapOpenPet)
