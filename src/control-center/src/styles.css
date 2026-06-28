@@ -652,23 +652,23 @@ button {
 .cursor-options-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 124px;
-  gap: 12px;
+  grid-auto-columns: 72px;
+  gap: 7px;
   overflow-x: auto;
-  padding: 2px 0 8px;
+  padding: 1px 0 7px;
   scrollbar-width: thin;
 }
 
 .cursor-option-card {
   position: relative;
   display: grid;
-  gap: 8px;
+  gap: 5px;
   justify-items: center;
-  min-height: 136px;
+  min-height: 80px;
   min-width: 0;
-  padding: 10px 9px 12px;
+  padding: 5px 4px 7px;
   border: 1.5px solid #e8edf5;
-  border-radius: 17px;
+  border-radius: 11px;
   background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   box-shadow:
     0 8px 22px rgba(34, 49, 84, 0.05),
@@ -703,8 +703,8 @@ button {
   display: grid;
   place-items: center;
   width: 100%;
-  min-height: 78px;
-  border-radius: 13px;
+  min-height: 43px;
+  border-radius: 9px;
   overflow: hidden;
 }
 
@@ -726,16 +726,16 @@ button {
 .cursor-card-preview img {
   position: relative;
   z-index: 1;
-  width: 10px;
-  height: 10px;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
   pointer-events: none;
   filter: drop-shadow(0 2px 3px rgba(53, 67, 97, 0.14));
 }
 
 .cursor-option-card[data-cursor-type='builtin'] .cursor-card-preview img {
-  width: 9px;
-  height: 9px;
+  width: 50px;
+  height: 50px;
 }
 
 .cursor-card-add-icon {
@@ -743,8 +743,8 @@ button {
   z-index: 1;
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   color: #6f5cff;
   background: rgba(137, 115, 255, 0.14);
@@ -760,7 +760,7 @@ button {
 
 .cursor-card-label {
   max-width: 100%;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 750;
   color: #1f2937;
   overflow: hidden;
@@ -1916,21 +1916,21 @@ button {
   }
 
   .cursor-options-row {
-    grid-auto-columns: 120px;
-    gap: 10px;
+    grid-auto-columns: 72px;
+    gap: 7px;
   }
 
   .cursor-option-card {
-    min-height: 132px;
-    padding: 10px 8px 12px;
+    min-height: 80px;
+    padding: 5px 4px 7px;
   }
 
   .cursor-card-preview {
-    min-height: 74px;
+    min-height: 43px;
   }
 
   .cursor-card-label {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .preview-stage {
