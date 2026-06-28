@@ -11,6 +11,9 @@ const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = r
 const { normalizeNetworkRequest, readLimitedResponseText } = require('./plugin-network-client')
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
 const { readLocalPluginManifests } = require('./plugin-discovery')
+const { createPluginProcessEnv, parsePluginProcessCommand } = require('./plugin-process-support')
+const { ACTIVE_PLUGIN_RUNTIME_STATUSES } = require('./plugin-runtime-status')
+const { createPluginRuntimeStopSupport } = require('./plugin-runtime-stop-support')
 
 const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
 const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
@@ -30,9 +33,9 @@ const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
 const PLUGIN_BRIDGE_HOST = '127.0.0.1'
 const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
 
-const ACTIVE_SERVICE_STATUSES = new Set(['running', 'stopping'])
-const ACTIVE_SETUP_STATUSES = new Set(['running', 'stopping'])
-const ACTIVE_COMMAND_STATUSES = new Set(['running', 'stopping'])
+const ACTIVE_SERVICE_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+const ACTIVE_SETUP_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+const ACTIVE_COMMAND_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const defaultServiceProcessTree = createServiceProcessTree()
@@ -152,69 +155,6 @@ const createServiceHealthView = (health = {}, serviceEntry = {}) => {
   }
 }
 
-const parseServiceCommand = (command, { platform = process.platform } = {}) => {
-  const input = String(command || '').trim()
-  if (!input) throw new Error('Plugin service command is required')
-  const parts = []
-  let current = ''
-  let quote = ''
-  let escaping = false
-  const allowBackslashEscapes = platform !== 'win32'
-
-  for (const char of input) {
-    if (escaping) {
-      if (quote) {
-        if (char === quote || char === '\\') current += char
-        else current += `\\${char}`
-      } else if (/\s/.test(char) || char === '"' || char === "'" || char === '\\') {
-        current += char
-      } else {
-        current += `\\${char}`
-      }
-      escaping = false
-      continue
-    }
-    if (allowBackslashEscapes && char === '\\') {
-      escaping = true
-      continue
-    }
-    if (quote) {
-      if (char === quote) quote = ''
-      else current += char
-      continue
-    }
-    if (char === '"' || char === "'") {
-      quote = char
-      continue
-    }
-    if (/\s/.test(char)) {
-      if (current) {
-        parts.push(current)
-        current = ''
-      }
-      continue
-    }
-    current += char
-  }
-
-  if (escaping) current += '\\'
-  if (quote) throw new Error('Plugin service command has an unterminated quote')
-  if (current) parts.push(current)
-  if (!parts.length) throw new Error('Plugin service command is required')
-  const [file, ...args] = parts
-  return { file, args }
-}
-
-const createServiceProcessEnv = () => {
-  const env = {}
-  if (process.env.PATH) env.PATH = process.env.PATH
-  if (process.platform === 'win32') {
-    if (process.env.SystemRoot) env.SystemRoot = process.env.SystemRoot
-    if (process.env.WINDIR) env.WINDIR = process.env.WINDIR
-  }
-  return env
-}
-
 const appendLimitedOutput = (current, chunk) => {
   const next = `${current}${String(chunk || '')}`
   return next.length > MAX_PLUGIN_COMMAND_OUTPUT_BYTES
@@ -283,6 +223,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const commandBridgeRuntimes = new Map()
   let commandBridgeServer = null
   let commandBridgePort = 0
+  const runtimeStopSupport = createPluginRuntimeStopSupport({
+    killProcess: killServiceProcess,
+    signalProcessTree: signalServiceProcessTree
+  })
 
   const ensureStopWaiter = (runtime) => {
     if (!runtime) return null
@@ -1158,45 +1102,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     runtime.healthTimer?.unref?.()
   }
 
-  const stopServiceProcess = (runtime, signal = 'SIGTERM') => {
-    const pid = Number(runtime?.pid) || 0
-    if (pid > 0) {
-      try {
-        killServiceProcess(-pid, signal)
-        return
-      } catch (_) {
-        try {
-          if (signalServiceProcessTree(pid, signal)) return
-        } catch (_) {}
-      }
-    }
-    runtime.child?.kill?.(signal)
-  }
-
-  const forceStopServiceProcess = (runtime, signal = 'SIGKILL') => {
-    const pid = Number(runtime?.pid) || 0
-    if (pid > 0) {
-      try {
-        killServiceProcess(-pid, signal)
-        return
-      } catch (_) {
-        try {
-          if (signalServiceProcessTree(pid, signal)) return
-        } catch (_) {}
-      }
-    }
-    runtime.child?.kill?.(signal)
-  }
-
-  const stopRuntimeProcessWithFallback = (runtime, signal = 'SIGTERM') => {
-    const pid = Number(runtime?.pid) || 0
-    if (pid > 0) {
-      try {
-        if (signalServiceProcessTree(pid, signal)) return
-      } catch (_) {}
-    }
-    runtime.child?.kill?.(signal)
-  }
+  const stopServiceProcess = runtimeStopSupport.stopDetachedProcess
+  const forceStopServiceProcess = runtimeStopSupport.forceStopDetachedProcess
+  const stopRuntimeProcessWithFallback = runtimeStopSupport.stopRuntimeProcessWithFallback
 
   const clearServiceStopTimer = (runtime) => {
     if (!runtime?.stopTimer) return
@@ -1494,7 +1402,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const runtimeKey = createPluginServiceKey(pluginId, commandId)
     const existingRuntime = commandRuntimes.get(runtimeKey)
     if (ACTIVE_COMMAND_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin command is already running')
-    const { file, args } = parseServiceCommand(commandEntry.command)
+    const { file, args } = parsePluginProcessCommand(commandEntry.command)
     const cwd = resolveCommandCwd(plugin.manifest, commandEntry.cwd)
     const bridgePort = await ensureCommandBridgeServer()
     const bridgeRunId = createPluginBridgeRunId()
@@ -1515,7 +1423,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       cwd,
       detached: false,
       env: {
-        ...createServiceProcessEnv(),
+        ...createPluginProcessEnv(),
         OPENPET_DATA_DIR: creatorDirs.dataDir,
         OPENPET_CACHE_DIR: creatorDirs.cacheDir,
         OPENPET_LOG_DIR: creatorDirs.logDir,
@@ -1724,12 +1632,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const setupEntry = getSetupEntry(plugin, setupId)
       const existingRuntime = getPluginSetupRuntime(pluginId, setupId)
       if (ACTIVE_SETUP_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin setup is already running')
-      const { file, args } = parseServiceCommand(setupEntry.command)
+      const { file, args } = parsePluginProcessCommand(setupEntry.command)
       const cwd = resolveSetupCwd(plugin.manifest, setupEntry.cwd)
       const child = spawnSetupProcess(file, args, {
         cwd,
         detached: false,
-        env: createServiceProcessEnv(),
+        env: createPluginProcessEnv(),
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
@@ -1862,12 +1770,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
       if (ACTIVE_SERVICE_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin service is already running')
       const declaration = resolveServiceRuntimeDeclaration(serviceEntry)
-      const { file, args } = parseServiceCommand(declaration.command)
+      const { file, args } = parsePluginProcessCommand(declaration.command)
       const cwd = resolveServiceCwd(plugin.manifest, declaration.cwd)
       const child = spawnServiceProcess(file, args, {
         cwd,
         detached: true,
-        env: createServiceProcessEnv(),
+        env: createPluginProcessEnv(),
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
