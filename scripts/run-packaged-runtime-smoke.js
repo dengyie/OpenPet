@@ -86,17 +86,20 @@ const createRuntimeSmokeSession = ({ appPath, outputDir = DEFAULT_OUTPUT_DIR, pl
   const sessionDir = path.resolve(outputDir, sessionId)
   const evidencePath = path.join(sessionDir, 'packaged-runtime-smoke-evidence.json')
   const screenshotPath = path.join(sessionDir, 'screenshots', 'packaged-runtime.png')
+  const bubbleScreenshotPath = path.join(sessionDir, 'screenshots', 'packaged-runtime-bubble-chat.png')
   return {
     sessionId,
     sessionDir,
     evidencePath,
     screenshotPath,
+    bubbleScreenshotPath,
     env: {
       ...env,
       OPENPET_PACKAGED_RUNTIME_SMOKE: '1',
       OPENPET_PACKAGED_RUNTIME_SMOKE_SESSION_ID: sessionId,
       OPENPET_PACKAGED_RUNTIME_SMOKE_OUTPUT: evidencePath,
       OPENPET_PACKAGED_RUNTIME_SMOKE_SCREENSHOT: screenshotPath,
+      OPENPET_PACKAGED_RUNTIME_SMOKE_BUBBLE_SCREENSHOT: bubbleScreenshotPath,
       OPENPET_PACKAGED_RUNTIME_SMOKE_APP_PATH: appPath || ''
     }
   }
@@ -165,10 +168,12 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   const windowState = state.window || {}
   const bubbleChat = renderer.bubbleChat || {}
   const legacyInlineBubble = renderer.legacyInlineBubble || {}
+  const bubbleScreenshot = normalizePath(bubbleChat.screenshotPath)
   const bubbleItems = Array.isArray(bubbleChat.items) ? bubbleChat.items : []
   const hasRenderedBubbleItem = bubbleItems.some((item) => hasText(item?.text))
   const floatingBubbleVisible = Boolean(
     bubbleChat.visible
+    && bubbleChat.hasWindow
     && renderer.sprite?.visible
     && legacyInlineBubble.visible !== true
     && hasRenderedBubbleItem
@@ -177,6 +182,7 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   if (!merged.linkedEvidence || typeof merged.linkedEvidence !== 'object') merged.linkedEvidence = {}
   if (!Array.isArray(merged.linkedEvidence.screenshots)) merged.linkedEvidence.screenshots = []
   if (screenshot && !merged.linkedEvidence.screenshots.includes(screenshot)) merged.linkedEvidence.screenshots.push(screenshot)
+  if (bubbleScreenshot && !merged.linkedEvidence.screenshots.includes(bubbleScreenshot)) merged.linkedEvidence.screenshots.push(bubbleScreenshot)
   if (evidence.desktopPickerSmokeReport) merged.linkedEvidence.desktopPickerSmokeReport = evidence.desktopPickerSmokeReport
 
   setCheck(
@@ -212,11 +218,11 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
     'speech-bubble-rendered',
     floatingBubbleVisible ? 'pass' : 'fail',
     floatingBubbleVisible
-      ? `Floating bubble chat visible with text=${JSON.stringify(bubbleChat.text || '')}; items=${JSON.stringify(bubbleItems)}; noticeCount=${Number(bubbleChat.noticeCount || 0)}; dialogueCount=${Number(bubbleChat.dialogueCount || 0)}; spriteVisible=${Boolean(renderer.sprite?.visible)}; legacyInlineVisible=${Boolean(legacyInlineBubble.visible)}${screenshot ? `; screenshot=${screenshot}` : ''}`
+      ? `Floating bubble chat visible with text=${JSON.stringify(bubbleChat.text || '')}; items=${JSON.stringify(bubbleItems)}; noticeCount=${Number(bubbleChat.noticeCount || 0)}; dialogueCount=${Number(bubbleChat.dialogueCount || 0)}; spriteVisible=${Boolean(renderer.sprite?.visible)}; legacyInlinePresent=${Boolean(legacyInlineBubble.present)}; legacyInlineVisible=${Boolean(legacyInlineBubble.visible)}${screenshot ? `; petScreenshot=${screenshot}` : ''}${bubbleScreenshot ? `; bubbleScreenshot=${bubbleScreenshot}` : ''}`
       : '',
     floatingBubbleVisible
       ? 'Floating bubble chat rendered item content while the old inline pet bubble stayed hidden.'
-      : 'Floating bubble chat evidence is missing rendered items or the old inline bubble is still visible.'
+      : 'Floating bubble chat evidence is missing rendered items, a visible popup window, or the old inline bubble is still visible.'
   )
   setCheck(
     merged,

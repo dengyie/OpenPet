@@ -625,7 +625,8 @@ const createPetBubbleChatWindowManager = ({
     refreshItems,
     rebuildItems,
     showMessage,
-    syncToPetWindow
+    syncToPetWindow,
+    getWindow: () => (bubbleWindow && !bubbleWindow.isDestroyed?.() ? bubbleWindow : null)
   }
 }
 

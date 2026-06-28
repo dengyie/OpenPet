@@ -2178,6 +2178,7 @@ export interface PackagedRuntimeSmokeStateRendererSprite {
 }
 
 export interface PackagedRuntimeSmokeStateRendererLegacyInlineBubble {
+  present?: boolean
   visible: boolean
   text: string
 }
@@ -2187,6 +2188,7 @@ export interface PackagedRuntimeSmokeStateRendererBubbleChat {
   hasWindow: boolean
   text: string
   source: string
+  screenshotPath?: string
   items?: Array<{
     kind: string
     role: string

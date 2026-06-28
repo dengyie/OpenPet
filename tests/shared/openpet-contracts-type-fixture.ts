@@ -1324,6 +1324,7 @@ const packagedRuntimeSmokeEvidenceFixture = {
         backgroundImage: 'url("file:///Users/mango/project/codex/OpenPet/release/mac-arm64/OpenPet.app/Contents/Resources/app.asar/cat_anime/sprites/eat_no_bg.png")'
       },
       legacyInlineBubble: {
+        present: true,
         visible: false,
         text: ''
       },
@@ -1331,7 +1332,8 @@ const packagedRuntimeSmokeEvidenceFixture = {
         visible: true,
         hasWindow: true,
         text: '喂食',
-        source: 'packaged-runtime-smoke'
+        source: 'packaged-runtime-smoke',
+        screenshotPath: '/tmp/openpet-release-evidence/screenshots/packaged-runtime-bubble-chat.png'
       },
       action: {
         current: '',

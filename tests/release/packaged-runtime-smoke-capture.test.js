@@ -41,11 +41,12 @@ const markDesktopPickerReportReady = (report) => ({
   }))
 })
 
-const createBubbleChatEvidence = (text = 'smoke') => ({
+const createBubbleChatEvidence = (text = 'smoke', screenshotPath = '/tmp/evidence/screenshots/runtime-bubble.png') => ({
   visible: true,
   hasWindow: true,
   text,
   source: 'packaged-runtime-smoke',
+  screenshotPath,
   items: [{ kind: 'notice', role: 'system', source: 'packaged-runtime-smoke', text }],
   noticeCount: 1,
   dialogueCount: 0
@@ -66,7 +67,7 @@ test('mergeRuntimeEvidenceIntoReport marks automated runtime checks pass and kee
         htmlBackground: 'rgba(0, 0, 0, 0)',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        legacyInlineBubble: { visible: false, text: '' },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
         bubbleChat: createBubbleChatEvidence(),
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
@@ -89,12 +90,14 @@ test('mergeRuntimeEvidenceIntoReport marks automated runtime checks pass and kee
   assert.equal(checks['sprite-visible'].status, 'pass')
   assert.match(checks['sprite-visible'].evidence, /runtime\.png/)
   assert.match(checks['speech-bubble-rendered'].evidence, /"kind":"notice"/)
+  assert.match(checks['speech-bubble-rendered'].evidence, /bubbleScreenshot=\/tmp\/evidence\/screenshots\/runtime-bubble\.png/)
   assert.equal(checks['pack-switch-doro'].status, 'pass')
   assert.equal(checks['plugin-picker-evidence-linked'].status, 'pending')
   assert.match(checks['plugin-picker-evidence-linked'].notes, /desktop picker smoke report/)
   assert.equal(checks['pet-picker-evidence-linked'].status, 'pending')
   assert.equal(checks['invalid-package-feedback'].status, 'blocked')
   assert.equal(merged.linkedEvidence.screenshots.includes('/tmp/evidence/screenshots/runtime.png'), true)
+  assert.equal(merged.linkedEvidence.screenshots.includes('/tmp/evidence/screenshots/runtime-bubble.png'), true)
 
   const structural = validateReport(merged, { allowPending: true })
   assert.equal(structural.ok, true)
@@ -119,7 +122,7 @@ test('mergeRuntimeEvidenceIntoReport can produce a ready runtime report when pic
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        legacyInlineBubble: { visible: false, text: '' },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
         bubbleChat: createBubbleChatEvidence(),
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
@@ -175,7 +178,7 @@ test('runPackagedRuntimeSmoke merges evidence into a report file', async () => {
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 96, height: 96, backgroundImage: 'url(file:///sprite.png)' },
-        legacyInlineBubble: { visible: false, text: '' },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
         bubbleChat: createBubbleChatEvidence(),
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
@@ -220,6 +223,7 @@ test('createRuntimeSmokeSession writes launch environment without mutating the p
   assert.equal(session.env.OPENPET_PACKAGED_RUNTIME_SMOKE, '1')
   assert.equal(session.env.OPENPET_PACKAGED_RUNTIME_SMOKE_OUTPUT, session.evidencePath)
   assert.equal(session.env.OPENPET_PACKAGED_RUNTIME_SMOKE_SCREENSHOT, session.screenshotPath)
+  assert.equal(session.env.OPENPET_PACKAGED_RUNTIME_SMOKE_BUBBLE_SCREENSHOT, session.bubbleScreenshotPath)
 })
 
 test('mergeRuntimeEvidenceIntoReport fails transparent background without renderer evidence', () => {
@@ -236,7 +240,7 @@ test('mergeRuntimeEvidenceIntoReport fails transparent background without render
         htmlBackground: 'transparent',
         transparentBackground: false,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        legacyInlineBubble: { visible: false, text: '' },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
         bubbleChat: createBubbleChatEvidence(),
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
@@ -266,7 +270,7 @@ test('mergeRuntimeEvidenceIntoReport fails action playback without frame advance
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        legacyInlineBubble: { visible: false, text: '' },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
         bubbleChat: createBubbleChatEvidence(),
         action: { requested: 'idle', current: 'idle', advanced: false }
       },
@@ -296,8 +300,8 @@ test('mergeRuntimeEvidenceIntoReport fails speech bubble check when popup has no
         htmlBackground: 'transparent',
         transparentBackground: true,
         sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
-        legacyInlineBubble: { visible: false, text: '' },
-        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke', items: [] },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
+        bubbleChat: { visible: true, hasWindow: true, text: 'smoke', source: 'packaged-runtime-smoke', screenshotPath: '/tmp/evidence/screenshots/runtime-bubble.png', items: [] },
         action: { requested: 'idle', current: 'idle', advanced: true }
       },
       packs: ['legacy-cat', 'doro', 'duodong', 'chispa'].map((id) => ({ id, ok: true, actionCount: 1, spriteVisible: true })),

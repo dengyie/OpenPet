@@ -19,10 +19,10 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(path.resolve(filePath), `${JSON.stringify(value, null, 2)}\n`)
 }
 
-const writeScreenshot = async (petWindow, screenshotPath) => {
-  if (!screenshotPath) return ''
+const writeScreenshot = async (targetWindow, screenshotPath) => {
+  if (!targetWindow || !screenshotPath) return ''
   ensureParentDir(screenshotPath)
-  const image = await petWindow.capturePage()
+  const image = await targetWindow.capturePage()
   fs.writeFileSync(path.resolve(screenshotPath), image.toPNG())
   return path.resolve(screenshotPath)
 }
@@ -58,7 +58,7 @@ const inspectRenderer = async (petWindow) => petWindow.webContents.executeJavaSc
     const backgroundImage = nextCatStyle?.backgroundImage || '';
     const secondPosition = nextCatStyle?.backgroundPositionX || '';
     return {
-      ok: Boolean(cat && bubble),
+      ok: Boolean(cat),
       bodyBackground,
       htmlBackground,
       transparentBackground: transparentColors.has(bodyBackground) && transparentColors.has(htmlBackground),
@@ -69,6 +69,7 @@ const inspectRenderer = async (petWindow) => petWindow.webContents.executeJavaSc
         backgroundImage
       },
       legacyInlineBubble: {
+        present: Boolean(bubble),
         visible: Boolean(bubble && legacyBubbleStyle && Number(legacyBubbleStyle.opacity) > 0 && legacyBubbleRect.width > 0 && legacyBubbleRect.height > 0),
         text: bubble?.textContent || ''
       },
@@ -127,6 +128,7 @@ const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackServ
   if (!outputPath) throw new Error('OPENPET_PACKAGED_RUNTIME_SMOKE_OUTPUT is required')
 
   const screenshotPath = env.OPENPET_PACKAGED_RUNTIME_SMOKE_SCREENSHOT || ''
+  const bubbleScreenshotPath = env.OPENPET_PACKAGED_RUNTIME_SMOKE_BUBBLE_SCREENSHOT || ''
   const sessionId = env.OPENPET_PACKAGED_RUNTIME_SMOKE_SESSION_ID || new Date().toISOString().replace(/[:.]/g, '-')
   const startedAt = new Date()
   const evidence = {
@@ -168,14 +170,19 @@ const runPackagedRuntimeSmoke = async ({ app, petWindow, petService, petPackServ
     const renderer = await inspectRenderer(petWindow)
     const bubbleChatState = petBubbleChatWindowService?.getState?.() || {}
     const bubbleItems = summarizeBubbleChatItems(bubbleChatState.items)
+    const bubbleChatWindow = petBubbleChatWindowService?.getWindow?.() || null
     renderer.bubbleChat = {
       visible: Boolean(bubbleChatState.visible),
       hasWindow: Boolean(bubbleChatState.hasWindow),
       text: String(bubbleChatState.message?.text || ''),
       source: String(bubbleChatState.message?.source || ''),
+      screenshotPath: '',
       items: bubbleItems,
       noticeCount: bubbleItems.filter((item) => item.kind === 'notice').length,
       dialogueCount: bubbleItems.filter((item) => item.kind === 'dialogue').length
+    }
+    if (bubbleChatState.visible && bubbleChatWindow && !bubbleChatWindow.isDestroyed?.()) {
+      renderer.bubbleChat.screenshotPath = await writeScreenshot(bubbleChatWindow, bubbleScreenshotPath)
     }
     renderer.action.requested = actionId
     evidence.state.renderer = renderer
