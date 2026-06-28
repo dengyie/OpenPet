@@ -191,13 +191,18 @@ test('pet context menu opens a positioned menu window and sends action commands 
   assert.equal(placement.placement, 'above')
   assert.equal(popupOptions, null)
   const template = menuWindowRequest.items
-  assert.equal(template[0].label, '待机')
+  assert.equal(template[0].type, 'submenu')
+  assert.equal(template[0].label, '动作')
+  assert.equal(template.some((item) => item.label === '待机'), false)
+  assert.equal(template.some((item) => item.label === '挥手'), false)
+  assert.equal(template.some((item) => item.label === '散步'), false)
+  assert.deepEqual(template[0].submenu.map((item) => item.label), ['散步', '挥手'])
   assert.deepEqual(menuWindowRequest.point, placement.screenPoint)
-  assert.deepEqual(menuWindowRequest.size, { width: 112, height: 176 })
+  assert.deepEqual(menuWindowRequest.size, { width: 112, height: 146 })
   assert.equal(menuWindowRequest.parentWindow, petWindow)
   assert.equal(menuWindowRequest.BrowserWindow, browserWindowService)
 
-  menuWindowRequest.onSelect(template[1])
+  menuWindowRequest.onSelect(template[0].submenu[1])
 
   assert.deepEqual(sentMessages, [{
     channel: IPC.PET_MENU_COMMAND,
@@ -246,13 +251,66 @@ test('pet context menu exposes desktop chat entry when chat window service is av
     sender: petWindow.webContents
   }, { x: 70, y: 80 })
 
-  const chatItem = menuWindowRequest.items.find((item) => item.label === '打开扩展聊天面板')
+  const chatItem = menuWindowRequest.items.find((item) => item.label === '和宠物聊天')
+  const actionItem = menuWindowRequest.items.find((item) => item.label === '动作')
   assert.ok(chatItem)
-  assert.equal(menuWindowRequest.size.height, 206)
+  assert.ok(actionItem)
+  assert.deepEqual(actionItem.submenu.map((item) => item.label), ['散步', '挥手'])
+  assert.equal(menuWindowRequest.size.height, 176)
 
   menuWindowRequest.onSelect(chatItem)
 
   assert.equal(openChatCalls, 1)
+})
+
+test('pet context menu hides the action submenu when no manual actions are available', async () => {
+  const ipcMain = createIpcMainStub()
+  const petWindow = {
+    isDestroyed: () => false,
+    getBounds: () => ({ x: 520, y: 240, width: 150, height: 150 }),
+    webContents: {
+      send: () => {}
+    }
+  }
+  let menuWindowRequest = null
+  const browserWindowService = {
+    fromWebContents: () => petWindow
+  }
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: browserWindowService,
+    app: { quit: () => {} },
+    dialog: {},
+    Menu: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      petService: {
+        ...createRequiredServices().petService,
+        getAnimations: () => ({
+          actions: [
+            { id: 'idle', label: '待机', kind: 'idle' },
+            { id: 'running', label: '奔跑', kind: 'working' }
+          ]
+        })
+      }
+    }),
+    getPetWindow: () => petWindow,
+    ipcMainService: ipcMain,
+    showContextMenuWindow: (request) => {
+      menuWindowRequest = request
+    }
+  })
+
+  await ipcMain.handlers.get(IPC.PET_SHOW_CONTEXT_MENU)({
+    sender: petWindow.webContents
+  }, { x: 70, y: 80 })
+
+  assert.deepEqual(menuWindowRequest.items.map((item) => item.label || item.type), ['设置', 'separator', '退出'])
 })
 
 test('pet quit records the user intent before quitting the app', () => {

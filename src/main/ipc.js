@@ -9,7 +9,7 @@
 const { ipcMain, BrowserWindow, app, dialog, screen } = require('electron')
 const { IPC } = require('../shared/ipc-channels')
 const { sanitizeDetails } = require('./services/app-log-service')
-const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('./pet-context-menu')
+const { choosePetContextMenuPoint, estimatePetContextMenuSize, filterManualPetActions } = require('./pet-context-menu')
 const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const { createBubbleRequestId } = require('./pet-bubble-chat-window')
 const { createLocalHttpToken } = require('./services/local-http-service')
@@ -562,6 +562,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     petBubbleChatWindowService,
     choosePetContextMenuPoint,
     estimatePetContextMenuSize,
+    filterManualPetActions,
     showContextMenuWindow,
     createPetRendererSettings,
     recordAppLog,

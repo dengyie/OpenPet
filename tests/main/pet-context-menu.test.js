@@ -1,7 +1,12 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { choosePetContextMenuPoint, estimatePetContextMenuSize } = require('../../src/main/pet-context-menu')
+const {
+  choosePetContextMenuPoint,
+  choosePetContextSubmenuPoint,
+  estimatePetContextMenuSize,
+  filterManualPetActions
+} = require('../../src/main/pet-context-menu')
 
 test('choosePetContextMenuPoint places the menu beside the pet when there is room', () => {
   const point = choosePetContextMenuPoint({
@@ -88,11 +93,55 @@ test('choosePetContextMenuPoint keeps auto-positioned tall side menus inside the
 
 test('estimatePetContextMenuSize scales with action count but keeps stable bounds', () => {
   assert.deepEqual(estimatePetContextMenuSize([
-    { label: '待机' },
-    { label: '超长动作名称测试' }
-  ]), { width: 148, height: 176 })
+    { type: 'submenu', label: '动作' },
+    { type: 'action', label: '设置' },
+    { type: 'action', label: '退出' }
+  ]), { width: 112, height: 116 })
   assert.deepEqual(estimatePetContextMenuSize([
-    { label: '待机' },
-    { label: '超长动作名称测试' }
-  ], { extraItemCount: 1 }), { width: 148, height: 206 })
+    { type: 'submenu', label: '动作' },
+    { type: 'action', label: '和宠物聊天' },
+    { type: 'separator' },
+    { type: 'action', label: '设置' },
+    { type: 'separator' },
+    { type: 'action', label: '退出' }
+  ]), { width: 124, height: 176 })
+})
+
+test('filterManualPetActions hides state-like actions and keeps manual actions in original order', () => {
+  const actions = filterManualPetActions([
+    { id: 'idle', label: '待机', kind: 'idle' },
+    { id: 'wave', label: '挥手', kind: 'greeting' },
+    { id: 'run', label: '奔跑', kind: 'working' },
+    { id: 'review', label: '评审', kind: 'thinking' },
+    { id: 'custom-jump', label: '跳跃', kind: 'custom' },
+    { id: 'failed', label: '失败', kind: 'failure' }
+  ])
+
+  assert.deepEqual(actions.map((action) => action.id), ['wave', 'review', 'custom-jump'])
+})
+
+test('choosePetContextSubmenuPoint opens to the right of the parent menu row when there is room', () => {
+  const placement = choosePetContextSubmenuPoint({
+    parentMenuBounds: { x: 360, y: 120, width: 132, height: 176 },
+    workArea: { x: 0, y: 0, width: 900, height: 700 },
+    submenuSize: { width: 148, height: 146 },
+    anchorOffsetTop: 6,
+    anchorHeight: 30
+  })
+
+  assert.equal(placement.placement, 'right')
+  assert.deepEqual(placement.screenPoint, { x: 504, y: 120 })
+})
+
+test('choosePetContextSubmenuPoint flips to the left when the right side would overflow', () => {
+  const placement = choosePetContextSubmenuPoint({
+    parentMenuBounds: { x: 760, y: 120, width: 132, height: 176 },
+    workArea: { x: 0, y: 0, width: 900, height: 700 },
+    submenuSize: { width: 148, height: 146 },
+    anchorOffsetTop: 36,
+    anchorHeight: 30
+  })
+
+  assert.equal(placement.placement, 'left')
+  assert.deepEqual(placement.screenPoint, { x: 600, y: 150 })
 })
