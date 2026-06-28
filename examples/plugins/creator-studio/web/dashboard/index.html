@@ -690,6 +690,18 @@
         renderRunList()
       }
 
+      const syncDraftControlsFromRun = (run) => {
+        if (!run) return
+        const promptValue = run?.input?.originalPrompt || run?.input?.prompt || ''
+        if (typeof promptValue === 'string') {
+          $('prompt-input').value = promptValue
+        }
+        const backendValue = run?.backend || run?.input?.backend || 'fixture'
+        if (backendValue === 'fixture' || backendValue === 'provider') {
+          $('backend-select').value = backendValue
+        }
+      }
+
       const loadRun = async (runId, statusMessage = '') => {
         if (!runId) return
         await fetchRunDetail(runId)
@@ -1403,6 +1415,7 @@
         }
         const action = run.generationTask.actions[0]
         const question = run.generationTask.questions[0]
+        syncDraftControlsFromRun(run)
         $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
         $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
         $('action-lane-panel').innerHTML = renderActionLane(run)

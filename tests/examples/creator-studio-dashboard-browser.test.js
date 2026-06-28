@@ -1264,6 +1264,70 @@ test('creator studio dashboard lets users edit a drafted full-pet task before co
   }
 })
 
+test('creator studio dashboard syncs prompt and backend controls when loading existing runs', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-'))
+  const fixtureRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：原地打滚，动作要循环。',
+      originalPrompt: '新增一个自定义动作：原地打滚，动作要循环。',
+      backend: 'fixture',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'roll-loop',
+          name: '原地打滚',
+          motionPrompt: '原地打滚，动作要循环。',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:00:00.000Z'
+  })
+  createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      originalPrompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      backend: 'provider',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击后轻轻转一圈。',
+          loop: false,
+          frameCount: 16,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:05:00.000Z'
+  })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('害羞转圈'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    await page.locator('#run-select').selectOption(fixtureRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, fixtureRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('原地打滚'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'fixture')
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio dashboard shows failed generation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-retry-'))
   let generationAttempts = 0
