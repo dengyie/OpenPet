@@ -27,6 +27,8 @@ export interface PluginsPaneProps {
   filters: PluginLogFilters
   status: string
   runningCommand: string
+  creatorStudioPromptDraft: string
+  runningCreatorStudioDefaultFlow: boolean
   lastCommandResult: {
     pluginId: string
     commandId: string
@@ -59,9 +61,11 @@ export interface PluginsPaneProps {
   onUninstallPlugin: (pluginId: string) => void | Promise<void>
   onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
   onChangeCommandPayload: (pluginId: string, value: string) => void
+  onChangeCreatorStudioPromptDraft: (value: string) => void
   onChangeGithubRepositoryUrl: (value: string) => void
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
+  onRunCreatorStudioDefaultFlow: () => void | Promise<void>
   onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>
   onOpenDashboard: (pluginId: string, dashboardId: string) => void | Promise<void>
   onStartService: (pluginId: string, serviceId: string) => void | Promise<void>
@@ -157,7 +161,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -392,6 +396,10 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                 <div className="plugin-commands">
                   {plugin.entries.dashboards.map((dashboard) => {
                     const dashboardKey = `${plugin.id}:${dashboard.id}`
+                    const creatorStudioService = plugin.id === 'openpet.creator-studio'
+                      ? plugin.entries?.services?.find((service) => service.id === 'studio')
+                      : null
+                    const requiresServiceStart = creatorStudioService?.runtime?.status !== 'running'
                     return (
                       <button
                         type="button"
@@ -399,12 +407,55 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, la
                         key={dashboard.id}
                         disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === dashboardKey}
                         onClick={() => onOpenDashboard(plugin.id, dashboard.id)}
+                        title={requiresServiceStart ? '请先启动 Creator Studio Service' : ''}
                       >
                         {openingDashboard === dashboardKey ? '打开中' : dashboard.title}
                       </button>
                     )
                   })}
                 </div>
+              ) : null}
+              {plugin.id === 'openpet.creator-studio' ? (
+                <div className="plugin-config-panel" aria-label="Creator Studio 默认流">
+                  <div className="plugin-config-header">
+                    <strong>生成并导入</strong>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === `${plugin.id}:main`}
+                      onClick={() => onOpenDashboard(plugin.id, 'main')}
+                    >
+                      查看任务详情
+                    </button>
+                  </div>
+                  <div className="field-note">
+                    宿主默认路径会优先走已保存的图片 Provider。高级入口保留任务详情、QA、日志和手动逐步执行。
+                  </div>
+                  <label className="plugin-config-field" htmlFor="creator-studio-default-prompt">
+                    <span>Creator Studio 请求</span>
+                    <textarea
+                      id="creator-studio-default-prompt"
+                      className="text-input"
+                      value={creatorStudioPromptDraft}
+                      placeholder="描述你想新增或生成的动作 / 宠物效果"
+                      onChange={(event) => onChangeCreatorStudioPromptDraft(event.target.value)}
+                    />
+                  </label>
+                  <div className="plugin-commands">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || runningCreatorStudioDefaultFlow}
+                      onClick={() => onRunCreatorStudioDefaultFlow()}
+                    >
+                      {runningCreatorStudioDefaultFlow ? '处理中' : '生成并导入'}
+                    </button>
+                  </div>
+                  <div className="field-note">高级入口：查看任务详情 / 手动逐步执行</div>
+                </div>
+              ) : null}
+              {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (
+                <div className="field-note">Creator Studio Dashboard 依赖 Creator Studio Service；请先启动服务，再打开面板。</div>
               ) : null}
               {plugin.source === 'local' ? (
                 <div className="plugin-commands">

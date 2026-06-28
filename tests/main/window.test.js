@@ -145,9 +145,10 @@ test('createSettingsWindow uses normal app stacking instead of pet-level always-
     screen
   })
 
-  createSettingsWindow(petWindow, { BrowserWindow, screen })
+  const settingsWindow = createSettingsWindow(petWindow, { BrowserWindow, screen })
 
   assert.equal(instances.length, 2)
+  assert.equal(settingsWindow, instances[1])
   assert.equal(instances[0].options.alwaysOnTop, true)
   assert.equal(instances[0].visibleOnAllWorkspaces.value, true)
   assert.equal(instances[1].options.alwaysOnTop, false)
@@ -167,14 +168,16 @@ test('createSettingsWindow restores and raises an existing settings window', () 
     screen
   })
 
-  createSettingsWindow(petWindow, { BrowserWindow, screen, app })
+  const firstSettingsWindow = createSettingsWindow(petWindow, { BrowserWindow, screen, app })
   const settingsWindow = instances[1]
   settingsWindow.minimized = true
   settingsWindow.visible = false
 
-  createSettingsWindow(petWindow, { BrowserWindow, screen, app })
+  const reusedSettingsWindow = createSettingsWindow(petWindow, { BrowserWindow, screen, app })
 
   assert.equal(instances.length, 2)
+  assert.equal(firstSettingsWindow, settingsWindow)
+  assert.equal(reusedSettingsWindow, settingsWindow)
   assert.equal(settingsWindow.restoreCalls, 1)
   assert.equal(settingsWindow.showCalls, 1)
   assert.equal(settingsWindow.moveTopCalls, 1)

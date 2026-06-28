@@ -2384,6 +2384,103 @@ test('plugin service surfaces structured command errors from declaration stdout'
   ])
 })
 
+test('plugin service redacts sensitive structured command errors from declaration stdout', async () => {
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnCommandProcess: () => child
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.stdout.listenerCount('data') > 0)
+  child.stdout.write('{"ok":false,"error":"proposal write failed via OPENPET_BRIDGE_TOKEN=bridge-secret at /Users/mango/private/proposal.json from http://127.0.0.1:8787/creator/trigger-proposals/submit"}\n')
+  child.emit('exit', 1, null)
+
+  await assert.rejects(commandRun, /\[redacted-token\]/)
+  await assert.rejects(commandRun, /\[redacted-path\]/)
+  await assert.rejects(commandRun, /\[redacted-local-url\]/)
+  await assert.rejects(commandRun, (error) => {
+    assert.equal(error.message.includes('bridge-secret'), false)
+    assert.equal(error.message.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(error.message.includes('127.0.0.1:8787'), false)
+    return true
+  })
+  const logMessages = service.getLogs().map((entry) => entry.message).slice(0, 3)
+  assert.equal(logMessages[0], 'proposal write failed via [redacted-token]=[redacted-secret] at [redacted-path] from [redacted-local-url]')
+  assert.match(logMessages[1], /^Command stdout: /)
+  assert.match(logMessages[1], /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(logMessages[1], /\[redacted-path\]/)
+  assert.match(logMessages[1], /\[redacted-local-url\]/)
+  assert.equal(logMessages[1].includes('bridge-secret'), false)
+  assert.equal(logMessages[1].includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(logMessages[1].includes('127.0.0.1:8787'), false)
+  assert.equal(logMessages[2], 'Command started')
+})
+
+test('plugin service redacts sensitive command stderr output before logging', async () => {
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnCommandProcess: () => child
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.stderr.listenerCount('data') > 0)
+  child.stderr.write('OPENPET_BRIDGE_TOKEN=bridge-secret failed at /Users/mango/private/proposal.json via http://127.0.0.1:8787/creator/trigger-proposals/submit\n')
+  child.emit('exit', 7, null)
+
+  await assert.rejects(commandRun, /Plugin command exited with code 7/)
+  assert.deepEqual(service.getLogs().map((entry) => entry.message).slice(0, 3), [
+    'Plugin command exited with code 7',
+    'Command stderr: [redacted-token]=[redacted-secret] failed at [redacted-path] via [redacted-local-url]',
+    'Command started'
+  ])
+})
+
+test('plugin service redacts sensitive error fields from successful command results before returning to renderer', async () => {
+  const child = createFakeServiceProcess()
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnCommandProcess: () => child
+  })
+
+  const commandRun = service.runCommand('weather-declaration', 'announce')
+  await waitFor(() => child.stdout.listenerCount('data') > 0)
+  child.stdout.write('{"ok":true,"message":"Imported action shy-spin","triggerProposalSubmission":{"ok":false,"error":"proposal write failed via OPENPET_BRIDGE_TOKEN=bridge-secret at /Users/mango/private/proposal.json from http://127.0.0.1:8787/creator/trigger-proposals/submit"}}\n')
+  child.stderr.write('OPENPET_BRIDGE_TOKEN=bridge-secret failed at /Users/mango/private/proposal.json via http://127.0.0.1:8787/creator/trigger-proposals/submit\n')
+  child.emit('exit', 0, null)
+
+  const result = await commandRun
+
+  assert.equal(result.stderr.includes('bridge-secret'), false)
+  assert.equal(result.stderr.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(result.stderr.includes('127.0.0.1:8787'), false)
+  assert.match(result.stderr, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(result.stderr, /\[redacted-path\]/)
+  assert.match(result.stderr, /\[redacted-local-url\]/)
+  assert.equal(result.result.triggerProposalSubmission.error.includes('bridge-secret'), false)
+  assert.equal(result.result.triggerProposalSubmission.error.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(result.result.triggerProposalSubmission.error.includes('127.0.0.1:8787'), false)
+  assert.match(result.result.triggerProposalSubmission.error, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(result.result.triggerProposalSubmission.error, /\[redacted-path\]/)
+  assert.match(result.result.triggerProposalSubmission.error, /\[redacted-local-url\]/)
+})
+
 test('declaration-only command entries receive short-lived bridge env vars', async () => {
   const spawned = []
   const child = createFakeServiceProcess()
@@ -2973,6 +3070,55 @@ test('plugin service marks non-zero setup exits as failed', async () => {
   assert.equal(settingsService.get().plugins.logs[0].message, 'Setup failed')
 })
 
+test('plugin service redacts sensitive setup stderr and runtime errors', async () => {
+  const child = createSlowStoppingServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      setupEntries: [{ id: 'install-deps', title: 'Install Dependencies', command: 'npm install', cwd: '.' }]
+    })],
+    spawnSetupProcess: () => child
+  })
+
+  const setupRun = service.runSetup('weather-declaration', 'install-deps')
+  child.stderr.write('OPENPET_BRIDGE_TOKEN=bridge-secret failed at /Users/mango/private/proposal.json via http://127.0.0.1:8787/creator/trigger-proposals/submit\n')
+  child.emit('error', new Error('OPENPET_BRIDGE_TOKEN=bridge-secret failed at /Users/mango/private/proposal.json via http://127.0.0.1:8787/creator/trigger-proposals/submit'))
+
+  await assert.rejects(setupRun, (error) => {
+    assert.equal(error.message.includes('bridge-secret'), false)
+    assert.equal(error.message.includes('/Users/mango/private/proposal.json'), false)
+    assert.equal(error.message.includes('127.0.0.1:8787'), false)
+    assert.match(error.message, /\[redacted-token\]=\[redacted-secret\]/)
+    assert.match(error.message, /\[redacted-path\]/)
+    assert.match(error.message, /\[redacted-local-url\]/)
+    return true
+  })
+  const runtime = service.listPlugins()[0].entries.setup[0].runtime
+  assert.equal(runtime.error.includes('bridge-secret'), false)
+  assert.equal(runtime.error.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(runtime.error.includes('127.0.0.1:8787'), false)
+  assert.match(runtime.error, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(runtime.error, /\[redacted-path\]/)
+  assert.match(runtime.error, /\[redacted-local-url\]/)
+  assert.equal(settingsService.get().plugins.logs[0].message.includes('bridge-secret'), false)
+  assert.equal(settingsService.get().plugins.logs[0].message.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(settingsService.get().plugins.logs[0].message.includes('127.0.0.1:8787'), false)
+  assert.match(settingsService.get().plugins.logs[0].message, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(settingsService.get().plugins.logs[0].message, /\[redacted-path\]/)
+  assert.match(settingsService.get().plugins.logs[0].message, /\[redacted-local-url\]/)
+  assert.equal(settingsService.get().plugins.logs[1].message.includes('bridge-secret'), false)
+  assert.equal(settingsService.get().plugins.logs[1].message.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(settingsService.get().plugins.logs[1].message.includes('127.0.0.1:8787'), false)
+  assert.match(settingsService.get().plugins.logs[1].message, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(settingsService.get().plugins.logs[1].message, /\[redacted-path\]/)
+  assert.match(settingsService.get().plugins.logs[1].message, /\[redacted-local-url\]/)
+})
+
 test('plugin service rejects setup runs for disabled plugins', () => {
   const spawned = []
   const service = createPluginService({
@@ -3342,6 +3488,35 @@ test('plugin service opens enabled declaration dashboard entries through the inj
   assert.equal(settingsService.get().plugins.logs[0].message, 'Dashboard opened')
 })
 
+test('plugin service appends dashboard query parameters for deep-linked detail opens', async () => {
+  const openedUrls = []
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    openExternal: async (url) => {
+      openedUrls.push(url)
+      return true
+    }
+  })
+
+  const result = await service.openDashboard('weather-declaration', 'main', {
+    query: { runId: 'run details/123', tab: 'review' }
+  })
+
+  assert.deepEqual(openedUrls, ['http://127.0.0.1:8787/?runId=run+details%2F123&tab=review'])
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    dashboardId: 'main',
+    url: 'http://127.0.0.1:8787/?runId=run+details%2F123&tab=review'
+  })
+})
+
 test('plugin service blocks dashboard opens for disabled plugins', async () => {
   const openedUrls = []
   const service = createPluginService({
@@ -3658,6 +3833,45 @@ test('plugin service marks non-zero service exits as failed', () => {
   assert.equal(service.listPlugins()[0].entries.services[0].runtime.status, 'failed')
   assert.equal(service.getLogs()[0].level, 'error')
   assert.equal(service.getLogs()[0].message, 'Service exited')
+})
+
+test('plugin service redacts sensitive service stderr and runtime errors', () => {
+  const child = createFakeServiceProcess()
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: () => child
+  })
+
+  service.startService('weather-declaration', 'companion')
+  child.stderr.write('OPENPET_BRIDGE_TOKEN=bridge-secret failed at /Users/mango/private/proposal.json via http://127.0.0.1:8787/creator/trigger-proposals/submit\n')
+  child.emit('error', new Error('OPENPET_BRIDGE_TOKEN=bridge-secret failed at /Users/mango/private/proposal.json via http://127.0.0.1:8787/creator/trigger-proposals/submit'))
+
+  const runtime = service.listPlugins()[0].entries.services[0].runtime
+  assert.equal(runtime.status, 'failed')
+  assert.equal(runtime.error.includes('bridge-secret'), false)
+  assert.equal(runtime.error.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(runtime.error.includes('127.0.0.1:8787'), false)
+  assert.match(runtime.error, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(runtime.error, /\[redacted-path\]/)
+  assert.match(runtime.error, /\[redacted-local-url\]/)
+  assert.equal(settingsService.get().plugins.logs[0].message.includes('bridge-secret'), false)
+  assert.equal(settingsService.get().plugins.logs[0].message.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(settingsService.get().plugins.logs[0].message.includes('127.0.0.1:8787'), false)
+  assert.match(settingsService.get().plugins.logs[0].message, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(settingsService.get().plugins.logs[0].message, /\[redacted-path\]/)
+  assert.match(settingsService.get().plugins.logs[0].message, /\[redacted-local-url\]/)
+  assert.equal(settingsService.get().plugins.logs[1].message.includes('bridge-secret'), false)
+  assert.equal(settingsService.get().plugins.logs[1].message.includes('/Users/mango/private/proposal.json'), false)
+  assert.equal(settingsService.get().plugins.logs[1].message.includes('127.0.0.1:8787'), false)
+  assert.match(settingsService.get().plugins.logs[1].message, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(settingsService.get().plugins.logs[1].message, /\[redacted-path\]/)
+  assert.match(settingsService.get().plugins.logs[1].message, /\[redacted-local-url\]/)
 })
 
 test('plugin service rejects service cwd symlinks escaping the plugin directory', () => {

@@ -21,6 +21,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
   let quitCalls = 0
   let registeredIpcDependencies = null
   let registeredPluginDependencies = null
+  let createdCreatorStudioDefaultFlowDependencies = null
   let createdAiTalkStorePath = null
   let createdAiTalkDependencies = null
   let bundledPluginSyncDependencies = null
@@ -159,6 +160,12 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
         }
       },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/main/services/creator-studio-default-flow-service': {
+        createCreatorStudioDefaultFlowService: (dependencies) => {
+          createdCreatorStudioDefaultFlowDependencies = dependencies
+          return { id: 'creator-studio-default-flow-service' }
+        }
+      },
       './src/main/services/plugin-service': {
         createPluginService: (dependencies) => {
           registeredPluginDependencies = dependencies
@@ -187,6 +194,8 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
       './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
       './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/main/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
+      './src/main/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
       './src/main/user-data-path': { configureUserDataPath: () => {} }
     }
     if (serviceFactories[request]) return serviceFactories[request]
@@ -221,6 +230,8 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     assert.equal(createdAiTalkDependencies.aiService.id, 'ai-service')
     assert.equal(createdAiTalkDependencies.aiTalkStore.id, 'ai-talk-store')
     assert.equal(registeredIpcDependencies.aiTalkService.id, 'ai-talk-service')
+    assert.equal(registeredIpcDependencies.creatorStudioDefaultFlowService.id, 'creator-studio-default-flow-service')
+    assert.equal(createdCreatorStudioDefaultFlowDependencies.pluginService.stopAllServices != null, true)
     assert.equal(bundledPluginSyncDependencies.pluginDir, path.join(__dirname, '..', '.tmp-main-scale-injection', 'plugins'))
     assert.deepEqual(bundledPluginSyncDependencies.bundledPluginDirs, [path.resolve(__dirname, '../../examples/plugins/creator-studio')])
     assert.deepEqual(appLogs.map((entry) => entry.event), [
@@ -366,6 +377,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       './src/main/services/ai-talk-store': { createAiTalkStore: () => ({}) },
       './src/main/services/ai-talk-service': { createAiTalkService: () => ({}) },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/main/services/creator-studio-default-flow-service': { createCreatorStudioDefaultFlowService: () => ({}) },
       './src/main/services/plugin-service': {
         createPluginService: () => ({
           stopAllServices: () => {
@@ -388,6 +400,8 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
       './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
       './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/main/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
+      './src/main/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
       './src/main/user-data-path': { configureUserDataPath: () => {} }
     }
     if (serviceFactories[request]) return serviceFactories[request]
@@ -565,6 +579,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       './src/main/services/ai-service': { createAiService: () => ({}) },
       './src/main/services/image-generation-model-service': { createImageGenerationModelService: () => ({}) },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/main/services/creator-studio-default-flow-service': { createCreatorStudioDefaultFlowService: () => ({}) },
       './src/main/services/plugin-service': { createPluginService: () => ({ stopAllServices: () => {} }) },
       './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
       './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
@@ -576,6 +591,8 @@ test('main persists repaired cursor metadata and collection entry when repair re
       './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
       './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
       './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/main/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
+      './src/main/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
       './src/main/user-data-path': { configureUserDataPath: () => {} }
     }
     if (serviceFactories[request]) return serviceFactories[request]

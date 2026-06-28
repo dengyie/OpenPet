@@ -29,6 +29,7 @@ import type {
   ChatMessage,
   ControlCenterApi,
   ControlCenterSettings,
+  CreatorStudioDefaultFlowResult,
   CustomCursorRecord,
   ImageGenerationConfigViewState,
   JsonObject,
@@ -37,6 +38,8 @@ import type {
   PetPackSummary,
   PetPacksViewState,
   PluginCommandRunResultViewState,
+  PluginDashboardOpenOptions,
+  PluginDashboardOpenResult,
   PluginLogFilters,
   PluginPackageReviewViewState,
   PluginServiceHealthPolicyViewState,
@@ -546,8 +549,10 @@ const createDemoManualPlugin = (): PluginViewState => ({
   }
 })
 
+let demoPluginLogCounter = 0
+
 const createDemoPluginLog = (pluginId: string, message: string, commandId = '') => ({
-  id: `${pluginId}-${message}-${Date.now()}`,
+  id: `${pluginId}-${message}-${Date.now()}-${demoPluginLogCounter += 1}`,
   timestamp: new Date().toISOString(),
   level: 'info',
   pluginId,
@@ -590,6 +595,8 @@ const createDemoCreatorStudioActionImportResult = (payload?: JsonObject): Plugin
   const runId = typeof payload?.runId === 'string' && payload.runId.trim()
     ? payload.runId.trim()
     : '2026-06-19-creator-studio-action-008'
+  const failedTriggerHandoff = payload?.triggerProposalFailure === true || runId === 'run-demo-action-trigger-handoff-fail'
+  const missingTriggerHandoffRecord = payload?.triggerProposalMissingRecord === true || runId === 'run-demo-action-trigger-handoff-missing'
   return ({
     ok: true,
     pluginId: 'openpet.creator-studio',
@@ -617,14 +624,398 @@ const createDemoCreatorStudioActionImportResult = (payload?: JsonObject): Plugin
           }
         }
       },
-      triggerProposalSubmission: {
-        ok: true,
-        proposal: {
-          id: 'proposal:click:shy-spin:test'
+      ...(!missingTriggerHandoffRecord
+        ? {
+            triggerProposalSubmission: failedTriggerHandoff
+              ? {
+                  ok: false,
+                  error: 'proposal write failed via OPENPET_BRIDGE_TOKEN=bridge-secret at /Users/mango/private/proposal.json from http://127.0.0.1:8787/creator/trigger-proposals/submit'
+                }
+              : {
+                  ok: true,
+                  proposal: {
+                    id: 'proposal:click:shy-spin:test'
+                  }
+                }
+          }
+        : {})
+    }
+  })
+}
+
+const createDemoCreatorStudioDraftTaskResult = (payload?: JsonObject): PluginCommandRunResultViewState => {
+  const prompt = typeof payload?.prompt === 'string' && payload.prompt.trim()
+    ? payload.prompt.trim()
+    : '给当前猫猫新增一个害羞转圈动作'
+  const runId = /触发.*交接.*失败|trigger.*handoff.*fail/i.test(prompt)
+    ? 'run-demo-action-trigger-handoff-fail'
+    : /触发.*交接.*缺失|trigger.*handoff.*missing/i.test(prompt)
+      ? 'run-demo-action-trigger-handoff-missing'
+      : /失败|高级详情/i.test(prompt)
+        ? 'run-demo-action-fail'
+        : 'run-demo-action-123'
+  return {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'draft-task',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: `Drafted task ${runId}`,
+      run: {
+        runId,
+        status: 'draft',
+        taskStatus: 'needs_input',
+        currentStep: 'task_questions',
+        backend: 'provider',
+        input: {
+          prompt,
+          originalPrompt: prompt,
+          backend: 'provider'
+        },
+        generationTask: {
+          mode: 'single-action',
+          characterBrief: '保持当前宠物的风格和比例',
+          actions: [
+            {
+              actionId: 'shy-spin',
+              name: '害羞转圈',
+              motionPrompt: '先停顿一下，然后害羞地转一圈，最后回到站立姿势',
+              loop: false,
+              triggerProposal: { type: 'unbound' }
+            }
+          ],
+          questions: [
+            {
+              id: 'trigger',
+              title: 'Trigger',
+              options: ['manual', 'click', 'random', 'state', 'event', 'unbound']
+            }
+          ]
         }
       }
     }
-  })
+  }
+}
+
+const createDemoCreatorStudioAnswerResult = (payload?: JsonObject): PluginCommandRunResultViewState => {
+  const runId = typeof payload?.runId === 'string' && payload.runId.trim() ? payload.runId.trim() : 'run-demo-action-123'
+  return {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'answer-question',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: 'Answered task question trigger',
+      run: {
+        runId,
+        status: 'draft',
+        taskStatus: 'ready_for_confirmation',
+        currentStep: 'task_preview',
+        backend: 'provider',
+        generationTask: {
+          mode: 'single-action',
+          actions: [
+            {
+              actionId: 'shy-spin',
+              name: '害羞转圈',
+              motionPrompt: '先停顿一下，然后害羞地转一圈，最后回到站立姿势',
+              loop: false,
+              triggerProposal: {
+                type: 'manual',
+                notes: 'User selected manual trigger.'
+              }
+            }
+          ],
+          questions: []
+        }
+      }
+    }
+  }
+}
+
+const createDemoCreatorStudioConfirmResult = (payload?: JsonObject): PluginCommandRunResultViewState => {
+  const runId = typeof payload?.runId === 'string' && payload.runId.trim() ? payload.runId.trim() : 'run-demo-action-123'
+  return {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'confirm-task',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: `Confirmed task ${runId}`,
+      run: {
+        runId,
+        status: 'draft',
+        taskStatus: 'confirmed',
+        currentStep: 'confirmed',
+        backend: 'provider',
+        generationTask: {
+          mode: 'single-action',
+          actions: [
+            {
+              actionId: 'shy-spin',
+              name: '害羞转圈',
+              motionPrompt: '先停顿一下，然后害羞地转一圈，最后回到站立姿势',
+              loop: false,
+              triggerProposal: {
+                type: 'manual',
+                notes: 'User selected manual trigger.'
+              }
+            }
+          ],
+          questions: []
+        }
+      }
+    }
+  }
+}
+
+const createDemoCreatorStudioGenerateResult = (payload?: JsonObject): PluginCommandRunResultViewState => {
+  const runId = typeof payload?.runId === 'string' && payload.runId.trim() ? payload.runId.trim() : 'run-demo-action-123'
+  return {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'run-step',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: `Generated pet output for ${runId}`,
+      run: {
+        runId,
+        status: 'ready_for_review',
+        taskStatus: 'confirmed',
+        currentStep: 'review',
+        backend: 'provider',
+        artifacts: {
+          actionFrames: {
+            actionId: 'shy-spin',
+            name: '害羞转圈',
+            framesDir: `/tmp/openpet/runs/${runId}/frames/actions/shy-spin`,
+            triggerProposal: {
+              type: 'manual',
+              notes: 'User selected manual trigger.'
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+const createDemoCreatorStudioApproveResult = (payload?: JsonObject): PluginCommandRunResultViewState => {
+  const runId = typeof payload?.runId === 'string' && payload.runId.trim() ? payload.runId.trim() : 'run-demo-action-123'
+  return {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'approve-run',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: `Approved run ${runId}`,
+      run: {
+        runId,
+        status: 'approved',
+        taskStatus: 'confirmed',
+        currentStep: 'approved',
+        backend: 'provider',
+        artifacts: {
+          actionFrames: {
+            actionId: 'shy-spin',
+            name: '害羞转圈',
+            framesDir: `/tmp/openpet/runs/${runId}/frames/actions/shy-spin`,
+            triggerProposal: {
+              type: 'manual',
+              notes: 'User selected manual trigger.'
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+const getDemoCreatorStudioRun = (result: PluginCommandRunResultViewState | null | undefined) => {
+  const candidate = result?.result
+  return candidate && typeof candidate === 'object' && !Array.isArray(candidate) && candidate.run && typeof candidate.run === 'object'
+    ? candidate.run as Record<string, unknown>
+    : null
+}
+
+const getDemoCreatorStudioRunId = (run: Record<string, unknown> | null) => String(run?.runId || '').trim()
+
+const getDemoCreatorStudioQuestions = (run: Record<string, unknown> | null) => {
+  const generationTask = run?.generationTask
+  const questions = generationTask && typeof generationTask === 'object' && !Array.isArray(generationTask)
+    ? (generationTask as Record<string, unknown>).questions
+    : null
+  return Array.isArray(questions) ? questions as Array<Record<string, unknown>> : []
+}
+
+const resolveDemoCreatorStudioAutoAnswer = (question: Record<string, unknown>) => (
+  String(question.id || '') === 'trigger' ? 'manual' : ''
+)
+
+const isDemoCreatorStudioActionRun = (run: Record<string, unknown> | null) => {
+  const artifacts = run?.artifacts
+  return Boolean(artifacts && typeof artifacts === 'object' && !Array.isArray(artifacts) && (artifacts as Record<string, unknown>).actionFrames)
+}
+
+const getDemoCreatorStudioTriggerProposalSubmission = (result: PluginCommandRunResultViewState | null | undefined) => {
+  const candidate = result?.result
+  return candidate &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    candidate.triggerProposalSubmission &&
+    typeof candidate.triggerProposalSubmission === 'object' &&
+    !Array.isArray(candidate.triggerProposalSubmission)
+    ? candidate.triggerProposalSubmission as Record<string, unknown>
+    : null
+}
+
+const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise<CreatorStudioDefaultFlowResult> => {
+  const normalizedPrompt = String(prompt || '').trim()
+  if (!normalizedPrompt) throw new Error('请先输入 Creator Studio 请求')
+
+  const plugin = demoState.plugins.find((candidate) => candidate.id === 'openpet.creator-studio')
+  if (!plugin) throw new Error('未找到 Creator Studio 插件')
+  if (!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked) {
+    throw new Error('请先启用 Creator Studio 插件')
+  }
+  const runtimeStatus = plugin.entries?.services?.find((service) => service.id === 'studio')?.runtime?.status || 'stopped'
+  if (runtimeStatus !== 'running') {
+    throw new Error('请先启动 Creator Studio Service，再使用生成并导入')
+  }
+
+  const health = await demoApi.checkImageGenerationHealth({})
+  if (!health?.ok) {
+    return {
+      ok: true,
+      state: 'blocked',
+      message: '请先到 AI -> 图片 Provider 配置并保存可用模型，然后再使用生成并导入',
+      runId: '',
+      lastCommandResult: null
+    }
+  }
+
+  let lastCommandResult: PluginCommandRunResultViewState | null = null
+  let lastRunId = ''
+
+  try {
+    let result = await demoApi.runPluginCommand('openpet.creator-studio', 'draft-task', {
+      prompt: normalizedPrompt,
+      originalPrompt: normalizedPrompt,
+      backend: 'provider'
+    })
+    let run = getDemoCreatorStudioRun(result)
+    let runId = getDemoCreatorStudioRunId(run)
+    lastCommandResult = result
+    lastRunId = runId
+
+    while (runId) {
+      const pendingQuestions = getDemoCreatorStudioQuestions(run)
+      if (!pendingQuestions.length) break
+      const question = pendingQuestions[0]
+      const answer = resolveDemoCreatorStudioAutoAnswer(question)
+      if (!answer) {
+        return {
+          ok: true,
+          state: 'needs_details',
+          message: `生成并导入已暂停：run ${runId} 还需要人工补充信息。请点击“查看任务详情”。`,
+          runId,
+          lastCommandResult
+        }
+      }
+      result = await demoApi.runPluginCommand('openpet.creator-studio', 'answer-question', {
+        runId,
+        questionId: String(question.id || ''),
+        answer
+      })
+      run = getDemoCreatorStudioRun(result)
+      runId = getDemoCreatorStudioRunId(run)
+      lastCommandResult = result
+      lastRunId = runId
+    }
+
+    if (runId && String(run?.taskStatus || '') !== 'confirmed') {
+      result = await demoApi.runPluginCommand('openpet.creator-studio', 'confirm-task', { runId })
+      run = getDemoCreatorStudioRun(result)
+      runId = getDemoCreatorStudioRunId(run)
+      lastCommandResult = result
+      lastRunId = runId
+    }
+
+    if (runId) {
+      result = await demoApi.runPluginCommand('openpet.creator-studio', 'run-step', { runId })
+      run = getDemoCreatorStudioRun(result)
+      runId = getDemoCreatorStudioRunId(run)
+      lastCommandResult = result
+      lastRunId = runId
+    }
+
+    if (runId && String(run?.status || '') === 'ready_for_review') {
+      result = await demoApi.runPluginCommand('openpet.creator-studio', 'approve-run', { runId })
+      run = getDemoCreatorStudioRun(result)
+      runId = getDemoCreatorStudioRunId(run)
+      lastCommandResult = result
+      lastRunId = runId
+    }
+
+    if (runId && String(run?.status || '') === 'approved') {
+      result = await demoApi.runPluginCommand(
+        'openpet.creator-studio',
+        isDemoCreatorStudioActionRun(run) ? 'import-approved-action' : 'import-approved-pet',
+        { runId, activate: true }
+      )
+      lastCommandResult = result
+      lastRunId = getDemoCreatorStudioRunId(getDemoCreatorStudioRun(result)) || runId
+    }
+
+    if (lastCommandResult?.commandId === 'import-approved-action') {
+      const triggerProposalSubmission = getDemoCreatorStudioTriggerProposalSubmission(lastCommandResult)
+      if (!triggerProposalSubmission) {
+        return {
+          ok: true,
+          state: 'needs_details',
+          message: `动作已导入，但 run ${lastRunId} 缺少触发建议交接记录。请点击“查看任务详情”。`,
+          runId: lastRunId,
+          lastCommandResult
+        }
+      }
+      if (triggerProposalSubmission.ok !== true) {
+        return {
+          ok: true,
+          state: 'needs_details',
+          message: `动作已导入，但 run ${lastRunId} 的触发建议交接失败。请点击“查看任务详情”。`,
+          runId: lastRunId,
+          lastCommandResult
+        }
+      }
+    }
+
+    const resultRecord = lastCommandResult?.result && typeof lastCommandResult.result === 'object' && !Array.isArray(lastCommandResult.result)
+      ? lastCommandResult.result as Record<string, unknown>
+      : null
+    return {
+      ok: true,
+      state: 'completed',
+      message: String(resultRecord?.message || '生成并导入已完成'),
+      runId: lastRunId,
+      lastCommandResult
+    }
+  } catch (error) {
+    if (lastRunId) {
+      return {
+        ok: true,
+        state: 'needs_details',
+        message: `生成并导入在 run ${lastRunId} 失败：${error instanceof Error ? error.message : '未知错误'}。请点击“查看任务详情”。`,
+        runId: lastRunId,
+        lastCommandResult
+      }
+    }
+    throw error
+  }
 }
 
 const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus({
@@ -1774,9 +2165,28 @@ const demoApi: ControlCenterApi = {
     return { id: pluginId, enabled }
   },
   savePluginConfig: async (pluginId, config) => ({ id: pluginId, config }),
+  runCreatorStudioDefaultFlow: async (prompt) => createDemoCreatorStudioDefaultFlowResult(prompt),
   runPluginCommand: async (pluginId, commandId, payload) => {
     demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
     writeDemoState()
+    if (pluginId === 'openpet.creator-studio' && commandId === 'draft-task') {
+      return createDemoCreatorStudioDraftTaskResult(payload)
+    }
+    if (pluginId === 'openpet.creator-studio' && commandId === 'answer-question') {
+      return createDemoCreatorStudioAnswerResult(payload)
+    }
+    if (pluginId === 'openpet.creator-studio' && commandId === 'confirm-task') {
+      return createDemoCreatorStudioConfirmResult(payload)
+    }
+    if (pluginId === 'openpet.creator-studio' && commandId === 'run-step') {
+      if (payload?.runId === 'run-demo-action-fail') {
+        throw new Error('Provider backend timed out')
+      }
+      return createDemoCreatorStudioGenerateResult(payload)
+    }
+    if (pluginId === 'openpet.creator-studio' && commandId === 'approve-run') {
+      return createDemoCreatorStudioApproveResult(payload)
+    }
     if (pluginId === 'openpet.creator-studio' && commandId === 'import-approved-pet') {
       return createDemoCreatorStudioImportResult(payload)
     }
@@ -1810,15 +2220,23 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return { ok: true, pluginId, setupId, runtime }
   },
-  openPluginDashboard: async (pluginId, dashboardId) => {
+  openPluginDashboard: async (pluginId, dashboardId, options?: PluginDashboardOpenOptions): Promise<PluginDashboardOpenResult> => {
     const plugin = demoState.plugins.find((candidate) => candidate.id === pluginId)
     const dashboard = plugin?.entries?.dashboards?.find((candidate) => candidate.id === dashboardId)
+    const dashboardUrl = new URL(dashboard?.url || 'http://127.0.0.1/')
+    const query = options?.query && typeof options.query === 'object' ? options.query : {}
+    for (const [key, value] of Object.entries(query)) {
+      const normalizedKey = String(key || '').trim()
+      const normalizedValue = String(value || '').trim()
+      if (!normalizedKey || !normalizedValue) continue
+      dashboardUrl.searchParams.set(normalizedKey, normalizedValue)
+    }
     demoState.pluginLogs = [
       createDemoPluginLog(pluginId, 'Dashboard opened', `dashboard:${dashboardId}`),
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { ok: true, pluginId, dashboardId, url: dashboard?.url || '' }
+    return { ok: true, pluginId, dashboardId, url: dashboardUrl.toString() }
   },
   startPluginService: async (pluginId, serviceId) => {
     const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {

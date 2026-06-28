@@ -32,6 +32,17 @@ const parseCommandPayload = (draft: string): JsonObject | undefined => {
   return parsed as JsonObject
 }
 
+const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
+const CREATOR_STUDIO_SERVICE_ID = 'studio'
+
+const findPluginById = (plugins: PluginViewState[], pluginId: string) => (
+  plugins.find((plugin) => plugin.id === pluginId) || null
+)
+
+const getPluginServiceRuntimeStatus = (plugin: PluginViewState | null, serviceId: string) => (
+  plugin?.entries?.services?.find((service) => service.id === serviceId)?.runtime?.status || 'stopped'
+)
+
 export function usePluginsPane() {
   const [loading, setLoading] = useState(true)
   const [plugins, setPlugins] = useState<PluginViewState[]>([])
@@ -39,6 +50,9 @@ export function usePluginsPane() {
   const [filters, setFilters] = useState<PluginLogFilters>({ pluginId: '', level: '', query: '' })
   const [status, setStatus] = useState('')
   const [runningCommand, setRunningCommand] = useState('')
+  const [creatorStudioPromptDraft, setCreatorStudioPromptDraft] = useState('')
+  const [creatorStudioLastRunId, setCreatorStudioLastRunId] = useState('')
+  const [runningCreatorStudioDefaultFlow, setRunningCreatorStudioDefaultFlow] = useState(false)
   const [lastCommandResult, setLastCommandResult] = useState<PluginCommandResultPreview | null>(null)
   const [commandPayloadDrafts, setCommandPayloadDrafts] = useState<Record<string, string>>({})
   const [runningSetup, setRunningSetup] = useState('')
@@ -227,6 +241,45 @@ export function usePluginsPane() {
     }
   }
 
+  const onRunCreatorStudioDefaultFlow = async () => {
+    const plugin = findPluginById(plugins, CREATOR_STUDIO_PLUGIN_ID)
+    if (!plugin) {
+      setStatus('未找到 Creator Studio 插件')
+      return
+    }
+    if (!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked) {
+      setStatus('请先启用 Creator Studio 插件')
+      return
+    }
+    const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+    if (runtimeStatus !== 'running') {
+      setStatus('请先启动 Creator Studio Service，再使用生成并导入')
+      return
+    }
+    const prompt = String(creatorStudioPromptDraft || '').trim()
+    if (!prompt) {
+      setStatus('请先输入 Creator Studio 请求')
+      return
+    }
+
+    setRunningCreatorStudioDefaultFlow(true)
+    setStatus('')
+    try {
+      const result = await api.runCreatorStudioDefaultFlow(prompt)
+      setCreatorStudioLastRunId(String(result.runId || '').trim())
+      setLastCommandResult(result.lastCommandResult ? toCommandResultPreview(result.lastCommandResult) : null)
+      await refreshLogs()
+      setStatus(result.message || '生成并导入已完成')
+      if (result.state === 'completed') setCreatorStudioPromptDraft('')
+    } catch (error) {
+      setLastCommandResult(null)
+      setStatus(messageFromError(error, '生成并导入启动失败'))
+      await refreshLogs()
+    } finally {
+      setRunningCreatorStudioDefaultFlow(false)
+    }
+  }
+
   const onRunSetup = async (pluginId: string, setupId: string) => {
     const setupKey = `${pluginId}:${setupId}`
     setRunningSetup(setupKey)
@@ -258,13 +311,28 @@ export function usePluginsPane() {
   }
 
   const onOpenDashboard = async (pluginId: string, dashboardId: string) => {
+    if (pluginId === CREATOR_STUDIO_PLUGIN_ID) {
+      const plugin = findPluginById(plugins, pluginId)
+      const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+      if (runtimeStatus !== 'running') {
+        setStatus('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
+        return
+      }
+    }
     const dashboardKey = `${pluginId}:${dashboardId}`
     setOpeningDashboard(dashboardKey)
     setStatus('')
     try {
-      await api.openPluginDashboard(pluginId, dashboardId)
+      const shouldOpenCreatorStudioRun = pluginId === CREATOR_STUDIO_PLUGIN_ID &&
+        dashboardId === 'main' &&
+        Boolean(creatorStudioLastRunId)
+      await api.openPluginDashboard(
+        pluginId,
+        dashboardId,
+        shouldOpenCreatorStudioRun ? { query: { runId: creatorStudioLastRunId } } : undefined
+      )
       await refreshLogs()
-      setStatus('Dashboard 已打开')
+      setStatus(shouldOpenCreatorStudioRun ? `Dashboard 已打开 · run ${creatorStudioLastRunId}` : 'Dashboard 已打开')
     } catch (error) {
       setStatus(messageFromError(error, 'Dashboard 打开失败'))
       await refreshLogs()
@@ -409,6 +477,8 @@ export function usePluginsPane() {
     filters,
     status,
     runningCommand,
+    creatorStudioPromptDraft,
+    runningCreatorStudioDefaultFlow,
     lastCommandResult,
     commandPayloadDrafts,
     runningSetup,
@@ -432,9 +502,11 @@ export function usePluginsPane() {
     onUninstallPlugin,
     onChangeConfig,
     onChangeCommandPayload,
+    onChangeCreatorStudioPromptDraft: setCreatorStudioPromptDraft,
     onChangeGithubRepositoryUrl: setGithubRepositoryUrl,
     onSaveConfig,
     onRun,
+    onRunCreatorStudioDefaultFlow,
     onRunSetup,
     onOpenDashboard,
     onStartService,

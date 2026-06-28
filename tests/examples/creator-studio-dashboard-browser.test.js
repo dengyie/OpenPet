@@ -9,7 +9,7 @@ const sharp = require('sharp')
 
 const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
-const { createRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
+const { createRun, readRun, updateRunStatus, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const openDashboardServer = async (dataDir) => {
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
@@ -135,6 +135,21 @@ const seedImportedActionRun = async (dataDir) => {
       }
     },
     now: () => '2026-06-27T01:02:00.000Z'
+  })
+  return run
+}
+
+const seedLegacyImportedActionRunWithoutTask = async (dataDir) => {
+  const run = await seedImportedActionRun(dataDir)
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyImportedRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyImportedRun,
+      taskStatus: 'not_started',
+      currentStep: 'imported'
+    }
   })
   return run
 }
@@ -424,6 +439,160 @@ const seedImportedFullPetRun = async (dataDir) => {
   return run
 }
 
+const seedLegacyImportedFullPetRunWithoutTask = async (dataDir) => {
+  const run = await seedImportedFullPetRun(dataDir)
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyImportedRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyImportedRun,
+      taskStatus: 'not_started',
+      currentStep: 'imported'
+    }
+  })
+  return run
+}
+
+const seedImportedFullPetRunWithSourceMismatch = async (dataDir) => {
+  const run = await seedImportedFullPetRun(dataDir)
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const baseDir = path.join(runDir, 'frames', 'base')
+  const qaDir = path.join(runDir, 'qa')
+
+  await writeSolidPng(path.join(baseDir, '0002.png'), {
+    width: 1024,
+    height: 1024,
+    background: { r: 120, g: 194, b: 255, alpha: 1 }
+  })
+
+  fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
+    ok: true,
+    sourceRelativePath: `runs/${run.runId}/frames/base/0002.png`,
+    width: 1024,
+    height: 1024,
+    visiblePixels: 6400,
+    warnings: []
+  }, null, 2)}\n`)
+
+  return run
+}
+
+const seedLegacyReadyForReviewFullPetRunWithoutTask = async (dataDir, { mismatchSourceImage = false } = {}) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: mismatchSourceImage ? 'Legacy Mismatch Cat' : 'Legacy Review Cat',
+      petId: mismatchSourceImage ? 'legacy-mismatch-cat' : 'legacy-review-cat',
+      prompt: '生成一只完整的新桌宠。',
+      originalPrompt: '生成一只完整的新桌宠。',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: mismatchSourceImage
+          ? '一只需要显示 legacy mismatch 提示的桌宠。'
+          : '一只已经生成完成、等待审批的 legacy 桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'soft breathing and a tiny tail sway',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T10:00:00.000Z'
+  })
+  const runDir = path.join(dataDir, 'runs', run.runId)
+  const outputDir = path.join(runDir, 'outputs')
+  const qaDir = path.join(runDir, 'qa')
+  const baseDir = path.join(runDir, 'frames', 'base')
+  await writeSolidPng(path.join(baseDir, '0001.png'), {
+    width: 1024,
+    height: 1024,
+    background: { r: 255, g: 194, b: 120, alpha: 1 }
+  })
+  if (mismatchSourceImage) {
+    await writeSolidPng(path.join(baseDir, '0002.png'), {
+      width: 1024,
+      height: 1024,
+      background: { r: 120, g: 194, b: 255, alpha: 1 }
+    })
+  }
+  fs.mkdirSync(outputDir, { recursive: true })
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
+  fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
+    id: mismatchSourceImage ? 'legacy-mismatch-cat' : 'legacy-review-cat',
+    displayName: mismatchSourceImage ? 'Legacy Mismatch Cat' : 'Legacy Review Cat',
+    spritesheetPath: 'spritesheet.webp'
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+    ok: true,
+    width: 1536,
+    height: 1872,
+    visiblePixels: 8200,
+    warnings: []
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
+    ok: true,
+    sourceRelativePath: mismatchSourceImage
+      ? `runs/${run.runId}/frames/base/0002.png`
+      : `runs/${run.runId}/frames/base/0001.png`,
+    width: 1024,
+    height: 1024,
+    visiblePixels: 6400,
+    warnings: []
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'review',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      artifacts: {
+        outputDir,
+        petJson: path.join(outputDir, 'pet.json'),
+        spritesheet: path.join(outputDir, 'spritesheet.webp'),
+        qa: path.join(qaDir, 'atlas-validation.json'),
+        sourceImageQa: path.join(qaDir, 'source-image-validation.json'),
+        generatedImage: {
+          ok: true,
+          backend: 'cloud',
+          model: 'gpt-image-2',
+          generatedAt: '2026-06-28T10:01:00.000Z',
+          outputs: [{
+            dataRelativePath: `runs/${run.runId}/frames/base/0001.png`,
+            mimeType: 'image/png',
+            sha256: mismatchSourceImage ? 'legacy-full-pet-mismatch-sha' : 'legacy-full-pet-review-sha'
+          }]
+        }
+      }
+    },
+    now: () => '2026-06-28T10:01:30.000Z'
+  })
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyReviewRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyReviewRun,
+      backend: 'cloud',
+      input: {
+        ...persisted.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  return run
+}
+
 const seedImportedActionRunWithoutTriggerSubmission = async (dataDir) => {
   const run = createRun({
     dataDir,
@@ -514,6 +683,195 @@ const seedImportedActionRunWithoutTriggerSubmission = async (dataDir) => {
   return run
 }
 
+const seedLegacyFailedRunWithoutTask = (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      prompt: 'Legacy failed provider run should allow retry.',
+      originalPrompt: 'Legacy failed provider run should allow retry.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-failed-retry',
+          name: 'Legacy Failed Retry',
+          motionPrompt: 'placeholder',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T09:30:00.000Z'
+  })
+  const failedRun = updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'failed',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'generate',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      backendStatus: {
+        backend: 'provider',
+        state: 'failed',
+        message: 'Provider queue overloaded',
+        updatedAt: '2026-06-28T09:31:00.000Z'
+      },
+      recovery: {
+        canRetryGeneration: true,
+        backend: {
+          backend: 'provider',
+          state: 'failed'
+        },
+        failureKind: 'provider',
+        failureReason: 'Provider queue overloaded',
+        guidance: 'Review the provider failure details, then retry generation on this same run when the backend is ready.',
+        qaFocus: 'No QA artifacts were produced before the generation failure.'
+      },
+      error: 'Provider queue overloaded'
+    },
+    now: () => '2026-06-28T09:31:00.000Z'
+  })
+  const { generationTask: _generationTask, ...legacyFailedRun } = failedRun
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyFailedRun,
+      backend: 'cloud',
+      input: {
+        ...failedRun.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  return run
+}
+
+const seedLegacyFailedFullPetRunWithoutTask = (dataDir) => {
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Legacy Failed Full Pet Cat',
+      petId: 'legacy-failed-full-pet-cat',
+      prompt: 'Legacy failed full-pet provider run should allow retry.',
+      originalPrompt: 'Legacy failed full-pet provider run should allow retry.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'full-pet',
+        targetPet: 'new',
+        styleSource: 'textOnly',
+        characterBrief: '一只 provider 失败后需要继续重试的 legacy 桌宠。',
+        actions: [{
+          actionId: 'idle',
+          name: 'Idle',
+          motionPrompt: 'soft breathing with a tiny tail sway',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'state', binding: 'idle' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T09:32:00.000Z'
+  })
+  const failedRun = updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'failed',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'generate',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      backendStatus: {
+        backend: 'provider',
+        state: 'failed',
+        message: 'Provider queue overloaded',
+        updatedAt: '2026-06-28T09:33:00.000Z'
+      },
+      recovery: {
+        canRetryGeneration: true,
+        backend: {
+          backend: 'provider',
+          state: 'failed'
+        },
+        failureKind: 'provider',
+        failureReason: 'Provider queue overloaded',
+        guidance: 'Review the provider failure details, then retry generation on this same run when the backend is ready.',
+        qaFocus: 'No QA artifacts were produced before the generation failure.'
+      },
+      error: 'Provider queue overloaded'
+    },
+    now: () => '2026-06-28T09:33:00.000Z'
+  })
+  const { generationTask: _generationTask, ...legacyFailedRun } = failedRun
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyFailedRun,
+      backend: 'cloud',
+      input: {
+        ...failedRun.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  return run
+}
+
+const seedLegacyReadyForReviewActionRunWithoutTask = async (dataDir) => {
+  const run = await seedImportedActionRun(dataDir)
+  const qaPath = path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json')
+  fs.writeFileSync(qaPath, `${JSON.stringify({
+    ok: true,
+    actionId: 'shy-spin',
+    frameCount: 1,
+    frameWidth: 192,
+    frameHeight: 208,
+    frames: [{
+      fileName: '0001.png',
+      width: 192,
+      height: 208,
+      visiblePixels: 3200
+    }],
+    warnings: [],
+    repairs: [],
+    playback: {
+      frameDurationsMs: [160]
+    }
+  }, null, 2)}\n`)
+  updateRunStatus({
+    dataDir,
+    runId: run.runId,
+    status: 'ready_for_review',
+    patch: {
+      taskStatus: 'confirmed',
+      currentStep: 'review',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      triggerProposalSubmission: undefined,
+      importedActionId: ''
+    },
+    now: () => '2026-06-28T09:40:00.000Z'
+  })
+  const persisted = readRun({ dataDir, runId: run.runId })
+  const { generationTask: _generationTask, ...legacyReviewRun } = persisted
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyReviewRun,
+      input: {
+        ...persisted.input,
+        backend: 'local'
+      }
+    }
+  })
+  return run
+}
+
 test('creator studio dashboard drives a single-action fixture run to the host import handoff', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-'))
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
@@ -551,10 +909,19 @@ test('creator studio dashboard drives a single-action fixture run to the host im
     await page.waitForFunction(() => /Run approved/.test(document.querySelector('#status-line').textContent))
 
     const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(await page.locator('#status-line').textContent(), /import-approved-action/i)
     assert.match(handoffText, /Import Approved Action/i)
     assert.match(handoffText, /Control Center -> Plugins/i)
     assert.match(handoffText, /Command ID: import-approved-action/i)
+    assert.match(handoffText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(workflowGuidanceText, /Import state: ready \/ Command: import-approved-action/i)
+    assert.match(workflowGuidanceText, /Run Import Approved Action from Control Center -> Plugins/i)
+    assert.match(workflowGuidanceText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(actionLaneText, /Host-owned action: Import Approved Action/i)
+    assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
@@ -590,12 +957,24 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
     await page.waitForFunction(() => /Run approved/.test(document.querySelector('#status-line').textContent))
 
     const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const nextStepText = await page.locator('#next-step-panel').textContent()
+    const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(await page.locator('#status-line').textContent(), /import-approved-pet/i)
     assert.match(handoffText, /Import Approved Pet/i)
     assert.match(handoffText, /Control Center -> Plugins/i)
     assert.match(handoffText, /Command ID: import-approved-pet/i)
     assert.match(handoffText, /Payload JSON:/i)
     assert.match(handoffText, /"runId":"[^"]+"/i)
+    assert.match(handoffText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(nextStepText, /Import Approved Pet/i)
+    assert.match(nextStepText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(workflowGuidanceText, /Import state: ready \/ Command: import-approved-pet/i)
+    assert.match(workflowGuidanceText, /Run Import Approved Pet from Control Center -> Plugins/i)
+    assert.match(workflowGuidanceText, /Continue in Control Center at Control Center -> Plugins\./i)
+    assert.match(actionLaneText, /Host-owned action: Import Approved Pet/i)
+    assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
@@ -732,12 +1111,14 @@ test('creator studio dashboard shows imported action review completion details',
     assert.match(handoffText, /Review location: Actions -> Trigger Proposal Inbox/i)
     assert.match(handoffText, /Follow-up: Review trigger proposal/i)
     assert.match(handoffText, /The action import is complete\. Review the submitted trigger proposal/i)
+    assert.match(handoffText, /Continue in Control Center at Actions -> Trigger Proposal Inbox\./i)
 
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
     assert.match(workflowGuidanceText, /Follow-up: Review trigger proposal/i)
     assert.match(workflowGuidanceText, /Review status: complete/i)
     assert.match(workflowGuidanceText, /Next review action: Review trigger proposal -> Actions -> Trigger Proposal Inbox/i)
     assert.match(workflowGuidanceText, /Actions -> Trigger Proposal Inbox/i)
+    assert.match(workflowGuidanceText, /Continue in Control Center at Actions -> Trigger Proposal Inbox\./i)
 
     const reviewText = await page.locator('#action-review-panel').textContent()
     assert.match(reviewText, /Import completed/i)
@@ -745,6 +1126,7 @@ test('creator studio dashboard shows imported action review completion details',
     assert.match(reviewText, /Actions -> Trigger Proposal Inbox/i)
     assert.match(reviewText, /Follow-up: Review trigger proposal/i)
     assert.match(reviewText, /The action import is complete\. Review the submitted trigger proposal/i)
+    assert.match(reviewText, /Continue in Control Center at Actions -> Trigger Proposal Inbox\./i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Repair or regenerate frames before approval/i)
     assert.doesNotMatch(reviewText, /Repair/i)
@@ -752,6 +1134,7 @@ test('creator studio dashboard shows imported action review completion details',
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review trigger proposal/i)
     assert.match(nextStepText, /Actions -> Trigger Proposal Inbox/i)
+    assert.match(nextStepText, /Continue in Control Center at Actions -> Trigger Proposal Inbox\./i)
 
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review trigger proposal/i)
@@ -779,6 +1162,27 @@ test('creator studio dashboard shows imported action review completion details',
   }
 })
 
+test('creator studio dashboard preserves imported action follow-up for legacy runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-legacy-pre-task-'))
+  await seedLegacyImportedActionRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const reviewText = await page.locator('#action-review-panel').textContent()
+    assert.match(handoffText, /Imported result details/i)
+    assert.doesNotMatch(handoffText, /Generate and approve a run to unlock host-owned import\./i)
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Actions -> Trigger Proposal Inbox/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('creator studio dashboard shows imported action handoff failure details', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-failed-'))
   await seedImportedFailedActionRun(dataDir)
@@ -796,6 +1200,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     assert.match(handoffText, /\[redacted-token\]/i)
     assert.match(handoffText, /\[redacted-path\]/i)
     assert.match(handoffText, /\[redacted-local-url\]/i)
+    assert.match(handoffText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.equal(handoffText.includes('bridge-secret'), false)
     assert.equal(handoffText.includes('/Users/mango/private/proposal.json'), false)
     assert.equal(handoffText.includes('127.0.0.1:8787'), false)
@@ -809,6 +1214,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     assert.match(workflowGuidanceText, /\[redacted-token\]/i)
     assert.match(workflowGuidanceText, /\[redacted-path\]/i)
     assert.match(workflowGuidanceText, /\[redacted-local-url\]/i)
+    assert.match(workflowGuidanceText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.equal(workflowGuidanceText.includes('bridge-secret'), false)
     assert.equal(workflowGuidanceText.includes('/Users/mango/private/proposal.json'), false)
     assert.equal(workflowGuidanceText.includes('127.0.0.1:8787'), false)
@@ -822,6 +1228,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     assert.match(reviewText, /\[redacted-token\]/i)
     assert.match(reviewText, /\[redacted-path\]/i)
     assert.match(reviewText, /\[redacted-local-url\]/i)
+    assert.match(reviewText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Repair or regenerate frames before approval/i)
     assert.doesNotMatch(reviewText, /Repair/i)
@@ -832,6 +1239,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review import handoff/i)
     assert.match(nextStepText, /Control Center -> Plugins/i)
+    assert.match(nextStepText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.match(nextStepText, /proposal write failed/i)
     assert.match(nextStepText, /\[redacted-token\]/i)
     assert.match(nextStepText, /\[redacted-path\]/i)
@@ -843,6 +1251,7 @@ test('creator studio dashboard shows imported action handoff failure details', a
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review import handoff/i)
     assert.match(actionLaneText, /Location: Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.match(actionLaneText, /proposal write failed/i)
     assert.match(actionLaneText, /\[redacted-token\]/i)
     assert.match(actionLaneText, /\[redacted-path\]/i)
@@ -892,14 +1301,17 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(handoffText, /Imported pet pack: imported-review-cat/i)
     assert.match(handoffText, /Follow-up: Review imported result/i)
     assert.match(handoffText, /Review the imported result inside OpenPet/i)
+    assert.match(handoffText, /Continue in OpenPet\./i)
 
     const resultCardText = await page.locator('#import-handoff-panel .notice').last().textContent()
     assert.match(resultCardText, /Follow-up: Review imported result/i)
     assert.match(resultCardText, /Review the imported result inside OpenPet/i)
+    assert.match(resultCardText, /Continue in OpenPet\./i)
 
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
     assert.match(workflowGuidanceText, /Follow-up: Review imported result/i)
     assert.match(workflowGuidanceText, /OpenPet/i)
+    assert.match(workflowGuidanceText, /Continue in OpenPet\./i)
 
     const reviewText = await page.locator('#full-pet-review-panel').textContent()
     assert.match(reviewText, /Import completed/i)
@@ -908,22 +1320,69 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(reviewText, /Review location: OpenPet/i)
     assert.match(reviewText, /Follow-up: Review imported result/i)
     assert.match(reviewText, /Review the imported result inside OpenPet/i)
+    assert.match(reviewText, /Continue in OpenPet\./i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
 
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review imported result/i)
     assert.match(nextStepText, /OpenPet/i)
+    assert.match(nextStepText, /Continue in OpenPet\./i)
 
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review imported result/i)
     assert.match(actionLaneText, /Location: OpenPet/i)
+    assert.match(actionLaneText, /Continue in OpenPet\./i)
 
     const checkpointText = await page.locator('#review-checkpoint-panel').textContent()
     assert.match(checkpointText, /Review imported result/i)
     assert.match(checkpointText, /Owner: host/i)
     assert.match(checkpointText, /Location: OpenPet/i)
     assert.match(checkpointText, /Imported: yes/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard preserves imported full-pet follow-up for legacy runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-legacy-pre-task-'))
+  await seedLegacyImportedFullPetRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const handoffText = await page.locator('#import-handoff-panel').textContent()
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(handoffText, /Imported pet pack: imported-review-cat/i)
+    assert.doesNotMatch(handoffText, /Generate and approve a run to unlock host-owned import\./i)
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Review location: OpenPet/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard hides stale full-pet source mismatch warnings after import', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-mismatch-'))
+  await seedImportedFullPetRunWithSourceMismatch(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /Import completed/i)
+    assert.match(reviewText, /Imported pet pack: imported-review-cat/i)
+    assert.match(reviewText, /Review location: OpenPet/i)
+    assert.doesNotMatch(reviewText, /QA source image does not match the current generated image/i)
+    assert.doesNotMatch(reviewText, /QA source reference/i)
+    assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
+    assert.doesNotMatch(reviewText, /0002\.png/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
@@ -943,12 +1402,14 @@ test('creator studio dashboard shows imported action missing trigger handoff rec
     assert.match(handoffText, /Imported result details/i)
     assert.match(handoffText, /Follow-up: Review import handoff/i)
     assert.match(handoffText, /no trigger proposal handoff record was saved/i)
+    assert.match(handoffText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.equal(handoffText.includes('runs during Import Approved Action'), false)
 
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
     assert.match(workflowGuidanceText, /Follow-up: Review import handoff/i)
     assert.match(workflowGuidanceText, /Control Center -> Plugins/i)
     assert.match(workflowGuidanceText, /no trigger proposal handoff record was saved/i)
+    assert.match(workflowGuidanceText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.equal(workflowGuidanceText.includes('runs during Import Approved Action'), false)
 
     const reviewText = await page.locator('#action-review-panel').textContent()
@@ -956,6 +1417,7 @@ test('creator studio dashboard shows imported action missing trigger handoff rec
     assert.match(reviewText, /Control Center -> Plugins/i)
     assert.match(reviewText, /Follow-up: Review import handoff/i)
     assert.match(reviewText, /no trigger proposal handoff record was saved/i)
+    assert.match(reviewText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Repair or regenerate frames before approval/i)
     assert.doesNotMatch(reviewText, /Repair/i)
@@ -968,6 +1430,7 @@ test('creator studio dashboard shows imported action missing trigger handoff rec
     const actionLaneText = await page.locator('#action-lane-panel').textContent()
     assert.match(actionLaneText, /Host-owned action: Review import handoff/i)
     assert.match(actionLaneText, /Control Center -> Plugins/i)
+    assert.match(actionLaneText, /Continue in Control Center at Control Center -> Plugins\./i)
     assert.match(actionLaneText, /no trigger proposal handoff record was saved/i)
 
     const checkpointText = await page.locator('#review-checkpoint-panel').textContent()
@@ -1174,6 +1637,569 @@ test('creator studio dashboard lets users edit a drafted full-pet task before co
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard syncs prompt and backend controls when loading existing runs', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-'))
+  const fixtureRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：原地打滚，动作要循环。',
+      originalPrompt: '新增一个自定义动作：原地打滚，动作要循环。',
+      backend: 'fixture',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'roll-loop',
+          name: '原地打滚',
+          motionPrompt: '原地打滚，动作要循环。',
+          loop: true,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:00:00.000Z'
+  })
+  createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      originalPrompt: '新增一个自定义动作：害羞转圈，点击后轻轻转一圈。',
+      backend: 'provider',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'shy-spin',
+          name: '害羞转圈',
+          motionPrompt: '点击后轻轻转一圈。',
+          loop: false,
+          frameCount: 16,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:05:00.000Z'
+  })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('害羞转圈'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    await page.locator('#run-select').selectOption(fixtureRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, fixtureRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('原地打滚'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'fixture')
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard loads the requested run from the runId query parameter', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-query-run-'))
+  const firstRun = createRun({
+    dataDir,
+    input: {
+      prompt: '先创建一个旧 run',
+      backend: 'fixture'
+    },
+    now: () => '2026-06-29T00:00:00.000Z'
+  })
+  const targetRun = createRun({
+    dataDir,
+    input: {
+      prompt: '打开时应直接定位到这个 run',
+      backend: 'provider'
+    },
+    now: () => '2026-06-29T00:01:00.000Z'
+  })
+  createRun({
+    dataDir,
+    input: {
+      prompt: '这是更新的最新 run，不应该被默认选中',
+      backend: 'fixture'
+    },
+    now: () => '2026-06-29T00:02:00.000Z'
+  })
+  writeRun({
+    dataDir,
+    run: {
+      ...readRun({ dataDir, runId: targetRun.runId }),
+      taskStatus: 'confirmed',
+      status: 'ready_for_review',
+      currentStep: 'generated'
+    }
+  })
+  const server = await openDashboardServer(dataDir)
+  const browser = await chromium.launch({ headless: true })
+  const page = await browser.newPage()
+
+  try {
+    await page.goto(`http://127.0.0.1:${server.address().port}/?runId=${encodeURIComponent(targetRun.runId)}`)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, targetRun.runId)
+
+    const selectedRunId = await page.locator('#run-select').inputValue()
+    const promptValue = await page.locator('#prompt-input').inputValue()
+
+    assert.equal(selectedRunId, targetRun.runId)
+    assert.equal(promptValue, '打开时应直接定位到这个 run')
+    assert.notEqual(selectedRunId, firstRun.runId)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard normalizes legacy run backends when syncing loaded runs', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-legacy-backend-'))
+  const legacyCloudRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：云端害羞转圈。',
+      originalPrompt: '新增一个自定义动作：云端害羞转圈。',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-cloud-spin',
+          name: '云端害羞转圈',
+          motionPrompt: '点击后轻轻转一圈。',
+          loop: false,
+          frameCount: 16,
+          triggerProposal: { type: 'click', binding: 'clickAction' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:06:00.000Z'
+  })
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyCloudRun,
+      backend: 'cloud',
+      input: {
+        ...legacyCloudRun.input,
+        backend: 'cloud'
+      }
+    }
+  })
+  const legacyLocalRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：本地打哈欠。',
+      originalPrompt: '新增一个自定义动作：本地打哈欠。',
+      backend: 'local',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-local-yawn',
+          name: '本地打哈欠',
+          motionPrompt: '慢慢张嘴打哈欠。',
+          loop: false,
+          frameCount: 16,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:07:00.000Z'
+  })
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyLocalRun,
+      backend: 'local',
+      input: {
+        ...legacyLocalRun.input,
+        backend: 'local'
+      }
+    }
+  })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('本地打哈欠'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    await page.locator('#run-select').selectOption(legacyCloudRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyCloudRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('云端害羞转圈'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    await page.locator('#run-select').selectOption(legacyLocalRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyLocalRun.runId)
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard syncs legacy pre-task run controls when loading a run without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-legacy-pre-task-'))
+  const standardRun = createRun({
+    dataDir,
+    input: {
+      prompt: '新增一个自定义动作：普通害羞转圈。',
+      originalPrompt: '新增一个自定义动作：普通害羞转圈。',
+      backend: 'fixture',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'normal-spin',
+          name: '普通害羞转圈',
+          motionPrompt: '轻轻转一圈。',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:08:00.000Z'
+  })
+  const legacyPreTaskRun = createRun({
+    dataDir,
+    input: {
+      prompt: 'Legacy pre-task prompt should still sync.',
+      originalPrompt: 'Legacy pre-task prompt should still sync.',
+      backend: 'cloud',
+      generationTask: {
+        mode: 'single-action',
+        targetPet: 'current',
+        styleSource: 'currentPet',
+        actions: [{
+          actionId: 'legacy-pre-task',
+          name: 'Legacy Pre Task',
+          motionPrompt: 'placeholder',
+          loop: false,
+          frameCount: 12,
+          triggerProposal: { type: 'manual' }
+        }]
+      }
+    },
+    now: () => '2026-06-28T08:09:00.000Z'
+  })
+  const { generationTask: _generationTask, ...legacyPreTaskRunWithoutTask } = legacyPreTaskRun
+  writeRun({
+    dataDir,
+    run: {
+      ...legacyPreTaskRunWithoutTask,
+      backend: 'cloud',
+      input: {
+        ...legacyPreTaskRun.input,
+        backend: 'cloud'
+      },
+      taskStatus: 'not_started',
+      currentStep: 'draft'
+    }
+  })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(standardRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, standardRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('普通害羞转圈'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'fixture')
+
+    await page.locator('#run-select').selectOption(legacyPreTaskRun.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, legacyPreTaskRun.runId)
+    await page.waitForFunction(() => document.querySelector('#prompt-input')?.value?.includes('Legacy pre-task prompt'))
+    assert.equal(await page.locator('#backend-select').inputValue(), 'provider')
+
+    const snapshotText = await page.locator('#run-snapshot-panel').textContent()
+    const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    const nextStepText = await page.locator('#next-step-panel').textContent()
+    const actionLaneText = await page.locator('#action-lane-panel').textContent()
+    assert.match(snapshotText, /Legacy pre-task prompt should still sync\./i)
+    assert.match(snapshotText, /Backend: provider/i)
+    assert.match(snapshotText, /Task: not_started/i)
+    assert.match(workflowGuidanceText, /host-owned image Provider/i)
+    assert.doesNotMatch(workflowGuidanceText, /Use fixture for workflow QA first/i)
+    assert.match(nextStepText, /Start from a natural-language action prompt to draft a Creator Studio task\./i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.doesNotMatch(actionLaneText, /Dashboard action: Confirm task/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables retry generation for failed legacy runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-failed-retry-'))
+  const run = seedLegacyFailedRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const recoveryText = await page.locator('#recovery-panel').textContent()
+    assert.match(recoveryText, /Generation failed/i)
+    assert.match(recoveryText, /Provider queue overloaded/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), false)
+    assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables retry generation for failed legacy full-pet runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-failed-full-pet-retry-'))
+  const run = seedLegacyFailedFullPetRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const recoveryText = await page.locator('#recovery-panel').textContent()
+    assert.match(recoveryText, /Generation failed/i)
+    assert.match(recoveryText, /Provider queue overloaded/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), false)
+    assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+    assert.equal(await page.locator('#approve-button').isDisabled(), true)
+    assert.match(await page.locator('#next-step-panel').textContent(), /Retry generation/i)
+    assert.match(await page.locator('#action-lane-panel').textContent(), /Retry generation/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables approval for reviewable legacy action runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-review-approve-'))
+  const run = await seedLegacyReadyForReviewActionRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const reviewText = await page.locator('#action-review-panel').textContent()
+    assert.match(reviewText, /Review status: pending/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), true)
+    assert.equal(await page.locator('#approve-button').isDisabled(), false)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard enables approval for reviewable legacy full-pet runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-full-pet-review-approve-'))
+  const run = await seedLegacyReadyForReviewFullPetRunWithoutTask(dataDir)
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /Legacy Review Cat/i)
+    assert.match(reviewText, /Atlas QA/i)
+    assert.doesNotMatch(reviewText, /QA source image does not match the current generated image/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), true)
+    assert.equal(await page.locator('#approve-button').isDisabled(), false)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard preserves retry-before-approval guidance for legacy full-pet runs without generationTask', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-full-pet-mismatch-'))
+  const run = await seedLegacyReadyForReviewFullPetRunWithoutTask(dataDir, { mismatchSourceImage: true })
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    await page.locator('#run-select').selectOption(run.runId)
+    await page.waitForFunction((expectedRunId) => document.querySelector('#run-select')?.value === expectedRunId, run.runId)
+
+    const reviewText = await page.locator('#full-pet-review-panel').textContent()
+    assert.match(reviewText, /QA source image does not match the current generated image/i)
+    assert.match(reviewText, /Retry generation on this same run before approval/i)
+    assert.match(reviewText, /0002\.png/i)
+    assert.match(reviewText, /0001\.png/i)
+    assert.equal(await page.locator('#confirm-button').isDisabled(), true)
+    assert.equal(await page.locator('#generate-button').isDisabled(), false)
+    assert.match(await page.locator('#generate-button').textContent(), /Retry generation/i)
+    assert.equal(await page.locator('#approve-button').isDisabled(), true)
+    assert.match(await page.locator('#next-step-panel').textContent(), /Retry generation/i)
+    assert.match(await page.locator('#action-lane-panel').textContent(), /Retry generation before approval/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('creator studio dashboard shows sanitized prompt provenance and can replay action playback previews', { concurrency: false }, async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-provenance-playback-'))
+  const bridgeServer = http.createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {}
+      response.setHeader('Content-Type', 'application/json')
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            provider: 'openai-compatible',
+            baseUrl: 'http://127.0.0.1:7860/v1',
+            model: 'local-custom-sprite-v2',
+            hasApiKey: true,
+            apiKeyPreview: '••••test'
+          }
+        }))
+        return
+      }
+      if (request.url.endsWith('/creator/model-image-generate')) {
+        const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+        const generatedPath = path.join(dataDir, dataRelativePath)
+        fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
+        sharp({
+          create: {
+            width: 96,
+            height: 112,
+            channels: 4,
+            background: { r: 255, g: 170, b: 90, alpha: 1 }
+          }
+        })
+          .png()
+          .toFile(generatedPath)
+          .then(() => {
+            response.end(JSON.stringify({
+              ok: true,
+              result: {
+                ok: true,
+                backend: 'provider',
+                model: 'local-custom-sprite-v2',
+                generatedAt: '2026-06-29T00:00:00.000Z',
+                outputs: [{
+                  dataRelativePath,
+                  mimeType: 'image/png',
+                  sha256: 'provenance-playback-sha'
+                }]
+              }
+            }))
+          })
+          .catch((error) => {
+            response.statusCode = 500
+            response.end(JSON.stringify({ ok: false, error: error.message }))
+          })
+        return
+      }
+      response.statusCode = 404
+      response.end(JSON.stringify({ ok: false, error: 'Unknown route' }))
+    })
+  })
+  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgeServer.address().port}`
+  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
+  const server = await openDashboardServer(dataDir)
+  const { browser, page } = await openDashboardPage(server)
+
+  try {
+    await page.locator('#backend-select').selectOption('provider')
+    await page.locator('#prompt-input').fill('新增一个自定义动作：害羞转圈，手动触发，风格保持一致。API key sk-test-secret at /Users/mango/private/ref.png via http://127.0.0.1:8317/v1 and bridge-token.')
+    await page.locator('#draft-button').click()
+    await page.waitForFunction(() => !document.querySelector('#confirm-button').disabled)
+
+    await page.locator('#confirm-button').click()
+    await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
+
+    await page.locator('#generate-button').click()
+    await page.waitForFunction(() => !document.querySelector('#approve-button').disabled)
+    await page.waitForFunction(() => /Host model prompt-builder provenance/.test(document.querySelector('#prompt-provenance-panel')?.textContent || ''))
+    await page.waitForFunction(() => document.querySelectorAll('#playback-panel .timeline-row').length > 1)
+
+    const provenanceText = await page.locator('#prompt-provenance-panel').textContent()
+    const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
+    assert.match(provenanceText, /Host model prompt-builder provenance/i)
+    assert.match(provenanceText, /Source: host-model-bridge/i)
+    assert.match(provenanceText, /local-custom-sprite-v2/i)
+    assert.match(provenanceText, /openai-compatible/i)
+    assert.match(provenanceText, /creative_brief_sanitized/i)
+    assert.match(provenanceText, /OpenPet desktop pet sprite asset/i)
+    assert.match(provenanceText, /\[redacted-secret\]/i)
+    assert.doesNotMatch(provenanceText, /sk-test-secret/i)
+    assert.doesNotMatch(provenanceText, /\/Users\/mango\/private\/ref\.png/i)
+    assert.doesNotMatch(provenanceText, /127\.0\.0\.1:8317/i)
+    assert.doesNotMatch(provenanceText, /127\.0\.0\.1:7860/i)
+    assert.doesNotMatch(provenanceText, /bridge-token/i)
+    assert.match(workflowGuidanceText, /npm run smoke:ai-provider/i)
+    assert.match(workflowGuidanceText, /--include-image/i)
+    assert.match(workflowGuidanceText, /OPENPET_AI_PROVIDER_API_KEY/i)
+    assert.match(workflowGuidanceText, /npm run smoke:creator-studio-provider/i)
+    assert.match(workflowGuidanceText, /technical generation chain/i)
+    assert.match(workflowGuidanceText, /opt-?in/i)
+
+    const replayButton = page.locator('#replay-playback-button')
+    await replayButton.waitFor()
+    const frameCount = await page.locator('#playback-panel .timeline-row').count()
+    await page.waitForFunction((expectedCount) => {
+      const text = document.querySelector('#playback-meta')?.textContent || ''
+      return text.includes(`Frame 2 / ${expectedCount}`) || text.includes(`Frame 3 / ${expectedCount}`)
+    }, frameCount)
+
+    const preReplayMeta = await page.locator('#playback-meta').textContent()
+    assert.match(preReplayMeta, /Current duration:/i)
+    assert.match(preReplayMeta, /Total duration:/i)
+
+    await replayButton.click()
+    await page.waitForFunction((expectedCount) => {
+      const text = document.querySelector('#playback-meta')?.textContent || ''
+      return text.includes(`Frame 1 / ${expectedCount}`)
+    }, frameCount)
+
+    const postReplayMeta = await page.locator('#playback-meta').textContent()
+    assert.match(postReplayMeta, new RegExp(`Frame 1 / ${frameCount}`))
+    assert.match(postReplayMeta, /Current duration:/i)
+    assert.match(postReplayMeta, /Total duration:/i)
+  } finally {
+    await browser.close()
+    await new Promise((resolve) => server.close(resolve))
+    bridgeServer.closeAllConnections?.()
+    await new Promise((resolve) => bridgeServer.close(resolve))
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
   }
 })
 

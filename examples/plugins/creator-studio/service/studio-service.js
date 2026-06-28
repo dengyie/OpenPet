@@ -334,7 +334,15 @@ function createFullPetReviewGate ({ dataDir, run }) {
     }
   }
 
-  if (run.generationTask?.mode !== 'full-pet') {
+  const hasFullPetArtifacts = Boolean(
+    run.artifacts?.spritesheet ||
+    run.artifacts?.petJson ||
+    run.artifacts?.outputDir ||
+    run.importedPackId ||
+    run.activatedPackId
+  )
+
+  if (run.generationTask?.mode !== 'full-pet' && !hasFullPetArtifacts) {
     return {
       requiresCurrentSourceMatch: false,
       currentSourceImage: '',
@@ -459,6 +467,7 @@ const createImportedFollowUp = (run) => {
     if (run.triggerProposalSubmission?.ok === true) {
       return {
         label: 'Review trigger proposal',
+        surface: 'control-center',
         location: 'Actions -> Trigger Proposal Inbox',
         reason: 'The action import is complete. Review the submitted trigger proposal in Actions -> Trigger Proposal Inbox.'
       }
@@ -467,6 +476,7 @@ const createImportedFollowUp = (run) => {
       const handoffError = String(run.triggerProposalSubmission.error || '').trim()
       return {
         label: 'Review import handoff',
+        surface: 'control-center',
         location: 'Control Center -> Plugins',
         reason: handoffError
           ? `The action import completed, but trigger proposal handoff failed: ${handoffError}. Review the command output in Control Center -> Plugins before applying trigger rules.`
@@ -476,12 +486,14 @@ const createImportedFollowUp = (run) => {
     if (!run.triggerProposalSubmission) {
       return {
         label: 'Review import handoff',
+        surface: 'control-center',
         location: 'Control Center -> Plugins',
         reason: 'The action import completed, but no trigger proposal handoff record was saved. Review the command output in Control Center -> Plugins before applying trigger rules.'
       }
     }
     return {
       label: 'Review import handoff',
+      surface: 'control-center',
       location: 'Control Center -> Plugins',
       reason: 'The action import is complete. Review the import handoff details in Control Center -> Plugins.'
     }
@@ -489,6 +501,7 @@ const createImportedFollowUp = (run) => {
 
   return {
     label: 'Review imported result',
+    surface: 'openpet',
     location: 'OpenPet',
     reason: 'The host-owned import is complete. Review the imported result inside OpenPet.'
   }
@@ -509,6 +522,8 @@ const createWizardState = ({ dataDir, run }) => {
   let nextStepLabel = 'Draft task'
   let nextStepReason = 'Start from a natural-language action prompt to draft a Creator Studio task.'
   let nextStepBlocked = false
+  let nextStepLocation = 'Creator Studio'
+  let nextStepSurface = 'dashboard'
 
   if (taskStatus === 'needs_input') {
     phase = 'needs-input'
@@ -546,6 +561,8 @@ const createWizardState = ({ dataDir, run }) => {
     nextStepLabel = run.artifacts?.actionFrames ? 'Import Approved Action' : 'Import Approved Pet'
     nextStepReason = 'Use Control Center -> Plugins to run the host-owned import command.'
     nextStepBlocked = true
+    nextStepLocation = 'Control Center -> Plugins'
+    nextStepSurface = 'control-center'
   } else if (status === 'imported') {
     const importedFollowUp = createImportedFollowUp(run)
     phase = 'imported'
@@ -553,6 +570,8 @@ const createWizardState = ({ dataDir, run }) => {
     nextStepLabel = importedFollowUp.label
     nextStepReason = `The dashboard cannot apply post-import host actions; ${importedFollowUp.reason}`
     nextStepBlocked = true
+    nextStepLocation = importedFollowUp.location
+    nextStepSurface = importedFollowUp.surface || 'dashboard'
   } else if (taskStatus === 'confirmed') {
     phase = 'ready-to-generate'
     summary = isFullPet
@@ -575,6 +594,8 @@ const createWizardState = ({ dataDir, run }) => {
     nextStep: {
       label: createPublicText({ dataDir, value: nextStepLabel }),
       reason: createPublicText({ dataDir, value: nextStepReason }),
+      location: createPublicText({ dataDir, value: nextStepLocation }),
+      surface: createPublicText({ dataDir, value: nextStepSurface }),
       blocked: Boolean(nextStepBlocked)
     }
   }
@@ -585,6 +606,30 @@ const createPublicTextList = ({ dataDir, values = [] }) => (
     ? values.map((value) => createPublicText({ dataDir, value })).filter(Boolean)
     : []
 )
+
+const createProviderSmokeCommandGuidance = ({ dataDir, usesProviderRun }) => {
+  const command = 'npm run smoke:ai-provider -- --base-url <url> --api-key-env OPENPET_AI_PROVIDER_API_KEY --chat-model <chat-model> --image-model <image-model> --include-image --json'
+  const note = usesProviderRun
+    ? 'Image generation stays opt-in and may spend real provider credits; run the smoke command with your saved Provider values without exposing API keys.'
+    : 'After fixture workflow QA, switch to provider generation and use the same opt-in smoke command with your saved Provider values without exposing API keys.'
+  return {
+    available: true,
+    command: createPublicText({ dataDir, value: command }),
+    note: createPublicText({ dataDir, value: note })
+  }
+}
+
+const createCreatorStudioProviderSmokeCommandGuidance = ({ dataDir, usesProviderRun }) => {
+  const command = 'npm run smoke:creator-studio-provider -- --base-url <url> --api-key-env OPENPET_AI_PROVIDER_API_KEY --image-model <image-model> --backend provider --json'
+  const note = usesProviderRun
+    ? 'This reruns Creator Studio create-run -> run-step through a temporary host bridge to verify the technical generation chain. Inspect the generated assets separately before claiming visual quality readiness.'
+    : 'After fixture workflow QA, use this Creator Studio provider smoke command to verify the technical generation chain through the same host-owned model bridge before manual visual review.'
+  return {
+    available: true,
+    command: createPublicText({ dataDir, value: command }),
+    note: createPublicText({ dataDir, value: note })
+  }
+}
 
 const createImportedResultCard = ({ dataDir, run, hasActionFrames, triggerProposalSummary }) => {
   if (run.status !== 'imported') {
@@ -724,6 +769,7 @@ const createImportHandoff = ({ dataDir, run, importStatus }) => {
     commandTitle: createPublicText({ dataDir, value: resolveImportCommandTitle(commandId) }),
     payload,
     payloadJson: createPublicText({ dataDir, value: JSON.stringify(payload) }),
+    surface: 'control-center',
     location: 'Control Center -> Plugins',
     dashboardCanImport: false,
     reason: ready
@@ -733,6 +779,7 @@ const createImportHandoff = ({ dataDir, run, importStatus }) => {
 }
 
 const createDashboardButtonStates = ({ dataDir, run }) => {
+  const hasGenerationTask = Boolean(run.generationTask)
   const hasPendingQuestion = Boolean(run.generationTask?.questions?.[0])
   const taskStatus = String(run.taskStatus || '')
   const status = String(run.status || 'draft')
@@ -749,7 +796,7 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
   )
   const generateLabel = canRetryGeneration ? 'Retry generation' : (isFullPet ? 'Generate pet pack' : 'Generate action')
 
-  const confirmEnabled = !hasPendingQuestion && taskStatus !== 'confirmed'
+  const confirmEnabled = hasGenerationTask && !hasPendingQuestion && taskStatus !== 'confirmed'
   const generateEnabled = !hasPendingQuestion && taskStatus === 'confirmed' && ['draft', 'failed'].includes(status)
     ? true
     : !hasPendingQuestion && requiresRetryBeforeApproval && taskStatus === 'confirmed'
@@ -762,6 +809,8 @@ const createDashboardButtonStates = ({ dataDir, run }) => {
       enabled: confirmEnabled,
       reason: confirmEnabled
         ? 'The task is drafted and can now be confirmed in the dashboard.'
+        : !hasGenerationTask
+          ? 'This legacy run has no drafted task to confirm.'
         : hasPendingQuestion
           ? 'Answer the pending follow-up question before confirming the task.'
           : taskStatus === 'confirmed'
@@ -855,6 +904,7 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
   let hostAction = {
     required: false,
     label: '',
+    surface: '',
     location: '',
     reason: ''
   }
@@ -863,6 +913,7 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
     hostAction = {
       required: true,
       label: importHandoff.commandTitle,
+      surface: importHandoff.surface,
       location: importHandoff.location,
       reason: importHandoff.reason
     }
@@ -871,6 +922,7 @@ const createActionLane = ({ dataDir, run, buttonStates, importHandoff }) => {
     hostAction = {
       required: true,
       label: importedFollowUp.label,
+      surface: importedFollowUp.surface,
       location: importedFollowUp.location,
       reason: importedFollowUp.reason
     }
@@ -1093,6 +1145,8 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
       mode: usesProviderRun ? 'host-provider' : 'fixture-preview',
       summary: createPublicText({ dataDir, value: generationSummary }),
       smokeChecklist: createPublicTextList({ dataDir, values: smokeChecklist }),
+      smokeCommand: createProviderSmokeCommandGuidance({ dataDir, usesProviderRun }),
+      creatorStudioSmokeCommand: createCreatorStudioProviderSmokeCommandGuidance({ dataDir, usesProviderRun }),
       usageSummary
     },
     import: {
@@ -1105,6 +1159,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
             dataDir,
             value: {
               label: importedFollowUp.label,
+              surface: importedFollowUp.surface,
               location: importedFollowUp.location,
               reason: importedFollowUp.reason
             }
@@ -1149,6 +1204,7 @@ const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
 
 const createPublicRun = ({ dataDir, run }) => {
   const publicRun = createPublicLogValue({ dataDir, value: run })
+  const normalizedBackend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
   const wizardState = createWizardState({ dataDir, run })
   const workflowGuidance = createWorkflowGuidance({ dataDir, run })
   const buttonStates = createDashboardButtonStates({
@@ -1184,6 +1240,16 @@ const createPublicRun = ({ dataDir, run }) => {
   })
   return {
     ...publicRun,
+    backend: normalizedBackend,
+    modelProvider: normalizedBackend,
+    input: {
+      ...(publicRun.input || {}),
+      backend: normalizedBackend
+    },
+    backendStatus: {
+      ...(publicRun.backendStatus || {}),
+      backend: normalizedBackend
+    },
     artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
     developerPrompt: createDeveloperPrompt({ dataDir, run }),
     recovery: createPublicRecovery({ dataDir, run }),
@@ -1334,15 +1400,44 @@ const createActionReview = ({ dataDir, run }) => {
 
 const createFullPetReview = ({ dataDir, run }) => {
   if (run.artifacts?.actionFrames) return null
-  if (run.generationTask?.mode !== 'full-pet') return null
+  const hasFullPetArtifacts = Boolean(
+    run.artifacts?.spritesheet ||
+    run.artifacts?.petJson ||
+    run.artifacts?.outputDir ||
+    run.importedPackId ||
+    run.activatedPackId
+  )
+  if (run.generationTask?.mode !== 'full-pet' && !hasFullPetArtifacts) return null
   const artifacts = run.artifacts || {}
   const reviewState = createFullPetReviewGate({ dataDir, run })
+  const importedPhase = run.status === 'imported'
   const atlasValidation = readJsonArtifact({
     dataDir,
     targetPath: artifacts.qa,
     label: 'Full-pet atlas QA'
   })
-  const sourceImage = reviewState.currentSourceImage || reviewState.qaSourceImage
+  const publicSourceImageValidation = importedPhase && reviewState.sourceImageValidation
+    ? {
+        ...reviewState.sourceImageValidation,
+        sourceRelativePath: ''
+      }
+    : reviewState.sourceImageValidation
+  const publicReviewState = importedPhase
+    ? {
+        currentSourceImage: '',
+        qaSourceImage: '',
+        requiresCurrentSourceMatch: false,
+        sourceImageMatchesCurrent: true,
+        reviewGate: {
+          status: 'ready',
+          ready: true,
+          reason: ''
+        }
+      }
+    : reviewState
+  const sourceImage = importedPhase
+    ? reviewState.currentSourceImage
+    : (reviewState.currentSourceImage || reviewState.qaSourceImage)
   return {
     petId: createPublicText({ dataDir, value: run.petId || '' }),
     displayName: createPublicText({ dataDir, value: run.input?.petName || run.petId || '' }),
@@ -1354,12 +1449,12 @@ const createFullPetReview = ({ dataDir, run }) => {
     sourceImageQa: toDataRelativePath({ dataDir, targetPath: artifacts.sourceImageQa }),
     actionTaskQa: toDataRelativePath({ dataDir, targetPath: artifacts.actionTaskQa }),
     sourceImage,
-    currentSourceImage: reviewState.currentSourceImage,
-    qaSourceImage: reviewState.qaSourceImage,
-    requiresCurrentSourceMatch: reviewState.requiresCurrentSourceMatch,
-    sourceImageMatchesCurrent: reviewState.sourceImageMatchesCurrent,
-    reviewGate: reviewState.reviewGate,
-    sourceImageValidation: createPublicLogValue({ dataDir, value: reviewState.sourceImageValidation }),
+    currentSourceImage: publicReviewState.currentSourceImage,
+    qaSourceImage: publicReviewState.qaSourceImage,
+    requiresCurrentSourceMatch: publicReviewState.requiresCurrentSourceMatch,
+    sourceImageMatchesCurrent: publicReviewState.sourceImageMatchesCurrent,
+    reviewGate: publicReviewState.reviewGate,
+    sourceImageValidation: createPublicLogValue({ dataDir, value: publicSourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`

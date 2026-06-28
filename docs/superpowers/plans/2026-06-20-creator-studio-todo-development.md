@@ -1,670 +1,269 @@
-# Creator Studio TODO Development Plan
+# Creator Studio Dual-Layer Default Flow Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Finish the next production slice for Creator Studio: conversational custom single-action generation, reviewable trigger proposals, deterministic fixture output, QA, and a clear host handoff for model settings and trigger persistence.
+**Goal:** Close the current Creator Studio production milestone by delivering a host-owned, provider-first `生成并导入` default path while keeping the Creator Studio dashboard as the advanced details and manual-execution surface.
 
-**Architecture:** Keep Creator Studio as a plugin-owned workflow for prompts, run state, artifacts, preview, QA, and import requests. Keep model credentials, model settings, current pet context, and trigger-rule persistence in the OpenPet host/main UI boundary. The plugin may propose actions and triggers, but OpenPet owns final application of pet state and trigger rules.
+**Architecture:** Keep Creator Studio responsible for task drafting, run workspaces, generation, QA, approval evidence, and review artifacts. Move the ordinary-user orchestration contract to the OpenPet host boundary, with the main process owning long-running default-flow state and the renderer only collecting input, showing progress, and opening details. Preserve provider credentials, trigger persistence, and pet state ownership inside host services.
 
-**Tech Stack:** Electron main process services, OpenPet plugin command runner, Node CommonJS modules, Node native test runner, Creator Studio local HTTP service, static dashboard HTML/JS.
+**Tech Stack:** Electron main process services, Control Center React + Vite renderer, Creator Studio plugin commands and local HTTP service, Node native test runner, Playwright smoke tests.
 
 ---
 
 ## Milestone Contract
 
-**Milestone:** Creator Studio conversational single-action generation closure.
+Milestone: Creator Studio dual-layer default-flow closure
 
-**Target user capability:** A user can type a natural-language custom action request, review the interpreted `GenerationTask`, generate a deterministic fixture action output, inspect QA and trigger proposal metadata, and import the approved result through the existing OpenPet bridge without the plugin silently applying trigger rules.
+Target user capability: a user can submit a natural-language request from the host UI, run a provider-backed `生成并导入` flow without mid-run interruption, and only drop into Creator Studio details when manual review, repair, or debugging is needed.
 
-**P0/P1 scope:**
-- P0: Preserve existing `npm start`, plugin manifest validation, run creation, generation, approval, import, and secret redaction behavior.
-- P0: Add stable task lifecycle routes/commands for drafting, answering follow-up questions, confirming, and generating a single custom action.
-- P0: Persist original prompt, interpreted task, approval state, trigger proposal, QA metadata, and generated artifacts under the run workspace.
-- P1: Add dashboard UI for prompt input, task preview, follow-up answer, run logs, QA summary, trigger proposal, and generate/import actions.
-- P1: Add tests for prompt parsing, task updates, run persistence, dashboard service routes, fixture generation, QA failure paths, and import handoff metadata.
+P0/P1 scope:
 
-**Out of scope for this milestone:**
-- Host model settings UI implementation.
-- Host-managed secret storage changes beyond documenting the required interface.
-- Host trigger-rule persistence implementation.
-- Model-assisted intent parsing.
-- Reference image upload.
-- Partial regeneration of individual frames.
-- Full-pet batch generation beyond keeping the shared `GenerationTask` shape compatible.
-- Remote marketplace or production plugin submission changes.
+- P0: add one host-owned `生成并导入` entry that runs `draft -> auto-answer safe follow-ups -> confirm -> generate -> auto-approve -> import`.
+- P0: the default path uses `provider` and blocks early when provider configuration is missing.
+- P0: missing trigger input is auto-filled with `manual`.
+- P0: provider, QA, approval, and import failures preserve the same run and route to advanced details.
+- P0: long-running default-flow ownership lives in the host runtime, not only in transient renderer state.
+- P1: add clear ordinary-user copy for the main path and advanced/details copy for Creator Studio.
+- P1: add regression coverage for preflight failure, one-click success, auto trigger defaulting, fallback routing, and doc truthfulness.
 
-**Manual-required:**
-- Real cloud image generation requires a configured provider and user-approved secrets.
-- Real packaged-app import smoke requires launching a packaged Electron app.
-- Final trigger behavior requires host/main UI implementation of trigger-rule persistence.
+Out of scope:
 
-**Phase limit:** 3 implementation phases.
+- new provider families or secret-storage redesign;
+- rich trigger scheduler editor, cooldowns, priorities, or rule simulation;
+- reference image upload;
+- model-assisted intent parsing;
+- full-pet UX redesign;
+- provider-backed packaged UI smoke as a baseline gate.
 
-**Acceptance criteria:**
-- Existing targeted tests pass: `node --test tests/examples/creator-studio-plugin.test.js tests/examples/creator-studio-real-atlas-builder.test.js tests/services/image-generation-model-service.test.js tests/services/plugin-service.test.js`.
-- Syntax check passes: `npm run check:syntax`.
-- New Creator Studio task lifecycle tests prove draft, question answer, confirmation, fixture generation, QA, and import metadata.
-- No API key, local provider URL, bridge token, or local file path is written into generated prompts or logs.
-- `cloud` and `local` backends keep honest failure states when host configuration is unavailable; no silent fixture fallback.
+Manual-required:
 
-## Current Baseline
+- real provider generation needs configured provider credentials or local endpoint access;
+- final generated asset quality still requires human review;
+- packaged provider smoke remains manual follow-up because it needs a configured packaged app session.
 
-The following pieces already exist and should be extended, not rewritten:
+Phase limit: 3 phases.
 
-- `examples/plugins/creator-studio/lib/generation-task.js`: normalizes `GenerationTask`, actions, questions, trigger proposals, and safe action IDs.
-- `examples/plugins/creator-studio/lib/conversation-wizard.js`: deterministic prompt-to-task draft logic for custom actions.
-- `examples/plugins/creator-studio/lib/openpet-prompt-builder.js`: OpenPet-specific image prompt compiler with runtime, canvas, boundary, transparency, style, and negative constraints.
-- `examples/plugins/creator-studio/lib/run-store.js`: durable run workspace, `run.json`, inputs, outputs, QA, logs, and state updates.
-- `examples/plugins/creator-studio/lib/backend-runner.js`: backend dispatch, fixture support, host-model bridge path, append-only logs, and failure state persistence.
-- `examples/plugins/creator-studio/lib/real-atlas-builder.js`: host-generated image to OpenPet atlas conversion with path/symlink safety checks.
-- `examples/plugins/creator-studio/lib/action-frame-builder.js`: host-generated image to ordered transparent single-action frame sequence with QA evidence and repair support.
-- `examples/plugins/creator-studio/commands/import-approved-action.js`: approved single-action import through the host creator asset bridge.
-- `examples/plugins/creator-studio/service/studio-service.js`: loopback dashboard service with task lifecycle, generation, run list/detail/logs, action review, frame preview/repair, approval, and sanitized public artifact APIs.
-- `examples/plugins/creator-studio/web/dashboard/index.html`: static dashboard UI for prompt entry, task review, generation, QA/action review, frame repair, approval, import handoff, and logs.
-- `tests/examples/creator-studio-plugin.test.js`: broad Creator Studio plugin tests.
-- `tests/examples/creator-studio-real-atlas-builder.test.js`: real atlas builder tests.
-- `tests/examples/creator-studio-action-frame-builder.test.js`: action-frame generation and repair tests.
+Acceptance criteria:
 
-## Status Update 2026-06-24
+- `npm start` remains functional.
+- `node --test tests/docs/live-docs-creator-studio.test.js tests/control-center/plugin-command-result.test.js tests/services/plugin-service.test.js tests/main/window.test.js tests/main/main-scale-injection.test.js` passes.
+- `npx playwright test tests/control-center/control-center-smoke.spec.js --grep "Creator Studio"` passes.
+- `npm run typecheck` passes.
+- `npm run check:syntax` passes.
+- the host-owned default path stays provider-first and does not silently degrade to fixture.
+- no API key, provider secret, bridge token, or absolute local artifact path leaks into user-facing logs, prompts, or renderer API payloads.
 
-Completed since this plan was written:
-- Conversational single-action task workflow is implemented through `draft-task`, `answer-question`, `confirm-task`, dashboard routes, and persisted run state.
-- Single-action runs can generate reviewable frame artifacts under the Creator Studio data directory instead of only producing a pet-pack atlas.
-- Dashboard users can inspect action-review metadata, preview individual frames through data-relative URLs, repair a selected frame from the generated source image, approve the run, and receive the correct import command.
-- `import-approved-action` imports approved action frames through `/creator/assets/import-frames`; the plugin still does not mutate trigger bindings directly.
-- Approval/import paths gate action frames on passing QA metadata, ordered frame evidence, matching dimensions/count, and non-empty visible-pixel evidence.
-- Action-frame review now includes a generated contact sheet image served through the dashboard without exposing absolute local paths.
-- Imported single-action runs now submit their trigger proposal into the host trigger proposal inbox after action import; users still review/accept/reject through host-owned UI.
+## Landed Baseline
 
-Remaining production TODO:
-- Add real provider smoke coverage for configured `cloud` and `local` providers, without claiming visual quality automatically.
-- Add Electron/Control Center E2E coverage for the Creator Studio plugin entry and dashboard click flow.
-- Add richer editor semantics and runtime scheduler simulation for non-click trigger rules after the host preview slice.
+These pieces already exist and should be extended rather than rewritten:
 
-## File Structure
+- conversational task drafting and confirmation through `draft-task`, `answer-question`, and `confirm-task`;
+- single-action generation with ordered transparent frames and action QA metadata;
+- full-pet provider path with real generated atlas packaging and validation artifacts;
+- playback preview and timing diagnostics in the dashboard review surface;
+- sanitized prompt provenance and phase-aware imported review surfaces;
+- host trigger proposal inbox and host-owned trigger-rule acceptance;
+- browser coverage for dashboard run or review flows, `dashboard-browser` regression paths, and Control Center Plugins-pane smoke coverage for Creator Studio handoff;
+- `npm run smoke:ai-provider` and `npm run smoke:creator-studio-provider` as technical generation-chain smoke commands;
+- packaged Creator Studio evidence runner and packaged Creator Studio fixture UI E2E runner.
 
-### Plugin Runtime Files
+The dedicated smoke commands and packaged fixture runner prove technical chain readiness, host-owned model bridge behavior, and packaged fixture interaction. They do not claim final visual quality readiness. Provider-backed packaged smoke remains follow-up work.
 
-- Modify `examples/plugins/creator-studio/lib/generation-task.js` to add explicit update helpers for trigger answers and task confirmation metadata.
-- Modify `examples/plugins/creator-studio/lib/conversation-wizard.js` to support answer application without re-parsing the whole prompt.
-- Modify `examples/plugins/creator-studio/lib/run-store.js` to persist `conversation`, `generationTask`, `taskStatus`, `approval`, and generated single-action metadata.
-- Modify `examples/plugins/creator-studio/lib/backend-runner.js` to preserve single-action QA metadata in generated output artifacts.
-- Modify `examples/plugins/creator-studio/lib/fake-hatch-pet.js` only if deterministic fixture output needs action-specific metadata in `creatorStudio`.
-- Create `examples/plugins/creator-studio/lib/task-workflow.js` for draft, answer, confirm, and generate-action orchestration.
+## File Structure And Ownership
 
-### Plugin Commands And Service
+### Host runtime and orchestration
 
-- Create `examples/plugins/creator-studio/commands/draft-task.js`.
-- Create `examples/plugins/creator-studio/commands/answer-question.js`.
-- Create `examples/plugins/creator-studio/commands/confirm-task.js`.
-- Modify `examples/plugins/creator-studio/commands/create-run.js` so legacy run creation remains compatible while conversational runs are explicit.
-- Modify `examples/plugins/creator-studio/commands/run-step.js` only if it must route to confirmed task generation.
-- Modify `examples/plugins/creator-studio/plugin.json` to declare new command entries.
-- Modify `examples/plugins/creator-studio/service/studio-service.js` to expose local dashboard APIs:
-  - `POST /api/tasks/draft`
-  - `POST /api/runs/:runId/questions/:questionId/answer`
-  - `POST /api/runs/:runId/confirm`
-  - `POST /api/runs/:runId/generate-action`
+- Create `src/main/services/creator-studio-default-flow-service.js` to own preflight, step sequencing, progress, failure classification, and details routing payloads.
+- Modify `src/main/services/plugin-service.js` to expose a host-callable default-flow entry and safe command helpers without leaking plugin internals to the renderer.
+- Modify `main.js` to register and inject the new default-flow service.
+- Modify `src/main/window.js` only as needed to wire new IPC handlers or deep-link payloads into Control Center.
 
-### Dashboard
+### Renderer and Control Center
 
-- Replace the placeholder in `examples/plugins/creator-studio/web/dashboard/index.html` with a small static UI that can:
-  - submit a natural-language prompt;
-  - show task preview;
-  - show one follow-up question;
-  - confirm task;
-  - start fixture generation;
-  - show backend state, QA state, trigger proposal, logs, and import status.
+- Modify `src/control-center/src/api/control-center-api.ts` to add typed calls for starting the default flow, checking provider health, and opening advanced details for a run.
+- Modify `src/control-center/src/hooks/usePluginsPane.ts` to keep UI state thin: prompt input, launch request, progress display, and details navigation only.
+- Modify `src/control-center/src/panes/PluginsPane.tsx` to present the Creator Studio dual-layer UI with `生成并导入` as the primary action and `查看任务详情` as the advanced path.
 
-### Tests
+### Tests and doc truth
 
-- Modify `tests/examples/creator-studio-plugin.test.js` for task workflow, service routes, dashboard HTML smoke, and fixture single-action metadata.
-- Add `tests/examples/creator-studio-task-workflow.test.js` if the existing file becomes hard to read.
-- Keep `tests/examples/creator-studio-real-atlas-builder.test.js` focused on image-to-atlas safety and do not mix wizard tests into it.
+- Modify `tests/control-center/control-center-smoke.spec.js` for the default host flow, provider-blocked path, successful import summary, and advanced fallback routing.
+- Modify `tests/control-center/plugin-command-result.test.js` if command-result normalization changes.
+- Modify `tests/services/plugin-service.test.js`, `tests/main/window.test.js`, and `tests/main/main-scale-injection.test.js` for main-process orchestration wiring.
+- Modify `tests/docs/live-docs-creator-studio.test.js` to keep the spec and plan aligned on provider-first default flow, no-interruption policy, advanced fallback, and packaged-provider follow-up status.
 
-### Main UI / Host Handoff Docs
+## User Flow Acceptance Map
 
-- Modify `docs/superpowers/specs/2026-06-19-openpet-model-settings-backlog.md` only if the host handoff contract changes.
-- Modify `docs/superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md` after implementation to mark completed plugin-slice items and preserve host-owned gaps.
+The implementation is only done when these concrete user stories are true:
 
-## Phase 1: Task Lifecycle Contract
+1. **Happy path:** a configured user enters one prompt, clicks `生成并导入`, waits, and gets an imported action or pet summary without extra questions.
+2. **Provider blocked path:** a user with no healthy provider config is stopped before generation and told to fix AI/provider settings.
+3. **Needs-details path:** a run that still needs manual input or repair reopens the same `runId` in Creator Studio details.
+4. **Advanced path:** a user can still open Creator Studio directly and run the workflow step by step.
 
-**Phase goal:** Make custom action prompts become durable, editable, confirmable `GenerationTask` runs without requiring dashboard UI.
+Each phase should protect at least one of these stories, and final verification should cover all four.
 
-**P0/P1 mapping:** P0 task lifecycle, P0 run persistence, P1 deterministic tests.
+## Runtime Sequence To Preserve
+
+The plan assumes one fixed default-flow sequence:
+
+1. renderer submits prompt;
+2. preload forwards typed IPC;
+3. main-process service performs preflight;
+4. host runtime executes `draft-task`;
+5. host runtime auto-answers only safe trigger gaps with `manual`;
+6. host runtime executes `confirm-task`;
+7. host runtime executes `run-step` on `provider`;
+8. hard QA success triggers `approve-run`;
+9. approved run triggers host import;
+10. failures reopen the same run in advanced details.
+
+Any implementation that changes this sequence needs an explicit spec update, not an ad hoc code change.
+
+## Phase 1: Main-Process Default-Flow Contract
+
+**Phase goal:** Move one-click orchestration ownership to the host runtime so the default flow survives renderer reloads and keeps plugin boundaries narrow.
+
+**P0/P1 mapping:** P0 long-running orchestration ownership, P0 provider-first sequencing, P0 failure classification.
 
 **Files:**
-- Create `examples/plugins/creator-studio/lib/task-workflow.js`
-- Create `examples/plugins/creator-studio/commands/draft-task.js`
-- Create `examples/plugins/creator-studio/commands/answer-question.js`
-- Create `examples/plugins/creator-studio/commands/confirm-task.js`
-- Modify `examples/plugins/creator-studio/lib/generation-task.js`
-- Modify `examples/plugins/creator-studio/lib/conversation-wizard.js`
-- Modify `examples/plugins/creator-studio/lib/run-store.js`
-- Modify `examples/plugins/creator-studio/plugin.json`
-- Test `tests/examples/creator-studio-plugin.test.js`
+- Create: `src/main/services/creator-studio-default-flow-service.js`
+- Modify: `src/main/services/plugin-service.js`
+- Modify: `main.js`
+- Modify: `src/main/window.js`
+- Test: `tests/services/plugin-service.test.js`
+- Test: `tests/main/window.test.js`
+- Test: `tests/main/main-scale-injection.test.js`
 
-- [ ] **Step 1: Write failing tests for task workflow**
+**Implementation checklist:**
 
-Add tests that create a draft from this prompt:
+- [ ] define one host-side start method that accepts prompt text plus minimal current-pet context and always selects `provider`;
+- [ ] add provider preflight that returns a user-facing blocked reason when no healthy provider configuration exists;
+- [ ] sequence `draft-task`, safe auto-answer, `confirm-task`, `run-step`, `approve-run`, and `import-approved-action` or `import-approved-pet` inside host runtime code;
+- [ ] treat only the missing trigger question as auto-answerable in this milestone and fill it with `manual`;
+- [ ] preserve `runId`, step, and failure reason so the renderer can reopen advanced details for the same run;
+- [ ] avoid writing secrets or absolute local paths into flow progress or error payloads.
 
-```js
-const draft = draftTaskRun({
-  dataDir,
-  payload: {
-    prompt: '新增一个自定义动作：原地打滚，动作要循环。',
-    backend: 'fixture'
-  },
-  now: () => '2026-06-20T00:00:00.000Z'
-})
-```
-
-Expected assertions:
-
-```js
-assert.equal(draft.run.status, 'draft')
-assert.equal(draft.run.taskStatus, 'needs_input')
-assert.equal(draft.run.generationTask.mode, 'single-action')
-assert.equal(draft.run.generationTask.actions[0].name, '原地打滚')
-assert.equal(draft.run.generationTask.actions[0].triggerProposal.type, 'unbound')
-assert.equal(draft.run.generationTask.questions[0].id, 'trigger')
-```
-
-Add a second test that answers the trigger question:
-
-```js
-const answered = answerTaskQuestion({
-  dataDir,
-  runId: draft.run.runId,
-  questionId: 'trigger',
-  answer: 'click',
-  now: () => '2026-06-20T00:01:00.000Z'
-})
-```
-
-Expected assertions:
-
-```js
-assert.equal(answered.run.taskStatus, 'ready_for_confirmation')
-assert.equal(answered.run.generationTask.questions.length, 0)
-assert.deepEqual(answered.run.generationTask.actions[0].triggerProposal, {
-  type: 'click',
-  binding: 'clickAction',
-  notes: 'User selected click trigger.'
-})
-```
-
-- [ ] **Step 2: Run tests and confirm the new workflow is missing**
+**Verification:**
 
 Run:
 
 ```bash
-node --test tests/examples/creator-studio-plugin.test.js
+node --test tests/services/plugin-service.test.js tests/main/window.test.js tests/main/main-scale-injection.test.js
 ```
 
-Expected result: fail because `task-workflow.js`, `draftTaskRun`, `answerTaskQuestion`, or new command declarations do not exist yet.
+Expected:
 
-- [ ] **Step 3: Implement `task-workflow.js`**
+- host runtime can start the default flow without renderer-owned sequencing;
+- provider preflight failures are returned as blocked host results;
+- failure payloads include the run ID and advanced-details route target without leaking secrets.
 
-Implement these exported functions:
+**Phase output for reviewers:**
 
-```js
-module.exports = {
-  answerTaskQuestion,
-  confirmTaskRun,
-  draftTaskRun
-}
-```
+- one host-owned entrypoint exists for the default Creator Studio flow;
+- the authoritative run sequence no longer lives in renderer hooks;
+- run IDs survive failure paths so details can reopen the exact run.
 
-Behavior:
-- `draftTaskRun` calls `draftGenerationTask`, creates a run, sets `taskStatus` to `needs_input` when questions exist, otherwise `ready_for_confirmation`.
-- `answerTaskQuestion` only accepts known question IDs and allowed options.
-- For `questionId === 'trigger'`, map answer values to trigger proposals:
-  - `manual` -> `{ type: 'manual', notes: 'User selected manual trigger.' }`
-  - `click` -> `{ type: 'click', binding: 'clickAction', notes: 'User selected click trigger.' }`
-  - `random` -> `{ type: 'random', notes: 'User selected random trigger.' }`
-  - `state` -> `{ type: 'state', notes: 'User selected state trigger.' }`
-  - `event` -> `{ type: 'event', notes: 'User selected event trigger.' }`
-  - `unbound` -> `{ type: 'unbound', notes: 'User selected unbound trigger.' }`
-- `confirmTaskRun` requires no remaining questions and sets `taskStatus` to `confirmed`, `status` to `draft`, and `currentStep` to `confirmed`.
-- Every mutation writes a log event through `appendRunLog`.
+**Phase review gate:**
 
-- [ ] **Step 4: Persist task workflow fields in `run-store.js`**
+- run production review on the phase diff;
+- blocking issue example: renderer still owns the authoritative sequence or progress state.
 
-Update `createRun` so conversational runs include:
+## Phase 2: Dual-Layer Host UI
 
-```js
-taskStatus: generationTask
-  ? (generationTask.questions.length > 0 ? 'needs_input' : 'ready_for_confirmation')
-  : 'not_started',
-conversation: {
-  originalPrompt,
-  answers: []
-}
-```
+**Phase goal:** Expose the ordinary-user main path in Control Center while keeping Creator Studio clearly framed as the advanced details surface.
 
-Write `inputs/original-prompt.txt` when `originalPrompt` exists.
+**P0/P1 mapping:** P0 host entry, P1 user-facing copy, P1 details navigation.
 
-- [ ] **Step 5: Add command entries**
+**Files:**
+- Modify: `src/control-center/src/api/control-center-api.ts`
+- Modify: `src/control-center/src/hooks/usePluginsPane.ts`
+- Modify: `src/control-center/src/panes/PluginsPane.tsx`
+- Test: `tests/control-center/control-center-smoke.spec.js`
+- Test: `tests/control-center/plugin-command-result.test.js`
 
-Add commands to `examples/plugins/creator-studio/plugin.json`:
+**Implementation checklist:**
 
-```json
-{
-  "id": "draft-task",
-  "title": "Draft Creator Task",
-  "entry": "commands/draft-task.js"
-}
-```
+- [ ] show a Creator Studio host panel in `Plugins` with prompt input, primary `生成并导入`, and secondary `查看任务详情`;
+- [ ] call the host default-flow API instead of sequencing the plugin workflow directly in the renderer;
+- [ ] show concise ordinary-user progress copy and imported-result summary without run-internal jargon by default;
+- [ ] route provider preflight blockers to AI or model settings with a precise setup message;
+- [ ] when the host returns a failed run, keep the failure summary short and offer advanced details for the same run.
 
-```json
-{
-  "id": "answer-question",
-  "title": "Answer Creator Task Question",
-  "entry": "commands/answer-question.js"
-}
-```
-
-```json
-{
-  "id": "confirm-task",
-  "title": "Confirm Creator Task",
-  "entry": "commands/confirm-task.js"
-}
-```
-
-Do not remove existing commands.
-
-- [ ] **Step 6: Run targeted verification**
+**Verification:**
 
 Run:
 
 ```bash
-node --test tests/examples/creator-studio-plugin.test.js
+npx playwright test tests/control-center/control-center-smoke.spec.js --grep "Creator Studio"
+npm run typecheck
+```
+
+Expected:
+
+- the host-owned Creator Studio entry is visible;
+- provider-not-configured blocks before generation;
+- successful default flow reaches imported action summary;
+- failed default flow offers advanced details for the same run.
+
+**Phase output for reviewers:**
+
+- ordinary-user copy stays simple and avoids plugin implementation jargon;
+- `查看任务详情` remains available without becoming the required path;
+- provider-first behavior is visible from the UI and test coverage, not only from internal code.
+
+**Phase review gate:**
+
+- run production review on the phase diff;
+- blocking issue example: the renderer still contains the authoritative orchestration logic instead of acting as a thin client.
+
+## Phase 3: Hardening, Truthfulness, and Follow-Up Boundaries
+
+**Phase goal:** Lock the milestone behavior with regression coverage and make the docs, smoke commands, and packaged-work statements consistent.
+
+**P0/P1 mapping:** P1 regression coverage, P1 doc truthfulness, P1 milestone closure clarity.
+
+**Files:**
+- Modify: `tests/docs/live-docs-creator-studio.test.js`
+- Modify: `docs/superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md`
+- Modify: `docs/superpowers/plans/2026-06-20-creator-studio-todo-development.md`
+- Modify: `tests/control-center/control-center-smoke.spec.js` as needed for final assertions
+
+**Implementation checklist:**
+
+- [ ] assert that active docs describe the provider-first default path, no-interruption rule, advanced-details fallback, and packaged-provider smoke as follow-up;
+- [ ] keep landed facts truthful: playback preview and timing diagnostics, browser regressions, `npm run smoke:ai-provider`, `npm run smoke:creator-studio-provider`, packaged evidence, and packaged fixture UI E2E;
+- [ ] make sure the plan, spec, and UI terminology all use the same dual-layer language;
+- [ ] leave richer trigger editing, packaged-provider smoke, and broader full-pet UX in backlog rather than silently expanding scope.
+
+**Verification:**
+
+Run:
+
+```bash
+node --test tests/docs/live-docs-creator-studio.test.js tests/control-center/plugin-command-result.test.js
 npm run check:syntax
 ```
 
-Expected result: all pass.
+Expected:
 
-- [ ] **Step 7: Commit**
+- live-docs tests pass against the updated spec and plan;
+- syntax check passes;
+- the remaining packaged-app work is clearly documented as follow-up rather than implied as already complete.
 
-```bash
-git add examples/plugins/creator-studio tests/examples/creator-studio-plugin.test.js
-git commit -m "feat(phase-1): add creator studio task workflow"
-```
+**Phase output for reviewers:**
 
-## Phase 2: Single-Action Generation QA And Import Metadata
+- docs, tests, and UI all use the same dual-layer language;
+- packaged fixture evidence is described as landed;
+- packaged provider smoke remains explicitly outside this milestone.
 
-**Phase goal:** Generate a deterministic custom single-action fixture output with QA and trigger proposal metadata that can be reviewed before import.
+**Phase review gate:**
 
-**P0/P1 mapping:** P0 no silent backend fallback, P0 artifact persistence, P1 QA metadata.
+- run production review on the final phase diff;
+- blocking issue example: docs claim provider-backed packaged UI smoke or main-process ownership that the implementation does not actually provide.
 
-**Files:**
-- Modify `examples/plugins/creator-studio/lib/backend-runner.js`
-- Modify `examples/plugins/creator-studio/lib/fake-hatch-pet.js`
-- Modify `examples/plugins/creator-studio/lib/run-store.js`
-- Modify `examples/plugins/creator-studio/commands/run-step.js`
-- Test `tests/examples/creator-studio-plugin.test.js`
+## Review Output Contract
 
-- [ ] **Step 1: Write failing tests for confirmed-task generation**
-
-Create a run from:
-
-```js
-const draft = draftTaskRun({
-  dataDir,
-  payload: {
-    prompt: '给当前猫猫加一个“被摸头后害羞转圈”的动作，点击触发，风格保持一致。',
-    backend: 'fixture'
-  },
-  now: () => '2026-06-20T01:00:00.000Z'
-})
-const confirmed = confirmTaskRun({
-  dataDir,
-  runId: draft.run.runId,
-  now: () => '2026-06-20T01:01:00.000Z'
-})
-const output = await runGenerationStep({
-  dataDir,
-  runId: confirmed.run.runId,
-  now: () => '2026-06-20T01:02:00.000Z'
-})
-```
-
-Expected assertions:
-
-```js
-assert.equal(output.run.status, 'ready_for_review')
-assert.equal(output.run.reviewStatus, 'pending')
-assert.equal(output.run.generationTask.actions[0].triggerProposal.type, 'click')
-assert.ok(output.run.artifacts.qa)
-assert.ok(output.run.artifacts.bundle.endsWith('.codex-pet.zip'))
-```
-
-Read `qa/action-generation-task.json` and assert:
-
-```js
-assert.equal(qa.ok, true)
-assert.equal(qa.mode, 'single-action')
-assert.equal(qa.actions[0].name, '被摸头后害羞转圈')
-assert.equal(qa.actions[0].triggerProposal.type, 'click')
-assert.equal(qa.importPolicy.appliesTriggerAutomatically, false)
-```
-
-- [ ] **Step 2: Run tests and confirm missing QA metadata**
-
-Run:
-
-```bash
-node --test tests/examples/creator-studio-plugin.test.js
-```
-
-Expected result: fail until fixture output writes action task QA and import policy metadata.
-
-- [ ] **Step 3: Extend fixture metadata**
-
-Update fixture generation so `creatorStudio` metadata includes:
-
-```js
-{
-  generationTask: run.generationTask,
-  actions: run.generationTask.actions,
-  importPolicy: {
-    importsFrames: true,
-    appliesTriggerAutomatically: false,
-    triggerProposalOwner: 'openpet-host'
-  }
-}
-```
-
-Keep legacy full-pet fixture output compatible for runs without `generationTask`.
-
-- [ ] **Step 4: Add QA write path**
-
-Ensure fixture and host-generated paths both write:
-
-```text
-qa/action-generation-task.json
-```
-
-The file must include:
-- `ok`
-- `originalPrompt`
-- `mode`
-- `targetPet`
-- `styleSource`
-- `actions`
-- `importPolicy`
-- `promptBuilder` when available
-
-- [ ] **Step 5: Enforce confirmed generation**
-
-Update `run-step.js` or `runGenerationStep` so a run with `generationTask.questions.length > 0` fails with:
-
-```text
-Creator Studio task must be confirmed before generation
-```
-
-Runs without `generationTask` keep legacy behavior.
-
-- [ ] **Step 6: Run targeted verification**
-
-Run:
-
-```bash
-node --test tests/examples/creator-studio-plugin.test.js tests/examples/creator-studio-real-atlas-builder.test.js
-npm run check:syntax
-```
-
-Expected result: all pass.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add examples/plugins/creator-studio tests/examples/creator-studio-plugin.test.js
-git commit -m "feat(phase-2): persist creator studio action QA"
-```
-
-## Phase 3: Dashboard And Service Review Flow
-
-**Phase goal:** Make the plugin dashboard usable for prompt entry, task review, follow-up answering, generation, QA inspection, logs, and import handoff.
-
-**P0/P1 mapping:** P1 dashboard flow, P1 route tests, P0 loopback-only service behavior preserved.
-
-**Files:**
-- Modify `examples/plugins/creator-studio/service/studio-service.js`
-- Modify `examples/plugins/creator-studio/web/dashboard/index.html`
-- Test `tests/examples/creator-studio-plugin.test.js`
-
-- [ ] **Step 1: Write failing service route tests**
-
-Start the service with a temp `dataDir`, then call:
-
-```http
-POST /api/tasks/draft
-Content-Type: application/json
-
-{"prompt":"新增一个自定义动作：原地打滚，动作要循环。","backend":"fixture"}
-```
-
-Expected JSON:
-
-```json
-{
-  "ok": true,
-  "run": {
-    "taskStatus": "needs_input"
-  }
-}
-```
-
-Call:
-
-```http
-POST /api/runs/<runId>/questions/trigger/answer
-Content-Type: application/json
-
-{"answer":"click"}
-```
-
-Expected JSON:
-
-```json
-{
-  "ok": true,
-  "run": {
-    "taskStatus": "ready_for_confirmation"
-  }
-}
-```
-
-Call:
-
-```http
-POST /api/runs/<runId>/confirm
-Content-Type: application/json
-
-{}
-```
-
-Expected JSON:
-
-```json
-{
-  "ok": true,
-  "run": {
-    "taskStatus": "confirmed"
-  }
-}
-```
-
-- [ ] **Step 2: Run tests and confirm routes are missing**
-
-Run:
-
-```bash
-node --test tests/examples/creator-studio-plugin.test.js
-```
-
-Expected result: fail with HTTP 404 or missing route behavior.
-
-- [ ] **Step 3: Add JSON body parsing to `studio-service.js`**
-
-Implement a bounded JSON parser:
-
-```js
-const readJsonBody = (request, maxBytes = 64 * 1024) => new Promise((resolve, reject) => {
-  let body = ''
-  request.on('data', (chunk) => {
-    body += chunk
-    if (Buffer.byteLength(body) > maxBytes) {
-      reject(new Error('Request body is too large'))
-      request.destroy()
-    }
-  })
-  request.on('end', () => {
-    if (!body.trim()) {
-      resolve({})
-      return
-    }
-    try {
-      resolve(JSON.parse(body))
-    } catch (_) {
-      reject(new Error('Request body must be valid JSON'))
-    }
-  })
-  request.on('error', reject)
-})
-```
-
-Return `400` for invalid payloads and `500` only for unexpected errors.
-
-- [ ] **Step 4: Add service routes**
-
-Wire routes to `task-workflow.js` and `runGenerationStep`.
-
-Route behavior:
-- `POST /api/tasks/draft` returns `{ ok: true, run }`.
-- `POST /api/runs/:runId/questions/:questionId/answer` returns `{ ok: true, run }`.
-- `POST /api/runs/:runId/confirm` returns `{ ok: true, run }`.
-- `POST /api/runs/:runId/generate-action` returns `{ ok: true, run, outputDir }`.
-
-- [ ] **Step 5: Replace dashboard placeholder**
-
-Build a static dashboard in `index.html` with these IDs for testability:
-
-```html
-<textarea id="prompt-input"></textarea>
-<select id="backend-select"></select>
-<button id="draft-button">Draft task</button>
-<section id="task-preview"></section>
-<section id="question-panel"></section>
-<button id="confirm-button">Confirm task</button>
-<button id="generate-button">Generate action</button>
-<section id="qa-panel"></section>
-<section id="trigger-panel"></section>
-<pre id="run-logs"></pre>
-```
-
-The dashboard must never ask for or display API keys. It may display backend states and setup errors.
-
-- [ ] **Step 6: Add dashboard HTML smoke assertions**
-
-In tests, read `index.html` and assert:
-
-```js
-assert.match(html, /id="prompt-input"/)
-assert.match(html, /id="task-preview"/)
-assert.match(html, /id="trigger-panel"/)
-assert.equal(html.includes('apiKey'), false)
-assert.equal(html.includes('sk-'), false)
-```
-
-- [ ] **Step 7: Run final verification**
-
-Run:
-
-```bash
-node --test tests/examples/creator-studio-plugin.test.js tests/examples/creator-studio-real-atlas-builder.test.js tests/services/image-generation-model-service.test.js tests/services/plugin-service.test.js
-npm run check:syntax
-```
-
-Expected result: all pass.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add examples/plugins/creator-studio tests/examples/creator-studio-plugin.test.js
-git commit -m "feat(phase-3): add creator studio dashboard workflow"
-```
-
-## Host / Main UI Feature Request
-
-These items are intentionally not plugin work. They should be assigned to the OpenPet main UI / host track.
-
-### Model Settings
-
-Add a Control Center model settings surface under AI or Service.
-
-Required fields:
-- Default backend: `fixture`, `cloud`, `local`.
-- Cloud provider: provider id, display name, base URL, model id, masked API key state, optional organization/project.
-- Local provider: endpoint URL, health URL, model id, timeout, max concurrent jobs.
-- Health check action for cloud credential presence and local endpoint reachability.
-- Safety copy explaining that credentials stay in OpenPet host secret storage.
-
-Required security:
-- Store secrets through `src/main/services/secret-service.js`.
-- Renderer receives only `hasApiKey`, masked labels, and health status.
-- Ordinary plugin code never receives raw API keys.
-- Local endpoint URLs default to loopback-only.
-
-### Host Model Bridge
-
-If host-mediated generation is selected, expose command-scoped bridge routes:
-
-- `GET /creator/model-settings`
-- `POST /creator/model-health-check`
-- `POST /creator/model-image-generate`
-
-Required permission:
-
-```text
-model:image-generate
-```
-
-Generated files must be written under host-approved data directories. Large images should be returned as data references, not arbitrary filesystem paths.
-
-### Trigger Rule System
-
-The host owns trigger persistence and behavior. Creator Studio only proposes.
-
-Required host capabilities:
-- Trigger rule schema for `manual`, `click`, `random`, `state`, `event`, and `unbound`.
-- Control Center UI to accept, edit, or reject plugin trigger proposals.
-- Validation that trigger rules reference existing imported actions.
-- Runtime application through host-owned services, not plugin writes.
-- Clear audit trail showing source plugin, run ID, action ID, accepted trigger type, and timestamp.
-
-## Backlog After This Milestone
-
-- Model-assisted intent parsing through the future host model bridge.
-- Reference image upload and current-pet visual reference extraction.
-- Full-pet generation using the same `GenerationTask` contract.
-- Partial regeneration for one bad action or frame range.
-- Rich trigger runtime simulation before applying trigger proposals.
-- Prompt examples for common pets and actions.
-- Packaged-app smoke for real dashboard interaction and native import picker paths.
-
-## Review And Verification
-
-At the end of each phase, run a production code quality review against:
-- the phase diff;
-- `examples/plugins/creator-studio`;
-- `src/main/services/plugin-service.js` if command or permission behavior changed;
-- `src/main/services/image-generation-model-service.js` if generation bridge behavior changed.
-
-Review report format:
+At the end of each phase, produce a review report in this format:
 
 ```text
 严重问题：
@@ -678,15 +277,14 @@ Review report format:
 通过状态：通过 / 有条件通过 / 不通过
 ```
 
-Blocking issues must be fixed before the phase commit. Non-blocking suggestions stay in backlog.
+Fix P0/P1 blocking issues before phase completion. Non-blocking suggestions go to backlog.
 
-## Execution Stop Condition
+## Stop Condition
 
 Stop after Phase 3 when:
-- task lifecycle works;
-- fixture single-action generation writes reviewable QA;
-- dashboard can run the draft-to-generate flow;
-- targeted tests and syntax check pass;
-- host/main UI requirements remain documented as a separate handoff.
 
-Do not continue into host model settings, trigger persistence, reference uploads, or full-pet batch generation in the same milestone.
+- the host runtime owns the default-flow sequence;
+- ordinary users can use a provider-first `生成并导入` path without mid-run questioning;
+- failures preserve the run and route to advanced details;
+- docs, tests, and UI language all agree on the dual-layer model;
+- packaged-provider smoke is explicitly left as the next milestone rather than silently pulled into scope.

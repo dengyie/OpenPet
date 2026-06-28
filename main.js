@@ -30,6 +30,7 @@ const { createAiTalkService } = require('./src/main/services/ai-talk-service')
 const { createPetUtteranceLogService } = require('./src/main/services/pet-utterance-log-service')
 const { createImageGenerationModelService } = require('./src/main/services/image-generation-model-service')
 const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
+const { createCreatorStudioDefaultFlowService } = require('./src/main/services/creator-studio-default-flow-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
 const { createPluginInstallService } = require('./src/main/services/plugin-install-service')
 const { syncBundledPlugins } = require('./src/main/services/bundled-plugin-sync-service')
@@ -45,6 +46,8 @@ const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
 const { configureSingleInstanceLock } = require('./src/main/single-instance')
 const { maybeRunPackagedRuntimeSmoke } = require('./src/main/packaged-runtime-smoke-runner')
 const { maybeRunPackagedPluginCleanupEvidence } = require('./src/main/packaged-plugin-cleanup-evidence-runner')
+const { maybeRunPackagedCreatorStudioEvidence } = require('./src/main/packaged-creator-studio-evidence-runner')
+const { maybeRunPackagedCreatorStudioUiE2e } = require('./src/main/packaged-creator-studio-ui-e2e-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
 const packageJson = require('./package.json')
 
@@ -92,6 +95,8 @@ const bootstrapOpenPet = () => {
     getMovementState,
     maybeRunPackagedRuntimeSmoke,
     maybeRunPackagedPluginCleanupEvidence,
+    maybeRunPackagedCreatorStudioEvidence,
+    maybeRunPackagedCreatorStudioUiE2e,
     factories: {
       createEventBus,
       createSettingsService,
@@ -105,6 +110,7 @@ const bootstrapOpenPet = () => {
       createPetUtteranceLogService,
       createImageGenerationModelService,
       createBehaviorOrchestratorService,
+      createCreatorStudioDefaultFlowService,
       createPluginService,
       createPluginInstallService,
       syncBundledPlugins,

@@ -92,6 +92,7 @@ const IPC = Object.freeze({
   PLUGINS_LIST: 'plugins:list',
   PLUGINS_SET_ENABLED: 'plugins:set-enabled',
   PLUGINS_SAVE_CONFIG: 'plugins:save-config',
+  PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW: 'plugins:run-creator-studio-default-flow',
   PLUGINS_RUN_COMMAND: 'plugins:run-command',
   PLUGINS_RUN_SETUP: 'plugins:run-setup',
   PLUGINS_OPEN_DASHBOARD: 'plugins:open-dashboard',

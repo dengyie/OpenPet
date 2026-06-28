@@ -107,6 +107,9 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     saveConfig: (config) => config,
     dryRun: () => ({ matched: false })
   },
+  creatorStudioDefaultFlowService: {
+    runDefaultFlow: async ({ prompt }) => ({ ok: true, state: 'completed', message: prompt || '', runId: '', lastCommandResult: null })
+  },
   pluginService,
   pluginInstallService,
   catalogService: {
@@ -1542,6 +1545,47 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
     url: 'http://127.0.0.1:8787/'
   })
   assert.deepEqual(calls, [['weather-declaration', 'main']])
+})
+
+test('creator studio default flow handler delegates to the host runtime service', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    creatorStudioDefaultFlowService: {
+      runDefaultFlow: async (payload) => {
+        calls.push(payload)
+        return { ok: true, state: 'completed', message: 'done', runId: 'run-123', lastCommandResult: null }
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW)(null, {
+    prompt: '新增一个害羞转圈动作'
+  })
+
+  assert.deepEqual(calls, [{ prompt: '新增一个害羞转圈动作' }])
+  assert.deepEqual(result, {
+    ok: true,
+    state: 'completed',
+    message: 'done',
+    runId: 'run-123',
+    lastCommandResult: null
+  })
 })
 
 test('plugin service lifecycle handlers delegate to plugin service', async () => {

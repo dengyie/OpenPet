@@ -102,6 +102,8 @@ const createOpenPetRuntime = ({
   getMovementState,
   maybeRunPackagedRuntimeSmoke,
   maybeRunPackagedPluginCleanupEvidence,
+  maybeRunPackagedCreatorStudioEvidence,
+  maybeRunPackagedCreatorStudioUiE2e,
   factories,
   setPetWindow
 }) => {
@@ -225,6 +227,10 @@ const createOpenPetRuntime = ({
   })
   pluginService = pluginServices.pluginService
   setCatalogService(pluginServices.catalogService)
+  const creatorStudioDefaultFlowService = factories.createCreatorStudioDefaultFlowService({
+    pluginService,
+    imageGenerationModelService
+  })
 
   maybeStartLocalHttp({ petService, localHttpService, normalizeLocalHttpConfig })
   syncLoginItemSettings(petService.getSettings().autoStart)
@@ -239,6 +245,7 @@ const createOpenPetRuntime = ({
     petBubbleChatWindowService,
     imageGenerationModelService,
     behaviorOrchestratorService,
+    creatorStudioDefaultFlowService,
     pluginService,
     pluginInstallService: pluginServices.pluginInstallService,
     pluginGithubImportService: pluginServices.pluginGithubImportService,
@@ -309,6 +316,12 @@ const createOpenPetRuntime = ({
     petWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(settings))
     maybeRunPackagedRuntimeSmoke({ app, petWindow, petService, petPackService, petBubbleChatWindowService })
     maybeRunPackagedPluginCleanupEvidence({ app, pluginInstallService: pluginServices.pluginInstallService, pluginService })
+    maybeRunPackagedCreatorStudioEvidence({ app, pluginService })
+    maybeRunPackagedCreatorStudioUiE2e({
+      app,
+      pluginService,
+      openControlCenter: () => createSettingsWindow(getPetWindow())
+    })
   })
   loadPetWindow(petWindow)
 

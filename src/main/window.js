@@ -140,7 +140,7 @@ const createWindow = ({ load = true, BrowserWindow = electron.BrowserWindow, scr
 const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindow, screen = electron.screen, app = electron.app } = {}) => {
   if (petWindow.settingsWindow && !petWindow.settingsWindow.isDestroyed()) {
     bringWindowToFront(petWindow.settingsWindow, app)
-    return
+    return petWindow.settingsWindow
   }
 
   const settingsWindow = new BrowserWindow({
@@ -183,6 +183,7 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
   })
 
   petWindow.settingsWindow = settingsWindow
+  return settingsWindow
 }
 
 module.exports = { BASE_WIDTH, BASE_HEIGHT, PET_BASE_SCALE, applyPetViewport, applyWindowScale, createWindow, createSettingsWindow, loadPetWindow }

@@ -1468,6 +1468,19 @@ export interface PluginCommandRunResultViewState extends OkResponse {
   result?: JsonValue
 }
 
+export type CreatorStudioDefaultFlowState = 'blocked' | 'needs_details' | 'completed'
+
+export interface CreatorStudioDefaultFlowResult extends OkResponse {
+  state: CreatorStudioDefaultFlowState
+  message: string
+  runId: string
+  lastCommandResult: PluginCommandRunResultViewState | null
+}
+
+export interface PluginDashboardOpenOptions {
+  query?: Record<string, string>
+}
+
 export interface PluginDashboardOpenResult extends OkResponse {
   pluginId: string
   dashboardId: string
@@ -2726,9 +2739,10 @@ export interface ControlCenterApi {
   setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
+  runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
   runPluginSetup: (pluginId: string, setupId: string) => Promise<PluginSetupRunResultViewState>
-  openPluginDashboard: (pluginId: string, dashboardId: string) => Promise<PluginDashboardOpenResult>
+  openPluginDashboard: (pluginId: string, dashboardId: string, options?: PluginDashboardOpenOptions) => Promise<PluginDashboardOpenResult>
   startPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
   stopPluginService: (pluginId: string, serviceId: string) => Promise<PluginServiceControlResult>
   checkPluginServiceHealth: (pluginId: string, serviceId: string) => Promise<PluginServiceHealthCheckResult>

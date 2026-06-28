@@ -25,6 +25,34 @@ const readCommandResult = (stdoutText) => {
   return null
 }
 
+const sanitizePluginCommandText = (value = '') => {
+  let sanitized = String(value || '')
+  sanitized = sanitized.replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[redacted-secret]')
+  sanitized = sanitized.replace(/\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi, '[redacted-token]')
+  sanitized = sanitized.replace(/\[redacted-token\]\s*[:=]\s*[^\s,，。)]+/gi, '[redacted-token]=[redacted-secret]')
+  sanitized = sanitized.replace(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/\b(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/\[::1\](?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g, '[redacted-path]')
+  sanitized = sanitized.replace(/[A-Za-z]:\\[^\s,，。)]+/g, '[redacted-path]')
+  sanitized = sanitized.replace(/\[\[redacted-token\]\]/g, '[redacted-token]')
+  return sanitized.trim()
+}
+
+const sanitizePluginCommandResultValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    return /^(error|stderr|stdout)$/i.test(String(key || ''))
+      ? sanitizePluginCommandText(value)
+      : value
+  }
+  if (Array.isArray(value)) return value.map((entry) => sanitizePluginCommandResultValue(entry))
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
+    entryKey,
+    sanitizePluginCommandResultValue(entryValue, entryKey)
+  ]))
+}
+
 const runPluginCommandEntryProcess = async ({
   plugin,
   commandEntry,
@@ -150,25 +178,25 @@ const runPluginCommandEntryProcess = async ({
 
     child.stdout?.on?.('data', (chunk) => {
       stdoutText = appendLimitedOutput(stdoutText, chunk)
-      const message = String(chunk || '').trim()
+      const message = sanitizePluginCommandText(chunk)
       if (message) appendLog({ pluginId, commandId, level: 'info', message: `Command stdout: ${message}`.slice(0, 500) })
     })
     child.stderr?.on?.('data', (chunk) => {
       stderrText = appendLimitedOutput(stderrText, chunk)
-      const message = String(chunk || '').trim()
+      const message = sanitizePluginCommandText(chunk)
       if (message) appendLog({ pluginId, commandId, level: 'error', message: `Command stderr: ${message}`.slice(0, 500) })
     })
     child.on?.('error', (error) => {
       settle(() => {
         resolveStopWaiter(runtime)
-        reject(error)
+        reject(new Error(sanitizePluginCommandText(error?.message || 'Plugin command failed')))
       })
     })
     child.stdin?.on?.('error', (error) => {
       settle(() => {
         resolveStopWaiter(runtime)
         safeKillChild()
-        reject(error)
+        reject(new Error(sanitizePluginCommandText(error?.message || 'Plugin command stdin failed')))
       })
     })
     child.on?.('exit', (code, signal) => {
@@ -187,21 +215,22 @@ const runPluginCommandEntryProcess = async ({
         if (exitCode !== 0 || signal) {
           const parsedResult = readCommandResult(stdoutText)
           const parsedError = parsedResult && typeof parsedResult === 'object' && typeof parsedResult.error === 'string'
-            ? parsedResult.error.trim()
+            ? sanitizePluginCommandText(parsedResult.error)
             : ''
           const message = parsedError || (signal ? `Plugin command exited with signal ${signal}` : `Plugin command exited with code ${exitCode ?? 'unknown'}`)
           reject(new Error(message))
           return
         }
         const parsedResult = readCommandResult(stdoutText)
+        const sanitizedParsedResult = sanitizePluginCommandResultValue(parsedResult)
         resolve({
           ok: true,
           pluginId,
           commandId,
           exitCode,
-          ...(parsedResult ? { result: parsedResult } : {}),
-          ...(!parsedResult && stdoutText.trim() ? { stdout: stdoutText.trim() } : {}),
-          ...(stderrText.trim() ? { stderr: stderrText.trim() } : {})
+          ...(sanitizedParsedResult ? { result: sanitizedParsedResult } : {}),
+          ...(!sanitizedParsedResult && stdoutText.trim() ? { stdout: sanitizePluginCommandText(stdoutText.trim()) } : {}),
+          ...(stderrText.trim() ? { stderr: sanitizePluginCommandText(stderrText.trim()) } : {})
         })
       })
     })

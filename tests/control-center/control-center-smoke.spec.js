@@ -670,7 +670,8 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('请先保存图片配置')
 
     await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
-    await expect(page.locator('.status-line')).toContainText('图片 Provider 配置已保存')
+    await expect(page.getByTestId('ai-image-status')).toContainText('图片 Provider 配置已保存')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(page.locator('.readonly-row', { hasText: '图片当前 Provider' })).toContainText('openpet-image-test')
     await expect(page.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('当前没有未保存')
     await expect(page.locator('.readonly-row', { hasText: '生成边界' })).toContainText('API Key')
@@ -679,7 +680,8 @@ test.describe('Control Center smoke', () => {
     const imageApiKeyInput = imageApiKeyRow.locator('input[type="password"]')
     await imageApiKeyInput.fill('sk-image-demo-1234')
     await page.getByRole('button', { name: '保存图片密钥' }).click()
-    await expect(page.locator('.status-line')).toContainText('图片 API Key 已保存')
+    await expect(page.getByTestId('ai-image-status')).toContainText('图片 API Key 已保存')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(imageApiKeyInput).toHaveValue('')
     await expect(imageApiKeyRow).toContainText('已保存')
     await expect(imageApiKeyRow).toContainText('••••1234')
@@ -688,7 +690,8 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('图片 Provider 可达，但模型列表探测不可用')
 
     await page.getByRole('button', { name: '清除图片密钥' }).click()
-    await expect(page.locator('.status-line')).toContainText('图片 API Key 已清除')
+    await expect(page.getByTestId('ai-image-status')).toContainText('图片 API Key 已清除')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(imageApiKeyRow).toContainText('未保存')
 
     await page.getByRole('button', { name: '检查图片健康' }).click()
@@ -745,6 +748,17 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: '检查图片健康' }).click()
     await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('当前保存的图片 Model 未出现在 /models 返回列表中')
     await expect(page.getByTestId('image-model-discovery')).toContainText('当前保存的图片 Model 未出现在探测列表中')
+
+    await page.getByLabel('图片 Model').fill('draft-only-image-model')
+    await expect(imageProviderSection.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片配置草稿未保存')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('当前有未保存的图片草稿')
+    await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
+
+    await page.getByLabel('图片 Model').fill('missing-image-model')
+    await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-draft-only-9999')
+    await expect(imageProviderSection.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片密钥草稿未保存')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('当前有未保存的图片草稿')
+    await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
   })
 
   test('shows chat provider model discovery results in the demo API', async ({ page }) => {
@@ -771,6 +785,15 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前保存的聊天 Model 未出现在 /models 返回列表中')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('当前保存的聊天 Model 未出现在探测列表中')
+
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('draft-only-chat-model')
+    await expect(chatProviderSection.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('配置草稿未保存')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
+
+    await page.getByRole('textbox', { name: 'Model', exact: true }).fill('missing-chat-model')
+    await apiKeyRow.getByPlaceholder('输入新密钥覆盖').fill('sk-chat-draft-only-9999')
+    await expect(chatProviderSection.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('密钥草稿未保存')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
   })
 
   test('shows chat model compatibility hints for default and custom models in the demo API', async ({ page }) => {
@@ -939,6 +962,27 @@ test.describe('Control Center smoke', () => {
     await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:legacy-cat:main')
   })
 
+  test('rebinds AI trace conversation filter after switching the active pet pack', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const memorySection = await expandAiSection(page, '长期记忆')
+    const filterSelect = memorySection.getByTestId('ai-trace-filter-select')
+
+    await filterSelect.selectOption('conversation')
+    await expect(filterSelect).toHaveValue('conversation')
+    await expect(memorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:legacy-cat:main')
+
+    await page.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('button', { name: '启用' }).filter({ hasText: /^启用$/ }).nth(0).click()
+    await expect(page.locator('.status-line')).toContainText('已启用 Citrus Cat')
+
+    await page.getByRole('button', { name: 'AI' }).click()
+    const refreshedMemorySection = await expandAiSection(page, '长期记忆')
+    await expect(refreshedMemorySection.getByTestId('ai-trace-filter-select')).toHaveValue('conversation')
+    await expect(refreshedMemorySection.locator('.readonly-row', { hasText: '当前 Trace 过滤' })).toContainText('会话 control-center:citrus-cat:main')
+  })
+
   test('shows AI behavior decisions and supports replay and clearing diagnostics', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
@@ -957,22 +1001,26 @@ test.describe('Control Center smoke', () => {
 
     await decisionsPanel.getByPlaceholder('Decision ID').fill('1')
     await decisionsPanel.getByRole('button', { name: 'Replay' }).click()
-    await expect(page.locator('.status-line')).toContainText('Replay 命中')
+    await expect(page.getByTestId('ai-behavior-status')).toContainText('Replay 命中')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(decisionsPanel.locator('.behavior-result')).toContainText('demo replay matched')
 
     await decisionsPanel.getByRole('button', { name: '导出' }).click()
-    await expect(page.locator('.status-line')).toContainText('Behavior 诊断已导出')
+    await expect(page.getByTestId('ai-behavior-status')).toContainText('Behavior 诊断已导出')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
 
     page.once('dialog', (dialog) => dialog.accept())
     await decisionsPanel.getByRole('button', { name: '清空' }).click()
-    await expect(page.locator('.status-line')).toContainText('Behavior 决策已清空')
+    await expect(page.getByTestId('ai-behavior-status')).toContainText('Behavior 决策已清空')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(decisionsPanel).toContainText('0 条')
     await expect(decisionsPanel.locator('.empty-chat')).toContainText('暂无决策记录')
 
     await expandAiSection(page, '聊天')
     await page.getByPlaceholder('说点什么').fill('hello decision viewer')
     await page.getByRole('button', { name: '发送' }).click()
-    await expect(page.locator('.status-line')).toContainText('已触发动作：Wave')
+    await expect(page.getByTestId('ai-chat-status')).toContainText('已触发动作：Wave')
+    await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(decisionsPanel).toContainText('1 条')
     await expect(decisionsPanel.locator('.behavior-decision-row')).toContainText('matched rule demo-chat')
   })
@@ -1243,7 +1291,21 @@ test.describe('Control Center smoke', () => {
                 { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
                 { id: 'import-approved-pet', title: 'Import Approved Pet', command: 'node ./commands/import-approved-pet.js', cwd: '.' }
               ],
-              services: [],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-28T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
               dashboards: [
                 { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
               ]
@@ -1265,11 +1327,77 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('Dashboard entries')
     await expect(pluginRow).toContainText('main')
 
-    await pluginRow.getByRole('button', { name: 'Creator Studio' }).click()
+    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
 
     await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('openpet.creator-studio')
+  })
+
+  test('guides users to start the Creator Studio service before opening its dashboard in the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['pet-pack:import', 'model:image-generate', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'stopped',
+                    health: { status: 'unknown', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    const serviceControl = pluginRow.locator('.plugin-service-control', { hasText: 'Creator Studio Service' })
+
+    await expect(serviceControl).toContainText('Service status: stopped')
+    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await expect(page.locator('.status-line')).toContainText('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toHaveCount(0)
+
+    await serviceControl.getByRole('button', { name: 'Start Creator Studio Service' }).click()
+    await expect(page.locator('.status-line')).toContainText('Service 已启动')
+    await expect(serviceControl).toContainText('Service status: running')
+
+    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
   })
 
   test('shows structured Creator Studio command results in the Plugins pane with the demo API', async ({ page }) => {
@@ -1378,5 +1506,494 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('触发建议')
     await expect(pluginRow).toContainText('已提交')
     await expect(pluginRow).toContainText('proposal:click:shy-spin:test')
+  })
+
+  test('shows a host-owned Creator Studio generate-and-import entry in the Plugins pane', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        imageGenerationConfig: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://healthy-models.example.test/v1',
+          model: 'gpt-image-2',
+          timeoutMs: 45000,
+          maxConcurrentJobs: 2,
+          apiKeyRef: 'image-provider-key',
+          hasApiKey: true,
+          apiKeyPreview: 'sk-demo'
+        },
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' },
+              { id: 'import-approved-action', title: 'Import Approved Action' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
+                { id: 'import-approved-action', title: 'Import Approved Action', command: 'node ./commands/import-approved-action.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-29T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await expect(pluginRow.getByLabel('Creator Studio 请求')).toBeVisible()
+    await expect(pluginRow.getByRole('button', { name: '生成并导入' })).toBeVisible()
+    await expect(pluginRow).toContainText('高级入口')
+    await expect(pluginRow).toContainText('查看任务详情')
+  })
+
+  test('blocks host-owned Creator Studio generate-and-import when the saved image provider is not configured', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        imageGenerationConfig: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://image.example.test/v1',
+          model: 'gpt-image-2',
+          timeoutMs: 45000,
+          maxConcurrentJobs: 2,
+          apiKeyRef: '',
+          hasApiKey: false,
+          apiKeyPreview: ''
+        },
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-29T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('Creator Studio 请求').fill('给当前猫猫新增一个转圈动作')
+    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('请先到 AI -> 图片 Provider 配置并保存可用模型')
+    await expect(pluginRow).not.toContainText('最近命令结果')
+  })
+
+  test('runs the host-owned Creator Studio generate-and-import flow to imported action in the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        imageGenerationConfig: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://healthy-models.example.test/v1',
+          model: 'gpt-image-2',
+          timeoutMs: 45000,
+          maxConcurrentJobs: 2,
+          apiKeyRef: 'image-provider-key',
+          hasApiKey: true,
+          apiKeyPreview: 'sk-demo'
+        },
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' },
+              { id: 'answer-question', title: 'Answer Question' },
+              { id: 'confirm-task', title: 'Confirm Task' },
+              { id: 'run-step', title: 'Run Step' },
+              { id: 'approve-run', title: 'Approve Run' },
+              { id: 'import-approved-action', title: 'Import Approved Action' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
+                { id: 'answer-question', title: 'Answer Question', command: 'node ./commands/answer-question.js', cwd: '.' },
+                { id: 'confirm-task', title: 'Confirm Task', command: 'node ./commands/confirm-task.js', cwd: '.' },
+                { id: 'run-step', title: 'Run Step', command: 'node ./commands/run-step.js', cwd: '.' },
+                { id: 'approve-run', title: 'Approve Run', command: 'node ./commands/approve-run.js', cwd: '.' },
+                { id: 'import-approved-action', title: 'Import Approved Action', command: 'node ./commands/import-approved-action.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-29T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('Creator Studio 请求').fill('给当前猫猫新增一个害羞转圈动作')
+    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Imported action shy-spin from run run-demo-action-123')
+    await expect(pluginRow).toContainText('最近命令结果')
+    await expect(pluginRow).toContainText('import-approved-action · exit 0')
+    await expect(pluginRow).toContainText('run-demo-action-123')
+    await expect(pluginRow).toContainText('已导入动作')
+    await expect(pluginRow).toContainText('shy-spin')
+    await expect(pluginRow).toContainText('触发建议')
+    await expect(pluginRow).toContainText('已提交')
+  })
+
+  test('routes failed host-owned Creator Studio generate-and-import runs to the advanced details path', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        imageGenerationConfig: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://healthy-models.example.test/v1',
+          model: 'gpt-image-2',
+          timeoutMs: 45000,
+          maxConcurrentJobs: 2,
+          apiKeyRef: 'image-provider-key',
+          hasApiKey: true,
+          apiKeyPreview: 'sk-demo'
+        },
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' },
+              { id: 'answer-question', title: 'Answer Question' },
+              { id: 'confirm-task', title: 'Confirm Task' },
+              { id: 'run-step', title: 'Run Step' },
+              { id: 'approve-run', title: 'Approve Run' },
+              { id: 'import-approved-action', title: 'Import Approved Action' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
+                { id: 'answer-question', title: 'Answer Question', command: 'node ./commands/answer-question.js', cwd: '.' },
+                { id: 'confirm-task', title: 'Confirm Task', command: 'node ./commands/confirm-task.js', cwd: '.' },
+                { id: 'run-step', title: 'Run Step', command: 'node ./commands/run-step.js', cwd: '.' },
+                { id: 'approve-run', title: 'Approve Run', command: 'node ./commands/approve-run.js', cwd: '.' },
+                { id: 'import-approved-action', title: 'Import Approved Action', command: 'node ./commands/import-approved-action.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-29T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('Creator Studio 请求').fill('让这个动作失败并进入高级详情')
+    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('run-demo-action-fail')
+    await expect(page.locator('.status-line')).toContainText('查看任务详情')
+
+    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
+    await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
+    await expect(page.locator('.status-line')).toContainText('run-demo-action-fail')
+  })
+
+  test('routes host-owned Creator Studio trigger handoff failures to the advanced details path', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        imageGenerationConfig: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://healthy-models.example.test/v1',
+          model: 'gpt-image-2',
+          timeoutMs: 45000,
+          maxConcurrentJobs: 2,
+          apiKeyRef: 'image-provider-key',
+          hasApiKey: true,
+          apiKeyPreview: 'sk-demo'
+        },
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' },
+              { id: 'answer-question', title: 'Answer Question' },
+              { id: 'confirm-task', title: 'Confirm Task' },
+              { id: 'run-step', title: 'Run Step' },
+              { id: 'approve-run', title: 'Approve Run' },
+              { id: 'import-approved-action', title: 'Import Approved Action' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' },
+                { id: 'answer-question', title: 'Answer Question', command: 'node ./commands/answer-question.js', cwd: '.' },
+                { id: 'confirm-task', title: 'Confirm Task', command: 'node ./commands/confirm-task.js', cwd: '.' },
+                { id: 'run-step', title: 'Run Step', command: 'node ./commands/run-step.js', cwd: '.' },
+                { id: 'approve-run', title: 'Approve Run', command: 'node ./commands/approve-run.js', cwd: '.' },
+                { id: 'import-approved-action', title: 'Import Approved Action', command: 'node ./commands/import-approved-action.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-29T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('Creator Studio 请求').fill('让这个动作触发交接失败并进入高级详情')
+    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('run-demo-action-trigger-handoff-fail')
+    await expect(page.locator('.status-line')).toContainText('查看任务详情')
+    await expect(pluginRow).toContainText('触发建议')
+    await expect(pluginRow).toContainText('提交失败')
+
+    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
+    await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
+    await expect(page.locator('.status-line')).toContainText('run-demo-action-trigger-handoff-fail')
+  })
+
+  test('redacts sensitive Creator Studio action import handoff failures in the Plugins pane with the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['pet:say', 'storage'],
+            commands: [
+              { id: 'import-approved-action', title: 'Import Approved Action' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'import-approved-action', title: 'Import Approved Action', command: 'node ./commands/import-approved-action.js', cwd: '.' }
+              ],
+              services: [],
+              dashboards: []
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('可选命令 Payload JSON').fill('{"runId":"run-demo-action-456","triggerProposalFailure":true}')
+    await pluginRow.getByRole('button', { name: 'Import Approved Action' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Imported action shy-spin from run run-demo-action-456')
+    await expect(pluginRow).toContainText('触发建议')
+    await expect(pluginRow).toContainText('提交失败')
+    await expect(pluginRow).toContainText('[redacted-token]')
+    await expect(pluginRow).toContainText('[redacted-path]')
+    await expect(pluginRow).toContainText('[redacted-local-url]')
+    await expect(pluginRow).not.toContainText('bridge-secret')
+    await expect(pluginRow).not.toContainText('/Users/mango/private/proposal.json')
+    await expect(pluginRow).not.toContainText('127.0.0.1:8787')
+  })
+
+  test('shows missing Creator Studio trigger handoff records in the Plugins pane with the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: ['pet:say', 'storage'],
+            commands: [
+              { id: 'import-approved-action', title: 'Import Approved Action' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'import-approved-action', title: 'Import Approved Action', command: 'node ./commands/import-approved-action.js', cwd: '.' }
+              ],
+              services: [],
+              dashboards: []
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('可选命令 Payload JSON').fill('{"runId":"run-demo-action-789","triggerProposalMissingRecord":true}')
+    await pluginRow.getByRole('button', { name: 'Import Approved Action' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Imported action shy-spin from run run-demo-action-789')
+    await expect(pluginRow).toContainText('最近命令结果')
+    await expect(pluginRow).toContainText('import-approved-action · exit 0')
+    await expect(pluginRow).toContainText('触发建议')
+    await expect(pluginRow).toContainText('未保存交接记录')
+    await expect(pluginRow).toContainText('no trigger proposal handoff record was saved')
   })
 })

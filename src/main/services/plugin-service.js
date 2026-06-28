@@ -121,6 +121,34 @@ const createServiceHealthView = (health = {}, serviceEntry = {}) => {
   }
 }
 
+const sanitizePluginCommandText = (value = '') => {
+  let sanitized = String(value || '')
+  sanitized = sanitized.replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[redacted-secret]')
+  sanitized = sanitized.replace(/\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi, '[redacted-token]')
+  sanitized = sanitized.replace(/\[redacted-token\]\s*[:=]\s*[^\s,，。)]+/gi, '[redacted-token]=[redacted-secret]')
+  sanitized = sanitized.replace(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/\b(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/\[::1\](?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
+  sanitized = sanitized.replace(/(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g, '[redacted-path]')
+  sanitized = sanitized.replace(/[A-Za-z]:\\[^\s,，。)]+/g, '[redacted-path]')
+  sanitized = sanitized.replace(/\[\[redacted-token\]\]/g, '[redacted-token]')
+  return sanitized.trim()
+}
+
+const sanitizePluginCommandResultValue = (value, key = '') => {
+  if (typeof value === 'string') {
+    return /^(error|stderr|stdout)$/i.test(String(key || ''))
+      ? sanitizePluginCommandText(value)
+      : value
+  }
+  if (Array.isArray(value)) return value.map((entry) => sanitizePluginCommandResultValue(entry))
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
+    entryKey,
+    sanitizePluginCommandResultValue(entryValue, entryKey)
+  ]))
+}
+
 const assertStorageValueSize = (value) => {
   const byteSize = getJsonByteSize(value)
   if (byteSize > MAX_PLUGIN_STORAGE_VALUE_BYTES) {
@@ -1102,15 +1130,18 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       } else {
         throw new Error('Plugin is not runnable')
       }
+      result = sanitizePluginCommandResultValue(result)
       appendLog({ pluginId, commandId, level: 'info', message: 'Command completed' })
       return result
     } catch (error) {
       if (error?.openpetLogged) throw error
+      const sanitizedMessage = sanitizePluginCommandText(error?.message || 'Command failed')
+      if (error && typeof error === 'object') error.message = sanitizedMessage
       appendLog({
         pluginId,
         commandId,
         level: 'error',
-        message: error.message || 'Command failed'
+        message: sanitizedMessage
       })
       throw error
     }
@@ -1164,22 +1195,23 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         }
 
         child.stdout?.on?.('data', (chunk) => {
-          const message = String(chunk || '').trim()
+          const message = sanitizePluginCommandText(chunk)
           if (message) appendLog({ pluginId, commandId, level: 'info', message: `Setup stdout: ${message}`.slice(0, 500) })
         })
         child.stderr?.on?.('data', (chunk) => {
-          const message = String(chunk || '').trim()
+          const message = sanitizePluginCommandText(chunk)
           if (message) appendLog({ pluginId, commandId, level: 'error', message: `Setup stderr: ${message}`.slice(0, 500) })
         })
         child.on?.('error', (error) => {
           settle(() => {
+            const sanitizedError = sanitizePluginCommandText(error?.message || 'Plugin setup failed')
             runtime.status = 'failed'
-            runtime.error = error.message || 'Plugin setup failed'
+            runtime.error = sanitizedError
             runtime.exitCode = null
             runtime.lastRunAt = new Date().toISOString()
             resolveStopWaiter(runtime)
-            appendLog({ pluginId, commandId, level: 'error', message: 'Setup failed' })
-            reject(error)
+            appendLog({ pluginId, commandId, level: 'error', message: sanitizedError })
+            reject(new Error(sanitizedError))
           })
         })
         child.on?.('exit', (code, signal) => {
@@ -1211,12 +1243,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         })
       })
     } catch (error) {
-      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Setup failed' })
+      appendLog({ pluginId, commandId, level: 'error', message: sanitizePluginCommandText(error?.message || 'Setup failed') })
       throw error
     }
   }
 
-  const openDashboard = async (pluginId, dashboardId) => {
+  const openDashboard = async (pluginId, dashboardId, options = {}) => {
     const commandId = `dashboard:${dashboardId || ''}`
     try {
       const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
@@ -1233,6 +1265,15 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       }
       if (!['http:', 'https:'].includes(dashboardUrl.protocol)) {
         throw new Error('Plugin dashboard URL must use HTTP or HTTPS')
+      }
+      const query = options?.query && typeof options.query === 'object' && !Array.isArray(options.query)
+        ? options.query
+        : {}
+      for (const [key, value] of Object.entries(query)) {
+        const normalizedKey = String(key || '').trim()
+        const normalizedValue = String(value || '').trim()
+        if (!normalizedKey || !normalizedValue) continue
+        dashboardUrl.searchParams.set(normalizedKey, normalizedValue)
       }
       await openExternal(dashboardUrl.toString())
       appendLog({ pluginId, commandId, level: 'info', message: 'Dashboard opened' })
@@ -1294,17 +1335,17 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       })
 
       child.stdout?.on?.('data', (chunk) => {
-        const message = String(chunk || '').trim()
+        const message = sanitizePluginCommandText(chunk)
         if (message) appendLog({ pluginId, commandId, level: 'info', message: `Service stdout: ${message}`.slice(0, 500) })
       })
       child.stderr?.on?.('data', (chunk) => {
-        const message = String(chunk || '').trim()
+        const message = sanitizePluginCommandText(chunk)
         if (message) appendLog({ pluginId, commandId, level: 'error', message: `Service stderr: ${message}`.slice(0, 500) })
       })
       child.on?.('error', (error) => {
         clearServiceHealthSchedule(runtime)
         runtime.status = 'failed'
-        runtime.error = error.message || 'Plugin service failed'
+        runtime.error = sanitizePluginCommandText(error?.message || 'Plugin service failed')
         runtime.stoppedAt = new Date().toISOString()
         resolveStopWaiter(runtime)
         appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
@@ -1355,7 +1396,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         runtime: createRuntimeView(runtime, serviceEntry)
       }
     } catch (error) {
-      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service start failed' })
+      appendLog({ pluginId, commandId, level: 'error', message: sanitizePluginCommandText(error?.message || 'Service start failed') })
       throw error
     }
   }

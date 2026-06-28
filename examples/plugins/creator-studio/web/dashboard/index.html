@@ -614,6 +614,12 @@
       const $ = (id) => document.getElementById(id)
       const isFullPetRun = (run) => run?.generationTask?.mode === 'full-pet'
       const defaultGenerateLabel = (run = state.run) => (isFullPetRun(run) ? 'Generate pet pack' : 'Generate action')
+      const normalizeDashboardBackend = (value) => {
+        const normalized = String(value || '').trim().toLowerCase()
+        if (normalized === 'fixture') return 'fixture'
+        if (['provider', 'cloud', 'local'].includes(normalized)) return 'provider'
+        return 'fixture'
+      }
       const formatTriggerSummary = (triggerProposal = {}) => {
         const type = triggerProposal?.type || 'unbound'
         return triggerProposal?.binding ? `${type} (${triggerProposal.binding})` : type
@@ -690,12 +696,29 @@
         renderRunList()
       }
 
+      const syncDraftControlsFromRun = (run) => {
+        if (!run) return
+        const promptValue = run?.input?.originalPrompt || run?.input?.prompt || ''
+        if (typeof promptValue === 'string') {
+          $('prompt-input').value = promptValue
+        }
+        $('backend-select').value = normalizeDashboardBackend(run?.backend || run?.input?.backend || 'fixture')
+      }
+
       const loadRun = async (runId, statusMessage = '') => {
         if (!runId) return
         await fetchRunDetail(runId)
         renderRun()
         await refreshLogs()
         if (statusMessage) setStatus(statusMessage, 'ok')
+      }
+
+      const getRequestedRunId = () => {
+        try {
+          return new URLSearchParams(window.location.search).get('runId') || ''
+        } catch (_) {
+          return ''
+        }
       }
 
       const frameSrc = (frame) => `${frame.url}${frame.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(state.run?.updatedAt || '')}`
@@ -781,6 +804,7 @@
           followUp.reason
             ? `<p>${escapeHtml(followUp.reason)}</p>`
             : '',
+          renderSurfaceCta(followUp, { tagName: 'p' }),
           '</div>'
         ].join('')
       }
@@ -823,7 +847,7 @@
         const sourceValidation = review?.sourceImageValidation || {}
         const atlasValidation = review?.atlasValidation || {}
         const reviewGate = review?.reviewGate || {}
-        const showsMismatch = review?.sourceImageMatchesCurrent === false
+        const showsMismatch = run?.status === 'ready_for_review' && review?.sourceImageMatchesCurrent === false
         return [
           renderImportedReviewNotice(run),
           showsMismatch
@@ -1063,9 +1087,12 @@
         const guidance = run?.workflowGuidance || {}
         const generation = guidance.generation || {}
         const importGuidance = guidance.import || {}
+        const handoff = importGuidance.handoff || {}
         const followUp = importGuidance.followUp || {}
         const reviewSummary = importGuidance.reviewSummary || {}
         const usageSummary = generation.usageSummary || {}
+        const smokeCommand = generation.smokeCommand || {}
+        const creatorStudioSmokeCommand = generation.creatorStudioSmokeCommand || {}
         const checklist = Array.isArray(generation.smokeChecklist) ? generation.smokeChecklist : []
         const checklistHtml = checklist.length
           ? `<ul>${checklist.map((entry) => `<li>${escapeHtml(entry)}</li>`).join('')}</ul>`
@@ -1077,6 +1104,18 @@
             ? `<p>Estimated generation cost: <code>${escapeHtml(usageSummary.displayCost || '')}</code></p>`
             : '',
           checklistHtml,
+          smokeCommand.available
+            ? `<p>Repeatable provider smoke: <code>${escapeHtml(smokeCommand.command || '')}</code></p>`
+            : '',
+          smokeCommand.available && smokeCommand.note
+            ? `<p>${escapeHtml(smokeCommand.note)}</p>`
+            : '',
+          creatorStudioSmokeCommand.available
+            ? `<p>Creator Studio provider smoke: <code>${escapeHtml(creatorStudioSmokeCommand.command || '')}</code></p>`
+            : '',
+          creatorStudioSmokeCommand.available && creatorStudioSmokeCommand.note
+            ? `<p>${escapeHtml(creatorStudioSmokeCommand.note || '')}</p>`
+            : '',
           `<p>Import state: ${escapeHtml(importGuidance.status || 'not-ready')} / Command: ${escapeHtml(importGuidance.command || 'n/a')}</p>`,
           `<p>${escapeHtml(importGuidance.summary || 'Approve the run before host-owned import.')}</p>`,
           reviewSummary.nextReviewAction
@@ -1089,6 +1128,11 @@
                   : '',
                 '</div>'
               ].join('')
+          handoff.ready && handoff.reason
+            ? `<p>${escapeHtml(handoff.reason)}</p>`
+            : '',
+          handoff.ready
+            ? renderSurfaceCta(handoff, { tagName: 'p' })
             : '',
           importGuidance.triggerProposalSummary
             ? `<p>${escapeHtml(importGuidance.triggerProposalSummary)}</p>`
@@ -1099,6 +1143,7 @@
           followUp.reason
             ? `<p>${escapeHtml(followUp.reason)}</p>`
             : '',
+          renderSurfaceCta(followUp, { tagName: 'p' }),
           '</div>'
         ].join('')
       }
@@ -1142,15 +1187,40 @@
       const renderNextStep = (run) => {
         const snapshot = run?.wizardState || {}
         const nextStep = snapshot.nextStep || {}
+        let availabilityMessage = 'This step is available directly in the dashboard.'
+
+        if (nextStep.blocked) {
+          if (nextStep.surface === 'control-center' && nextStep.location) {
+            availabilityMessage = `Continue in Control Center at ${nextStep.location}.`
+          } else if (nextStep.surface === 'openpet') {
+            availabilityMessage = 'Continue in OpenPet.'
+          } else {
+            availabilityMessage = 'This step is host-owned or gated outside the dashboard.'
+          }
+        }
+
         return [
           `<div class="notice ${nextStep.blocked ? 'error' : ''}">`,
           `<strong>${escapeHtml(nextStep.label || 'Draft task')}</strong>`,
           `<p>${escapeHtml(nextStep.reason || 'Draft a task to see the next recommended action.')}</p>`,
-          nextStep.blocked
-            ? '<p>This step is host-owned or gated outside the dashboard.</p>'
-            : '<p>This step is available directly in the dashboard.</p>',
+          `<p>${escapeHtml(availabilityMessage)}</p>`,
           '</div>'
         ].join('')
+      }
+
+      const formatSurfaceCta = (target = {}) => {
+        if (target.surface === 'control-center' && target.location) {
+          return `Continue in Control Center at ${target.location}.`
+        }
+        if (target.surface === 'openpet') {
+          return 'Continue in OpenPet.'
+        }
+        return ''
+      }
+
+      const renderSurfaceCta = (target = {}, { tagName = 'p' } = {}) => {
+        const cta = formatSurfaceCta(target)
+        return cta ? `<${tagName}>${escapeHtml(cta)}</${tagName}>` : ''
       }
 
       const renderActionLane = (run) => {
@@ -1176,6 +1246,7 @@
                 `<strong>Host-owned action: ${escapeHtml(hostAction.label || 'OpenPet step')}</strong>`,
                 `<p>${escapeHtml(hostAction.reason || 'Continue inside OpenPet.')}</p>`,
                 `<p>Location: <code>${escapeHtml(hostAction.location || 'OpenPet')}</code></p>`,
+                renderSurfaceCta(hostAction, { tagName: 'p' }),
                 '</div>'
               ].join('')
             : '',
@@ -1257,6 +1328,7 @@
             handoff.payloadJson
               ? `<p>Payload JSON: <code>${escapeHtml(handoff.payloadJson)}</code></p>`
               : '',
+            renderSurfaceCta(handoff, { tagName: 'p' }),
             '</div>'
           ].join('')
         }
@@ -1273,6 +1345,7 @@
             followUp.reason
               ? `<p>${escapeHtml(followUp.reason)}</p>`
               : '',
+            renderSurfaceCta(followUp, { tagName: 'p' }),
             renderImportedResultCard(run),
             '</div>'
           ].join('')
@@ -1330,6 +1403,7 @@
           followUp.reason
             ? `<span>${escapeHtml(followUp.reason)}</span>`
             : '',
+          renderSurfaceCta(followUp, { tagName: 'span' }),
           '</div>',
           '</div>'
         ].join('')
@@ -1338,34 +1412,55 @@
       const renderRun = () => {
         const run = state.run
         if (!run?.generationTask) {
-          $('run-snapshot-panel').textContent = 'Prompt snapshot and wizard state appear after you draft or load a run.'
-          $('wizard-steps-panel').textContent = 'Draft a task to see the workflow rail.'
-          $('action-lane-panel').textContent = 'Draft or load a run to see which action is available in the dashboard and which step must move to OpenPet.'
-          $('review-checkpoint-panel').textContent = 'Draft or load a run to see the current review owner and next review location.'
-          $('review-snapshot-panel').textContent = 'Draft or load a run to see the unified review snapshot.'
-          $('next-step-panel').textContent = 'Draft a task to see the next recommended action.'
+          const buttonStates = run?.actionLane?.buttonStates || {}
+          const actionFrames = run.artifacts?.actionFrames
+          const actionReview = state.actionReview
+          const fullPetReview = state.fullPetReview
+          syncDraftControlsFromRun(run)
+          $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
+          $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
+          $('action-lane-panel').innerHTML = renderActionLane(run)
+          $('review-checkpoint-panel').innerHTML = renderReviewCheckpoint(run)
+          $('review-snapshot-panel').innerHTML = renderReviewSnapshot(run)
+          $('next-step-panel').innerHTML = renderNextStep(run)
           $('task-preview').textContent = 'No task drafted yet.'
           $('task-edit-panel').textContent = 'Draft a task to edit action details before confirmation.'
           $('question-panel').textContent = 'No pending question.'
           $('trigger-panel').textContent = 'No trigger proposal yet.'
-          $('recovery-panel').textContent = 'No failed generation to recover.'
-          $('workflow-guidance-panel').textContent = 'Use fixture for workflow QA first. Before provider smoke, go to Control Center -> AI -> Test saved image Provider.'
-          $('prompt-provenance-panel').textContent = 'Host prompt preview appears after provider generation.'
-          $('qa-panel').textContent = 'No generated QA yet.'
-          $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
-          $('action-review-panel').textContent = 'Generated review artifacts and QA will appear here before import.'
-          $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
-          $('import-handoff-panel').textContent = 'Generate and approve a run to unlock host-owned import.'
-          $('run-logs').textContent = 'No logs yet.'
-          $('confirm-button').disabled = true
-          $('generate-button').disabled = true
-          $('generate-button').textContent = defaultGenerateLabel()
-          $('approve-button').disabled = true
-          stopPlaybackPreview()
+          $('recovery-panel').innerHTML = renderRecoveryPanel(run)
+          $('workflow-guidance-panel').innerHTML = renderWorkflowGuidance(run)
+          $('prompt-provenance-panel').innerHTML = renderPromptProvenance(run)
+          if (actionFrames) {
+            $('qa-panel').textContent = `Frame QA written: ${actionFrames.qa || 'action-frame-validation.json'}`
+            $('playback-panel').innerHTML = renderPlaybackPanel(actionReview)
+            $('action-review-panel').innerHTML = renderActionReview(actionReview, run, actionFrames, { triggerProposal: { type: 'unbound' } })
+            $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
+            startPlaybackPreview(actionReview)
+            $('import-handoff-panel').innerHTML = renderImportHandoff(run, actionFrames, actionReview, fullPetReview)
+          } else if (fullPetReview) {
+            $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
+            $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
+            $('action-review-panel').textContent = 'Generated action frames and action-frame-validation.json will appear here before import.'
+            $('full-pet-review-panel').innerHTML = renderFullPetReview(fullPetReview, run)
+            $('import-handoff-panel').innerHTML = renderImportHandoff(run, null, null, fullPetReview)
+            stopPlaybackPreview()
+          } else {
+            $('qa-panel').textContent = run.artifacts?.actionTaskQa ? `QA written: ${run.artifacts.actionTaskQa}` : 'No generated QA yet.'
+            $('playback-panel').textContent = 'Generate output to inspect review artifacts.'
+            $('action-review-panel').textContent = 'Generated review artifacts and QA will appear here before import.'
+            $('full-pet-review-panel').textContent = 'Generated pet-pack review artifacts will appear here before import.'
+            $('import-handoff-panel').textContent = 'Generate and approve a run to unlock host-owned import.'
+            stopPlaybackPreview()
+          }
+          $('confirm-button').disabled = buttonStates.confirm ? !buttonStates.confirm.enabled : true
+          $('generate-button').disabled = buttonStates.generate ? !buttonStates.generate.enabled : true
+          $('generate-button').textContent = buttonStates.generate?.label || defaultGenerateLabel(run)
+          $('approve-button').disabled = buttonStates.approve ? !buttonStates.approve.enabled : true
           return
         }
         const action = run.generationTask.actions[0]
         const question = run.generationTask.questions[0]
+        syncDraftControlsFromRun(run)
         $('run-snapshot-panel').innerHTML = renderRunSnapshot(run)
         $('wizard-steps-panel').innerHTML = renderWizardSteps(run)
         $('action-lane-panel').innerHTML = renderActionLane(run)
@@ -1659,6 +1754,11 @@
       document.addEventListener('DOMContentLoaded', async () => {
         try {
           const runs = await refreshRunList()
+          const requestedRunId = getRequestedRunId().trim()
+          if (requestedRunId) {
+            await loadRun(requestedRunId, `Loaded run ${requestedRunId}.`)
+            return
+          }
           if (runs[0]?.runId) await loadRun(runs[0].runId, 'Loaded latest run.')
         } catch (error) {
           setStatus(error.message, 'error')
