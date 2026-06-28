@@ -192,6 +192,40 @@ test('ai talk store clears only active memories for the requested pet pack', () 
   ])
 })
 
+test('ai talk store marks only selected active memories as used', () => {
+  let nowCall = 0
+  const store = createAiTalkStore({
+    storePath: createTempStorePath(),
+    now: () => {
+      nowCall += 1
+      return nowCall < 2 ? '2026-06-20T00:00:00.000Z' : '2026-06-28T08:30:00.000Z'
+    }
+  })
+
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      { operation: 'create', scope: 'petPack', text: 'Mochi prepares coding focus check-ins.', tags: ['coding'], confidence: 0.8, importance: 0.7 },
+      { operation: 'create', scope: 'global', text: 'User likes weekend bakery trips.', tags: ['weekend'], confidence: 0.9, importance: 0.85 }
+    ]
+  })
+
+  const selectedId = created.applied[0].id
+  const untouchedId = created.applied[1].id
+
+  const updated = store.markMemoriesUsed([selectedId])
+
+  assert.equal(updated.length, 1)
+  assert.equal(updated[0].id, selectedId)
+  assert.equal(updated[0].useCount, 1)
+  assert.equal(updated[0].lastUsedAt, '2026-06-28T08:30:00.000Z')
+  assert.equal(store.getState().memories[selectedId].useCount, 1)
+  assert.equal(store.getState().memories[untouchedId].useCount, 0)
+  assert.equal(store.getState().memories[untouchedId].lastUsedAt, '')
+})
+
 test('ai talk store filters sensitive memory candidates without storing raw secret text', () => {
   const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
 

@@ -684,3 +684,133 @@ test('ai talk service accepts fenced json memory extraction replies', async () =
 
   assert.deepEqual(store.listMemories({ petPackId: 'legacy-cat' }).map((memory) => memory.text), ['User likes quiet focus music.'])
 })
+
+test('ai talk service prioritizes memories relevant to the current message over stale higher-score memories', async () => {
+  const requests = []
+  const store = createAiTalkStore({
+    storePath: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-ai-talk-service-ranking-')), 'ai-talk-store.json'),
+    now: (() => {
+      let call = 0
+      return () => {
+        call += 1
+        return call < 5 ? '2026-06-20T00:00:00.000Z' : '2026-06-28T00:00:00.000Z'
+      }
+    })()
+  })
+
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      {
+        operation: 'create',
+        scope: 'global',
+        text: 'User prefers long weekend travel planning documents.',
+        tags: ['travel', 'planning'],
+        confidence: 0.95,
+        importance: 0.95,
+        reason: 'old but important'
+      },
+      {
+        operation: 'create',
+        scope: 'petPack',
+        text: 'Mochi helps the user start focused coding sessions with short check-ins.',
+        tags: ['coding', 'focus'],
+        confidence: 0.72,
+        importance: 0.62,
+        reason: 'relevant to coding focus'
+      }
+    ]
+  })
+
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true },
+        memory: { enabled: false }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: '开始专注吧。' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat' })
+  })
+
+  await service.chat({ message: '准备开始写代码并专注一小时' })
+
+  assert.match(requests[0].messages[1].content, /Mochi helps the user start focused coding sessions/)
+  assert.doesNotMatch(requests[0].messages[1].content, /long weekend travel planning documents/)
+})
+
+test('ai talk service updates lastUsedAt and useCount only for memories injected into the current request', async () => {
+  const requests = []
+  let nowCall = 0
+  const store = createAiTalkStore({
+    storePath: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-ai-talk-service-usage-')), 'ai-talk-store.json'),
+    now: () => {
+      nowCall += 1
+      return nowCall < 5 ? '2026-06-20T00:00:00.000Z' : '2026-06-28T08:30:00.000Z'
+    }
+  })
+
+  const created = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: ['m1'],
+    operations: [
+      {
+        operation: 'create',
+        scope: 'petPack',
+        text: 'Mochi uses gentle coding check-ins before focus work.',
+        tags: ['coding', 'focus'],
+        confidence: 0.8,
+        importance: 0.7,
+        reason: 'relevant'
+      },
+      {
+        operation: 'create',
+        scope: 'global',
+        text: 'User likes weekend bakery trips.',
+        tags: ['weekend', 'bakery'],
+        confidence: 0.9,
+        importance: 0.85,
+        reason: 'unrelated here'
+      }
+    ]
+  })
+
+  const relevantId = created.applied[0].id
+  const unrelatedId = created.applied[1].id
+
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        behavior: { enabled: false, useTools: true },
+        memory: { enabled: false }
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: '我轻轻陪你写代码。' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat' })
+  })
+
+  await service.chat({ message: '开始今天的编码专注时间' })
+
+  const relevant = store.getState().memories[relevantId]
+  const unrelated = store.getState().memories[unrelatedId]
+
+  assert.match(requests[0].messages[1].content, /gentle coding check-ins/)
+  assert.doesNotMatch(requests[0].messages[1].content, /weekend bakery trips/)
+  assert.equal(relevant.useCount, 1)
+  assert.equal(relevant.lastUsedAt, '2026-06-28T08:30:00.000Z')
+  assert.equal(unrelated.useCount, 0)
+  assert.equal(unrelated.lastUsedAt, '')
+})

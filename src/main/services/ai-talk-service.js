@@ -18,6 +18,18 @@ const MAX_USER_MESSAGE_CHARS = 4000
 const MAX_RECENT_PET_ACTIVITY_ITEMS = 6
 const MAX_RECENT_PET_ACTIVITY_CHARS = 1200
 
+const MEMORY_CONCEPT_PATTERNS = Object.freeze({
+  coding: [/\bcoding\b/i, /\bcode\b/i, /\bdebug\b/i, /写代码/, /编码/, /程序/, /开发/, /调试/],
+  focus: [/\bfocus(?:ed)?\b/i, /专注/, /集中/, /沉浸/, /高效/],
+  travel: [/\btravel\b/i, /旅行/, /出行/, /旅游/],
+  planning: [/\bplanning\b/i, /\bplan(?:ning)?\b/i, /计划/, /规划/, /安排/],
+  bakery: [/\bbakery\b/i, /面包/, /烘焙/, /甜点/],
+  weekend: [/\bweekend\b/i, /周末/],
+  chinese: [/\bchinese\b/i, /中文/, /汉语/],
+  concise: [/\bconcise\b/i, /简洁/, /简短/, /短短地/],
+  replies: [/\brepl(?:y|ies)\b/i, /回复/, /回答/, /语气/, /说话方式/]
+})
+
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '')
 
 const normalizeList = (value) => (
@@ -25,6 +37,134 @@ const normalizeList = (value) => (
     ? value.map(normalizeString).filter(Boolean)
     : []
 )
+
+const unique = (values) => Array.from(new Set(values.filter(Boolean)))
+
+const tokenizeText = (value) => unique(
+  normalizeString(value)
+    .toLowerCase()
+    .match(/[a-z0-9]{2,}/g) || []
+)
+
+const extractConcepts = (value) => {
+  const text = normalizeString(value)
+  if (!text) return []
+  return unique(
+    Object.entries(MEMORY_CONCEPT_PATTERNS)
+      .filter(([, patterns]) => patterns.some((pattern) => pattern.test(text)))
+      .map(([concept]) => concept)
+  )
+}
+
+const intersectCount = (left = [], right = []) => {
+  if (!left.length || !right.length) return 0
+  const rightSet = new Set(right)
+  return left.reduce((count, item) => count + (rightSet.has(item) ? 1 : 0), 0)
+}
+
+const buildContextSignals = ({ userMessage, history = [] } = {}) => {
+  const recentHistory = getRecentMessages(history || [], 6)
+  const historyText = recentHistory.map((message) => normalizeString(message?.content)).join(' ')
+  return {
+    messageTokens: tokenizeText(userMessage),
+    messageConcepts: extractConcepts(userMessage),
+    historyTokens: tokenizeText(historyText),
+    historyConcepts: extractConcepts(historyText)
+  }
+}
+
+const buildMemorySignals = (memory = {}) => {
+  const tags = normalizeList(memory.tags)
+  const text = normalizeString(memory.text)
+  return {
+    textTokens: tokenizeText(text),
+    textConcepts: extractConcepts(text),
+    tagTokens: unique(tags.flatMap((tag) => tokenizeText(tag))),
+    tagConcepts: unique(tags.flatMap((tag) => extractConcepts(tag)))
+  }
+}
+
+const isEvergreenPreferenceMemory = (memory = {}) => {
+  if (memory.scope !== 'global') return false
+  const tags = normalizeList(memory.tags)
+  const tagSet = new Set(tags.map((tag) => tag.toLowerCase()))
+  if (!tagSet.has('preference')) return false
+  const text = normalizeString(memory.text).toLowerCase()
+  return [
+    'reply',
+    'replies',
+    'response',
+    'tone',
+    'style',
+    'language',
+    '中文',
+    '汉语',
+    '简洁',
+    '简短',
+    'concise'
+  ].some((pattern) => text.includes(pattern))
+}
+
+const getMemoryTimestamp = (memory = {}) => {
+  const value = Date.parse(memory.updatedAt || memory.lastEvidenceAt || memory.createdAt || '')
+  return Number.isFinite(value) ? value : 0
+}
+
+const scoreMemoryCandidate = ({ memory, contextSignals, latestTimestamp = 0 } = {}) => {
+  const memorySignals = buildMemorySignals(memory)
+  const messageTokenHits = intersectCount(contextSignals.messageTokens, memorySignals.textTokens)
+  const messageConceptHits = intersectCount(contextSignals.messageConcepts, [...memorySignals.textConcepts, ...memorySignals.tagConcepts])
+  const historyTokenHits = intersectCount(contextSignals.historyTokens, memorySignals.textTokens)
+  const historyConceptHits = intersectCount(contextSignals.historyConcepts, [...memorySignals.textConcepts, ...memorySignals.tagConcepts])
+  const tagTokenHits = intersectCount(contextSignals.messageTokens, memorySignals.tagTokens) + intersectCount(contextSignals.historyTokens, memorySignals.tagTokens)
+  const tagConceptHits = intersectCount(contextSignals.messageConcepts, memorySignals.tagConcepts) + intersectCount(contextSignals.historyConcepts, memorySignals.tagConcepts)
+  const timestamp = getMemoryTimestamp(memory)
+  const recencyScore = latestTimestamp > 0 && timestamp > 0 ? timestamp / latestTimestamp : 0
+  const useScore = Math.min(1, Math.log1p(Math.max(0, Number(memory.useCount) || 0)) / Math.log(10))
+  const evergreenPreference = isEvergreenPreferenceMemory(memory) ? 1 : 0
+  const matchScore = (
+    messageTokenHits * 2.5 +
+    messageConceptHits * 4 +
+    historyTokenHits * 1.25 +
+    historyConceptHits * 2 +
+    tagTokenHits * 2 +
+    tagConceptHits * 3 +
+    evergreenPreference * 2.5
+  )
+  const baseScore = (
+    (Number(memory.importance) || 0) * 1.5 +
+    (Number(memory.confidence) || 0) * 1.25 +
+    (memory.scope === 'petPack' ? 0.35 : 0) +
+    recencyScore * 0.35 +
+    useScore * 0.15
+  )
+  return {
+    memory,
+    evergreenPreference: evergreenPreference > 0,
+    matchScore,
+    baseScore,
+    totalScore: matchScore * 10 + baseScore,
+    timestamp
+  }
+}
+
+const selectMemoryContext = ({ memories = [], userMessage, history = [] } = {}) => {
+  if (!Array.isArray(memories) || !memories.length) return []
+  const contextSignals = buildContextSignals({ userMessage, history })
+  const latestTimestamp = memories.reduce((max, memory) => Math.max(max, getMemoryTimestamp(memory)), 0)
+  const scored = memories
+    .map((memory) => scoreMemoryCandidate({ memory, contextSignals, latestTimestamp }))
+    .sort((left, right) => {
+      if (left.totalScore !== right.totalScore) return right.totalScore - left.totalScore
+      if (left.matchScore !== right.matchScore) return right.matchScore - left.matchScore
+      return String(right.memory.updatedAt || '').localeCompare(String(left.memory.updatedAt || ''))
+    })
+  const matched = scored.filter((candidate) => candidate.matchScore > 0)
+  const selected = matched.length
+    ? scored.filter((candidate) => candidate.matchScore > 0 || candidate.evergreenPreference)
+    : scored
+  return selected.slice(0, MAX_MEMORY_CONTEXT_ITEMS).map((candidate) => candidate.memory)
+}
 
 const normalizePersonaOverride = (override = {}) => {
   const result = {}
@@ -313,9 +453,10 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
   }
 
-  const getMemoryContext = (petPackId) => {
+  const getMemoryContext = ({ petPackId, userMessage, history = [] } = {}) => {
     if (typeof aiTalkStore.listMemories !== 'function') return []
-    return aiTalkStore.listMemories({ petPackId, limit: MAX_MEMORY_CONTEXT_ITEMS })
+    const memories = aiTalkStore.listMemories({ petPackId, limit: 0 })
+    return selectMemoryContext({ memories, userMessage, history })
   }
 
   const getRecentPetActivity = (petPackId) => {
@@ -510,7 +651,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       return await enqueueConversation(conversationPublicId, async () => {
         const history = aiTalkStore.getMessages(sessionId, conversationId)
         const userMessage = { role: 'user', content }
-        const memoryContext = getMemoryContext(petPackId)
+        const memoryContext = getMemoryContext({ petPackId, userMessage: content, history })
+        const injectedMemoryIds = memoryContext.map((memory) => normalizeString(memory?.id)).filter(Boolean)
         const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
         const recentPetActivity = getRecentPetActivity(petPackId)
         const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
@@ -560,6 +702,9 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           userMessage,
           { role: 'assistant', content: reply }
         ])
+        if (injectedMemoryIds.length && typeof aiTalkStore.markMemoriesUsed === 'function') {
+          aiTalkStore.markMemoriesUsed(injectedMemoryIds)
+        }
         const sourceMessages = nextMessages.slice(-2)
         scheduleMemoryExtraction({
           config,
