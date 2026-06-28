@@ -951,16 +951,58 @@ test('action mutation handlers return contract-shaped results and refreshed anim
 test('catalog blocklist handlers return catalog plus updated blocklist view result', async () => {
   const ipcMain = createIpcMainStub()
   const catalog = {
+    schemaVersion: '1',
+    updatedAt: '2026-06-17T00:00:00.000Z',
+    feedbackUrl: 42,
+    localBlocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: [] },
+    catalogBlocklist: { pluginIds: [], packIds: ['blocked-pack', 7], sha256: [] },
+    blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: ['hash-b'] },
+    plugins: [{
+      id: 'openpet.demo.weather',
+      name: 'Demo Weather',
+      version: '1.0.0',
+      permissions: ['pet:say', 42],
+      downloadable: 1,
+      updateAvailable: 'yes',
+      blockStatus: { blocked: 0, reasons: ['ok', 7] }
+    }],
+    petPacks: [{
+      id: 'openpet.demo.pixel-cat',
+      displayName: 'Pixel Cat',
+      version: '1.0.0',
+      actionCount: '3',
+      downloadable: 1,
+      updateAvailable: 'yes',
+      blockStatus: { blocked: 1, reasons: ['blocked', 9] }
+    }]
+  }
+  const normalizedCatalog = {
     schemaVersion: 1,
     updatedAt: '2026-06-17T00:00:00.000Z',
     feedbackUrl: '',
     localBlocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: [] },
-    catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
-    blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: [] },
-    plugins: [],
-    petPacks: []
+    catalogBlocklist: { pluginIds: [], packIds: ['blocked-pack'], sha256: [] },
+    blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: ['hash-b'] },
+    plugins: [{
+      id: 'openpet.demo.weather',
+      name: 'Demo Weather',
+      version: '1.0.0',
+      permissions: ['pet:say'],
+      downloadable: true,
+      updateAvailable: true,
+      blockStatus: { blocked: false, reasons: ['ok'] }
+    }],
+    petPacks: [{
+      id: 'openpet.demo.pixel-cat',
+      displayName: 'Pixel Cat',
+      version: '1.0.0',
+      actionCount: 3,
+      downloadable: true,
+      updateAvailable: true,
+      blockStatus: { blocked: true, reasons: ['blocked'] }
+    }]
   }
-  const blocklist = { pluginIds: ['blocked-plugin'], packIds: [], sha256: [] }
+  const blocklist = { pluginIds: ['blocked-plugin', 1], packIds: [], sha256: ['hash-b', false] }
   const calls = []
 
   registerIpcHandlers({
@@ -995,12 +1037,94 @@ test('catalog blocklist handlers return catalog plus updated blocklist view resu
   })
 
   const payload = { type: 'pluginId', value: 'blocked-plugin' }
+  const getResult = await ipcMain.handlers.get(IPC.CATALOG_GET)()
   const addResult = await ipcMain.handlers.get(IPC.CATALOG_ADD_BLOCKLIST)(null, payload)
   const removeResult = await ipcMain.handlers.get(IPC.CATALOG_REMOVE_BLOCKLIST)(null, payload)
 
-  assert.deepEqual(addResult, { catalog, blocklist })
-  assert.deepEqual(removeResult, { catalog, blocklist })
+  assert.deepEqual(getResult, normalizedCatalog)
+  assert.deepEqual(addResult, {
+    catalog: normalizedCatalog,
+    blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: ['hash-b'] }
+  })
+  assert.deepEqual(removeResult, {
+    catalog: normalizedCatalog,
+    blocklist: { pluginIds: ['blocked-plugin'], packIds: [], sha256: ['hash-b'] }
+  })
   assert.deepEqual(calls, [['add', payload], ['remove', payload]])
+})
+
+test('catalog install selection handlers return normalized catalog payloads', async () => {
+  const ipcMain = createIpcMainStub()
+  const catalog = {
+    schemaVersion: '1',
+    updatedAt: '2026-06-20T00:00:00.000Z',
+    feedbackUrl: 7,
+    localBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+    catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+    blocklist: { pluginIds: [], packIds: [], sha256: [] },
+    plugins: [{
+      id: 'openpet.demo.weather',
+      name: 'Demo Weather',
+      version: '1.0.0',
+      permissions: ['pet:say', 42],
+      downloadable: 1,
+      updateAvailable: '',
+      blockStatus: { blocked: 0, reasons: ['ok', 7] }
+    }],
+    petPacks: []
+  }
+  const normalizedCatalog = {
+    schemaVersion: 1,
+    updatedAt: '2026-06-20T00:00:00.000Z',
+    feedbackUrl: '',
+    localBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+    catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+    blocklist: { pluginIds: [], packIds: [], sha256: [] },
+    plugins: [{
+      id: 'openpet.demo.weather',
+      name: 'Demo Weather',
+      version: '1.0.0',
+      permissions: ['pet:say'],
+      downloadable: true,
+      updateAvailable: false,
+      blockStatus: { blocked: false, reasons: ['ok'] }
+    }],
+    petPacks: []
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    catalogService: {
+      listCatalog: () => catalog,
+      prepareInstall: () => ({ ok: true }),
+      installSelection: () => ({ ok: true, kind: 'plugin', itemId: 'openpet.demo.weather' }),
+      clearSelection: () => ({ ok: true }),
+      addBlocklistEntry: () => ({ pluginIds: [], packIds: [], sha256: [] }),
+      removeBlocklistEntry: () => ({ pluginIds: [], packIds: [], sha256: [] })
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.CATALOG_INSTALL_SELECTION)(null, { selectionId: 'sel-1' })
+
+  assert.deepEqual(result, {
+    ok: true,
+    kind: 'plugin',
+    itemId: 'openpet.demo.weather',
+    catalog: normalizedCatalog
+  })
 })
 
 test('plugin mutation handlers return plugin mutation result with refreshed plugin list', async () => {
