@@ -205,10 +205,11 @@ Current state:
 - Approved single-action imports submit generated trigger proposals to the host inbox with source plugin/command/run provenance after successful action frame import.
 - Creator Studio review/recovery state is now outcome-specific across service and dashboard surfaces: blocked action-frame QA points to `Review and repair frames`, stale full-pet QA source mismatches point to `Retry generation`, imported action handoff failures point to `Review import handoff`, and successful imported action follow-up points to `Actions -> Trigger Proposal Inbox`.
 - Imported action success follow-up now points reviewers to `Actions -> Trigger Proposal Inbox`, imported action handoff failures now point to `Control Center -> Plugins`, and imported pet follow-up stays in `OpenPet` for `Import Approved Pet`.
+- Creator Studio review surfaces now expose a shared `reviewSummary` for dashboard and service clients, so review status, next review action, host-owned location, and blocked reason stay consistent across ready-for-review, approved, imported, and handoff-failure states.
 
 P1 work:
 
-- Preserve the current command paths as automation/test entry points while continuing dashboard UX polish beyond the import handoff card.
+- Preserve the current command paths as automation/test entry points while continuing dashboard UX polish only when new review states add ambiguity.
 - Keep generated trigger proposal submission compatible with future random/state/event trigger-rule schema and editor semantics.
 
 P2/P3:

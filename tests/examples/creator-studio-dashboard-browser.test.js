@@ -528,7 +528,10 @@ test('creator studio dashboard drives a single-action fixture run to the host im
     assert.match(await page.locator('#task-preview').textContent(), /原地打滚/i)
 
     await page.locator('#confirm-button').click()
-    await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
+    await page.waitForFunction(() => (
+      /Task confirmed/.test(document.querySelector('#status-line')?.textContent || '') &&
+      !document.querySelector('#generate-button')?.disabled
+    ))
     assert.match(await page.locator('#status-line').textContent(), /Task confirmed/i)
 
     await page.locator('#generate-button').click()
@@ -627,6 +630,9 @@ test('creator studio dashboard surfaces blocked single-action qa before approval
 
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
     assert.match(workflowGuidanceText, /Import state: review-required/i)
+    assert.match(workflowGuidanceText, /Review status: blocked/i)
+    assert.match(workflowGuidanceText, /Next review action: Review and repair frames -> Creator Studio/i)
+    assert.match(workflowGuidanceText, /Blocked reason: Repair or regenerate frames before approval/i)
     assert.match(workflowGuidanceText, /Repair or regenerate frames before approval/i)
     assert.doesNotMatch(workflowGuidanceText, /Review QA and approve the run before host-owned action import/i)
   } finally {
@@ -652,6 +658,8 @@ test('creator studio dashboard shows imported action review completion details',
 
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
     assert.match(workflowGuidanceText, /Follow-up: Review trigger proposal/i)
+    assert.match(workflowGuidanceText, /Review status: complete/i)
+    assert.match(workflowGuidanceText, /Next review action: Review trigger proposal -> Actions -> Trigger Proposal Inbox/i)
     assert.match(workflowGuidanceText, /Actions -> Trigger Proposal Inbox/i)
 
     const reviewText = await page.locator('#action-review-panel').textContent()
@@ -700,6 +708,8 @@ test('creator studio dashboard shows imported action handoff failure details', a
 
     const workflowGuidanceText = await page.locator('#workflow-guidance-panel').textContent()
     assert.match(workflowGuidanceText, /Follow-up: Review import handoff/i)
+    assert.match(workflowGuidanceText, /Review status: complete/i)
+    assert.match(workflowGuidanceText, /Next review action: Review import handoff -> Control Center -> Plugins/i)
     assert.match(workflowGuidanceText, /Control Center -> Plugins/i)
     assert.match(workflowGuidanceText, /proposal write failed/i)
     assert.match(workflowGuidanceText, /\[redacted-token\]/i)

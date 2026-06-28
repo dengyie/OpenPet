@@ -1056,6 +1056,7 @@
         const generation = guidance.generation || {}
         const importGuidance = guidance.import || {}
         const followUp = importGuidance.followUp || {}
+        const reviewSummary = importGuidance.reviewSummary || {}
         const usageSummary = generation.usageSummary || {}
         const checklist = Array.isArray(generation.smokeChecklist) ? generation.smokeChecklist : []
         const checklistHtml = checklist.length
@@ -1070,6 +1071,17 @@
           checklistHtml,
           `<p>Import state: ${escapeHtml(importGuidance.status || 'not-ready')} / Command: ${escapeHtml(importGuidance.command || 'n/a')}</p>`,
           `<p>${escapeHtml(importGuidance.summary || 'Approve the run before host-owned import.')}</p>`,
+          reviewSummary.nextReviewAction
+            ? [
+                '<div class="meta-list">',
+                `<span>Review status: ${escapeHtml(reviewSummary.reviewGateStatus || 'unknown')}</span>`,
+                `<span>Next review action: ${escapeHtml(reviewSummary.nextReviewAction)}${reviewSummary.reviewLocation ? ` -> ${escapeHtml(reviewSummary.reviewLocation)}` : ''}</span>`,
+                reviewSummary.blockedReason
+                  ? `<span>Blocked reason: ${escapeHtml(reviewSummary.blockedReason)}</span>`
+                  : '',
+                '</div>'
+              ].join('')
+            : '',
           importGuidance.triggerProposalSummary
             ? `<p>${escapeHtml(importGuidance.triggerProposalSummary)}</p>`
             : '',

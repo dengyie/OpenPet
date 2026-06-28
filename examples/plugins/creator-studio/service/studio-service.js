@@ -642,6 +642,61 @@ const createImportedResultCard = ({ dataDir, run, hasActionFrames, triggerPropos
   }
 }
 
+const createReviewSummary = ({ dataDir, run, importStatus, importSummary, importedFollowUp }) => {
+  const status = String(run.status || 'draft')
+  const isImported = status === 'imported'
+  const isApproved = status === 'approved'
+  const isReviewable = status === 'ready_for_review'
+  const actionFrameReviewGate = createActionFrameReviewGate({ dataDir, run })
+  const fullPetReviewGate = createFullPetReviewGate({ dataDir, run })
+  const activeGate = run.artifacts?.actionFrames ? actionFrameReviewGate.reviewGate : fullPetReviewGate.reviewGate
+  const gateReady = activeGate.ready !== false
+  const reviewGateStatus = isImported
+    ? 'complete'
+    : isApproved
+      ? 'approved'
+      : activeGate.status || (gateReady ? 'ready' : 'blocked')
+  const blockedReason = isReviewable && !gateReady
+    ? activeGate.reason || 'Review artifacts are not ready for approval.'
+    : ''
+  const nextReviewAction = importedFollowUp?.label || (isApproved
+    ? resolveImportCommandTitle(resolveImportCommand(run))
+    : isReviewable && gateReady
+      ? 'Approve run'
+      : isReviewable
+        ? (run.artifacts?.actionFrames ? 'Review and repair frames' : 'Retry generation')
+        : 'Continue workflow')
+  const reviewLocation = importedFollowUp?.location || (isApproved
+    ? 'Control Center -> Plugins'
+    : isImported
+      ? 'OpenPet'
+      : 'Creator Studio')
+
+  return createPublicLogValue({
+    dataDir,
+    value: {
+      status,
+      importStatus,
+      reviewGateStatus,
+      readyForApproval: Boolean(isReviewable && gateReady),
+      readyForImport: Boolean(isApproved),
+      imported: Boolean(isImported),
+      nextReviewAction,
+      reviewLocation,
+      blockedReason,
+      summary: isImported
+        ? importedFollowUp?.reason || importSummary
+        : isApproved
+          ? 'Review is approved. Finish host-owned import from Control Center -> Plugins.'
+          : isReviewable && gateReady
+            ? 'Review artifacts are ready. Approve the run to unlock host-owned import.'
+            : isReviewable
+              ? blockedReason
+              : 'Continue the Creator Studio workflow until review artifacts are ready.'
+    }
+  })
+}
+
 const resolveImportCommand = (run) => (
   run.artifacts?.actionFrames
     ? 'import-approved-action'
@@ -924,6 +979,13 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
     hasActionFrames,
     triggerProposalSummary
   })
+  const reviewSummary = createReviewSummary({
+    dataDir,
+    run,
+    importStatus,
+    importSummary,
+    importedFollowUp
+  })
 
   return {
     generation: {
@@ -951,6 +1013,7 @@ const createWorkflowGuidance = ({ dataDir, run }) => {
       importedActionId: createPublicText({ dataDir, value: run.importedActionId || '' }),
       triggerProposalStatus: createPublicText({ dataDir, value: triggerProposalStatus }),
       triggerProposalSummary: createPublicText({ dataDir, value: triggerProposalSummary }),
+      reviewSummary,
       resultCard
     }
   }
