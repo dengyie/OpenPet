@@ -11,14 +11,27 @@ const createPluginCommandRuntimeManager = ({
 } = {}) => {
   if (typeof stopRuntimeProcess !== 'function') throw new Error('stopRuntimeProcess is required')
 
+  const ensureStopWaiter = (runtime) => {
+    if (!runtime) return null
+    if (!runtime.stopCompleted) {
+      runtime.stopCompleted = new Promise((resolve) => {
+        runtime.resolveStopCompleted = resolve
+      })
+    }
+    return runtime.stopCompleted
+  }
+
   const stopRuntime = (pluginId, commandId, runtime = getRuntime(pluginId, commandId)) => {
     if (!runtime || runtime.status !== 'running') return runtime
     try {
+      ensureStopWaiter(runtime)
       runtime.stop?.({ reason: 'Command stopped' })
       appendLog({ pluginId, commandId, level: 'info', message: 'Command stop requested' })
     } catch (error) {
       runtime.status = 'failed'
       runtime.error = error.message || 'Plugin command stop failed'
+      runtime.resolveStopCompleted?.()
+      runtime.resolveStopCompleted = null
       error.openpetLogged = true
       appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
       runtime.failStop?.(error)
@@ -35,6 +48,7 @@ const createPluginCommandRuntimeManager = ({
     assertNotActive,
     deleteRuntime,
     getRuntime,
+    listRuntimes,
     setRuntime,
     size,
     stopAll,
@@ -57,6 +71,8 @@ const createPluginCommandRuntimeManager = ({
     attachStopHandler,
     deleteRuntime,
     getRuntime,
+    ensureStopWaiter,
+    listRuntimes,
     setRuntime,
     size,
     stopAll,

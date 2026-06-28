@@ -12,6 +12,16 @@ const createPluginSetupRuntimeManager = ({
 } = {}) => {
   if (typeof stopRuntimeProcess !== 'function') throw new Error('stopRuntimeProcess is required')
 
+  const ensureStopWaiter = (runtime) => {
+    if (!runtime) return null
+    if (!runtime.stopCompleted) {
+      runtime.stopCompleted = new Promise((resolve) => {
+        runtime.resolveStopCompleted = resolve
+      })
+    }
+    return runtime.stopCompleted
+  }
+
   const attachStopHandler = (runtime) => {
     runtime.stop = ({ signal = 'SIGTERM' } = {}) => {
       runtime.status = 'stopping'
@@ -27,10 +37,13 @@ const createPluginSetupRuntimeManager = ({
   const stopRuntime = (pluginId, setupId, runtime = getRuntime(pluginId, setupId), { log = true } = {}) => {
     if (!runtime || runtime.status !== 'running') return runtime
     try {
+      ensureStopWaiter(runtime)
       runtime.stop?.({ signal: 'SIGTERM' })
     } catch (error) {
       runtime.error = error.message || 'Plugin setup stop failed'
       runtime.status = 'failed'
+      runtime.resolveStopCompleted?.()
+      runtime.resolveStopCompleted = null
     }
     if (log) appendLog({
       pluginId,
@@ -50,6 +63,7 @@ const createPluginSetupRuntimeManager = ({
   const {
     assertNotActive,
     getRuntime,
+    listRuntimes,
     setRuntime,
     size,
     stopAll,
@@ -59,7 +73,9 @@ const createPluginSetupRuntimeManager = ({
   return {
     assertNotActive,
     attachStopHandler,
+    ensureStopWaiter,
     getRuntime,
+    listRuntimes,
     setRuntime,
     size,
     stopAll,

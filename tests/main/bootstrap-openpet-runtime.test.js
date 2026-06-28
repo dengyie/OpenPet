@@ -1,5 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { setImmediate: setImmediatePromise } = require('node:timers/promises')
 
 const { createOpenPetRuntime } = require('../../src/main/bootstrap/create-openpet-runtime')
 
@@ -150,4 +151,129 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   petWindow.didFinishLoad()
   assert.equal(smokeCalls.length, 1)
   assert.equal(cleanupCalls.length, 1)
+})
+
+test('bootstrap runtime waits for plugin shutdown before allowing app quit', async () => {
+  const appHandlers = new Map()
+  let resolveShutdown
+  let quitCalls = 0
+  const petWindow = {
+    webContents: { on: () => {}, send: () => {} },
+    getBounds: () => ({ x: 0, y: 0, width: 100, height: 100 }),
+    setPosition: () => {},
+    isDestroyed: () => false
+  }
+
+  createOpenPetRuntime({
+    app: {
+      getPath: () => '/tmp/openpet-runtime-test',
+      on: (eventName, handler) => { appHandlers.set(eventName, handler) },
+      quit: () => { quitCalls += 1 }
+    },
+    BrowserWindow: { getAllWindows: () => [petWindow] },
+    dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+    shell: { openExternal: () => {} },
+    screen: { on: () => {} },
+    projectRoot: '/workspace/OpenPet',
+    packageJson: { version: '1.0.0' },
+    settingsRuntime: {
+      loadSettings: () => ({
+        scale: 1,
+        autoStart: false,
+        localHttp: {},
+        petBehavior: { home: { enabled: false, anchor: null } },
+        plugins: { enabled: {}, config: {}, storage: {}, logs: [] },
+        ai: { behavior: {} },
+        petPacks: { activePackId: 'starter', installed: {} },
+        ecosystem: { blocklist: { pluginIds: [], packIds: [], sha256: [] } }
+      }),
+      saveSettings: () => {},
+      syncLoginItemSettings: () => {}
+    },
+    getPetWindow: () => petWindow,
+    setPetWindow: () => {},
+    createSettingsWindow: () => {},
+    createWindow: () => petWindow,
+    loadPetWindow: () => {},
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => {
+      appHandlers.set('before-quit', onBeforeQuit)
+    },
+    registerIpcHandlers: () => {},
+    createPetRendererSettings: (input) => input,
+    normalizeLocalHttpConfig: (_current, nextConfig) => nextConfig,
+    reloadAndSendAnimations: () => ({ actions: [] }),
+    applyWindowScale: () => {},
+    applyPetViewport: () => {},
+    clampToWorkArea: (_window, x, y) => ({ x, y }),
+    getMovementState: () => null,
+    maybeRunPackagedRuntimeSmoke: () => {},
+    maybeRunPackagedPluginCleanupEvidence: () => {},
+    factories: {
+      createAboutService: () => ({ id: 'about' }),
+      createActionImportService: () => ({ id: 'action-import' }),
+      createActionService: () => ({ id: 'action-service' }),
+      createAiService: () => ({ id: 'ai-service' }),
+      createAiTalkService: () => ({ id: 'ai-talk-service' }),
+      createAiTalkStore: () => ({ getMigrationSummary: () => ({ migrated: false }) }),
+      createAppLogService: () => ({ record: () => {}, logPath: '/tmp/app-log.jsonl' }),
+      createBasicBehaviorPlugin: () => ({ id: 'basic' }),
+      createBehaviorOrchestratorService: () => ({ id: 'behavior' }),
+      createCatalogService: () => ({
+        getPluginBlockStatus: () => ({ blocked: false, reasons: [] }),
+        getPetPackBlockStatus: () => ({ blocked: false, reasons: [] })
+      }),
+      createCursorAssetService: () => ({ repairCursor: async () => ({}) }),
+      createEventBus: () => ({ on: () => {}, emit: () => {} }),
+      createImageGenerationModelService: () => ({ id: 'image-service' }),
+      createLocalHttpService: () => ({ start: async () => ({}) }),
+      createPetBubbleChatWindowManager: () => ({ id: 'bubble-window' }),
+      createPetChatWindowManager: () => ({ id: 'chat-window' }),
+      createPetMovementPolicy: () => ({
+        normalizeWindowForDisplay: () => ({ x: 0, y: 0 }),
+        normalizePetBehaviorSettings: (behavior) => behavior || { home: { enabled: false, anchor: null } },
+        resolveDisplayForWindow: () => ({ id: 'display-1' }),
+        normalizeAnchorForDisplay: ({ anchor }) => anchor
+      }),
+      createPetPackService: () => ({ id: 'pet-pack-service' }),
+      createPetService: () => ({
+        getSettings: () => ({
+          scale: 1,
+          autoStart: false,
+          localHttp: {},
+          petBehavior: { home: { enabled: false, anchor: null } },
+          plugins: { enabled: {}, config: {}, storage: {}, logs: [] },
+          ai: { behavior: {} },
+          petPacks: { activePackId: 'starter', installed: {} },
+          ecosystem: { blocklist: { pluginIds: [], packIds: [], sha256: [] } }
+        }),
+        saveSettings: () => {},
+        reloadAnimations: () => ({ actions: [] })
+      }),
+      createPetUtteranceLogService: () => ({ id: 'utterance-log' }),
+      createPluginGithubImportService: () => ({ id: 'github-import' }),
+      createPluginInstallService: () => ({ id: 'install' }),
+      createPluginService: () => ({
+        stopAllServices: () => new Promise((resolve) => { resolveShutdown = resolve })
+      }),
+      createSecretService: () => ({ id: 'secret' }),
+      createSettingsService: ({ loadSettings }) => ({ get: loadSettings, save: () => {}, preview: () => ({}) }),
+      syncBundledPlugins: () => ({ synced: [] })
+    }
+  })
+
+  const beforeQuit = appHandlers.get('before-quit')
+  let preventDefaultCalls = 0
+
+  beforeQuit({
+    preventDefault: () => { preventDefaultCalls += 1 }
+  })
+
+  await Promise.resolve()
+  assert.equal(preventDefaultCalls, 1)
+  assert.equal(quitCalls, 0)
+
+  resolveShutdown()
+  await setImmediatePromise()
+
+  assert.equal(quitCalls, 1)
 })

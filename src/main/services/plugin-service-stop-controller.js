@@ -28,8 +28,19 @@ const createPluginServiceStopController = ({
     runtime.stopTimer = null
   }
 
+  const ensureStopWaiter = (runtime) => {
+    if (!runtime) return null
+    if (!runtime.stopCompleted) {
+      runtime.stopCompleted = new Promise((resolve) => {
+        runtime.resolveStopCompleted = resolve
+      })
+    }
+    return runtime.stopCompleted
+  }
+
   const stopRuntime = (pluginId, serviceId, runtime, { log = true } = {}) => {
     if (!runtime || runtime.status !== 'running') return runtime
+    ensureStopWaiter(runtime)
     runtime.status = 'stopping'
     runtime.stoppedAt = new Date().toISOString()
     runtime.error = ''
@@ -40,6 +51,8 @@ const createPluginServiceStopController = ({
     } catch (error) {
       runtime.error = error.message || 'Plugin service stop failed'
       runtime.status = 'failed'
+      runtime.resolveStopCompleted?.()
+      runtime.resolveStopCompleted = null
     }
     clearStopTimerForRuntime(runtime)
     clearHealthSchedule(runtime)
@@ -59,6 +72,8 @@ const createPluginServiceStopController = ({
         } catch (error) {
           runtime.error = error.message || 'Plugin service force stop failed'
           runtime.status = 'failed'
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
           appendLog({
             pluginId,
             commandId: `service:${serviceId}`,
@@ -87,6 +102,7 @@ const createPluginServiceStopController = ({
   return {
     clearStopTimer: clearStopTimerForRuntime,
     clearHealthSchedule,
+    ensureStopWaiter,
     forceStopServiceProcess,
     stopRuntime,
     stopServiceProcess

@@ -51,7 +51,11 @@ const createPluginSetupProcessController = ({
       }
 
       runtime.failStop = (error) => {
-        settle(() => reject(error))
+        settle(() => {
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
+          reject(error)
+        })
       }
 
       child.stdout?.on?.('data', (chunk) => {
@@ -68,6 +72,8 @@ const createPluginSetupProcessController = ({
           runtime.error = error.message || 'Plugin setup failed'
           runtime.exitCode = null
           runtime.lastRunAt = now()
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
           appendLog({ pluginId, commandId, level: 'error', message: 'Setup failed' })
           reject(error)
         })
@@ -89,6 +95,8 @@ const createPluginSetupProcessController = ({
             ? 'Setup stopped'
             : (runtime.status === 'failed' ? (resolvedExitSignal ? `Setup exited with signal ${resolvedExitSignal}` : `Setup exited with code ${resolvedExitCode ?? 'unknown'}`) : '')
           runtime.lastRunAt = now()
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
           appendLog({
             pluginId,
             commandId,

@@ -2840,14 +2840,15 @@ test('plugin service stops running declaration commands during app shutdown clea
 
   const commandRun = service.runCommand('weather-declaration', 'announce')
   await waitFor(() => started)
-  const result = service.stopAllServices()
+  const stopPromise = service.stopAllServices()
 
-  assert.deepEqual(result, { ok: true })
   assert.deepEqual(treeSignals, [{ pid: 4321, signal: 'SIGTERM' }])
   assert.deepEqual(child.killCalls, ['SIGTERM'])
 
   child.emit('exit', 0, 'SIGTERM')
+  const result = await stopPromise
 
+  assert.deepEqual(result, { ok: true })
   await assert.rejects(commandRun, /Command stopped/)
 })
 
@@ -3108,7 +3109,7 @@ test('plugin service stops running setup when a plugin is disabled', () => {
   assert.equal(settingsService.get().plugins.logs[0].message, 'Setup stopped')
 })
 
-test('plugin service stops running setup during app shutdown cleanup', () => {
+test('plugin service stops running setup during app shutdown cleanup', async () => {
   const child = createSlowStoppingServiceProcess()
   const treeSignals = []
   const service = createPluginService({
@@ -3128,22 +3129,22 @@ test('plugin service stops running setup during app shutdown cleanup', () => {
   })
 
   service.runSetup('weather-declaration', 'install-deps')
-  const result = service.stopAllServices()
-
-  assert.deepEqual(result, { ok: true })
+  const stopPromise = service.stopAllServices()
   assert.deepEqual(treeSignals, [{ pid: 4321, signal: 'SIGTERM' }])
   assert.deepEqual(child.killCalls, ['SIGTERM'])
   const runtimeBeforeExit = service.listPlugins()[0].entries.setup[0].runtime
   assert.equal(runtimeBeforeExit.status, 'stopping')
 
   child.emit('exit', 0, 'SIGTERM')
+  const result = await stopPromise
 
+  assert.deepEqual(result, { ok: true })
   const runtimeAfterExit = service.listPlugins()[0].entries.setup[0].runtime
   assert.equal(runtimeAfterExit.status, 'failed')
   assert.equal(runtimeAfterExit.error, 'Setup stopped')
 })
 
-test('plugin service marks setup cleanup failure as failed when child kill throws', () => {
+test('plugin service marks setup cleanup failure as failed when child kill throws', async () => {
   const child = createSlowStoppingServiceProcess()
   child.kill = () => {
     throw new Error('setup stop failed')
@@ -3162,12 +3163,13 @@ test('plugin service marks setup cleanup failure as failed when child kill throw
   })
 
   const setupRun = service.runSetup('weather-declaration', 'install-deps')
-  service.stopAllServices()
+  const result = await service.stopAllServices()
 
   const runtime = service.listPlugins()[0].entries.setup[0].runtime
+  assert.deepEqual(result, { ok: true })
   assert.equal(runtime.status, 'failed')
   assert.match(runtime.error, /setup stop failed/)
-  return assert.rejects(setupRun, /setup stop failed/)
+  await assert.rejects(setupRun, /setup stop failed/)
 })
 
 test('plugin service uses tree cleanup for declaration command stop requests before child kill fallback', async () => {
@@ -3226,12 +3228,13 @@ test('plugin service falls back to child kill when declaration command tree clea
 
   const commandRun = service.runCommand('weather-declaration', 'announce')
   await waitFor(() => started)
-  service.stopAllServices()
+  const stopPromise = service.stopAllServices()
 
   assert.deepEqual(treeSignals, [{ pid: 4321, signal: 'SIGTERM' }])
   assert.deepEqual(child.killCalls, ['SIGTERM'])
 
   child.emit('exit', 0, 'SIGTERM')
+  await stopPromise
   await assert.rejects(commandRun, /Command stopped/)
 })
 
@@ -3267,7 +3270,7 @@ test('plugin service uses tree cleanup for setup stop requests before child kill
   assert.equal(service.listPlugins()[0].entries.setup[0].runtime.error, 'Setup stopped')
 })
 
-test('plugin service falls back to child kill when setup tree cleanup fails', () => {
+test('plugin service falls back to child kill when setup tree cleanup fails', async () => {
   const child = createSlowStoppingServiceProcess({ pid: 4321 })
   const treeSignals = []
   const service = createPluginService({
@@ -3287,10 +3290,12 @@ test('plugin service falls back to child kill when setup tree cleanup fails', ()
   })
 
   service.runSetup('weather-declaration', 'install-deps')
-  service.stopAllServices()
+  const stopPromise = service.stopAllServices()
 
   assert.deepEqual(treeSignals, [{ pid: 4321, signal: 'SIGTERM' }])
   assert.deepEqual(child.killCalls, ['SIGTERM'])
+  child.emit('exit', 0, 'SIGTERM')
+  await stopPromise
 })
 
 test('plugin service opens enabled declaration dashboard entries through the injected opener', async () => {
@@ -3906,7 +3911,7 @@ test('plugin service app shutdown cleanup force stops stubborn services after th
   })
 
   service.startService('weather-declaration', 'companion')
-  service.stopAllServices()
+  void service.stopAllServices()
 
   await waitFor(() => processSignals.length === 2)
   assert.deepEqual(processSignals.map((entry) => entry.signal), ['SIGTERM', 'SIGKILL'])

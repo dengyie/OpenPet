@@ -20,6 +20,26 @@ test('plugin process support parses quoted commands and escapes', () => {
   )
 })
 
+test('plugin process support preserves Windows backslash paths inside quoted commands', () => {
+  assert.deepEqual(
+    parsePluginProcessCommand('"C:\\Program Files\\nodejs\\node.exe" "C:\\work\\plugin\\service.js"', { platform: 'win32' }),
+    {
+      file: 'C:\\Program Files\\nodejs\\node.exe',
+      args: ['C:\\work\\plugin\\service.js']
+    }
+  )
+})
+
+test('plugin process support preserves literal backslashes when not used for shell escaping', () => {
+  assert.deepEqual(
+    parsePluginProcessCommand('node "C:\\temp\\run.js" keep\\literal', { platform: 'darwin' }),
+    {
+      file: 'node',
+      args: ['C:\\temp\\run.js', 'keep\\literal']
+    }
+  )
+})
+
 test('plugin process support rejects empty and unterminated commands', () => {
   assert.throws(() => parsePluginProcessCommand('   '), /Plugin service command is required/)
   assert.throws(() => parsePluginProcessCommand('node "unterminated'), /Plugin service command has an unterminated quote/)

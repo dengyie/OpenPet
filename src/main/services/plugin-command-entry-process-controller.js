@@ -108,7 +108,11 @@ const createPluginCommandEntryProcessController = ({
       }
 
       runtime.failStop = (error) => {
-        settle(() => reject(error))
+        settle(() => {
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
+          reject(error)
+        })
       }
 
       const timeoutMs = Number.isFinite(Number(commandProcessTimeoutMs))
@@ -137,11 +141,17 @@ const createPluginCommandEntryProcessController = ({
       })
 
       child.on?.('error', (error) => {
-        settle(() => reject(error))
+        settle(() => {
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
+          reject(error)
+        })
       })
 
       child.stdin?.on?.('error', (error) => {
         settle(() => {
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
           safeKillChild()
           reject(error)
         })
@@ -154,6 +164,8 @@ const createPluginCommandEntryProcessController = ({
 
       child.on?.('close', (code, signal) => {
         settle(() => {
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
           const resolvedExitCode = Number.isFinite(Number(code)) ? Number(code) : exitCode
           const resolvedExitSignal = signal || exitSignal || ''
           if (runtime.status === 'stopping') {
@@ -193,6 +205,8 @@ const createPluginCommandEntryProcessController = ({
         child.stdin?.end?.(`${JSON.stringify(commandContext)}\n`)
       } catch (error) {
         settle(() => {
+          runtime.resolveStopCompleted?.()
+          runtime.resolveStopCompleted = null
           safeKillChild()
           reject(error)
         })

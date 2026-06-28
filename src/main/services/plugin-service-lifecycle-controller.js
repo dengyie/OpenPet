@@ -30,6 +30,8 @@ const createPluginServiceLifecycleController = ({
     error: '',
     child,
     stopTimer: null,
+    stopCompleted: null,
+    resolveStopCompleted: null,
     healthTimer: null,
     healthChecking: false,
     stopGracePeriodMs: Number.isFinite(Number(stopGracePeriodMs))
@@ -57,6 +59,8 @@ const createPluginServiceLifecycleController = ({
       runtime.status = 'failed'
       runtime.error = error?.message || 'Plugin service failed'
       runtime.stoppedAt = new Date().toISOString()
+      runtime.resolveStopCompleted?.()
+      runtime.resolveStopCompleted = null
       appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
     })
 
@@ -79,6 +83,8 @@ const createPluginServiceLifecycleController = ({
       runtime.signal = signal || ''
       runtime.child = null
       runtime.stoppedAt = runtime.stoppedAt || new Date().toISOString()
+      runtime.resolveStopCompleted?.()
+      runtime.resolveStopCompleted = null
 
       if (stoppedByRequest) {
         appendLog({

@@ -19,7 +19,7 @@ const registerAppLifecycleLogs = ({ app, appLogService, pid = process.pid, onBef
     }
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     safeRecordAppLog(appLogService, {
       scope: 'app',
       level: 'info',
@@ -28,7 +28,7 @@ const registerAppLifecycleLogs = ({ app, appLogService, pid = process.pid, onBef
       message: 'OpenPet app is preparing to quit',
       details: { pid }
     })
-    onBeforeQuit()
+    onBeforeQuit(event)
   })
 
   app.on('will-quit', () => {

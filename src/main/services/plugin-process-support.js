@@ -1,21 +1,29 @@
 const fs = require('fs')
 const path = require('path')
 
-const parsePluginProcessCommand = (command) => {
+const parsePluginProcessCommand = (command, { platform = process.platform } = {}) => {
   const input = String(command || '').trim()
   if (!input) throw new Error('Plugin service command is required')
   const parts = []
   let current = ''
   let quote = ''
   let escaping = false
+  const allowBackslashEscapes = platform !== 'win32'
 
   for (const char of input) {
     if (escaping) {
-      current += char
+      if (quote) {
+        if (char === quote || char === '\\') current += char
+        else current += `\\${char}`
+      } else if (/\s/.test(char) || char === '"' || char === "'" || char === '\\') {
+        current += char
+      } else {
+        current += `\\${char}`
+      }
       escaping = false
       continue
     }
-    if (char === '\\') {
+    if (allowBackslashEscapes && char === '\\') {
       escaping = true
       continue
     }

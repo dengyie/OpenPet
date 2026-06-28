@@ -3,6 +3,8 @@ const { createCoreServices } = require('./create-core-services')
 const { createPluginServices } = require('./create-plugin-services')
 const { createWindowServices } = require('./create-window-services')
 
+const PLUGIN_SHUTDOWN_TIMEOUT_MS = 2000
+
 const hasCursorRepairChanged = (before = {}, after = {}) => (
   ['assetPath', 'assetUrl', 'fileName', 'width', 'height', 'hotspotX', 'hotspotY']
     .some((key) => before?.[key] !== after?.[key])
@@ -170,11 +172,46 @@ const createOpenPetRuntime = ({
   }
 
   let pluginService = null
+  let pluginShutdownInFlight = false
   registerAppLifecycleLogs({
     app,
     appLogService,
-    onBeforeQuit: () => {
-      pluginService?.stopAllServices?.()
+    onBeforeQuit: (event) => {
+      if (pluginShutdownInFlight) return
+      pluginShutdownInFlight = true
+      event?.preventDefault?.()
+
+      const pluginShutdown = Promise.resolve()
+        .then(() => pluginService?.stopAllServices?.())
+      const shutdownTimeout = new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+          appLogService.record({
+            scope: 'plugins',
+            level: 'error',
+            actor: 'system',
+            event: 'plugins.shutdown.timed_out',
+            message: `Plugin shutdown exceeded ${PLUGIN_SHUTDOWN_TIMEOUT_MS}ms; continuing app quit`
+          })
+          resolve()
+        }, PLUGIN_SHUTDOWN_TIMEOUT_MS)
+        timeoutId?.unref?.()
+        pluginShutdown.finally(() => clearTimeout(timeoutId))
+      })
+
+      Promise.resolve()
+        .then(() => Promise.race([pluginShutdown, shutdownTimeout]))
+        .catch((error) => {
+          appLogService.record({
+            scope: 'plugins',
+            level: 'error',
+            actor: 'system',
+            event: 'plugins.shutdown.failed',
+            message: error?.message || 'Plugin shutdown failed before app quit'
+          })
+        })
+        .finally(() => {
+          app.quit()
+        })
     }
   })
 

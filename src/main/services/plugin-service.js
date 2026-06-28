@@ -636,8 +636,13 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const shutdownController = createPluginShutdownController({
     stopServices: (options) => serviceRuntimeManager.stopAll(options),
+    listServiceRuntimes: () => serviceRuntimeManager.listRuntimes(),
     stopSetups: (options) => setupRuntimeManager.stopAll(options),
+    listSetupRuntimes: () => setupRuntimeManager.listRuntimes(),
     stopCommands: () => declarationCommandController.stopAll(),
+    listCommandRuntimes: () => commandRuntimeManager.listRuntimes(),
+    ensureSetupStopWaiter: (runtime) => setupRuntimeManager.ensureStopWaiter(runtime),
+    ensureCommandStopWaiter: (runtime) => commandRuntimeManager.ensureStopWaiter(runtime),
     closeCommandBridge: () => commandBridgeService.close()
   })
 
@@ -705,7 +710,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return serviceRuntimeController.check({ pluginId, serviceId, reschedule })
   }
 
-  const stopAllServices = () => {
+  const stopAllServices = async () => {
     return shutdownController.stopAll()
   }
 

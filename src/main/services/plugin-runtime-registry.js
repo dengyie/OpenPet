@@ -60,6 +60,8 @@ const createPluginRuntimeRegistry = ({
     }
   }
 
+  const listRuntimes = () => Array.from(runtimes.values())
+
   const size = () => runtimes.size
 
   return {
@@ -67,6 +69,7 @@ const createPluginRuntimeRegistry = ({
     deleteRuntime,
     getOrCreateRuntime,
     getRuntime,
+    listRuntimes,
     setRuntime,
     size,
     stopAll,
