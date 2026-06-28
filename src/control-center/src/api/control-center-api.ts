@@ -7,6 +7,7 @@ import type {
   ActionFrameReinspectRequest,
   ActionTriggerProposalInboxStatus,
   ActionTriggerProposalType,
+  ActionTriggerRuleSpecInput,
   ActionTriggerRuleSpec,
   ActionTriggerRuleStatus,
   ActionsConfigViewState,
@@ -1052,8 +1053,8 @@ const createDemoTriggerPreviewText = (type = '', actionId = '') => {
 const createDemoTriggerRuleSpec = (type: 'random' | 'state' | 'event', actionId: string, proposal: {
   binding?: string
   message?: string
-  ruleSpec?: Partial<ActionTriggerRuleSpec>
-} = {}) => {
+  ruleSpec?: ActionTriggerRuleSpecInput
+} = {}): ActionTriggerRuleSpec => {
   const ruleSpec = proposal.ruleSpec || {}
   const summary = typeof ruleSpec.summary === 'string' && ruleSpec.summary
     ? ruleSpec.summary
@@ -1105,7 +1106,7 @@ const createDemoTriggerProposalPreview = (proposal: {
   sourceRunId?: string
   sourceCommandId?: string
   message?: string
-  ruleSpec?: Partial<ActionTriggerRuleSpec>
+  ruleSpec?: ActionTriggerRuleSpecInput
 }) => {
   const actionId = proposal.actionId || ''
   const type = proposal.type || 'unbound'

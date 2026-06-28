@@ -1,5 +1,7 @@
 import type {
+  ActionsConfigViewState,
   ActionTriggerProposalPreviewResult,
+  ActionTriggerRuleSpec,
   AiProviderSmokeReport,
   ControlCenterSettings,
   CatalogInstallSelection,
@@ -240,6 +242,85 @@ const triggerProposalPreviewFixture = {
     updatedAt: '2026-06-22T10:00:00.000Z'
   }
 } satisfies ActionTriggerProposalPreviewResult
+
+const actionTriggerRuleSpecBoundaryFixtures = [
+  {
+    schemaVersion: 1,
+    type: 'random',
+    summary: 'Play occasionally from the host scheduler.',
+    schedule: {
+      mode: 'interval',
+      intervalMs: 300000
+    }
+  },
+  {
+    schemaVersion: 1,
+    type: 'state',
+    summary: 'Play when the pet looks idle.',
+    state: {
+      predicate: 'pet.idle && cursor.nearby',
+      source: 'creator-studio'
+    }
+  },
+  {
+    schemaVersion: 1,
+    type: 'event',
+    summary: 'Play when a plugin emits a weather event.',
+    event: {
+      name: 'weather.sunny',
+      source: 'plugin:weather'
+    }
+  }
+] satisfies ActionTriggerRuleSpec[]
+
+const actionsConfigTriggerBoundaryFixture = {
+  defaultAction: 'idle',
+  clickAction: 'wave',
+  actions: [
+    { id: 'idle', label: 'Idle', sprite: 'file:///packs/cat/sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 },
+    { id: 'wave', label: 'Wave', sprite: 'file:///packs/cat/sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32 }
+  ],
+  triggerProposalInbox: [
+    {
+      id: 'proposal:state:wave:test',
+      actionId: 'wave',
+      type: 'state',
+      binding: '',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action',
+      message: 'Play when the pet looks idle.',
+      status: 'pending',
+      triggerRuleId: '',
+      preview: 'State trigger rule can play wave when a host state condition matches.',
+      ruleSpec: actionTriggerRuleSpecBoundaryFixtures[1],
+      resultCode: '',
+      resultMessage: '',
+      rejectionReason: '',
+      createdAt: '2026-06-22T10:00:00.000Z',
+      updatedAt: '2026-06-22T10:00:00.000Z',
+      acceptedAt: '',
+      rejectedAt: ''
+    }
+  ],
+  triggerRules: [
+    {
+      id: 'rule:event:wave:test',
+      actionId: 'wave',
+      type: 'event',
+      status: 'active',
+      sourceProposalId: 'proposal:event:wave:test',
+      sourcePluginId: 'openpet.creator-studio',
+      sourceRunId: 'run-1',
+      sourceCommandId: 'import-approved-action',
+      message: 'Play when a plugin emits a weather event.',
+      preview: 'Event trigger rule can play wave when a host-owned event is received.',
+      ruleSpec: actionTriggerRuleSpecBoundaryFixtures[2],
+      createdAt: '2026-06-22T10:00:00.000Z',
+      updatedAt: '2026-06-22T10:00:00.000Z'
+    }
+  ]
+} satisfies ActionsConfigViewState
 
 const aiProviderSmokeFixture = {
   schemaVersion: 1,

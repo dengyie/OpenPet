@@ -11,6 +11,8 @@ test('live docs describe non-click trigger proposals as landed host-owned rules'
   const developmentSummary = readText('docs/development-summary.md')
   const handoff = readText('docs/HANDOFF.md')
   const projectStatusReview = readText('docs/project-status-review.md')
+  const projectContext = readText('docs/project-context.json')
+  const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
 
   assert.doesNotMatch(
     developmentSummary,
@@ -39,5 +41,15 @@ test('live docs describe non-click trigger proposals as landed host-owned rules'
     projectStatusReview,
     /Actions(?: pane)?(?:[^\n]+)?Trigger Proposal Inbox|trigger proposal inbox/i,
     'project-status-review.md should mention the host review path for Creator Studio trigger proposals'
+  )
+  assert.match(
+    [developmentSummary, projectContext, todoArchitecture].join('\n'),
+    /discriminated random\/state\/event (?:trigger-rule spec|ruleSpec) contracts?|shared TypeScript contract now models those specs as a discriminated random\/state\/event union/i,
+    'live docs should describe the current typed random/state/event trigger-rule spec boundary'
+  )
+  assert.doesNotMatch(
+    projectContext,
+    /random\/state\/event trigger-rule persistence, and universal process-tree cleanup guarantees as future work/i,
+    'project-context.json should not describe random/state/event trigger-rule persistence as future work once durable rules exist'
   )
 })

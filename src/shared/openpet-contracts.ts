@@ -462,13 +462,51 @@ export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejecte
 export type ActionTriggerRuleType = 'random' | 'state' | 'event'
 export type ActionTriggerRuleStatus = 'active' | 'disabled'
 
-export interface ActionTriggerRuleSpec {
+export interface ActionTriggerRuleSpecBase {
   schemaVersion: number
   type: ActionTriggerRuleType
   summary: string
-  schedule?: JsonObject
-  state?: JsonObject
-  event?: JsonObject
+}
+
+export interface ActionTriggerRandomSchedule {
+  mode: 'opportunistic' | 'interval'
+  intervalMs?: number
+}
+
+export interface ActionTriggerStateCondition {
+  predicate: string
+  source: string
+}
+
+export interface ActionTriggerEventCondition {
+  name: string
+  source: string
+}
+
+export interface ActionTriggerRandomRuleSpec extends ActionTriggerRuleSpecBase {
+  type: 'random'
+  schedule: ActionTriggerRandomSchedule
+}
+
+export interface ActionTriggerStateRuleSpec extends ActionTriggerRuleSpecBase {
+  type: 'state'
+  state: ActionTriggerStateCondition
+}
+
+export interface ActionTriggerEventRuleSpec extends ActionTriggerRuleSpecBase {
+  type: 'event'
+  event: ActionTriggerEventCondition
+}
+
+export type ActionTriggerRuleSpec = ActionTriggerRandomRuleSpec | ActionTriggerStateRuleSpec | ActionTriggerEventRuleSpec
+
+export interface ActionTriggerRuleSpecInput {
+  schemaVersion?: number
+  type?: ActionTriggerRuleType
+  summary?: string
+  schedule?: Partial<ActionTriggerRandomSchedule>
+  state?: Partial<ActionTriggerStateCondition>
+  event?: Partial<ActionTriggerEventCondition>
 }
 
 export interface ActionTriggerRule {
@@ -519,7 +557,7 @@ export interface ActionTriggerProposalAcceptanceRequest {
   sourceCommandId?: string
   message?: string
   notes?: string
-  ruleSpec?: Partial<ActionTriggerRuleSpec>
+  ruleSpec?: ActionTriggerRuleSpecInput
 }
 
 export interface ActionTriggerProposalAcceptanceResult {
