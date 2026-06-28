@@ -190,6 +190,64 @@ export interface AiTalkTraceDiagnosticsFilters {
   conversationId?: string
 }
 
+export interface AiTalkTraceExportRequest {
+  conversationId?: string
+}
+
+export interface AiTalkTraceSummaryViewState {
+  traceId: string
+  createdAt: string
+  updatedAt: string
+  conversation: {
+    conversationId: string
+    petPackId: string
+    petPackDisplayName: string
+  }
+  provider: {
+    provider: string
+    baseUrl: string
+    model: string
+  }
+  request: {
+    entrypoint: string
+    historyCount: number
+    messagesCount: number
+    messageChars: number
+    toolsCount: number
+    recentPetActivityCount: number
+  }
+  memory: {
+    injectedCount: number
+    usedCount: number
+    injectedScopes: AiMemoryScope[]
+    usedScopes: AiMemoryScope[]
+  }
+  behavior: {
+    providerIntent: {
+      intent: string
+      actionId: string
+      confidence: number
+      reason: string
+      displayMode: string
+    } | null
+    finalDecision: {
+      type: string
+      matched: boolean
+      actionId: string
+      ruleId: string
+      reason: string
+      intent: string
+      displayMode: string
+    } | null
+  }
+  result: {
+    replyChars: number
+    persistedMessageCount: number
+    bubbleSegmentCount: number
+    displayMode: string
+  }
+}
+
 export interface AiPersona {
   name: string
   identity: string
@@ -2725,7 +2783,6 @@ export interface ControlCenterApi {
   setActivePetPack: (packId: string) => Promise<PetPackMutationResult>
   onActivePetPackChanged?: (listener: (event: ActivePetPackChangedEvent) => void) => () => void
   removePetPack: (packId: string) => Promise<PetPackMutationResult>
-  onActivePetPackChanged?: (callback: (payload: PetPackMutationResult) => void) => (() => void)
   getAiConfig: () => Promise<AiConfigViewState>
   saveAiConfig: (config: Partial<AiConfigViewState>) => Promise<AiConfigViewState>
   saveAiApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
@@ -2736,6 +2793,8 @@ export interface ControlCenterApi {
   getAiMemoryProfile: () => Promise<AiMemoryProfileViewState>
   deleteAiMemory: (memoryId: string) => Promise<AiMemoryProfileViewState>
   clearAiPetPackMemories: () => Promise<AiMemoryProfileViewState>
+  getAiTalkTraceSummary: (payload?: AiTalkTraceExportRequest) => Promise<AiTalkTraceSummaryViewState>
+  exportAiTalkTrace: (payload?: AiTalkTraceExportRequest) => Promise<string>
   getImageGenerationConfig: () => Promise<ImageGenerationConfigViewState>
   saveImageGenerationConfig: (config: Partial<ImageGenerationConfigViewState>) => Promise<ImageGenerationConfigViewState>
   saveImageGenerationApiKey: (apiKey: string) => Promise<ImageGenerationSaveApiKeyResult>

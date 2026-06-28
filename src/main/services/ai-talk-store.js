@@ -228,6 +228,27 @@ const summarizeMemory = (memory) => {
   }
 }
 
+const normalizeTraceBehavior = (behavior = {}) => {
+  if (!isPlainObject(behavior)) return { providerIntent: null, finalDecision: null }
+  const normalizeDecision = (decision) => {
+    if (!isPlainObject(decision)) return null
+    return {
+      intent: typeof decision.intent === 'string' ? decision.intent.trim().slice(0, 120) : '',
+      actionId: typeof decision.actionId === 'string' ? decision.actionId.trim().slice(0, 120) : '',
+      confidence: Number.isFinite(Number(decision.confidence)) ? Number(decision.confidence) : 0,
+      matched: Boolean(decision.matched),
+      type: typeof decision.type === 'string' ? decision.type.trim().slice(0, 120) : '',
+      ruleId: typeof decision.ruleId === 'string' ? decision.ruleId.trim().slice(0, 120) : '',
+      reason: typeof decision.reason === 'string' ? decision.reason.trim().slice(0, 240) : '',
+      displayMode: typeof decision.displayMode === 'string' ? decision.displayMode.trim().slice(0, 40) : ''
+    }
+  }
+  return {
+    providerIntent: normalizeDecision(behavior.providerIntent),
+    finalDecision: normalizeDecision(behavior.finalDecision)
+  }
+}
+
 const normalizeTraceEntry = (trace = {}) => {
   if (!isPlainObject(trace)) return null
   const id = typeof trace.id === 'string' ? trace.id.trim() : ''
@@ -241,8 +262,12 @@ const normalizeTraceEntry = (trace = {}) => {
     conversationId: typeof trace.conversationId === 'string' ? trace.conversationId.trim() : '',
     personaHash: typeof trace.personaHash === 'string' ? trace.personaHash.trim() : '',
     provider: typeof trace.provider === 'string' ? trace.provider.trim() : '',
+    baseUrl: typeof trace.baseUrl === 'string' ? trace.baseUrl.trim() : '',
     model: typeof trace.model === 'string' ? trace.model.trim() : '',
+    entrypoint: typeof trace.entrypoint === 'string' ? trace.entrypoint.trim() : '',
+    historyCount: Math.max(0, Number(trace.historyCount) || 0),
     messagesCount: Math.max(0, Number(trace.messagesCount) || 0),
+    messageChars: Math.max(0, Number(trace.messageChars) || 0),
     memoryContextCount: Math.max(0, Number(trace.memoryContextCount) || 0),
     memoryIdsInjected: Array.isArray(trace.memoryIdsInjected)
       ? trace.memoryIdsInjected.filter((memoryId) => typeof memoryId === 'string' && memoryId.trim())
@@ -253,12 +278,17 @@ const normalizeTraceEntry = (trace = {}) => {
     bubbleSegmentCount: Math.max(0, Number(trace.bubbleSegmentCount) || 0),
     hasBehaviorIntent: Boolean(trace.hasBehaviorIntent),
     behaviorIntentIntent: typeof trace.behaviorIntentIntent === 'string' ? trace.behaviorIntentIntent.trim().slice(0, 120) : '',
+    behaviorIntentDisplayMode: typeof trace.behaviorIntentDisplayMode === 'string' ? trace.behaviorIntentDisplayMode.trim().slice(0, 40) : '',
+    behavior: normalizeTraceBehavior(trace.behavior),
     memoryJobId: typeof trace.memoryJobId === 'string' ? trace.memoryJobId.trim() : '',
+    persistedMessageCount: Math.max(0, Number(trace.persistedMessageCount) || 0),
+    displayMode: typeof trace.displayMode === 'string' ? trace.displayMode.trim().slice(0, 40) : '',
     errorCode: typeof trace.errorCode === 'string' ? trace.errorCode.trim().slice(0, 120) : '',
     providerStatus: Math.max(0, Number(trace.providerStatus) || 0),
     success: trace.success !== false,
     requestId: typeof trace.requestId === 'string' ? trace.requestId.trim().slice(0, 120) : '',
     createdAt: typeof trace.createdAt === 'string' && trace.createdAt ? trace.createdAt : '',
+    updatedAt: typeof trace.updatedAt === 'string' && trace.updatedAt ? trace.updatedAt : '',
     filteredMemoryCandidates: Array.isArray(trace.filteredMemoryCandidates)
       ? trace.filteredMemoryCandidates
         .map((candidate) => ({
@@ -672,6 +702,96 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     return clone(max ? traces.slice(0, max) : traces)
   }
 
+  const createTraceView = (trace) => {
+    const normalized = normalizeTraceEntry(trace)
+    if (!normalized) return null
+    const injected = normalized.memoryIdsInjected
+      .map((memoryId) => summarizeMemory(state.memories[memoryId]))
+      .filter((memory) => memory.id)
+    const providerIntent = normalized.behavior.providerIntent || (
+      normalized.hasBehaviorIntent
+        ? {
+            intent: normalized.behaviorIntentIntent,
+            actionId: '',
+            confidence: 0,
+            matched: false,
+            type: '',
+            ruleId: '',
+            reason: '',
+            displayMode: normalized.behaviorIntentDisplayMode
+          }
+        : null
+    )
+    return {
+      ...normalized,
+      updatedAt: normalized.updatedAt || normalized.createdAt,
+      conversation: {
+        conversationId: normalized.conversationId,
+        petPackId: normalized.petPackId,
+        petPackDisplayName: normalized.petPackId
+      },
+      provider: {
+        provider: normalized.provider,
+        baseUrl: normalized.baseUrl,
+        model: normalized.model
+      },
+      request: {
+        entrypoint: normalized.entrypoint,
+        historyCount: normalized.historyCount,
+        messagesCount: normalized.messagesCount,
+        messageChars: normalized.messageChars,
+        toolsCount: normalized.toolsCount,
+        recentPetActivityCount: normalized.recentPetActivityCount
+      },
+      memory: {
+        injected,
+        used: injected
+      },
+      behavior: {
+        providerIntent,
+        finalDecision: normalized.behavior.finalDecision
+      },
+      result: {
+        replyChars: normalized.replyChars,
+        persistedMessageCount: normalized.persistedMessageCount,
+        bubbleSegmentCount: normalized.bubbleSegmentCount,
+        displayMode: normalized.displayMode || normalized.behaviorIntentDisplayMode || ''
+      }
+    }
+  }
+
+  const getLatestTraceByConversation = (conversationId = '') => {
+    const normalizedConversationId = typeof conversationId === 'string' ? conversationId.trim() : ''
+    const traces = Object.values(state.traces || {})
+      .map(normalizeTraceEntry)
+      .filter(Boolean)
+      .filter((trace) => trace.type === 'ai-talk-chat')
+      .filter((trace) => !normalizedConversationId || trace.conversationId === normalizedConversationId)
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+    return createTraceView(traces[0])
+  }
+
+  const updateTrace = ({ conversationId = '', traceId = '', patch = {} } = {}) => {
+    const targetTrace = traceId
+      ? normalizeTraceEntry(state.traces[traceId])
+      : getLatestTraceByConversation(conversationId)
+    if (!targetTrace?.id || !state.traces[targetTrace.id]) return null
+    const current = normalizeTraceEntry(state.traces[targetTrace.id])
+    const next = normalizeTraceEntry({
+      ...current,
+      ...patch,
+      behavior: {
+        ...current.behavior,
+        ...(isPlainObject(patch.behavior) ? patch.behavior : {})
+      },
+      updatedAt: now()
+    })
+    if (!next) return null
+    state.traces[next.id] = next
+    persist()
+    return createTraceView(next)
+  }
+
   const migrateLegacyConversation = ({
     entrypoint = 'control-center',
     petPackId = 'legacy-cat',
@@ -859,6 +979,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     ensureMainConversation,
     finishMemoryJob,
     getMessages,
+    getLatestTraceByConversation,
     getPersonaOverride,
     getState,
     exportTraceDiagnostics,
@@ -872,6 +993,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     recordTrace,
     recordPetUtterance,
     clearPetUtterances,
+    updateTrace,
     savePersonaOverride
   }
 }

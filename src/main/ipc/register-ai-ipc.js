@@ -51,6 +51,16 @@ const registerAiIpc = ({
     return createAiMemoryProfileView(await aiTalkService.clearPetPackMemories())
   })
 
+  ipcMainService.handle(IPC.AI_TALK_GET_TRACE_SUMMARY, (_event, payload) => {
+    if (!aiTalkService?.getLatestTraceSummary) throw new Error('AI talk trace summary is not available')
+    return aiTalkService.getLatestTraceSummary(payload || {})
+  })
+
+  ipcMainService.handle(IPC.AI_TALK_EXPORT_TRACE, (_event, payload) => {
+    if (!aiTalkService?.exportTrace) throw new Error('AI talk trace export is not available')
+    return aiTalkService.exportTrace(payload || {})
+  })
+
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => createImageGenerationConfigView(imageGenerationModelService.getConfig()))
   ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_CONFIG, (_event, config) => createImageGenerationConfigView(imageGenerationModelService.saveConfig(config)))
   ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_API_KEY, (_event, apiKey) => createImageGenerationApiKeyResult(imageGenerationModelService.saveCloudApiKey(apiKey)))

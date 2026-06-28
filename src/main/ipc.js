@@ -1176,6 +1176,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (event, payload) => {
+    const previousActivePackId = petPackService?.listPacks?.()?.activePackId || ''
     const result = petPackService.setActivePack(payload.packId)
     reloadAndSendAnimations(getPetWindow, petService)
     refreshTriggerRuleRuntime()
@@ -1183,7 +1184,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     const petPacks = petPackService.listPacks()
     const mutationResult = createPetPackMutationResult(result, petPacks, animations)
     notifyActivePetPackChanged(event, mutationResult)
-    broadcastActivePetPackChanged({ source: IPC.PET_PACKS_SET_ACTIVE, payload: mutationResult })
+    if (previousActivePackId !== petPacks?.activePackId) {
+      broadcastActivePetPackChanged({ source: IPC.PET_PACKS_SET_ACTIVE, payload: mutationResult })
+    } else {
+      refreshPetPackScopedChatState({ reason: 'pet-pack-set-active' })
+    }
     return mutationResult
   })
 

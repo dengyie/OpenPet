@@ -160,7 +160,6 @@ function TriggerRuleSpecSummary({ spec }: { spec?: ActionTriggerRuleSpec | null 
   )
 }
 
-function TriggerRulesPanel({
 const triggerRuntimeOutcomeLabel: Record<ActionTriggerRuntimeDecisionViewState['outcome'], string> = {
   matched: 'matched',
   skipped: 'skipped',
@@ -168,7 +167,7 @@ const triggerRuntimeOutcomeLabel: Record<ActionTriggerRuntimeDecisionViewState['
 }
 
 const getTriggerResultTitle = (result: ActionTriggerProposalAcceptanceResult) => {
-  if (result.code === 'rule_saved') return '最近结果：已保存规则'
+  if (result.code === 'rule_created') return '最近结果：已保存规则'
   if (result.applied) return '最近结果：已应用'
   return '最近结果：已确认'
 }
@@ -360,7 +359,7 @@ function TriggerRuntimeDiagnosticsCard({
                 <div className="trigger-inbox-main">
                   <div>
                     <strong>{entry.ruleId}</strong>
-                    <span>{triggerRuleTypeLabel[entry.triggerType]} · {triggerRuntimeOutcomeLabel[entry.outcome]}</span>
+                    <span>{triggerProposalDetails[entry.triggerType]?.label || entry.triggerType} · {triggerRuntimeOutcomeLabel[entry.outcome]}</span>
                   </div>
                   <span className={`trigger-badge ${entry.outcome === 'blocked' ? 'rejected' : (entry.outcome === 'matched' ? 'applied' : 'pending')}`}>
                     {triggerRuntimeOutcomeLabel[entry.outcome]}

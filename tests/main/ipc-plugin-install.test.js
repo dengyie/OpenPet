@@ -376,6 +376,119 @@ test('ai memory management IPC delegates to ai talk service when available', asy
   ])
 })
 
+test('ai talk trace export IPC delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const exportedTrace = JSON.stringify({
+    schemaVersion: 1,
+    trace: {
+      id: 'trace:test',
+      conversation: { conversationId: 'control-center:legacy-cat:main' },
+      provider: { model: 'gpt-5.5' }
+    }
+  })
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiTalkService: {
+      exportTrace: (payload) => {
+        calls.push(payload)
+        return exportedTrace
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.AI_TALK_EXPORT_TRACE)(null, { conversationId: 'control-center:legacy-cat:main' })
+
+  assert.equal(result, exportedTrace)
+  assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
+})
+
+test('ai talk trace summary IPC delegates to ai talk service when available', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const summary = {
+    traceId: 'trace:legacy',
+    createdAt: '2026-06-29T10:00:00.000Z',
+    updatedAt: '2026-06-29T10:00:00.000Z',
+    conversation: {
+      conversationId: 'control-center:legacy-cat:main',
+      petPackId: 'legacy-cat',
+      petPackDisplayName: 'Legacy Cat'
+    },
+    provider: {
+      provider: 'openai-compatible',
+      baseUrl: 'https://ai.example.test/v1',
+      model: 'gpt-5.5'
+    },
+    request: {
+      entrypoint: 'control-center',
+      historyCount: 2,
+      messagesCount: 4,
+      messageChars: 18,
+      toolsCount: 1,
+      recentPetActivityCount: 0
+    },
+    memory: {
+      injectedCount: 1,
+      usedCount: 1,
+      injectedScopes: ['petPack'],
+      usedScopes: ['petPack']
+    },
+    behavior: {
+      providerIntent: null,
+      finalDecision: null
+    },
+    result: {
+      replyChars: 8,
+      persistedMessageCount: 2,
+      bubbleSegmentCount: 1,
+      displayMode: 'auto'
+    }
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    aiTalkService: {
+      getLatestTraceSummary: (payload) => {
+        calls.push(payload)
+        return summary
+      }
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.AI_TALK_GET_TRACE_SUMMARY)(null, { conversationId: 'control-center:legacy-cat:main' })
+
+  assert.deepEqual(result, summary)
+  assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
+})
+
 test('ai provider settings IPC delegates config save key save and connection test', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []
@@ -752,7 +865,11 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   const animations = {
     defaultAction: 'idle',
     clickAction: 'wave',
-    actions: [{ id: 'wave', label: 'Wave' }]
+    actions: [{ id: 'wave', label: 'Wave' }],
+    triggerRuntimeDiagnostics: {
+      currentState: { actionId: '' },
+      decisions: []
+    }
   }
   const actionView = {
     ...animations,
@@ -1980,14 +2097,16 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
     provenance: { sourceUrl: 'https://example.com/doro', originalFormat: 'directory', rawPath: '/Users/mango/private' },
     conflict: { installed: 1, decision: 'upgrade', requiresReview: '', installedVersion: '0.9.0', incomingVersion: '1.0.0' }
   }
-  const animations = { defaultAction: 'idle', clickAction: 'happy', actions: [{ id: 'idle', label: 'Idle' }] }
-  const actionView = {
-    ...animations,
+  const animations = {
+    defaultAction: 'idle',
+    clickAction: 'happy',
+    actions: [{ id: 'idle', label: 'Idle' }],
     triggerRuntimeDiagnostics: {
       currentState: { actionId: '' },
       decisions: []
     }
   }
+  const actionView = animations
   const normalizedPack = {
     id: 'doro',
     displayName: 'Doro',
@@ -2157,8 +2276,6 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
   assert.deepEqual(controlCenterMessages.map(([channel, payload]) => [channel, payload.activePackId || payload.petChatState?.petPack?.id]), [
     [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro'],
     [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'doro'],
-    [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro'],
-    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'doro'],
     [IPC.PET_PACKS_ACTIVE_CHANGED, 'legacy-cat'],
     [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'legacy-cat']
   ])
@@ -2169,7 +2286,7 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
     firstMessage: call.conversationMessages[0]?.content
   })), [
     { reason: 'active-pet-pack-changed:pet-packs:import', noticeItems: [], firstMessage: 'hello from doro' },
-    { reason: 'active-pet-pack-changed:pet-packs:set-active', noticeItems: [], firstMessage: 'hello from doro' },
+    { reason: 'pet-pack-set-active', noticeItems: [], firstMessage: 'hello from doro' },
     { reason: 'active-pet-pack-changed:pet-packs:remove', noticeItems: [], firstMessage: 'hello from legacy-cat' }
   ])
 })

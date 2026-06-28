@@ -1,4 +1,4 @@
-import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneCatalog, cloneChatMessages, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
+import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
@@ -10,6 +10,7 @@ import type {
   ActionTriggerRuleSpecInput,
   ActionTriggerRuleSpec,
   ActionTriggerRuleStatus,
+  ActivePetPackChangedEvent,
   ActionsConfigViewState,
   AiChatRequest,
   AiConfigViewState,
@@ -20,6 +21,7 @@ import type {
   AiTalkTraceDiagnosticsFilters,
   AiPersonaOverride,
   AiPersonaProfileViewState,
+  AiTalkTraceSummaryViewState,
   CatalogBlocklistEntry,
   CatalogInstallRequest,
   CatalogInstallSelection,
@@ -310,6 +312,56 @@ const createDemoPetChatState = (): PetChatStateViewState => {
       hasWindow: Boolean(demoState.petBubbleChatState?.hasWindow)
     },
     messages: demoState.petChatMessages
+  })
+}
+
+const createDemoAiTalkTraceSummary = (
+  { conversationId }: { conversationId?: string } = {}
+): AiTalkTraceSummaryViewState => {
+  const activePack = getActiveDemoPetPack()
+  const resolvedConversationId = conversationId || `control-center:${demoState.petPacks.activePackId}:main`
+  const messages = cloneChatMessages(demoState.petChatMessages)
+  const lastAssistantMessage = messages.filter((message) => message.role === 'assistant').at(-1)
+  const lastUserMessage = messages.filter((message) => message.role === 'user').at(-1)
+  return cloneAiTalkTraceSummary({
+    ...defaultAiTalkTraceSummary,
+    traceId: 'trace:demo',
+    createdAt: '2026-06-29T10:00:00.000Z',
+    updatedAt: '2026-06-29T10:00:00.000Z',
+    conversation: {
+      conversationId: resolvedConversationId,
+      petPackId: demoState.petPacks.activePackId,
+      petPackDisplayName: activePack?.displayName || demoState.petPacks.activePackId
+    },
+    provider: {
+      provider: demoState.aiConfig.provider,
+      baseUrl: demoState.aiConfig.baseUrl,
+      model: demoState.aiConfig.model
+    },
+    request: {
+      entrypoint: 'control-center',
+      historyCount: Math.max(0, messages.length - 1),
+      messagesCount: messages.length + 2,
+      messageChars: lastUserMessage?.content?.length || 0,
+      toolsCount: demoState.aiConfig.behavior.enabled && demoState.aiConfig.behavior.useTools !== false ? 1 : 0,
+      recentPetActivityCount: 0
+    },
+    memory: {
+      injectedCount: 0,
+      usedCount: 0,
+      injectedScopes: [],
+      usedScopes: []
+    },
+    behavior: {
+      providerIntent: null,
+      finalDecision: null
+    },
+    result: {
+      replyChars: lastAssistantMessage?.content?.length || 0,
+      persistedMessageCount: messages.length,
+      bubbleSegmentCount: lastAssistantMessage?.content ? 1 : 0,
+      displayMode: 'auto'
+    }
   })
 }
 
@@ -1149,7 +1201,7 @@ const writeDemoState = () => {
   window.sessionStorage.setItem(demoStorageKey, JSON.stringify(demoState))
 }
 
-const emitDemoActivePetPackChanged = (payload: PetPackMutationResult) => {
+const emitDemoActivePetPackChanged = (payload: ActivePetPackChangedEvent) => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(demoActivePetPackChangedEvent, { detail: payload }))
 }
@@ -1175,11 +1227,6 @@ const syncDemoStateFromStorage = () => {
 }
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
-const demoActivePetPackListeners = new Set<(payload: { activePackId: string }) => void>()
-const emitDemoActivePetPackChanged = () => {
-  const payload = { activePackId: demoState.petPacks.activePackId }
-  for (const listener of demoActivePetPackListeners) listener(payload)
-}
 const demoCursorAssetUrl = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
   <path d="M9 5l23 21h-11l8 17-6 3-8-17-8 8z" fill="#111827"/>
@@ -1820,7 +1867,6 @@ const demoApi: ControlCenterApi = {
       activePackId: packId
     })
     writeDemoState()
-    emitDemoActivePetPackChanged()
     const activePack = getActiveDemoPetPack()
     const result = {
       pack: activePack,
@@ -1828,14 +1874,17 @@ const demoApi: ControlCenterApi = {
       petPacks: clonePetPacks(demoState.petPacks),
       animations: cloneActionsConfig(demoState.actionsConfig)
     }
-    emitDemoActivePetPackChanged(result)
+    emitDemoActivePetPackChanged({
+      activePackId: result.activePackId,
+      pack: activePack || null
+    })
     return result
   },
   removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),
   onActivePetPackChanged: (callback) => {
     if (typeof window === 'undefined') return () => {}
     const handler = (event: Event) => {
-      const customEvent = event as CustomEvent<PetPackMutationResult>
+      const customEvent = event as CustomEvent<ActivePetPackChangedEvent>
       callback(customEvent.detail)
     }
     window.addEventListener(demoActivePetPackChangedEvent, handler)
@@ -2119,13 +2168,6 @@ const demoApi: ControlCenterApi = {
     }, null, 2)
   },
   openPetChatWindow: async () => createDemoPetChatState(),
-  onActivePetPackChanged: (callback) => {
-    if (typeof callback !== 'function') return () => {}
-    demoActivePetPackListeners.add(callback)
-    return () => {
-      demoActivePetPackListeners.delete(callback)
-    }
-  },
   sendPetChatMessage: sendDemoPetChatMessage,
   getAiBehavior: async () => cloneAiConfig(demoState.aiConfig).behavior,
   saveAiBehavior: async (config) => {
@@ -2133,6 +2175,38 @@ const demoApi: ControlCenterApi = {
     writeDemoState()
     return demoState.aiConfig.behavior
   },
+  getAiTalkTraceSummary: async ({ conversationId } = {}) => createDemoAiTalkTraceSummary({ conversationId }),
+  exportAiTalkTrace: async ({ conversationId } = {}) => JSON.stringify({
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    trace: {
+      id: 'trace:demo',
+      conversationId: conversationId || `control-center:${demoState.petPacks.activePackId}:main`,
+      petPackId: demoState.petPacks.activePackId,
+      conversation: {
+        conversationId: conversationId || `control-center:${demoState.petPacks.activePackId}:main`,
+        petPackId: demoState.petPacks.activePackId,
+        petPackDisplayName: demoState.petPacks.packs.find((pack) => pack.id === demoState.petPacks.activePackId)?.displayName || demoState.petPacks.activePackId
+      },
+      provider: {
+        provider: demoState.aiConfig.provider,
+        baseUrl: demoState.aiConfig.baseUrl,
+        model: demoState.aiConfig.model
+      },
+      memory: {
+        injected: [],
+        used: []
+      },
+      behavior: {
+        providerIntent: null,
+        finalDecision: null
+      },
+      result: {
+        replyChars: cloneChatMessages(demoState.petChatMessages).at(-1)?.content?.length || 0,
+        persistedMessageCount: cloneChatMessages(demoState.petChatMessages).length
+      }
+    }
+  }, null, 2),
   dryRunAiBehavior: async ({ reply }) => ({ matched: Boolean(reply), reason: reply ? 'demo dry-run matched' : 'demo dry-run empty', actionId: reply ? 'wave' : '' }),
   replayAiBehaviorDecision: async (decisionId) => ({ replayOf: decisionId, matched: true, reason: 'demo replay matched', actionId: 'wave' }),
   exportAiBehaviorDiagnostics: async () => JSON.stringify({

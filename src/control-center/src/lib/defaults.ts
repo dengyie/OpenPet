@@ -6,6 +6,7 @@ import type {
   AiMemoryItemViewState,
   AiMemoryProfileViewState,
   AiPersonaProfileViewState,
+  AiTalkTraceSummaryViewState,
   BlocklistState,
   CatalogState,
   ChatMessage,
@@ -120,6 +121,46 @@ export const defaultAiMemoryProfile = {
   petPackMemories: [],
   recentJobs: []
 } satisfies AiMemoryProfileViewState
+
+export const defaultAiTalkTraceSummary = {
+  traceId: '',
+  createdAt: '',
+  updatedAt: '',
+  conversation: {
+    conversationId: '',
+    petPackId: '',
+    petPackDisplayName: ''
+  },
+  provider: {
+    provider: '',
+    baseUrl: '',
+    model: ''
+  },
+  request: {
+    entrypoint: '',
+    historyCount: 0,
+    messagesCount: 0,
+    messageChars: 0,
+    toolsCount: 0,
+    recentPetActivityCount: 0
+  },
+  memory: {
+    injectedCount: 0,
+    usedCount: 0,
+    injectedScopes: [],
+    usedScopes: []
+  },
+  behavior: {
+    providerIntent: null,
+    finalDecision: null
+  },
+  result: {
+    replyChars: 0,
+    persistedMessageCount: 0,
+    bubbleSegmentCount: 0,
+    displayMode: ''
+  }
+} satisfies AiTalkTraceSummaryViewState
 
 export const defaultImageGenerationConfig = {
   provider: 'openai-compatible',
@@ -355,6 +396,43 @@ export const cloneAiMemoryProfile = (profile: Partial<AiMemoryProfileViewState> 
     appliedCount: Number.isFinite(Number(job?.appliedCount)) ? Number(job?.appliedCount) : 0,
     filteredCount: Number.isFinite(Number(job?.filteredCount)) ? Number(job?.filteredCount) : 0
   }))
+})
+
+export const cloneAiTalkTraceSummary = (
+  summary: Partial<AiTalkTraceSummaryViewState> | null | undefined
+): AiTalkTraceSummaryViewState => ({
+  ...defaultAiTalkTraceSummary,
+  ...(summary || {}),
+  conversation: {
+    ...defaultAiTalkTraceSummary.conversation,
+    ...(summary?.conversation || {})
+  },
+  provider: {
+    ...defaultAiTalkTraceSummary.provider,
+    ...(summary?.provider || {})
+  },
+  request: {
+    ...defaultAiTalkTraceSummary.request,
+    ...(summary?.request || {})
+  },
+  memory: {
+    ...defaultAiTalkTraceSummary.memory,
+    ...(summary?.memory || {}),
+    injectedScopes: Array.isArray(summary?.memory?.injectedScopes) ? [...summary.memory.injectedScopes] : [],
+    usedScopes: Array.isArray(summary?.memory?.usedScopes) ? [...summary.memory.usedScopes] : []
+  },
+  behavior: {
+    providerIntent: summary?.behavior?.providerIntent
+      ? { ...summary.behavior.providerIntent }
+      : null,
+    finalDecision: summary?.behavior?.finalDecision
+      ? { ...summary.behavior.finalDecision }
+      : null
+  },
+  result: {
+    ...defaultAiTalkTraceSummary.result,
+    ...(summary?.result || {})
+  }
 })
 
 export const cloneImageGenerationConfig = (

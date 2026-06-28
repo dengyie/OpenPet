@@ -5,6 +5,7 @@ import {
   cloneAiConfig,
   cloneAiMemoryProfile,
   cloneAiPersonaProfile,
+  cloneAiTalkTraceSummary,
   cloneChatMessages,
   cloneImageGenerationConfig,
   clonePetChatState,
@@ -34,12 +35,17 @@ import type {
   AiPersonaDraftViewState,
   AiPersonaOverride,
   AiPersonaProfileViewState,
+  AiTalkTraceSummaryViewState,
   ChatMessage,
   ImageGenerationHealthCheckResult,
   ImageGenerationConfigViewState,
   PetChatStateViewState
 } from '../../../shared/openpet-contracts'
 import type { AiPaneProps } from '../panes/AiPane'
+
+const getMainConversationId = (petPackId: string) => (
+  petPackId ? `control-center:${petPackId}:main` : undefined
+)
 
 const parseBehaviorRules = (rulesText: string): AiBehaviorRule[] => {
   const parsed: unknown = JSON.parse(rulesText || '[]')
@@ -255,6 +261,7 @@ export function useAiPane(activeTab = 'ai') {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
   const [traceDiagnosticsFilters, setTraceDiagnosticsFilters] = useState<AiTalkTraceDiagnosticsFilters>({})
+  const [traceSummary, setTraceSummary] = useState<AiTalkTraceSummaryViewState | null>(null)
   const [chatting, setChatting] = useState(false)
   const [behavior, setBehavior] = useState<AiBehaviorConfig>(defaultAiConfig.behavior)
   const [behaviorRulesText, setBehaviorRulesText] = useState('[]')
@@ -286,6 +293,19 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
+
+  const loadAiTalkTraceSummary = async (conversationId?: string) => {
+    try {
+      const summary = cloneAiTalkTraceSummary(await api.getAiTalkTraceSummary(
+        conversationId ? { conversationId } : undefined
+      ))
+      setTraceSummary(summary)
+      return summary
+    } catch (_) {
+      setTraceSummary(null)
+      return null
+    }
+  }
 
   const refreshBubbleChatState = async () => {
     const nextState = await api.getPetChatState()
@@ -330,17 +350,19 @@ export function useAiPane(activeTab = 'ai') {
     setBehavior(behaviorConfig)
     setBehaviorRulesText(JSON.stringify(behaviorConfig.rules || [], null, 2))
     setConfig((current) => ({ ...current, behavior: behaviorConfig }))
+    await loadAiTalkTraceSummary(getMainConversationId(nextPetChatState.petPack.id))
     if (reason === 'active-pet-pack-changed') {
       setStatus(`已切换到 ${nextPersonaProfile.petPackDisplayName || nextPersonaProfile.petPackId} 的 AI 上下文`)
     }
   }
 
   const refreshActivePetPackState = async () => {
-    await Promise.all([
+    const [, , nextPetChatState] = await Promise.all([
       loadPersonaProfile(),
       loadMemoryProfile(),
       loadPetChatState()
     ])
+    await loadAiTalkTraceSummary(getMainConversationId(nextPetChatState.petPack.id))
   }
 
   useEffect(() => {
@@ -364,11 +386,12 @@ export function useAiPane(activeTab = 'ai') {
       const nextImageGenerationConfig = cloneImageGenerationConfig(loadedImageGenerationConfig)
       setImageGenerationConfig(nextImageGenerationConfig)
       setActiveImageGenerationConfig(nextImageGenerationConfig)
-      applyPetChatState(loadedPetChatState)
+      const nextPetChatState = applyPetChatState(loadedPetChatState)
       const nextBehavior = cloneAiBehavior(loadedBehavior || loadedConfig?.behavior)
       setBehavior(nextBehavior)
       setBehaviorRulesText(JSON.stringify(nextBehavior.rules || [], null, 2))
       setLoading(false)
+      void loadAiTalkTraceSummary(getMainConversationId(nextPetChatState.petPack.id))
     }).catch((error) => {
       if (!mounted) return
       setStatus(messageFromError(error, 'AI 配置加载失败'))
@@ -810,6 +833,9 @@ export function useAiPane(activeTab = 'ai') {
       }
       await loadBehavior()
       void loadMemoryProfile().catch(() => {})
+      void loadAiTalkTraceSummary(
+        result.conversationId || getMainConversationId(nextState.petPack.id)
+      ).catch(() => {})
     } catch (error) {
       setChatStatus(messageFromError(error, '发送失败'))
     } finally {
@@ -894,6 +920,7 @@ export function useAiPane(activeTab = 'ai') {
     setChatDraft,
     chatMessages,
     petChatState,
+    traceSummary: traceSummary ? cloneAiTalkTraceSummary(traceSummary) : null,
     chatting,
     behavior,
     behaviorRulesText,
