@@ -6,6 +6,8 @@ const registerCatalogIpc = ({
   getPetWindow,
   petService,
   reloadAndSendAnimations,
+  refreshTriggerRuleRuntime = () => {},
+  getActionsViewState = () => petService.getPreviewAnimations(),
   createCatalogView,
   createCatalogBlocklistResult
 }) => {
@@ -15,7 +17,8 @@ const registerCatalogIpc = ({
     const result = catalogService.installSelection(payload.selectionId)
     if (result.kind === 'pet-pack' && result.petPacks?.activePackId === result.itemId) {
       reloadAndSendAnimations(getPetWindow, petService)
-      return { ...result, animations: petService.getPreviewAnimations(), catalog: createCatalogView(catalogService.listCatalog()) }
+      refreshTriggerRuleRuntime()
+      return { ...result, animations: getActionsViewState(), catalog: createCatalogView(catalogService.listCatalog()) }
     }
     return { ...result, catalog: createCatalogView(catalogService.listCatalog()) }
   })

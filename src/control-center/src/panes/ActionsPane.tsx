@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type {
   ActionEntry,
+  ActionTriggerRuntimeDecisionViewState,
+  ActionTriggerRuntimeDiagnosticsViewState,
   ActionTriggerProposalInboxItem,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalPreviewResult,
@@ -159,6 +161,85 @@ function TriggerRuleSpecSummary({ spec }: { spec?: ActionTriggerRuleSpec | null 
 }
 
 function TriggerRulesPanel({
+const triggerRuntimeOutcomeLabel: Record<ActionTriggerRuntimeDecisionViewState['outcome'], string> = {
+  matched: 'matched',
+  skipped: 'skipped',
+  blocked: 'blocked'
+}
+
+const getTriggerResultTitle = (result: ActionTriggerProposalAcceptanceResult) => {
+  if (result.code === 'rule_saved') return '最近结果：已保存规则'
+  if (result.applied) return '最近结果：已应用'
+  return '最近结果：已确认'
+}
+
+const getTriggerRulePreview = ({
+  type,
+  action,
+  notes
+}: {
+  type: ActionTriggerProposalType
+  action?: ActionEntry
+  notes: string
+}) => {
+  const trimmedNotes = notes.trim()
+  if (type === 'click') {
+    return {
+      title: '立即应用',
+      rows: [
+        `类型：点击`,
+        `目标动作：${action?.label || action?.id || '未选择'}`,
+        '绑定：clickAction',
+        '结果：立即改写点击动作'
+      ],
+      notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+    }
+  }
+  if (type === 'manual') {
+    return {
+      title: '仅确认提案',
+      rows: [
+        '类型：菜单',
+        `目标动作：${action?.label || action?.id || '未选择'}`,
+        '绑定：无需自动绑定',
+        '结果：保留在动作菜单中手动触发'
+      ],
+      notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+    }
+  }
+  if (type === 'unbound') {
+    return {
+      title: '保留未绑定',
+      rows: [
+        '类型：不绑定',
+        `目标动作：${action?.label || action?.id || '未选择'}`,
+        '绑定：无',
+        '结果：仅导入动作，不创建自动触发'
+      ],
+      notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+    }
+  }
+
+  const binding = type === 'state' ? 'idle' : (type === 'event' ? 'plugin:event' : '每 60000ms')
+  const outcome = type === 'random'
+    ? '保存宿主随机规则，不修改点击动作'
+    : (type === 'state'
+        ? '保存宿主状态规则，不修改点击动作'
+        : '保存宿主事件规则，不修改点击动作')
+
+  return {
+    title: '保存前预览',
+    rows: [
+      `类型：${type === 'random' ? '随机' : (type === 'state' ? '状态' : '事件')}`,
+      `目标动作：${action?.label || action?.id || '未选择'}`,
+      `绑定：${binding}`,
+      `结果：${outcome}`
+    ],
+    notes: trimmedNotes ? `备注：${trimmedNotes}` : '备注：无'
+  }
+}
+
+function TriggerRulesPanel({
   rules,
   actions,
   working,
@@ -237,6 +318,67 @@ function TriggerRulesPanel({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+function TriggerRuntimeDiagnosticsCard({
+  diagnostics,
+  actions
+}: {
+  diagnostics: ActionTriggerRuntimeDiagnosticsViewState
+  actions: ActionEntry[]
+}) {
+  const decisions = Array.isArray(diagnostics.decisions) ? diagnostics.decisions : []
+  const counts = decisions.reduce((summary, entry) => {
+    summary[entry.outcome] += 1
+    return summary
+  }, { matched: 0, skipped: 0, blocked: 0 })
+
+  return (
+    <div className="trigger-inbox-card" aria-label="触发规则运行时诊断">
+      <div className="trigger-review-header">
+        <div>
+          <strong>触发规则运行时诊断</strong>
+          <span>当前动作：{diagnostics.currentState?.actionId || '未记录'} · 最近 {decisions.length} 条</span>
+        </div>
+        <span className="trigger-badge pending">Runtime</span>
+      </div>
+
+      <div className="trigger-diagnostics-summary">
+        <span>matched {counts.matched}</span>
+        <span>skipped {counts.skipped}</span>
+        <span>blocked {counts.blocked}</span>
+      </div>
+
+      {decisions.length ? (
+        <div className="trigger-inbox-grid">
+          {decisions.map((entry, index) => {
+            const actionLabel = actions.find((action) => action.id === entry.actionId)?.label || entry.actionId
+            return (
+              <div className={`trigger-inbox-item ${entry.outcome === 'blocked' ? 'rejected' : (entry.outcome === 'matched' ? 'pending' : '')}`} key={`${entry.ruleId}:${index}`}>
+                <div className="trigger-inbox-main">
+                  <div>
+                    <strong>{entry.ruleId}</strong>
+                    <span>{triggerRuleTypeLabel[entry.triggerType]} · {triggerRuntimeOutcomeLabel[entry.outcome]}</span>
+                  </div>
+                  <span className={`trigger-badge ${entry.outcome === 'blocked' ? 'rejected' : (entry.outcome === 'matched' ? 'applied' : 'pending')}`}>
+                    {triggerRuntimeOutcomeLabel[entry.outcome]}
+                  </span>
+                </div>
+                <div className="trigger-inbox-meta">
+                  <span>动作：{actionLabel || '未找到动作'}</span>
+                  <span>绑定：{entry.binding || '-'}</span>
+                  <span>来源：{entry.source || '-'}</span>
+                  <span>原因：{entry.reason || '-'}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="empty-chat">暂无运行时决策记录</div>
+      )}
     </div>
   )
 }
@@ -714,6 +856,11 @@ export function ActionsPane({
           working={working}
           onSetTriggerRuleStatus={onSetTriggerRuleStatus}
           onDeleteTriggerRule={onDeleteTriggerRule}
+        />
+
+        <TriggerRuntimeDiagnosticsCard
+          diagnostics={actionsConfig.triggerRuntimeDiagnostics}
+          actions={actionsConfig.actions}
         />
       </div>
 

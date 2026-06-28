@@ -370,6 +370,84 @@ test.describe('Control Center smoke', () => {
     await expect(inbox).toContainText('0 条待审核')
   })
 
+  test('shows trigger runtime diagnostics in the Actions pane', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        actionsConfig: {
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          triggerRules: [
+            {
+              id: 'rule:event:wave:1',
+              type: 'event',
+              actionId: 'wave',
+              enabled: true,
+              binding: 'plugin:event',
+              intervalMs: 0,
+              notes: 'Demo event rule',
+              sourcePluginId: 'openpet.creator-studio',
+              sourceRunId: '',
+              sourceCommandId: '',
+              createdAt: '2026-06-29T08:00:00.000Z',
+              updatedAt: '2026-06-29T08:00:00.000Z'
+            }
+          ],
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
+            { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+            { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
+          ],
+          triggerProposalInbox: [],
+          triggerRuntimeDiagnostics: {
+            currentState: { actionId: 'idle' },
+            decisions: [
+              {
+                ruleId: 'rule:event:wave:1',
+                triggerType: 'event',
+                outcome: 'matched',
+                reason: 'rule matched',
+                actionId: 'wave',
+                binding: 'plugin:event',
+                source: 'plugin:test'
+              },
+              {
+                ruleId: 'rule:state:sleep:1',
+                triggerType: 'state',
+                outcome: 'skipped',
+                reason: 'binding mismatch',
+                actionId: 'sleep',
+                binding: 'working',
+                source: 'idle'
+              },
+              {
+                ruleId: 'rule:event:missing:1',
+                triggerType: 'event',
+                outcome: 'blocked',
+                reason: 'action is unavailable',
+                actionId: 'missing',
+                binding: 'plugin:event',
+                source: 'plugin:test'
+              }
+            ]
+          }
+        }
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    const diagnostics = page.locator('[aria-label="触发规则运行时诊断"]')
+    await expect(diagnostics).toContainText('当前动作：idle')
+    await expect(diagnostics).toContainText('最近 3 条')
+    await expect(diagnostics).toContainText('matched 1')
+    await expect(diagnostics).toContainText('skipped 1')
+    await expect(diagnostics).toContainText('blocked 1')
+    await expect(diagnostics).toContainText('rule:event:wave:1')
+    await expect(diagnostics).toContainText('plugin:event')
+    await expect(diagnostics).toContainText('action is unavailable')
+  })
+
   test('persists Pet settings in the demo API session', async ({ page }) => {
     await page.goto('/')
 

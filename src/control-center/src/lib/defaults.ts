@@ -192,8 +192,14 @@ export const defaultActionsConfig = {
   defaultAction: '',
   clickAction: '',
   actions: [],
+  triggerRules: [],
   triggerProposalInbox: [],
-  triggerRules: []
+  triggerRuntimeDiagnostics: {
+    currentState: {
+      actionId: ''
+    },
+    decisions: []
+  }
 } satisfies ActionsConfigViewState
 
 export const defaultPetPacks = {
@@ -393,8 +399,24 @@ export const cloneActionsConfig = (config: Partial<ActionsConfigViewState> | nul
   ...defaultActionsConfig,
   ...(config || {}),
   actions: Array.isArray(config?.actions) ? config.actions : [],
+  triggerRules: Array.isArray(config?.triggerRules) ? config.triggerRules : [],
   triggerProposalInbox: Array.isArray(config?.triggerProposalInbox) ? config.triggerProposalInbox : [],
-  triggerRules: Array.isArray(config?.triggerRules) ? config.triggerRules : []
+  triggerRuntimeDiagnostics: {
+    currentState: {
+      actionId: config?.triggerRuntimeDiagnostics?.currentState?.actionId || ''
+    },
+    decisions: Array.isArray(config?.triggerRuntimeDiagnostics?.decisions)
+      ? config.triggerRuntimeDiagnostics.decisions.map((decision) => ({
+          ruleId: decision?.ruleId || '',
+          triggerType: decision?.triggerType || 'event',
+          actionId: decision?.actionId || '',
+          binding: decision?.binding || '',
+          source: decision?.source || '',
+          outcome: decision?.outcome || 'skipped',
+          reason: decision?.reason || ''
+        }))
+      : []
+  }
 })
 
 export const clonePetPacks = (petPacks: Partial<PetPacksViewState> | null | undefined): PetPacksViewState => ({

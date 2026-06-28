@@ -449,18 +449,11 @@ export interface ActionEntry {
   [key: string]: unknown
 }
 
-export interface ActionsConfigViewState {
-  defaultAction: string
-  clickAction: string
-  actions: ActionEntry[]
-  triggerProposalInbox: ActionTriggerProposalInboxItem[]
-  triggerRules: ActionTriggerRule[]
-}
-
 export type ActionTriggerProposalType = 'manual' | 'click' | 'random' | 'state' | 'event' | 'unbound'
 export type ActionTriggerProposalInboxStatus = 'pending' | 'accepted' | 'rejected' | 'applied' | 'pending-host-rule'
 export type ActionTriggerRuleType = 'random' | 'state' | 'event'
 export type ActionTriggerRuleStatus = 'active' | 'disabled'
+export type ActionTriggerRuntimeOutcome = 'matched' | 'skipped' | 'blocked'
 
 export interface ActionTriggerRuleSpecBase {
   schemaVersion: number
@@ -509,6 +502,31 @@ export interface ActionTriggerRuleSpecInput {
   event?: Partial<ActionTriggerEventCondition>
 }
 
+export interface ActionTriggerRuntimeDecisionViewState {
+  ruleId: string
+  triggerType: ActionTriggerRuleType
+  actionId: string
+  binding: string
+  source: string
+  outcome: ActionTriggerRuntimeOutcome
+  reason: string
+}
+
+export interface ActionTriggerRuntimeDiagnosticsViewState {
+  currentState: {
+    actionId: string
+  }
+  decisions: ActionTriggerRuntimeDecisionViewState[]
+}
+
+export interface ActionsConfigViewState {
+  defaultAction: string
+  clickAction: string
+  actions: ActionEntry[]
+  triggerProposalInbox: ActionTriggerProposalInboxItem[]
+  triggerRules: ActionTriggerRule[]
+  triggerRuntimeDiagnostics: ActionTriggerRuntimeDiagnosticsViewState
+}
 export interface ActionTriggerRule {
   id: string
   actionId: string

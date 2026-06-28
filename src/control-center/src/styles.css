@@ -532,6 +532,27 @@ button {
   gap: 12px;
 }
 
+.trigger-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.trigger-diagnostics-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trigger-diagnostics-summary span {
+  padding: 5px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 650;
+}
 .trigger-inbox-item {
   display: grid;
   gap: 10px;

@@ -754,6 +754,13 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     clickAction: 'wave',
     actions: [{ id: 'wave', label: 'Wave' }]
   }
+  const actionView = {
+    ...animations,
+    triggerRuntimeDiagnostics: {
+      currentState: { actionId: '' },
+      decisions: []
+    }
+  }
   const sourceDir = path.join(os.tmpdir(), 'openpet-action-frames-wave')
   const calls = []
   const petWindowMessages = []
@@ -944,7 +951,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     ok: true,
     canceled: false,
     result: { importedAction: { id: 'wave', label: 'Wave hello' } },
-    animations
+    animations: actionView
   })
   assert.equal(brokenImportResult.ok, false)
   assert.equal(brokenImportResult.inspectionResult.inspection.valid, false)
@@ -966,9 +973,9 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       warnings: ['rename files']
     }
   })
-  assert.deepEqual(saveResult, { animations })
+  assert.deepEqual(saveResult, { animations: actionView })
   assert.deepEqual(triggerResult, {
-    animations,
+    animations: actionView,
     triggerProposal: {
       ok: true,
       applied: true,
@@ -997,7 +1004,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     sourceCommandId: 'import-approved-action'
   })
   assert.deepEqual(updatedRuleResult, {
-    animations,
+    animations: actionView,
     rule: {
       id: 'rule:state:wave:test',
       actionId: 'wave',
@@ -1014,7 +1021,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     }
   })
   assert.deepEqual(deletedRuleResult, {
-    animations,
+    animations: actionView,
     rule: {
       id: 'rule:state:wave:test',
       actionId: 'wave',
@@ -1030,7 +1037,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       updatedAt: '2026-06-22T10:01:00.000Z'
     }
   })
-  assert.deepEqual(deleteResult, { animations })
+  assert.deepEqual(deleteResult, { animations: actionView })
   assert.deepEqual(petWindowMessages.map((message) => message[0]), [
     IPC.PET_ANIMATIONS_CHANGED,
     IPC.PET_ANIMATIONS_CHANGED,
@@ -1974,6 +1981,13 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
     conflict: { installed: 1, decision: 'upgrade', requiresReview: '', installedVersion: '0.9.0', incomingVersion: '1.0.0' }
   }
   const animations = { defaultAction: 'idle', clickAction: 'happy', actions: [{ id: 'idle', label: 'Idle' }] }
+  const actionView = {
+    ...animations,
+    triggerRuntimeDiagnostics: {
+      currentState: { actionId: '' },
+      decisions: []
+    }
+  }
   const normalizedPack = {
     id: 'doro',
     displayName: 'Doro',
@@ -2119,13 +2133,13 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
   assert.deepEqual(importResult, {
     pack: normalizedPack,
     petPacks: { activePackId: 'doro', packs: [normalizedActivePack, { ...normalizedLegacyPack, active: false }] },
-    animations
+    animations: actionView
   })
   assert.deepEqual(activeResult, {
     activePackId: 'doro',
     pack: normalizedActivePack,
     petPacks: { activePackId: 'doro', packs: [normalizedActivePack, { ...normalizedLegacyPack, active: false }] },
-    animations
+    animations: actionView
   })
   assert.deepEqual(removeResult, { petPacks: { activePackId: 'legacy-cat', packs: [normalizedLegacyPack] } })
   assert.deepEqual(calls, [
