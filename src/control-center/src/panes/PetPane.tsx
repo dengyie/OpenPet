@@ -1,4 +1,4 @@
-import type { ControlCenterSettings, CursorOption } from '../../../shared/openpet-contracts'
+import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
 import { SYSTEM_CURSOR_ID } from '../../../shared/cursor-library.ts'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { Toggle } from '../components/Toggle'
@@ -13,6 +13,8 @@ export interface PetPaneProps {
   onChange: (partial: Partial<ControlCenterSettings>, previewScale?: boolean) => void
   onSelectCursor: (cursorId: string) => void | Promise<void>
   onImportCursor: () => void | Promise<void>
+  onRenameCursor: (cursorId: string, nextName: string) => void | Promise<void>
+  onDeleteCursor: (cursorId: string) => void | Promise<void>
   onSave: () => void | Promise<void>
   onReset: () => void
 }
@@ -42,6 +44,22 @@ function InfoIcon() {
   )
 }
 
+const formatCursorSize = (cursor: Pick<CustomCursorRecord, 'width' | 'height'>) => {
+  const width = Math.round(Number(cursor.width) || 0)
+  const height = Math.round(Number(cursor.height) || 0)
+  return width > 0 && height > 0 ? `${width}×${height}` : '尺寸未知'
+}
+
+const formatCursorDate = (value: string) => {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return '时间未知'
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(timestamp))
+}
+
 export function PetPane({
   settings,
   originalSettings,
@@ -49,6 +67,8 @@ export function PetPane({
   onChange,
   onSelectCursor,
   onImportCursor,
+  onRenameCursor,
+  onDeleteCursor,
   onSave,
   onReset,
   cursorOptions,
@@ -56,6 +76,7 @@ export function PetPane({
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
   const visibleCursorOptions = cursorOptions.filter((option) => option.id !== SYSTEM_CURSOR_ID)
+  const customCursors = settings.customCursors
   const updateHomeEnabled = (enabled: boolean) => onChange({
     grounded: enabled ? true : settings.grounded,
     home: { ...settings.home, enabled }
@@ -64,6 +85,15 @@ export function PetPane({
     grounded: true,
     home: { ...settings.home, enabled: true, radius }
   })
+  const promptRenameCursor = (cursor: CustomCursorRecord) => {
+    const nextName = window.prompt('修改自定义指针名称', cursor.name)
+    if (nextName == null) return
+    onRenameCursor(cursor.id, nextName)
+  }
+  const confirmDeleteCursor = (cursor: CustomCursorRecord) => {
+    if (!window.confirm(`删除自定义指针「${cursor.name}」？`)) return
+    onDeleteCursor(cursor.id)
+  }
 
   return (
     <section className="pane pet-pane">
@@ -191,12 +221,63 @@ export function PetPane({
               </div>
             </div>
 
-            <div className="cursor-guidance-note">
-              <span className="cursor-guidance-icon" aria-hidden="true">
-                <InfoIcon />
-              </span>
-              建议使用 32×32 / 64×64 PNG 格式，透明背景，文件大小不超过 500KB。
+            <div className="cursor-management-panel">
+              <div className="cursor-management-header">
+                <div>
+                  <h3>我的自定义指针</h3>
+                  <p>可管理、编辑或删除上传过的鼠标指针。</p>
+                </div>
+                <div className="cursor-management-actions">
+                  <button type="button" className="ghost accent" onClick={onImportCursor} disabled={saving}>
+                    上传指针
+                  </button>
+                  <button type="button" className="ghost" disabled={saving || customCursors.length === 0}>
+                    管理
+                  </button>
+                </div>
+              </div>
+
+              {customCursors.length > 0 ? (
+                <div className="cursor-library-list" role="list" aria-label="我的自定义指针">
+                  {customCursors.map((cursor) => {
+                    const active = settings.selectedCursorId === cursor.id
+                    return (
+                      <div key={cursor.id} className="cursor-library-row" role="listitem">
+                        <span className="cursor-library-preview">
+                          <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
+                        </span>
+                        <span className="cursor-library-main">
+                          <span className="cursor-library-title">
+                            <strong>{cursor.name}</strong>
+                            {active ? <span className="cursor-usage-badge">使用中</span> : null}
+                          </span>
+                          <span className="cursor-library-meta">
+                            {formatCursorSize(cursor)} · {formatCursorDate(cursor.createdAt)}
+                          </span>
+                        </span>
+                        <span className="cursor-library-actions">
+                          <button type="button" className="ghost" onClick={() => promptRenameCursor(cursor)} disabled={saving}>
+                            编辑
+                          </button>
+                          <button type="button" className="ghost danger" onClick={() => confirmDeleteCursor(cursor)} disabled={saving}>
+                            删除
+                          </button>
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="cursor-library-empty">还没有上传自定义指针。</div>
+              )}
             </div>
+          </div>
+
+          <div className="cursor-guidance-note">
+            <span className="cursor-guidance-icon" aria-hidden="true">
+              <InfoIcon />
+            </span>
+            建议使用 32×32 / 64×64 PNG 格式，透明背景，文件大小不超过 500KB。
           </div>
         </div>
 

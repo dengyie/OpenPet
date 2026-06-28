@@ -141,6 +141,44 @@ export function usePetSettingsPane() {
     }
   }
 
+  const onRenameCursor = async (cursorId: string, nextName: string) => {
+    const normalizedName = nextName.trim()
+    if (!normalizedName) {
+      setStatus('指针名称不能为空')
+      return
+    }
+    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor) {
+      setStatus('未找到要编辑的自定义指针')
+      return
+    }
+    const nextCustomCursors = normalizeCustomCursorRecords(settings.customCursors.map((cursor) => (
+      cursor.id === cursorId ? { ...cursor, name: normalizedName } : cursor
+    )))
+    const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
+    setSettings(nextSettings)
+    await persistSettings(nextSettings, `已更新指针名称：${normalizedName}`, '自定义指针名称保存失败')
+  }
+
+  const onDeleteCursor = async (cursorId: string) => {
+    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor) {
+      setStatus('未找到要删除的自定义指针')
+      return
+    }
+    const nextCustomCursors = normalizeCustomCursorRecords(settings.customCursors.filter((cursor) => cursor.id !== cursorId))
+    const nextSettings = applyCursorState(settings, {
+      selectedCursorId: settings.selectedCursorId === cursorId ? SYSTEM_CURSOR_ID : settings.selectedCursorId,
+      customCursors: nextCustomCursors
+    })
+    setSettings(nextSettings)
+    await persistSettings(
+      nextSettings,
+      settings.selectedCursorId === cursorId ? '已删除当前指针，并切回系统默认' : `已删除指针：${targetCursor.name}`,
+      '自定义指针删除失败'
+    )
+  }
+
   const paneProps = {
     settings,
     originalSettings,
@@ -150,6 +188,8 @@ export function usePetSettingsPane() {
     onChange,
     onSelectCursor,
     onImportCursor,
+    onRenameCursor,
+    onDeleteCursor,
     onSave,
     onReset
   } satisfies PetPaneProps
