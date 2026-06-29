@@ -77,6 +77,8 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
     clampToWorkArea: (_window, x, y) => ({ x, y }),
     getMovementState: () => null,
     maybeRunPackagedRuntimeSmoke: (payload) => smokeCalls.push(payload),
+    maybeRunPackagedCreatorStudioEvidence: () => {},
+    maybeRunPackagedCreatorStudioUiE2e: () => {},
     maybeRunPackagedPluginCleanupEvidence: (payload) => cleanupCalls.push(payload),
     factories: {
       createAboutService: () => ({ id: 'about' }),
@@ -93,8 +95,21 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
         getPetPackBlockStatus: () => ({ blocked: false, reasons: [] })
       }),
       createCursorAssetService: () => ({ repairCursor: async () => ({}) }),
+      createCreatorStudioDefaultFlowService: () => ({
+        id: 'creator-studio-default-flow',
+        start: () => {},
+        stop: () => {},
+        refresh: () => {}
+      }),
       createEventBus: () => ({ on: () => {}, emit: () => {} }),
       createImageGenerationModelService: () => ({ id: 'image-service' }),
+      createTriggerRuleRuntimeService: () => ({
+        id: 'trigger-rule-runtime',
+        start: () => {},
+        stop: () => {},
+        refresh: () => {},
+        getDiagnostics: () => ({ currentState: { actionId: '' }, decisions: [] })
+      }),
       createLocalHttpService: () => ({ start: async () => ({}) }),
       createPetBubbleChatWindowManager: () => ({ id: 'bubble-window' }),
       createPetChatWindowManager: () => ({ id: 'chat-window' }),
@@ -207,6 +222,8 @@ test('bootstrap runtime waits for plugin shutdown before allowing app quit', asy
     clampToWorkArea: (_window, x, y) => ({ x, y }),
     getMovementState: () => null,
     maybeRunPackagedRuntimeSmoke: () => {},
+    maybeRunPackagedCreatorStudioEvidence: () => {},
+    maybeRunPackagedCreatorStudioUiE2e: () => {},
     maybeRunPackagedPluginCleanupEvidence: () => {},
     factories: {
       createAboutService: () => ({ id: 'about' }),
@@ -223,8 +240,21 @@ test('bootstrap runtime waits for plugin shutdown before allowing app quit', asy
         getPetPackBlockStatus: () => ({ blocked: false, reasons: [] })
       }),
       createCursorAssetService: () => ({ repairCursor: async () => ({}) }),
+      createCreatorStudioDefaultFlowService: () => ({
+        id: 'creator-studio-default-flow',
+        start: () => {},
+        stop: () => {},
+        refresh: () => {}
+      }),
       createEventBus: () => ({ on: () => {}, emit: () => {} }),
       createImageGenerationModelService: () => ({ id: 'image-service' }),
+      createTriggerRuleRuntimeService: () => ({
+        id: 'trigger-rule-runtime',
+        start: () => {},
+        stop: () => {},
+        refresh: () => {},
+        getDiagnostics: () => ({ currentState: { actionId: '' }, decisions: [] })
+      }),
       createLocalHttpService: () => ({ start: async () => ({}) }),
       createPetBubbleChatWindowManager: () => ({ id: 'bubble-window' }),
       createPetChatWindowManager: () => ({ id: 'chat-window' }),
