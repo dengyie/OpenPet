@@ -14,6 +14,8 @@ let hovering = false
 let localUnseenCount = 0
 let lastItemSignature = ''
 let lastItemCount = 0
+let scrollingHistory = false
+let scrollInteractionTimer = null
 
 const hasTextSelection = () => Boolean(String(window.getSelection?.() || '').trim())
 
@@ -63,6 +65,7 @@ const getSourceLabel = (item = {}) => {
 const shouldHoldScroll = () => Boolean(
   currentState.pinned ||
   currentState.interacting ||
+  scrollingHistory ||
   hovering ||
   document.activeElement === miniInput ||
   miniInput.value.trim() ||
@@ -79,7 +82,8 @@ const canScrollHistory = () => {
 const shouldAcceptHitTest = () => {
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
-  return hovering ||
+  return scrollingHistory ||
+    hovering ||
     focused ||
     hasDraft ||
     hasTextSelection() ||
@@ -107,14 +111,17 @@ const handleBubbleWheel = (event) => {
   event.preventDefault?.()
   event.stopPropagation?.()
   expanded = true
-  const wasInteracting = Boolean(currentState.interacting)
+  scrollingHistory = true
+  if (scrollInteractionTimer) window.clearTimeout(scrollInteractionTimer)
+  scrollInteractionTimer = window.setTimeout(() => {
+    scrollingHistory = false
+    syncUiInteractionState()
+  }, 180)
   const hadHitTest = Boolean(currentState.hitTestInteractive)
   currentState = {
     ...currentState,
-    interacting: true,
     hitTestInteractive: true
   }
-  if (!wasInteracting) setInteracting(true)
   if (!hadHitTest) setHitTestMode(true, 'renderer-bubble-wheel')
   scrollBubbleStreamBy(event.deltaY)
 }

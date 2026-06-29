@@ -112,8 +112,12 @@ const createHarness = async () => {
   }
   const context = {
     console,
+    setTimeout,
+    clearTimeout,
     window: {
       addEventListener() {},
+      setTimeout,
+      clearTimeout,
       getSelection: () => selection.text,
       petBubbleChatAPI: {
         getState: async () => latestState,
@@ -367,4 +371,27 @@ test('bubble chat renderer scrolls bubble list on wheel without scrolling the in
   assert.equal(inputPrevented, true)
   assert.equal(elements['bubble-stream'].scrollTop, 60)
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
+})
+
+test('bubble chat renderer keeps history scrollable while awaiting reply without forcing interactive state churn', async () => {
+  const harness = await createHarness()
+  const { apiCalls, apiStateListeners, elements } = harness
+
+  apiStateListeners[0]({
+    sending: true,
+    awaitingReply: true,
+    interacting: false,
+    hitTestInteractive: true,
+    lastUserMessage: { text: '新问题', createdAt: '2026-06-24T00:00:05.000Z' }
+  })
+
+  const before = elements['bubble-stream'].scrollTop
+  await dispatch(elements['bubble-stream'], 'wheel', {
+    deltaY: 36,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.equal(elements['bubble-stream'].scrollTop, before + 36)
+  assert.equal(apiCalls.setInteracting.includes(true), false)
 })

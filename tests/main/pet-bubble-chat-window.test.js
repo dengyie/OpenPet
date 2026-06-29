@@ -674,12 +674,13 @@ test('pet bubble chat manager stays visible during sending and after a recoverab
 
     assert.equal(afterSending.visible, true)
     assert.equal(afterSending.sending, true)
-    assert.equal(afterSending.interacting, true)
+    assert.equal(afterSending.interacting, false)
     assert.equal(afterError.visible, true)
     assert.equal(afterError.sending, false)
-    assert.equal(afterError.interacting, true)
+    assert.equal(afterError.interacting, false)
     assert.equal(afterError.error, 'Temporary provider failure')
-    assert.equal(timers.every((timer) => timer.cleared), true)
+    assert.equal(timers.some((timer) => timer.cleared), true)
+    assert.equal(timers.some((timer) => timer.cleared === false), true)
   } finally {
     global.setTimeout = originalSetTimeout
     global.clearTimeout = originalClearTimeout
@@ -744,4 +745,53 @@ test('pet bubble chat manager supports queued follow-ups and pending-merge recov
     '第二句',
     '一起回复'
   ])
+})
+
+test('pet bubble chat manager preserves recent visible dialogue history across request completion rebuilds', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.rebuildItems({
+    reason: 'seed-history',
+    conversationMessages: [
+      { id: 'u1', role: 'user', content: '旧问题 1', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', role: 'assistant', content: '旧回答 1', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'u2', role: 'user', content: '旧问题 2', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', role: 'assistant', content: '旧回答 2', createdAt: '2026-06-24T00:00:03.000Z' }
+    ]
+  })
+
+  manager.queueOutgoingMessage({ text: '新问题', requestId: 'req-1' })
+  manager.showMessage({ text: '思考提示', source: 'pet-renderer', ttlMs: 6000 })
+  const completed = manager.completeRequest({
+    requestId: 'req-1',
+    conversationMessages: [
+      { id: 'u1', role: 'user', content: '旧问题 1', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', role: 'assistant', content: '旧回答 1', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'u2', role: 'user', content: '旧问题 2', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', role: 'assistant', content: '旧回答 2', createdAt: '2026-06-24T00:00:03.000Z' },
+      { id: 'u3', role: 'user', content: '新问题', createdAt: '2026-06-24T00:00:04.000Z' },
+      { id: 'a3', role: 'assistant', content: '新回答', createdAt: '2026-06-24T00:00:05.000Z' }
+    ]
+  })
+
+  assert.deepEqual(
+    completed.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
+    ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答']
+  )
 })

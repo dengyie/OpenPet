@@ -796,7 +796,7 @@ const createPetBubbleChatWindowManager = ({
       awaitingReply: Boolean(sending) || state.pendingUserMessages.some((item) => item.status === 'queued' || item.status === 'sending'),
       lastUserMessage: normalizedUserMessage?.text ? normalizedUserMessage : null,
       error: String(error || '').slice(0, 240),
-      interacting: Boolean(sending) || Boolean(error) || state.interacting
+      interacting: state.interacting
     })
     syncToPetWindow()
     scheduleAutoHide()
