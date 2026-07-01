@@ -1404,6 +1404,8 @@ export interface PluginViewState {
   source: string
   enabled: boolean
   runnable: boolean
+  requiresNativeExecution?: boolean
+  nativeExecutionApproved?: boolean
   permissions: string[]
   commands: PluginCommandViewState[]
   entries: PluginEntriesViewState
@@ -2828,6 +2830,7 @@ export interface ControlCenterApi {
   clearAiBehaviorDecisions: () => Promise<AiBehaviorDecision[]>
   getPlugins: () => Promise<PluginViewState[]>
   setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
+  setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<Partial<PluginViewState>>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>

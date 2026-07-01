@@ -54,6 +54,7 @@ export interface PluginsPaneProps {
   installingPlugin: boolean
   uninstallingPlugin: string
   onToggle: (pluginId: string, enabled: boolean) => void | Promise<void>
+  onSetNativeExecutionApproved: (pluginId: string, approved: boolean) => void | Promise<void>
   onInspectPluginPackage: () => void | Promise<void>
   onInspectGithubPluginRepository: () => void | Promise<void>
   onClearPluginReview: () => void | Promise<void>
@@ -161,7 +162,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onSetNativeExecutionApproved, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -227,6 +228,20 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, cr
               <div className="permission-line">
                 {(plugin.permissions || []).length === 0 ? '无权限' : plugin.permissions.join(' · ')}
               </div>
+              {plugin.requiresNativeExecution ? (
+                <div className="plugin-native-execution" role="group" aria-label={`Native execution approval for ${plugin.name}`}>
+                  <label className="plugin-health-policy-toggle">
+                    <span>允许原生进程执行{plugin.nativeExecutionApproved ? '' : '（未批准时 Setup / Service / Command 不可运行）'}</span>
+                    <Toggle
+                      ariaLabel={`Allow native process execution for ${plugin.name}`}
+                      checked={Boolean(plugin.nativeExecutionApproved)}
+                      disabled={Boolean(plugin.blockStatus?.blocked)}
+                      onChange={(nextApproved) => onSetNativeExecutionApproved(plugin.id, nextApproved)}
+                    />
+                  </label>
+                  <small className="field-note">声明式插件通过 entries 在你的权限下启动系统进程，无沙箱隔离。仅在你信任该插件来源时开启。</small>
+                </div>
+              ) : null}
               <div className="plugin-storage-line">
                 <span>{plugin.storage?.valid === false ? '存储数据无效' : `存储 ${plugin.storage?.keyCount || 0} 项 / ${formatBytes(plugin.storage?.byteSize || 2)}`}</span>
                 <button
@@ -262,7 +277,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, cr
                           type="button"
                           className="ghost"
                           key={command.id}
-                          disabled={!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked || runningCommand === commandKey}
+                          disabled={!plugin.enabled || !plugin.runnable || (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) || plugin.blockStatus?.blocked || runningCommand === commandKey}
                           onClick={() => onRun(plugin.id, command.id)}
                         >
                           {runningCommand === commandKey ? '运行中' : command.title}
@@ -306,7 +321,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, cr
                         <button
                           type="button"
                           className="ghost"
-                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || running}
+                          disabled={!plugin.enabled || (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) || plugin.blockStatus?.blocked || running}
                           onClick={() => onRunSetup(plugin.id, setup.id)}
                         >
                           {running ? '运行中' : `Run ${title} Setup`}
@@ -335,7 +350,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, cr
                         <button
                           type="button"
                           className="ghost"
-                          disabled={!plugin.enabled || plugin.blockStatus?.blocked || changingService === serviceKey}
+                          disabled={!plugin.enabled || (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) || plugin.blockStatus?.blocked || changingService === serviceKey}
                           onClick={() => running ? onStopService(plugin.id, service.id) : onStartService(plugin.id, service.id)}
                         >
                           {changingService === serviceKey

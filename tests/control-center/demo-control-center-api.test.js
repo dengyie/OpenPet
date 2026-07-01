@@ -107,3 +107,24 @@ test('demo API chat mock appends user and assistant messages', async () => {
   assert.deepEqual(response.messages.slice(-2).map((message) => message.role), ['user', 'assistant'])
   assert.deepEqual(response.messages.slice(-2).map((message) => message.content), ['hello demo cat', response.reply])
 })
+
+test('demo API exposes native execution approval path for entries plugins', async () => {
+  const review = await demoControlCenterAPI.inspectPluginPackage()
+  await demoControlCenterAPI.installPlugin(review.selectionId)
+  const installed = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === review.plugin.id)
+
+  // The gate is deny-by-default: an entries plugin surfaces the requirement and
+  // starts unapproved so the UI can render an approval control (the P1-1 gap fix).
+  assert.equal(installed.requiresNativeExecution, true)
+  assert.equal(installed.nativeExecutionApproved, false)
+
+  const approved = await demoControlCenterAPI.setPluginNativeExecutionApproved(review.plugin.id, true)
+  assert.equal(approved.nativeExecutionApproved, true)
+  const afterApprove = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === review.plugin.id)
+  assert.equal(afterApprove.nativeExecutionApproved, true)
+
+  const revoked = await demoControlCenterAPI.setPluginNativeExecutionApproved(review.plugin.id, false)
+  assert.equal(revoked.nativeExecutionApproved, false)
+  const afterRevoke = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === review.plugin.id)
+  assert.equal(afterRevoke.nativeExecutionApproved, false)
+})

@@ -195,6 +195,22 @@ export function usePluginsPane() {
     }
   }
 
+  const onSetNativeExecutionApproved = async (pluginId: string, approved: boolean) => {
+    setStatus('')
+    try {
+      const updatedPlugin = await api.setPluginNativeExecutionApproved(pluginId, approved)
+      setPlugins(plugins.map((plugin) => (
+        plugin.id === pluginId ? { ...plugin, ...updatedPlugin } : plugin
+      )))
+      await refreshLogs()
+      setStatus(approved ? '已允许原生进程执行' : '已撤销原生进程执行')
+    } catch (error) {
+      setStatus(messageFromError(error, '原生执行授权更新失败'))
+      await refreshPlugins()
+      await refreshLogs()
+    }
+  }
+
   const onSaveConfig = async (pluginId: string) => {
     const plugin = plugins.find((candidate) => candidate.id === pluginId)
     if (!plugin) return
@@ -495,6 +511,7 @@ export function usePluginsPane() {
     installingPlugin,
     uninstallingPlugin,
     onToggle,
+    onSetNativeExecutionApproved,
     onInspectPluginPackage,
     onInspectGithubPluginRepository,
     onClearPluginReview,

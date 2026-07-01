@@ -577,6 +577,8 @@ const createDemoManualPlugin = (): PluginViewState => ({
   source: 'local',
   enabled: false,
   runnable: true,
+  requiresNativeExecution: Boolean(demoManualPluginReview.plugin.entries?.setup?.length || demoManualPluginReview.plugin.entries?.commands?.length || demoManualPluginReview.plugin.entries?.services?.length),
+  nativeExecutionApproved: false,
   permissions: demoManualPluginReview.plugin.permissions,
   commands: demoManualPluginReview.plugin.commands,
   entries: {
@@ -1384,7 +1386,9 @@ const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin)
   },
   config: { ...(plugin.config || {}) },
   storage: { ...(plugin.storage || {}) },
-  signatureStatus: { ...(plugin.signatureStatus || {}) }
+  signatureStatus: { ...(plugin.signatureStatus || {}) },
+  requiresNativeExecution: Boolean(plugin.requiresNativeExecution),
+  nativeExecutionApproved: Boolean(plugin.nativeExecutionApproved)
 }))
 
 const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: '' }) => {
@@ -2331,6 +2335,33 @@ export const demoControlCenterAPI: ControlCenterApi = {
     ]
     writeDemoState()
     return { id: pluginId, enabled }
+  },
+  setPluginNativeExecutionApproved: async (pluginId, approved) => {
+    demoState.plugins = demoState.plugins.map((plugin) => (
+      plugin.id === pluginId
+        ? {
+            ...plugin,
+            nativeExecutionApproved: approved,
+            entries: approved
+              ? plugin.entries
+              : {
+                  ...plugin.entries,
+                  services: (plugin.entries.services || []).map((service) => ({
+                    ...service,
+                    runtime: service.runtime?.status === 'running'
+                      ? { ...service.runtime, status: 'stopped', stoppedAt: new Date().toISOString() }
+                      : service.runtime
+                  }))
+                }
+          }
+        : plugin
+    ))
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, approved ? 'Plugin native execution approved' : 'Plugin native execution revoked'),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return { id: pluginId, nativeExecutionApproved: approved }
   },
   savePluginConfig: async (pluginId, config) => ({ id: pluginId, config }),
   runCreatorStudioDefaultFlow: async (prompt) => createDemoCreatorStudioDefaultFlowResult(prompt),
