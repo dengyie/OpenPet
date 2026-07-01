@@ -1,326 +1,69 @@
-# OpenPet 项目完整总结
+# OpenPet 项目总结
 
-**评估日期**: 2026-06-13
-**分支**: `main`
-**版本**: v1.0.1-rc.1
-**状态**: ✅ RC 可发布，v1.0 产品化基线已完成
+> ⚠️ 本文件的历史数字（171 测试 / 19 services / 95 分 / v1.0.1-rc.1）定格于 2026-06-13，
+> **已严重过期**，仅保留作为早期产品化阶段的历史记录。
+>
+> **当前状态请以单一可信源为准：[`docs/project-status-review.md`](docs/project-status-review.md)**
+> （更新到 v1.0.1-rc.3）与 [`CHANGELOG.md`](CHANGELOG.md)。
 
----
+## 当前真实基线（2026-07-01 核验）
 
-## 📊 项目概览
+| 指标 | 旧文档值（过期） | 实际值 |
+|------|------------------|--------|
+| 项目版本 | v1.0.1-rc.1 | **v1.0.1-rc.3** |
+| 测试数 | 171 | **1320**（`npm test` 全绿） |
+| service 文件 | 19 | **44**（`src/main/services/`） |
+| 综合评分 | 95/100 | 已废弃，不再用单一分数衡量 |
 
-OpenPet 是一个从单体桌宠演化为**可扩展 pet runtime 平台**的 Electron 应用，已完成全部 7 个阶段的产品化工作。
-
-### 核心指标
-
-| 指标 | 数值 | 状态 |
-|------|------|------|
-| **代码质量** | 95/100 | ✅ 优秀 |
-| **测试覆盖** | 171/171 通过 | ✅ 100% |
-| **测试文件** | 22 个 | ✅ 完整 |
-| **文档完整性** | 15+ 篇 | ✅ 完整 |
-| **提交历史** | 8 个 phase commits | ✅ 清晰 |
-| **功能实现度** | 7/7 承诺 | ✅ 100% |
-
----
-
-## ✨ 实现的核心功能
-
-### 1️⃣ Phase 1: Control Center 模块化
-- ✅ 从 1364 行单体组件重构为模块化架构
-- ✅ App.jsx 缩减至 62 行
-- ✅ 6 个 Tab 页面独立（Pet/Actions/AI/Plugins/Catalog/Service）
-- ✅ 7 个自定义 hooks 复用逻辑
-- ✅ 共享 UI 组件库
-
-**提交**: `5f8b938 refactor: modularize control center`
-
-### 2️⃣ Phase 2: Pet Pack 管理
-- ✅ Manifest schema (`pet.json`)
-- ✅ Pet pack loader/importer 完整实现
-- ✅ Legacy 兼容（cat_anime/ 作为 legacy-cat）
-- ✅ UI：检查、导入、启用、删除
-- ✅ 16 个测试案例全通过
-
-**提交**: `04b8055 feat: add pet pack management`
-
-### 3️⃣ Phase 3: 插件生态产品化
-- ✅ 权限白名单（pet:say/ai:chat/network/storage）
-- ✅ 隔离 runner（Node permission model + VM）
-- ✅ 受限 SDK（不暴露 require/process）
-- ✅ 插件安装/审查/更新流程
-- ✅ 私有存储（64KB/插件 + 16KB/value 配额）
-- ✅ 30+ 测试案例
-
-**提交**: `ef3ad40 feat: productize plugin installation`
-
-### 4️⃣ Phase 4: AI 行为编排
-- ✅ 从关键词触发升级为结构化 tool-call
-- ✅ Dry-run 模式（仅返回意图，不执行）
-- ✅ Cooldown 机制（防止动作过载）
-- ✅ actionId 白名单
-- ✅ 66 个 AI service 测试案例
-
-**提交**: `6beb3d2 feat: add ai behavior orchestration`
-
-### 5️⃣ Phase 5: MCP Transport 产品化
-- ✅ Loopback HTTP API（127.0.0.1 only）
-- ✅ Token-gated 鉴权
-- ✅ MCP JSON-RPC bridge
-- ✅ Session 管理（TTL + revoke）
-- ✅ 访问日志（不记录 token）
-- ✅ 默认关闭，UI 可启停
-
-**提交**: `1db6f17 feat: productize mcp transport`
-
-### 6️⃣ Phase 6: macOS 分发与 Release Pipeline
-- ✅ electron-builder macOS 配置
-- ✅ GitHub Actions CI/CD
-- ✅ 代码签名 + 公证（macOS）
-- ✅ About 更新检查（GitHub Releases 摘要，不静默安装）
-- ✅ Release checklist 文档
-- ✅ DMG/ZIP 打包成功
-- 📝 Windows 桌面分发设计已补齐，后续需实现 build target、CI、签名策略与冒烟验证
-
-**提交**: `cb4895a feat: add distribution release pipeline`
-
-### 7️⃣ Phase 7: 生态 Catalog 运营闭环
-- ✅ Catalog service（插件/pet pack 目录）
-- ✅ 插件浏览、下载、hash 校验
-- ✅ Blocklist 治理（本地黑名单）
-- ✅ Catalog UI（浏览、安装、更新）
-- ✅ 权限审查流程
-- ✅ 20+ 测试案例
-
-**提交**: `edd1307 feat: add ecosystem catalog operations`
-
-### 📚 Phase 8: 文档与发布准备
-- ✅ 英文 README.md（397 行）
-- ✅ 中文 README.zh-CN.md（395 行）
-- ✅ 项目全面评估报告（446 行）
-- ✅ 更新 HANDOFF.md、jishuwendang.md、productization-roadmap.md
-- ✅ 多语言支持（英/中）
-
-**提交**: `92d7494 docs: add bilingual README and project status review`
-
-### 🔖 v1.0.1-rc.1: OpenPet 改名与升级兼容
-- ✅ 应用、包名、窗口标题、文档与 GitHub 仓库迁移至 OpenPet / openpet
-- ✅ GitHub 仓库改名为 `dengyie/OpenPet`
-- ✅ 保留旧版 `appData/ibot` userData 路径，升级用户继续读取 settings、secrets、插件、Pet packs 和本地服务日志
-- ✅ 新增 `openpet.*` MCP tools、`openpet_behavior`、`X-OpenPet-Token`、`.openpet-plugin.zip`
-- ✅ 保留 `ibot.*`、`ibot_behavior`、`X-ibot-token`、`ibotApiVersion`、`.ibot-plugin.zip` legacy alias
-- ✅ `npm test` 与 `npm run check:syntax` 通过
-
-**提交范围**: `7100194` → `d48b3d0`
-
----
-
-## 🏗️ 架构亮点
-
-### Service 层设计（19 个 services）
-
-```
-EventBus (核心事件总线)
-  ↓
-SettingsService (配置管理)
-  ↓
-ActionService → PetService (宠物状态唯一来源)
-  ↓              ↓             ↓
-AiService  PluginService  LocalHttpService
-  ↓              ↓             ↓
-BehaviorOrchestrator  CatalogService  McpTransport
-```
-
-### 关键设计决策
-
-1. **PetService 单一数据源** - 所有 say/action/event 操作统一入口
-2. **Service 依赖注入** - main.js 组装，避免循环依赖
-3. **权限白名单** - 插件无法访问 Node 核心 API
-4. **Loopback only** - HTTP API 仅本地访问
-5. **Token-gated** - 所有写操作需要 token
-6. **Catalog + Blocklist** - 生态治理双保险
-
----
-
-## 🧪 测试覆盖
-
-### 测试统计
-- **总测试数**: 171 个
-- **测试文件**: 22 个
-- **通过率**: 100%
-- **执行时间**: ~1.1 秒
-
-### 测试分布
-
-| 模块 | 测试数 | 状态 |
-|------|--------|------|
-| Pet pack | 16 | ✅ |
-| 插件系统 | 30+ | ✅ |
-| AI service | 66 | ✅ |
-| HTTP API | 15+ | ✅ |
-| Catalog | 20+ | ✅ |
-| 其他 services | 18+ | ✅ |
-
-### 边界测试
-- ✅ 路径穿越攻击
-- ✅ 超大 body（1MB+）
-- ✅ 非法 schema
-- ✅ 恶意插件隔离
-
----
-
-## 📄 文档体系
-
-### 用户文档
-- ✅ README.md（英文，397 行）
-- ✅ README.zh-CN.md（中文，395 行）
-- ✅ 快速开始指南
-- ✅ 插件开发教程
-
-### 开发文档
-- ✅ HANDOFF.md（项目交接）
-- ✅ jishuwendang.md（技术文档）
-- ✅ productization-roadmap.md（路线图）
-- ✅ project-status-review.md（评估报告）
-
-### 架构文档
-- ✅ pet-platform-development-plan.md
-- ✅ plugin-sandbox-evaluation.md
-- ✅ mcp-usage.md
-- ✅ 7 个 Phase 开发文档
-
-### 运维文档
-- ✅ release-checklist.md
-- ✅ GitHub Actions 工作流
-- ✅ electron-builder 配置
-
----
-
-## 🎯 产品完成度评估
-
-### 最初期望 vs 当前实现
-
-| 承诺 | 状态 | 完成度 |
-|------|------|--------|
-| 可扩展 Pet Runtime 平台 | ✅ | 100% |
-| UI 配置化 | ✅ | 100% |
-| AI 聊天集成 | ✅ | 100% |
-| 插件生态系统 | ✅ | 105%* |
-| Pet Pack 管理 | ✅ | 100% |
-| HTTP API + MCP | ✅ | 100% |
-| macOS 分发就绪 | ✅ | 100% |
-| Windows 桌面分发设计 | 📝 | 设计完成，待实现 |
-
-*超额完成：新增 Catalog + Blocklist 生态运营闭环
-
-### 最终评分: **95/100**
-
-**扣分项**:
-- -3 分：前端自动化测试缺失（规划至 v1.1）
-- -2 分：真实插件生态冷启动（规划至 v1.1）
-
----
-
-## 🚀 发布准备状态
-
-### ✅ 已完成
-- [x] 所有 Phase 1-7 功能实现
-- [x] 171 个测试全部通过
-- [x] 双语 README（英/中）
-- [x] 完整文档体系
-- [x] GitHub Actions CI/CD
-- [x] electron-builder 打包
-- [x] 代码签名配置
-- [x] 更新检查机制
-- [x] macOS + Windows 桌面分发设计文档
-
-### 📋 发布前建议（可选）
-- [ ] 按 `docs/desktop-release-design.md` 补齐 Windows 桌面分发实现
-- [ ] 添加真实截图/GIF 到 README
-- [ ] 创建 2-3 个示例插件（天气、番茄钟、RSS）
-- [ ] 录制演示视频
-- [ ] 准备 GitHub Release Notes
-
-### 🎉 可立即执行的发布步骤
-
+核验命令：
 ```bash
-# 1. 确认 main 与远端同步
-git status -sb --ahead-behind
-git push origin main
-
-# 2. RC tag 已存在时可直接触发 release workflow
-git tag -l v1.0.1-rc.1
-
-# 3. 正式版从 RC 提升时创建最终 tag
-git tag -a v1.0.1 -m "Release v1.0.1 - OpenPet rename and upgrade compatibility"
-git push origin v1.0.1
-
-# 4. GitHub Actions 自动构建和发布
-# 无需手动操作，CI/CD 会自动打包并创建 Release
+npm test                              # → 1320 pass / 0 fail
+find src/main/services -name '*.js' | wc -l   # → 44
+node -p "require('./package.json').version"   # → 1.0.1-rc.3
 ```
 
----
+## 2026-07-01 安全与正确性修复
 
-## 🗺️ 后续路线图
+针对一次深度 review 暴露的 P0/P1 缺陷，本轮完成 4 个阶段修复（详见 `docs/reviews/` 与 git 历史）：
 
-### v1.1（规划中，1-2 个月）
-- ⚡ 前端自动化测试（Playwright）
-- ⚡ 更多示例插件（天气、番茄钟、RSS、GitHub 通知）
-- ⚡ 插件开发教程视频
-- ⚡ 用户反馈收集与迭代
+### 插件执行信任边界（P0）
+- **VM 沙箱逃逸修复**：`local-plugin-runner` 不再把 host Promise 透传进沙箱，
+  `__openpetDispatch` 作为 `compileFunction` 参数而非全局，插件只能拿到 sandbox-realm
+  Promise + `codeGeneration.strings:false` 双封堵。回归测试覆盖 4 种逃逸手法。
+- **entries 原生执行门禁**：`entries.commands/services/setup` 默认禁用，需逐插件显式授权
+  （`setNativeExecutionApproved` + IPC 全链路）。撤销时停掉运行中的原生进程。
+  - Manual-required：entries 原生进程的 OS 级沙箱（macOS seatbelt / Linux bwrap）待实现。
+- **签名文案诚实化**：`hash-verified` label 从“Signature hash metadata verified”改为
+  “File integrity checked (not a trusted source)”，明确区分完整性校验与来源可信。
 
-### v1.2（未来，3-6 个月）
-- ⚡ 真实 marketplace 后端（远端 catalog）
-- ⚡ 用户评分/评论系统
-- ⚡ 插件分析面板（下载量、活跃度）
+### 运行时正确性（P0/P1）
+- **触发器规则契约修复**：`trigger-rule-runtime-service` 在边界展平 `ruleSpec`
+  （`schedule.intervalMs` / `event.name` / `state.predicate`）为 runtime 读取的顶层字段，
+  正式创建的 random/event/state 规则不再静默失效。新增跨 action-service→runtime 集成测试。
+- **settings.ai 并发写竞态修复**：`settings-service` 新增原子 `update(updater)`，
+  `persistConversations` 与 `behavior-orchestrator.saveConfig` 改用之，消除 async 间隙
+  陈旧快照覆盖（丢对话历史/行为决策）。
+- **EventBus listener 隔离**：`emit` 对每个 listener 包 try/catch，单个抛错不中断后续。
 
-### v2.0（愿景，6-12 个月）
-- ⚡ 更强的插件沙箱（SES / utilityProcess）
-- ⚡ 多宠物同时显示
-- ⚡ 宠物间交互
-- ⚡ 跨平台宠物同步（云端账号）
+### 密钥与资源加固（P1）
+- **API key safeStorage 加密**：`secret-service` 用 Electron `safeStorage` 加密落盘，
+  旧明文读取时自动迁移；无 keyring 环境降级明文（文件仍 0o600）。
+- **DNS rebinding SSRF 防护**：`plugin-network-client` 解析后校验 IP 不在私有/loopback/
+  link-local/CGNAT/multicast/metadata 段，`resolveAddress` 可注入供测试。
+- **窗口导航锁**：`applyNavigationLock` 拒绝远程 `will-navigate`、deny 所有 `window.open`、
+  prevent webview attach；pet 与 Control Center 窗口均加锁。
+- **memories 总量上限**：`MAX_ACTIVE_MEMORIES=200`，超限按 importance+confidence+recency
+  降级为 `superseded`（不删除，保留审计）。
+- Backlog：store 全量异步写（破坏深拷贝+同步落盘契约，降级；memory 上限已间接缓解增长主因）。
 
----
+### 文档与死代码（P1）
+- 本文件与 `TEST-REPORT.md` 改造为指向单一可信源的薄壳。
+- 删除 `ai-talk-service` 中已被 `selectRelevantMemories`/`scoreMemoryContext` 取代的
+  死代码（`rankMemoryContext` / `scoreMemoryRelevance` / `tokenizeForMemoryRelevance`
+  及其专属常量与 helper）。
 
-## 💡 项目亮点总结
+## 架构与可信源
 
-### 技术亮点
-1. **清晰的 Service 层架构** - 19 个职责单一的 service
-2. **完整的测试覆盖** - 171 个测试，100% 通过
-3. **安全的插件沙箱** - Node permission model + VM 隔离
-4. **结构化 AI 编排** - 从关键词到 tool-call 的升级
-5. **生态治理闭环** - Catalog + Blocklist 双保险
-
-### 产品亮点
-1. **从桌宠到平台** - 完整的演化路径
-2. **UI 配置化** - 所有操作均可通过 Control Center 完成
-3. **开发者友好** - 清晰的插件 SDK，完整的文档
-4. **macOS 分发就绪** - GitHub Actions + About 更新检查；Windows 桌面分发已完成设计、待实现
-5. **双语支持** - 英文/中文文档完整
-
-### 工程亮点
-1. **渐进式重构** - 7 个 Phase，每个都可独立验证
-2. **完整的提交历史** - 每个 Phase 都有清晰的 commit
-3. **文档驱动** - 15+ 篇文档，覆盖用户/开发/架构/运维
-4. **质量门槛** - 每个 Phase 都有对应的测试和 review
-
----
-
-## 🎊 结论
-
-OpenPet 项目已完成从单体桌宠到可扩展平台的**完整产品化重构**。
-
-- ✅ **功能完整度**: 95%（所有 7 大承诺功能已实现）
-- ✅ **测试覆盖**: 171/171 通过（100%）
-- ✅ **架构质量**: ⭐⭐⭐⭐⭐（分层清晰、安全可靠）
-- ✅ **文档完整性**: ⭐⭐⭐⭐⭐（双语 README + 15+ 篇文档）
-- ✅ **可发布性**: ✅ **v1.0.1-rc.1 可发布**
-
-**建议**: 先发布 v1.0.1 RC 验证 OpenPet 改名升级路径；确认无回归后提升为 v1.0.1 正式版，剩余 5% 缺口（前端测试、示例插件）规划至 v1.1。
-
----
-
-**项目评估人**: Codex AI
-**评估时间**: 2026-06-13
-**评估分支**: `main`
-**最终评分**: **95/100** ⭐⭐⭐⭐⭐
+- 装配层 `src/main/bootstrap/` 无循环依赖，IPC 注册完整（详见 `docs/HANDOFF.md`）。
+- 历史实现细节见 `docs/phases/`，review 发现见 `docs/reviews/`。
+- 发布状态以 `docs/project-status-review.md` 为准：macOS 为主，Windows 仍 not release-ready。

@@ -507,3 +507,43 @@ test('ai talk store excludes non-chat traces from default trace export listing',
   assert.equal(memoryFilterTraces[0].type, 'ai-talk-memory-filter')
   assert.equal(JSON.stringify(memoryFilterTraces).includes('sk-cpa-should-not-be-saved'), false)
 })
+
+test('ai talk store caps active memories by demoting lowest-value entries', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })
+
+  // Create 205 active memories; the 5 with the lowest importance+confidence
+  // must be demoted to 'superseded' so the active set stays at 200.
+  const operations = []
+  for (let i = 0; i < 205; i += 1) {
+    operations.push({
+      operation: 'create',
+      scope: 'global',
+      text: `memory-${i}`,
+      tags: ['test'],
+      confidence: 0.1,
+      importance: i < 5 ? 0.0 : 0.5,
+      reason: 'cap test'
+    })
+  }
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    conversationId: 'control-center:mochi-cat:main',
+    messageIds: [],
+    operations
+  })
+
+  const allMemories = Object.values(store.getState().memories)
+  const activeCount = allMemories.filter((m) => m.status === 'active').length
+  const supersededCount = allMemories.filter((m) => m.status === 'superseded').length
+
+  assert.equal(activeCount, 200, 'active memory set must be capped at 200')
+  assert.equal(supersededCount, 5, 'excess entries demoted, not deleted')
+  assert.equal(allMemories.length, 205, 'no memories deleted — audit trail preserved')
+
+  // The 5 demoted entries must be the low-importance ones (importance 0.0).
+  const demotedAreLowValue = allMemories
+    .filter((m) => m.status === 'superseded')
+    .every((m) => Number(m.importance) === 0)
+  assert.equal(demotedAreLowValue, true, 'lowest-value entries are the ones demoted')
+})

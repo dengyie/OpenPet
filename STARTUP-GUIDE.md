@@ -60,8 +60,8 @@ npm test
 # 运行特定测试
 npm test -- tests/services/plugin-service.test.js
 ```
-- ✅ 1.2 秒运行 167 个测试
-- ✅ Service 层 100% 覆盖
+- ✅ 秒级运行全量 Node 原生测试
+- ✅ Service 层高覆盖
 
 ---
 
@@ -98,7 +98,7 @@ npm start
 **流程**:
 1. Control Center 构建（70-94ms）
 2. Electron 主进程启动（~500ms）
-3. 服务层初始化（19 services, ~1.5s）
+3. 服务层初始化（services, ~1.5s）
 4. 宠物窗口渲染（~500ms）
 5. Control Center 窗口就绪（~500ms）
 
@@ -124,7 +124,7 @@ npm start
 | **冷启动时间** | ~3s | 包含 Control Center 构建 |
 | **热启动时间** | ~1s | Control Center 已构建 |
 | **Control Center 构建** | 70-94ms | Vite 构建极快 |
-| **Service 层初始化** | ~1.5s | 19 个 service 依次初始化 |
+| **Service 层初始化** | ~1.5s | service 依次初始化 |
 | **内存占用** | < 200MB | 启动后稳定占用 |
 | **进程数** | 5 个 | Main + Renderer + GPU + Plugin + Helper |
 

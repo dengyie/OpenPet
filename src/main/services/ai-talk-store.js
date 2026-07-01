@@ -14,6 +14,12 @@ const MEMORY_OPERATIONS = new Set(['create', 'update', 'reinforce', 'ignore'])
 const MEMORY_STATUSES = new Set(['active', 'superseded', 'deleted'])
 const MAX_MEMORY_TEXT_CHARS = 500
 const MAX_MEMORY_TAGS = 12
+// Cap active memories so the store cannot grow without bound. Traces/utterances
+// already have caps; memories did not, which made every persist() write and
+// findActiveMemory() scan linearly slower over time. Pruning keeps the active
+// set to the most important/confident/recent entries; the rest are archived
+// (status moved off 'active') rather than deleted, preserving auditability.
+const MAX_ACTIVE_MEMORIES = 200
 const MAX_PET_UTTERANCE_TEXT_CHARS = 1000
 const MAX_PET_UTTERANCES_PER_PACK = 100
 const DEFAULT_RECENT_PET_UTTERANCE_LIMIT = 6
@@ -500,6 +506,31 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     ))
   }
 
+  // Keep the active memory set bounded. When it exceeds MAX_ACTIVE_MEMORIES,
+  // demote the lowest-value entries (importance + confidence, then recency) to
+  // 'superseded' rather than deleting them, so the audit trail is preserved and
+  // findActiveMemory/listMemories stay O(active) instead of O(all-time).
+  const pruneActiveMemories = () => {
+    const activeIds = Object.keys(state.memories).filter((id) => state.memories[id]?.status === 'active')
+    if (activeIds.length <= MAX_ACTIVE_MEMORIES) return 0
+    const ranked = activeIds
+      .map((id) => {
+        const m = state.memories[id]
+        return { id, score: Number(m.importance || 0) + Number(m.confidence || 0), updatedAt: String(m.updatedAt || '') }
+      })
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score
+        return a.updatedAt.localeCompare(b.updatedAt)
+      })
+    const demoteCount = activeIds.length - MAX_ACTIVE_MEMORIES
+    const timestamp = now()
+    for (let i = 0; i < demoteCount; i += 1) {
+      const id = ranked[i].id
+      state.memories[id] = normalizeExistingMemory({ ...state.memories[id], status: 'superseded', updatedAt: timestamp })
+    }
+    return demoteCount
+  }
+
   const applyMemoryOperations = ({ petPackId, conversationId = '', messageIds = [], operations = [] } = {}) => {
     const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
     if (!packId) throw new Error('petPackId is required')
@@ -561,6 +592,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
         createdAt: timestamp
       }
     }
+    pruneActiveMemories()
     persist()
     return { applied, filtered }
   }
