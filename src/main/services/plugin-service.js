@@ -7,7 +7,7 @@ const { normalizePluginManifest } = require('../plugins/manifest')
 const { coerceConfigValue, normalizeConfigSchema } = require('../plugins/config-schema')
 const { hasOwn, cloneJsonValue, getJsonByteSize } = require('./plugin-json-utils')
 const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = require('./plugin-log-store')
-const { normalizeNetworkRequest, readLimitedResponseText } = require('./plugin-network-client')
+const { normalizeNetworkRequest, readLimitedResponseText, assertResolvedAddressesSafe } = require('./plugin-network-client')
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
 const { readLocalPluginManifests } = require('./plugin-discovery')
 const {
@@ -161,7 +161,7 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, resolveAddress, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const commandBridgeRuntimes = new Map()
@@ -583,6 +583,23 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return status
   }
 
+  // SECURITY: entries.commands / entries.services / entries.setup spawn native
+  // OS processes with the user's full privileges — there is NO VM/permission
+  // sandbox around them (unlike JS `main` plugins). They are therefore disabled
+  // by default and require explicit per-plugin opt-in. Until OS-level sandboxing
+  // (macOS seatbelt / Linux bwrap) lands, this gate is the only thing standing
+  // between an installed declaration plugin and arbitrary code execution.
+  const getNativeExecutionApprovalMap = () => settingsService.get().plugins?.nativeExecutionApproved || {}
+
+  const isNativeExecutionApproved = (pluginId) => getNativeExecutionApprovalMap()[pluginId] === true
+
+  const assertNativeExecutionAllowed = (manifestOrId) => {
+    const pluginId = typeof manifestOrId === 'string' ? manifestOrId : manifestOrId?.id
+    if (!isNativeExecutionApproved(pluginId)) {
+      throw new Error('Plugin native execution is not approved. Enable native process execution for this plugin in the Control Center before running its commands, services, or setup.')
+    }
+  }
+
   const getPluginSignatureStatus = (manifest) => derivePluginSignatureStatus(manifest, getInstalledMap()[manifest.id])
 
   const getPluginStorageStats = (pluginId) => computePluginStorageStats(pluginId, {
@@ -604,6 +621,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     assertPermission(manifest, 'network')
     if (typeof fetchImpl !== 'function') throw new Error('Plugin network fetch is not available')
     const { url, request } = normalizeNetworkRequest(manifest, payload)
+    await assertResolvedAddressesSafe(new URL(url).hostname, resolveAddress)
     const response = await fetchImpl(url, { ...request, redirect: 'manual' })
     if (response.url) {
       const responseUrl = new URL(response.url)
@@ -683,7 +701,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     getPluginSignatureStatus,
     getPluginPolicyStatus,
     getPluginConfig,
-    getPluginStorageStats
+    getPluginStorageStats,
+    getNativeExecutionApproved: isNativeExecutionApproved
   })
 
   const getServiceEntry = (plugin, serviceId) => {
@@ -906,6 +925,35 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       pluginId,
       level: 'info',
       message: enabled ? 'Plugin enabled' : 'Plugin disabled'
+    })
+    return listPlugins().find((plugin) => plugin.id === pluginId)
+  }
+
+  // Grant/revoke explicit approval for a plugin to spawn native OS processes
+  // (entries.commands / services / setup). Revoking stops any running native
+  // processes for that plugin immediately.
+  const setNativeExecutionApproved = (pluginId, approved) => {
+    if (approved) assertPluginAllowed(pluginId)
+    if (!approved) {
+      stopPluginCommands(pluginId)
+      stopPluginServices(pluginId)
+      stopPluginSetups(pluginId)
+    }
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        nativeExecutionApproved: {
+          ...(settings.plugins?.nativeExecutionApproved || {}),
+          [pluginId]: Boolean(approved)
+        }
+      }
+    })
+    appendLog({
+      pluginId,
+      level: 'info',
+      message: approved ? 'Plugin native execution approved' : 'Plugin native execution revoked'
     })
     return listPlugins().find((plugin) => plugin.id === pluginId)
   }
@@ -1170,6 +1218,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           config: getPluginConfig(plugin.manifest.id, plugin.configSchema)
         })
       } else if (plugin.manifest.entries?.commands?.length) {
+        assertNativeExecutionAllowed(plugin.manifest)
         const commandEntry = getCommandEntry(plugin, commandId)
         result = await runCommandEntryProcess({
           plugin,
@@ -1202,6 +1251,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const commandId = `setup:${setupId || ''}`
     try {
       const plugin = findPluginForService(pluginId)
+      assertNativeExecutionAllowed(plugin.manifest)
       const setupEntry = getSetupEntry(plugin, setupId)
       const existingRuntime = getPluginSetupRuntime(pluginId, setupId)
       if (ACTIVE_SETUP_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin setup is already running')
@@ -1349,6 +1399,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const commandId = `service:${serviceId || ''}`
     try {
       const plugin = findPluginForService(pluginId)
+      assertNativeExecutionAllowed(plugin.manifest)
       const serviceEntry = getServiceEntry(plugin, serviceId)
       const existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
       if (ACTIVE_SERVICE_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin service is already running')
@@ -1598,7 +1649,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return { ok: true }
   }
 
-  return { listPlugins, setEnabled, saveConfig, saveServiceHealthPolicy, clearStorage, runCommand, runSetup, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
+  return { listPlugins, setEnabled, setNativeExecutionApproved, saveConfig, saveServiceHealthPolicy, clearStorage, runCommand, runSetup, openDashboard, startService, stopService, checkServiceHealth, stopAllServices, getLogs, exportLogs: exportLogEntries, clearLogs }
 }
 
 module.exports = { createPluginService, readLocalPluginManifests }

@@ -47,7 +47,7 @@ test('plugin service state prefers installed signature metadata when present', (
     ),
     {
       status: 'hash-verified',
-      label: 'Signature hash metadata verified',
+      label: 'File integrity checked (not a trusted source)',
       signer: 'store-signer',
       algorithm: ''
     }

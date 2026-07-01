@@ -180,7 +180,9 @@ const getSignatureReview = (rootPath, manifest, fileHashes) => {
   const verified = Boolean(declaredFiles && errors.length === 0)
   return {
     status: verified ? 'hash-verified' : 'present-unverified',
-    label: verified ? 'Signature hash metadata verified' : 'Signature metadata present, not verified',
+    label: verified
+      ? 'File integrity checked (not a trusted source)'
+      : 'Signature metadata present, integrity not verified',
     signer: signature.signer,
     algorithm: signature.algorithm,
     value: signature.value,

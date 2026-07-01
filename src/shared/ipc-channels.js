@@ -96,6 +96,7 @@ const IPC = Object.freeze({
   AI_BEHAVIOR_CLEAR_DECISIONS: 'ai-behavior:clear-decisions',
   PLUGINS_LIST: 'plugins:list',
   PLUGINS_SET_ENABLED: 'plugins:set-enabled',
+  PLUGINS_SET_NATIVE_EXECUTION_APPROVED: 'plugins:set-native-execution-approved',
   PLUGINS_SAVE_CONFIG: 'plugins:save-config',
   PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW: 'plugins:run-creator-studio-default-flow',
   PLUGINS_RUN_COMMAND: 'plugins:run-command',

@@ -12,6 +12,7 @@ const registerPluginIpc = ({
 }) => {
   ipcMainService.handle(IPC.PLUGINS_LIST, () => createPluginListView(pluginService.listPlugins()))
   ipcMainService.handle(IPC.PLUGINS_SET_ENABLED, (_event, payload) => pluginService.setEnabled(payload.pluginId, payload.enabled))
+  ipcMainService.handle(IPC.PLUGINS_SET_NATIVE_EXECUTION_APPROVED, (_event, payload) => pluginService.setNativeExecutionApproved(payload.pluginId, payload.approved))
   ipcMainService.handle(IPC.PLUGINS_SAVE_CONFIG, (_event, payload) => pluginService.saveConfig(payload.pluginId, payload.config))
   ipcMainService.handle(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, (_event, payload) => {
     if (!creatorStudioDefaultFlowService?.runDefaultFlow) {

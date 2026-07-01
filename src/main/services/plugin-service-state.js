@@ -7,7 +7,7 @@ const getSignatureStatus = (manifest = {}) => {
   }
   return {
     status: 'present-unverified',
-    label: 'Signature metadata present, not verified',
+    label: 'File hashes declared, source not verified',
     signer: manifest.signature.signer || '',
     algorithm: manifest.signature.algorithm || 'unknown'
   }
@@ -17,14 +17,14 @@ const getPluginSignatureStatus = (manifest = {}, installed = {}) => {
   if (manifest.source === 'official') return getSignatureStatus(manifest)
   if (installed?.signatureStatus) {
     if (installed.signatureStatus === 'hash-verified') {
-      return { status: 'hash-verified', label: 'Signature hash metadata verified', signer: installed.signer || '', algorithm: '' }
+      return { status: 'hash-verified', label: 'File integrity checked (not a trusted source)', signer: installed.signer || '', algorithm: '' }
     }
     if (installed.signatureStatus === 'unsigned') {
       return { status: 'unsigned', label: 'Unsigned plugin', signer: '', algorithm: '' }
     }
     return {
       status: installed.signatureStatus,
-      label: 'Signature metadata present, not verified',
+      label: 'File hashes declared, source not verified',
       signer: installed.signer || '',
       algorithm: ''
     }
@@ -125,19 +125,29 @@ const listPlugins = ({
   getPluginSignatureStatus,
   getPluginPolicyStatus,
   getPluginConfig,
-  getPluginStorageStats
-}) => plugins.map((plugin) => ({
-  ...plugin.manifest,
-  profile: plugin.manifest.profile || 'runtime',
-  entries: decorateEntriesWithRuntime(plugin.manifest),
-  enabled: Boolean(enabledMap[plugin.manifest.id]),
-  runnable: typeof plugin.activate === 'function' || Boolean(plugin.mainPath) || Boolean(plugin.manifest.entries?.commands?.length),
-  signatureStatus: getPluginSignatureStatus(plugin.manifest),
-  blockStatus: getPluginPolicyStatus(plugin.manifest),
-  configSchema: plugin.configSchema,
-  config: getPluginConfig(plugin.manifest.id, plugin.configSchema),
-  storage: getPluginStorageStats(plugin.manifest.id)
-}))
+  getPluginStorageStats,
+  getNativeExecutionApproved = () => false
+}) => plugins.map((plugin) => {
+  const requiresNativeExecution = Boolean(
+    plugin.manifest.entries?.commands?.length ||
+    plugin.manifest.entries?.services?.length ||
+    plugin.manifest.entries?.setup?.length
+  )
+  return {
+    ...plugin.manifest,
+    profile: plugin.manifest.profile || 'runtime',
+    entries: decorateEntriesWithRuntime(plugin.manifest),
+    enabled: Boolean(enabledMap[plugin.manifest.id]),
+    runnable: typeof plugin.activate === 'function' || Boolean(plugin.mainPath) || Boolean(plugin.manifest.entries?.commands?.length),
+    requiresNativeExecution,
+    nativeExecutionApproved: requiresNativeExecution ? Boolean(getNativeExecutionApproved(plugin.manifest.id)) : false,
+    signatureStatus: getPluginSignatureStatus(plugin.manifest),
+    blockStatus: getPluginPolicyStatus(plugin.manifest),
+    configSchema: plugin.configSchema,
+    config: getPluginConfig(plugin.manifest.id, plugin.configSchema),
+    storage: getPluginStorageStats(plugin.manifest.id)
+  }
+})
 
 module.exports = {
   getSignatureStatus,

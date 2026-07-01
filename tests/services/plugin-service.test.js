@@ -15,6 +15,38 @@ const { createPetPackService } = require('../../src/main/services/pet-pack-servi
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
 const createSettingsService = (initialSettings = {}) => {
+  // Native-execution approval defaults to ON in this test helper so the large
+  // body of declaration-plugin functionality tests (bridges, permissions, path
+  // traversal, etc.) exercise the real code paths without each restating the
+  // approval. The approval GATE itself is covered explicitly by dedicated tests
+  // that construct their settings via createBareSettingsService below.
+  const approveAll = new Proxy({}, {
+    get: (_target, prop) => (typeof prop === 'string' ? true : undefined),
+    has: () => true,
+    ownKeys: () => [],
+    getOwnPropertyDescriptor: () => undefined
+  })
+  let current = {
+    ...initialSettings,
+    plugins: {
+      enabled: {},
+      nativeExecutionApproved: approveAll,
+      ...(initialSettings.plugins || {})
+    }
+  }
+
+  return {
+    get: () => current,
+    save: (settings) => {
+      current = settings
+      return current
+    }
+  }
+}
+
+// Settings service WITHOUT the auto-approve default — used by tests that verify
+// the native-execution gate blocks unapproved entries plugins.
+const createBareSettingsService = (initialSettings = {}) => {
   let current = {
     ...initialSettings,
     plugins: {
@@ -22,7 +54,6 @@ const createSettingsService = (initialSettings = {}) => {
       ...(initialSettings.plugins || {})
     }
   }
-
   return {
     get: () => current,
     save: (settings) => {
@@ -4974,6 +5005,119 @@ test('plugin service blocks local plugin process escapes', async () => {
   assert.match(result.attempts[4].message, /Code generation from strings disallowed/)
 })
 
+test('plugin service blocks escape via SDK-returned Promise constructor', async () => {
+  // Regression: an earlier bridge handed plugins a *host-realm* Promise from
+  // ctx.storage.get(...). That Promise's .constructor.constructor was the HOST
+  // Function constructor, giving `Function('return process')()` access to the
+  // runner process. The SDK now only returns sandbox-realm Promises, so the
+  // constructor chain must resolve to the sandbox Function (which itself cannot
+  // generate code because codeGeneration.strings is disabled).
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'local-runner': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createRunnablePluginDir({
+      manifest: {
+        permissions: ['storage']
+      },
+      source: `
+        module.exports = function activate(ctx) {
+          return {
+            start: async () => {
+              const attempts = []
+              // The Promise returned by an SDK call is the escape surface.
+              const sdkPromise = ctx.storage.get('seed')
+              for (const attempt of [
+                () => sdkPromise.constructor.constructor('return process')(),
+                () => sdkPromise.constructor.constructor('return process.mainModule.require')(),
+                () => sdkPromise.then.constructor('return process')(),
+                () => (async () => {}).constructor('return process')()
+              ]) {
+                try {
+                  attempts.push({ ok: true, value: String(attempt()) })
+                } catch (error) {
+                  attempts.push({ ok: false, message: error.message })
+                }
+              }
+              // Make sure the SDK round-trip itself still works.
+              const seed = await sdkPromise
+              return {
+                attempts,
+                seed: seed === undefined ? 'undefined' : seed,
+                pid: typeof process === 'undefined' ? null : process.pid
+              }
+            }
+          }
+        }
+      `
+    })]
+  })
+
+  const result = await service.runCommand('local-runner', 'start')
+  assert.equal(result.pid, null)
+  // Every escape attempt through the SDK Promise must fail with code-generation
+  // disabled — proving no host constructor leaked through.
+  assert.deepEqual(result.attempts.map((attempt) => attempt.ok), [false, false, false, false])
+  for (const attempt of result.attempts) {
+    assert.match(attempt.message, /Code generation from strings disallowed/)
+  }
+})
+
+test('plugin service blocks native entries execution until explicitly approved', async () => {
+  // Declaration entries spawn native OS processes with no sandbox. They must be
+  // refused until the user opts in per-plugin, and a spawn must never happen
+  // while unapproved.
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const settingsService = createBareSettingsService({
+    plugins: { enabled: { 'weather-declaration': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: createBridgeAwarePetService(),
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  // Unapproved: the gate rejects before any process is spawned.
+  await assert.rejects(
+    () => service.runCommand('weather-declaration', 'announce', { message: 'rain soon' }),
+    /native execution is not approved/
+  )
+  assert.equal(spawned.length, 0)
+
+  const view = service.listPlugins().find((plugin) => plugin.id === 'weather-declaration')
+  assert.equal(view.requiresNativeExecution, true)
+  assert.equal(view.nativeExecutionApproved, false)
+
+  // Approve, then the same command spawns and completes.
+  const approvedView = service.setNativeExecutionApproved('weather-declaration', true)
+  assert.equal(approvedView.nativeExecutionApproved, true)
+
+  const commandRun = service.runCommand('weather-declaration', 'announce', { message: 'rain soon' })
+  await waitFor(() => child.listenerCount('exit') > 0)
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  const result = await commandRun
+
+  assert.equal(spawned.length, 1)
+  assert.equal(result.ok, true)
+
+  // Revoking approval re-engages the gate.
+  service.setNativeExecutionApproved('weather-declaration', false)
+  await assert.rejects(
+    () => service.runCommand('weather-declaration', 'announce', { message: 'again' }),
+    /native execution is not approved/
+  )
+  assert.equal(spawned.length, 1)
+})
+
 test('plugin service blocks local plugin sdk calls without permission', async () => {
   const service = createPluginService({
     settingsService: createSettingsService({
@@ -5456,6 +5600,7 @@ test('plugin service lets local plugins fetch allowlisted https hosts', async ()
         text: async () => '{"ok":true}'
       }
     },
+    resolveAddress: async () => ['203.0.113.10'],
     officialPlugins: [],
     pluginDirs: [createRunnablePluginDir({
       manifest: {
@@ -5504,6 +5649,7 @@ test('plugin service rejects oversized network request and response bodies', asy
     }),
     petService: { say: async () => {} },
     fetchImpl,
+    resolveAddress: async () => ['203.0.113.10'],
     officialPlugins: [],
     pluginDirs: [createRunnablePluginDir({
       manifest: {
@@ -5545,6 +5691,47 @@ test('plugin service rejects oversized network request and response bodies', asy
       })
     }).runCommand('local-runner', 'start'),
     /response exceeds/
+  )
+})
+
+test('plugin service blocks DNS-rebinding SSRF to private addresses', async () => {
+  // A manifest allowlist host that resolves to a private/loopback/link-local
+  // address must be refused before fetch is reached.
+  const createNetworkService = (resolveAddress) => createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'local-runner': true } }
+    }),
+    petService: { say: async () => {} },
+    fetchImpl: async () => {
+      throw new Error('fetch should not be reached')
+    },
+    resolveAddress,
+    officialPlugins: [],
+    pluginDirs: [createRunnablePluginDir({
+      manifest: {
+        permissions: ['network'],
+        network: { allowlist: ['rebind.example.com'] },
+        commands: [{ id: 'start', title: 'Start' }]
+      },
+      source: `
+        module.exports = function activate(ctx) {
+          return { start: async () => ctx.network.fetch('https://rebind.example.com/data') }
+        }
+      `
+    })]
+  })
+
+  await assert.rejects(
+    () => createNetworkService(async () => ['127.0.0.1']).runCommand('local-runner', 'start'),
+    /non-public address.*DNS-rebinding SSRF blocked/
+  )
+  await assert.rejects(
+    () => createNetworkService(async () => ['169.254.169.254']).runCommand('local-runner', 'start'),
+    /non-public address.*DNS-rebinding SSRF blocked/
+  )
+  await assert.rejects(
+    () => createNetworkService(async () => ['10.0.0.1']).runCommand('local-runner', 'start'),
+    /non-public address.*DNS-rebinding SSRF blocked/
   )
 })
 
