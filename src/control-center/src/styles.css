@@ -282,29 +282,47 @@ button {
 }
 
 .provider-hub-badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  max-width: 260px;
+  min-width: min(360px, 100%);
 }
 
-.provider-hub-badges span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 4px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #334155;
+.provider-status-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.provider-status-item strong {
+  color: #0f172a;
   font-size: 12px;
-  white-space: nowrap;
+}
+
+.provider-status-item span {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.provider-status-item-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.provider-status-item-warn {
+  border-color: #fde68a;
+  background: #fffbeb;
 }
 
 .provider-capability-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -345,10 +363,97 @@ button {
 }
 
 .provider-card-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.provider-card-secondary-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.provider-status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 0 14px;
+  border-bottom: 1px solid #dde2e8;
+}
+
+.provider-diagnostics {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.provider-diagnostics-heading {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.provider-disclosure {
+  margin-top: 18px;
+  border: 1px solid #dde5ee;
+  border-radius: 14px;
+  background: #fcfdff;
+  overflow: hidden;
+}
+
+.provider-disclosure summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.provider-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.provider-disclosure summary::after {
+  content: '+';
+  float: right;
+  color: #64748b;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.provider-disclosure[open] summary::after {
+  content: '-';
+}
+
+.provider-disclosure-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.provider-inline-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.provider-inline-summary code,
+.provider-inline-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .provider-capability-card .section,
@@ -2331,8 +2436,14 @@ button {
   }
 
   .provider-hub-badges,
-  .provider-card-actions {
+  .provider-card-actions,
+  .provider-card-secondary-actions {
     justify-content: flex-start;
+  }
+
+  .provider-hub-badges,
+  .provider-status-strip {
+    grid-template-columns: 1fr;
   }
 
   .inline-action,

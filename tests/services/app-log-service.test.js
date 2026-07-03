@@ -55,6 +55,12 @@ test('app log service redacts sensitive ai log fields and truncates long strings
       rawProviderReply: '{"secret":true}',
       apiKey: 'sk-test-123456789012',
       token: 'Bearer abcdefghijklmnop',
+      prompt: 'draw a shy cat',
+      originalPrompt: 'draw a shy cat spinning',
+      motionPrompt: 'spin motion details',
+      stylePrompt: 'soft watercolor',
+      reply: 'Here is a private reply',
+      referenceImagePath: '/Users/mango/private/reference.png',
       summary: longText,
       providerMessage: 'authorization: Bearer abcdefghijklmnop',
       safeCount: 3
@@ -65,6 +71,12 @@ test('app log service redacts sensitive ai log fields and truncates long strings
   assert.equal(entry.details.rawProviderReply, undefined)
   assert.equal(entry.details.apiKey, undefined)
   assert.equal(entry.details.token, undefined)
+  assert.equal(entry.details.prompt, undefined)
+  assert.equal(entry.details.originalPrompt, undefined)
+  assert.equal(entry.details.motionPrompt, undefined)
+  assert.equal(entry.details.stylePrompt, undefined)
+  assert.equal(entry.details.reply, undefined)
+  assert.equal(entry.details.referenceImagePath, undefined)
   assert.equal(entry.details.safeCount, 3)
   assert.equal(entry.details.providerMessage, '[redacted]')
   assert.match(entry.details.summary, /^x{500}\.\.\.\[truncated\]$/)
@@ -73,4 +85,7 @@ test('app log service redacts sensitive ai log fields and truncates long strings
   assert.equal(raw.includes('# hidden prompt'), false)
   assert.equal(raw.includes('sk-test-123456789012'), false)
   assert.equal(raw.includes('Bearer abcdefghijklmnop'), false)
+  assert.equal(raw.includes('draw a shy cat'), false)
+  assert.equal(raw.includes('/Users/mango/private/reference.png'), false)
+  assert.equal(raw.includes('Here is a private reply'), false)
 })

@@ -98,13 +98,15 @@ test('ai service sanitizes credentialed baseUrl in public config', () => {
 
 test('ai service saves config and api key separately', () => {
   const secrets = []
+  const logs = []
   const settingsService = createSettingsService()
   const service = createAiService({
     settingsService,
     secretService: {
       getSecretValue: () => '',
       setSecret: (secret) => secrets.push(secret)
-    }
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
   const saved = service.saveConfig({
@@ -125,6 +127,13 @@ test('ai service saves config and api key separately', () => {
   assert.equal(keyResult.apiKeyRef, 'ai.default')
   assert.equal(keyResult.hasApiKey, true)
   assert.match(keyResult.updatedAt, /^\d{4}-\d{2}-\d{2}T/)
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'ai.settings.saved',
+    'ai.settings.api-key.saved'
+  ])
+  assert.equal(logs[0].details.endpoint, 'https://example.test/v1/chat/completions')
+  assert.equal(logs[1].details.apiKeyRef, 'ai.default')
+  assert.equal(JSON.stringify(logs).includes('sk-new'), false)
   assert.throws(() => service.saveApiKey('   '), /API Key 不能为空/)
 })
 

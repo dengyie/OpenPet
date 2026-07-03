@@ -175,9 +175,11 @@ test('image generation model service rejects non-image secret refs from persiste
 
 test('image generation model service saves and clears provider api keys through secret service', () => {
   const secretService = createSecretService()
+  const logs = []
   const service = createImageGenerationModelService({
     settingsService: createSettingsService(),
-    secretService
+    secretService,
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
   const saved = service.saveProviderApiKey('sk-demo-1234')
@@ -187,6 +189,34 @@ test('image generation model service saves and clears provider api keys through 
   const cleared = service.clearProviderApiKey()
   assert.equal(cleared.hasApiKey, false)
   assert.equal(cleared.apiKeyPreview, '')
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'imageGeneration.settings.api-key.saved',
+    'imageGeneration.settings.api-key.cleared'
+  ])
+  assert.equal(logs[0].details.apiKeyRef, 'secret:model.image.openai.apiKey')
+  assert.equal(JSON.stringify(logs).includes('sk-demo-1234'), false)
+})
+
+test('image generation model service logs safe provider settings when config is saved', () => {
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(),
+    secretService: createSecretService(),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  service.saveConfig({
+    baseUrl: 'https://images.example.test/v1',
+    model: 'openpet-image-test',
+    timeoutMs: 90000,
+    maxConcurrentJobs: 2
+  })
+
+  assert.deepEqual(logs.map((entry) => entry.event), ['imageGeneration.settings.saved'])
+  assert.equal(logs[0].details.baseUrlHost, 'images.example.test')
+  assert.equal(logs[0].details.model, 'openpet-image-test')
+  assert.equal(logs[0].details.timeoutMs, 90000)
+  assert.equal(logs[0].details.maxConcurrentJobs, 2)
 })
 
 test('image generation model service reports missing provider api key in health checks', async () => {
