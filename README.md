@@ -150,11 +150,12 @@ Extension authors should also read [plugin-ecosystem-rules.md](./docs/plugin-eco
 
 - [CHANGELOG.md](./CHANGELOG.md) - release notes.
 - [docs/README.md](./docs/README.md) - documentation map and reading order.
+- [docs/TODO.md](./docs/TODO.md) - single active maintainer work queue.
+- [docs/HANDOFF.md](./docs/HANDOFF.md) - current maintainer snapshot, guardrails, and priorities.
 - [docs/plugin-ecosystem-rules.md](./docs/plugin-ecosystem-rules.md) - extension ecosystem boundary, lifecycle rules, and third-party author guidance.
-- [docs/HANDOFF.md](./docs/HANDOFF.md) - maintainer handoff for the current state.
 - [docs/project-context.json](./docs/project-context.json) - compact machine-readable project context.
 
-Use `docs/README.md` instead of browsing every file under `docs/`; historical phase and review records are retained as audit history.
+Use `docs/README.md` instead of browsing every file under `docs/`; historical phase, roadmap, and review records are retained as audit history, while active planning now lives in `docs/TODO.md`.
 
 ## Validation Baseline
 
