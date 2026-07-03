@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
+const { sanitizeLogText } = require('./log-safety')
 
 const DEFAULT_CONFIG = {
   provider: 'openai-compatible',
@@ -795,7 +796,7 @@ const createImageGenerationModelService = ({
           baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: 'model_discovery_error',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error
@@ -885,7 +886,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           timeoutMs,
           errorCode: /timed out/i.test(String(error?.message || '')) ? 'provider_timeout' : 'provider_request_error',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error
@@ -908,7 +909,7 @@ const createImageGenerationModelService = ({
           requestMode: conditioning.mode,
           referenceImageCount: normalizedReferenceImages.length,
           errorCode: 'provider_http_error',
-          errorMessage
+          errorMessage: sanitizeLogText(errorMessage, { maxChars: 240 })
         }
       })
       throw new Error(`Image Provider generation failed with HTTP ${status}`)
@@ -934,7 +935,7 @@ const createImageGenerationModelService = ({
             referenceImageCount: normalizedReferenceImages.length,
             outputCount: 0,
             errorCode: 'provider_business_error',
-            errorMessage: businessError
+            errorMessage: sanitizeLogText(businessError, { maxChars: 240 })
           }
         })
         throw new Error(businessError)
@@ -955,7 +956,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
-          errorMessage: 'Image Provider generation returned no outputs'
+          errorMessage: sanitizeLogText('Image Provider generation returned no outputs', { maxChars: 240 })
         }
       })
       throw new Error('Image Provider generation returned no outputs')
@@ -992,7 +993,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error
@@ -1090,7 +1091,7 @@ const createImageGenerationModelService = ({
           provider: config.provider,
           model: config.model,
           durationMs: nowMs() - startedMs,
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error

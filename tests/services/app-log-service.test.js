@@ -79,7 +79,7 @@ test('app log service redacts sensitive ai log fields and truncates long strings
   assert.equal(entry.details.reply, undefined)
   assert.equal(entry.details.referenceImagePath, undefined)
   assert.equal(entry.details.safeCount, 3)
-  assert.equal(entry.details.providerMessage, '[redacted]')
+  assert.equal(entry.details.providerMessage, 'authorization=[redacted-secret]')
   assert.match(entry.details.summary, /^x{500}\.\.\.\[truncated\]$/)
 
   const raw = fs.readFileSync(service.logPath, 'utf-8')
@@ -89,4 +89,55 @@ test('app log service redacts sensitive ai log fields and truncates long strings
   assert.equal(raw.includes('draw a shy cat'), false)
   assert.equal(raw.includes('/Users/mango/private/reference.png'), false)
   assert.equal(raw.includes('Here is a private reply'), false)
+})
+
+test('app log service sanitizes nested diagnostic details without dropping safe structure', () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-app-logs-'))
+  const service = createAppLogService({
+    logDir,
+    clock: () => new Date('2026-07-04T10:00:00.000Z'),
+    idFactory: () => 'evt-3'
+  })
+
+  const entry = service.record({
+    scope: 'creator-workflow',
+    event: 'creator.workflow.failed',
+    message: 'Creator workflow failed',
+    details: {
+      requestId: 'creator-req-1',
+      diagnostics: {
+        attempt: 2,
+        errorMessage: 'Prompt "spin quickly" failed at /Users/mango/private/reference.png via http://127.0.0.1:8787/run with sk-test-secret',
+        nested: {
+          safe: true,
+          payload: 'Prompt "jump left" using token: Bearer qwertyuiopasdfgh at file:///Users/mango/private/workflow.json'
+        }
+      },
+      history: [
+        { stage: 'draft', ok: true },
+        { stage: 'generate', reason: 'Prompt "spin quickly" failed at /Users/mango/private/reference.png' }
+      ]
+    }
+  })
+
+  assert.equal(entry.details.diagnostics.attempt, 2)
+  assert.equal(entry.details.diagnostics.nested.safe, true)
+  assert.match(entry.details.diagnostics.errorMessage, /\[redacted-prompt\]/)
+  assert.match(entry.details.diagnostics.errorMessage, /\[redacted-path\]/)
+  assert.match(entry.details.diagnostics.errorMessage, /\[redacted-local-url\]/)
+  assert.match(entry.details.diagnostics.errorMessage, /\[redacted-secret\]/)
+  assert.match(entry.details.diagnostics.nested.payload, /\[redacted-prompt\]/)
+  assert.match(entry.details.diagnostics.nested.payload, /\[redacted-token\]=\[redacted-secret\]/)
+  assert.match(entry.details.diagnostics.nested.payload, /\[redacted-local-url\]/)
+  assert.match(entry.details.history[1].reason, /\[redacted-prompt\]/)
+  assert.match(entry.details.history[1].reason, /\[redacted-path\]/)
+
+  const raw = fs.readFileSync(service.logPath, 'utf-8')
+  assert.equal(raw.includes('spin quickly'), false)
+  assert.equal(raw.includes('/Users/mango/private/reference.png'), false)
+  assert.equal(raw.includes('127.0.0.1:8787'), false)
+  assert.equal(raw.includes('sk-test-secret'), false)
+  assert.equal(raw.includes('jump left'), false)
+  assert.equal(raw.includes('qwertyuiopasdfgh'), false)
+  assert.equal(raw.includes('file:///Users/mango/private/workflow.json'), false)
 })

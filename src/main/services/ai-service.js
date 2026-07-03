@@ -1,3 +1,5 @@
+const { sanitizeLogText } = require('./log-safety')
+
 const DEFAULT_AI_CONFIG = {
   enabled: false,
   provider: 'openai-compatible',
@@ -243,9 +245,7 @@ const normalizeEndpointForLog = (baseUrl) => {
   }
 }
 
-const sanitizeDiagnosticText = (value) => String(value || '')
-  .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
-  .slice(0, 240)
+const sanitizeDiagnosticText = (value) => sanitizeLogText(value, { maxChars: 240 })
 
 const getSafeProviderErrorMessage = (status, code) => {
   const normalizedStatus = Number(status) || 0

@@ -568,6 +568,8 @@ test('creator workflow service failure logs do not include raw prompt or file-pa
   assert.equal(logs.at(-1).event, 'creator.workflow.failed')
   assert.equal(logs.at(-1).message, 'Creator workflow failed')
   assert.equal(logs.at(-1).details.errorCode, 'provider_failed')
+  assert.match(logs.at(-1).details.errorMessage, /\[redacted-prompt\]/)
+  assert.match(logs.at(-1).details.errorMessage, /\[redacted-path\]/)
   assert.equal(JSON.stringify(logs).includes('spin quickly'), false)
   assert.equal(JSON.stringify(logs).includes('/Users/mango/private/reference.png'), false)
 })
