@@ -842,11 +842,16 @@ button {
   scrollbar-width: thin;
 }
 
+.cursor-option-card-shell {
+  position: relative;
+}
+
 .cursor-option-card {
   position: relative;
   display: grid;
   gap: 5px;
   justify-items: center;
+  width: 100%;
   min-height: 80px;
   min-width: 0;
   padding: 5px 4px 7px;
@@ -873,6 +878,46 @@ button {
   box-shadow:
     0 12px 30px rgba(111, 92, 255, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.98);
+}
+
+.cursor-card-delete {
+  position: absolute;
+  z-index: 3;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #d14343;
+  box-shadow: 0 8px 22px rgba(209, 67, 67, 0.12);
+  opacity: 0.82;
+  cursor: pointer;
+  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.cursor-card-delete:hover,
+.cursor-card-delete:focus-visible {
+  opacity: 1;
+  transform: scale(1.04);
+  border-color: rgba(248, 113, 113, 0.55);
+  background: #fff5f5;
+  box-shadow: 0 10px 24px rgba(209, 67, 67, 0.18);
+}
+
+.cursor-card-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.cursor-card-delete svg {
+  width: 13px;
+  height: 13px;
 }
 
 .cursor-option-card.add-card {
