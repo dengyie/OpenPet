@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { sanitizeLogText } = require('./log-safety')
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
@@ -125,14 +126,15 @@ const createCreatorStudioDefaultFlowService = ({
     if (!health?.ok) {
       recordLog({
         level: 'error',
-        event: 'creator.default-flow.blocked',
-        message: 'Creator Studio default flow blocked by image provider health',
-        details: {
-          requestId,
-          providerCode: String(health?.code || '').trim(),
-          serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
-        }
-      })
+          event: 'creator.default-flow.blocked',
+          message: 'Creator Studio default flow blocked by image provider health',
+          details: {
+            requestId,
+            providerCode: String(health?.code || '').trim(),
+            providerMessage: sanitizeLogText(health?.message || '', { maxChars: 240 }),
+            serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+          }
+        })
       return createStructuredResult({
         state: 'blocked',
         message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成并导入'
@@ -273,7 +275,8 @@ const createCreatorStudioDefaultFlowService = ({
             details: {
               requestId,
               runId: lastRunId,
-              lastCommandId: String(lastCommandResult?.commandId || '').trim()
+              lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+              elapsedMs: Date.now() - startedAt
             }
           })
           return createStructuredResult({
@@ -291,7 +294,8 @@ const createCreatorStudioDefaultFlowService = ({
             details: {
               requestId,
               runId: lastRunId,
-              lastCommandId: String(lastCommandResult?.commandId || '').trim()
+              lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+              elapsedMs: Date.now() - startedAt
             }
           })
           return createStructuredResult({
@@ -331,7 +335,8 @@ const createCreatorStudioDefaultFlowService = ({
           lastCommandId: String(lastCommandResult?.commandId || '').trim(),
           elapsedMs: Date.now() - startedAt,
           errorName: String(error?.name || '').trim(),
-          errorCode: String(error?.code || '').trim()
+          errorCode: String(error?.code || '').trim(),
+          errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 })
         }
       })
       if (lastRunId) {

@@ -838,6 +838,51 @@ test('image generation model service records failed provider calls without leaki
   assert.equal(JSON.stringify(logs).includes(dataDir), false)
 })
 
+test('image generation model service sanitizes thrown provider request errors before logging', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-secret', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'img-run-thrown-error',
+    fetchImpl: async () => {
+      throw new Error('Prompt "private detailed custom pet prompt" failed at /Users/mango/private/reference.png via http://127.0.0.1:8787/generate with sk-test-secret')
+    }
+  })
+
+  await assert.rejects(
+    () => service.generateImage({
+      prompt: 'private detailed custom pet prompt',
+      output: {
+        dataDir,
+        dataRelativeDir: 'runs/thrown-error/frames/base'
+      },
+      constraints: {
+        width: 1024,
+        height: 1024,
+        transparent: true
+      }
+    }),
+    /Prompt/
+  )
+
+  assert.equal(logs[2].event, 'imageGeneration.provider.request.failed')
+  assert.match(logs[2].details.errorMessage, /\[redacted-prompt\]/)
+  assert.match(logs[2].details.errorMessage, /\[redacted-path\]/)
+  assert.match(logs[2].details.errorMessage, /\[redacted-local-url\]/)
+  assert.match(logs[2].details.errorMessage, /\[redacted-secret\]/)
+  assert.equal(logs[3].event, 'imageGeneration.request.failed')
+  assert.match(logs[3].details.errorMessage, /\[redacted-prompt\]/)
+  assert.match(logs[3].details.errorMessage, /\[redacted-path\]/)
+  assert.equal(JSON.stringify(logs).includes('private detailed custom pet prompt'), false)
+  assert.equal(JSON.stringify(logs).includes('/Users/mango/private/reference.png'), false)
+  assert.equal(JSON.stringify(logs).includes('127.0.0.1:8787'), false)
+  assert.equal(JSON.stringify(logs).includes('sk-test-secret'), false)
+})
+
 test('image generation model service surfaces provider business errors from HTTP 200 responses', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const logs = []

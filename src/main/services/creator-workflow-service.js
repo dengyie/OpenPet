@@ -2,6 +2,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { CODEX_ROWS } = require('../pet-pack/codex-pet')
+const { sanitizeLogText } = require('./log-safety')
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
@@ -455,6 +456,7 @@ const createCreatorWorkflowService = ({
     importCommandId
   }) => {
     const requestId = idFactory()
+    const startedAt = Date.now()
     const plugin = assertPluginReady()
     const health = await getProviderHealth()
     recordLog({
@@ -477,7 +479,8 @@ const createCreatorWorkflowService = ({
         details: {
           requestId,
           mode,
-          providerCode: normalizeText(health?.code)
+          providerCode: normalizeText(health?.code),
+          providerMessage: sanitizeLogText(health?.message || '', { maxChars: 240 })
         }
       })
       const result = createWorkflowResult({
@@ -593,7 +596,8 @@ const createCreatorWorkflowService = ({
             requestId,
             mode,
             runId,
-            lastCommandId: normalizeText(lastCommandResult?.commandId)
+            lastCommandId: normalizeText(lastCommandResult?.commandId),
+            elapsedMs: Date.now() - startedAt
           }
         })
         setLastRun(result.run)
@@ -647,7 +651,8 @@ const createCreatorWorkflowService = ({
               requestId,
               mode,
               runId,
-              importedActionId
+              importedActionId,
+              elapsedMs: Date.now() - startedAt
             }
           })
           setLastRun(result.run)
@@ -686,7 +691,8 @@ const createCreatorWorkflowService = ({
             mode,
             runId,
             importedActionId: runView.importedActionId,
-            clickAction
+            clickAction,
+            elapsedMs: Date.now() - startedAt
           }
         })
         setLastRun(result.run)
@@ -734,7 +740,8 @@ const createCreatorWorkflowService = ({
           mode,
           runId,
           importedPackId: runView.importedPackId,
-          activatedPackId: runView.activatedPackId
+          activatedPackId: runView.activatedPackId,
+          elapsedMs: Date.now() - startedAt
         }
       })
       setLastRun(result.run)
@@ -750,7 +757,9 @@ const createCreatorWorkflowService = ({
           runId,
           lastCommandId: normalizeText(lastCommandResult?.commandId),
           errorName: normalizeText(error?.name),
-          errorCode: normalizeText(error?.code)
+          errorCode: normalizeText(error?.code),
+          errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 }),
+          elapsedMs: Date.now() - startedAt
         }
       })
       const failureState = lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID || lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
