@@ -53,10 +53,13 @@ test('creator studio default flow blocks before generation when provider health 
 
 test('creator studio default flow auto-answers trigger, confirms, generates, approves, and imports action runs without requiring the Creator Studio service to be running', async () => {
   const commandCalls = []
+  const logs = []
   const service = createCreatorStudioDefaultFlowService({
     imageGenerationModelService: {
       checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' })
     },
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'creator-default-flow-1',
     pluginService: {
       listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
       runCommand: async (pluginId, commandId, payload) => {
@@ -203,6 +206,20 @@ test('creator studio default flow auto-answers trigger, confirms, generates, app
   ])
   assert.equal(commandCalls[0].payload.backend, 'provider')
   assert.equal(commandCalls[1].payload.answer, 'manual')
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'creator.default-flow.started',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.question.auto-answered',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.completed'
+  ])
+  assert.equal(logs[0].details.requestId, 'creator-default-flow-1')
+  assert.equal(logs.at(-1).details.runId, 'run-001')
+  assert.equal(JSON.stringify(logs).includes('新增一个害羞转圈动作'), false)
 })
 
 test('creator studio default flow routes to details when unresolved questions are not safe to auto-answer', async () => {
@@ -445,4 +462,50 @@ test('creator studio default flow routes action imports with missing trigger han
   assert.equal(result.runId, 'run-trigger-missing')
   assert.match(result.message, /缺少触发建议交接记录/)
   assert.equal(result.lastCommandResult?.commandId, 'import-approved-action')
+})
+
+test('creator studio default flow failure logs do not include raw prompt or file-path error text', async () => {
+  const logs = []
+  const sensitiveError = new Error('Prompt "新增一个害羞转圈动作" failed at /Users/mango/private/reference.png')
+  sensitiveError.code = 'provider_failed'
+  const service = createCreatorStudioDefaultFlowService({
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' })
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      runCommand: async (_pluginId, commandId) => {
+        if (commandId === 'draft-task') {
+          return {
+            ok: true,
+            pluginId: 'openpet.creator-studio',
+            commandId,
+            exitCode: 0,
+            result: {
+              ok: true,
+              message: 'drafted',
+              run: {
+                runId: 'run-unsafe-failure',
+                taskStatus: 'confirmed',
+                generationTask: { questions: [] }
+              }
+            }
+          }
+        }
+        throw sensitiveError
+      }
+    }
+  })
+
+  const result = await service.runDefaultFlow({ prompt: '新增一个害羞转圈动作' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.state, 'needs_details')
+  assert.equal(logs.at(-1).event, 'creator.default-flow.failed')
+  assert.equal(logs.at(-1).message, 'Creator Studio default flow failed')
+  assert.equal(logs.at(-1).details.errorCode, 'provider_failed')
+  assert.equal(logs.at(-1).details.errorMessage, undefined)
+  assert.equal(JSON.stringify(logs).includes('新增一个害羞转圈动作'), false)
+  assert.equal(JSON.stringify(logs).includes('/Users/mango/private/reference.png'), false)
 })

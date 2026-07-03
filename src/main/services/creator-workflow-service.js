@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { CODEX_ROWS } = require('../pet-pack/codex-pet')
@@ -288,7 +289,8 @@ const createCreatorWorkflowService = ({
   actionService,
   creatorReferenceService,
   appLogService = null,
-  providerHealthTimeoutMs = DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS
+  providerHealthTimeoutMs = DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS,
+  idFactory = () => crypto.randomUUID()
 }) => {
   if (!pluginService?.listPlugins || !pluginService?.runCommand || !pluginService?.getPluginCreatorDataDir) {
     throw new Error('Plugin service is required for creator workflow service')
@@ -452,9 +454,32 @@ const createCreatorWorkflowService = ({
     referenceTarget,
     importCommandId
   }) => {
+    const requestId = idFactory()
     const plugin = assertPluginReady()
     const health = await getProviderHealth()
+    recordLog({
+      level: 'info',
+      event: 'creator.workflow.started',
+      message: 'Creator workflow started',
+      details: {
+        requestId,
+        mode,
+        importCommandId,
+        providerModel: normalizeText(imageGenerationModelService.getConfig()?.model),
+        serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+      }
+    })
     if (!health?.ok) {
+      recordLog({
+        level: 'error',
+        event: 'creator.workflow.blocked',
+        message: 'Creator workflow blocked by image provider health',
+        details: {
+          requestId,
+          mode,
+          providerCode: normalizeText(health?.code)
+        }
+      })
       const result = createWorkflowResult({
         state: 'provider-not-ready',
         code: normalizeText(health?.code) || 'provider_not_ready',
@@ -469,6 +494,22 @@ const createCreatorWorkflowService = ({
     let runId = ''
     let lastCommandResult = null
     const getWorkflowDiagnostics = () => readWorkflowDiagnostics({ pluginDataDir, runId })
+    const recordStage = ({ stage, result, run }) => {
+      recordLog({
+        level: 'info',
+        event: 'creator.workflow.stage.completed',
+        message: `Creator workflow stage completed: ${stage}`,
+        details: {
+          requestId,
+          mode,
+          stage,
+          runId: getCreatorStudioRunId(run),
+          commandId: normalizeText(result?.commandId),
+          taskStatus: normalizeText(run?.taskStatus),
+          runStatus: normalizeText(run?.status)
+        }
+      })
+    }
 
     try {
       const drafted = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
@@ -480,6 +521,7 @@ const createCreatorWorkflowService = ({
       const draftRun = getCreatorStudioRun(drafted)
       runId = getCreatorStudioRunId(draftRun)
       if (!runId) throw new Error('Creator Studio did not return a run id')
+      recordStage({ stage: 'draft', result: drafted, run: draftRun })
       updateWorkflowProgress({
         runId,
         commandId: drafted?.commandId || commandId,
@@ -498,6 +540,7 @@ const createCreatorWorkflowService = ({
         const confirmed = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_CONFIRM_COMMAND_ID, { runId })
         lastCommandResult = confirmed
         run = getCreatorStudioRun(confirmed)
+        recordStage({ stage: 'confirm', result: confirmed, run })
         updateWorkflowProgress({
           runId,
           commandId: confirmed?.commandId || CREATOR_STUDIO_CONFIRM_COMMAND_ID,
@@ -508,6 +551,7 @@ const createCreatorWorkflowService = ({
       const generated = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_GENERATE_COMMAND_ID, { runId })
       lastCommandResult = generated
       run = getCreatorStudioRun(generated)
+      recordStage({ stage: 'generate', result: generated, run })
       updateWorkflowProgress({
         runId,
         commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
@@ -518,6 +562,7 @@ const createCreatorWorkflowService = ({
         const approved = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_APPROVE_COMMAND_ID, { runId })
         lastCommandResult = approved
         run = getCreatorStudioRun(approved)
+        recordStage({ stage: 'approve', result: approved, run })
         updateWorkflowProgress({
           runId,
           commandId: approved?.commandId || CREATOR_STUDIO_APPROVE_COMMAND_ID,
@@ -540,6 +585,17 @@ const createCreatorWorkflowService = ({
           reference: creatorReferenceService.getReference(referenceTarget),
           diagnostics: getWorkflowDiagnostics()
         })
+        recordLog({
+          level: 'info',
+          event: 'creator.workflow.review-required',
+          message: 'Creator workflow requires manual review',
+          details: {
+            requestId,
+            mode,
+            runId,
+            lastCommandId: normalizeText(lastCommandResult?.commandId)
+          }
+        })
         setLastRun(result.run)
         return result
       }
@@ -549,6 +605,7 @@ const createCreatorWorkflowService = ({
         activate: true
       })
       lastCommandResult = imported
+      recordStage({ stage: 'import', result: imported, run: getCreatorStudioRun(imported) || run })
       updateWorkflowProgress({
         runId,
         commandId: imported?.commandId || importCommandId,
@@ -582,6 +639,17 @@ const createCreatorWorkflowService = ({
             },
             diagnostics: getWorkflowDiagnostics()
           })
+          recordLog({
+            level: 'error',
+            event: 'creator.workflow.import-follow-up-required',
+            message: 'Creator workflow imported an action but trigger follow-up is still required',
+            details: {
+              requestId,
+              mode,
+              runId,
+              importedActionId
+            }
+          })
           setLastRun(result.run)
           return result
         }
@@ -608,6 +676,18 @@ const createCreatorWorkflowService = ({
           },
           clickAction: clickAction || runView.importedActionId,
           diagnostics: getWorkflowDiagnostics()
+        })
+        recordLog({
+          level: 'info',
+          event: 'creator.workflow.completed',
+          message: 'Creator workflow completed with imported action',
+          details: {
+            requestId,
+            mode,
+            runId,
+            importedActionId: runView.importedActionId,
+            clickAction
+          }
         })
         setLastRun(result.run)
         return result
@@ -645,16 +725,32 @@ const createCreatorWorkflowService = ({
           : null,
         diagnostics: getWorkflowDiagnostics()
       })
+      recordLog({
+        level: 'info',
+        event: 'creator.workflow.completed',
+        message: 'Creator workflow completed with imported pet',
+        details: {
+          requestId,
+          mode,
+          runId,
+          importedPackId: runView.importedPackId,
+          activatedPackId: runView.activatedPackId
+        }
+      })
       setLastRun(result.run)
       return result
     } catch (error) {
       recordLog({
         level: 'error',
         event: 'creator.workflow.failed',
-        message: error?.message || 'Creator workflow failed',
+        message: 'Creator workflow failed',
         details: {
+          requestId,
           mode,
-          runId
+          runId,
+          lastCommandId: normalizeText(lastCommandResult?.commandId),
+          errorName: normalizeText(error?.name),
+          errorCode: normalizeText(error?.code)
         }
       })
       const failureState = lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID || lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID

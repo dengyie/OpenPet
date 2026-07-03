@@ -39,6 +39,30 @@ type ChatProviderPreset = {
 
 type ProviderFamily = 'openai' | 'openrouter' | 'together' | 'lm-studio' | 'vllm' | 'local-gateway' | 'generic-openai-compatible'
 
+type ProviderStatusItemProps = {
+  label: string
+  value: string
+  tone?: 'default' | 'ok' | 'warn'
+}
+
+function ProviderStatusItem({ label, value, tone = 'default' }: ProviderStatusItemProps) {
+  return (
+    <div className={`provider-status-item provider-status-item-${tone}`}>
+      <strong>{label}</strong>
+      <span>{value}</span>
+    </div>
+  )
+}
+
+const getProviderHostSummary = (value: string) => {
+  try {
+    const parsed = new URL(String(value || '').trim())
+    return parsed.host || parsed.href
+  } catch (_) {
+    return String(value || '').trim() || '未设置'
+  }
+}
+
 const imageProviderPresets: readonly ImageProviderPreset[] = [
   {
     id: 'openai',
@@ -241,7 +265,7 @@ const describeChatModelCompatibility = (baseUrl: string, model: string) => {
 }
 
 const renderImageModelDiscovery = (
-  result: ImageGenerationHealthCheckResult | null,
+  result: ProviderModelDiscoveryResult | null,
   currentModel: string,
   hasUnsavedDraft: boolean
 ) => {
@@ -255,8 +279,8 @@ const renderImageModelDiscovery = (
     )
   }
 
-  const discoveredModels = Array.isArray(result.availableModels) ? result.availableModels : []
-  if (result.modelsProbe === 'ok') {
+  const discoveredModels = Array.isArray(result.models) ? result.models : []
+  if (result.ok && result.code !== 'provider_reachable_models_unavailable') {
     const currentModelIncluded = normalizedCurrentModel ? discoveredModels.includes(normalizedCurrentModel) : false
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="image-model-discovery">
@@ -277,7 +301,7 @@ const renderImageModelDiscovery = (
     )
   }
 
-  if (result.modelsProbe === 'unavailable') {
+  if (result.ok && result.code === 'provider_reachable_models_unavailable') {
     return (
       <div className="provider-feedback" data-testid="image-model-discovery">
         <strong>模型列表探测不可用</strong>
@@ -322,7 +346,7 @@ const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null
 }
 
 const renderChatModelDiscovery = (
-  result: AiConnectionTestResult | null,
+  result: ProviderModelDiscoveryResult | null,
   currentModel: string,
   hasUnsavedDraft: boolean
 ) => {
@@ -336,8 +360,8 @@ const renderChatModelDiscovery = (
     )
   }
 
-  const discoveredModels = Array.isArray(result.availableModels) ? result.availableModels : []
-  if (result.modelsProbe === 'ok') {
+  const discoveredModels = Array.isArray(result.models) ? result.models : []
+  if (result.ok && result.code !== 'provider_reachable_models_unavailable') {
     const currentModelIncluded = normalizedCurrentModel ? discoveredModels.includes(normalizedCurrentModel) : false
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="chat-model-discovery">
@@ -358,7 +382,7 @@ const renderChatModelDiscovery = (
     )
   }
 
-  if (result.modelsProbe === 'unavailable') {
+  if (result.ok && result.code === 'provider_reachable_models_unavailable') {
     return (
       <div className="provider-feedback" data-testid="chat-model-discovery">
         <strong>模型列表探测不可用</strong>
@@ -655,6 +679,14 @@ export function AiPane({
   const chatModelCompatibility = describeChatModelCompatibility(config.baseUrl, config.model)
   const hasUnsavedChatProbeInputs = hasUnsavedConfigChanges || hasUnsavedApiKeyDraft
   const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
+  const activeChatHostSummary = getProviderHostSummary(activeConfig.baseUrl)
+  const activeImageHostSummary = getProviderHostSummary(activeImageGenerationConfig.baseUrl)
+  const chatConnectionSummary = connectionTestResult
+    ? (connectionTestResult.ok ? '最近测试通过' : '最近测试失败')
+    : (connectionStatus || '尚未测试')
+  const imageHealthSummary = imageHealthResult
+    ? (imageHealthResult.ok ? '最近健康检查通过' : '最近健康检查失败')
+    : (imageHealthStatus || '尚未检查')
   const applyChatProviderPreset = (preset: typeof chatProviderPresets[number]) => onChange({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
@@ -686,8 +718,10 @@ export function AiPane({
               <span>OpenPet 把模型能力拆成两张卡：聊天模型负责宠物对话，图片模型负责 Creator Studio 生成。两者都必须显式配置 Base URL、API Key 和 Model，不再区分本地/cloud 模式。</span>
             </div>
             <div className="provider-hub-badges" aria-label="Provider capability summary">
-              <span>{activeConfig.hasApiKey ? '聊天密钥已保存' : '聊天密钥未保存'}</span>
-              <span>{activeImageGenerationConfig.hasApiKey ? '图片密钥已保存' : '图片密钥未保存'}</span>
+              <ProviderStatusItem label="聊天模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+              <ProviderStatusItem label="图片模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+              <ProviderStatusItem label="聊天连接" value={chatConnectionSummary} tone={connectionTestResult?.ok ? 'ok' : 'default'} />
+              <ProviderStatusItem label="图片健康" value={imageHealthSummary} tone={imageHealthResult?.ok ? 'ok' : 'default'} />
             </div>
           </div>
 
@@ -699,33 +733,33 @@ export function AiPane({
                   <p>用于宠物气泡聊天、扩展聊天面板、人格生成、记忆抽取和行为编排。</p>
                 </div>
                 <div className="provider-card-actions">
-                  <button type="button" className="ghost" onClick={onDiscoverAiModels} disabled={saving}>
-                    刷新聊天模型
-                  </button>
-                  <button type="button" className="ghost" onClick={onTest} disabled={saving}>
-                    测试已保存配置
-                  </button>
                   <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
                     {saving ? '保存中' : '保存聊天 Provider'}
                   </button>
+                  <div className="provider-card-secondary-actions">
+                    <button type="button" className="ghost" onClick={onTest} disabled={saving}>
+                      测试已保存配置
+                    </button>
+                    <button type="button" className="ghost" onClick={onDiscoverAiModels} disabled={saving}>
+                      刷新聊天模型
+                    </button>
+                  </div>
                 </div>
               </div>
+              <div className="provider-status-strip">
+                <ProviderStatusItem label="当前模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                <ProviderStatusItem label="当前 Endpoint" value={activeConfig.baseUrl || '未设置'} />
+                <ProviderStatusItem label="密钥状态" value={activeConfig.hasApiKey ? '已保存' : '未保存'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                <ProviderStatusItem label="草稿状态" value={draftSummary || '当前没有未保存修改'} tone={draftSummary ? 'warn' : 'default'} />
+              </div>
               <div className="section provider-summary" data-testid="ai-provider-summary">
-                <div className="provider-feedback" data-testid="chat-provider-boundary">
-                  <strong>聊天 Provider 边界</strong>
-                  <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约；切换环境只需要改 Base URL 和 Model。</span>
-                  <span>“保存聊天 Provider”只写入当前配置；“测试已保存配置”只测试已保存的生效配置，不会偷用草稿。</span>
-                  <span>API Key 只保存在 OpenPet host；renderer、dashboard 和普通插件都不能直接读取。</span>
-                </div>
-
                 <div className="readonly-row">
                   <strong>当前生效配置</strong>
-                  <span className="endpoint-text" data-testid="ai-provider-active-summary">{activeProviderSummary}</span>
-                </div>
-
-                <div className="readonly-row">
-                  <strong>草稿状态</strong>
-                  <span>{draftSummary || '当前没有未保存修改'}</span>
+                  <div className="provider-inline-summary" data-testid="ai-provider-active-summary">
+                    <code>{activeChatHostSummary}</code>
+                    <span>{activeConfig.model || '未设置模型'}</span>
+                    <span>{activeConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                  </div>
                 </div>
 
                 {providerConfigDirty ? (
@@ -775,28 +809,6 @@ export function AiPane({
                   />
                 </label>
 
-                <div className="field-row tall">
-                  <div>
-                    <div className="field-label">聊天 Provider 预设</div>
-                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后测试确认。</div>
-                  </div>
-                  <div className="provider-preset-grid">
-                    {chatProviderPresets.map((preset) => (
-                      <button
-                        type="button"
-                        key={preset.id}
-                        className="provider-preset-card"
-                        onClick={() => applyChatProviderPreset(preset)}
-                        disabled={saving}
-                      >
-                        <strong>{preset.title}</strong>
-                        <span>{preset.description}</span>
-                        <code>{preset.baseUrl}</code>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="field-row">
                   <div>
                     <div className="field-label">API Key</div>
@@ -817,15 +829,6 @@ export function AiPane({
                   </div>
                 </div>
 
-                <label className="field-row tall">
-                  <span className="field-label">System Prompt</span>
-                  <textarea
-                    className="text-input textarea"
-                    value={config.systemPrompt}
-                    onChange={(event) => onChange({ systemPrompt: event.target.value })}
-                  />
-                </label>
-
                 <div className="field-row">
                   <div>
                     <div className="field-label">长期记忆</div>
@@ -837,47 +840,98 @@ export function AiPane({
                     onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
                   />
                 </div>
+
+                <details className="provider-disclosure">
+                  <summary>查看聊天 Provider 边界</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-feedback" data-testid="chat-provider-boundary">
+                      <strong>聊天 Provider 边界</strong>
+                      <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约；切换环境只需要改 Base URL 和 Model。</span>
+                      <span>“保存聊天 Provider”只写入当前配置；“测试已保存配置”只测试已保存的生效配置，不会偷用草稿。</span>
+                      <span>API Key 只保存在 OpenPet host；renderer、dashboard 和普通插件都不能直接读取。</span>
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示常用聊天 Provider 预设</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后测试确认。</div>
+                    <div className="provider-preset-grid">
+                      {chatProviderPresets.map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          className="provider-preset-card"
+                          onClick={() => applyChatProviderPreset(preset)}
+                          disabled={saving}
+                        >
+                          <strong>{preset.title}</strong>
+                          <span>{preset.description}</span>
+                          <code>{preset.baseUrl}</code>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示高级聊天配置</summary>
+                  <div className="provider-disclosure-body">
+                    <label className="field-row tall">
+                      <span className="field-label">System Prompt</span>
+                      <textarea
+                        className="text-input textarea"
+                        value={config.systemPrompt}
+                        onChange={(event) => onChange({ systemPrompt: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                </details>
               </div>
 
-              {(chatModelDiscoveryStatus || chatModelDiscovery) ? (
-                <div className="readonly-row" data-testid="ai-chat-model-discovery">
-                  <strong>聊天模型探测</strong>
-                  <span>
-                    {[chatModelDiscoveryStatus, chatModelDiscovery?.models?.length ? `models: ${chatModelDiscovery.models.join(', ')}` : '']
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
+              <div className="provider-diagnostics">
+                <div className="provider-diagnostics-heading">诊断与兼容性</div>
+                {(connectionStatus || connectionTestResult) ? (
+                  <div
+                    className={`provider-feedback ${connectionTestResult ? (connectionTestResult.ok ? 'ok' : 'error') : ''}`}
+                    data-testid="ai-provider-feedback"
+                    aria-live="polite"
+                  >
+                    <strong>聊天 Provider 状态</strong>
+                    {connectionStatus ? <span>{connectionStatus}</span> : null}
+                    {connectionTestResult ? (
+                      <div className="connection-result" data-testid="ai-connection-result">
+                        <strong>{connectionTestResult.ok ? '连接测试通过' : '连接测试失败'}</strong>
+                        <span>Provider: {connectionTestResult.provider}</span>
+                        <span>Base URL: {connectionTestResult.baseUrl}</span>
+                        <span>Model: {connectionTestResult.model}</span>
+                        <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
+                        <span>耗时: {connectionTestResult.elapsedMs}ms</span>
+                        {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
+                        {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {(chatModelDiscoveryStatus || chatModelDiscovery) ? (
+                  <div className="readonly-row" data-testid="ai-chat-model-discovery">
+                    <strong>聊天模型探测</strong>
+                    <span>
+                      {[chatModelDiscoveryStatus, chatModelDiscovery?.models?.length ? `models: ${chatModelDiscovery.models.join(', ')}` : '']
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </div>
+                ) : null}
+
+                {renderChatModelDiscovery(chatModelDiscovery, config.model, hasUnsavedChatProbeInputs)}
+
+                <div className="provider-feedback" data-testid="chat-model-compatibility">
+                  <strong>{chatModelCompatibility.title}</strong>
+                  <span>{chatModelCompatibility.summary}</span>
                 </div>
-              ) : null}
-
-              {(connectionStatus || connectionTestResult) ? (
-                <div
-                  className={`provider-feedback ${connectionTestResult ? (connectionTestResult.ok ? 'ok' : 'error') : ''}`}
-                  data-testid="ai-provider-feedback"
-                  aria-live="polite"
-                >
-                  <strong>聊天 Provider 状态</strong>
-                  {connectionStatus ? <span>{connectionStatus}</span> : null}
-                  {connectionTestResult ? (
-                    <div className="connection-result" data-testid="ai-connection-result">
-                      <strong>{connectionTestResult.ok ? '连接测试通过' : '连接测试失败'}</strong>
-                      <span>Provider: {connectionTestResult.provider}</span>
-                      <span>Base URL: {connectionTestResult.baseUrl}</span>
-                      <span>Model: {connectionTestResult.model}</span>
-                      <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
-                      <span>耗时: {connectionTestResult.elapsedMs}ms</span>
-                      {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
-                      {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {renderChatModelDiscovery(connectionTestResult, config.model, hasUnsavedChatProbeInputs)}
-
-              <div className="provider-feedback" data-testid="chat-model-compatibility">
-                <strong>{chatModelCompatibility.title}</strong>
-                <span>{chatModelCompatibility.summary}</span>
               </div>
 
             </article>
@@ -889,34 +943,34 @@ export function AiPane({
                   <p>用于 Creator Studio 生成宠物立绘、动作帧和导入前图片资产。</p>
                 </div>
                 <div className="provider-card-actions">
-                  <button type="button" className="ghost" onClick={onDiscoverImageGenerationModels} disabled={saving}>
-                    刷新图片模型
-                  </button>
-                  <button type="button" className="ghost" onClick={onCheckImageGenerationHealth} disabled={saving}>
-                    检查图片健康
-                  </button>
                   <button type="button" className="primary" onClick={onSaveImageGeneration} disabled={imageSaveDisabled}>
                     保存图片 Provider
                   </button>
+                  <div className="provider-card-secondary-actions">
+                    <button type="button" className="ghost" onClick={onCheckImageGenerationHealth} disabled={saving}>
+                      检查图片健康
+                    </button>
+                    <button type="button" className="ghost" onClick={onDiscoverImageGenerationModels} disabled={saving}>
+                      刷新图片模型
+                    </button>
+                  </div>
                 </div>
+              </div>
+              <div className="provider-status-strip">
+                <ProviderStatusItem label="当前模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                <ProviderStatusItem label="当前 Endpoint" value={activeImageGenerationConfig.baseUrl || '未设置'} />
+                <ProviderStatusItem label="密钥状态" value={activeImageGenerationConfig.hasApiKey ? '已保存' : '未保存'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                <ProviderStatusItem label="草稿状态" value={imageDraftSummary || '当前没有未保存修改'} tone={imageDraftSummary ? 'warn' : 'default'} />
               </div>
 
               <div className="section">
-                <div className="provider-feedback" data-testid="image-provider-boundary">
-                  <strong>图片 Provider 边界</strong>
-                  <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 图片 Provider 契约；切换环境只需要改 Base URL、Model 和超时配置。</span>
-                  <span>“保存图片 Provider”只更新 host 配置；“检查图片健康”只检查当前已保存的图片 Provider，不会偷用草稿。</span>
-                  <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
-                </div>
-
                 <div className="readonly-row">
                   <strong>图片当前 Provider</strong>
-                  <span className="endpoint-text">{imageTargetSummary}</span>
-                </div>
-
-                <div className="readonly-row">
-                  <strong>图片草稿状态</strong>
-                  <span>{imageDraftSummary ? `${imageDraftSummary}；健康检查使用当前已保存配置。` : '当前没有未保存的图片配置修改'}</span>
+                  <div className="provider-inline-summary">
+                    <code>{activeImageHostSummary}</code>
+                    <span>{activeImageGenerationConfig.model || '未设置模型'}</span>
+                    <span>{activeImageGenerationConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                  </div>
                 </div>
 
                 <div className="readonly-row">
@@ -924,70 +978,9 @@ export function AiPane({
                   <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
                 </div>
 
-                <div className="field-row tall">
-                  <div>
-                    <div className="field-label">图片 Provider 预设</div>
-                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model / 超时；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后健康检查确认。</div>
-                  </div>
-                  <div className="provider-preset-grid">
-                    {imageProviderPresets.map((preset) => (
-                      <button
-                        type="button"
-                        key={preset.id}
-                        className="provider-preset-card"
-                        onClick={() => applyImageProviderPreset(preset)}
-                        disabled={saving}
-                      >
-                        <strong>{preset.title}</strong>
-                        <span>{preset.description}</span>
-                        <code>{preset.baseUrl}</code>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {imageProviderValidationError ? (
                   <div className="provider-warning error">{imageProviderValidationError}</div>
                 ) : null}
-
-                {imageHealthStatus ? (
-                  <div className="readonly-row">
-                    <strong>图片健康状态</strong>
-                    <span>{imageHealthStatus}</span>
-                  </div>
-                ) : null}
-
-                {imageStatus ? (
-                  <div className="provider-feedback" data-testid="ai-image-status" aria-live="polite">
-                    <strong>图片 Provider 状态</strong>
-                    <span>{imageStatus}</span>
-                  </div>
-                ) : null}
-
-                {renderImageModelDiscovery(imageHealthResult, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
-
-                {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
-
-                <div className="provider-feedback" data-testid="image-model-compatibility">
-                  <strong>{imageModelCompatibility.title}</strong>
-                  <span>{imageModelCompatibility.summary}</span>
-                </div>
-
-                {(imageModelDiscoveryStatus || imageModelDiscovery) ? (
-                  <div className="readonly-row" data-testid="ai-image-model-discovery">
-                    <strong>图片模型探测</strong>
-                    <span>
-                      {[imageModelDiscoveryStatus, imageModelDiscovery?.models?.length ? `models: ${imageModelDiscovery.models.join(', ')}` : '']
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  </div>
-                ) : null}
-
-                <div className="readonly-row" data-testid="ai-image-compatibility-hint">
-                  <strong>透明背景兼容性</strong>
-                  <span>{imageTransparencyCompatibilityHint}</span>
-                </div>
 
                 <label className="field-row">
                   <span className="field-label">图片 Base URL</span>
@@ -1006,38 +999,6 @@ export function AiPane({
                     className="text-input"
                     value={imageGenerationConfig.model}
                     onChange={(event) => onChangeImageGeneration({ model: event.target.value })}
-                  />
-                </label>
-
-                <label className="field-row">
-                  <div>
-                    <div className="field-label">图片 Timeout</div>
-                    <div className="field-note">Provider 生成请求的最长等待时间，单位毫秒。</div>
-                  </div>
-                  <input
-                    aria-label="图片 Timeout MS"
-                    className="text-input"
-                    type="number"
-                    min={1000}
-                    step={1000}
-                    value={imageGenerationConfig.timeoutMs}
-                    onChange={(event) => onChangeImageGeneration({ timeoutMs: Number(event.target.value) })}
-                  />
-                </label>
-
-                <label className="field-row">
-                  <div>
-                    <div className="field-label">图片最大并发</div>
-                    <div className="field-note">当前建议保持 1，避免桌宠生成任务互相抢占。</div>
-                  </div>
-                  <input
-                    aria-label="图片最大并发"
-                    className="text-input"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={imageGenerationConfig.maxConcurrentJobs}
-                    onChange={(event) => onChangeImageGeneration({ maxConcurrentJobs: Number(event.target.value) })}
                   />
                 </label>
 
@@ -1065,6 +1026,119 @@ export function AiPane({
                       清除图片密钥
                     </button>
                   </div>
+                </div>
+
+                <details className="provider-disclosure">
+                  <summary>查看图片 Provider 边界</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-feedback" data-testid="image-provider-boundary">
+                      <strong>图片 Provider 边界</strong>
+                      <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 图片 Provider 契约；切换环境只需要改 Base URL、Model 和超时配置。</span>
+                      <span>“保存图片 Provider”只更新 host 配置；“检查图片健康”只检查当前已保存的图片 Provider，不会偷用草稿。</span>
+                      <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示常用图片 Provider 预设</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model / 超时；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后健康检查确认。</div>
+                    <div className="provider-preset-grid">
+                      {imageProviderPresets.map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          className="provider-preset-card"
+                          onClick={() => applyImageProviderPreset(preset)}
+                          disabled={saving}
+                        >
+                          <strong>{preset.title}</strong>
+                          <span>{preset.description}</span>
+                          <code>{preset.baseUrl}</code>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示高级图片配置</summary>
+                  <div className="provider-disclosure-body">
+                    <label className="field-row">
+                      <div>
+                        <div className="field-label">图片 Timeout</div>
+                        <div className="field-note">Provider 生成请求的最长等待时间，单位毫秒。</div>
+                      </div>
+                      <input
+                        aria-label="图片 Timeout MS"
+                        className="text-input"
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={imageGenerationConfig.timeoutMs}
+                        onChange={(event) => onChangeImageGeneration({ timeoutMs: Number(event.target.value) })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <div>
+                        <div className="field-label">图片最大并发</div>
+                        <div className="field-note">当前建议保持 1，避免桌宠生成任务互相抢占。</div>
+                      </div>
+                      <input
+                        aria-label="图片最大并发"
+                        className="text-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={imageGenerationConfig.maxConcurrentJobs}
+                        onChange={(event) => onChangeImageGeneration({ maxConcurrentJobs: Number(event.target.value) })}
+                      />
+                    </label>
+                  </div>
+                </details>
+              </div>
+
+              <div className="provider-diagnostics">
+                <div className="provider-diagnostics-heading">诊断与兼容性</div>
+                {imageHealthStatus ? (
+                  <div className="readonly-row">
+                    <strong>图片健康状态</strong>
+                    <span>{imageHealthStatus}</span>
+                  </div>
+                ) : null}
+
+                {imageStatus ? (
+                  <div className="provider-feedback" data-testid="ai-image-status" aria-live="polite">
+                    <strong>图片 Provider 状态</strong>
+                    <span>{imageStatus}</span>
+                  </div>
+                ) : null}
+
+                {renderImageModelDiscovery(imageModelDiscovery, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
+
+                {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
+
+                <div className="provider-feedback" data-testid="image-model-compatibility">
+                  <strong>{imageModelCompatibility.title}</strong>
+                  <span>{imageModelCompatibility.summary}</span>
+                </div>
+
+                {(imageModelDiscoveryStatus || imageModelDiscovery) ? (
+                  <div className="readonly-row" data-testid="ai-image-model-discovery">
+                    <strong>图片模型探测</strong>
+                    <span>
+                      {[imageModelDiscoveryStatus, imageModelDiscovery?.models?.length ? `models: ${imageModelDiscovery.models.join(', ')}` : '']
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="readonly-row" data-testid="ai-image-compatibility-hint">
+                  <strong>透明背景兼容性</strong>
+                  <span>{imageTransparencyCompatibilityHint}</span>
                 </div>
               </div>
             </article>

@@ -392,6 +392,16 @@ const createAiService = ({
 
   const getRawConfig = () => normalizeConfig(settingsService.get().ai)
 
+  const getConfigLogDetails = (config) => ({
+    provider: config.provider,
+    model: config.model,
+    endpoint: normalizeEndpointForLog(config.baseUrl),
+    enabled: config.enabled === true,
+    memoryEnabled: config.memory?.enabled === true,
+    behaviorEnabled: config.behavior?.enabled === true,
+    hasSystemPrompt: Boolean(String(config.systemPrompt || '').trim())
+  })
+
   const recordLog = (entry) => {
     try {
       appLogService?.record?.({
@@ -449,6 +459,13 @@ const createAiService = ({
       conversations: getStoredConversations()
     }
     settingsService.save({ ...settings, ai: nextAi })
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.saved',
+      message: 'AI provider settings saved',
+      details: getConfigLogDetails(nextAi)
+    })
     return getConfig()
   }
 
@@ -458,6 +475,17 @@ const createAiService = ({
     const config = getRawConfig()
     const updatedAt = new Date().toISOString()
     secretService.setSecret({ id: config.apiKeyRef, value: apiKey, label: 'AI API Key' })
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.api-key.saved',
+      message: 'AI provider API key saved',
+      details: {
+        ...getConfigLogDetails(config),
+        apiKeyRef: config.apiKeyRef,
+        updatedAt
+      }
+    })
     return {
       apiKeyRef: config.apiKeyRef,
       hasApiKey: true,

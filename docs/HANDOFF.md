@@ -20,6 +20,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - User-facing configuration belongs in Control Center.
 - API keys and provider credentials stay in the main process.
 - Real-provider smoke entrypoints now exist for AI provider verification, Bubble Chat acceptance, and Creator Studio provider-path verification.
+- The AI pane currently uses one default-open `模型 Provider` section with `聊天模型` / `图片模型` capability cards, disclosure-based advanced sections, and card-local diagnostics. Safe settings/workflow logs now cover chat provider saves, image provider saves, and Creator Studio workflow/default-flow lifecycle events.
 - The current public posture is macOS-first release track; Windows tooling exists but Windows is still not release-ready until signed evidence is archived.
 
 ## Current Priorities
@@ -59,5 +60,6 @@ npm run pack
 - Engineering snapshot: [`development-summary.md`](./development-summary.md)
 - Product/release snapshot: [`project-status-review.md`](./project-status-review.md)
 - AI Talk and runtime TODO map: [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md)
+- AI provider implementation/development note: [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md)
 - Extension authoring: [`plugin-development.md`](./plugin-development.md)
 - Release evidence and gates: [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md)

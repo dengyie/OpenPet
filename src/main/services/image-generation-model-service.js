@@ -391,6 +391,13 @@ const createImageGenerationModelService = ({
 
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
   const getProviderTimeoutMs = (config) => Math.max(1, Number(cloudGenerationTimeoutMs ?? providerGenerationTimeoutMs ?? config.timeoutMs ?? PROVIDER_GENERATION_TIMEOUT_MS) || PROVIDER_GENERATION_TIMEOUT_MS)
+  const getConfigLogDetails = (config) => ({
+    provider: config.provider,
+    model: config.model,
+    baseUrlHost: getUrlHost(config.baseUrl),
+    timeoutMs: Number(config.timeoutMs) || DEFAULT_CONFIG.timeoutMs,
+    maxConcurrentJobs: getMaxConcurrentJobs(config)
+  })
 
   const recordLog = (entry) => {
     try {
@@ -504,6 +511,13 @@ const createImageGenerationModelService = ({
     })
     next.baseUrl = assertProviderBaseUrl(next.baseUrl)
     saveStoredConfig(next)
+    recordLog({
+      scope: 'image-generation-settings',
+      level: 'info',
+      event: 'imageGeneration.settings.saved',
+      message: 'Image Provider settings saved',
+      details: getConfigLogDetails(next)
+    })
     return getConfig()
   }
 
@@ -513,6 +527,16 @@ const createImageGenerationModelService = ({
       id: config.apiKeyRef,
       value: String(apiKey || ''),
       label: 'Image API Key'
+    })
+    recordLog({
+      scope: 'image-generation-settings',
+      level: 'info',
+      event: 'imageGeneration.settings.api-key.saved',
+      message: 'Image Provider API key saved',
+      details: {
+        ...getConfigLogDetails(config),
+        apiKeyRef: config.apiKeyRef
+      }
     })
     const saved = getConfig()
     return {
@@ -525,6 +549,16 @@ const createImageGenerationModelService = ({
   const clearProviderApiKey = () => {
     const config = getStoredConfig()
     secretService.deleteSecret(config.apiKeyRef)
+    recordLog({
+      scope: 'image-generation-settings',
+      level: 'info',
+      event: 'imageGeneration.settings.api-key.cleared',
+      message: 'Image Provider API key cleared',
+      details: {
+        ...getConfigLogDetails(config),
+        apiKeyRef: config.apiKeyRef
+      }
+    })
     return {
       apiKeyRef: config.apiKeyRef,
       hasApiKey: false,
