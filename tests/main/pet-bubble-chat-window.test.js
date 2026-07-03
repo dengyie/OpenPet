@@ -206,6 +206,7 @@ test('resolveBubbleBounds uses side placement when vertical space would cover th
 
 test('pet bubble chat manager opens manually with a chat prompt even when auto popup is disabled', () => {
   const logs = []
+  const petBounds = { x: 300, y: 300, width: 120, height: 120 }
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -220,7 +221,7 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
     settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: false, autoHide: true } }) },
     getPetWindow: () => ({
       isDestroyed: () => false,
-      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+      getBounds: () => petBounds
     }),
     appLogService: { record: (entry) => logs.push(entry) }
   })
@@ -232,12 +233,17 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
   assert.equal(instances[0].focused, true)
   assert.deepEqual(instances[0].setAlwaysOnTopCalls.at(-1), { flag: true, level: 'pop-up-menu' })
   assert.ok(instances[0].bounds.height < 260)
+  const openGap = petBounds.y - (instances[0].bounds.y + instances[0].bounds.height)
+  assert.ok(openGap >= 0 && openGap <= 4)
   assert.equal(state.visible, true)
   assert.equal(state.interacting, true)
   assert.equal(state.message.text, '想聊点什么？')
   assert.equal(state.message.kind, 'dialogue')
   assert.equal(state.message.role, 'pet')
-  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.open-requested'), true)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.window.open-requested' &&
+    entry.details.anchorProfile === 'tight-head-anchor-v1'
+  )), true)
   assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.opened' && entry.details.anchorProfile === 'tight-head-anchor-v1'), true)
 })
 

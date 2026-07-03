@@ -857,7 +857,12 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: 'pet-bubble-chat.window.open-requested',
       message: 'Pet bubble chat window open requested',
-      details: getStateLogDetails({ source, focus: Boolean(focus), reason: focus ? 'manual-focus' : 'manual-open' })
+      details: getStateLogDetails({
+        source,
+        focus: Boolean(focus),
+        anchorProfile: BUBBLE_ANCHOR_PROFILE,
+        reason: focus ? 'manual-focus' : 'manual-open'
+      })
     })
     return getState()
   }
