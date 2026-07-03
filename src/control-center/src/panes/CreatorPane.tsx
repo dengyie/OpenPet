@@ -8,14 +8,14 @@ export type CreatorPaneMode = 'new-character' | 'existing-character'
 interface NewCharacterDraft {
   characterName: string
   stylePrompt: string
-  referenceImagePath: string
+  referenceImageToken: string
   referenceFileName: string
 }
 
 interface ExistingActionDraft {
   actionName: string
   motionPrompt: string
-  referenceImagePath: string
+  referenceImageToken: string
   referenceFileName: string
 }
 
@@ -36,8 +36,9 @@ export interface CreatorPaneProps {
   onChangeMode: (mode: CreatorPaneMode) => void
   onChangeNewCharacterDraft: (partial: Partial<NewCharacterDraft>) => void
   onChangeExistingActionDraft: (partial: Partial<ExistingActionDraft>) => void
-  onSelectNewCharacterReference: (files: FileList | null) => void
-  onSelectExistingActionReference: (files: FileList | null) => void
+  onSelectNewCharacterReference: () => void | Promise<void>
+  onSelectExistingActionReference: () => void | Promise<void>
+  onClearExistingActionReference: () => void | Promise<void>
   onGenerateNewCharacter: () => void | Promise<void>
   onGenerateExistingAction: () => void | Promise<void>
   onPreviewResult: () => void | Promise<void>
@@ -178,6 +179,7 @@ export function CreatorPane({
   onChangeExistingActionDraft,
   onSelectNewCharacterReference,
   onSelectExistingActionReference,
+  onClearExistingActionReference,
   onGenerateNewCharacter,
   onGenerateExistingAction,
   onPreviewResult,
@@ -252,14 +254,15 @@ export function CreatorPane({
           <div className="field-row tall">
             <label className="field-label" htmlFor="creator-new-reference">Reference image</label>
             <div className="creator-file-field">
-              <input
+              <button
                 id="creator-new-reference"
-                className="text-input"
-                type="file"
-                accept="image/*"
+                type="button"
+                className="ghost accent"
                 data-testid="creator-new-reference-input"
-                onChange={(event) => onSelectNewCharacterReference(event.target.files)}
-              />
+                onClick={() => onSelectNewCharacterReference()}
+              >
+                {newCharacterDraft.referenceFileName ? '重新选择参考图' : '选择参考图'}
+              </button>
               <p className="field-note">
                 {newCharacterDraft.referenceFileName
                   ? `Selected: ${newCharacterDraft.referenceFileName}`
@@ -314,17 +317,29 @@ export function CreatorPane({
                     : '当前可编辑角色还没有 canonical reference。请先选择一张图，随后会在生成动作时自动绑定。'}
                 </span>
               </div>
-              <input
+              <button
                 id="creator-existing-reference"
-                className="text-input"
-                type="file"
-                accept="image/*"
+                type="button"
+                className="ghost accent"
                 data-testid="creator-existing-reference-input"
-                onChange={(event) => onSelectExistingActionReference(event.target.files)}
-              />
+                onClick={() => onSelectExistingActionReference()}
+              >
+                {existingActionDraft.referenceFileName ? '重新选择参考图' : '选择参考图'}
+              </button>
+              {existingActionDraft.referenceFileName ? (
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => onClearExistingActionReference()}
+                >
+                  {hasEditableReference ? '改回已保存 reference' : '清除本次选择'}
+                </button>
+              ) : null}
               <p className="field-note">
                 {existingActionDraft.referenceFileName
-                  ? `Selected: ${existingActionDraft.referenceFileName}`
+                  ? hasEditableReference
+                    ? `Selected: ${existingActionDraft.referenceFileName} · 可随时改回已保存 reference。`
+                    : `Selected: ${existingActionDraft.referenceFileName}`
                   : hasEditableReference
                     ? '留空会复用已保存 reference；选新图则会替换并继续生成。'
                     : '首次生成动作必须选择一张参考图。'}

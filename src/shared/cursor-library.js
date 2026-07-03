@@ -366,6 +366,21 @@ const resizeCustomCursorRecord = (cursor, sizePercent) => {
   })
 }
 
+const removeStoredCursorRecord = ({ selectedCursorId, cursorId, customCursors }) => {
+  const normalizedCursorId = typeof cursorId === 'string' ? cursorId.trim() : ''
+  const nextCustomCursors = normalizeCustomCursorCollection(customCursors).filter((cursor) => cursor.id !== normalizedCursorId)
+  const removedBuiltinOverride = Boolean(getBuiltinCursorById(normalizedCursorId))
+  const nextSelectedCursorId = selectedCursorId === normalizedCursorId && !removedBuiltinOverride
+    ? SYSTEM_CURSOR_ID
+    : (typeof selectedCursorId === 'string' && selectedCursorId.trim() ? selectedCursorId.trim() : SYSTEM_CURSOR_ID)
+
+  return {
+    selectedCursorId: nextSelectedCursorId,
+    customCursors: nextCustomCursors,
+    removedBuiltinOverride
+  }
+}
+
 module.exports = {
   BUILTIN_CURSORS,
   CUSTOM_CURSOR_MAX_BYTES,
@@ -382,6 +397,7 @@ module.exports = {
   normalizeCustomCursorCollection,
   normalizeCustomCursorRecord,
   normalizeRuntimeCursor,
+  removeStoredCursorRecord,
   resizeCustomCursorRecord,
   resolveSelectedCursor,
   stripFileExtension

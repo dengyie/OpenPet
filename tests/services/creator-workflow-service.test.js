@@ -74,7 +74,7 @@ test('creator workflow service blocks before drafting runs when provider health 
   const result = await service.generateExistingAction({
     actionName: 'spin',
     motionPrompt: 'spin quickly',
-    referenceImagePath: '/tmp/reference.png'
+    referenceImageToken: 'token-reference'
   })
 
   assert.equal(result.ok, true)
@@ -623,7 +623,7 @@ test('creator workflow service binds a new character reference and completes a f
   const result = await service.generateNewCharacter({
     characterName: 'Mango Cat',
     stylePrompt: 'bright orange helper',
-    referenceImagePath: '/tmp/reference.png'
+    referenceImageToken: 'token-reference'
   })
 
   assert.equal(result.ok, true)
@@ -634,7 +634,7 @@ test('creator workflow service binds a new character reference and completes a f
   assert.deepEqual(bindCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',
-    sourcePath: '/tmp/reference.png'
+    referenceToken: 'token-reference'
   }])
   assert.deepEqual(copyCalls, [{
     targetType: 'pet-pack',
@@ -792,7 +792,7 @@ test('creator workflow service clears transient generating state when a locked w
   const result = await service.generateExistingAction({
     actionName: 'spin',
     motionPrompt: 'spin quickly',
-    referenceImagePath: '/tmp/missing-reference.png'
+    referenceImageToken: 'token-missing-reference'
   })
 
   assert.equal(result.state, 'missing-input')

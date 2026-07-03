@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { ControlCenterSettings, CursorOption } from '../../../shared/openpet-contracts'
+import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
 import {
   CUSTOM_CURSOR_MAX_SIZE_PERCENT,
   CUSTOM_CURSOR_MIN_SIZE_PERCENT,
   CUSTOM_CURSOR_SIZE_STEP_PERCENT,
+  getBuiltinCursorById,
   SYSTEM_CURSOR_ID
 } from '../../../shared/cursor-library.ts'
 import { SegmentedControl } from '../components/SegmentedControl'
@@ -20,6 +21,8 @@ export interface PetPaneProps {
   onSelectCursor: (cursorId: string) => void | Promise<void>
   onImportCursor: () => void | Promise<void>
   onResizeCursor: (cursorId: string, sizePercent: number) => void | Promise<void>
+  onRenameCursor: (cursorId: string, nextName: string) => void | Promise<void>
+  onDeleteCursor: (cursorId: string) => void | Promise<void>
   onSave: () => void | Promise<void>
   onReset: () => void
 }
@@ -46,6 +49,16 @@ const formatCursorSize = (cursor: Pick<CursorOption, 'width' | 'height'>) => {
   return width > 0 && height > 0 ? `${width}×${height}` : '尺寸未知'
 }
 
+const formatCursorDate = (value: string) => {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return '时间未知'
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(timestamp))
+}
+
 export function PetPane({
   settings,
   originalSettings,
@@ -54,6 +67,8 @@ export function PetPane({
   onSelectCursor,
   onImportCursor,
   onResizeCursor,
+  onRenameCursor,
+  onDeleteCursor,
   onSave,
   onReset,
   cursorOptions,
@@ -61,6 +76,7 @@ export function PetPane({
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
   const visibleCursorOptions = cursorOptions.filter((option) => option.id !== SYSTEM_CURSOR_ID)
+  const managedCursorRecords = settings.customCursors
   const selectedScalableCursor = visibleCursorOptions.find((cursor) => cursor.id === settings.selectedCursorId) || null
   const selectedCursorSizePercent = Math.round(Number(selectedScalableCursor?.sizePercent) || 100)
   const [pendingCursorSizePercent, setPendingCursorSizePercent] = useState(selectedCursorSizePercent)
@@ -82,6 +98,22 @@ export function PetPane({
     if (!selectedScalableCursor) return
     if (pendingCursorSizePercent === selectedCursorSizePercent) return
     onResizeCursor(selectedScalableCursor.id, pendingCursorSizePercent)
+  }
+
+  const promptRenameCursor = (cursor: CustomCursorRecord) => {
+    if (getBuiltinCursorById(cursor.id)) return
+    const nextName = window.prompt('修改指针名称', cursor.name)
+    if (nextName == null) return
+    onRenameCursor(cursor.id, nextName)
+  }
+
+  const confirmDeleteCursor = (cursor: CustomCursorRecord) => {
+    const builtin = getBuiltinCursorById(cursor.id)
+    const message = builtin
+      ? `重置「${cursor.name}」的自定义尺寸和覆盖设置？`
+      : `删除指针「${cursor.name}」？`
+    if (!window.confirm(message)) return
+    onDeleteCursor(cursor.id)
   }
 
   return (
@@ -251,6 +283,58 @@ export function PetPane({
                   <h3>当前指针大小</h3>
                   <p>先在上方选择一个指针，再调节它的显示大小。系统默认不参与缩放。</p>
                 </div>
+              )}
+            </div>
+
+            <div className="cursor-management-panel">
+              <div className="cursor-management-header">
+                <div>
+                  <h3>已保存的指针覆盖</h3>
+                  <p>这里会列出你上传的自定义指针，以及对内置指针做过的尺寸覆盖。</p>
+                </div>
+                <div className="cursor-management-actions">
+                  <button type="button" className="ghost accent" onClick={onImportCursor} disabled={saving}>
+                    上传指针
+                  </button>
+                </div>
+              </div>
+
+              {managedCursorRecords.length > 0 ? (
+                <div className="cursor-library-list" role="list" aria-label="已保存的指针覆盖">
+                  {managedCursorRecords.map((cursor) => {
+                    const active = settings.selectedCursorId === cursor.id
+                    const builtin = getBuiltinCursorById(cursor.id)
+                    return (
+                      <div key={cursor.id} className="cursor-library-row" role="listitem">
+                        <span className="cursor-library-preview">
+                          <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
+                        </span>
+                        <span className="cursor-library-main">
+                          <span className="cursor-library-title">
+                            <strong>{cursor.name}</strong>
+                            {active ? <span className="cursor-usage-badge">使用中</span> : null}
+                            {builtin ? <span className="cursor-usage-badge subtle">内置覆盖</span> : null}
+                          </span>
+                          <span className="cursor-library-meta">
+                            {formatCursorSize(cursor)} · {formatCursorDate(cursor.createdAt)}
+                          </span>
+                        </span>
+                        <span className="cursor-library-actions">
+                          {builtin ? null : (
+                            <button type="button" className="ghost" onClick={() => promptRenameCursor(cursor)} disabled={saving}>
+                              重命名
+                            </button>
+                          )}
+                          <button type="button" className={`ghost${builtin ? '' : ' danger'}`} onClick={() => confirmDeleteCursor(cursor)} disabled={saving}>
+                            {builtin ? '重置' : '删除'}
+                          </button>
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="cursor-library-empty">还没有保存任何自定义指针或内置覆盖。</div>
               )}
             </div>
           </div>

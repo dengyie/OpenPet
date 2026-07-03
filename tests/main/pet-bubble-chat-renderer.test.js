@@ -425,7 +425,7 @@ test('bubble chat renderer scrolls bubble list on wheel without scrolling the in
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
 })
 
-test('bubble chat renderer keeps history scrollable while awaiting reply without forcing interactive state churn', async () => {
+test('bubble chat renderer keeps history scrollable while awaiting reply and syncs interactive hold state to main', async () => {
   const harness = await createHarness()
   const { apiCalls, apiStateListeners, elements } = harness
 
@@ -445,5 +445,5 @@ test('bubble chat renderer keeps history scrollable while awaiting reply without
   })
 
   assert.equal(elements['bubble-stream'].scrollTop, before + 36)
-  assert.equal(apiCalls.setInteracting.includes(true), false)
+  assert.equal(apiCalls.setInteracting.includes(true), true)
 })

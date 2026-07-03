@@ -983,6 +983,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
   registerCreatorIpc({
     ipcMainService,
+    showOpenDialogForEvent,
     creatorWorkflowService
   })
 

@@ -82,6 +82,28 @@ const createCreatorReferenceService = ({
     throw new Error('referenceRoot is required for creator references')
   }
 
+  const approvedReferenceTokens = new Map()
+
+  const normalizeSourcePath = (value) => {
+    const normalized = String(value || '').trim()
+    return normalized ? path.resolve(normalized) : ''
+  }
+
+  const normalizeReferenceToken = (value) => String(value || '').trim()
+
+  const approveSourcePath = (sourcePath) => {
+    const resolvedSourcePath = normalizeSourcePath(sourcePath)
+    if (!resolvedSourcePath) {
+      throw new Error('Creator reference source image is required')
+    }
+    const referenceToken = crypto.randomUUID()
+    approvedReferenceTokens.set(referenceToken, resolvedSourcePath)
+    return {
+      referenceToken,
+      fileName: path.basename(resolvedSourcePath)
+    }
+  }
+
   const getReferenceRecord = ({ targetType, targetId }) => {
     const normalizedTargetType = normalizeTargetType(targetType)
     const normalizedTargetId = normalizeTargetId(targetId)
@@ -98,10 +120,23 @@ const createCreatorReferenceService = ({
 
   const getReference = (target) => createView(getReferenceRecord(target))
 
-  const bindReference = async ({ targetType, targetId, sourcePath }) => {
+  const consumeApprovedSourcePath = (referenceToken) => {
+    const normalizedReferenceToken = normalizeReferenceToken(referenceToken)
+    if (!normalizedReferenceToken) {
+      throw new Error('Creator reference source image was not approved by the main picker')
+    }
+    const resolvedSourcePath = approvedReferenceTokens.get(normalizedReferenceToken) || ''
+    approvedReferenceTokens.delete(normalizedReferenceToken)
+    if (!resolvedSourcePath) {
+      throw new Error('Creator reference source image was not approved by the main picker')
+    }
+    return resolvedSourcePath
+  }
+
+  const bindReference = async ({ targetType, targetId, referenceToken }) => {
     const normalizedTargetType = normalizeTargetType(targetType)
     const normalizedTargetId = normalizeTargetId(targetId)
-    const resolvedSourcePath = path.resolve(String(sourcePath || '').trim())
+    const resolvedSourcePath = consumeApprovedSourcePath(referenceToken)
     if (!resolvedSourcePath || !fs.existsSync(resolvedSourcePath)) {
       throw new Error('Creator reference source image does not exist')
     }
@@ -209,6 +244,7 @@ const createCreatorReferenceService = ({
   }
 
   return {
+    approveSourcePath,
     getReference,
     bindReference,
     copyReferenceIntoRun

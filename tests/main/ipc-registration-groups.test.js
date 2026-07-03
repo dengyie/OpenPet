@@ -287,6 +287,10 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
   const calls = []
   const creatorWorkflowService = {
     getState: async () => ({ ok: true, provider: { ready: true } }),
+    approveReferenceSourcePath: () => ({
+      referenceToken: 'token-reference',
+      fileName: 'reference.png'
+    }),
     bindReference: async (payload) => {
       calls.push({ type: 'bind', payload })
       return { ok: true, replaced: false, reference: payload }
@@ -304,15 +308,22 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
 
   registerCreatorIpc({
     ipcMainService: ipcMain,
+    showOpenDialogForEvent: async () => ({ canceled: false, filePaths: ['/tmp/reference.png'] }),
     creatorWorkflowService
   })
 
   assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_STATE)(), { ok: true, provider: { ready: true } })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_PICK_REFERENCE_IMAGE)({}, {}), {
+    ok: true,
+    canceled: false,
+    referenceToken: 'token-reference',
+    fileName: 'reference.png'
+  })
   assert.deepEqual(
     await ipcMain.handlers.get(IPC.CREATOR_BIND_REFERENCE)(null, {
       targetType: 'editable-action-host',
       targetId: 'legacy-editable-host',
-      sourcePath: '/tmp/reference.png'
+      referenceToken: 'token-reference'
     }),
     {
       ok: true,
@@ -320,19 +331,19 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
       reference: {
         targetType: 'editable-action-host',
         targetId: 'legacy-editable-host',
-        sourcePath: '/tmp/reference.png'
+        referenceToken: 'token-reference'
       }
     }
   )
   await ipcMain.handlers.get(IPC.CREATOR_GENERATE_NEW_CHARACTER)(null, {
     characterName: 'Mango',
     stylePrompt: 'orange cat',
-    referenceImagePath: '/tmp/reference.png'
+    referenceImageToken: 'token-reference'
   })
   await ipcMain.handlers.get(IPC.CREATOR_GENERATE_EXISTING_ACTION)(null, {
     actionName: 'spin',
     motionPrompt: 'spin quickly',
-    referenceImagePath: '/tmp/reference.png'
+    referenceImageToken: 'token-reference'
   })
   assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_LAST_RUN)(), { ok: true, run: null })
   assert.deepEqual(calls, [
@@ -341,7 +352,7 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
       payload: {
         targetType: 'editable-action-host',
         targetId: 'legacy-editable-host',
-        sourcePath: '/tmp/reference.png'
+        referenceToken: 'token-reference'
       }
     },
     {
@@ -349,7 +360,7 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
       payload: {
         characterName: 'Mango',
         stylePrompt: 'orange cat',
-        referenceImagePath: '/tmp/reference.png'
+        referenceImageToken: 'token-reference'
       }
     },
     {
@@ -357,7 +368,7 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
       payload: {
         actionName: 'spin',
         motionPrompt: 'spin quickly',
-        referenceImagePath: '/tmp/reference.png'
+        referenceImageToken: 'token-reference'
       }
     }
   ])

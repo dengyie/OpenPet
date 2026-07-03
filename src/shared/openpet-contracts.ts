@@ -1651,16 +1651,22 @@ export interface CreatorBindReferenceResult extends OkResponse {
   reference: CreatorReferenceViewState
 }
 
+export interface CreatorReferencePickerResult extends OkResponse {
+  canceled: boolean
+  referenceToken: string
+  fileName: string
+}
+
 export interface CreatorGenerateNewCharacterRequest {
   characterName: string
   stylePrompt?: string
-  referenceImagePath: string
+  referenceImageToken: string
 }
 
 export interface CreatorGenerateExistingActionRequest {
   actionName: string
   motionPrompt: string
-  referenceImagePath?: string
+  referenceImageToken?: string
 }
 
 export interface CreatorWorkflowConditioningSummaryViewState {
@@ -2923,7 +2929,6 @@ export interface SignedReleaseClaimSummary {
 }
 
 export interface ControlCenterApi {
-  getPathForFile?: (file: File) => string
   getSettings: () => Promise<ControlCenterSettings>
   saveSettings: (settings: Partial<ControlCenterSettings>) => Promise<ControlCenterSettings>
   previewScale: (scale: number) => void
@@ -2987,7 +2992,8 @@ export interface ControlCenterApi {
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   getCreatorState: () => Promise<CreatorStateViewState>
-  bindCreatorReference: (payload: { targetType: CreatorReferenceTargetType; targetId: string; sourcePath: string }) => Promise<CreatorBindReferenceResult>
+  pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>
+  bindCreatorReference: (payload: { targetType: CreatorReferenceTargetType; targetId: string; referenceToken: string }) => Promise<CreatorBindReferenceResult>
   generateCreatorNewCharacter: (payload: CreatorGenerateNewCharacterRequest) => Promise<CreatorWorkflowResult>
   generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
   getCreatorLastRun: () => Promise<{ ok: boolean; run: CreatorLastRunViewState | null }>

@@ -40,11 +40,12 @@ test('creator reference service binds a canonical reference and persists metadat
     referenceRoot: path.join(tempRoot, 'references'),
     now: () => '2026-07-02T10:00:00.000Z'
   })
+  const approval = service.approveSourcePath(sourcePath)
 
   const result = await service.bindReference({
     targetType: 'editable-action-host',
     targetId: 'legacy-editable-host',
-    sourcePath
+    referenceToken: approval.referenceToken
   })
 
   assert.equal(result.replaced, false)
@@ -82,11 +83,12 @@ test('creator reference service copies canonical reference into a creator run an
     referenceRoot: path.join(tempRoot, 'references'),
     now: () => '2026-07-02T10:05:00.000Z'
   })
+  const approval = service.approveSourcePath(sourcePath)
 
   await service.bindReference({
     targetType: 'pet-pack',
     targetId: 'mango-cat',
-    sourcePath
+    referenceToken: approval.referenceToken
   })
 
   const pluginDataDir = path.join(tempRoot, 'plugin-data')
@@ -137,17 +139,19 @@ test('creator reference service preserves the previous canonical asset when a re
     referenceRoot: path.join(tempRoot, 'references'),
     now: () => '2026-07-02T10:10:00.000Z'
   })
+  const firstApproval = service.approveSourcePath(sourcePath)
 
   const first = await service.bindReference({
     targetType: 'editable-action-host',
     targetId: 'legacy-editable-host',
-    sourcePath
+    referenceToken: firstApproval.referenceToken
   })
 
+  const missingApproval = service.approveSourcePath(path.join(tempRoot, 'missing.png'))
   await assert.rejects(() => service.bindReference({
     targetType: 'editable-action-host',
     targetId: 'legacy-editable-host',
-    sourcePath: path.join(tempRoot, 'missing.png')
+    referenceToken: missingApproval.referenceToken
   }), /does not exist/i)
 
   const current = service.getReference({
@@ -158,4 +162,64 @@ test('creator reference service preserves the previous canonical asset when a re
   assert.equal(current.assetPath, first.reference.assetPath)
   assert.ok(fs.existsSync(first.reference.assetPath))
   assert.equal(current.contentHash, first.reference.contentHash)
+})
+
+test('creator reference service rejects unapproved renderer paths until the main-owned picker approves them', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-approval-'))
+  const sourcePath = path.join(tempRoot, 'source.png')
+  await createReferenceImage(sourcePath, { width: 48, height: 36 })
+
+  const settingsService = createSettingsService()
+  const service = createCreatorReferenceService({
+    settingsService,
+    referenceRoot: path.join(tempRoot, 'references'),
+    now: () => '2026-07-03T10:10:00.000Z'
+  })
+
+  await assert.rejects(() => service.bindReference({
+    targetType: 'editable-action-host',
+    targetId: 'legacy-editable-host',
+    referenceToken: ''
+  }), /not approved/i)
+
+  const approval = service.approveSourcePath(sourcePath)
+  assert.equal(approval.fileName, 'source.png')
+  assert.equal(typeof approval.referenceToken, 'string')
+  assert.ok(approval.referenceToken.length > 10)
+
+  const result = await service.bindReference({
+    targetType: 'editable-action-host',
+    targetId: 'legacy-editable-host',
+    referenceToken: approval.referenceToken
+  })
+
+  assert.equal(result.reference.fileName, 'source.png')
+  assert.ok(fs.existsSync(result.reference.assetPath))
+})
+
+test('creator reference service consumes approval tokens after the first bind so renderer values cannot be replayed', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-single-use-'))
+  const sourcePath = path.join(tempRoot, 'source.png')
+  await createReferenceImage(sourcePath, { width: 48, height: 36 })
+
+  const settingsService = createSettingsService()
+  const service = createCreatorReferenceService({
+    settingsService,
+    referenceRoot: path.join(tempRoot, 'references'),
+    now: () => '2026-07-03T10:15:00.000Z'
+  })
+
+  const approval = service.approveSourcePath(sourcePath)
+  const first = await service.bindReference({
+    targetType: 'editable-action-host',
+    targetId: 'legacy-editable-host',
+    referenceToken: approval.referenceToken
+  })
+
+  assert.equal(first.reference.fileName, 'source.png')
+  await assert.rejects(() => service.bindReference({
+    targetType: 'editable-action-host',
+    targetId: 'legacy-editable-host',
+    referenceToken: approval.referenceToken
+  }), /not approved/i)
 })

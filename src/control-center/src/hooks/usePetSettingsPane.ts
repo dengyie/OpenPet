@@ -12,6 +12,7 @@ import {
   listCursorOptions,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,
+  removeStoredCursorRecord,
   resizeCustomCursorRecord
 } from '../../../shared/cursor-library.ts'
 import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
@@ -172,6 +173,52 @@ export function usePetSettingsPane() {
     )
   }
 
+  const onRenameCursor = async (cursorId: string, nextName: string) => {
+    const normalizedName = nextName.trim()
+    if (!normalizedName) {
+      setStatus('指针名称不能为空')
+      return
+    }
+    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor) {
+      setStatus('未找到要编辑的指针')
+      return
+    }
+    const nextCustomCursors = normalizeCustomCursorRecords(settings.customCursors.map((cursor) => (
+      cursor.id === cursorId ? { ...cursor, name: normalizedName } : cursor
+    )))
+    const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
+    setSettings(nextSettings)
+    await persistSettings(nextSettings, `已更新指针名称：${normalizedName}`, '指针名称保存失败')
+  }
+
+  const onDeleteCursor = async (cursorId: string) => {
+    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor) {
+      setStatus('未找到要处理的指针')
+      return
+    }
+    const removal = removeStoredCursorRecord({
+      selectedCursorId: settings.selectedCursorId,
+      cursorId,
+      customCursors: settings.customCursors
+    })
+    const nextSettings = applyCursorState(settings, {
+      selectedCursorId: removal.selectedCursorId,
+      customCursors: removal.customCursors
+    })
+    setSettings(nextSettings)
+    await persistSettings(
+      nextSettings,
+      removal.removedBuiltinOverride
+        ? `已重置 ${targetCursor.name} 的自定义尺寸`
+        : settings.selectedCursorId === cursorId
+          ? '已删除当前指针，并切回系统默认'
+          : `已删除指针：${targetCursor.name}`,
+      removal.removedBuiltinOverride ? '指针重置失败' : '指针删除失败'
+    )
+  }
+
   const paneProps = {
     settings,
     originalSettings,
@@ -182,6 +229,8 @@ export function usePetSettingsPane() {
     onSelectCursor,
     onImportCursor,
     onResizeCursor,
+    onRenameCursor,
+    onDeleteCursor,
     onSave,
     onReset
   } satisfies PetPaneProps

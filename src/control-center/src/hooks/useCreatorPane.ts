@@ -9,7 +9,7 @@ import type {
 import type { CreatorPaneProps, CreatorPaneMode } from '../panes/CreatorPane'
 
 interface SelectedReferenceDraft {
-  referenceImagePath: string
+  referenceImageToken: string
   referenceFileName: string
 }
 
@@ -23,39 +23,19 @@ interface ExistingActionDraft extends SelectedReferenceDraft {
   motionPrompt: string
 }
 
-interface LocalFileWithPath extends File {
-  path?: string
-}
-
 const createEmptyNewCharacterDraft = (): NewCharacterDraft => ({
   characterName: '',
   stylePrompt: '',
-  referenceImagePath: '',
+  referenceImageToken: '',
   referenceFileName: ''
 })
 
 const createEmptyExistingActionDraft = (): ExistingActionDraft => ({
   actionName: '',
   motionPrompt: '',
-  referenceImagePath: '',
+  referenceImageToken: '',
   referenceFileName: ''
 })
-
-const normalizeSelectedReference = (files: FileList | null): SelectedReferenceDraft => {
-  const file = files?.[0] as LocalFileWithPath | undefined
-  if (!file) {
-    return {
-      referenceImagePath: '',
-      referenceFileName: ''
-    }
-  }
-  const bridgedPath = typeof api.getPathForFile === 'function' ? String(api.getPathForFile(file) || '').trim() : ''
-  const nativePath = bridgedPath || (typeof file.path === 'string' ? file.path.trim() : '')
-  return {
-    referenceImagePath: nativePath || `demo://${file.name || 'reference-image'}`,
-    referenceFileName: String(file.name || '').trim() || 'reference-image'
-  }
-}
 
 const createInFlightResult = (mode: CreatorPaneMode): CreatorWorkflowResult => ({
   ok: true,
@@ -146,7 +126,7 @@ export function useCreatorPane(active: boolean) {
       const nextResult = await api.generateCreatorNewCharacter({
         characterName: newCharacterDraft.characterName,
         stylePrompt: newCharacterDraft.stylePrompt,
-        referenceImagePath: newCharacterDraft.referenceImagePath
+        referenceImageToken: newCharacterDraft.referenceImageToken
       })
       await syncAfterWorkflow(nextResult)
     } catch (error) {
@@ -166,7 +146,7 @@ export function useCreatorPane(active: boolean) {
       const nextResult = await api.generateCreatorExistingAction({
         actionName: existingActionDraft.actionName,
         motionPrompt: existingActionDraft.motionPrompt,
-        referenceImagePath: existingActionDraft.referenceImagePath || undefined
+        referenceImageToken: existingActionDraft.referenceImageToken || undefined
       })
       await syncAfterWorkflow(nextResult)
     } catch (error) {
@@ -223,16 +203,30 @@ export function useCreatorPane(active: boolean) {
     creatorStudioPluginReady &&
     !running &&
     newCharacterDraft.characterName.trim().length > 0 &&
-    newCharacterDraft.referenceImagePath.trim().length > 0
+    newCharacterDraft.referenceImageToken.trim().length > 0
   const canGenerateExistingAction = creatorState.provider.ready &&
     creatorStudioPluginReady &&
     !running &&
     existingActionDraft.actionName.trim().length > 0 &&
     existingActionDraft.motionPrompt.trim().length > 0 &&
     (
-      existingActionDraft.referenceImagePath.trim().length > 0 ||
+      existingActionDraft.referenceImageToken.trim().length > 0 ||
       hasStoredEditableReference
     )
+
+  const selectReference = async (applyDraft: (draft: SelectedReferenceDraft) => void, errorFallback: string) => {
+    try {
+      const picked = await api.pickCreatorReferenceImage()
+      if (picked.canceled) return
+      applyDraft({
+        referenceImageToken: String(picked.referenceToken || '').trim(),
+        referenceFileName: String(picked.fileName || '').trim() || 'reference-image'
+      })
+      setStatus('')
+    } catch (error) {
+      setStatus(messageFromError(error, errorFallback))
+    }
+  }
 
   const paneProps = {
     creatorState,
@@ -255,11 +249,21 @@ export function useCreatorPane(active: boolean) {
     onChangeExistingActionDraft: (partial: Partial<ExistingActionDraft>) => {
       setExistingActionDraft((current) => ({ ...current, ...partial }))
     },
-    onSelectNewCharacterReference: (files: FileList | null) => {
-      setNewCharacterDraft((current) => ({ ...current, ...normalizeSelectedReference(files) }))
-    },
-    onSelectExistingActionReference: (files: FileList | null) => {
-      setExistingActionDraft((current) => ({ ...current, ...normalizeSelectedReference(files) }))
+    onSelectNewCharacterReference: () => selectReference(
+      (draft) => setNewCharacterDraft((current) => ({ ...current, ...draft })),
+      '参考图片选择失败'
+    ),
+    onSelectExistingActionReference: () => selectReference(
+      (draft) => setExistingActionDraft((current) => ({ ...current, ...draft })),
+      '参考图片选择失败'
+    ),
+    onClearExistingActionReference: () => {
+      setExistingActionDraft((current) => ({
+        ...current,
+        referenceImageToken: '',
+        referenceFileName: ''
+      }))
+      setStatus('')
     },
     onGenerateNewCharacter,
     onGenerateExistingAction,

@@ -12,6 +12,7 @@ const {
   SYSTEM_CURSOR_ID,
   listCursorOptions,
   normalizeCursorSettingsState,
+  removeStoredCursorRecord,
   resizeCustomCursorRecord,
   resolveSelectedCursor
 } = require('../../src/shared/cursor-library')
@@ -258,4 +259,52 @@ test('resolveSelectedCursor recenters invalid custom cursor hotspots when metada
     hotspotX: 32,
     hotspotY: 20
   })
+})
+
+test('removeStoredCursorRecord falls back to system when deleting the selected custom-only cursor', () => {
+  const result = removeStoredCursorRecord({
+    selectedCursorId: 'cursor-large',
+    cursorId: 'cursor-large',
+    customCursors: [{
+      id: 'cursor-large',
+      name: 'Large Cursor',
+      assetPath: '/tmp/large.png',
+      assetUrl: 'file:///tmp/large.png',
+      fileName: 'large.png',
+      width: 64,
+      height: 40,
+      byteSize: 1200,
+      hotspotX: 9,
+      hotspotY: 11,
+      createdAt: '2026-06-20T00:00:00.000Z'
+    }]
+  })
+
+  assert.equal(result.selectedCursorId, SYSTEM_CURSOR_ID)
+  assert.deepEqual(result.customCursors, [])
+  assert.equal(result.removedBuiltinOverride, false)
+})
+
+test('removeStoredCursorRecord resets built-in overrides without clearing the current built-in selection', () => {
+  const builtin = BUILTIN_CURSORS[0]
+  const result = removeStoredCursorRecord({
+    selectedCursorId: builtin.id,
+    cursorId: builtin.id,
+    customCursors: [{
+      ...createPersistedCursorRecord(builtin),
+      width: 72,
+      height: 72,
+      hotspotX: 3,
+      hotspotY: 3,
+      sizePercent: 150,
+      baseWidth: 48,
+      baseHeight: 48,
+      baseHotspotX: 2,
+      baseHotspotY: 2
+    }]
+  })
+
+  assert.equal(result.selectedCursorId, builtin.id)
+  assert.deepEqual(result.customCursors, [])
+  assert.equal(result.removedBuiltinOverride, true)
 })

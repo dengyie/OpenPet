@@ -117,6 +117,7 @@ const IPC = Object.freeze({
   PLUGINS_CLEAR_LOGS: 'plugins:clear-logs',
   PLUGINS_CLEAR_STORAGE: 'plugins:clear-storage',
   CREATOR_GET_STATE: 'creator:get-state',
+  CREATOR_PICK_REFERENCE_IMAGE: 'creator:pick-reference-image',
   CREATOR_BIND_REFERENCE: 'creator:bind-reference',
   CREATOR_GENERATE_NEW_CHARACTER: 'creator:generate-new-character',
   CREATOR_GENERATE_EXISTING_ACTION: 'creator:generate-existing-action',

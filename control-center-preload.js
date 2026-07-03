@@ -4,7 +4,7 @@
  * 暴露配置管理 UI 需要的最小主进程接口。AI、插件和本地服务后续也从这里扩展，
  * 不让管理页面直接接触 Node.js / Electron API。
  */
-const { contextBridge, ipcRenderer, webUtils } = require('electron')
+const { contextBridge, ipcRenderer } = require('electron')
 
 const IPC = {
   SETTINGS_GET: 'settings:get',
@@ -89,6 +89,7 @@ const IPC = {
   PLUGINS_CLEAR_LOGS: 'plugins:clear-logs',
   PLUGINS_CLEAR_STORAGE: 'plugins:clear-storage',
   CREATOR_GET_STATE: 'creator:get-state',
+  CREATOR_PICK_REFERENCE_IMAGE: 'creator:pick-reference-image',
   CREATOR_BIND_REFERENCE: 'creator:bind-reference',
   CREATOR_GENERATE_NEW_CHARACTER: 'creator:generate-new-character',
   CREATOR_GENERATE_EXISTING_ACTION: 'creator:generate-existing-action',
@@ -111,13 +112,6 @@ const IPC = {
 }
 
 contextBridge.exposeInMainWorld('controlCenterAPI', {
-  getPathForFile: (file) => {
-    try {
-      return webUtils.getPathForFile(file || null) || ''
-    } catch (_) {
-      return ''
-    }
-  },
   getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
   saveSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
   importCursor: () => ipcRenderer.invoke(IPC.SETTINGS_IMPORT_CURSOR),
@@ -190,6 +184,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   setPluginNativeExecutionApproved: (pluginId, approved) => ipcRenderer.invoke(IPC.PLUGINS_SET_NATIVE_EXECUTION_APPROVED, { pluginId, approved }),
   savePluginConfig: (pluginId, config) => ipcRenderer.invoke(IPC.PLUGINS_SAVE_CONFIG, { pluginId, config }),
   getCreatorState: () => ipcRenderer.invoke(IPC.CREATOR_GET_STATE),
+  pickCreatorReferenceImage: () => ipcRenderer.invoke(IPC.CREATOR_PICK_REFERENCE_IMAGE),
   bindCreatorReference: (payload) => ipcRenderer.invoke(IPC.CREATOR_BIND_REFERENCE, payload),
   generateCreatorNewCharacter: (payload) => ipcRenderer.invoke(IPC.CREATOR_GENERATE_NEW_CHARACTER, payload),
   generateCreatorExistingAction: (payload) => ipcRenderer.invoke(IPC.CREATOR_GENERATE_EXISTING_ACTION, payload),

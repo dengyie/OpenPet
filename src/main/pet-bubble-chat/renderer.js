@@ -117,6 +117,7 @@ const isComposerTarget = (target) => {
 const handleBubbleWheel = (event) => {
   expanded = true
   scrollingHistory = true
+  syncUiInteractionState()
   if (scrollInteractionTimer) window.clearTimeout(scrollInteractionTimer)
   scrollInteractionTimer = window.setTimeout(() => {
     scrollingHistory = false
@@ -244,7 +245,7 @@ const syncPassiveHitTestMode = (source = 'renderer-state-sync') => {
 const syncUiInteractionState = () => {
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
-  const shouldInteract = hovering || focused || hasDraft || hasTextSelection() || Boolean(currentState.sending) || Boolean(currentState.error)
+  const shouldInteract = hovering || focused || hasDraft || scrollingHistory || hasTextSelection() || Boolean(currentState.sending) || Boolean(currentState.error)
   if (!shouldInteract) expanded = false
   setInteracting(shouldInteract)
   setHitTestMode(shouldAcceptHitTest(), 'renderer-interaction-sync')

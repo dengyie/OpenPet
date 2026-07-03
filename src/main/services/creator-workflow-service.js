@@ -359,8 +359,15 @@ const createCreatorWorkflowService = ({
 
   const getLastRun = async () => ({ ok: true, run: lastRun })
 
-  const bindReference = async ({ targetType, targetId, sourcePath }) => {
-    const result = await creatorReferenceService.bindReference({ targetType, targetId, sourcePath })
+  const approveReferenceSourcePath = (sourcePath) => {
+    if (!creatorReferenceService?.approveSourcePath) {
+      throw new Error('Creator reference picker is not available')
+    }
+    return creatorReferenceService.approveSourcePath(sourcePath)
+  }
+
+  const bindReference = async ({ targetType, targetId, referenceToken }) => {
+    const result = await creatorReferenceService.bindReference({ targetType, targetId, referenceToken })
     return {
       ok: true,
       replaced: result.replaced,
@@ -676,9 +683,9 @@ const createCreatorWorkflowService = ({
     }
   }
 
-  const generateNewCharacter = async ({ characterName, stylePrompt = '', referenceImagePath }) => {
+  const generateNewCharacter = async ({ characterName, stylePrompt = '', referenceImageToken }) => {
     const normalizedCharacterName = normalizeText(characterName)
-    const normalizedReferenceImagePath = normalizeText(referenceImagePath)
+    const normalizedReferenceImageToken = normalizeText(referenceImageToken)
     if (!normalizedCharacterName) {
       return createWorkflowResult({
         state: 'missing-input',
@@ -686,7 +693,7 @@ const createCreatorWorkflowService = ({
         message: '请先输入角色名称'
       })
     }
-    if (!normalizedReferenceImagePath) {
+    if (!normalizedReferenceImageToken) {
       return createWorkflowResult({
         state: 'missing-input',
         code: 'missing_reference_image',
@@ -702,7 +709,7 @@ const createCreatorWorkflowService = ({
         await creatorReferenceService.bindReference({
           targetType: 'pet-pack',
           targetId: petId,
-          sourcePath: normalizedReferenceImagePath
+          referenceToken: normalizedReferenceImageToken
         })
       } catch (error) {
         return createWorkflowResult({
@@ -729,9 +736,10 @@ const createCreatorWorkflowService = ({
     })
   }
 
-  const generateExistingAction = async ({ actionName, motionPrompt, referenceImagePath = '' }) => {
+  const generateExistingAction = async ({ actionName, motionPrompt, referenceImageToken = '' }) => {
     const normalizedActionName = normalizeText(actionName)
     const normalizedMotionPrompt = normalizeText(motionPrompt)
+    const normalizedReferenceImageToken = normalizeText(referenceImageToken)
     if (!normalizedActionName) {
       return createWorkflowResult({
         state: 'missing-input',
@@ -752,12 +760,12 @@ const createCreatorWorkflowService = ({
       message: `正在生成动作 ${normalizedActionName}`
     }, async () => {
       let reference = null
-      if (normalizeText(referenceImagePath)) {
+      if (normalizedReferenceImageToken) {
         try {
           const bound = await creatorReferenceService.bindReference({
             targetType: EDITABLE_TARGET_TYPE,
             targetId: EDITABLE_TARGET_ID,
-            sourcePath: normalizeText(referenceImagePath)
+            referenceToken: normalizedReferenceImageToken
           })
           reference = bound.reference
         } catch (error) {
@@ -801,6 +809,7 @@ const createCreatorWorkflowService = ({
   }
 
   return {
+    approveReferenceSourcePath,
     getState,
     getLastRun,
     bindReference,

@@ -24,6 +24,7 @@ test('shared IPC contract exports stable frozen channel names', () => {
   assert.equal(IPC.ACTIONS_PREVIEW_TRIGGER_PROPOSAL, 'actions:preview-trigger-proposal')
   assert.equal(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, 'plugins:run-creator-studio-default-flow')
   assert.equal(IPC.CREATOR_GET_STATE, 'creator:get-state')
+  assert.equal(IPC.CREATOR_PICK_REFERENCE_IMAGE, 'creator:pick-reference-image')
   assert.equal(IPC.CREATOR_BIND_REFERENCE, 'creator:bind-reference')
   assert.equal(IPC.CREATOR_GENERATE_NEW_CHARACTER, 'creator:generate-new-character')
   assert.equal(IPC.CREATOR_GENERATE_EXISTING_ACTION, 'creator:generate-existing-action')

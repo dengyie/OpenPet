@@ -128,3 +128,13 @@ test('demo API exposes native execution approval path for entries plugins', asyn
   const afterRevoke = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === review.plugin.id)
   assert.equal(afterRevoke.nativeExecutionApproved, false)
 })
+
+test('demo API creator picker returns an opaque reference token', async () => {
+  const picked = await demoControlCenterAPI.pickCreatorReferenceImage()
+
+  assert.equal(picked.ok, true)
+  assert.equal(picked.canceled, false)
+  assert.equal(typeof picked.referenceToken, 'string')
+  assert.ok(picked.referenceToken.length > 10)
+  assert.equal('sourcePath' in picked, false)
+})

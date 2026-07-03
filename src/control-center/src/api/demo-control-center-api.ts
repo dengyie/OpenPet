@@ -35,6 +35,7 @@ import type {
   CreatorGenerateExistingActionRequest,
   CreatorGenerateNewCharacterRequest,
   CreatorLastRunViewState,
+  CreatorReferencePickerResult,
   CreatorReferenceTargetType,
   CreatorReferenceViewState,
   CreatorStateViewState,
@@ -1215,9 +1216,12 @@ const emitDemoActivePetPackChanged = (payload: ActivePetPackChangedEvent) => {
 
 const demoState = readDemoState()
 const demoCreatorReferences = new Map<string, CreatorReferenceViewState>()
+const demoCreatorReferenceSelections = new Map<string, string>()
 let demoCreatorLastRun: CreatorLastRunViewState | null = null
+let demoCreatorReferenceTokenSeq = 0
 
 const getDemoCreatorReferenceKey = (targetType: CreatorReferenceTargetType, targetId: string) => `${targetType}:${targetId}`
+const createDemoCreatorReferenceToken = () => `demo-reference-token-${Date.now()}-${++demoCreatorReferenceTokenSeq}`
 
 const getDemoEditableCreatorTarget = () => {
   const activePack = demoState.petPacks.packs.find((pack) => pack.id === demoState.petPacks.activePackId) || demoState.petPacks.packs[0]
@@ -1254,7 +1258,40 @@ const createDemoCreatorState = (): CreatorStateViewState => {
   })
 }
 
-const bindDemoCreatorReference = ({ targetType, targetId, sourcePath }: { targetType: CreatorReferenceTargetType; targetId: string; sourcePath: string }): CreatorBindReferenceResult => {
+const approveDemoCreatorReference = (sourcePath: string): CreatorReferencePickerResult => {
+  const referenceToken = createDemoCreatorReferenceToken()
+  demoCreatorReferenceSelections.set(referenceToken, sourcePath)
+  return {
+    ok: true,
+    canceled: false,
+    referenceToken,
+    fileName: sourcePath.split('/').pop() || 'reference.png'
+  }
+}
+
+const consumeDemoCreatorReferenceSourcePath = (referenceToken: string): string => {
+  const normalizedReferenceToken = String(referenceToken || '').trim()
+  if (!normalizedReferenceToken) {
+    throw new Error('Demo creator reference token is required')
+  }
+  const sourcePath = demoCreatorReferenceSelections.get(normalizedReferenceToken) || ''
+  demoCreatorReferenceSelections.delete(normalizedReferenceToken)
+  if (!sourcePath) {
+    throw new Error('Demo creator reference token is invalid or already used')
+  }
+  return sourcePath
+}
+
+const bindDemoCreatorReference = ({
+  targetType,
+  targetId,
+  referenceToken
+}: {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  referenceToken: string
+}): CreatorBindReferenceResult => {
+  const sourcePath = consumeDemoCreatorReferenceSourcePath(referenceToken)
   const key = getDemoCreatorReferenceKey(targetType, targetId)
   const previous = demoCreatorReferences.get(key) || null
   const now = new Date().toISOString()
@@ -2482,13 +2519,14 @@ export const demoControlCenterAPI: ControlCenterApi = {
   },
   savePluginConfig: async (pluginId, config) => ({ id: pluginId, config }),
   getCreatorState: async () => createDemoCreatorState(),
-  bindCreatorReference: async ({ targetType, targetId, sourcePath }) => bindDemoCreatorReference({ targetType, targetId, sourcePath }),
+  pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference('/demo/creator/reference.png'),
+  bindCreatorReference: async ({ targetType, targetId, referenceToken }) => bindDemoCreatorReference({ targetType, targetId, referenceToken }),
   generateCreatorNewCharacter: async (payload: CreatorGenerateNewCharacterRequest): Promise<CreatorWorkflowResult> => {
     const targetId = `demo-pack:${String(payload.characterName || 'new-character').trim() || 'new-character'}`
     const reference = bindDemoCreatorReference({
       targetType: 'pet-pack',
       targetId,
-      sourcePath: payload.referenceImagePath
+      referenceToken: payload.referenceImageToken
     }).reference
     const run = completeDemoCreatorRun({
       state: 'completed',
@@ -2512,11 +2550,11 @@ export const demoControlCenterAPI: ControlCenterApi = {
   },
   generateCreatorExistingAction: async (payload: CreatorGenerateExistingActionRequest): Promise<CreatorWorkflowResult> => {
     const editableTarget = getDemoEditableCreatorTarget()
-    const reference = payload.referenceImagePath
+    const reference = payload.referenceImageToken
       ? bindDemoCreatorReference({
           targetType: editableTarget.targetType,
           targetId: editableTarget.targetId,
-          sourcePath: payload.referenceImagePath
+          referenceToken: payload.referenceImageToken
         }).reference
       : demoCreatorReferences.get(getDemoCreatorReferenceKey(editableTarget.targetType, editableTarget.targetId)) || null
     const actionId = String(payload.actionName || 'custom-action').trim() || 'custom-action'

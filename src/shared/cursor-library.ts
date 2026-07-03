@@ -396,3 +396,26 @@ export const resizeCustomCursorRecord = (
     baseHotspotY
   })
 }
+
+export const removeStoredCursorRecord = ({
+  selectedCursorId,
+  cursorId,
+  customCursors
+}: {
+  selectedCursorId?: string | null
+  cursorId: string
+  customCursors?: Array<Partial<CustomCursorRecord> | null | undefined>
+}) => {
+  const normalizedCursorId = typeof cursorId === 'string' ? cursorId.trim() : ''
+  const nextCustomCursors = normalizeCustomCursorCollection(customCursors).filter((cursor) => cursor.id !== normalizedCursorId)
+  const removedBuiltinOverride = Boolean(getBuiltinCursorById(normalizedCursorId))
+  const nextSelectedCursorId = selectedCursorId === normalizedCursorId && !removedBuiltinOverride
+    ? SYSTEM_CURSOR_ID
+    : (typeof selectedCursorId === 'string' && selectedCursorId.trim() ? selectedCursorId.trim() : SYSTEM_CURSOR_ID)
+
+  return {
+    selectedCursorId: nextSelectedCursorId,
+    customCursors: nextCustomCursors,
+    removedBuiltinOverride
+  }
+}
