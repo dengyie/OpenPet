@@ -11,7 +11,7 @@ OpenPet currently has:
 - an Electron pet runtime plus React + Vite Control Center,
 - a card-based cursor picker with import, resize, and uploaded custom cursor deletion for pet hover cursors,
 - pet-pack import and export flows with bundled built-in packs,
-- AI provider settings with main-process secret storage, structured diagnostics, and real-provider smoke entrypoints,
+- AI provider settings with one `模型 Provider` hub, chat/image capability cards, disclosure-based advanced configuration, main-process secret storage, structured diagnostics, and real-provider smoke entrypoints,
 - a developer-first local extension runtime with explicit setup, command, dashboard, and service controls,
 - Bubble Chat and Creator Studio host-side provider validation paths,
 - loopback-only local HTTP/MCP endpoints,
@@ -42,7 +42,8 @@ npm run run-ai-talk-local-smoke -- --message "<message>"
 
 - Release evidence still needs real signed macOS and Windows artifacts before support claims can move.
 - Packaged native picker evidence still needs real archived runs.
-- Creator Studio image-provider polish and host-owned trigger-rule editing remain open product work.
+- Host-owned trigger-rule editing remains open product work after the current Provider UX hardening pass.
+- AI/Creator diagnostics now have better safe logs and UI coverage, but full release confidence still depends on broader smoke and packaged-runtime evidence.
 - Extension-community proof still needs a compatible third-party package path without overstating trust or safety.
 
 ## Reference Points
