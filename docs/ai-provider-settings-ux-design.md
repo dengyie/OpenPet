@@ -1,9 +1,46 @@
 # AI Provider Settings UX Design
 
-> Date: 2026-06-22
-> Status: implemented
-> Owner surface: Control Center AI pane + main-process AI services
+> Date: 2026-07-03
+> Status: implemented and under hardening
+> Owner surface: Control Center AI pane + main-process AI / image-generation / creator workflow services
 > Priority: P1
+
+## Implementation Update: 2026-07-03
+
+This document is now the active design-and-development note for the current AI Provider work, not only the original save/test split.
+
+The current landed slice includes:
+
+- one default-open `模型 Provider` section in the AI pane, with two capability cards:
+  - `聊天模型`
+  - `图片模型`
+- chat and image provider settings both using the same host-owned contract shape:
+  - `Base URL`
+  - `API Key`
+  - `Model`
+- no renderer-side distinction between `local` and `cloud`; environment switching is done by changing the saved endpoint/model/key.
+- disclosure-based secondary UI for:
+  - provider boundary copy
+  - provider presets
+  - advanced settings
+- compact active summaries that surface:
+  - active host
+  - active model
+  - key saved state
+  - dirty-draft state
+- structured diagnostics for:
+  - chat saved-config test
+  - image provider health check
+  - optional `/models` discovery
+  - image compatibility hints
+- main-process safe logs for:
+  - chat provider config save
+  - chat provider API key save
+  - image provider config save
+  - image provider API key save / clear
+  - Creator Studio default-flow lifecycle
+  - Creator workflow lifecycle
+- hardened app-log redaction for prompt-like and reply-like fields so provider/Creator diagnostics can be retained without leaking user prompts or provider replies.
 
 ## Implementation Update: 2026-06-23
 
@@ -18,6 +55,76 @@ This design is implemented for the chat provider path:
 - Provider logs intentionally avoid API keys, Authorization headers, prompts, and raw provider response bodies.
 
 The same AI pane now also exposes host-owned Creator Studio image-generation settings. That surface belongs to `ImageGenerationModelService`, not `AiService`: it manages the unified OpenAI-compatible image Provider config, API key storage, health checks, provider invocation, and generated output writes. Creator Studio may still use `fixture` / `cloud` / `local` as run backend vocabulary, but Provider credentials and calls stay host-owned. Future UI work should likely split this into a clearer model-settings card, but the security boundary is already host-owned.
+
+## 0. Current Design Summary
+
+The current design direction is:
+
+1. Put all model-provider settings in one place: `Control Center -> AI -> 模型 Provider`.
+2. Keep one host-owned configuration model for chat and image generation.
+3. Make “saved active config” and “unsaved local draft” visually different.
+4. Keep trust boundaries visible in the UI instead of assuming users understand host/plugin separation.
+5. Add enough structured logging and regression tests that provider failures are diagnosable without leaking secrets or prompt bodies.
+
+In practice, this means the page is no longer “a flat long form”. It is a layered page:
+
+- top summary hub;
+- one chat capability card;
+- one image capability card;
+- diagnostics and compatibility feedback near the card that owns it;
+- secondary/rare settings hidden under disclosures.
+
+## 0A. Current Code Boundaries
+
+### Renderer / Control Center
+
+- `src/control-center/src/panes/AiPane.tsx`
+  - provider page structure
+  - disclosure layout
+  - active summary and diagnostics rendering
+- `src/control-center/src/styles.css`
+  - provider card layout, status strips, disclosures, compact summaries
+- `src/control-center/src/hooks/useAiPane.ts`
+  - draft state
+  - active state refresh
+  - save/test/health/discovery interaction wiring
+
+### Main process services
+
+- `src/main/services/ai-service.js`
+  - chat provider config save
+  - API key storage via secret service
+  - saved-config connection test
+  - safe settings logs
+- `src/main/services/image-generation-model-service.js`
+  - image provider config save
+  - image API key save/clear
+  - health check and `/models` discovery
+  - host-owned generation settings logs
+- `src/main/services/creator-studio-default-flow-service.js`
+  - host-owned default generate-and-import flow
+  - structured lifecycle logging
+- `src/main/services/creator-workflow-service.js`
+  - workflow orchestration across draft / confirm / generate / approve / import
+  - structured lifecycle logging
+- `src/main/services/app-log-service.js`
+  - safe app-log storage
+  - detail-key redaction and secret-pattern redaction
+
+### Regression boundaries
+
+- `tests/control-center/control-center-smoke.spec.js`
+  - AI provider pane structure and interaction regression
+- `tests/services/ai-service.test.js`
+  - safe save/test logging
+- `tests/services/image-generation-model-service.test.js`
+  - image provider safe save/clear logging
+- `tests/services/creator-studio-default-flow-service.test.js`
+  - default-flow lifecycle logging
+- `tests/services/creator-workflow-service.test.js`
+  - workflow lifecycle logging
+- `tests/services/app-log-service.test.js`
+  - prompt/reply/reference-path redaction
 
 ## 1. Background
 
@@ -51,13 +158,18 @@ Give users a complete, safe AI provider settings workflow:
 5. Test the active provider configuration and receive actionable feedback.
 6. Avoid accidental confusion between unsaved draft values and active runtime values.
 
+And for maintainers:
+
+7. Diagnose provider and Creator workflow failures from sanitized logs.
+8. Evolve the provider pane without reintroducing long-form UI sprawl.
+
 ## 3. Non-Goals
 
 - Do not move API keys into renderer state beyond the password draft typed by the user.
 - Do not store API key values in `settings.json`, logs, plugin config, or chat history.
-- Do not add multiple provider families beyond the existing `openai-compatible` path in this phase.
+- Do not add arbitrary provider-family-specific forms in the renderer. The current UX intentionally stays on one OpenAI-compatible contract shape.
 - Do not implement streaming chat responses in this phase.
-- Do not redesign the whole AI pane visual system.
+- Do not turn the AI pane into a giant provider marketplace/catalog.
 - Do not expose provider settings to ordinary plugins.
 
 ## 4. Current Implementation Snapshot
@@ -74,10 +186,11 @@ Give users a complete, safe AI provider settings workflow:
   - uses one shared `status` string for provider, image generation, chat, and behavior actions.
 
 - `src/control-center/src/panes/AiPane.tsx`
-  - renders Provider, Base URL, Model, API Key, System Prompt, and Memory fields;
-  - shows `已保存` / `未保存` for API key;
-  - has header buttons `测试` and `保存`;
-  - has a separate `保存密钥` button beside the API key field.
+  - renders one `模型 Provider` section with `聊天模型` and `图片模型` capability cards;
+  - renders compact active summaries and provider status strips;
+  - keeps boundary copy, presets, and advanced settings behind `details.provider-disclosure`;
+  - shows separate diagnostics for chat test, image health, model discovery, and compatibility hints;
+  - keeps chat save/test and image save/health flows card-local instead of one shared flat form.
 
 ### Preload and IPC
 
@@ -97,7 +210,23 @@ Give users a complete, safe AI provider settings workflow:
   - normalizes `provider`, `baseUrl`, `model`, `apiKeyRef`, `systemPrompt`, `memory`, and `behavior`;
   - returns `hasApiKey` but not the secret value;
   - stores secrets through `SecretService`;
-  - uses the saved config for `testConnection()` and `complete()`.
+  - uses the saved config for `testConnection()` and `complete()`;
+  - records sanitized settings-save and api-key-save logs.
+
+- `src/main/services/image-generation-model-service.js`
+  - owns host-side image provider config;
+  - stores image API key through `SecretService`;
+  - performs health checks and optional `/models` discovery;
+  - records sanitized settings-save and api-key mutation logs.
+
+- `src/main/services/creator-studio-default-flow-service.js`
+  - records started/stage/blocked/needs-details/completed/failed events with request correlation ids.
+
+- `src/main/services/creator-workflow-service.js`
+  - records workflow lifecycle and stage completion events with request correlation ids.
+
+- `src/main/services/app-log-service.js`
+  - redacts prompt-like, reply-like, path-like, and token-like fields before they can hit disk.
 
 ## 5. UX Problems To Fix
 
@@ -118,7 +247,7 @@ The same `status` string is shared by:
 - chat send;
 - behavior dry run/replay/export.
 
-This causes important provider failures to be overwritten by unrelated actions.
+This was partially reduced by card-local provider feedback, but full status isolation across all AI sub-surfaces is still only partially solved.
 
 ### 5.4 Test result lacks enough context
 
@@ -128,7 +257,7 @@ A success message such as `连接正常：ok` does not say which endpoint/model 
 
 Malformed base URLs, empty model names, and accidental whitespace should be caught before or during save with clear messages.
 
-## 6. Proposed User Flow
+## 6. Current User Flow
 
 ### 6.1 Initial load
 
@@ -214,6 +343,16 @@ Original design note: this used to propose a combined save/test action. The curr
 
 This avoids hiding two different operations behind one button and makes it clear whether the app is saving configuration or contacting a provider.
 
+### 6.6 Image provider path
+
+Image provider follows the same saved-config mental model:
+
+- edit Base URL / Model / Timeout / Max concurrent jobs;
+- save `图片 Provider`;
+- save or clear `图片 API Key`;
+- run `检查图片健康` against the saved config only;
+- use `/models` discovery and compatibility hints as diagnostics, not as implicit save behavior.
+
 ### 6.6 Test active config
 
 `测试当前已保存配置` should clearly state it ignores unsaved draft fields:
@@ -240,11 +379,20 @@ Failure examples:
 连接失败：无法连接 base URL，请检查地址和端口
 ```
 
-## 7. UI Layout Proposal
+## 7. Current UI Layout
 
 Keep this inside the existing AI pane. Do not create a new settings window.
 
-### 7.1 Provider card
+### 7.1 Provider hub
+
+Top-of-section summary now shows:
+
+- chat model saved state
+- image model saved state
+- latest chat connection state
+- latest image health state
+
+### 7.2 Capability cards
 
 Fields:
 
@@ -258,12 +406,14 @@ Fields:
 
 Header or footer actions:
 
-- `保存配置`
+- `保存聊天 Provider`
 - `保存密钥`
 - `测试已保存配置`
-- `测试当前已保存配置`
+- `保存图片 Provider`
+- `保存图片密钥`
+- `检查图片健康`
 
-### 7.2 Active summary
+### 7.3 Active summary
 
 Add a compact summary block above fields:
 
@@ -276,9 +426,19 @@ API Key: 已保存
 最后测试: 成功，2026-06-22 01:24，耗时 1842ms
 ```
 
-Do not show API key previews for chat keys unless there is a strong product need. `hasApiKey` is enough for phase one.
+Chat keeps `hasApiKey` only. Image may show a bounded preview token like `••••1234` because that was already part of the existing product behavior and helps distinguish “saved vs replaced” in the image flow.
 
-### 7.3 Status separation
+### 7.4 Disclosure strategy
+
+Rarely needed content is intentionally hidden by default:
+
+- boundary copy
+- preset cards
+- advanced settings such as system prompt and image timeout/concurrency
+
+This keeps the AI pane short enough to avoid the original “very long page” problem while still preserving one-place configuration.
+
+### 7.5 Status separation
 
 Split the single `status` into scoped statuses:
 
@@ -375,15 +535,21 @@ This is useful for UI confirmation but not required for the first implementation
 
 ### 9.3 Logging
 
-Provider settings actions should record app logs:
+Provider settings and Creator workflow actions now record app logs such as:
 
-- `ai.settings.config.save.started`
-- `ai.settings.config.save.completed`
-- `ai.settings.config.save.failed`
-- `ai.settings.api-key.save.completed`
-- `ai.settings.connection-test.started`
-- `ai.settings.connection-test.completed`
-- `ai.settings.connection-test.failed`
+- `ai.settings.saved`
+- `ai.settings.api-key.saved`
+- `imageGeneration.settings.saved`
+- `imageGeneration.settings.api-key.saved`
+- `imageGeneration.settings.api-key.cleared`
+- `creator.default-flow.started`
+- `creator.default-flow.stage.completed`
+- `creator.default-flow.completed`
+- `creator.default-flow.failed`
+- `creator.workflow.started`
+- `creator.workflow.stage.completed`
+- `creator.workflow.completed`
+- `creator.workflow.failed`
 
 Details may include:
 
@@ -475,15 +641,19 @@ Likely files:
 - `tests/services/ai-service.test.js`
 - `tests/main/ipc-plugin-install.test.js`
 
-## 11. Test Plan
+## 11. Current Verification Baseline
 
-### Unit tests
+### Service tests
 
 - `AiService.testConnection()` returns success metadata.
 - Missing API key returns or throws a classified `missing_api_key` failure without logging secrets.
 - Provider HTTP error is classified without logging raw prompt text.
 - Base URL normalization preserves expected request URL.
 - `saveAiConfig()` still does not persist derived fields like `hasApiKey`.
+- `ImageGenerationModelService` logs only safe host/model/timeout/concurrency metadata on config save.
+- `CreatorStudioDefaultFlowService` emits correlated lifecycle logs without prompt leakage.
+- `CreatorWorkflowService` emits correlated stage logs without leaking workflow prompt text.
+- `AppLogService` redacts prompt/reply/reference-path keys before disk write.
 
 ### Control Center tests
 
@@ -493,6 +663,9 @@ Likely files:
 - Saving API key clears password input and switches API key state to saved.
 - Testing the saved config displays tested provider/baseUrl/model.
 - Test-active-config warns when draft changes are unsaved.
+- Provider disclosures stay collapsed until opened.
+- Provider preset interactions still work after the disclosure-based layout change.
+- Image provider advanced fields remain reachable and persist correctly.
 
 ### Manual smoke
 

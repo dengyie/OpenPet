@@ -20,7 +20,7 @@ Use this file for open work and priority changes. Keep phase docs, reviews, and 
 ## P1 Next
 
 - [ ] Find or receive a compatible third-party `plugin.json` package that can pass discovery, intake, and community-source evidence flow without overstating trust.
-- [ ] Polish Creator Studio image-provider settings with better presets, model discovery, and clearer operator ergonomics while keeping secrets in the main process.
+- [ ] Continue provider-path verification with broader packaged/runtime smoke coverage and only promote additional provider presets when they have honest evidence and operator guidance.
 - [ ] Add a host-owned trigger-rule editor/schema for `random`, `state`, and `event` proposals before allowing those trigger bindings to be applied.
 
 ## P2 Later
@@ -41,7 +41,7 @@ These are already true and should not be re-planned as open work:
 
 - [x] Electron desktop pet runtime plus React Control Center.
 - [x] Pet pack runtime with built-in packs, Codex pet directory import, and zip import.
-- [x] AI provider settings with main-process secret storage, active/draft workflow, and structured diagnostics.
+- [x] AI provider settings with one `模型 Provider` hub, chat/image capability cards, main-process secret storage, active/draft workflow, structured diagnostics, and Provider/Creator safe-log coverage.
 - [x] Local extension runtime with explicit setup/command/service controls, dashboards, health checks, and cleanup evidence tooling.
 - [x] Loopback-only local HTTP and MCP endpoints.
 - [x] Broad Node test coverage, Playwright Control Center regression coverage, and a TypeScript migration baseline across shared contracts and key UI/service boundaries.
