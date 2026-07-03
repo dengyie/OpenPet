@@ -94,6 +94,7 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
       }
     }
   }, null, 2))
+  const saveCalls = []
 
   const result = await runCreatorStudioProviderSmoke({
     prompt: '给当前宠物加一个挥手动作 sk-real-secret-value http://127.0.0.1:8317/v1',
@@ -106,17 +107,25 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
     createSecretServiceImpl: () => ({
       getSecretValue: () => 'sk-real-secret-value'
     }),
-    createImageGenerationModelServiceImpl: ({ appLogService, settingsService }) => {
-      const timeoutSeen = settingsService.get().models.imageGeneration.timeoutMs
+    createImageGenerationModelServiceImpl: ({ appLogService }) => {
+      let currentConfig = {
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-image-2',
+        hasApiKey: true,
+        timeoutMs: 30000,
+        maxConcurrentJobs: 1
+      }
       return {
-        getConfig: () => ({
-          provider: 'openai-compatible',
-          baseUrl: 'http://127.0.0.1:8317/v1',
-          model: 'gpt-image-2',
-          hasApiKey: true,
-          timeoutMs: timeoutSeen,
-          maxConcurrentJobs: 1
-        }),
+        getConfig: () => ({ ...currentConfig }),
+        saveConfig: (partialConfig = {}) => {
+          saveCalls.push({ ...partialConfig })
+          currentConfig = {
+            ...currentConfig,
+            ...partialConfig
+          }
+          return { ...currentConfig }
+        },
         checkHealth: async () => {
           appLogService.record({
             scope: 'image-generation',
@@ -210,6 +219,7 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
     timeoutOverrideMs: 180000
   })
   assert.equal(result.config.timeoutMs, 180000)
+  assert.deepEqual(saveCalls, [{ timeoutMs: 180000 }])
   assert.equal(result.actionFrames.ok, true)
   assert.equal(result.actionFrames.frameCount, 16)
   assert.equal(result.actionFrames.visibleFrameCount, 16)

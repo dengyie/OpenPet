@@ -294,19 +294,6 @@ const runCreatorStudioProviderSmoke = async ({
   const settingsPath = path.join(userDataDir, 'settings.json')
   const secretsPath = path.join(userDataDir, 'secrets.json')
   const settingsService = createFileBackedSettingsService({ settingsPath })
-  if (normalizedTimeoutMs > 0) {
-    const currentSettings = settingsService.get()
-    settingsService.save({
-      ...currentSettings,
-      models: {
-        ...(isObject(currentSettings.models) ? currentSettings.models : {}),
-        imageGeneration: {
-          ...(isObject(currentSettings.models?.imageGeneration) ? currentSettings.models.imageGeneration : {}),
-          timeoutMs: normalizedTimeoutMs
-        }
-      }
-    })
-  }
   const appLogService = createAppLogServiceImpl({ logDir: sessionPaths.logDir, maxEntries: Math.max(logLimit * 5, 200) })
   const secretService = createSecretServiceImpl({ storePath: secretsPath })
   const imageGenerationModelService = createImageGenerationModelServiceImpl({
@@ -314,6 +301,12 @@ const runCreatorStudioProviderSmoke = async ({
     secretService,
     appLogService
   })
+  if (normalizedTimeoutMs > 0) {
+    if (typeof imageGenerationModelService.saveConfig !== 'function') {
+      throw new Error('Image generation model service does not support timeout override saves')
+    }
+    imageGenerationModelService.saveConfig({ timeoutMs: normalizedTimeoutMs })
+  }
 
   const config = typeof imageGenerationModelService.getConfig === 'function' ? imageGenerationModelService.getConfig() : {}
   const generationTask = createSmokeGenerationTask({ prompt: normalizedPrompt, actionId, actionName, frameCount })
