@@ -558,7 +558,7 @@ test.describe('Control Center smoke', () => {
     await expect(cursorSizePanel).toContainText('100%')
     await expect(cursorSizePanel).toContainText('32×32')
     await expect(page.getByRole('button', { name: '删除指针 demo-cursor' })).toBeVisible()
-    await expect(page.locator('.cursor-card-delete')).toHaveCount(1)
+    await expect(page.locator('.cursor-card-delete')).toHaveCount(7)
 
     const sizeSlider = page.getByRole('slider', { name: '当前指针大小' })
     await sizeSlider.evaluate((input) => {
@@ -596,7 +596,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('已删除指针：demo-cursor，并切换为系统默认')
     await expect(page.locator('.cursor-size-panel')).toContainText('先在上方选择一个指针')
     await expect(page.locator('.cursor-option-card')).toHaveCount(7)
-    await expect(page.locator('.cursor-card-delete')).toHaveCount(0)
+    await expect(page.locator('.cursor-card-delete')).toHaveCount(6)
 
     const seenConfirmMessages = await page.evaluate(() => window.__cursorConfirmMessages || [])
     expect(seenConfirmMessages[0]).toContain('确认删除指针“demo-cursor”？')
