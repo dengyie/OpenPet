@@ -41,7 +41,7 @@ const createBuiltinCursor = ({
   hotspotX,
   hotspotY,
   createdAt: 'builtin',
-  canDelete: false,
+  canDelete: true,
   canRename: false
 })
 
@@ -151,6 +151,14 @@ const normalizeNumber = (value: unknown, fallback = 0) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
 }
+
+const normalizeHiddenCursorIds = (hiddenCursorIds: unknown): string[] => (
+  Array.from(new Set(
+    (Array.isArray(hiddenCursorIds) ? hiddenCursorIds : [])
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value) => Boolean(value) && value !== SYSTEM_CURSOR_ID)
+  ))
+)
 
 const clampCursorSizePercent = (value: unknown) => {
   const normalized = normalizeNumber(value, 100)
@@ -319,9 +327,10 @@ export const resolveSelectedCursor = ({
 
 export const normalizeCursorSettingsState = (
   settings: Partial<ControlCenterSettings> & { customCursor?: Partial<CustomCursorSettings> | null } = {}
-): Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursors' | 'customCursor'> => {
+): Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursors' | 'customCursor' | 'hiddenCursorIds'> => {
   const legacyCustomCursor = normalizeRuntimeCursor(settings.customCursor)
   const customCursors = normalizeCustomCursorCollection(settings.customCursors)
+  const hiddenCursorIds = normalizeHiddenCursorIds(settings.hiddenCursorIds)
   const migratedLegacyCursor = migrateLegacyCustomCursorRecord(settings.customCursor)
   const nextCustomCursors = migratedLegacyCursor && customCursors.length === 0
     ? [migratedLegacyCursor, ...customCursors]
@@ -335,13 +344,14 @@ export const normalizeCursorSettingsState = (
   }
 
   const cursorExists = selectedCursorId === SYSTEM_CURSOR_ID
-    || Boolean(getBuiltinCursorById(selectedCursorId))
+    || (Boolean(getBuiltinCursorById(selectedCursorId)) && !hiddenCursorIds.includes(selectedCursorId))
     || nextCustomCursors.some((cursor) => cursor.id === selectedCursorId)
 
   if (!cursorExists) selectedCursorId = SYSTEM_CURSOR_ID
 
   return {
     selectedCursorId,
+    hiddenCursorIds,
     customCursors: nextCustomCursors,
     customCursor: resolveSelectedCursor({
       selectedCursorId,
@@ -350,8 +360,12 @@ export const normalizeCursorSettingsState = (
   }
 }
 
-export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecord> | null | undefined> = []): CursorOption[] => {
+export const listCursorOptions = (
+  customCursors: Array<Partial<CustomCursorRecord> | null | undefined> = [],
+  hiddenCursorIds: string[] = []
+): CursorOption[] => {
   const normalizedCustomCursors = normalizeCustomCursorCollection(customCursors)
+  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
   const customCursorById = new Map(normalizedCustomCursors.map((cursor) => [cursor.id, cursor]))
   const builtinIds = new Set(BUILTIN_CURSORS.map((cursor) => cursor.id))
 
@@ -373,7 +387,9 @@ export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecor
       canDelete: false,
       canRename: false
     },
-    ...BUILTIN_CURSORS.map((cursor) => {
+    ...BUILTIN_CURSORS
+      .filter((cursor) => !hiddenCursorIdSet.has(cursor.id))
+      .map((cursor) => {
       const overrideCursor = customCursorById.get(cursor.id)
       return overrideCursor
         ? {
@@ -381,12 +397,12 @@ export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecor
             ...overrideCursor,
             type: 'custom' as const,
             source: 'builtin' as const,
-            canDelete: false,
+            canDelete: true,
             canRename: false
           }
         : cursor
     }),
-    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id))
+    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id) && !hiddenCursorIdSet.has(cursor.id))
   ]
 }
 

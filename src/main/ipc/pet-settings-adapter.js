@@ -12,6 +12,7 @@ const createPetRendererSettings = (settings = {}) => {
     selectedCursorId: cursorState.selectedCursorId,
     customCursor: cursorState.customCursor,
     customCursors: cursorState.customCursors,
+    hiddenCursorIds: cursorState.hiddenCursorIds,
     grounded: Boolean(settings.petBehavior?.grounded),
     home: {
       enabled: Boolean(settings.petBehavior?.home?.enabled),
@@ -33,7 +34,8 @@ const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings
   const cursorState = normalizeCursorSettingsState({
     selectedCursorId: nextSettings.selectedCursorId ?? currentSettings.selectedCursorId,
     customCursors: nextSettings.customCursors ?? currentSettings.customCursors,
-    customCursor: nextSettings.customCursor ?? currentSettings.customCursor
+    customCursor: nextSettings.customCursor ?? currentSettings.customCursor,
+    hiddenCursorIds: nextSettings.hiddenCursorIds ?? currentSettings.hiddenCursorIds
   })
 
   return {
@@ -46,6 +48,7 @@ const mergePetSettingsViewIntoHostSettings = (currentSettings = {}, nextSettings
     autoStart: Boolean(nextSettings.autoStart ?? currentSettings.autoStart),
     selectedCursorId: cursorState.selectedCursorId,
     customCursors: cursorState.customCursors,
+    hiddenCursorIds: cursorState.hiddenCursorIds,
     customCursor: cursorState.customCursor,
     petBubbleChat: {
       ...(currentSettings.petBubbleChat || {}),

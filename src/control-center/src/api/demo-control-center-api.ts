@@ -1795,6 +1795,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     demoState.settings = normalizeDemoSettings({
       ...demoState.settings,
       selectedCursorId: cursor.id,
+      hiddenCursorIds: demoState.settings.hiddenCursorIds || [],
       customCursors: [
         ...demoState.settings.customCursors.filter((item) => item.id !== cursor.id),
         cursor
