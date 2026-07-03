@@ -207,6 +207,7 @@ test('resolveBubbleBounds uses side placement when vertical space would cover th
 test('pet bubble chat manager opens manually with a chat prompt even when auto popup is disabled', () => {
   const logs = []
   const petBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const visualTopInset = 64
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -221,7 +222,8 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
     settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: false, autoHide: true } }) },
     getPetWindow: () => ({
       isDestroyed: () => false,
-      getBounds: () => petBounds
+      getBounds: () => petBounds,
+      __openPetViewport: { topInset: visualTopInset }
     }),
     appLogService: { record: (entry) => logs.push(entry) }
   })
@@ -233,7 +235,8 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
   assert.equal(instances[0].focused, true)
   assert.deepEqual(instances[0].setAlwaysOnTopCalls.at(-1), { flag: true, level: 'pop-up-menu' })
   assert.ok(instances[0].bounds.height < 260)
-  const openGap = petBounds.y - (instances[0].bounds.y + instances[0].bounds.height)
+  const visiblePetTop = petBounds.y + visualTopInset
+  const openGap = visiblePetTop - (instances[0].bounds.y + instances[0].bounds.height)
   assert.ok(openGap >= 0 && openGap <= 4)
   assert.equal(state.visible, true)
   assert.equal(state.interacting, true)
@@ -672,6 +675,7 @@ test('pet bubble chat manager toggles window-level hit-test passthrough', () => 
 test('pet bubble chat manager preserves dragged window position until pet moves, then re-anchors', () => {
   const logs = []
   let petBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const visualTopInset = 64
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -686,7 +690,8 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
     settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
     getPetWindow: () => ({
       isDestroyed: () => false,
-      getBounds: () => petBounds
+      getBounds: () => petBounds,
+      __openPetViewport: { topInset: visualTopInset }
     }),
     appLogService: { record: (entry) => logs.push(entry) }
   })
@@ -717,7 +722,8 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
   assert.equal(reanchoredState.anchorMode, 'anchored')
   assert.notEqual(reanchoredState.bounds.x, initialBounds.x + 72)
   assert.notEqual(reanchoredState.bounds.y, initialBounds.y + 36)
-  const reanchorGap = petBounds.y - (reanchoredState.bounds.y + reanchoredState.bounds.height)
+  const visiblePetTop = petBounds.y + visualTopInset
+  const reanchorGap = visiblePetTop - (reanchoredState.bounds.y + reanchoredState.bounds.height)
   assert.ok(reanchorGap >= 0 && reanchorGap <= 4)
   assert.equal(logs.filter((entry) => entry.event === 'pet-bubble-chat.window.detached').length, 1)
   assert.equal(logs.some((entry) => (
@@ -725,6 +731,41 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
     entry.details.reason === 'pet-moved' &&
     entry.details.anchorProfile === 'tight-head-anchor-v1'
   )), true)
+})
+
+test('pet bubble chat manager anchors to the visible pet viewport instead of the full pet window top', () => {
+  const visualTopInset = 64
+  const petBounds = { x: 300, y: 300, width: 120, height: 176 }
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: false, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => petBounds,
+      __openPetViewport: { topInset: visualTopInset }
+    }),
+    appLogService: { record: () => {} }
+  })
+
+  manager.open({ source: 'pet-renderer', focus: true })
+
+  assert.equal(instances.length, 1)
+  const bubbleBounds = instances[0].bounds
+  const visiblePetTop = petBounds.y + visualTopInset
+  const visibleGap = visiblePetTop - (bubbleBounds.y + bubbleBounds.height)
+  const rawWindowGap = petBounds.y - (bubbleBounds.y + bubbleBounds.height)
+  assert.ok(visibleGap >= 0 && visibleGap <= 4)
+  assert.ok(rawWindowGap < 0)
+  assert.ok(Math.abs(rawWindowGap - visibleGap) >= 40)
 })
 
 test('pet bubble chat manager supports renderer-driven dragging without a toolbar region', () => {
