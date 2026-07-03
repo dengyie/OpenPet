@@ -338,6 +338,23 @@ test('bubble chat renderer enables hit-test interaction while hovered and focuse
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
 })
 
+test('bubble chat renderer only expands the collapsed composer on double-click, not single-click', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements } = harness
+
+  await dispatchDocument(documentListeners, 'click')
+
+  assert.equal(elements['mini-input-form'].classList.contains('expanded'), false)
+  assert.equal(apiCalls.setInteracting.includes(true), false)
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-click'), false)
+
+  await dispatchDocument(documentListeners, 'dblclick')
+
+  assert.equal(elements['mini-input-form'].classList.contains('expanded'), true)
+  assert.equal(apiCalls.setInteracting.includes(true), true)
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-double-click' && payload.interactive === true), true)
+})
+
 test('bubble chat renderer enables passive hit-test on initial render when history is scrollable', async () => {
   const harness = await createHarness()
   const { apiCalls } = harness

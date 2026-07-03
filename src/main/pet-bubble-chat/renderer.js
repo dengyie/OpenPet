@@ -277,10 +277,10 @@ document.addEventListener('keydown', (event) => {
   }
 })
 
-document.addEventListener('click', () => {
+document.addEventListener('dblclick', () => {
   expanded = true
   setInteracting(true)
-  setHitTestMode(true, 'renderer-click')
+  setHitTestMode(true, 'renderer-double-click')
   renderState(currentState)
 })
 
