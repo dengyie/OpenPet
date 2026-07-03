@@ -10,6 +10,7 @@ const {
   createPersistedCursorRecord,
   LEGACY_CUSTOM_CURSOR_ID,
   SYSTEM_CURSOR_ID,
+  listHiddenBuiltinCursorOptions,
   listCursorOptions,
   normalizeCursorSettingsState,
   removeStoredCursorRecord,
@@ -77,6 +78,7 @@ test('listCursorOptions returns system, built-ins, and custom cursors in order',
   assert.equal(options.at(-1)?.type, 'custom')
   assert.equal(options.at(-1)?.source, 'uploaded')
   assert.equal(options.at(-1)?.canDelete, true)
+  assert.equal(options.at(-1)?.canRestore, false)
   assert.equal(options.length, 8)
 })
 
@@ -86,6 +88,17 @@ test('listCursorOptions can hide deleted built-in cursor cards from the visible 
 
   assert.equal(options.some((option) => option.id === hiddenId), false)
   assert.equal(options.length, 6)
+})
+
+test('listHiddenBuiltinCursorOptions exposes deleted built-in cursors with restore affordance', () => {
+  const hiddenId = BUILTIN_CURSORS[0].id
+  const options = listHiddenBuiltinCursorOptions([hiddenId])
+
+  assert.equal(options.length, 1)
+  assert.equal(options[0].id, hiddenId)
+  assert.equal(options[0].source, 'builtin')
+  assert.equal(options[0].canDelete, false)
+  assert.equal(options[0].canRestore, true)
 })
 
 test('listCursorOptions merges built-in cursor overrides without duplicating cards', () => {
@@ -108,6 +121,7 @@ test('listCursorOptions merges built-in cursor overrides without duplicating car
   assert.equal(matchingOptions[0].type, 'custom')
   assert.equal(matchingOptions[0].source, 'builtin')
   assert.equal(matchingOptions[0].canDelete, true)
+  assert.equal(matchingOptions[0].canRestore, false)
   assert.equal(matchingOptions[0].width, 72)
   assert.equal(matchingOptions[0].sizePercent, 150)
 })

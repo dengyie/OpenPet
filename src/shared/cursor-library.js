@@ -24,7 +24,8 @@ const createBuiltinCursor = ({ id, name, svg, hotspotX = 0, hotspotY = 0, width 
   hotspotY,
   createdAt: 'builtin',
   canDelete: true,
-  canRename: false
+  canRename: false,
+  canRestore: false
 })
 
 const SYSTEM_CURSOR_PREVIEW_URL = svgDataUrl(`
@@ -240,7 +241,8 @@ const normalizeCustomCursorRecord = (cursor) => {
     baseHotspotX,
     baseHotspotY,
     canDelete: source === 'uploaded',
-    canRename: source === 'uploaded'
+    canRename: source === 'uploaded',
+    canRestore: false
   }
 }
 
@@ -354,7 +356,8 @@ const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
       hotspotY: 0,
       createdAt: 'builtin',
       canDelete: false,
-      canRename: false
+      canRename: false,
+      canRestore: false
     },
     ...BUILTIN_CURSORS
       .filter((cursor) => !hiddenCursorIdSet.has(cursor.id))
@@ -367,12 +370,25 @@ const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
             type: 'custom',
             source: 'builtin',
             canDelete: true,
-            canRename: false
+            canRename: false,
+            canRestore: false
           }
         : cursor
     }),
     ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id) && !hiddenCursorIdSet.has(cursor.id))
   ]
+}
+
+const listHiddenBuiltinCursorOptions = (hiddenCursorIds = []) => {
+  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
+  return BUILTIN_CURSORS
+    .filter((cursor) => hiddenCursorIdSet.has(cursor.id))
+    .map((cursor) => ({
+      ...cursor,
+      canDelete: false,
+      canRename: false,
+      canRestore: true
+    }))
 }
 
 const resizeCustomCursorRecord = (cursor, sizePercent) => {
@@ -425,6 +441,7 @@ module.exports = {
   createDefaultRuntimeCursor,
   createPersistedCursorRecord,
   getBuiltinCursorById,
+  listHiddenBuiltinCursorOptions,
   listCursorOptions,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,

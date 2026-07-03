@@ -602,7 +602,7 @@ test.describe('Control Center smoke', () => {
     expect(seenConfirmMessages[0]).toContain('确认删除指针“demo-cursor”？')
   })
 
-  test('deletes a built-in cursor card with the same affordance and removes it from the picker rail', async ({ page }) => {
+  test('deletes a built-in cursor card with the same affordance and allows restoring it from the management panel', async ({ page }) => {
     await page.addInitScript(() => {
       const messages = []
       window.__cursorBuiltinConfirmMessages = messages
@@ -622,6 +622,11 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' })).toHaveCount(0)
     await expect(page.locator('.cursor-option-card')).toHaveCount(6)
+    await expect(page.locator('.cursor-library-row.hidden-row')).toContainText('爪爪紫')
+    await expect(page.locator('.cursor-library-row.hidden-row')).toContainText('已隐藏')
+    await page.getByRole('button', { name: '恢复' }).click()
+    await expect(page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' })).toHaveCount(1)
+    await expect(page.locator('.status-line')).toContainText('已恢复指针：爪爪紫')
 
     const seenConfirmMessages = await page.evaluate(() => window.__cursorBuiltinConfirmMessages || [])
     expect(seenConfirmMessages[0]).toContain('确认删除指针“爪爪紫”？')
