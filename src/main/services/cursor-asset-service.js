@@ -80,6 +80,7 @@ const createCursorAssetService = ({ cursorDir }) => {
     return {
       id: `cursor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type: 'custom',
+      source: 'uploaded',
       name: stripFileExtension(path.basename(sourcePath)) || '未命名指针',
       enabled: true,
       assetPath: repaired.assetPath,

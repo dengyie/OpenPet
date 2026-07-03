@@ -844,6 +844,7 @@ button {
 
 .cursor-option-card-shell {
   position: relative;
+  width: 100%;
 }
 
 .cursor-option-card {
@@ -883,12 +884,12 @@ button {
 .cursor-card-delete {
   position: absolute;
   z-index: 3;
-  top: -6px;
-  right: -6px;
+  top: 6px;
+  right: 6px;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 1px solid rgba(248, 113, 113, 0.34);
   border-radius: 999px;
@@ -916,8 +917,8 @@ button {
 }
 
 .cursor-card-delete svg {
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
 }
 
 .cursor-option-card.add-card {
@@ -959,11 +960,6 @@ button {
   object-fit: contain;
   pointer-events: none;
   filter: drop-shadow(0 2px 3px rgba(53, 67, 97, 0.14));
-}
-
-.cursor-option-card[data-cursor-type='builtin'] .cursor-card-preview img {
-  width: 50px;
-  height: 50px;
 }
 
 .cursor-card-add-icon {
