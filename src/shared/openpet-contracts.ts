@@ -62,6 +62,7 @@ export interface CursorOption {
   baseHotspotY?: number
   canDelete?: boolean
   canRename?: boolean
+  canRestore?: boolean
 }
 
 export interface CustomCursorRecord extends CursorOption {

@@ -1146,6 +1146,10 @@ button {
   border-bottom: 1px solid rgba(226, 232, 240, 0.86);
 }
 
+.cursor-library-row.hidden-row {
+  opacity: 0.88;
+}
+
 .cursor-library-preview {
   display: grid;
   place-items: center;
@@ -1214,6 +1218,11 @@ button {
 .cursor-usage-badge.subtle {
   background: #eff6ff;
   color: #2563eb;
+}
+
+.cursor-usage-badge.hidden {
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .cursor-library-empty {

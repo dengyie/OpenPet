@@ -10,6 +10,7 @@ import {
   createPersistedCursorRecord,
   createDefaultRuntimeCursor,
   getBuiltinCursorById,
+  listHiddenBuiltinCursorOptions,
   listCursorOptions,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,
@@ -82,6 +83,10 @@ export function usePetSettingsPane() {
   const cursorOptions = useMemo<CursorOption[]>(
     () => listCursorOptions(settings.customCursors, settings.hiddenCursorIds) as CursorOption[],
     [settings.customCursors, settings.hiddenCursorIds]
+  )
+  const hiddenCursorOptions = useMemo<CursorOption[]>(
+    () => listHiddenBuiltinCursorOptions(settings.hiddenCursorIds) as CursorOption[],
+    [settings.hiddenCursorIds]
   )
 
   const persistSettings = async (nextSettings: ControlCenterSettings, successMessage: string, errorFallback: string) => {
@@ -225,18 +230,38 @@ export function usePetSettingsPane() {
     )
   }
 
+  const onRestoreCursor = async (cursorId: string) => {
+    const targetCursor = hiddenCursorOptions.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor || targetCursor.canRestore !== true) {
+      setStatus('未找到要恢复的指针')
+      return
+    }
+
+    const nextSettings = applyCursorState(settings, {
+      hiddenCursorIds: settings.hiddenCursorIds.filter((id) => id !== cursorId)
+    })
+    setSettings(nextSettings)
+    await persistSettings(
+      nextSettings,
+      `已恢复指针：${targetCursor.name}`,
+      '指针恢复失败'
+    )
+  }
+
   const paneProps = {
     settings,
     originalSettings,
     status,
     saving,
     cursorOptions,
+    hiddenCursorOptions,
     onChange,
     onSelectCursor,
     onImportCursor,
     onResizeCursor,
     onRenameCursor,
     onDeleteCursor,
+    onRestoreCursor,
     onSave,
     onReset
   } satisfies PetPaneProps
