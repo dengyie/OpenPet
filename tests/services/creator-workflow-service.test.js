@@ -134,6 +134,7 @@ test('creator workflow service getState falls back quickly when provider health 
 test('creator workflow service imports an existing action and auto-applies clickAction even when the Creator Studio service is stopped', async () => {
   const commandCalls = []
   const copiedRuns = []
+  const logs = []
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-workflow-'))
   const writeRunRecord = (run) => {
     const runDir = path.join(pluginDataDir, 'runs', run.runId)
@@ -351,7 +352,9 @@ test('creator workflow service imports an existing action and auto-applies click
         copiedRuns.push(payload)
         return {}
       }
-    }
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'creator-workflow-1'
   })
 
   const result = await service.generateExistingAction({
@@ -384,6 +387,18 @@ test('creator workflow service imports an existing action and auto-applies click
     pluginDataDir,
     runId: 'run-001'
   }])
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'creator.workflow.started',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.completed'
+  ])
+  assert.equal(logs[0].details.requestId, 'creator-workflow-1')
+  assert.equal(logs.at(-1).details.importedActionId, 'spin')
+  assert.equal(JSON.stringify(logs).includes('spin quickly'), false)
 })
 
 test('creator workflow service surfaces failed run diagnostics from Creator Studio run records', async () => {

@@ -13,12 +13,18 @@ const SENSITIVE_DETAIL_KEYS = new Set([
   'filePaths',
   'hiddenPrompt',
   'memoryText',
+  'motionPrompt',
+  'originalPrompt',
   'path',
+  'prompt',
   'rawProviderReply',
   'referenceToken',
+  'referenceImagePath',
+  'reply',
   'selectedPath',
   'sourceDir',
   'sourcePath',
+  'stylePrompt',
   'token'
 ])
 

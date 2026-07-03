@@ -15,6 +15,14 @@ const providerCard = (page, name) => (
   page.getByTestId(name === '图片 Provider' ? 'image-provider-card' : 'chat-provider-card')
 )
 
+const providerStatusItem = (section, label) => (
+  section.locator('.provider-status-item').filter({ hasText: new RegExp(`^${escapeRegExp(label)}\\s*`) })
+)
+
+const providerDisclosure = (section, title) => (
+  section.locator('details.provider-disclosure').filter({ hasText: new RegExp(`^${escapeRegExp(title)}`) })
+)
+
 const chatBaseUrlInput = (page) => page.getByLabel('聊天 Base URL')
 const chatModelInput = (page) => page.getByLabel('聊天 Model')
 
@@ -38,6 +46,16 @@ const expandAiSection = async (page, name) => {
   }
   await expect(section).toHaveAttribute('open', '')
   return section
+}
+
+const openProviderDisclosure = async (section, title) => {
+  const disclosure = providerDisclosure(section, title)
+  await expect(disclosure).toHaveCount(1)
+  if (await disclosure.getAttribute('open') === null) {
+    await disclosure.locator('summary').click()
+  }
+  await expect(disclosure).toHaveAttribute('open', '')
+  return disclosure
 }
 
 test.describe('Control Center smoke', () => {
@@ -130,17 +148,41 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
 
+    const chatSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(chatSection, '查看聊天 Provider 边界')
     const chatBoundary = page.getByTestId('chat-provider-boundary')
     await expect(chatBoundary).toContainText('本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约')
     await expect(chatBoundary).toContainText('“保存聊天 Provider”只写入当前配置')
     await expect(chatBoundary).toContainText('“测试已保存配置”只测试已保存的生效配置')
     await expect(chatBoundary).toContainText('API Key 只保存在 OpenPet host')
 
+    const imageSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(imageSection, '查看图片 Provider 边界')
     const imageBoundary = page.getByTestId('image-provider-boundary')
     await expect(imageBoundary).toContainText('本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 图片 Provider 契约')
     await expect(imageBoundary).toContainText('“保存图片 Provider”只更新 host 配置')
     await expect(imageBoundary).toContainText('“检查图片健康”只检查当前已保存的图片 Provider')
     await expect(imageBoundary).toContainText('Creator Studio 只提交提示词和输出目录')
+  })
+
+  test('keeps provider presets and advanced fields collapsed until opened', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatSection = await expandAiSection(page, '聊天 Provider')
+    const presetDisclosure = providerDisclosure(chatSection, '显示常用聊天 Provider 预设')
+    const advancedDisclosure = providerDisclosure(chatSection, '显示高级聊天配置')
+
+    await expect(presetDisclosure).not.toHaveAttribute('open', '')
+    await expect(advancedDisclosure).not.toHaveAttribute('open', '')
+    await expect(chatSection.getByRole('button', { name: 'OpenAI 官方' })).toHaveCount(0)
+    await expect(chatSection.getByLabel('System Prompt')).toBeHidden()
+
+    await openProviderDisclosure(chatSection, '显示常用聊天 Provider 预设')
+    await expect(chatSection.getByRole('button', { name: 'OpenAI 官方' })).toHaveCount(1)
+
+    await openProviderDisclosure(chatSection, '显示高级聊天配置')
+    await expect(chatSection.getByLabel('System Prompt')).toBeVisible()
   })
 
   test('keeps key Pet and About interactions responsive', async ({ page }) => {
@@ -209,6 +251,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const chatSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(chatSection, '显示常用聊天 Provider 预设')
     await chatSection.getByLabel('聊天 API Key').fill('sk-demo-chat')
     await chatSection.getByRole('button', { name: '保存密钥' }).click()
     await chatSection.getByRole('button', { name: '本地/代理 OpenAI-compatible' }).click()
@@ -219,6 +262,7 @@ test.describe('Control Center smoke', () => {
     await expect(chatSection.getByTestId('ai-chat-model-discovery')).toContainText('gpt-4o-mini')
 
     const imageSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(imageSection, '显示常用图片 Provider 预设')
     await imageSection.getByLabel('图片 API Key').fill('sk-demo-image')
     await imageSection.getByRole('button', { name: '保存图片密钥' }).click()
     await imageSection.getByRole('button', { name: '刷新图片模型' }).click()
@@ -694,13 +738,13 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
     const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(chatProviderSection, '显示高级聊天配置')
 
-    const chatDraftStatusRow = page.locator('.readonly-row').filter({ has: page.locator('strong', { hasText: /^草稿状态$/ }) })
-    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://api.openai.com/v1')
-    await expect(chatDraftStatusRow).toContainText('当前没有未保存修改')
-
+    const chatDraftStatusRow = providerStatusItem(chatProviderSection, '草稿状态')
+    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('api.openai.com')
     await expect(page.getByTestId('ai-provider-summary')).toContainText('当前生效配置')
-    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('OpenAI compatible')
+    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('gpt-4o-mini')
+    await expect(chatDraftStatusRow).toContainText('当前没有未保存修改')
     await chatBaseUrlInput(page).fill('https://user:pass@ai.example.test/v1?token=secret')
     await expect(page.getByTestId('ai-provider-validation-error')).toContainText('Base URL 不能包含用户名或密码')
     await expect(chatProviderSection.getByRole('button', { name: '保存聊天 Provider' })).toBeDisabled()
@@ -721,11 +765,13 @@ test.describe('Control Center smoke', () => {
     await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前存在未保存修改')
     await expect(page.getByTestId('ai-connection-result')).toContainText('gpt-4o-mini')
-    await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('https://ai.example.test/v1')
+    await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('ai.example.test')
 
     await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('AI 配置已保存：Base URL / Model / System Prompt / 长期记忆')
-    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('OpenAI compatible · https://ai.example.test/v1 · openpet-test-model')
+    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('ai.example.test')
+    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('openpet-test-model')
+    await expect(chatDraftStatusRow).toContainText('当前没有未保存修改')
 
     await apiKeyInput.fill('   ')
     await expect(apiKeyRow.getByRole('button', { name: '保存密钥' })).toBeDisabled()
@@ -742,7 +788,8 @@ test.describe('Control Center smoke', () => {
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
-    await expandAiSection(page, '聊天 Provider')
+    const reloadedChatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(reloadedChatProviderSection, '显示高级聊天配置')
     await expect(chatBaseUrlInput(page)).toHaveValue('https://ai.example.test/v1')
     await expect(chatModelInput(page)).toHaveValue('openpet-test-model')
     await expect(page.getByLabel('System Prompt')).toHaveValue('Stay tiny, helpful, and local-first.')
@@ -761,14 +808,14 @@ test.describe('Control Center smoke', () => {
 
     await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
     await expect(page.getByTestId('ai-provider-feedback')).not.toContainText('combo-test-model')
-    await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('https://combo.example.test/v1')
+    await expect(page.getByTestId('ai-provider-active-summary')).not.toContainText('combo.example.test')
 
     await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
     await page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) }).getByRole('button', { name: '保存密钥' }).click()
     await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
 
-    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('https://combo.example.test/v1')
-    await expect(page.locator('.readonly-row', { hasText: '当前生效配置' })).toContainText('combo-test-model')
+    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('combo.example.test')
+    await expect(page.getByTestId('ai-provider-active-summary')).toContainText('combo-test-model')
     await expect(page.getByTestId('ai-connection-result')).toContainText('Provider: openai-compatible')
     await expect(page.getByTestId('ai-connection-result')).toContainText('Base URL: https://combo.example.test/v1')
     await expect(page.getByTestId('ai-connection-result')).toContainText('Model: combo-test-model')
@@ -779,6 +826,7 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
     const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(chatProviderSection, '显示常用聊天 Provider 预设')
 
     await expect(chatProviderSection.getByRole('button', { name: 'OpenAI 官方' })).toHaveCount(1)
     await expect(chatProviderSection.getByRole('button', { name: 'LM Studio' })).toHaveCount(1)
@@ -807,7 +855,7 @@ test.describe('Control Center smoke', () => {
     await expect(chatBaseUrlInput(page)).toHaveValue('https://api.openai.com/v1')
     await expect(chatModelInput(page)).toHaveValue('gpt-4o-mini')
     await expect(page.getByPlaceholder('输入 API Key')).toHaveValue('sk-dirty-secret')
-    const chatDraftStatusRow = chatProviderSection.locator('.readonly-row').filter({ has: page.locator('strong', { hasText: /^草稿状态$/ }) })
+    const chatDraftStatusRow = providerStatusItem(chatProviderSection, '草稿状态')
     await expect(chatDraftStatusRow).toContainText('草稿未保存')
   })
 
@@ -816,6 +864,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(chatProviderSection, '显示常用聊天 Provider 预设')
     await chatBaseUrlInput(page).fill('https://dirty-chat.example.test/v1')
     await chatModelInput(page).fill('dirty-chat-model')
     await page.getByPlaceholder('输入 API Key').fill('sk-chat-draft-secret')
@@ -828,6 +877,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByPlaceholder('输入 API Key')).toHaveValue('sk-chat-draft-secret')
 
     const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(imageProviderSection, '显示常用图片 Provider 预设')
     await expect(imageProviderSection.getByRole('button', { name: 'Together' })).toHaveCount(1)
     await expect(imageProviderSection.getByRole('button', { name: 'OpenRouter' })).toHaveCount(1)
     await expect(imageProviderSection.getByText('除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后健康检查确认。')).toBeVisible()
@@ -861,6 +911,8 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(imageProviderSection, '显示常用图片 Provider 预设')
+    await openProviderDisclosure(imageProviderSection, '显示高级图片配置')
     await expect(page.getByLabel('图片默认后端')).toHaveCount(0)
     await expect(page.getByLabel('本地 Endpoint')).toHaveCount(0)
     await expect(page.getByLabel('本地 Health URL')).toHaveCount(0)
@@ -876,7 +928,7 @@ test.describe('Control Center smoke', () => {
     await page.getByLabel('图片 Model').fill('openpet-image-test')
     await page.getByLabel('图片 Timeout MS').fill('90000')
     await page.getByLabel('图片最大并发').fill('2')
-    await expect(page.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片配置草稿未保存')
+    await expect(providerStatusItem(imageProviderSection, '草稿状态')).toContainText('图片配置草稿未保存')
     await page.getByRole('button', { name: '检查图片健康' }).click()
     await expect(page.locator('.readonly-row', { hasText: '图片健康状态' })).toContainText('请先保存图片配置')
 
@@ -884,7 +936,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('ai-image-status')).toContainText('图片 Provider 配置已保存')
     await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
     await expect(page.locator('.readonly-row', { hasText: '图片当前 Provider' })).toContainText('openpet-image-test')
-    await expect(page.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('当前没有未保存')
+    await expect(providerStatusItem(imageProviderSection, '草稿状态')).toContainText('当前没有未保存')
     await expect(page.locator('.readonly-row', { hasText: '生成边界' })).toContainText('API Key')
 
     const imageApiKeyRow = page.locator('.field-row', { hasText: '图片 API Key' })
@@ -910,7 +962,8 @@ test.describe('Control Center smoke', () => {
 
     await page.reload()
     await page.getByRole('button', { name: 'AI' }).click()
-    await expandAiSection(page, '图片 Provider')
+    const reloadedImageProviderSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(reloadedImageProviderSection, '显示高级图片配置')
     await expect(page.getByLabel('图片 Base URL')).toHaveValue('https://image.example.test/v1')
     await expect(page.getByLabel('图片 Model')).toHaveValue('openpet-image-test')
     await expect(page.getByLabel('图片 Timeout MS')).toHaveValue('90000')
@@ -923,6 +976,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(imageProviderSection, '显示常用图片 Provider 预设')
     await imageProviderSection.getByRole('button', { name: /Together/ }).click()
     await page.getByLabel('图片 Model').fill('black-forest-labs/flux-schnell')
     await expect(page.getByTestId('image-model-compatibility')).toContainText('Together 图片兼容模式')
@@ -961,13 +1015,13 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('image-model-discovery')).toContainText('当前保存的图片 Model 未出现在探测列表中')
 
     await page.getByLabel('图片 Model').fill('draft-only-image-model')
-    await expect(imageProviderSection.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片配置草稿未保存')
+    await expect(providerStatusItem(imageProviderSection, '草稿状态')).toContainText('图片配置草稿未保存')
     await expect(page.getByTestId('image-model-discovery')).toContainText('当前有未保存的图片草稿')
     await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
 
     await page.getByLabel('图片 Model').fill('missing-image-model')
     await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-draft-only-9999')
-    await expect(imageProviderSection.locator('.readonly-row', { hasText: '图片草稿状态' })).toContainText('图片密钥草稿未保存')
+    await expect(providerStatusItem(imageProviderSection, '草稿状态')).toContainText('图片密钥草稿未保存')
     await expect(page.getByTestId('image-model-discovery')).toContainText('当前有未保存的图片草稿')
     await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
   })
@@ -998,12 +1052,12 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('chat-model-discovery')).toContainText('当前保存的聊天 Model 未出现在探测列表中')
 
     await chatModelInput(page).fill('draft-only-chat-model')
-    await expect(chatProviderSection.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('配置草稿未保存')
+    await expect(providerStatusItem(chatProviderSection, '草稿状态')).toContainText('配置草稿未保存')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
 
     await chatModelInput(page).fill('missing-chat-model')
     await apiKeyRow.getByPlaceholder('输入新密钥覆盖').fill('sk-chat-draft-only-9999')
-    await expect(chatProviderSection.locator('.readonly-row', { hasText: '草稿状态' })).toContainText('密钥草稿未保存')
+    await expect(providerStatusItem(chatProviderSection, '草稿状态')).toContainText('密钥草稿未保存')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
   })
 

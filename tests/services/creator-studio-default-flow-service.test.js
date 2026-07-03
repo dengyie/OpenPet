@@ -53,10 +53,13 @@ test('creator studio default flow blocks before generation when provider health 
 
 test('creator studio default flow auto-answers trigger, confirms, generates, approves, and imports action runs without requiring the Creator Studio service to be running', async () => {
   const commandCalls = []
+  const logs = []
   const service = createCreatorStudioDefaultFlowService({
     imageGenerationModelService: {
       checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' })
     },
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'creator-default-flow-1',
     pluginService: {
       listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
       runCommand: async (pluginId, commandId, payload) => {
@@ -203,6 +206,20 @@ test('creator studio default flow auto-answers trigger, confirms, generates, app
   ])
   assert.equal(commandCalls[0].payload.backend, 'provider')
   assert.equal(commandCalls[1].payload.answer, 'manual')
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'creator.default-flow.started',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.question.auto-answered',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.stage.completed',
+    'creator.default-flow.completed'
+  ])
+  assert.equal(logs[0].details.requestId, 'creator-default-flow-1')
+  assert.equal(logs.at(-1).details.runId, 'run-001')
+  assert.equal(JSON.stringify(logs).includes('新增一个害羞转圈动作'), false)
 })
 
 test('creator studio default flow routes to details when unresolved questions are not safe to auto-answer', async () => {
