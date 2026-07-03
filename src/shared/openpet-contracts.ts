@@ -1644,6 +1644,28 @@ export interface CreatorImportedActionViewState {
   label: string
 }
 
+export interface CreatorClickActionChangeViewState {
+  previousActionId: string
+  currentActionId: string
+  importedActionId: string
+  canRestore: boolean
+}
+
+export interface CreatorBasicActionRowViewState {
+  actionId: string
+  sourceActionId: string
+  sourceRelativePath: string
+  fallback: boolean
+}
+
+export interface CreatorBasicActionCoverageViewState {
+  requiredRealActionIds: string[]
+  realActionIds: string[]
+  fallbackActionIds: string[]
+  missingRequiredActionIds: string[]
+  rows: CreatorBasicActionRowViewState[]
+}
+
 export interface CreatorStateViewState extends OkResponse {
   provider: CreatorProviderStateViewState
   editableTarget: CreatorEditableTargetViewState
@@ -1706,6 +1728,8 @@ export interface CreatorWorkflowResult extends OkResponse {
   activePet?: PetPackSummary | null
   importedAction?: CreatorImportedActionViewState | null
   clickAction?: string
+  clickActionChange?: CreatorClickActionChangeViewState | null
+  basicActions?: CreatorBasicActionCoverageViewState | null
   diagnostics?: CreatorWorkflowDiagnosticsViewState | null
 }
 

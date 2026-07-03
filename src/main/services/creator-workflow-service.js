@@ -177,6 +177,8 @@ const createWorkflowResult = ({
   activePet = null,
   importedAction = null,
   clickAction = '',
+  clickActionChange = null,
+  basicActions = null,
   diagnostics = null
 }) => ({
   ok: true,
@@ -188,10 +190,58 @@ const createWorkflowResult = ({
   activePet,
   importedAction,
   clickAction: normalizeText(clickAction),
+  clickActionChange: clickActionChange && typeof clickActionChange === 'object'
+    ? {
+        previousActionId: normalizeText(clickActionChange.previousActionId),
+        currentActionId: normalizeText(clickActionChange.currentActionId),
+        importedActionId: normalizeText(clickActionChange.importedActionId),
+        canRestore: Boolean(clickActionChange.canRestore)
+      }
+    : null,
+  basicActions: basicActions && typeof basicActions === 'object'
+    ? {
+        requiredRealActionIds: Array.isArray(basicActions.requiredRealActionIds)
+          ? basicActions.requiredRealActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        realActionIds: Array.isArray(basicActions.realActionIds)
+          ? basicActions.realActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        fallbackActionIds: Array.isArray(basicActions.fallbackActionIds)
+          ? basicActions.fallbackActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        missingRequiredActionIds: Array.isArray(basicActions.missingRequiredActionIds)
+          ? basicActions.missingRequiredActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        rows: Array.isArray(basicActions.rows)
+          ? basicActions.rows.map((row) => ({
+              actionId: normalizeText(row?.actionId),
+              sourceActionId: normalizeText(row?.sourceActionId),
+              sourceRelativePath: normalizeText(row?.sourceRelativePath),
+              fallback: Boolean(row?.fallback)
+            })).filter((row) => row.actionId)
+          : []
+      }
+    : null,
   diagnostics: diagnostics && typeof diagnostics === 'object'
     ? diagnostics
     : null
 })
+
+const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
+  const normalizedRunId = normalizeText(runId)
+  if (!pluginDataDir || !normalizedRunId) return null
+  const qaPath = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId, 'qa', 'atlas-validation.json')
+  if (!fs.existsSync(qaPath)) return null
+  try {
+    const qa = JSON.parse(fs.readFileSync(qaPath, 'utf-8'))
+    const basicActions = qa?.basicActions
+    return basicActions && typeof basicActions === 'object' && !Array.isArray(basicActions)
+      ? basicActions
+      : null
+  } catch (_) {
+    return null
+  }
+}
 
 const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
   const normalizedRunId = normalizeText(runId)
@@ -659,8 +709,15 @@ const createCreatorWorkflowService = ({
           return result
         }
 
+        const previousClickAction = normalizeText(actionService.getConfig?.()?.clickAction)
         const accepted = actionService.acceptTriggerProposalItem(submission.proposal.id)
         const clickAction = normalizeText(accepted?.animations?.clickAction) || importedActionId
+        const clickActionChange = {
+          previousActionId: previousClickAction,
+          currentActionId: clickAction,
+          importedActionId,
+          canRestore: Boolean(previousClickAction && previousClickAction !== clickAction)
+        }
         const runView = createRunView({
           state: 'completed',
           mode,
@@ -680,6 +737,7 @@ const createCreatorWorkflowService = ({
             label: normalizeText(task.actions?.[0]?.name)
           },
           clickAction: clickAction || runView.importedActionId,
+          clickActionChange,
           diagnostics: getWorkflowDiagnostics()
         })
         recordLog({
@@ -701,6 +759,7 @@ const createCreatorWorkflowService = ({
 
       const activePackId = normalizeText(importResult?.activated?.activePackId || importRun?.activatedPackId)
       const pack = importResult?.activated?.pack || importResult?.imported?.pack || null
+      const basicActions = readBasicActionCoverage({ pluginDataDir, runId })
       const runView = createRunView({
         state: 'completed',
         mode,
@@ -729,6 +788,7 @@ const createCreatorWorkflowService = ({
               clickAction: normalizeText(pack.clickAction)
             }
           : null,
+        basicActions,
         diagnostics: getWorkflowDiagnostics()
       })
       recordLog({

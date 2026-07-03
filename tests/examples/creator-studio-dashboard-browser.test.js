@@ -987,7 +987,10 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
     assert.match(await page.locator('#trigger-panel').textContent(), /Trigger plan/i)
 
     await page.locator('#confirm-button').click()
-    await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
+    await page.waitForFunction(() => (
+      /Task confirmed/.test(document.querySelector('#status-line')?.textContent || '') &&
+      !document.querySelector('#generate-button')?.disabled
+    ))
     assert.match(await page.locator('#status-line').textContent(), /Task confirmed/i)
 
     await page.locator('#generate-button').click()
@@ -2338,7 +2341,8 @@ test('creator studio dashboard shows failed generation recovery and retries the 
 
 test('creator studio dashboard shows full-pet validation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-retry-'))
-  let generationAttempts = 0
+  let baseGenerationAttempts = 0
+  let totalGenerationAttempts = 0
   const bridgeServer = http.createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -2357,11 +2361,14 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
         return
       }
       if (request.url.endsWith('/creator/model-image-generate')) {
-        generationAttempts += 1
-        const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+        totalGenerationAttempts += 1
+        const outputDir = String(payload.output?.dataRelativeDir || '')
+        const isActionRow = /\/frames\/base\/[^/]+$/.test(outputDir)
+        if (!isActionRow) baseGenerationAttempts += 1
+        const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        const background = generationAttempts === 1
+        const background = !isActionRow && baseGenerationAttempts === 1
           ? { r: 0, g: 0, b: 0, alpha: 0 }
           : { r: 255, g: 196, b: 120, alpha: 1 }
         sharp({
@@ -2382,11 +2389,11 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
                 backend: 'provider',
                 model: 'local-full-pet-v2',
                 generatedAt: '2026-06-27T00:00:00.000Z',
-                outputs: [{
-                  dataRelativePath,
-                  mimeType: 'image/png',
-                  sha256: generationAttempts === 1 ? 'invalid-visible-pixels-sha' : 'full-pet-retry-sha'
-                }]
+	                outputs: [{
+	                  dataRelativePath,
+	                  mimeType: 'image/png',
+	                  sha256: !isActionRow && baseGenerationAttempts === 1 ? 'invalid-visible-pixels-sha' : 'full-pet-retry-sha'
+	                }]
               }
             }))
           })
@@ -2431,7 +2438,8 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
 
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
-    assert.equal(generationAttempts, 2)
+    assert.equal(baseGenerationAttempts, 2)
+    assert.equal(totalGenerationAttempts, 10)
     assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
     assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {

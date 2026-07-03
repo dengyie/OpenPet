@@ -42,6 +42,7 @@ export interface CreatorPaneProps {
   onGenerateNewCharacter: () => void | Promise<void>
   onGenerateExistingAction: () => void | Promise<void>
   onPreviewResult: () => void | Promise<void>
+  onRestoreClickAction: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
 }
 
@@ -72,6 +73,7 @@ const ResultCard = ({
   dashboardAvailable,
   openingDashboard,
   onPreviewResult,
+  onRestoreClickAction,
   onOpenCreatorStudioDetails
 }: {
   result: CreatorWorkflowResult
@@ -79,6 +81,7 @@ const ResultCard = ({
   dashboardAvailable: boolean
   openingDashboard: boolean
   onPreviewResult: () => void | Promise<void>
+  onRestoreClickAction: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
 }) => {
   const tone = result.state === 'completed'
@@ -88,6 +91,8 @@ const ResultCard = ({
       : 'error'
   const showAdvanced = dashboardAvailable && Boolean(result.run?.runId)
   const diagnostics = result.diagnostics || null
+  const clickActionChange = result.clickActionChange || null
+  const basicActions = result.basicActions || null
   const conditioning = diagnostics?.conditioning || null
   const conditioningReferences = conditioning?.referenceFileNames?.length
     ? conditioning.referenceFileNames.join(', ')
@@ -98,25 +103,33 @@ const ResultCard = ({
       <strong>{formatWorkflowState(result.state)}</strong>
       <span>{result.message}</span>
       {result.state === 'completed' ? (
-        <span className="creator-result-cta">Use the preview button or click the pet to verify immediately.</span>
+        <span className="creator-result-cta">可以立即预览，或直接点击桌宠验证动作。</span>
       ) : null}
       {result.reference ? (
         <div className="creator-result-grid">
-          <span><strong>Reference used</strong> {result.reference.fileName || 'reference.png'}</span>
+          <span><strong>使用的参考图</strong> {result.reference.fileName || 'reference.png'}</span>
           <span><strong>Updated</strong> {formatTimestamp(result.reference.updatedAt || '')}</span>
         </div>
       ) : null}
       {result.activePet ? (
         <div className="creator-result-grid">
-          <span><strong>Active pet</strong> {result.activePet.displayName || result.activePet.id}</span>
-          <span><strong>Default action</strong> {result.activePet.defaultAction || 'idle'}</span>
-          <span><strong>Click action</strong> {result.activePet.clickAction || 'waving'}</span>
+          <span><strong>当前角色</strong> {result.activePet.displayName || result.activePet.id}</span>
+          <span><strong>默认动作</strong> {result.activePet.defaultAction || 'idle'}</span>
+          <span><strong>点击动作</strong> {result.activePet.clickAction || 'waving'}</span>
         </div>
       ) : null}
       {result.importedAction ? (
         <div className="creator-result-grid">
-          <span><strong>Imported action</strong> {result.importedAction.label || result.importedAction.actionId}</span>
-          <span><strong>Click action</strong> {result.clickAction || result.importedAction.actionId}</span>
+          <span><strong>已导入动作</strong> {result.importedAction.label || result.importedAction.actionId}</span>
+          <span><strong>点击动作</strong> {result.clickAction || result.importedAction.actionId}</span>
+          {clickActionChange?.previousActionId ? <span><strong>原点击动作</strong> {clickActionChange.previousActionId}</span> : null}
+        </div>
+      ) : null}
+      {basicActions ? (
+        <div className="creator-result-grid">
+          <span><strong>真实基础动作</strong> {basicActions.realActionIds.length ? basicActions.realActionIds.join(', ') : 'none'}</span>
+          <span><strong>复用基础图动作</strong> {basicActions.fallbackActionIds.length ? basicActions.fallbackActionIds.join(', ') : 'none'}</span>
+          {basicActions.missingRequiredActionIds.length ? <span><strong>需要复查</strong> {basicActions.missingRequiredActionIds.join(', ')}</span> : null}
         </div>
       ) : null}
       {result.run ? (
@@ -143,17 +156,27 @@ const ResultCard = ({
       {showAdvanced ? (
         <div className="header-actions">
           <button type="button" className="primary" disabled={previewing} onClick={onPreviewResult} data-testid="creator-preview-result">
-            {previewing ? 'Previewing' : 'Preview Now'}
+            {previewing ? '预览中' : '立即预览'}
           </button>
+          {clickActionChange?.canRestore ? (
+            <button type="button" className="ghost" disabled={previewing} onClick={onRestoreClickAction} data-testid="creator-restore-click-action">
+              恢复原点击动作
+            </button>
+          ) : null}
           <button type="button" className="ghost" disabled={openingDashboard} onClick={onOpenCreatorStudioDetails}>
-            {openingDashboard ? '打开中' : 'Open Creator Studio details'}
+            {openingDashboard ? '打开中' : '打开 Creator Studio 详情'}
           </button>
         </div>
       ) : result.state === 'completed' ? (
         <div className="header-actions">
           <button type="button" className="primary" disabled={previewing} onClick={onPreviewResult} data-testid="creator-preview-result">
-            {previewing ? 'Previewing' : 'Preview Now'}
+            {previewing ? '预览中' : '立即预览'}
           </button>
+          {clickActionChange?.canRestore ? (
+            <button type="button" className="ghost" disabled={previewing} onClick={onRestoreClickAction} data-testid="creator-restore-click-action">
+              恢复原点击动作
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -183,6 +206,7 @@ export function CreatorPane({
   onGenerateNewCharacter,
   onGenerateExistingAction,
   onPreviewResult,
+  onRestoreClickAction,
   onOpenCreatorStudioDetails
 }: CreatorPaneProps) {
   const providerReady = creatorState.provider.ready
@@ -395,6 +419,7 @@ export function CreatorPane({
           dashboardAvailable={creatorState.dashboard.available}
           openingDashboard={openingDashboard}
           onPreviewResult={onPreviewResult}
+          onRestoreClickAction={onRestoreClickAction}
           onOpenCreatorStudioDetails={onOpenCreatorStudioDetails}
         />
       ) : creatorState.lastRun ? (

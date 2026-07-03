@@ -1,7 +1,8 @@
 {
   "project": "OpenPet",
   "releaseTrack": "1.0.1-rc.3",
-  "updated": "2026-07-03",
+  "updated": "2026-06-28",
+  "branch": "main",
   "scope": {
     "platform": [
       "macOS",
@@ -18,9 +19,25 @@
     "Local HTTP and MCP are loopback-only and disabled by default",
     "Bundled pets include doro, duodong, and chispa",
     "Codex pet directory import and zip import are supported",
+    "Chat provider settings separate active saved config from renderer drafts, support separate save and test connection actions, and keep provider credentials in the main process",
+    "Control Center provider presets for OpenRouter, Together, OpenAI-compatible local gateways, LM Studio, and vLLM are endpoint templates; only the OpenPet 8317 gateway preset is tied to current archived smoke evidence",
+    "Creator Studio image generation uses one OpenAI-compatible image Provider contract and unified OpenAI-compatible provider settings owned by the host",
+    "Creator Studio provider-backed full-pet runs package a real generated atlas and write source-image-validation.json plus atlas-validation.json before Import Approved Pet",
+    "Creator Studio imported action success routes to the Trigger Proposal Inbox; import handoff failure routes to Control Center -> Plugins; imported pet follow-up remains OpenPet",
+    "Creator-tools bridge permissions include trigger-proposals:write and model:image-generate, while plugin-managed provider credentials are unsupported for host-managed generation",
+    "random/state/event trigger proposals create host-owned durable trigger rules, and the shared TypeScript contract now models those specs as a discriminated random/state/event union",
     "Real-provider smoke entrypoints exist for AI provider verification, Bubble Chat acceptance, and Creator Studio provider-path validation",
+    "Archived AI provider smoke evidence lives at docs/release-evidence/ai-provider-smoke/2026-06-28T11-08-10Z-openpet-gateway/: gpt-5.5 and gpt-image-2 were discovered, gpt-5.5 passed chat smoke, and image generation remained intentionally opt-in and was skipped",
+    "Archived Creator Studio provider smoke evidence lives at docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/: the run took about 265s with a 420000ms timeout override and is not production asset-quality approval",
+    "AI provider smoke report contracts and Creator Studio provider smoke report contracts are part of the current TypeScript migration baseline",
+    "AI Talk smoke uses run-ai-talk-local-smoke and records bubbleAcceptance, providerLatencyMs, bubbleDispatch, and manualAcceptanceTemplate",
+    "Archived AI Talk Bubble Chat smoke evidence lives at docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/; providerLatencyMs was 2141, bubbleDispatch.petSayReceived was true, and bubbleDispatch.bubbleStateVisible was true, but it does not by itself prove full human acceptance or transparent popup placement",
     "Local extensions support explicit setup, command, dashboard, and service controls with conservative security wording",
+    "TypeScript boundary coverage includes typed plugin view config schema/storage/signature payloads, action-frame inspectionResult payloads, and pet-pack mutation view payloads",
     "Release evidence tooling exists for packaged runtime, desktop picker, macOS signing evidence, Windows smoke evidence, release archive manifests, and signed closure reporting",
+    "Archived release evidence includes docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/: unsigned macOS packaged runtime launched, plugin-picker-evidence-linked is pending, and invalid-package-feedback is blocked",
+    "Archived signed release closure evidence includes docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/: releaseReady is false and official desktop, macOS, and Windows are not-ready because of missing signed macOS evidence, missing desktop picker evidence, and missing signed Windows smoke evidence",
+    "Manual-required release prerequisites include Apple signing/notarization credentials, real Windows signed artifact execution, and human evidence review",
     "Windows is not release-ready until signed artifacts and real smoke evidence are archived",
     "Live documentation is centered on docs/README.md, docs/HANDOFF.md, docs/TODO.md, docs/development-workflow.md, docs/testing-strategy.md, docs/development-summary.md, and docs/project-status-review.md",
     "Older roadmap and TODO design documents are historical background, not active planning sources"
@@ -52,6 +69,9 @@
       "npm run test:control-center",
       "npm test",
       "npm run check:syntax",
+      "npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model>",
+      "npm run smoke:creator-studio-provider -- --prompt <prompt>",
+      "npm run run-ai-talk-local-smoke -- --message <text>",
       "npm run pack"
     ]
   },
