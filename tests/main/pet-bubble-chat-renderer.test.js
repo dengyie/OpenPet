@@ -61,8 +61,16 @@ const createElement = (id = '') => ({
 })
 
 const dispatch = async (target, eventName, event = {}) => {
+  if (eventName === 'wheel' && typeof event.preventDefault !== 'function') {
+    event.preventDefault = () => {
+      event.defaultPrevented = true
+    }
+  }
   for (const listener of target.listeners?.[eventName] || []) {
     await listener(event)
+  }
+  if (eventName === 'wheel' && target?.id === 'bubble-stream' && !event.defaultPrevented) {
+    target.scrollTop = Math.max(0, (target.scrollTop || 0) + (Number(event.deltaY) || 0))
   }
 }
 
@@ -398,25 +406,20 @@ test('bubble chat renderer keeps window controls clickable for a single visible 
 
 test('bubble chat renderer scrolls bubble list on wheel without scrolling the input composer', async () => {
   const harness = await createHarness()
-  const { apiCalls, documentListeners, elements } = harness
-  let streamPrevented = false
+  const { apiCalls, elements } = harness
   let inputPrevented = false
 
-  await dispatchDocument(documentListeners, 'mouseenter')
   elements['bubble-stream'].scrollTop = 24
   await dispatch(elements['bubble-stream'], 'wheel', {
     deltaY: 36,
-    preventDefault() { streamPrevented = true },
     stopPropagation() {}
   })
-  await Promise.resolve()
   await dispatch(elements['mini-input'], 'wheel', {
     deltaY: 40,
     preventDefault() { inputPrevented = true },
     stopPropagation() {}
   })
 
-  assert.equal(streamPrevented, true)
   assert.equal(inputPrevented, true)
   assert.equal(elements['bubble-stream'].scrollTop, 60)
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)

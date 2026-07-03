@@ -109,19 +109,12 @@ const scrollToLatest = () => {
   bubbleStream.scrollTop = bubbleStream.scrollHeight || 0
 }
 
-const scrollBubbleStreamBy = (deltaY = 0) => {
-  if (!bubbleStream || !Number.isFinite(deltaY) || deltaY === 0) return
-  bubbleStream.scrollTop = Math.max(0, (bubbleStream.scrollTop || 0) + deltaY)
-}
-
 const isComposerTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
   return Boolean(target.closest('#mini-input-form'))
 }
 
 const handleBubbleWheel = (event) => {
-  event.preventDefault?.()
-  event.stopPropagation?.()
   expanded = true
   scrollingHistory = true
   if (scrollInteractionTimer) window.clearTimeout(scrollInteractionTimer)
@@ -135,7 +128,6 @@ const handleBubbleWheel = (event) => {
     hitTestInteractive: true
   }
   if (!hadHitTest) setHitTestMode(true, 'renderer-bubble-wheel')
-  scrollBubbleStreamBy(event.deltaY)
 }
 
 const updateUnseenButton = () => {
@@ -310,15 +302,6 @@ newMessageButton?.addEventListener('click', (event) => {
 })
 
 bubbleStream?.addEventListener('wheel', handleBubbleWheel)
-
-document.addEventListener('wheel', (event) => {
-  if (isComposerTarget(event.target)) {
-    event.preventDefault?.()
-    event.stopPropagation?.()
-    return
-  }
-  handleBubbleWheel(event)
-}, { passive: false, capture: true })
 
 miniInput?.addEventListener('focus', () => {
   expanded = true
