@@ -1,5 +1,5 @@
 const shell = document.getElementById('bubble-shell')
-const toolbar = document.getElementById('bubble-toolbar')
+const bubbleCard = document.querySelector('.bubble-card')
 const closeButton = document.getElementById('close-button')
 const bubbleStream = document.getElementById('bubble-stream')
 const bubbleItems = document.getElementById('bubble-items')
@@ -18,6 +18,7 @@ let lastItemSignature = ''
 let lastItemCount = 0
 let scrollingHistory = false
 let scrollInteractionTimer = null
+let dragState = null
 
 const hasTextSelection = () => Boolean(String(window.getSelection?.() || '').trim())
 
@@ -93,7 +94,8 @@ const canUseWindowControls = () => Boolean(
 const shouldAcceptHitTest = () => {
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
-  return scrollingHistory ||
+  return Boolean(dragState) ||
+    scrollingHistory ||
     canUseWindowControls() ||
     hovering ||
     focused ||
@@ -112,6 +114,13 @@ const scrollToLatest = () => {
 const isComposerTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
   return Boolean(target.closest('#mini-input-form'))
+}
+
+const isBubbleDragTarget = (target) => {
+  if (!target || typeof target.closest !== 'function') return false
+  if (target.closest('#mini-input-form, #close-button, #new-message-button, textarea, button')) return false
+  if (target.closest('.bubble-item-source, .bubble-item-text, .bubble-item-meta')) return false
+  return Boolean(target.closest('.bubble-item, #last-user-message, #error-message'))
 }
 
 const handleBubbleWheel = (event) => {
@@ -243,23 +252,25 @@ const syncPassiveHitTestMode = (source = 'renderer-state-sync') => {
 }
 
 const syncUiInteractionState = () => {
+  const dragging = Boolean(dragState)
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
-  const shouldInteract = hovering || focused || hasDraft || scrollingHistory || hasTextSelection() || Boolean(currentState.sending) || Boolean(currentState.error)
+  const shouldInteract = dragging || hovering || focused || hasDraft || scrollingHistory || hasTextSelection() || Boolean(currentState.sending) || Boolean(currentState.error)
   if (!shouldInteract) expanded = false
   setInteracting(shouldInteract)
   setHitTestMode(shouldAcceptHitTest(), 'renderer-interaction-sync')
   renderState(currentState)
 }
 
-document.addEventListener('mouseenter', () => {
+bubbleCard?.addEventListener('mouseenter', () => {
   hovering = true
   expanded = true
   setInteracting(true)
   setHitTestMode(true, 'renderer-mouseenter')
   renderState(currentState)
 })
-document.addEventListener('mouseleave', () => {
+bubbleCard?.addEventListener('mouseleave', () => {
+  if (dragState) return
   hovering = false
   syncUiInteractionState()
 })
@@ -287,6 +298,45 @@ closeButton?.addEventListener('click', (event) => {
   event.stopPropagation?.()
   window.petBubbleChatAPI.hide({ source: 'bubble-close-button' })
 })
+
+bubbleCard?.addEventListener('pointerdown', (event) => {
+  if (!isBubbleDragTarget(event.target)) return
+  if (!Number.isFinite(event.screenX) || !Number.isFinite(event.screenY)) return
+  if (!currentState?.bounds) return
+  dragState = {
+    pointerId: event.pointerId,
+    originScreenX: event.screenX,
+    originScreenY: event.screenY,
+    originBounds: { ...currentState.bounds }
+  }
+  hovering = true
+  expanded = true
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  event.target?.setPointerCapture?.(event.pointerId)
+  setInteracting(true)
+  setHitTestMode(true, 'renderer-drag-start')
+})
+
+document.addEventListener('pointermove', (event) => {
+  if (!dragState) return
+  if (dragState.pointerId !== undefined && event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return
+  const nextX = dragState.originBounds.x + Math.round(event.screenX - dragState.originScreenX)
+  const nextY = dragState.originBounds.y + Math.round(event.screenY - dragState.originScreenY)
+  window.petBubbleChatAPI.dragWindowTo({ x: nextX, y: nextY, source: 'renderer-drag-move' }).then(renderState).catch(() => {})
+})
+
+const finishDrag = (event, source) => {
+  if (!dragState) return
+  if (dragState.pointerId !== undefined && event?.pointerId !== undefined && dragState.pointerId !== event.pointerId) return
+  dragState = null
+  if (!hovering) expanded = false
+  setHitTestMode(true, source)
+  syncUiInteractionState()
+}
+
+document.addEventListener('pointerup', (event) => finishDrag(event, 'renderer-drag-end'))
+document.addEventListener('pointercancel', (event) => finishDrag(event, 'renderer-drag-cancel'))
 
 document.addEventListener('dblclick', () => {
   expanded = true
@@ -361,10 +411,6 @@ inputForm?.addEventListener('submit', async (event) => {
   } finally {
     syncUiInteractionState()
   }
-})
-
-toolbar?.addEventListener('mouseenter', () => {
-  setHitTestMode(true, 'renderer-toolbar-hover')
 })
 
 window.addEventListener('focus', refreshState)

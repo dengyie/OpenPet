@@ -35,6 +35,7 @@ const IPC = Object.freeze({
   PET_BUBBLE_CHAT_SET_PINNED: 'pet-bubble-chat:set-pinned',
   PET_BUBBLE_CHAT_SET_INTERACTING: 'pet-bubble-chat:set-interacting',
   PET_BUBBLE_CHAT_SET_HIT_TEST_MODE: 'pet-bubble-chat:set-hit-test-mode',
+  PET_BUBBLE_CHAT_DRAG_TO: 'pet-bubble-chat:drag-to',
   PET_BUBBLE_CHAT_SEND_MESSAGE: 'pet-bubble-chat:send-message',
   PET_BUBBLE_CHAT_STATE_CHANGED: 'pet-bubble-chat:state-changed',
   SETTINGS_OPEN: 'settings:open',

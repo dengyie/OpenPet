@@ -708,6 +708,35 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
   assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.reanchored' && entry.details.reason === 'pet-moved'), true)
 })
 
+test('pet bubble chat manager supports renderer-driven dragging without a toolbar region', () => {
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    }),
+    appLogService: { record: () => {} }
+  })
+
+  manager.showMessage({ text: 'drag me', source: 'plugin:test', ttlMs: 6000 })
+  const state = manager.dragWindowTo({ x: 520, y: 360, source: 'renderer-drag-move' })
+
+  assert.equal(instances.length, 1)
+  assert.equal(state.anchorMode, 'detached-temporary')
+  assert.equal(state.bounds.x, 520)
+  assert.equal(state.bounds.y, 360)
+})
+
 test('pet bubble chat manager stays visible during sending and after a recoverable send error', () => {
   const timers = []
   const logs = []

@@ -172,6 +172,7 @@ const createPetChatFacade = ({
     notifyActivePetPackChanged,
     notifyStateChanged,
     openBubbleChat: bubbleChatCoordinator.openBubbleChat,
+    dragBubbleChatWindowTo: bubbleChatCoordinator.dragBubbleChatWindowTo,
     recordPetUtterance,
     refreshBubbleChatItems,
     refreshPetPackScopedChatState,

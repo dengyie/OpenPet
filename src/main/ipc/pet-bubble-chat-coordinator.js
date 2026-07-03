@@ -81,6 +81,14 @@ const createPetBubbleChatCoordinator = ({
     }) || { visible: false, hasWindow: false }
   )
 
+  const dragBubbleChatWindowTo = (payload = {}) => (
+    petBubbleChatWindowService?.dragWindowTo?.({
+      x: Number(payload?.x),
+      y: Number(payload?.y),
+      source: normalizeMessageText(payload?.source) || 'pet-bubble-chat-renderer'
+    }) || { visible: false, hasWindow: false }
+  )
+
   const syncBubbleChatToPetWindow = () => {
     petBubbleChatWindowService?.syncToPetWindow?.()
   }
@@ -89,6 +97,7 @@ const createPetBubbleChatCoordinator = ({
     getBubbleChatState,
     hideBubbleChat,
     openBubbleChat,
+    dragBubbleChatWindowTo,
     refreshBubbleChatItems,
     setBubbleChatHitTestMode,
     setBubbleChatInteracting,

@@ -75,6 +75,22 @@ const getWorkAreaForPetBounds = (screenService, petBounds) => {
   return display?.workArea || fallback
 }
 
+const clampBubbleWindowPosition = ({ bounds, workArea } = {}) => {
+  const area = workArea || { x: 0, y: 0, width: 1440, height: 900 }
+  const width = Math.round(clamp(Number(bounds?.width) || DEFAULT_BUBBLE_WIDTH, MIN_BUBBLE_WIDTH, Math.max(MIN_BUBBLE_WIDTH, area.width - WORK_AREA_MARGIN * 2)))
+  const height = Math.round(clamp(Number(bounds?.height) || DEFAULT_BUBBLE_HEIGHT, 1, Math.max(1, area.height - WORK_AREA_MARGIN * 2)))
+  const minX = area.x + WORK_AREA_MARGIN
+  const minY = area.y + WORK_AREA_MARGIN
+  const maxX = Math.max(minX, area.x + area.width - width - WORK_AREA_MARGIN)
+  const maxY = Math.max(minY, area.y + area.height - height - WORK_AREA_MARGIN)
+  return {
+    x: Math.round(clamp(Number(bounds?.x) || area.x, minX, maxX)),
+    y: Math.round(clamp(Number(bounds?.y) || area.y, minY, maxY)),
+    width,
+    height
+  }
+}
+
 const resolveBubbleBounds = ({ petBounds, workArea, width = DEFAULT_BUBBLE_WIDTH, height = DEFAULT_BUBBLE_HEIGHT } = {}) => {
   const area = workArea || { x: 0, y: 0, width: 1440, height: 900 }
   const resolvedWidth = Math.round(clamp(width, MIN_BUBBLE_WIDTH, Math.min(MAX_BUBBLE_WIDTH, Math.max(MIN_BUBBLE_WIDTH, area.width - WORK_AREA_MARGIN * 2))))
@@ -636,6 +652,48 @@ const createPetBubbleChatWindowManager = ({
     return getState()
   }
 
+  const dragWindowTo = ({ x, y, source = 'pet-bubble-chat-renderer' } = {}) => {
+    if (!bubbleWindow || bubbleWindow.isDestroyed?.()) return getState()
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return getState()
+    const currentBounds = normalizePetBounds(bubbleWindow.getBounds?.()) || state.bounds || calculateBounds()
+    const petBounds = getPetBounds()
+    const nextBounds = clampBubbleWindowPosition({
+      bounds: {
+        ...currentBounds,
+        x: Math.round(x),
+        y: Math.round(y)
+      },
+      workArea: getWorkAreaForPetBounds(screen, petBounds)
+    })
+    applyWindowBounds(nextBounds)
+    lastPetBoundsSnapshot = petBounds
+    const alreadyDetached = state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY
+    patchState({
+      bounds: nextBounds,
+      placement: 'detached-temporary',
+      anchorMode: BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY,
+      visible: true,
+      hitTestInteractive: true
+    })
+    if (!alreadyDetached) {
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.window.detached',
+        message: 'Pet bubble chat window detached from pet anchor',
+        details: getStateLogDetails({
+          source,
+          reason: 'renderer-drag',
+          x: nextBounds.x,
+          y: nextBounds.y,
+          width: nextBounds.width,
+          height: nextBounds.height,
+          placement: 'detached-temporary'
+        })
+      })
+    }
+    return getState()
+  }
+
   const ensureWindow = () => {
     if (bubbleWindow && !bubbleWindow.isDestroyed?.()) return bubbleWindow
     const bounds = calculateBounds()
@@ -1188,6 +1246,7 @@ const createPetBubbleChatWindowManager = ({
     refreshItems,
     rebuildItems,
     showMessage,
+    dragWindowTo,
     syncToPetWindow,
     getWindow: () => (bubbleWindow && !bubbleWindow.isDestroyed?.() ? bubbleWindow : null)
   }
@@ -1196,6 +1255,7 @@ const createPetBubbleChatWindowManager = ({
 module.exports = {
   calculateBubbleTtlMs,
   buildBubbleChatItems,
+  clampBubbleWindowPosition,
   classifyBubbleChatKind,
   createBubbleRequestId,
   createPetBubbleChatWindowManager,

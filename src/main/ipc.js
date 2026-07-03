@@ -425,6 +425,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return petChatFacade.setBubbleChatHitTestMode(payload)
   })
 
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_DRAG_TO, (_event, payload = {}) => {
+    return petChatFacade.dragBubbleChatWindowTo(payload)
+  })
+
   ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE, async (_event, payload = {}) => {
     const startedAt = Date.now()
     const message = typeof payload?.message === 'string' ? payload.message.trim() : ''

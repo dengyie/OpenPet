@@ -428,6 +428,10 @@ test('pet bubble chat IPC delegates state, open, local message, hide, pin and in
         calls.push(['hitTest', payload])
         return { visible: true, hitTestInteractive: payload.interactive }
       },
+      dragWindowTo: (payload) => {
+        calls.push(['dragTo', payload])
+        return { visible: true, bounds: { x: payload.x, y: payload.y } }
+      },
       showMessage: (payload) => {
         calls.push(['showMessage', payload])
         return { visible: true, message: payload }
@@ -445,6 +449,7 @@ test('pet bubble chat IPC delegates state, open, local message, hide, pin and in
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_PINNED)(null, { pinned: true }), { visible: true, pinned: true })
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_INTERACTING)(null, { interacting: true }), { visible: true, interacting: true })
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SET_HIT_TEST_MODE)(null, { interactive: false, source: 'test-idle' }), { visible: true, hitTestInteractive: false })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_DRAG_TO)(null, { x: 480, y: 320, source: 'test-drag' }), { visible: true, bounds: { x: 480, y: 320 } })
   assert.deepEqual(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SHOW_MESSAGE)(null, { text: '本地轻量消息', ttlMs: 800 }), {
     visible: true,
     refreshed: true,
@@ -456,6 +461,7 @@ test('pet bubble chat IPC delegates state, open, local message, hide, pin and in
     ['pinned', true, { source: 'pet-bubble-chat-renderer' }],
     ['interacting', true, { source: 'pet-bubble-chat-renderer' }],
     ['hitTest', { interactive: false, source: 'test-idle' }],
+    ['dragTo', { x: 480, y: 320, source: 'test-drag' }],
     ['showMessage', {
       text: '本地轻量消息',
       ttlMs: 800,

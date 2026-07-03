@@ -37,15 +37,20 @@ const createElement = (id = '') => ({
   classList: createClassList(),
   attributes: {},
   listeners: {},
+  parentNode: null,
   setAttribute(name, value) {
     this.attributes[name] = String(value)
   },
   appendChild(child) {
+    child.parentNode = this
     this.children.push(child)
     this.textContent = this.children.map((node) => node.textContent || '').join('')
     this.scrollHeight = Math.max(this.scrollHeight, this.children.length * 36)
   },
   replaceChildren(...children) {
+    children.forEach((child) => {
+      child.parentNode = this
+    })
     this.children = children
     this.textContent = this.children.map((node) => node.textContent || '').join('')
     this.scrollHeight = Math.max(this.scrollHeight, this.children.length * 36)
@@ -57,6 +62,21 @@ const createElement = (id = '') => ({
   requestSubmit() {
     this.lastSubmitPromise = Promise.all((this.listeners.submit || []).map((listener) => listener({ preventDefault() {} })))
     return this.lastSubmitPromise
+  },
+  setPointerCapture() {},
+  closest(selector) {
+    const selectors = String(selector || '').split(',').map((item) => item.trim()).filter(Boolean)
+    let node = this
+    while (node) {
+      const classNames = String(node.className || '').split(/\s+/).filter(Boolean)
+      for (const item of selectors) {
+        if (item.startsWith('#') && node.id === item.slice(1)) return node
+        if (item.startsWith('.') && classNames.includes(item.slice(1))) return node
+        if (!item.startsWith('.') && !item.startsWith('#') && String(node.tagName || '').toLowerCase() === item.toLowerCase()) return node
+      }
+      node = node.parentNode
+    }
+    return null
   }
 })
 
@@ -85,6 +105,7 @@ const createHarness = async ({ initialState } = {}) => {
     hide: [],
     setInteracting: [],
     setHitTestMode: [],
+    dragWindowTo: [],
     sendMessage: []
   }
   const initialItems = [
@@ -97,14 +118,15 @@ const createHarness = async ({ initialState } = {}) => {
     items: initialItems,
     sending: false,
     error: '',
-    pinned: false
+    pinned: false,
+    bounds: { x: 200, y: 180, width: 340, height: 260 }
   })
   let latestState = initialState ? { ...baseState(), ...initialState } : baseState()
   const apiStateListeners = []
   const documentListeners = {}
   const elements = {
     'bubble-shell': createElement('bubble-shell'),
-    'bubble-toolbar': createElement('bubble-toolbar'),
+    'bubble-card': createElement('bubble-card'),
     'close-button': createElement('close-button'),
     'bubble-stream': createElement('bubble-stream'),
     'bubble-items': createElement('bubble-items'),
@@ -117,6 +139,13 @@ const createHarness = async ({ initialState } = {}) => {
   }
   const selection = { text: '' }
   const focusState = { activeElement: null }
+  elements['bubble-card'].className = 'bubble-card'
+  elements['close-button'].tagName = 'button'
+  elements['new-message-button'].tagName = 'button'
+  elements['mini-input'].tagName = 'textarea'
+  elements['mini-input-form'].tagName = 'form'
+  elements['last-user-message'].className = 'last-user-message'
+  elements['error-message'].className = 'error-message'
   elements['mini-input'].blur = () => {
     focusState.activeElement = null
   }
@@ -148,6 +177,20 @@ const createHarness = async ({ initialState } = {}) => {
           latestState = { ...latestState, hitTestInteractive: Boolean(payload?.interactive) }
           return latestState
         },
+        dragWindowTo: async ({ x, y }) => {
+          apiCalls.dragWindowTo.push({ x, y })
+          latestState = {
+            ...latestState,
+            bounds: {
+              ...(latestState.bounds || { x: 0, y: 0, width: 340, height: 260 }),
+              x,
+              y
+            },
+            anchorMode: 'detached-temporary',
+            hitTestInteractive: true
+          }
+          return latestState
+        },
         sendMessage: async ({ message }) => {
           apiCalls.sendMessage.push(message)
           latestState = {
@@ -173,6 +216,7 @@ const createHarness = async ({ initialState } = {}) => {
     },
     document: {
       getElementById: (id) => elements[id],
+      querySelector: (selector) => (selector === '.bubble-card' ? elements['bubble-card'] : null),
       createElement: (tagName) => createElement(tagName),
       addEventListener(eventName, callback) {
         documentListeners[eventName] ||= []
@@ -423,6 +467,32 @@ test('bubble chat renderer scrolls bubble list on wheel without scrolling the in
   assert.equal(inputPrevented, true)
   assert.equal(elements['bubble-stream'].scrollTop, 60)
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
+})
+
+test('bubble chat renderer drags the window from the bubble body without relying on a toolbar', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements } = harness
+  const bubbleItem = elements['bubble-items'].children[0]
+
+  await dispatch(elements['bubble-card'], 'pointerdown', {
+    target: bubbleItem,
+    pointerId: 7,
+    screenX: 420,
+    screenY: 360,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+  await dispatchDocument(documentListeners, 'pointermove', {
+    pointerId: 7,
+    screenX: 455,
+    screenY: 388
+  })
+  await dispatchDocument(documentListeners, 'pointerup', {
+    pointerId: 7
+  })
+
+  assert.deepEqual(apiCalls.dragWindowTo, [{ x: 235, y: 208 }])
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-drag-start' && payload.interactive === true), true)
 })
 
 test('bubble chat renderer keeps history scrollable while awaiting reply and syncs interactive hold state to main', async () => {
