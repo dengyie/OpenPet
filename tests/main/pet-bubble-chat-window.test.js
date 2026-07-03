@@ -27,6 +27,8 @@ const createFakeBrowserWindow = () => {
       this.bounds = { x: options.x, y: options.y, width: options.width, height: options.height }
       this.visible = false
       this.destroyed = false
+      this.listeners = new Map()
+      this.onceListeners = new Map()
       this.sent = []
       this.ignoreMouseEventsCalls = []
       this.webContents = {
@@ -56,8 +58,20 @@ const createFakeBrowserWindow = () => {
       this.ignoreMouseEventsCalls.push({ ignore, options })
     }
     setVisibleOnAllWorkspaces() {}
-    on() {}
-    once() {}
+    on(eventName, callback) {
+      this.listeners.set(eventName, callback)
+    }
+    once(eventName, callback) {
+      this.onceListeners.set(eventName, callback)
+    }
+    emit(eventName, ...args) {
+      this.listeners.get(eventName)?.(...args)
+      const onceCallback = this.onceListeners.get(eventName)
+      if (onceCallback) {
+        this.onceListeners.delete(eventName)
+        onceCallback(...args)
+      }
+    }
   }
   return { FakeBrowserWindow, instances }
 }
@@ -640,6 +654,58 @@ test('pet bubble chat manager toggles window-level hit-test passthrough', () => 
   assert.equal(passthrough.hitTestInteractive, false)
   assert.equal(interactive.hitTestInteractive, true)
   assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.hit-test.changed' && entry.details.interactive === true && entry.details.source === 'test-hover'), true)
+})
+
+test('pet bubble chat manager preserves dragged window position until pet moves, then re-anchors', () => {
+  const logs = []
+  let petBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => petBounds
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  manager.showMessage({ text: 'drag me', source: 'plugin:test', ttlMs: 6000 })
+  const initialBounds = { ...instances[0].bounds }
+
+  instances[0].bounds = { ...instances[0].bounds, x: initialBounds.x + 64, y: initialBounds.y + 28 }
+  instances[0].emit('move')
+  instances[0].bounds = { ...instances[0].bounds, x: initialBounds.x + 72, y: initialBounds.y + 36 }
+  instances[0].emit('move')
+
+  const detachedState = manager.getState()
+  assert.equal(detachedState.anchorMode, 'detached-temporary')
+  assert.equal(detachedState.bounds.x, initialBounds.x + 72)
+  assert.equal(detachedState.bounds.y, initialBounds.y + 36)
+
+  manager.showMessage({ text: 'still detached', source: 'plugin:test', ttlMs: 7000 })
+  const afterContentRefresh = manager.getState()
+  assert.equal(afterContentRefresh.anchorMode, 'detached-temporary')
+  assert.equal(afterContentRefresh.bounds.x, initialBounds.x + 72)
+  assert.equal(afterContentRefresh.bounds.y, initialBounds.y + 36)
+
+  petBounds = { x: 360, y: 330, width: 120, height: 120 }
+  manager.syncToPetWindow()
+  const reanchoredState = manager.getState()
+
+  assert.equal(reanchoredState.anchorMode, 'anchored')
+  assert.notEqual(reanchoredState.bounds.x, initialBounds.x + 72)
+  assert.notEqual(reanchoredState.bounds.y, initialBounds.y + 36)
+  assert.equal(logs.filter((entry) => entry.event === 'pet-bubble-chat.window.detached').length, 1)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.reanchored' && entry.details.reason === 'pet-moved'), true)
 })
 
 test('pet bubble chat manager stays visible during sending and after a recoverable send error', () => {

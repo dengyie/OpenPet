@@ -72,7 +72,7 @@ const dispatchDocument = async (documentListeners, eventName, event = {}) => {
   }
 }
 
-const createHarness = async () => {
+const createHarness = async ({ initialState } = {}) => {
   const apiCalls = {
     hide: [],
     setInteracting: [],
@@ -91,11 +91,13 @@ const createHarness = async () => {
     error: '',
     pinned: false
   })
-  let latestState = baseState()
+  let latestState = initialState ? { ...baseState(), ...initialState } : baseState()
   const apiStateListeners = []
   const documentListeners = {}
   const elements = {
     'bubble-shell': createElement('bubble-shell'),
+    'bubble-toolbar': createElement('bubble-toolbar'),
+    'close-button': createElement('close-button'),
     'bubble-stream': createElement('bubble-stream'),
     'bubble-items': createElement('bubble-items'),
     'new-message-button': createElement('new-message-button'),
@@ -121,8 +123,8 @@ const createHarness = async () => {
       getSelection: () => selection.text,
       petBubbleChatAPI: {
         getState: async () => latestState,
-        hide: () => {
-          apiCalls.hide.push(true)
+        hide: (payload) => {
+          apiCalls.hide.push(payload || true)
         },
         setPinned: async () => {
           latestState = { ...latestState, pinned: true }
@@ -271,6 +273,19 @@ test('bubble chat renderer Escape first collapses a draft and then hides when al
   assert.deepEqual(apiCalls.hide, [true])
 })
 
+test('bubble chat renderer close button hides the popup with a close-button source', async () => {
+  const harness = await createHarness()
+  const { apiCalls, elements } = harness
+
+  await dispatch(elements['close-button'], 'click', {
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.equal(apiCalls.hide.length, 1)
+  assert.equal(apiCalls.hide[0].source, 'bubble-close-button')
+})
+
 test('bubble chat renderer keeps interaction while text is selected and releases active interaction after selection clears', async () => {
   const harness = await createHarness()
   const { apiCalls, documentListeners, selection } = harness
@@ -357,6 +372,23 @@ test('bubble chat renderer only expands the collapsed composer on double-click, 
 
 test('bubble chat renderer enables passive hit-test on initial render when history is scrollable', async () => {
   const harness = await createHarness()
+  const { apiCalls } = harness
+
+  assert.equal(apiCalls.setHitTestMode.some((payload) => (
+    payload.source === 'renderer-refresh-state' && payload.interactive === true
+  )), true)
+})
+
+test('bubble chat renderer keeps window controls clickable for a single visible popup item', async () => {
+  const harness = await createHarness({
+    initialState: {
+      visible: true,
+      items: [
+        { id: 'n1', kind: 'notice', role: 'system', text: '单条提示', source: 'plugin:weather', createdAt: '2026-06-24T00:00:02.000Z' }
+      ],
+      message: { id: 'n1', kind: 'notice', role: 'system', text: '单条提示', source: 'plugin:weather', createdAt: '2026-06-24T00:00:02.000Z' }
+    }
+  })
   const { apiCalls } = harness
 
   assert.equal(apiCalls.setHitTestMode.some((payload) => (

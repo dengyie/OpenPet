@@ -1,4 +1,6 @@
 const shell = document.getElementById('bubble-shell')
+const toolbar = document.getElementById('bubble-toolbar')
+const closeButton = document.getElementById('close-button')
 const bubbleStream = document.getElementById('bubble-stream')
 const bubbleItems = document.getElementById('bubble-items')
 const newMessageButton = document.getElementById('new-message-button')
@@ -79,10 +81,20 @@ const canScrollHistory = () => {
   return itemCount > 1
 }
 
+const canUseWindowControls = () => Boolean(
+  currentState.visible &&
+  (
+    (Array.isArray(currentState.items) && currentState.items.length > 0) ||
+    currentState.awaitingReply ||
+    currentState.error
+  )
+)
+
 const shouldAcceptHitTest = () => {
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
   return scrollingHistory ||
+    canUseWindowControls() ||
     hovering ||
     focused ||
     hasDraft ||
@@ -277,6 +289,12 @@ document.addEventListener('keydown', (event) => {
   }
 })
 
+closeButton?.addEventListener('click', (event) => {
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  window.petBubbleChatAPI.hide({ source: 'bubble-close-button' })
+})
+
 document.addEventListener('dblclick', () => {
   expanded = true
   setInteracting(true)
@@ -359,6 +377,10 @@ inputForm?.addEventListener('submit', async (event) => {
   } finally {
     syncUiInteractionState()
   }
+})
+
+toolbar?.addEventListener('mouseenter', () => {
+  setHitTestMode(true, 'renderer-toolbar-hover')
 })
 
 window.addEventListener('focus', refreshState)

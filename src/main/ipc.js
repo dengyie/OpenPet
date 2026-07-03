@@ -409,8 +409,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return petChatFacade.showLocalBubbleChatMessage(payload)
   })
 
-  ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, () => {
-    petChatFacade.hideBubbleChat()
+  ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, (_event, payload = {}) => {
+    petChatFacade.hideBubbleChat(payload)
   })
 
   ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SET_PINNED, (_event, payload) => {

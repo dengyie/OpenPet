@@ -21,6 +21,10 @@ const DEFAULT_HISTORY_TTL_MS = 8000
 const MIN_HISTORY_TTL_MS = 6000
 const MAX_HISTORY_TTL_MS = 30000
 const BUBBLE_ALWAYS_ON_TOP_LEVEL = 'pop-up-menu'
+const BUBBLE_ANCHOR_MODE = Object.freeze({
+  ANCHORED: 'anchored',
+  DETACHED_TEMPORARY: 'detached-temporary'
+})
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -55,6 +59,12 @@ const normalizePetBounds = (bounds) => {
     width: Math.round(width),
     height: Math.round(height)
   }
+}
+
+const samePetBounds = (left, right) => {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height
 }
 
 const getWorkAreaForPetBounds = (screenService, petBounds) => {
@@ -287,6 +297,8 @@ const createPetBubbleChatWindowManager = ({
   let allowClose = false
   let appliedHitTestInteractive = null
   let lastConversationMessages = []
+  let lastPetBoundsSnapshot = null
+  let syncingWindowBounds = false
   const dialogueVisibility = new Map()
   let state = {
     visible: false,
@@ -305,7 +317,8 @@ const createPetBubbleChatWindowManager = ({
     awaitingReply: false,
     error: '',
     placement: '',
-    bounds: null
+    bounds: null,
+    anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED
   }
 
   const recordLog = (entry) => {
@@ -338,6 +351,7 @@ const createPetBubbleChatWindowManager = ({
       visible: Boolean(state.visible),
       awaitingReply: Boolean(state.awaitingReply),
       sending: Boolean(state.sending),
+      anchorMode: state.anchorMode,
       ttlMs,
       reason: sanitizeLogText(extra.reason || ''),
       itemCount: Array.isArray(state.items) ? state.items.length : 0,
@@ -547,6 +561,18 @@ const createPetBubbleChatWindowManager = ({
     return normalizePetBounds(petWindow.getBounds())
   }
 
+  const applyWindowBounds = (bounds) => {
+    if (!bubbleWindow || bubbleWindow.isDestroyed?.() || !bounds) return
+    syncingWindowBounds = true
+    bubbleWindow.setBounds?.({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height
+    })
+    syncingWindowBounds = false
+  }
+
   const calculateBounds = () => {
     const petBounds = getPetBounds()
     const height = estimateBubbleHeight(state)
@@ -560,14 +586,53 @@ const createPetBubbleChatWindowManager = ({
 
   const syncToPetWindow = () => {
     if (!bubbleWindow || bubbleWindow.isDestroyed?.()) return getState()
-    const bounds = calculateBounds()
-    bubbleWindow.setBounds?.({
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height
+    const petBounds = getPetBounds()
+    const height = estimateBubbleHeight(state)
+    const anchoredBounds = resolveBubbleBounds({
+      petBounds,
+      workArea: getWorkAreaForPetBounds(screen, petBounds),
+      width: DEFAULT_BUBBLE_WIDTH,
+      height
     })
-    patchState({ bounds, placement: bounds.placement })
+    const petMoved = !samePetBounds(petBounds, lastPetBoundsSnapshot)
+    const shouldPreserveDetachedPosition =
+      state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY &&
+      !petMoved
+    let nextBounds = anchoredBounds
+    let nextPlacement = anchoredBounds.placement
+    let nextAnchorMode = state.anchorMode
+
+    if (shouldPreserveDetachedPosition) {
+      const currentBounds = normalizePetBounds(bubbleWindow.getBounds?.())
+      if (currentBounds) {
+        nextBounds = {
+          ...anchoredBounds,
+          x: currentBounds.x,
+          y: currentBounds.y
+        }
+        nextPlacement = 'detached-temporary'
+      }
+    } else if (state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY) {
+      nextAnchorMode = BUBBLE_ANCHOR_MODE.ANCHORED
+      nextPlacement = anchoredBounds.placement
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.window.reanchored',
+        message: 'Pet bubble chat window re-anchored to pet',
+        details: getStateLogDetails({
+          reason: petMoved ? 'pet-moved' : 'manual-reanchor',
+          x: anchoredBounds.x,
+          y: anchoredBounds.y,
+          width: anchoredBounds.width,
+          height: anchoredBounds.height,
+          placement: anchoredBounds.placement
+        })
+      })
+    }
+
+    applyWindowBounds(nextBounds)
+    lastPetBoundsSnapshot = petBounds
+    patchState({ bounds: nextBounds, placement: nextPlacement, anchorMode: nextAnchorMode })
     return getState()
   }
 
@@ -582,7 +647,7 @@ const createPetBubbleChatWindowManager = ({
       frame: false,
       transparent: true,
       resizable: false,
-      movable: false,
+      movable: true,
       show: false,
       alwaysOnTop: true,
       skipTaskbar: true,
@@ -599,6 +664,39 @@ const createPetBubbleChatWindowManager = ({
     bubbleWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
     bubbleWindow.setAlwaysOnTop?.(true, BUBBLE_ALWAYS_ON_TOP_LEVEL)
     applyHitTestMode(false)
+    bubbleWindow.on?.('move', () => {
+      if (syncingWindowBounds || !bubbleWindow || bubbleWindow.isDestroyed?.()) return
+      const movedBounds = normalizePetBounds(bubbleWindow.getBounds?.())
+      if (!movedBounds) return
+      const alreadyDetached = state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY
+      if (alreadyDetached) {
+        state = {
+          ...state,
+          bounds: movedBounds,
+          placement: 'detached-temporary',
+          hasWindow: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.())
+        }
+        return
+      }
+      patchState({
+        bounds: movedBounds,
+        placement: 'detached-temporary',
+        anchorMode: BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY
+      })
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.window.detached',
+        message: 'Pet bubble chat window detached from pet anchor',
+        details: getStateLogDetails({
+          reason: 'window-moved',
+          x: movedBounds.x,
+          y: movedBounds.y,
+          width: movedBounds.width,
+          height: movedBounds.height,
+          placement: 'detached-temporary'
+        })
+      })
+    })
     bubbleWindow.on?.('close', (event) => {
       if (allowClose) return
       event?.preventDefault?.()
@@ -646,6 +744,10 @@ const createPetBubbleChatWindowManager = ({
       return getState()
     }
     const win = ensureWindow()
+    patchState({
+      anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED,
+      placement: ''
+    })
     syncToPetWindow()
     clearHideTimer('manual-open')
     patchState({
@@ -817,6 +919,7 @@ const createPetBubbleChatWindowManager = ({
     if (!message) return getState()
     appendNoticeOrDialogue({ ...payload, ...message })
     const win = ensureWindow()
+    if (!state.visible) patchState({ anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED, placement: '' })
     syncToPetWindow()
     patchState({
       message: {
