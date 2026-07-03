@@ -1,17 +1,19 @@
 # OpenPet Documentation Map
 
-This file is the documentation entry point for maintainers. It keeps current operating documents separate from historical phase records so contributors do not need to read every file before making a change.
+This is the maintainer entry point for project documentation. The goal is to keep a small set of live operating docs current and treat the rest of `docs/` as background or audit history.
 
-## Start Here
+## Current Docs
 
 | Need | Read |
 | --- | --- |
 | User-facing overview and commands | [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) |
-| Current maintainer handoff | [`HANDOFF.md`](./HANDOFF.md) |
+| Current maintainer snapshot and guardrails | [`HANDOFF.md`](./HANDOFF.md) |
+| Single active work queue | [`TODO.md`](./TODO.md) |
 | Local development workflow | [`development-workflow.md`](./development-workflow.md) |
-| Short engineering summary | [`development-summary.md`](./development-summary.md) |
+| Test scope and merge-time validation | [`testing-strategy.md`](./testing-strategy.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
-| Current platform status and remaining gaps | [`project-status-review.md`](./project-status-review.md) |
+| Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
+| Compact product and release snapshot | [`project-status-review.md`](./project-status-review.md) |
 
 ## Product Areas
 
@@ -26,14 +28,15 @@ This file is the documentation entry point for maintainers. It keeps current ope
 | Release notes | [`release-notes/`](./release-notes/) |
 | MCP usage and compatibility | [`mcp-usage.md`](./mcp-usage.md), [`mcp-compatibility.md`](./mcp-compatibility.md) |
 
-## Planning Docs
+## Historical Planning Background
 
 | Doc | Role |
 | --- | --- |
-| [`productization-next-steps-design.md`](./productization-next-steps-design.md) | High-level next-step design. Use for productization direction, not exact current state. |
-| [`productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md) | Detailed phase execution design and completed phase index. |
-| [`project-review-todo-design.md`](./project-review-todo-design.md) | Consolidated review-derived TODO design. |
-| [`productization-roadmap.md`](./productization-roadmap.md) | Older broad roadmap. Treat as background unless a live doc links a current item to it. |
+| [`productization-next-steps-design.md`](./productization-next-steps-design.md) | Older next-step framing. Superseded by [`TODO.md`](./TODO.md) for active work. |
+| [`productization-todo-design.md`](./productization-todo-design.md) | Historical implementation-oriented TODO breakdown. |
+| [`productization-v1.1-todo-design.md`](./productization-v1.1-todo-design.md) | Historical v1.1 phase design and rationale. |
+| [`project-review-todo-design.md`](./project-review-todo-design.md) | Historical review-derived backlog framing. |
+| [`productization-roadmap.md`](./productization-roadmap.md) | Older broad roadmap kept for context. |
 
 ## Historical Audit Trail
 
@@ -48,14 +51,17 @@ Historical documents are intentionally retained. When facts conflict, prefer cur
 
 1. [`project-context.json`](./project-context.json) for machine-readable facts.
 2. [`HANDOFF.md`](./HANDOFF.md) for maintainer continuation.
-3. [`development-summary.md`](./development-summary.md) and [`project-status-review.md`](./project-status-review.md) for human summaries.
-4. Phase/review docs for audit history only.
+3. [`TODO.md`](./TODO.md) for current priorities and open work.
+4. [`development-summary.md`](./development-summary.md) and [`project-status-review.md`](./project-status-review.md) for compact human summaries.
+5. Phase, review, and archive docs for context only.
 
 ## Maintenance Rules
 
 - Keep README files short and user-facing.
 - Keep repository-root Markdown limited to public/project-standard entry files such as README, CHANGELOG, and AGENTS; put maintainer docs under `docs/`.
-- Keep HANDOFF focused on current state, commands, facts to preserve, and next steps.
-- Keep project-context compact and valid JSON.
+- Keep `HANDOFF.md` focused on current state, guardrails, and high-signal commands.
+- Keep `TODO.md` as the only active backlog and priority surface.
+- Keep `project-context.json` compact and valid JSON.
+- Do not create a new roadmap or TODO doc unless an older one is explicitly downgraded to historical background.
 - Do not update every historical phase/review doc when current facts change.
 - When a new phase changes current capabilities, update only the live docs that carry that fact.

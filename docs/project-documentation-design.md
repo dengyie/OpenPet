@@ -84,9 +84,9 @@ The docs should be read as layered sources of truth, not as interchangeable note
 | Layer | Documents | Owns | Detail Level |
 |-------|-----------|------|--------------|
 | Product entry | `README.md`, `README.zh-CN.md`, `docs/README.md` | Public feature list, quick start, support claims, documentation index, maintainer reading order | Broad, user-facing, concise |
-| Current state and workflow | `docs/HANDOFF.md`, `docs/project-status-review.md`, `docs/development-summary.md`, `docs/development-workflow.md`, `docs/testing-strategy.md` | What is true now, what is verified, what remains risky, and how maintainers run the project | Operational handoff, status snapshot, and local command flow |
+| Current state and workflow | `docs/HANDOFF.md`, `docs/TODO.md`, `docs/project-context.json`, `docs/project-status-review.md`, `docs/development-summary.md`, `docs/development-workflow.md`, `docs/testing-strategy.md` | What is true now, what is verified, what remains risky, what is next, and how maintainers run the project | Operational handoff, active backlog, machine-readable facts, and local command flow |
 | Goal and governance | `docs/project-documentation-design.md`, `AGENTS.md` | Project goal anchor, doc update rules, engineering invariants | Normative project rules |
-| Architecture and roadmap | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md`, `docs/productization-next-steps-design.md`, `docs/productization-todo-design.md` | System design, completed productization arc, near-term productization sequence, prioritized TODO implementation design, planned enhancements | Architecture and sequencing |
+| Architecture and historical planning | `docs/jishuwendang.md`, `docs/pet-platform-development-plan.md`, `docs/productization-roadmap.md`, `docs/productization-next-steps-design.md`, `docs/productization-todo-design.md`, `docs/productization-v1.1-todo-design.md`, `docs/project-review-todo-design.md` | System design, prior roadmap framing, and preserved planning rationale | Architecture and historical sequencing |
 | Release operations | `docs/desktop-release-design.md`, `docs/release-checklist.md`, `docs/release-evidence/*.json` | macOS/Windows release gates, signing, smoke evidence, operator checklist | Evidence and release procedure |
 | Phase records | `docs/phases/phase-*.md`, `docs/reviews/phase-*-review.md` | Implementation decisions, verification, review findings, residual risks | Append-only phase audit trail |
 | Domain references | `docs/mcp-usage.md`, `docs/mcp-compatibility.md`, `docs/plugin-sandbox-evaluation.md`, `docs/ecosystem-catalog.md`, `docs/design-system/*.md` | Focused reference material for one subsystem or UI slice | Subsystem usage, threat/risk notes, and visual design constraints |
@@ -109,13 +109,17 @@ README.md / README.zh-CN.md        # public entry and conservative support wordi
 AGENTS.md                          # local contributor constraints
 docs/README.md                     # documentation map and reading order
 docs/HANDOFF.md                    # current project state and next work
+docs/TODO.md                       # single active maintainer work queue
+docs/project-context.json          # compact machine-readable project facts
 docs/development-workflow.md       # local run, validation, and packaging workflow
 docs/testing-strategy.md           # test suite ownership and deletion guidance
 docs/project-documentation-design.md # goal anchor and documentation operating model
 docs/jishuwendang.md               # Chinese technical architecture reference
-docs/productization-roadmap.md     # productization sequence and long-running risks
-docs/productization-next-steps-design.md # near-term productization design
-docs/productization-todo-design.md # implementation-oriented TODO breakdown
+docs/productization-roadmap.md     # historical productization roadmap
+docs/productization-next-steps-design.md # historical next-step design
+docs/productization-todo-design.md # historical TODO breakdown
+docs/productization-v1.1-todo-design.md # historical v1.1 phase design
+docs/project-review-todo-design.md # historical review-derived backlog
 docs/project-status-review.md      # milestone-level project assessment
 docs/desktop-release-design.md     # macOS + Windows release architecture
 docs/release-checklist.md          # release operator checklist
@@ -137,13 +141,17 @@ New folders should earn their place by having a distinct lifecycle. For example,
 | `README.md` / `README.zh-CN.md` | Public entry point, feature list, quick start, roadmap | User-facing capabilities, commands, test totals, or support claims change |
 | `docs/README.md` | Canonical documentation map and reading order | Persistent docs are added, removed, renamed, or reclassified as current vs historical |
 | `docs/HANDOFF.md` | Current factual project state, next work, file map, command map | A phase lands, service map changes, release status changes, or test totals change |
+| `docs/TODO.md` | Single active maintainer backlog and priorities | Open work, priority order, or follow-up ownership changes |
+| `docs/project-context.json` | Compact machine-readable project facts | Canonical live facts, active doc entrypoints, or validation commands change |
 | `docs/development-workflow.md` | Local run, validation, packaging, and troubleshooting workflow | Commands, dev ports, packaging flow, or release-prep validation flow changes |
 | `docs/testing-strategy.md` | Test suite ownership and deletion guidance | Test grouping, suite commands, or testing policy changes |
 | `docs/project-documentation-design.md` | Project goal anchor and documentation governance | Documentation structure, support claim rules, or phase governance changes |
 | `docs/pet-platform-development-plan.md` | Historical platform architecture and staged refactor plan | Core architecture contracts or completed phase status changes |
-| `docs/productization-roadmap.md` | Productization roadmap and long-running risks | Roadmap sequencing, risk status, or release-track scope changes |
-| `docs/productization-next-steps-design.md` | Near-term productization design | Next-phase sequencing and acceptance gates |
-| `docs/productization-todo-design.md` | Prioritized TODO implementation design | TODO priority, phase breakdown, or acceptance contracts change |
+| `docs/productization-roadmap.md` | Historical productization roadmap | Update only when explicitly preserving or correcting historical context |
+| `docs/productization-next-steps-design.md` | Historical next-step design | Update only when explicitly preserving or correcting historical context |
+| `docs/productization-todo-design.md` | Historical TODO implementation design | Update only when explicitly preserving or correcting historical context |
+| `docs/productization-v1.1-todo-design.md` | Historical v1.1 phase design | Update only when explicitly preserving or correcting historical context |
+| `docs/project-review-todo-design.md` | Historical review-derived backlog framing | Update only when explicitly preserving or correcting historical context |
 | `docs/project-status-review.md` | Snapshot assessment of implementation vs original goal | Major status checkpoints, release candidates, or readiness claims |
 | `docs/jishuwendang.md` | Chinese technical architecture reference | Service structure, IPC surface, commands, or technical status changes |
 | `docs/desktop-release-design.md` | macOS + Windows desktop release design and acceptance gates | Packaging, CI, signing, update, or platform support status changes |
@@ -162,10 +170,12 @@ Use this matrix to decide where a fact belongs before editing multiple documents
 |-----------|---------------|--------------------|
 | Original product goal | `docs/project-documentation-design.md` | README overview, `docs/HANDOFF.md` |
 | Current project status | `docs/HANDOFF.md` | `docs/project-status-review.md`, README badges/status |
+| Active maintainer backlog | `docs/TODO.md` | `docs/HANDOFF.md`, `docs/README.md`, `docs/project-context.json` |
+| Machine-readable project facts | `docs/project-context.json` | `docs/README.md`, automation notes, release or phase docs when relevant |
 | Service architecture | `docs/jishuwendang.md` | `docs/HANDOFF.md`, `AGENTS.md` |
-| Productization sequence | `docs/productization-roadmap.md` | phase docs, status review |
-| Near-term productization sequence | `docs/productization-next-steps-design.md` | `docs/productization-roadmap.md`, latest phase and review docs |
-| Prioritized TODO implementation design | `docs/productization-todo-design.md` | `docs/productization-next-steps-design.md`, latest phase and review docs |
+| Historical roadmap rationale | `docs/productization-roadmap.md` | historical planning docs, phase docs |
+| Historical near-term planning rationale | `docs/productization-next-steps-design.md` | historical planning docs, phase docs |
+| Historical implementation backlog rationale | `docs/productization-todo-design.md` | historical planning docs, phase docs |
 | Release gates | `docs/desktop-release-design.md` | `docs/release-checklist.md`, README support wording |
 | Release operator steps | `docs/release-checklist.md` | `docs/desktop-release-design.md` |
 | Windows smoke evidence schema | `docs/release-evidence/*.json` and release scripts | release checklist, Phase 8 records |
@@ -184,9 +194,9 @@ Use these paths when onboarding or when deciding which document to update:
 | Reader Need | Start Here | Then Read |
 |-------------|------------|-----------|
 | Understand what OpenPet is | `README.zh-CN.md` or `README.md` | `docs/project-documentation-design.md`, `docs/HANDOFF.md` |
-| Continue development today | `AGENTS.md` | `docs/development-workflow.md`, `docs/HANDOFF.md`, relevant phase/review docs |
+| Continue development today | `AGENTS.md` | `docs/HANDOFF.md`, `docs/TODO.md`, `docs/development-workflow.md`, relevant phase/review docs |
 | Understand architecture | `docs/jishuwendang.md` | `docs/pet-platform-development-plan.md`, service tests |
-| Continue productization | `docs/productization-next-steps-design.md` | `docs/productization-todo-design.md`, `docs/productization-roadmap.md`, latest `docs/phases/` and `docs/reviews/` pair |
+| Continue productization | `docs/TODO.md` | `docs/HANDOFF.md`, `docs/project-status-review.md`, latest `docs/phases/` and `docs/reviews/` pair |
 | Work on release readiness | `docs/desktop-release-design.md` | `docs/release-checklist.md`, `docs/release-evidence/` |
 | Validate Windows claims | `docs/release-checklist.md` | `docs/phases/phase-8-windows-desktop-release.md`, `docs/reviews/phase-8-windows-desktop-release-review.md` |
 | Add or review plugins | `docs/plugin-sandbox-evaluation.md` | `docs/ecosystem-catalog.md`, plugin service tests |
@@ -490,8 +500,9 @@ Update:
 - The relevant `docs/phases/phase-*.md` implementation record.
 - The paired `docs/reviews/phase-*-review.md` review section.
 - `docs/HANDOFF.md` if current state, next work, metrics, service map, commands, or file maps changed.
+- `docs/TODO.md` if open work, priority order, or follow-up ownership changed.
+- `docs/project-context.json` if machine-readable current facts or command lists changed.
 - `docs/project-status-review.md` for major checkpoints or readiness changes.
-- `docs/productization-roadmap.md` if roadmap sequencing, risk status, or release baseline changed.
 - README files only for public status, command, roadmap, or support-claim changes.
 
 Commit after the phase is documented and verified. The next phase should start from a clean, explainable state.
@@ -512,8 +523,8 @@ Update:
 
 - `README.md` and `README.zh-CN.md` badges and test section.
 - `docs/HANDOFF.md` current metrics and command notes.
+- `docs/project-context.json` validation command list if the common command set changed.
 - `docs/project-status-review.md` quality metrics.
-- `docs/productization-roadmap.md` current baseline and final status.
 - `docs/jishuwendang.md` technical status.
 - `AGENTS.md` development instructions.
 
@@ -525,7 +536,7 @@ Update:
 
 - `docs/project-documentation-design.md` for the rule, matrix, reader path, or support wording being changed.
 - README files only if navigation, badges, support scope, or public status changes.
-- `docs/HANDOFF.md`, `docs/project-status-review.md`, and `docs/productization-roadmap.md` when the latest phase pointer or current documentation status changes.
+- `docs/HANDOFF.md`, `docs/TODO.md`, `docs/project-context.json`, and `docs/project-status-review.md` when the current documentation status or active work queue changes.
 - A phase doc and paired review when the change establishes durable project governance.
 
 Verification for documentation-only phases should include `git diff --check` and a targeted `rg` drift audit. Run heavier commands only when scripts, package commands, code snippets that must execute, or generated artifacts changed.
