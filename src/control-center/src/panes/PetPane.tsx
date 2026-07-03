@@ -43,6 +43,14 @@ function PlusIcon() {
   )
 }
 
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M6 6l8 8M14 6l-8 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 const formatCursorSize = (cursor: Pick<CursorOption, 'width' | 'height'>) => {
   const width = Math.round(Number(cursor.width) || 0)
   const height = Math.round(Number(cursor.height) || 0)
@@ -108,11 +116,7 @@ export function PetPane({
   }
 
   const confirmDeleteCursor = (cursor: CustomCursorRecord) => {
-    const builtin = getBuiltinCursorById(cursor.id)
-    const message = builtin
-      ? `重置「${cursor.name}」的自定义尺寸和覆盖设置？`
-      : `删除指针「${cursor.name}」？`
-    if (!window.confirm(message)) return
+    if (getBuiltinCursorById(cursor.id)) return
     onDeleteCursor(cursor.id)
   }
 
@@ -202,26 +206,45 @@ export function PetPane({
               <div className="cursor-options-row" role="list" aria-label="可选指针">
                 {visibleCursorOptions.map((option) => {
                   const selected = settings.selectedCursorId === option.id
+                  const deletable = option.type === 'custom'
                   return (
-                    <button
+                    <div
                       key={option.id}
-                      type="button"
-                      className={`cursor-option-card${selected ? ' selected' : ''}`}
-                      data-cursor-type={option.type}
-                      onClick={() => onSelectCursor(option.id)}
-                      disabled={saving}
+                      className={`cursor-option-card-shell${deletable ? ' deletable' : ''}`}
                     >
-                      <span className="cursor-card-preview">
-                        <span className="cursor-card-surface" />
-                        <img src={option.assetUrl} alt={`${option.name} 预览`} />
-                      </span>
-                      <span className="cursor-card-label">{option.name}</span>
-                      {selected ? (
-                        <span className="cursor-card-check" aria-hidden="true">
-                          <CheckIcon />
-                        </span>
+                      {deletable ? (
+                        <button
+                          type="button"
+                          className="cursor-card-delete"
+                          aria-label={`删除指针 ${option.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void onDeleteCursor(option.id)
+                          }}
+                          disabled={saving}
+                        >
+                          <CloseIcon />
+                        </button>
                       ) : null}
-                    </button>
+                      <button
+                        type="button"
+                        className={`cursor-option-card${selected ? ' selected' : ''}`}
+                        data-cursor-type={option.type}
+                        onClick={() => onSelectCursor(option.id)}
+                        disabled={saving}
+                      >
+                        <span className="cursor-card-preview">
+                          <span className="cursor-card-surface" />
+                          <img src={option.assetUrl} alt={`${option.name} 预览`} />
+                        </span>
+                        <span className="cursor-card-label">{option.name}</span>
+                        {selected ? (
+                          <span className="cursor-card-check" aria-hidden="true">
+                            <CheckIcon />
+                          </span>
+                        ) : null}
+                      </button>
+                    </div>
                   )
                 })}
 
@@ -325,9 +348,11 @@ export function PetPane({
                               重命名
                             </button>
                           )}
-                          <button type="button" className={`ghost${builtin ? '' : ' danger'}`} onClick={() => confirmDeleteCursor(cursor)} disabled={saving}>
-                            {builtin ? '重置' : '删除'}
-                          </button>
+                          {builtin ? null : (
+                            <button type="button" className="ghost danger" onClick={() => confirmDeleteCursor(cursor)} disabled={saving}>
+                              删除
+                            </button>
+                          )}
                         </span>
                       </div>
                     )

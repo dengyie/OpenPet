@@ -9,6 +9,7 @@ This is the compact engineering snapshot for the current repository state. Use [
 OpenPet currently has:
 
 - an Electron pet runtime plus React + Vite Control Center,
+- a card-based cursor picker with import, resize, and uploaded custom cursor deletion for pet hover cursors,
 - pet-pack import and export flows with bundled built-in packs,
 - AI provider settings with main-process secret storage, structured diagnostics, and real-provider smoke entrypoints,
 - a developer-first local extension runtime with explicit setup, command, dashboard, and service controls,

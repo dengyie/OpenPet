@@ -547,8 +547,8 @@ test.describe('Control Center smoke', () => {
     await expect(cursorOptionCards.first().locator('img')).toHaveCSS('width', '50px')
     await expect(page.getByRole('button', { name: '系统默认' })).toHaveCount(0)
     await expect(cursorSizePanel).toBeVisible()
-    await expect(cursorSizePanel).toContainText('自定义指针大小')
-    await expect(cursorSizePanel).toContainText('先在上方选择一个自定义指针')
+    await expect(cursorSizePanel).toContainText('当前指针大小')
+    await expect(cursorSizePanel).toContainText('先在上方选择一个指针')
 
     await page.getByRole('button', { name: '添加自定义' }).click()
     await expect(cursorOptionCards).toHaveCount(8)
@@ -556,8 +556,10 @@ test.describe('Control Center smoke', () => {
     await expect(cursorSizePanel).toContainText('demo-cursor')
     await expect(cursorSizePanel).toContainText('100%')
     await expect(cursorSizePanel).toContainText('32×32')
+    await expect(page.getByRole('button', { name: '删除指针 demo-cursor' })).toBeVisible()
+    await expect(page.locator('.cursor-card-delete')).toHaveCount(1)
 
-    const sizeSlider = page.getByRole('slider', { name: '自定义指针大小' })
+    const sizeSlider = page.getByRole('slider', { name: '当前指针大小' })
     await sizeSlider.evaluate((input) => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
       valueSetter.call(input, '150')
@@ -568,6 +570,34 @@ test.describe('Control Center smoke', () => {
     await expect(cursorSizePanel).toContainText('150%')
     await expect(cursorSizePanel).toContainText('48×48')
     await expect(page.locator('.status-line')).toContainText('已将 demo-cursor 调整为 150%')
+  })
+
+  test('deletes an uploaded custom cursor from the cursor picker and falls back to the hidden system state', async ({ page }) => {
+    await page.addInitScript(() => {
+      const messages = []
+      window.__cursorConfirmMessages = messages
+      window.confirm = (message) => {
+        messages.push(String(message || ''))
+        return true
+      }
+    })
+
+    await page.goto('/')
+
+    await page.getByRole('button', { name: '添加自定义' }).click()
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('demo-cursor')
+    await expect(page.getByRole('button', { name: '删除指针 demo-cursor' })).toBeVisible()
+
+    await page.getByRole('button', { name: '删除指针 demo-cursor' }).click()
+
+    await expect(page.getByRole('button', { name: '删除指针 demo-cursor' })).toHaveCount(0)
+    await expect(page.locator('.cursor-option-card.selected')).toHaveCount(0)
+    await expect(page.locator('.status-line')).toContainText('已删除指针：demo-cursor，并切换为系统默认')
+    await expect(page.locator('.cursor-size-panel')).toContainText('先在上方选择一个指针')
+    await expect(page.locator('.cursor-option-card[data-cursor-type=\"builtin\"]')).toHaveCount(6)
+
+    const seenConfirmMessages = await page.evaluate(() => window.__cursorConfirmMessages || [])
+    expect(seenConfirmMessages[0]).toContain('确认删除自定义指针“demo-cursor”？')
   })
 
   test('persists grounded and home settings in the demo API session', async ({ page }) => {
