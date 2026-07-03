@@ -250,6 +250,35 @@ const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscover
   return `${label} 模型探测失败：${result.message || result.code || 'unknown error'}`
 }
 
+const createChatModelDiscoveryFromConnectionTest = (result: AiConnectionTestResult): ProviderModelDiscoveryResult => ({
+  ok: result.modelsProbe !== 'failed' && result.ok,
+  provider: String(result.provider || '').trim(),
+  baseUrl: String(result.baseUrl || '').trim(),
+  model: String(result.model || '').trim(),
+  hasApiKey: Boolean(result.hasApiKey),
+  models: Array.isArray(result.availableModels) ? result.availableModels : [],
+  code: result.modelsProbe === 'unavailable'
+    ? 'provider_reachable_models_unavailable'
+    : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
+  message: String(result.message || '').trim()
+})
+
+const createImageModelDiscoveryFromHealth = (
+  result: ImageGenerationHealthCheckResult,
+  activeConfig: ImageGenerationConfigViewState
+): ProviderModelDiscoveryResult => ({
+  ok: result.modelsProbe !== 'failed' && result.ok,
+  provider: String(activeConfig.provider || '').trim(),
+  baseUrl: String(activeConfig.baseUrl || '').trim(),
+  model: String(activeConfig.model || '').trim(),
+  hasApiKey: Boolean(activeConfig.hasApiKey),
+  models: Array.isArray(result.availableModels) ? result.availableModels : [],
+  code: result.modelsProbe === 'unavailable'
+    ? 'provider_reachable_models_unavailable'
+    : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
+  message: String(result.message || '').trim()
+})
+
 const getImageTransparencyCompatibilityHint = (model: string) => {
   const normalizedModel = String(model || '').trim()
   if (!normalizedModel) return '请输入图片模型后再确认透明背景兼容策略。'
@@ -506,6 +535,8 @@ export function useAiPane(activeTab = 'ai') {
       const { changedFields } = await saveProviderConfigDraft()
       await loadPetChatState()
       setConnectionTestResult(null)
+      setChatModelDiscovery(null)
+      setChatModelDiscoveryStatus('')
       setConnectionStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
     } catch (error) {
       setConnectionStatus(messageFromError(error, '保存失败'))
@@ -525,6 +556,8 @@ export function useAiPane(activeTab = 'ai') {
       const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(imageGenerationConfig))
       setImageGenerationConfig(savedConfig)
       setActiveImageGenerationConfig(savedConfig)
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageStatus('图片 Provider 配置已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 Provider 配置保存失败'))
@@ -617,6 +650,9 @@ export function useAiPane(activeTab = 'ai') {
         setConnectionStatus('API Key 未修改')
       } else {
         await loadPetChatState()
+        setConnectionTestResult(null)
+        setChatModelDiscovery(null)
+        setChatModelDiscoveryStatus('')
         setConnectionStatus(result.updatedAt ? `API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'API Key 已保存')
       }
     } catch (error) {
@@ -643,6 +679,8 @@ export function useAiPane(activeTab = 'ai') {
       setImageGenerationConfig(applyKeyResult)
       setActiveImageGenerationConfig(applyKeyResult)
       setImageApiKeyDraft('')
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageStatus('图片 API Key 已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 API Key 保存失败'))
@@ -666,6 +704,8 @@ export function useAiPane(activeTab = 'ai') {
       setImageGenerationConfig(applyKeyResult)
       setActiveImageGenerationConfig(applyKeyResult)
       setImageApiKeyDraft('')
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageStatus('图片 API Key 已清除')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 API Key 清除失败'))
@@ -686,9 +726,14 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const result = await api.checkImageGenerationHealth({})
       setImageHealthResult(result)
+      const discovery = createImageModelDiscoveryFromHealth(result, activeImageGenerationConfig)
+      setImageModelDiscovery(discovery)
+      setImageModelDiscoveryStatus(formatModelDiscoveryStatus('图片 Provider', discovery))
       setImageHealthStatus(formatImageGenerationHealthStatus(result))
     } catch (error) {
       setImageHealthResult(null)
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageHealthStatus(messageFromError(error, '图片模型健康检查失败'))
     } finally {
       setSaving(false)
@@ -740,6 +785,9 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const result = await api.testAiConnection()
       setConnectionTestResult(result)
+      const discovery = createChatModelDiscoveryFromConnectionTest(result)
+      setChatModelDiscovery(discovery)
+      setChatModelDiscoveryStatus(formatModelDiscoveryStatus('聊天 Provider', discovery))
       setConnectionStatus(formatConnectionStatus({
         result,
         hasUnsavedConfigChanges,

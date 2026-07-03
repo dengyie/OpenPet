@@ -1039,8 +1039,13 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('chat-model-discovery')).toContainText('deepseek-chat')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('已包含当前模型')
 
+    await chatProviderSection.getByRole('button', { name: '刷新聊天模型' }).click()
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('gpt-4.1-mini')
+    await expect(page.getByTestId('chat-model-discovery')).not.toContainText('deepseek-chat')
+
     await chatModelInput(page).fill('missing-chat-model')
     await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('运行“测试已保存配置”后')
     await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
 
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('当前保存的聊天 Model 未出现在 /models 返回列表中')
@@ -1054,6 +1059,31 @@ test.describe('Control Center smoke', () => {
     await apiKeyRow.getByPlaceholder('输入新密钥覆盖').fill('sk-chat-draft-only-9999')
     await expect(providerStatusItem(chatProviderSection, '草稿状态')).toContainText('密钥草稿未保存')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('当前有未保存的聊天草稿')
+  })
+
+  test('refreshes image model discovery from the explicit refresh action and clears stale results after save', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await openProviderDisclosure(imageProviderSection, '显示常用图片 Provider 预设')
+    await imageProviderSection.getByRole('button', { name: /本地\/代理 OpenAI-compatible/ }).click()
+    await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
+
+    const imageApiKeyRow = page.locator('.field-row', { hasText: '图片 API Key' })
+    await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-demo-5678')
+    await page.getByRole('button', { name: '保存图片密钥' }).click()
+    await page.getByRole('button', { name: '刷新图片模型' }).click()
+
+    await expect(page.getByTestId('image-model-discovery')).toContainText('模型列表探测成功')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('flux-schnell')
+    await expect(page.getByTestId('image-model-discovery')).toContainText('gpt-image-2')
+
+    await page.getByLabel('图片 Base URL').fill('https://image.example.test/v1')
+    await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
+
+    await expect(page.getByTestId('image-model-discovery')).toContainText('运行“检查图片健康”后')
+    await expect(page.getByTestId('image-model-discovery')).not.toContainText('flux-schnell')
   })
 
   test('shows chat model compatibility hints for default and custom models in the demo API', async ({ page }) => {

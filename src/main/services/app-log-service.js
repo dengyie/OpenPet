@@ -9,6 +9,7 @@ const SENSITIVE_DETAIL_KEYS = new Set([
   'authorization',
   'compiledPersonaPrompt',
   'compiledSystemPrompt',
+  'errorMessage',
   'filePath',
   'filePaths',
   'hiddenPrompt',
@@ -77,7 +78,7 @@ const normalizeEntry = ({ entry, clock, idFactory }) => ({
   actor: entry.actor || 'system',
   scope: entry.scope || 'app',
   event: entry.event || 'app.event',
-  message: entry.message || '',
+  message: sanitizeStringValue(entry.message || ''),
   details: sanitizeDetails(entry.details)
 })
 

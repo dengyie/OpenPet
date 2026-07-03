@@ -743,12 +743,14 @@ const createCreatorWorkflowService = ({
       recordLog({
         level: 'error',
         event: 'creator.workflow.failed',
-        message: error?.message || 'Creator workflow failed',
+        message: 'Creator workflow failed',
         details: {
           requestId,
           mode,
           runId,
-          lastCommandId: normalizeText(lastCommandResult?.commandId)
+          lastCommandId: normalizeText(lastCommandResult?.commandId),
+          errorName: normalizeText(error?.name),
+          errorCode: normalizeText(error?.code)
         }
       })
       const failureState = lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID || lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
