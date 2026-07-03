@@ -1780,6 +1780,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     const cursor: CustomCursorRecord = {
       id: 'demo-cursor',
       type: 'custom',
+      source: 'uploaded',
       name: stripFileExtension('demo-cursor.png'),
       assetPath: '/demo/cursors/demo-cursor.png',
       assetUrl: demoCursorAssetUrl,
