@@ -101,9 +101,104 @@ test('real atlas builder creates a Codex atlas from generated image pixels', asy
   assert.equal(atlasQa.width, CODEX_ATLAS.width)
   assert.equal(atlasQa.height, CODEX_ATLAS.height)
   assert.equal(atlasQa.sourceRelativePath, relativePath)
+  assert.deepEqual(atlasQa.basicActions.requiredRealActionIds, ['idle', 'waving'])
+  assert.deepEqual(atlasQa.basicActions.realActionIds, ['idle'])
+  assert.equal(atlasQa.basicActions.fallbackActionIds.includes('waving'), true)
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['waving'])
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').fallback, false)
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').fallback, true)
   assert.equal(atlasQa.visiblePixels, await countVisiblePixels(result.spritesheetPath))
   assert.equal(JSON.stringify(sourceQa).includes(dataDir), false)
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
+})
+
+test('real atlas builder uses action-specific generated outputs for basic action rows', async () => {
+  const dataDir = makeTempDataDir()
+  const base = await writeSourcePng({
+    dataDir,
+    relativePath: 'runs/run-1/frames/base/0001.png',
+    rgba: { r: 30, g: 180, b: 110, alpha: 1 }
+  })
+  const idle = await writeSourcePng({
+    dataDir,
+    relativePath: 'runs/run-1/frames/base/idle/0001.png',
+    rgba: { r: 90, g: 120, b: 240, alpha: 1 }
+  })
+  const waving = await writeSourcePng({
+    dataDir,
+    relativePath: 'runs/run-1/frames/base/waving/0001.png',
+    rgba: { r: 240, g: 120, b: 90, alpha: 1 }
+  })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+
+  await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      ...createGenerationResult(base.relativePath),
+      outputs: [
+        { dataRelativePath: base.relativePath, mimeType: 'image/png', sha256: 'base-sha' },
+        { dataRelativePath: idle.relativePath, mimeType: 'image/png', sha256: 'idle-sha', actionId: 'idle' },
+        { dataRelativePath: waving.relativePath, mimeType: 'image/png', sha256: 'waving-sha', actionId: 'waving' }
+      ]
+    },
+    outputDir,
+    qaDir
+  })
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  assert.deepEqual(atlasQa.basicActions.realActionIds.slice(0, 2), ['idle', 'waving'])
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').sourceRelativePath, idle.relativePath)
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').sourceRelativePath, waving.relativePath)
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waiting').fallback, true)
+})
+
+test('real atlas builder does not count transparent action-specific outputs as real basic actions', async () => {
+  const dataDir = makeTempDataDir()
+  const base = await writeSourcePng({
+    dataDir,
+    relativePath: 'runs/run-1/frames/base/0001.png',
+    rgba: { r: 30, g: 180, b: 110, alpha: 1 }
+  })
+  const transparentWaving = await writeSourcePng({
+    dataDir,
+    relativePath: 'runs/run-1/frames/base/waving/0001.png',
+    rgba: { r: 240, g: 120, b: 90, alpha: 0 }
+  })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      ...createGenerationResult(base.relativePath),
+      outputs: [
+        { dataRelativePath: base.relativePath, mimeType: 'image/png', sha256: 'base-sha' },
+        { dataRelativePath: transparentWaving.relativePath, mimeType: 'image/png', sha256: 'transparent-waving-sha', actionId: 'waving' }
+      ]
+    },
+    outputDir,
+    qaDir
+  })
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  const wavingCell = await sharp(result.spritesheetPath)
+    .extract({
+      left: 0,
+      top: 3 * CODEX_ATLAS.cellHeight,
+      width: CODEX_ATLAS.cellWidth,
+      height: CODEX_ATLAS.cellHeight
+    })
+    .ensureAlpha()
+    .raw()
+    .stats()
+
+  assert.deepEqual(atlasQa.basicActions.realActionIds, ['idle'])
+  assert.equal(atlasQa.basicActions.fallbackActionIds.includes('waving'), true)
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['waving'])
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').fallback, true)
+  assert.equal(wavingCell.channels[3].max > 0, true)
 })
 
 test('real atlas builder rejects missing generated image outputs', async () => {

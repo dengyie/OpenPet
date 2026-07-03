@@ -55,7 +55,10 @@ const createInFlightResult = (mode: CreatorPaneMode): CreatorWorkflowResult => (
   reference: null,
   activePet: null,
   importedAction: null,
-  clickAction: ''
+  clickAction: '',
+  clickActionChange: null,
+  basicActions: null,
+  diagnostics: null
 })
 
 const resolvePreviewActionId = (result: CreatorWorkflowResult | null): string => {
@@ -185,9 +188,37 @@ export function useCreatorPane(active: boolean) {
     setPreviewing(true)
     try {
       await api.playPetAction(actionId)
-      setStatus(`Previewed action ${actionId}.`)
+      setStatus(`已预览动作 ${actionId}`)
     } catch (error) {
       setStatus(messageFromError(error, '动作预览失败'))
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
+  const onRestoreClickAction = async () => {
+    const previousActionId = String(result?.clickActionChange?.previousActionId || '').trim()
+    if (!previousActionId || previewing) return
+    setPreviewing(true)
+    try {
+      await api.saveActionsConfig({ clickAction: previousActionId })
+      setResult((current) => current
+        ? {
+            ...current,
+            clickAction: previousActionId,
+            clickActionChange: current.clickActionChange
+              ? {
+                  ...current.clickActionChange,
+                  currentActionId: previousActionId,
+                  canRestore: false
+                }
+              : null
+          }
+        : current)
+      await refreshCreatorState()
+      setStatus(`已恢复 clickAction 为 ${previousActionId}`)
+    } catch (error) {
+      setStatus(messageFromError(error, 'clickAction 恢复失败'))
     } finally {
       setPreviewing(false)
     }
@@ -268,6 +299,7 @@ export function useCreatorPane(active: boolean) {
     onGenerateNewCharacter,
     onGenerateExistingAction,
     onPreviewResult,
+    onRestoreClickAction,
     onOpenCreatorStudioDetails
   } satisfies CreatorPaneProps
 

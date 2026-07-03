@@ -1,7 +1,7 @@
 const { callBridge } = require('./bridge-client')
-const { BackendUnavailableError } = require('./backend-adapters')
-const { buildOpenPetImagePrompt } = require('./openpet-prompt-builder')
+const { buildOpenPetImagePrompt, sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
+const fs = require('fs')
 const path = require('path')
 
 const DEFAULT_CONSTRAINTS = {
@@ -11,7 +11,9 @@ const DEFAULT_CONSTRAINTS = {
 }
 
 const CREATOR_PROVIDER_MIN_TIMEOUT_MS = 300000
+const BASIC_ACTION_POSE_TIMEOUT_MS = 90000
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
+const BASIC_FULL_PET_ACTION_IDS = ['idle', 'waving', 'waiting', 'failed']
 
 const safeUrlHost = (value) => {
   try {
@@ -94,9 +96,52 @@ const createModelSnapshot = ({ backend, settings }) => {
   }
 }
 
+const isFullPetRun = (run = {}) => String(run?.generationTask?.mode || run?.input?.generationTask?.mode || '').trim() === 'full-pet'
+
+const findGenerationAction = (run = {}, actionId) => {
+  const actions = Array.isArray(run?.generationTask?.actions)
+    ? run.generationTask.actions
+    : Array.isArray(run?.input?.generationTask?.actions)
+      ? run.input.generationTask.actions
+      : []
+  return actions.find((action) => action?.actionId === actionId) || null
+}
+
+const createFullPetActionPosePrompt = ({ run = {}, actionId }) => {
+  const action = findGenerationAction(run, actionId) || { actionId, name: actionId, motionPrompt: actionId }
+  const characterBrief = sanitizeCreativeBrief(run?.generationTask?.characterBrief || run?.input?.generationTask?.characterBrief || run?.input?.originalPrompt || run?.input?.prompt || run?.petId || 'OpenPet desktop pet')
+  const actionName = sanitizeCreativeBrief(action.name || actionId)
+  const motionPrompt = sanitizeCreativeBrief(action.motionPrompt || actionName)
+  return [
+    `Create one centered OpenPet desktop pet sprite source for the character: ${characterBrief}.`,
+    `Pose/action: ${actionName}.`,
+    `Motion intent: ${motionPrompt}.`,
+    'Keep the same character identity, proportions, face, palette, and style as the reference image.',
+    'Output one full-body pose only, not a grid, sticker sheet, comic panel, UI mockup, text, logo, or watermark.',
+    'Keep the complete pet visible and centered with 8-12% padding, clean silhouette, and a plain transparent-friendly background.',
+    'This image will be normalized into one row of an OpenPet spritesheet.'
+  ].join(' ')
+}
+
+const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir }) => callBridge('/creator/model-image-generate', {
+  prompt,
+  timeoutMs: requestedTimeoutMs,
+  referenceImages,
+  output: {
+    dataRelativeDir
+  },
+  constraints: DEFAULT_CONSTRAINTS
+})
+
+const filterExistingGeneratedOutputs = ({ dataDir, outputs = [] }) => outputs.filter((output) => {
+  const relativePath = createSafeRelativePath(output?.dataRelativePath)
+  return Boolean(relativePath && fs.existsSync(path.join(dataDir, relativePath)))
+})
+
 const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const normalizedBackend = normalizeCreatorBackend(backend, FIXTURE_BACKEND)
   if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
+    const { BackendUnavailableError } = require('./backend-adapters')
     throw new BackendUnavailableError({
       backend: normalizedBackend,
       message: 'Provider backend is not configured. Configure model settings in OpenPet before running provider generation.'
@@ -135,14 +180,12 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   }
   let response
   try {
-    response = await callBridge('/creator/model-image-generate', {
+    response = await callHostImageGenerate({
       prompt: providerPrompt,
-      timeoutMs: requestedTimeoutMs,
+      requestedTimeoutMs,
       referenceImages,
-      output: {
-        dataRelativeDir: `runs/${run.runId}/frames/base`
-      },
-      constraints: DEFAULT_CONSTRAINTS
+      runId: run.runId,
+      dataRelativeDir: `runs/${run.runId}/frames/base`
     })
   } catch (error) {
     if (error && typeof error === 'object') {
@@ -151,15 +194,69 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     throw error
   }
 
-  return {
+  const result = {
     ...attemptResult,
     ...response.result,
     conditioning: response?.result?.conditioning || defaultConditioning,
     modelSnapshot,
     promptBuilder
   }
+
+  if (!isFullPetRun(run)) return result
+
+  const baseOutputs = Array.isArray(result.outputs) ? result.outputs : []
+  const generateActionSource = async (actionId) => {
+    try {
+      const actionResponse = await callHostImageGenerate({
+        prompt: createFullPetActionPosePrompt({ run, actionId }),
+        requestedTimeoutMs: Math.min(requestedTimeoutMs, BASIC_ACTION_POSE_TIMEOUT_MS),
+        referenceImages,
+        runId: run.runId,
+        dataRelativeDir: `runs/${run.runId}/frames/base/${actionId}`
+      })
+      const outputs = filterExistingGeneratedOutputs({
+        dataDir,
+        outputs: Array.isArray(actionResponse?.result?.outputs) ? actionResponse.result.outputs : []
+      })
+      return {
+        actionId,
+        ok: outputs.length > 0,
+        outputCount: outputs.length,
+        outputs: outputs.map((output) => ({
+          ...output,
+          actionId
+        }))
+      }
+    } catch (error) {
+      return {
+        actionId,
+        ok: false,
+        outputCount: 0,
+        outputs: [],
+        error: String(error?.message || 'Action source generation failed').slice(0, 240)
+      }
+    }
+  }
+  const actionResults = await Promise.all(BASIC_FULL_PET_ACTION_IDS.map(generateActionSource))
+  const actionOutputs = actionResults.flatMap((result) => result.outputs)
+  const actionAttempts = actionResults.map((result) => ({
+    actionId: result.actionId,
+    ok: result.ok,
+    outputCount: result.outputCount,
+    ...(result.error ? { error: result.error } : {})
+  }))
+
+  return {
+    ...result,
+    outputs: [...baseOutputs, ...actionOutputs],
+    basicActionGeneration: {
+      attemptedActionIds: BASIC_FULL_PET_ACTION_IDS.slice(),
+      attempts: actionAttempts
+    }
+  }
 }
 
 module.exports = {
+  createFullPetActionPosePrompt,
   generateViaHostModelBridge
 }

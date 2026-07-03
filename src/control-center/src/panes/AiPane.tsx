@@ -157,6 +157,10 @@ const chatProviderPresets: readonly ChatProviderPreset[] = [
   }
 ] as const
 
+const quickChatProviderPresetIds = new Set(['lm-studio', 'openrouter', 'together'])
+const quickChatProviderPresets = chatProviderPresets.filter((preset) => quickChatProviderPresetIds.has(preset.id))
+const detailedChatProviderPresets = chatProviderPresets.filter((preset) => !quickChatProviderPresetIds.has(preset.id))
+
 const detectProviderFamily = (baseUrl: string): ProviderFamily => {
   const normalized = String(baseUrl || '').trim().toLowerCase()
   if (normalized.includes('api.openai.com')) return 'openai'
@@ -708,6 +712,9 @@ export function AiPane({
           <h1>AI</h1>
           <p>聊天 Provider 与模型配置</p>
         </div>
+        <button type="button" className="ghost" onClick={onExportAiTalkTraceDiagnostics}>
+          导出 AI Talk Trace
+        </button>
       </header>
 
       <CollapsibleAiSection title="模型 Provider" note="统一管理聊天与图片生成模型；本地、代理、云端都使用 Base URL + API Key + Model" defaultOpen>
@@ -858,7 +865,7 @@ export function AiPane({
                   <div className="provider-disclosure-body">
                     <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后测试确认。</div>
                     <div className="provider-preset-grid">
-                      {chatProviderPresets.map((preset) => (
+                      {detailedChatProviderPresets.map((preset) => (
                         <button
                           type="button"
                           key={preset.id}
@@ -931,6 +938,21 @@ export function AiPane({
                 <div className="provider-feedback" data-testid="chat-model-compatibility">
                   <strong>{chatModelCompatibility.title}</strong>
                   <span>{chatModelCompatibility.summary}</span>
+                </div>
+                <div className="provider-preset-grid">
+                  {quickChatProviderPresets.map((preset) => (
+                    <button
+                      type="button"
+                      key={preset.id}
+                      className="provider-preset-card"
+                      onClick={() => applyChatProviderPreset(preset)}
+                      disabled={saving}
+                    >
+                      <strong>{preset.title}</strong>
+                      <span>{preset.description}</span>
+                      <code>{preset.baseUrl}</code>
+                    </button>
+                  ))}
                 </div>
               </div>
 

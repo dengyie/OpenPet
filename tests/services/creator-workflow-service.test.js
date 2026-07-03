@@ -367,6 +367,12 @@ test('creator workflow service imports an existing action and auto-applies click
   assert.equal(result.code, 'action_imported')
   assert.equal(result.importedAction.actionId, 'spin')
   assert.equal(result.clickAction, 'spin')
+  assert.deepEqual(result.clickActionChange, {
+    previousActionId: 'wave',
+    currentActionId: 'spin',
+    importedActionId: 'spin',
+    canRestore: true
+  })
   assert.equal(result.run.runId, 'run-001')
   assert.equal(result.run.importedActionId, 'spin')
   assert.equal(result.diagnostics.runStatus, 'imported')
@@ -577,10 +583,29 @@ test('creator workflow service failure logs do not include raw prompt or file-pa
 test('creator workflow service binds a new character reference and completes a full-pet import', async () => {
   const bindCalls = []
   const copyCalls = []
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-full-pet-'))
+  const writeAtlasQa = () => {
+    const qaDir = path.join(pluginDataDir, 'runs', 'run-002', 'qa')
+    fs.mkdirSync(qaDir, { recursive: true })
+    fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+      ok: true,
+      basicActions: {
+        requiredRealActionIds: ['idle', 'waving'],
+        realActionIds: ['idle', 'waving'],
+        fallbackActionIds: ['waiting'],
+        missingRequiredActionIds: [],
+        rows: [
+          { actionId: 'idle', sourceActionId: 'idle', sourceRelativePath: 'runs/run-002/frames/base/idle/0001.png', fallback: false },
+          { actionId: 'waving', sourceActionId: 'waving', sourceRelativePath: 'runs/run-002/frames/base/waving/0001.png', fallback: false },
+          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true }
+        ]
+      }
+    }, null, 2)}\n`)
+  }
   const service = createCreatorWorkflowService({
     pluginService: {
       listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
-      getPluginCreatorDataDir: () => '/tmp/openpet-plugin-data',
+      getPluginCreatorDataDir: () => pluginDataDir,
       runCommand: async (_pluginId, commandId) => {
         if (commandId === 'draft-task') {
           return {
@@ -635,6 +660,7 @@ test('creator workflow service binds a new character reference and completes a f
           }
         }
         if (commandId === 'import-approved-pet') {
+          writeAtlasQa()
           return {
             commandId,
             result: {
@@ -716,6 +742,9 @@ test('creator workflow service binds a new character reference and completes a f
   assert.equal(result.code, 'pet_imported')
   assert.equal(result.activePet.id, 'mango-cat')
   assert.equal(result.run.activatedPackId, 'mango-cat')
+  assert.deepEqual(result.basicActions.realActionIds, ['idle', 'waving'])
+  assert.deepEqual(result.basicActions.fallbackActionIds, ['waiting'])
+  assert.deepEqual(result.basicActions.missingRequiredActionIds, [])
   assert.deepEqual(bindCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',
@@ -724,7 +753,7 @@ test('creator workflow service binds a new character reference and completes a f
   assert.deepEqual(copyCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',
-    pluginDataDir: '/tmp/openpet-plugin-data',
+    pluginDataDir,
     runId: 'run-002'
   }])
 })

@@ -22,6 +22,7 @@ const CODEX_ROWS = [
   { id: 'running', row: 7, durations: [120, 120, 120, 120, 120, 220] },
   { id: 'review', row: 8, durations: [150, 150, 150, 150, 150, 280] }
 ]
+const REQUIRED_REAL_BASIC_ACTION_IDS = ['idle', 'waving']
 
 const toSafePosixRelativePath = (value) => {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -62,6 +63,20 @@ const resolveGeneratedImagePath = ({ dataDir, generationResult }) => {
     throw new Error('Generated image is too large to process')
   }
   return { sourcePath, sourceRelativePath, size }
+}
+
+const resolveGeneratedImageEntries = ({ dataDir, generationResult }) => {
+  const outputs = Array.isArray(generationResult?.outputs) ? generationResult.outputs : []
+  if (outputs.length === 0) {
+    throw new Error('Generated image is missing')
+  }
+  return outputs.map((output) => ({
+    ...resolveGeneratedImagePath({
+      dataDir,
+      generationResult: { outputs: [output] }
+    }),
+    actionId: String(output?.actionId || output?.rowId || output?.action || '').trim()
+  }))
 }
 
 const inspectVisiblePixels = async (sourcePath) => {
@@ -138,9 +153,30 @@ const createNormalizedCellBuffer = async (sourcePath) => {
     .toBuffer()
 }
 
-const createCellComposites = (cellBuffer) => {
+const findEntryForAction = ({ entries, actionId, fallbackEntry }) => {
+  const exact = entries.find((entry) => entry.actionId === actionId)
+  if (exact) return { entry: exact, fallback: false, sourceActionId: actionId }
+  if (actionId === 'idle') return { entry: fallbackEntry, fallback: false, sourceActionId: fallbackEntry.actionId || 'base-pose' }
+  return { entry: fallbackEntry, fallback: true, sourceActionId: fallbackEntry.actionId || 'base-pose' }
+}
+
+const createBasicActionCoverage = (rows) => {
+  const realActionIds = rows.filter((row) => !row.fallback).map((row) => row.actionId)
+  const fallbackActionIds = rows.filter((row) => row.fallback).map((row) => row.actionId)
+  const missingRequiredActionIds = REQUIRED_REAL_BASIC_ACTION_IDS.filter((actionId) => !realActionIds.includes(actionId))
+  return {
+    requiredRealActionIds: REQUIRED_REAL_BASIC_ACTION_IDS.slice(),
+    realActionIds,
+    fallbackActionIds,
+    missingRequiredActionIds,
+    rows
+  }
+}
+
+const createCellComposites = (rowCellBuffers) => {
   const composites = []
   for (const row of CODEX_ROWS) {
+    const cellBuffer = rowCellBuffers.get(row.id)
     for (let column = 0; column < row.durations.length; column += 1) {
       composites.push({
         input: cellBuffer,
@@ -157,15 +193,63 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+const createEntryVisibilityInspector = ({ fallbackEntry, fallbackValidation, warnings }) => {
+  const cache = new Map([[fallbackEntry.sourcePath, fallbackValidation]])
+  return async (entry, actionId) => {
+    if (cache.has(entry.sourcePath)) return cache.get(entry.sourcePath)
+    try {
+      const validation = await inspectVisiblePixels(entry.sourcePath)
+      cache.set(entry.sourcePath, validation)
+      return validation
+    } catch (error) {
+      warnings.push(`Action ${actionId} source has no usable visible pixels; falling back to base source.`)
+      cache.set(entry.sourcePath, null)
+      return null
+    }
+  }
+}
+
 const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, outputDir, qaDir }) => {
-  const { sourcePath, sourceRelativePath, size } = resolveGeneratedImagePath({ dataDir, generationResult })
+  const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
+  const fallbackEntry = entries[0]
+  const { sourcePath, sourceRelativePath, size } = fallbackEntry
   const sourceValidation = await inspectVisiblePixels(sourcePath)
 
   fs.mkdirSync(outputDir, { recursive: true })
   fs.mkdirSync(qaDir, { recursive: true })
 
   const spritesheetPath = path.join(outputDir, 'spritesheet.webp')
-  const cellBuffer = await createNormalizedCellBuffer(sourcePath)
+  const rowCellBuffers = new Map()
+  const basicActionRows = []
+  const warnings = []
+  const inspectEntryVisibility = createEntryVisibilityInspector({
+    fallbackEntry,
+    fallbackValidation: sourceValidation,
+    warnings
+  })
+  for (const row of CODEX_ROWS) {
+    let resolved = findEntryForAction({
+      entries,
+      actionId: row.id,
+      fallbackEntry
+    })
+    const validation = await inspectEntryVisibility(resolved.entry, row.id)
+    if (!validation) {
+      resolved = {
+        entry: fallbackEntry,
+        fallback: row.id === 'idle' ? false : true,
+        sourceActionId: fallbackEntry.actionId || 'base-pose'
+      }
+    }
+    rowCellBuffers.set(row.id, await createNormalizedCellBuffer(resolved.entry.sourcePath))
+    basicActionRows.push({
+      actionId: row.id,
+      sourceActionId: resolved.sourceActionId,
+      sourceRelativePath: resolved.entry.sourceRelativePath,
+      fallback: resolved.fallback
+    })
+  }
+  const basicActions = createBasicActionCoverage(basicActionRows)
   await sharp({
     create: {
       width: CODEX_ATLAS.width,
@@ -174,7 +258,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     }
   })
-    .composite(createCellComposites(cellBuffer))
+    .composite(createCellComposites(rowCellBuffers))
     .webp({ lossless: true })
     .toFile(spritesheetPath)
 
@@ -198,6 +282,8 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     height: CODEX_ATLAS.height,
     visiblePixels: atlasVisiblePixels,
     sourceRelativePath,
+    sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
+    basicActions,
     frame: {
       width: CODEX_ATLAS.cellWidth,
       height: CODEX_ATLAS.cellHeight,
@@ -207,7 +293,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
         frameCount: row.durations.length
       }))
     },
-    warnings: []
+    warnings
   })
 
   return {

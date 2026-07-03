@@ -990,7 +990,7 @@ export function useAiPane(activeTab = 'ai') {
         conversationId: String(traceDiagnosticsFilters.conversationId || '').trim()
       })
       downloadTextFile('openpet-ai-talk-trace-diagnostics.json', content, 'application/json;charset=utf-8')
-      setStatus('AI Talk Trace 已导出')
+      setStatus('AI Talk trace 已导出')
     } catch (error) {
       setStatus(messageFromError(error, 'AI Talk Trace 导出失败'))
     }

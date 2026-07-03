@@ -38,6 +38,24 @@ const normalizeQaRelativePath = (value) => {
   return value.trim().replace(/\\/g, '/')
 }
 
+const getMissingRequiredBasicActions = (basicActions) => {
+  if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) return []
+  const required = Array.isArray(basicActions.requiredRealActionIds)
+    ? basicActions.requiredRealActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
+    : []
+  if (required.length === 0) return []
+  const real = new Set(
+    Array.isArray(basicActions.realActionIds)
+      ? basicActions.realActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
+      : []
+  )
+  const reportedMissing = Array.isArray(basicActions.missingRequiredActionIds)
+    ? basicActions.missingRequiredActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
+    : []
+  const computedMissing = required.filter((actionId) => !real.has(actionId))
+  return [...new Set([...reportedMissing, ...computedMissing])]
+}
+
 const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/import' }) => {
   if (!artifacts?.qa || !artifacts?.sourceImageQa) {
     throw new Error(`Full-pet QA must pass before ${operation}`)
@@ -81,6 +99,10 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
   assertPositiveInteger({ value: sourceQa.visiblePixels, label: 'source visible pixels', operation })
   if (typeof sourceQa.sourceRelativePath !== 'string' || !sourceQa.sourceRelativePath.trim()) {
     throw new Error(`Full-pet QA source path must be valid before ${operation}`)
+  }
+  const missingRequiredBasicActions = getMissingRequiredBasicActions(atlasQa.basicActions)
+  if (missingRequiredBasicActions.length > 0) {
+    throw new Error(`Full-pet QA missing required real basic actions before ${operation}: ${missingRequiredBasicActions.join(', ')}`)
   }
 
   return { atlasQa, sourceQa }

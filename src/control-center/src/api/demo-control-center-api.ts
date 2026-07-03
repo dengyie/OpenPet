@@ -2471,6 +2471,9 @@ export const demoControlCenterAPI: ControlCenterApi = {
         ? {
             ...plugin,
             enabled,
+            nativeExecutionApproved: enabled && plugin.requiresNativeExecution
+              ? true
+              : plugin.nativeExecutionApproved,
             entries: {
               ...plugin.entries,
               services: enabled
@@ -2490,7 +2493,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { id: pluginId, enabled }
+    return cloneDemoPlugins().find((plugin) => plugin.id === pluginId) || { id: pluginId, enabled }
   },
   setPluginNativeExecutionApproved: async (pluginId, approved) => {
     demoState.plugins = demoState.plugins.map((plugin) => (
@@ -2547,6 +2550,19 @@ export const demoControlCenterAPI: ControlCenterApi = {
       run,
       reference,
       activePet: getDemoActivePetSummary(),
+      clickActionChange: null,
+      basicActions: {
+        requiredRealActionIds: ['idle', 'waving'],
+        realActionIds: ['idle', 'waving'],
+        fallbackActionIds: ['waiting', 'failed'],
+        missingRequiredActionIds: [],
+        rows: [
+          { actionId: 'idle', sourceActionId: 'idle', sourceRelativePath: 'demo/idle.png', fallback: false },
+          { actionId: 'waving', sourceActionId: 'waving', sourceRelativePath: 'demo/waving.png', fallback: false },
+          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true },
+          { actionId: 'failed', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true }
+        ]
+      },
       diagnostics: null
     }
   },
@@ -2560,6 +2576,12 @@ export const demoControlCenterAPI: ControlCenterApi = {
         }).reference
       : demoCreatorReferences.get(getDemoCreatorReferenceKey(editableTarget.targetType, editableTarget.targetId)) || null
     const actionId = String(payload.actionName || 'custom-action').trim() || 'custom-action'
+    const previousClickAction = demoState.actionsConfig.clickAction
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      clickAction: actionId
+    })
+    writeDemoState()
     const run = completeDemoCreatorRun({
       state: 'completed',
       mode: 'existing-action',
@@ -2580,6 +2602,13 @@ export const demoControlCenterAPI: ControlCenterApi = {
         label: actionId
       },
       clickAction: actionId,
+      clickActionChange: {
+        previousActionId: previousClickAction,
+        currentActionId: actionId,
+        importedActionId: actionId,
+        canRestore: Boolean(previousClickAction && previousClickAction !== actionId)
+      },
+      basicActions: null,
       diagnostics: null
     }
   },
@@ -2883,3 +2912,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
 }
 
 demoApi = demoControlCenterAPI
+
+if (typeof window !== 'undefined' && !window.controlCenterAPI) {
+  window.controlCenterAPI = demoControlCenterAPI
+}
