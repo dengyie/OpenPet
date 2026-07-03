@@ -8,11 +8,11 @@ import {
   CUSTOM_CURSOR_MIN_SIZE_PERCENT,
   SYSTEM_CURSOR_ID,
   createPersistedCursorRecord,
+  createDefaultRuntimeCursor,
   getBuiltinCursorById,
   listCursorOptions,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,
-  removeStoredCursorRecord,
   resizeCustomCursorRecord
 } from '../../../shared/cursor-library.ts'
 import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
@@ -193,29 +193,34 @@ export function usePetSettingsPane() {
   }
 
   const onDeleteCursor = async (cursorId: string) => {
-    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
-    if (!targetCursor) {
-      setStatus('未找到要处理的指针')
+    if (cursorId === SYSTEM_CURSOR_ID || getBuiltinCursorById(cursorId)) {
+      setStatus('当前指针不支持删除')
       return
     }
-    const removal = removeStoredCursorRecord({
-      selectedCursorId: settings.selectedCursorId,
-      cursorId,
-      customCursors: settings.customCursors
-    })
+    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor) {
+      setStatus('未找到要删除的自定义指针')
+      return
+    }
+    if (!window.confirm(`确认删除自定义指针“${targetCursor.name}”？\n\n删除后会从指针列表移除；如果它正在使用中，将自动切回系统默认。`)) {
+      return
+    }
+
+    const deletingSelectedCursor = settings.selectedCursorId === cursorId
     const nextSettings = applyCursorState(settings, {
-      selectedCursorId: removal.selectedCursorId,
-      customCursors: removal.customCursors
+      selectedCursorId: deletingSelectedCursor ? SYSTEM_CURSOR_ID : settings.selectedCursorId,
+      customCursor: createDefaultRuntimeCursor(),
+      customCursors: normalizeCustomCursorRecords(
+        settings.customCursors.filter((cursor) => cursor.id !== cursorId)
+      )
     })
     setSettings(nextSettings)
     await persistSettings(
       nextSettings,
-      removal.removedBuiltinOverride
-        ? `已重置 ${targetCursor.name} 的自定义尺寸`
-        : settings.selectedCursorId === cursorId
-          ? '已删除当前指针，并切回系统默认'
-          : `已删除指针：${targetCursor.name}`,
-      removal.removedBuiltinOverride ? '指针重置失败' : '指针删除失败'
+      deletingSelectedCursor
+        ? `已删除指针：${targetCursor.name}，并切换为系统默认`
+        : `已删除指针：${targetCursor.name}`,
+      '自定义指针删除失败'
     )
   }
 
