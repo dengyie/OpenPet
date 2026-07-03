@@ -206,13 +206,13 @@ export function PetPane({
               <div className="cursor-options-row" role="list" aria-label="可选指针">
                 {visibleCursorOptions.map((option) => {
                   const selected = settings.selectedCursorId === option.id
-                  const deletable = option.type === 'custom'
+                  const removable = option.canDelete === true
                   return (
                     <div
                       key={option.id}
-                      className={`cursor-option-card-shell${deletable ? ' deletable' : ''}`}
+                      className={`cursor-option-card-shell${removable ? ' removable' : ''}`}
                     >
-                      {deletable ? (
+                      {removable ? (
                         <button
                           type="button"
                           className="cursor-card-delete"
@@ -229,7 +229,7 @@ export function PetPane({
                       <button
                         type="button"
                         className={`cursor-option-card${selected ? ' selected' : ''}`}
-                        data-cursor-type={option.type}
+                        data-cursor-source={option.source}
                         onClick={() => onSelectCursor(option.id)}
                         disabled={saving}
                       >
@@ -248,20 +248,22 @@ export function PetPane({
                   )
                 })}
 
-                <button
-                  type="button"
-                  className="cursor-option-card add-card"
-                  onClick={onImportCursor}
-                  disabled={saving}
-                >
-                  <span className="cursor-card-preview">
-                    <span className="cursor-card-surface" />
-                    <span className="cursor-card-add-icon" aria-hidden="true">
-                      <PlusIcon />
+                <div className="cursor-option-card-shell add-card-shell">
+                  <button
+                    type="button"
+                    className="cursor-option-card add-card"
+                    onClick={onImportCursor}
+                    disabled={saving}
+                  >
+                    <span className="cursor-card-preview">
+                      <span className="cursor-card-surface" />
+                      <span className="cursor-card-add-icon" aria-hidden="true">
+                        <PlusIcon />
+                      </span>
                     </span>
-                  </span>
-                  <span className="cursor-card-label">添加自定义</span>
-                </button>
+                    <span className="cursor-card-label">添加自定义</span>
+                  </button>
+                </div>
               </div>
             </div>
 

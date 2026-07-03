@@ -193,12 +193,8 @@ export function usePetSettingsPane() {
   }
 
   const onDeleteCursor = async (cursorId: string) => {
-    if (cursorId === SYSTEM_CURSOR_ID || getBuiltinCursorById(cursorId)) {
-      setStatus('当前指针不支持删除')
-      return
-    }
     const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
-    if (!targetCursor) {
+    if (!targetCursor || targetCursor.canDelete !== true) {
       setStatus('未找到要删除的自定义指针')
       return
     }

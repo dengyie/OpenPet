@@ -29,7 +29,8 @@ const createBuiltinCursor = ({
   height?: number
 }): CursorOption => ({
   id,
-  type: 'builtin',
+  type: 'custom',
+  source: 'builtin',
   name,
   assetPath: `builtin://${id}`,
   assetUrl: svgDataUrl(svg),
@@ -39,7 +40,9 @@ const createBuiltinCursor = ({
   byteSize: 0,
   hotspotX,
   hotspotY,
-  createdAt: 'builtin'
+  createdAt: 'builtin',
+  canDelete: false,
+  canRename: false
 })
 
 export const SYSTEM_CURSOR_PREVIEW_URL = svgDataUrl(`
@@ -226,9 +229,11 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     ? Math.round((width / baseWidth) * 100)
     : 100
   const sizePercent = clampCursorSizePercent(cursor.sizePercent ?? derivedSizePercent)
+  const source = cursor.source === 'builtin' ? 'builtin' : 'uploaded'
   return {
     id,
     type: 'custom',
+    source,
     name,
     assetPath: typeof cursor.assetPath === 'string' ? cursor.assetPath : '',
     assetUrl,
@@ -243,7 +248,9 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     baseWidth,
     baseHeight,
     baseHotspotX,
-    baseHotspotY
+    baseHotspotY,
+    canDelete: source === 'uploaded',
+    canRename: source === 'uploaded'
   }
 }
 
@@ -280,6 +287,7 @@ export const createPersistedCursorRecord = (
   return normalizeCustomCursorRecord({
     ...cursor,
     type: 'custom',
+    source: cursor.source === 'builtin' ? 'builtin' : 'uploaded',
     createdAt: typeof cursor.createdAt === 'string' && cursor.createdAt ? cursor.createdAt : 'builtin'
   })
 }
@@ -351,6 +359,7 @@ export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecor
     {
       id: SYSTEM_CURSOR_ID,
       type: 'system',
+      source: 'system',
       name: '系统默认',
       assetPath: '',
       assetUrl: SYSTEM_CURSOR_PREVIEW_URL,
@@ -360,11 +369,22 @@ export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecor
       byteSize: 0,
       hotspotX: 0,
       hotspotY: 0,
-      createdAt: 'builtin'
+      createdAt: 'builtin',
+      canDelete: false,
+      canRename: false
     },
     ...BUILTIN_CURSORS.map((cursor) => {
       const overrideCursor = customCursorById.get(cursor.id)
-      return overrideCursor ? { ...cursor, ...overrideCursor, type: 'builtin' as const } : cursor
+      return overrideCursor
+        ? {
+            ...cursor,
+            ...overrideCursor,
+            type: 'custom' as const,
+            source: 'builtin' as const,
+            canDelete: false,
+            canRename: false
+          }
+        : cursor
     }),
     ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id))
   ]

@@ -37,11 +37,13 @@ export interface CustomCursorSettings {
   hotspotY: number
 }
 
-export type CursorOptionType = 'system' | 'builtin' | 'custom'
+export type CursorOptionType = 'system' | 'custom'
+export type CursorOptionSource = 'system' | 'builtin' | 'uploaded'
 
 export interface CursorOption {
   id: string
   type: CursorOptionType
+  source: CursorOptionSource
   name: string
   assetPath: string
   assetUrl: string
@@ -57,6 +59,8 @@ export interface CursorOption {
   baseHeight?: number
   baseHotspotX?: number
   baseHotspotY?: number
+  canDelete?: boolean
+  canRename?: boolean
 }
 
 export interface CustomCursorRecord extends CursorOption {
