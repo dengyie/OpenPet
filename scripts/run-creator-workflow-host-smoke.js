@@ -532,6 +532,9 @@ const runScenarioWorkflow = async ({
   prepareScenarioWorkspace({ repoRoot, workspaceRoot })
   const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir })
   const runtime = createSmokeRuntime({ repoRoot, workspaceRoot, userDataDir })
+  const seededProviderConfig = typeof runtime.imageGenerationModelService?.getConfig === 'function'
+    ? runtime.imageGenerationModelService.getConfig()
+    : {}
   const startedAt = new Date().toISOString()
   const startedAtMs = Date.now()
   try {
@@ -571,8 +574,8 @@ const runScenarioWorkflow = async ({
       runRecord,
       seededSettingsSummary: {
         activePackId: String(seededSettings?.petPacks?.activePackId || ''),
-        provider: String(seededSettings?.models?.imageGeneration?.provider || ''),
-        model: String(seededSettings?.models?.imageGeneration?.model || '')
+        provider: String(seededProviderConfig?.provider || ''),
+        model: String(seededProviderConfig?.model || '')
       },
       appLogs: runtime.appLogService.read({ limit: logLimit }),
       pluginLogs: runtime.pluginService.getLogs({ pluginId: CREATOR_STUDIO_PLUGIN_ID }).slice(-logLimit)
