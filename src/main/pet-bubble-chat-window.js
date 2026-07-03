@@ -1,6 +1,7 @@
 const path = require('path')
 const electron = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { PET_VIEWPORT } = require('./window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_BUBBLE_WIDTH = 340
@@ -79,6 +80,40 @@ const getWorkAreaForPetBounds = (screenService, petBounds) => {
     ? screenService.getDisplayMatching(petBounds)
     : screenService?.getPrimaryDisplay?.()
   return display?.workArea || fallback
+}
+
+const getPetVisibleBounds = (petWindow) => {
+  if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return null
+  const bounds = normalizePetBounds(petWindow.getBounds())
+  if (!bounds) return null
+  const viewport = petWindow[PET_VIEWPORT] || petWindow.__openPetViewport
+  const topInset = Math.max(0, Math.round(Number(viewport?.topInset) || 0))
+  if (!topInset || topInset >= bounds.height) return bounds
+  return {
+    ...bounds,
+    y: bounds.y + topInset,
+    height: Math.max(1, bounds.height - topInset)
+  }
+}
+
+const getPetAnchorDetails = (petWindow) => {
+  if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return {}
+  const rawBounds = normalizePetBounds(petWindow.getBounds())
+  if (!rawBounds) return {}
+  const viewport = petWindow[PET_VIEWPORT] || petWindow.__openPetViewport
+  const topInset = Math.max(0, Math.round(Number(viewport?.topInset) || 0))
+  const visibleBounds = getPetVisibleBounds(petWindow)
+  return {
+    petWindowX: rawBounds.x,
+    petWindowY: rawBounds.y,
+    petWindowWidth: rawBounds.width,
+    petWindowHeight: rawBounds.height,
+    petViewportTopInset: topInset,
+    petVisibleX: visibleBounds?.x ?? rawBounds.x,
+    petVisibleY: visibleBounds?.y ?? rawBounds.y,
+    petVisibleWidth: visibleBounds?.width ?? rawBounds.width,
+    petVisibleHeight: visibleBounds?.height ?? rawBounds.height
+  }
 }
 
 const clampBubbleWindowPosition = ({ bounds, workArea } = {}) => {
@@ -600,9 +635,10 @@ const createPetBubbleChatWindowManager = ({
 
   const getPetBounds = () => {
     const petWindow = getPetWindow()
-    if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return null
-    return normalizePetBounds(petWindow.getBounds())
+    return getPetVisibleBounds(petWindow)
   }
+
+  const getPetLogDetails = () => getPetAnchorDetails(getPetWindow())
 
   const applyWindowBounds = (bounds) => {
     if (!bubbleWindow || bubbleWindow.isDestroyed?.() || !bounds) return
@@ -669,7 +705,8 @@ const createPetBubbleChatWindowManager = ({
           width: anchoredBounds.width,
           height: anchoredBounds.height,
           placement: anchoredBounds.placement,
-          anchorProfile: BUBBLE_ANCHOR_PROFILE
+          anchorProfile: BUBBLE_ANCHOR_PROFILE,
+          ...getPetLogDetails()
         })
       })
     }
@@ -715,7 +752,8 @@ const createPetBubbleChatWindowManager = ({
           y: nextBounds.y,
           width: nextBounds.width,
           height: nextBounds.height,
-          placement: 'detached-temporary'
+          placement: 'detached-temporary',
+          ...getPetLogDetails()
         })
       })
     }
@@ -779,7 +817,8 @@ const createPetBubbleChatWindowManager = ({
           y: movedBounds.y,
           width: movedBounds.width,
           height: movedBounds.height,
-          placement: 'detached-temporary'
+          placement: 'detached-temporary',
+          ...getPetLogDetails()
         })
       })
     })
@@ -812,7 +851,8 @@ const createPetBubbleChatWindowManager = ({
         height: bounds.height,
         placement: bounds.placement,
         anchorProfile: BUBBLE_ANCHOR_PROFILE,
-        reason: 'window-created'
+        reason: 'window-created',
+        ...getPetLogDetails()
       })
     })
     return bubbleWindow
@@ -861,7 +901,8 @@ const createPetBubbleChatWindowManager = ({
         source,
         focus: Boolean(focus),
         anchorProfile: BUBBLE_ANCHOR_PROFILE,
-        reason: focus ? 'manual-focus' : 'manual-open'
+        reason: focus ? 'manual-focus' : 'manual-open',
+        ...getPetLogDetails()
       })
     })
     return getState()
