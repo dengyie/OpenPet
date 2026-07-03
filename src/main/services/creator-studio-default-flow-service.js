@@ -330,7 +330,8 @@ const createCreatorStudioDefaultFlowService = ({
           runId: lastRunId,
           lastCommandId: String(lastCommandResult?.commandId || '').trim(),
           elapsedMs: Date.now() - startedAt,
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorName: String(error?.name || '').trim(),
+          errorCode: String(error?.code || '').trim()
         }
       })
       if (lastRunId) {

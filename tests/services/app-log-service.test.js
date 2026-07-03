@@ -49,7 +49,7 @@ test('app log service redacts sensitive ai log fields and truncates long strings
   const entry = service.record({
     scope: 'ai-talk',
     event: 'ai-talk.persona.profile.loaded',
-    message: 'Loaded profile',
+    message: 'Loaded profile authorization: Bearer abcdefghijklmnop',
     details: {
       compiledSystemPrompt: '# hidden prompt',
       rawProviderReply: '{"secret":true}',
@@ -67,6 +67,7 @@ test('app log service redacts sensitive ai log fields and truncates long strings
     }
   })
 
+  assert.equal(entry.message, '[redacted]')
   assert.equal(entry.details.compiledSystemPrompt, undefined)
   assert.equal(entry.details.rawProviderReply, undefined)
   assert.equal(entry.details.apiKey, undefined)

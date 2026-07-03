@@ -265,7 +265,7 @@ const describeChatModelCompatibility = (baseUrl: string, model: string) => {
 }
 
 const renderImageModelDiscovery = (
-  result: ImageGenerationHealthCheckResult | null,
+  result: ProviderModelDiscoveryResult | null,
   currentModel: string,
   hasUnsavedDraft: boolean
 ) => {
@@ -279,8 +279,8 @@ const renderImageModelDiscovery = (
     )
   }
 
-  const discoveredModels = Array.isArray(result.availableModels) ? result.availableModels : []
-  if (result.modelsProbe === 'ok') {
+  const discoveredModels = Array.isArray(result.models) ? result.models : []
+  if (result.ok && result.code !== 'provider_reachable_models_unavailable') {
     const currentModelIncluded = normalizedCurrentModel ? discoveredModels.includes(normalizedCurrentModel) : false
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="image-model-discovery">
@@ -301,7 +301,7 @@ const renderImageModelDiscovery = (
     )
   }
 
-  if (result.modelsProbe === 'unavailable') {
+  if (result.ok && result.code === 'provider_reachable_models_unavailable') {
     return (
       <div className="provider-feedback" data-testid="image-model-discovery">
         <strong>模型列表探测不可用</strong>
@@ -346,7 +346,7 @@ const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null
 }
 
 const renderChatModelDiscovery = (
-  result: AiConnectionTestResult | null,
+  result: ProviderModelDiscoveryResult | null,
   currentModel: string,
   hasUnsavedDraft: boolean
 ) => {
@@ -360,8 +360,8 @@ const renderChatModelDiscovery = (
     )
   }
 
-  const discoveredModels = Array.isArray(result.availableModels) ? result.availableModels : []
-  if (result.modelsProbe === 'ok') {
+  const discoveredModels = Array.isArray(result.models) ? result.models : []
+  if (result.ok && result.code !== 'provider_reachable_models_unavailable') {
     const currentModelIncluded = normalizedCurrentModel ? discoveredModels.includes(normalizedCurrentModel) : false
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="chat-model-discovery">
@@ -382,7 +382,7 @@ const renderChatModelDiscovery = (
     )
   }
 
-  if (result.modelsProbe === 'unavailable') {
+  if (result.ok && result.code === 'provider_reachable_models_unavailable') {
     return (
       <div className="provider-feedback" data-testid="chat-model-discovery">
         <strong>模型列表探测不可用</strong>
@@ -926,7 +926,7 @@ export function AiPane({
                   </div>
                 ) : null}
 
-                {renderChatModelDiscovery(connectionTestResult, config.model, hasUnsavedChatProbeInputs)}
+                {renderChatModelDiscovery(chatModelDiscovery, config.model, hasUnsavedChatProbeInputs)}
 
                 <div className="provider-feedback" data-testid="chat-model-compatibility">
                   <strong>{chatModelCompatibility.title}</strong>
@@ -1116,7 +1116,7 @@ export function AiPane({
                   </div>
                 ) : null}
 
-                {renderImageModelDiscovery(imageHealthResult, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
+                {renderImageModelDiscovery(imageModelDiscovery, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
 
                 {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
 
