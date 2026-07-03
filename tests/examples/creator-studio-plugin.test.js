@@ -34,6 +34,42 @@ const createActionFrameQa = ({
   warnings: []
 })
 
+const createGeneratedActionSheet = async ({ filePath, frameCount = 12, palette } = {}) => {
+  const columns = Math.max(1, Math.min(4, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
+  const cellWidth = 256
+  const cellHeight = 256
+  const colors = Array.isArray(palette) && palette.length > 0
+    ? palette
+    : ['#ff9f1c', '#2ec4b6', '#e71d36', '#577590', '#ffbf69', '#6d597a', '#00afb9', '#8ac926']
+  const composites = Array.from({ length: frameCount }, (_entry, index) => {
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    const fill = colors[index % colors.length]
+    return {
+      input: Buffer.from(`
+        <svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="${128 + ((index % 3) - 1) * 9}" cy="${144 - ((index % 2) * 12)}" rx="72" ry="84" fill="${fill}" />
+          <circle cx="${128 + ((index % 4) - 1.5) * 7}" cy="88" r="40" fill="${fill}" opacity="0.84" />
+        </svg>
+      `),
+      left: column * cellWidth,
+      top: row * cellHeight
+    }
+  })
+  await sharp({
+    create: {
+      width: columns * cellWidth,
+      height: rows * cellHeight,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite(composites)
+    .png()
+    .toFile(filePath)
+}
+
 test('creator studio example manifest declares hybrid creator workflow entries', () => {
   const manifest = normalizePluginManifest(
     JSON.parse(fs.readFileSync(path.join(pluginRoot, 'plugin.json'), 'utf-8')),
@@ -307,6 +343,9 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.match(built.prompt, /no text, logo, watermark/)
   assert.match(built.prompt, /一只软乎乎的橘猫桌宠/)
   assert.equal(built.prompt.includes('response_format'), false)
+  assert.match(built.providerPrompt, /Create one full-body OpenPet desktop pet sprite/)
+  assert.match(built.providerPrompt, /One character only\. Fully visible and centered\./)
+  assert.match(built.providerPrompt, /Use a plain clean background that is easy to cut out\./)
 })
 
 test('creator studio prompt builder preserves custom action semantics and current-pet style consistency', () => {
@@ -341,6 +380,9 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.prompt, /keep the current pet's style, proportions, palette, facial design, and line work/i)
   assert.match(built.prompt, /same character identity/)
   assert.match(built.prompt, /新增一个自定义动作：原地打滚/)
+  assert.match(built.providerPrompt, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
+  assert.match(built.providerPrompt, /Arrange exactly 12 sequential poses in a 4 column by 3 row grid\./)
+  assert.match(built.providerPrompt, /Match the current character style as closely as possible\./)
 })
 
 test('creator studio prompt builder filters secrets paths and bridge details from prompts', () => {
@@ -363,6 +405,10 @@ test('creator studio prompt builder filters secrets paths and bridge details fro
   assert.equal(built.prompt.includes('/Users/mango/private/ref.png'), false)
   assert.equal(built.prompt.includes('127.0.0.1:8317'), false)
   assert.equal(built.prompt.includes('bridge-token'), false)
+  assert.equal(built.providerPrompt.includes('sk-test-secret'), false)
+  assert.equal(built.providerPrompt.includes('/Users/mango/private/ref.png'), false)
+  assert.equal(built.providerPrompt.includes('127.0.0.1:8317'), false)
+  assert.equal(built.providerPrompt.includes('bridge-token'), false)
   assert.equal(built.warnings.includes('creative_brief_sanitized'), true)
 })
 
@@ -929,6 +975,20 @@ test('creator studio run-step command uses host bridge for provider generation w
     payload: { petName: 'Local Cat', prompt: '新增一个自定义动作：原地打滚，动作要循环，点击触发。', backend: 'local' },
     config: { backend: 'provider' }
   })
+  const runPath = path.join(dataDir, 'runs', created.json.run.runId, 'run.json')
+  const storedRun = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
+  storedRun.input.referenceImage = {
+    targetType: 'editable-action-host',
+    targetId: 'legacy-editable-host',
+    fileName: 'canonical-reference.png',
+    originalFileName: 'mango-reference.png',
+    width: 64,
+    height: 64,
+    contentHash: 'reference-content-hash',
+    relativePath: `runs/${created.json.run.runId}/inputs/references/canonical-reference.png`,
+    metadataRelativePath: `runs/${created.json.run.runId}/inputs/references/reference.json`
+  }
+  fs.writeFileSync(runPath, `${JSON.stringify(storedRun, null, 2)}\n`)
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -943,16 +1003,7 @@ test('creator studio run-step command uses host bridge for provider generation w
         const dataRelativePath = `runs/${created.json.run.runId}/frames/base/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        sharp({
-          create: {
-            width: 96,
-            height: 112,
-            channels: 4,
-            background: { r: 20, g: 170, b: 120, alpha: 1 }
-          }
-        })
-          .png()
-          .toFile(generatedPath)
+        createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -1058,7 +1109,10 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.equal(firstFrameStats.channels[3].max > 0, true)
     assert.equal(frameQa.ok, true)
     assert.equal(frameQa.sourceRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
+    assert.deepEqual(frameQa.sourceRelativePaths, [`runs/${created.json.run.runId}/frames/base/0001.png`])
     assert.equal(frameQa.actionId, actionFrames.actionId)
+    assert.equal(frameQa.extraction.mode, 'action-sheet')
+    assert.deepEqual(frameQa.extraction.layout, { columns: 4, rows: 3 })
     assert.equal(frameQa.playback.loop, true)
     assert.equal(frameQa.playback.frameDurationsMs.length, 12)
     assert.equal(frameQa.playback.frameDurationsMs.every((duration) => duration === 120), true)
@@ -1072,13 +1126,22 @@ test('creator studio run-step command uses host bridge for provider generation w
       endMs: 120
     })
     assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
-    assert.match(requests[1].payload.prompt, /OpenPet desktop pet sprite asset/)
-    assert.match(requests[1].payload.prompt, /Canvas And Boundary Rules/)
-    assert.match(requests[1].payload.prompt, /Action name: 原地打滚/)
-    assert.match(requests[1].payload.prompt, /Loop policy: looping/)
-    assert.match(requests[1].payload.prompt, /Model: local-custom-sprite-v2/)
+    assert.match(requests[1].payload.prompt, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
+    assert.match(requests[1].payload.prompt, /Arrange exactly 12 sequential poses in a 4 column by 3 row grid\./)
+    assert.match(requests[1].payload.prompt, /Keep the same character identity, proportions, face, palette, and overall style\./)
+    assert.match(requests[1].payload.prompt, /Use a plain clean background that is easy to cut out\./)
+    assert.match(requests[1].payload.prompt, /Action sheet label: 原地打滚\./)
     assert.notEqual(requests[1].payload.prompt, '新增一个自定义动作：原地打滚，动作要循环，点击触发。')
+    assert.deepEqual(requests[1].payload.referenceImages, [{
+      path: path.join(dataDir, 'runs', created.json.run.runId, 'inputs', 'references', 'canonical-reference.png'),
+      fileName: 'canonical-reference.png',
+      relativePath: `runs/${created.json.run.runId}/inputs/references/canonical-reference.png`,
+      metadataRelativePath: `runs/${created.json.run.runId}/inputs/references/reference.json`,
+      sha256: 'reference-content-hash',
+      role: 'canonical-reference'
+    }])
     assert.equal(requests[1].payload.prompt.includes('bridge-token'), false)
+    assert.equal(requests[1].payload.timeoutMs, 300000)
     assert.deepEqual(run.modelSnapshot, {
       backend: 'provider',
       provider: 'openai-compatible',
@@ -1089,8 +1152,8 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.equal(run.artifacts.generatedImage.promptBuilder.version, 1)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.equal(run.artifacts.generatedImage.promptBuilder.promptPreview.truncated, false)
-    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /OpenPet desktop pet sprite asset/)
-    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Action name: 原地打滚/)
+    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
+    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Action sheet label: 原地打滚\./)
     assert.deepEqual(run.artifacts.generatedImage.promptBuilder.warnings, [])
     assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-settings', '/creator/model-image-generate'])
   } finally {
@@ -1159,6 +1222,12 @@ test('creator studio run-step command fails and persists run state when provider
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /timed out after 120000ms/i)
     assert.match(run.error, /timed out after 120000ms/i)
+    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'text-to-image')
+    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 0)
+    assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
+    assert.match(run.artifacts.generatedImage.failure.message, /timed out after 120000ms/i)
+    assert.equal(Array.isArray(run.artifacts.generatedImage.outputs), true)
+    assert.equal(run.artifacts.generatedImage.outputs.length, 0)
     assert.deepEqual(events.map((entry) => entry.event), ['generate.start', 'generate.failed'])
   } finally {
     bridgeServer.closeAllConnections?.()
@@ -1178,6 +1247,22 @@ test('creator studio run-step command surfaces provider business errors from the
     },
     config: { backend: 'provider' }
   })
+  const runPath = path.join(dataDir, 'runs', created.json.run.runId, 'run.json')
+  const referenceRelativePath = `runs/${created.json.run.runId}/inputs/references/canonical-reference.png`
+  const referenceMetadataRelativePath = `runs/${created.json.run.runId}/inputs/references/reference.json`
+  fs.writeFileSync(path.join(dataDir, referenceRelativePath), Buffer.from('reference-image-bytes'))
+  fs.writeFileSync(path.join(dataDir, referenceMetadataRelativePath), JSON.stringify({ ok: true }, null, 2))
+  const storedRun = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
+  storedRun.input.referenceImage = {
+    targetType: 'editable-action-host',
+    targetId: 'legacy-editable-host',
+    fileName: 'canonical-reference.png',
+    originalFileName: 'canonical-reference.png',
+    relativePath: referenceRelativePath,
+    metadataRelativePath: referenceMetadataRelativePath,
+    contentHash: 'reference-sha'
+  }
+  fs.writeFileSync(runPath, `${JSON.stringify(storedRun, null, 2)}\n`)
 
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
@@ -1223,6 +1308,13 @@ test('creator studio run-step command surfaces provider business errors from the
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /旧转发链路已关闭/)
     assert.match(run.error, /旧转发链路已关闭/)
+    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'image-edit')
+    assert.equal(run.artifacts.generatedImage.conditioning.endpoint, '/images/edits')
+    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 1)
+    assert.equal(run.artifacts.generatedImage.conditioning.references[0].relativePath, referenceRelativePath)
+    assert.equal(run.artifacts.generatedImage.conditioning.references[0].metadataRelativePath, referenceMetadataRelativePath)
+    assert.match(run.artifacts.generatedImage.failure.message, /旧转发链路已关闭/)
+    assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.deepEqual(events.map((entry) => entry.event), ['generate.start', 'generate.failed'])
   } finally {
     bridgeServer.closeAllConnections?.()
@@ -3377,14 +3469,10 @@ test('creator studio service exposes run detail and logs for dashboard clients',
   const framesDir = path.join(dataDir, 'runs', run.runId, 'frames', 'actions', 'shy-spin')
   fs.mkdirSync(sourceDir, { recursive: true })
   fs.mkdirSync(framesDir, { recursive: true })
-  await sharp({
-    create: {
-      width: 192,
-      height: 208,
-      channels: 4,
-      background: { r: 120, g: 80, b: 220, alpha: 1 }
-    }
-  }).png().toFile(path.join(sourceDir, '0001.png'))
+  await createGeneratedActionSheet({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 8
+  })
   fs.writeFileSync(path.join(framesDir, '0001.png'), Buffer.from('broken-frame'))
   const qaPath = path.join(dataDir, 'runs', run.runId, 'qa', 'action-frame-validation.json')
   appendRunLog({
@@ -4025,16 +4113,7 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
       const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
       const generatedPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-      sharp({
-        create: {
-          width: 96,
-          height: 112,
-          channels: 4,
-          background: { r: 140, g: 190, b: 90, alpha: 1 }
-        }
-      })
-        .png()
-        .toFile(generatedPath)
+      createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
         .then(() => {
           response.end(JSON.stringify({
             ok: true,
@@ -4087,8 +4166,10 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
+    assert.equal(detail.run.developerPrompt.conditioning.mode, 'text-to-image')
+    assert.equal(detail.run.developerPrompt.conditioning.referenceImageCount, 0)
     assert.equal(detail.run.developerPrompt.promptPreview.truncated, false)
-    assert.match(detail.run.developerPrompt.promptPreview.text, /OpenPet desktop pet sprite asset/)
+    assert.match(detail.run.developerPrompt.promptPreview.text, /Create one OpenPet action sheet/)
     assert.match(detail.run.developerPrompt.promptPreview.text, /\[redacted-secret\]/)
     assert.equal(serializedDetail.includes('sk-test-secret'), false)
     assert.equal(serializedDetail.includes('/Users/mango/private/ref.png'), false)
@@ -4275,16 +4356,7 @@ test('creator studio service rejects duplicate generation while a run is already
         const generatedPath = path.join(dataDir, dataRelativePath)
         const sendGeneratedImage = () => {
           fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-          sharp({
-            create: {
-              width: 96,
-              height: 112,
-              channels: 4,
-              background: { r: 255, g: 170, b: 90, alpha: 1 }
-            }
-          })
-            .png()
-            .toFile(generatedPath)
+          createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
             .then(() => {
               response.end(JSON.stringify({
                 ok: true,
@@ -5520,16 +5592,7 @@ test('creator studio service exposes failed generation recovery and retries the 
       const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
       const generatedPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-      sharp({
-        create: {
-          width: 96,
-          height: 112,
-          channels: 4,
-          background: { r: 80, g: 150, b: 220, alpha: 1 }
-        }
-      })
-        .png()
-        .toFile(generatedPath)
+      createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
         .then(() => {
           response.end(JSON.stringify({
             ok: true,
@@ -5584,6 +5647,10 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(failed.body.run.status, 'failed')
     assert.equal(failed.body.run.recovery.canRetryGeneration, true)
     assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
+    assert.equal(failed.body.run.recovery.outputCount, 0)
+    assert.equal(failed.body.run.recovery.conditioning.mode, 'text-to-image')
+    assert.equal(failed.body.run.recovery.conditioning.referenceImageCount, 0)
+    assert.equal(String(failed.body.run.recovery.attemptFailedAt || '').length > 0, true)
     assert.equal(failed.body.run.wizardState.nextStep.label, 'Retry generation')
     assert.equal(failed.body.run.wizardState.nextStep.blocked, false)
     assert.equal(failed.body.run.actionLane.dashboardAction.available, true)
@@ -5604,6 +5671,7 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(retried.body.run.runId, runId)
     assert.equal(retried.body.run.status, 'ready_for_review')
     assert.equal(retried.body.run.recovery.canRetryGeneration, false)
+    assert.equal(retried.body.run.recovery.outputCount, 1)
     assert.equal(retried.body.run.wizardState.nextStep.label, 'Approve run')
     assert.equal(retried.body.run.actionLane.dashboardAction.available, true)
     assert.equal(retried.body.run.actionLane.dashboardAction.label, 'Approve run')

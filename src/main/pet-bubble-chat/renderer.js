@@ -1,4 +1,6 @@
 const shell = document.getElementById('bubble-shell')
+const toolbar = document.getElementById('bubble-toolbar')
+const closeButton = document.getElementById('close-button')
 const bubbleStream = document.getElementById('bubble-stream')
 const bubbleItems = document.getElementById('bubble-items')
 const newMessageButton = document.getElementById('new-message-button')
@@ -14,6 +16,8 @@ let hovering = false
 let localUnseenCount = 0
 let lastItemSignature = ''
 let lastItemCount = 0
+let scrollingHistory = false
+let scrollInteractionTimer = null
 
 const hasTextSelection = () => Boolean(String(window.getSelection?.() || '').trim())
 
@@ -63,6 +67,7 @@ const getSourceLabel = (item = {}) => {
 const shouldHoldScroll = () => Boolean(
   currentState.pinned ||
   currentState.interacting ||
+  scrollingHistory ||
   hovering ||
   document.activeElement === miniInput ||
   miniInput.value.trim() ||
@@ -76,10 +81,21 @@ const canScrollHistory = () => {
   return itemCount > 1
 }
 
+const canUseWindowControls = () => Boolean(
+  currentState.visible &&
+  (
+    (Array.isArray(currentState.items) && currentState.items.length > 0) ||
+    currentState.awaitingReply ||
+    currentState.error
+  )
+)
+
 const shouldAcceptHitTest = () => {
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
-  return hovering ||
+  return scrollingHistory ||
+    canUseWindowControls() ||
+    hovering ||
     focused ||
     hasDraft ||
     hasTextSelection() ||
@@ -93,30 +109,26 @@ const scrollToLatest = () => {
   bubbleStream.scrollTop = bubbleStream.scrollHeight || 0
 }
 
-const scrollBubbleStreamBy = (deltaY = 0) => {
-  if (!bubbleStream || !Number.isFinite(deltaY) || deltaY === 0) return
-  bubbleStream.scrollTop = Math.max(0, (bubbleStream.scrollTop || 0) + deltaY)
-}
-
 const isComposerTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
   return Boolean(target.closest('#mini-input-form'))
 }
 
 const handleBubbleWheel = (event) => {
-  event.preventDefault?.()
-  event.stopPropagation?.()
   expanded = true
-  const wasInteracting = Boolean(currentState.interacting)
+  scrollingHistory = true
+  syncUiInteractionState()
+  if (scrollInteractionTimer) window.clearTimeout(scrollInteractionTimer)
+  scrollInteractionTimer = window.setTimeout(() => {
+    scrollingHistory = false
+    syncUiInteractionState()
+  }, 180)
   const hadHitTest = Boolean(currentState.hitTestInteractive)
   currentState = {
     ...currentState,
-    interacting: true,
     hitTestInteractive: true
   }
-  if (!wasInteracting) setInteracting(true)
   if (!hadHitTest) setHitTestMode(true, 'renderer-bubble-wheel')
-  scrollBubbleStreamBy(event.deltaY)
 }
 
 const updateUnseenButton = () => {
@@ -233,7 +245,7 @@ const syncPassiveHitTestMode = (source = 'renderer-state-sync') => {
 const syncUiInteractionState = () => {
   const hasDraft = Boolean(miniInput.value.trim())
   const focused = document.activeElement === miniInput
-  const shouldInteract = hovering || focused || hasDraft || hasTextSelection() || Boolean(currentState.sending) || Boolean(currentState.error)
+  const shouldInteract = hovering || focused || hasDraft || scrollingHistory || hasTextSelection() || Boolean(currentState.sending) || Boolean(currentState.error)
   if (!shouldInteract) expanded = false
   setInteracting(shouldInteract)
   setHitTestMode(shouldAcceptHitTest(), 'renderer-interaction-sync')
@@ -270,10 +282,16 @@ document.addEventListener('keydown', (event) => {
   }
 })
 
-document.addEventListener('click', () => {
+closeButton?.addEventListener('click', (event) => {
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  window.petBubbleChatAPI.hide({ source: 'bubble-close-button' })
+})
+
+document.addEventListener('dblclick', () => {
   expanded = true
   setInteracting(true)
-  setHitTestMode(true, 'renderer-click')
+  setHitTestMode(true, 'renderer-double-click')
   renderState(currentState)
 })
 
@@ -285,15 +303,6 @@ newMessageButton?.addEventListener('click', (event) => {
 })
 
 bubbleStream?.addEventListener('wheel', handleBubbleWheel)
-
-document.addEventListener('wheel', (event) => {
-  if (isComposerTarget(event.target)) {
-    event.preventDefault?.()
-    event.stopPropagation?.()
-    return
-  }
-  handleBubbleWheel(event)
-}, { passive: false, capture: true })
 
 miniInput?.addEventListener('focus', () => {
   expanded = true
@@ -352,6 +361,10 @@ inputForm?.addEventListener('submit', async (event) => {
   } finally {
     syncUiInteractionState()
   }
+})
+
+toolbar?.addEventListener('mouseenter', () => {
+  setHitTestMode(true, 'renderer-toolbar-hover')
 })
 
 window.addEventListener('focus', refreshState)

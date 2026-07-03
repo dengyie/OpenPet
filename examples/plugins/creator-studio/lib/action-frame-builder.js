@@ -13,6 +13,7 @@ const CONTACT_SHEET_THUMB_HEIGHT = 104
 const CONTACT_SHEET_LABEL_HEIGHT = 20
 const CONTACT_SHEET_GAP = 12
 const CONTACT_SHEET_COLUMNS = 4
+const ACTION_SHEET_MAX_COLUMNS = 4
 
 const assertSafeActionId = (actionId) => {
   if (!SAFE_ACTION_ID_PATTERN.test(actionId || '')) {
@@ -91,11 +92,116 @@ const countVisiblePixels = async (imagePath) => {
   return visiblePixels
 }
 
-const createBaseFrame = async (sourcePath) => {
+const getActionSheetLayout = (frameCount) => {
+  const columns = Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
+  return { columns, rows }
+}
+
+const resolveGeneratedImageEntries = ({ dataDir, generationResult }) => {
+  const outputs = Array.isArray(generationResult?.outputs) ? generationResult.outputs : []
+  if (outputs.length === 0) {
+    throw new Error('Generated image is missing')
+  }
+  return outputs.map((output) => resolveGeneratedImagePath({
+    dataDir,
+    generationResult: { outputs: [output] }
+  }))
+}
+
+const splitGridDimension = ({ size, count, index }) => {
+  const start = Math.floor((size * index) / count)
+  const end = Math.floor((size * (index + 1)) / count)
+  return { start, size: Math.max(1, end - start) }
+}
+
+const extractVisibleBounds = ({ data, info }) => {
+  let minX = info.width
+  let minY = info.height
+  let maxX = -1
+  let maxY = -1
+  let visiblePixels = 0
+
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const pixelIndex = ((y * info.width) + x) * info.channels
+      const alpha = data[pixelIndex + 3]
+      if (alpha > 0) {
+        visiblePixels += 1
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  if (visiblePixels <= 0) return null
+  return {
+    left: minX,
+    top: minY,
+    width: Math.max(1, (maxX - minX) + 1),
+    height: Math.max(1, (maxY - minY) + 1),
+    visiblePixels
+  }
+}
+
+const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}) => {
+  const decoded = await sharp(sourceInput)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  const bounds = extractVisibleBounds(decoded)
+  if (!bounds) {
+    throw new Error('Generated action frame source contains no visible pixels')
+  }
+  const fullFrameVisible = bounds.left === 0 &&
+    bounds.top === 0 &&
+    bounds.width === decoded.info.width &&
+    bounds.height === decoded.info.height
+  if (!allowOpaqueFullFrame && fullFrameVisible) {
+    const trimAttempt = await sharp(sourceInput)
+      .trim()
+      .png()
+      .toBuffer()
+    const trimMetadata = await sharp(trimAttempt).metadata()
+    if (trimMetadata.width < decoded.info.width || trimMetadata.height < decoded.info.height) {
+      return {
+        buffer: trimAttempt,
+        visiblePixels: bounds.visiblePixels,
+        bounds: {
+          left: 0,
+          top: 0,
+          width: trimMetadata.width,
+          height: trimMetadata.height
+        },
+        fullFrameVisible: false
+      }
+    }
+    throw new Error('Generated action sheet cell is missing a cutout-ready sprite silhouette')
+  }
+  const trimmed = await sharp(sourceInput)
+    .extract({
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      height: bounds.height
+    })
+    .png()
+    .toBuffer()
+  return {
+    buffer: trimmed,
+    visiblePixels: bounds.visiblePixels,
+    bounds,
+    fullFrameVisible
+  }
+}
+
+const createNormalizedFrame = async (sourceInput, options = {}) => {
   const maxWidth = Math.floor(FRAME_WIDTH * 0.82)
   const maxHeight = Math.floor(FRAME_HEIGHT * 0.82)
-  const resized = await sharp(sourcePath)
-    .ensureAlpha()
+  const trimmed = await trimFrameSource(sourceInput, options)
+  const resized = await sharp(trimmed.buffer)
     .resize({
       width: maxWidth,
       height: maxHeight,
@@ -108,7 +214,7 @@ const createBaseFrame = async (sourcePath) => {
   const left = Math.max(0, Math.floor((FRAME_WIDTH - metadata.width) / 2))
   const top = Math.max(0, Math.floor((FRAME_HEIGHT - metadata.height) * 0.58))
 
-  return sharp({
+  const frameBuffer = await sharp({
     create: {
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
@@ -119,42 +225,91 @@ const createBaseFrame = async (sourcePath) => {
     .composite([{ input: resized, left, top }])
     .png()
     .toBuffer()
+
+  return {
+    frameBuffer,
+    sourceVisiblePixels: trimmed.visiblePixels,
+    sourceBounds: trimmed.bounds,
+    sourceFilledCell: trimmed.fullFrameVisible
+  }
 }
 
-const createFrameVariant = async ({ baseFrame, index, frameCount }) => {
-  const midpoint = (frameCount - 1) / 2 || 1
-  const normalized = (index - midpoint) / midpoint
-  const angle = normalized * 7
-  const wave = Math.sin((index / Math.max(1, frameCount - 1)) * Math.PI * 2)
-  const horizontalOffset = Math.round(wave * 4)
-  const verticalOffset = Math.round(Math.abs(wave) * -3)
-  const variant = await sharp(baseFrame)
-    .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .resize({
-      width: FRAME_WIDTH,
-      height: FRAME_HEIGHT,
-      fit: 'contain',
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
+const extractActionSheetCellBuffer = async ({ sourcePath, frameCount, frameIndex }) => {
+  const metadata = await sharp(sourcePath).metadata()
+  const layout = getActionSheetLayout(frameCount)
+  const row = Math.floor(frameIndex / layout.columns)
+  const column = frameIndex % layout.columns
+  if (row >= layout.rows) {
+    throw new Error('Generated action sheet does not contain enough rows')
+  }
+  const horizontal = splitGridDimension({ size: metadata.width, count: layout.columns, index: column })
+  const vertical = splitGridDimension({ size: metadata.height, count: layout.rows, index: row })
+  const cellBuffer = await sharp(sourcePath)
+    .ensureAlpha()
+    .extract({
+      left: horizontal.start,
+      top: vertical.start,
+      width: horizontal.size,
+      height: vertical.size
     })
     .png()
     .toBuffer()
-
-  return sharp({
-    create: {
-      width: FRAME_WIDTH,
-      height: FRAME_HEIGHT,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
+  return {
+    cellBuffer,
+    layout,
+    cell: {
+      column,
+      row,
+      left: horizontal.start,
+      top: vertical.start,
+      width: horizontal.size,
+      height: vertical.size
     }
-  })
-    .composite([{
-      input: variant,
-      left: horizontalOffset,
-      top: verticalOffset,
-      blend: 'over'
-    }])
-    .png()
-    .toBuffer()
+  }
+}
+
+const resolveFrameSource = async ({ dataDir, generationResult, frameCount, frameIndex }) => {
+  const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
+  if (entries.length >= frameCount) {
+    const entry = entries[frameIndex]
+    return {
+      mode: 'multi-output',
+      sourceRelativePath: entry.sourceRelativePath,
+      sourceRelativePaths: entries.slice(0, frameCount).map((candidate) => candidate.sourceRelativePath),
+      normalized: await createNormalizedFrame(entry.sourcePath),
+      extraction: {
+        mode: 'multi-output',
+        outputCount: entries.length
+      }
+    }
+  }
+
+  let lastError = null
+  for (const [outputIndex, sheetEntry] of entries.entries()) {
+    try {
+      const extracted = await extractActionSheetCellBuffer({
+        sourcePath: sheetEntry.sourcePath,
+        frameCount,
+        frameIndex
+      })
+      return {
+        mode: entries.length > 1 ? 'action-sheet-fallback' : 'action-sheet',
+        sourceRelativePath: sheetEntry.sourceRelativePath,
+        sourceRelativePaths: entries.map((candidate) => candidate.sourceRelativePath),
+        normalized: await createNormalizedFrame(extracted.cellBuffer, { allowOpaqueFullFrame: false }),
+        extraction: {
+          mode: entries.length > 1 ? 'action-sheet-fallback' : 'action-sheet',
+          outputCount: entries.length,
+          layout: extracted.layout,
+          sourceCell: extracted.cell,
+          ...(entries.length > 1 ? { sourceOutputIndex: outputIndex } : {})
+        }
+      }
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error('Generated action sheet cell could not be extracted')
 }
 
 const toDataRelativePath = ({ dataDir, targetPath }) => path
@@ -229,7 +384,6 @@ const buildActionFramesFromGeneratedImage = async ({
   const actionId = String(action?.actionId || '').trim()
   assertSafeActionId(actionId)
   const frameCount = normalizeFrameCount(action?.frameCount || 16)
-  const { sourcePath, sourceRelativePath } = resolveGeneratedImagePath({ dataDir, generationResult })
   const safeOutputFramesDir = assertWritablePathInsideDataDir({
     dataDir,
     targetPath: outputFramesDir,
@@ -245,17 +399,32 @@ const buildActionFramesFromGeneratedImage = async ({
   fs.mkdirSync(safeOutputFramesDir, { recursive: true })
   fs.mkdirSync(safeQaDir, { recursive: true })
 
-  const baseFrame = await createBaseFrame(sourcePath)
   const frames = []
+  let sourceRelativePath = ''
+  let sourceRelativePaths = []
+  let extraction = null
   for (let index = 0; index < frameCount; index += 1) {
     const fileName = `${String(index + 1).padStart(4, '0')}.png`
     const framePath = path.join(safeOutputFramesDir, fileName)
-    fs.writeFileSync(framePath, await createFrameVariant({ baseFrame, index, frameCount }))
+    const frameSource = await resolveFrameSource({
+      dataDir,
+      generationResult,
+      frameCount,
+      frameIndex: index
+    })
+    sourceRelativePath = sourceRelativePath || frameSource.sourceRelativePath
+    sourceRelativePaths = frameSource.sourceRelativePaths
+    extraction = frameSource.extraction
+    fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
     frames.push({
       fileName,
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
-      visiblePixels: await countVisiblePixels(framePath)
+      visiblePixels: await countVisiblePixels(framePath),
+      sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
+      sourceBounds: frameSource.normalized.sourceBounds,
+      ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
+      ...(Number.isInteger(frameSource.extraction?.sourceOutputIndex) ? { sourceOutputIndex: frameSource.extraction.sourceOutputIndex } : {})
     })
   }
 
@@ -275,11 +444,17 @@ const buildActionFramesFromGeneratedImage = async ({
     actionId,
     name: String(action?.name || actionId),
     sourceRelativePath,
+    sourceRelativePaths,
     frameCount,
     frameWidth: FRAME_WIDTH,
     frameHeight: FRAME_HEIGHT,
     loop: Boolean(action?.loop),
     playback,
+    extraction: extraction || {
+      mode: 'action-sheet',
+      outputCount: 1,
+      layout: getActionSheetLayout(frameCount)
+    },
     triggerProposal: action?.triggerProposal || { type: 'unbound' },
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
     frames,
@@ -310,7 +485,6 @@ const repairActionFrameFromGeneratedImage = async ({
   assertSafeActionId(actionId)
   const frameCount = normalizeFrameCount(action?.frameCount || 16)
   const frameIndex = normalizeFrameIndex({ fileName, frameCount })
-  const { sourcePath, sourceRelativePath } = resolveGeneratedImagePath({ dataDir, generationResult })
   const safeOutputFramesDir = assertWritablePathInsideDataDir({
     dataDir,
     targetPath: outputFramesDir,
@@ -324,14 +498,22 @@ const repairActionFrameFromGeneratedImage = async ({
 
   fs.mkdirSync(safeOutputFramesDir, { recursive: true })
   fs.mkdirSync(safeQaDir, { recursive: true })
-  const baseFrame = await createBaseFrame(sourcePath)
+  const frameSource = await resolveFrameSource({
+    dataDir,
+    generationResult,
+    frameCount,
+    frameIndex
+  })
   const framePath = path.join(safeOutputFramesDir, fileName)
-  fs.writeFileSync(framePath, await createFrameVariant({ baseFrame, index: frameIndex, frameCount }))
+  fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
   const frame = {
     fileName,
     width: FRAME_WIDTH,
     height: FRAME_HEIGHT,
     visiblePixels: await countVisiblePixels(framePath),
+    sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
+    sourceBounds: frameSource.normalized.sourceBounds,
+    ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
     repairedAt: now()
   }
 
@@ -342,11 +524,13 @@ const repairActionFrameFromGeneratedImage = async ({
         ok: true,
         actionId,
         name: String(action?.name || actionId),
-        sourceRelativePath,
+        sourceRelativePath: frameSource.sourceRelativePath,
+        sourceRelativePaths: frameSource.sourceRelativePaths,
         frameCount,
         frameWidth: FRAME_WIDTH,
         frameHeight: FRAME_HEIGHT,
         loop: Boolean(action?.loop),
+        extraction: frameSource.extraction,
         triggerProposal: action?.triggerProposal || { type: 'unbound' },
         frames: [],
         warnings: []
@@ -374,11 +558,15 @@ const repairActionFrameFromGeneratedImage = async ({
     ...currentQa,
     ok: qaComplete,
     actionId,
-    sourceRelativePath: currentQa.sourceRelativePath || sourceRelativePath,
+    sourceRelativePath: currentQa.sourceRelativePath || frameSource.sourceRelativePath,
+    sourceRelativePaths: Array.isArray(currentQa.sourceRelativePaths) && currentQa.sourceRelativePaths.length > 0
+      ? currentQa.sourceRelativePaths
+      : frameSource.sourceRelativePaths,
     frameCount,
     frameWidth: FRAME_WIDTH,
     frameHeight: FRAME_HEIGHT,
     playback,
+    extraction: currentQa.extraction || frameSource.extraction,
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
     frames,
     warnings: nextWarnings,

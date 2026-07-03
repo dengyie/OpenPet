@@ -37,6 +37,14 @@ const registerPetRuntimeIpc = ({
     return getMovementState(win)
   })
 
+  ipcMainService.handle(IPC.PET_PLAY_ACTION, (_event, payload = {}) => ({
+    ok: true,
+    ...petService.playAction({
+      actionId: payload?.actionId,
+      source: 'control-center:create-preview'
+    })
+  }))
+
   ipcMainService.on(IPC.PET_SET_VIEWPORT, (event, viewport) => {
     const win = browserWindowService.fromWebContents(event.sender)
     if (!win || !viewport) return

@@ -23,6 +23,7 @@ const createCoreServices = ({
     createPetUtteranceLogService,
     createImageGenerationModelService,
     createTriggerRuleRuntimeService,
+    createCreatorReferenceService,
     createBehaviorOrchestratorService,
     createLocalHttpService,
     createActionImportService,
@@ -67,6 +68,10 @@ const createCoreServices = ({
   const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService })
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
   const triggerRuleRuntimeService = createTriggerRuleRuntimeService({ actionService, petService, appLogService })
+  const creatorReferenceService = createCreatorReferenceService({
+    settingsService,
+    referenceRoot: path.join(app.getPath('userData'), 'creator-references')
+  })
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
@@ -95,6 +100,7 @@ const createCoreServices = ({
       appLogService,
       behaviorOrchestratorService,
       cursorAssetService,
+      creatorReferenceService,
       imageGenerationModelService,
       triggerRuleRuntimeService,
       localHttpService,

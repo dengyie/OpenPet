@@ -27,6 +27,8 @@ const createFakeBrowserWindow = () => {
       this.bounds = { x: options.x, y: options.y, width: options.width, height: options.height }
       this.visible = false
       this.destroyed = false
+      this.listeners = new Map()
+      this.onceListeners = new Map()
       this.sent = []
       this.ignoreMouseEventsCalls = []
       this.webContents = {
@@ -56,8 +58,20 @@ const createFakeBrowserWindow = () => {
       this.ignoreMouseEventsCalls.push({ ignore, options })
     }
     setVisibleOnAllWorkspaces() {}
-    on() {}
-    once() {}
+    on(eventName, callback) {
+      this.listeners.set(eventName, callback)
+    }
+    once(eventName, callback) {
+      this.onceListeners.set(eventName, callback)
+    }
+    emit(eventName, ...args) {
+      this.listeners.get(eventName)?.(...args)
+      const onceCallback = this.onceListeners.get(eventName)
+      if (onceCallback) {
+        this.onceListeners.delete(eventName)
+        onceCallback(...args)
+      }
+    }
   }
   return { FakeBrowserWindow, instances }
 }
@@ -222,6 +236,7 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
 
 test('pet bubble chat manager shows latest message and auto hides when idle', () => {
   const timers = []
+  const logs = []
   const originalSetTimeout = global.setTimeout
   const originalClearTimeout = global.clearTimeout
   global.setTimeout = (callback, delay) => {
@@ -248,7 +263,8 @@ test('pet bubble chat manager shows latest message and auto hides when idle', ()
       getPetWindow: () => ({
         isDestroyed: () => false,
         getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
-      })
+      }),
+      appLogService: { record: (entry) => logs.push(entry) }
     })
 
     const state = manager.showMessage({ text: 'hello there', source: 'test', ttlMs: 3000 })
@@ -262,10 +278,13 @@ test('pet bubble chat manager shows latest message and auto hides when idle', ()
     assert.equal(state.noticeItems.length, 1)
     assert.equal(timers.at(-1).delay, 6000)
     assert.equal(instances[0].sent.at(-1).channel, IPC.PET_BUBBLE_CHAT_STATE_CHANGED)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.auto-hide.scheduled' && entry.details.ttlMs === 6000), true)
 
     timers.at(-1).callback()
     assert.equal(manager.getState().visible, false)
     assert.equal(instances[0].visible, false)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.auto-hide.expired'), true)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.hidden' && entry.details.reason === 'window-hidden'), true)
   } finally {
     global.setTimeout = originalSetTimeout
     global.clearTimeout = originalClearTimeout
@@ -503,6 +522,7 @@ test('pet bubble chat preserves non-ai pet say dialogue in the left-side bubble 
 
 test('pet bubble chat manager reuses a single window and latest message replaces prior auto-hide timer', () => {
   const timers = []
+  const logs = []
   const originalSetTimeout = global.setTimeout
   const originalClearTimeout = global.clearTimeout
   global.setTimeout = (callback, delay) => {
@@ -529,7 +549,8 @@ test('pet bubble chat manager reuses a single window and latest message replaces
       getPetWindow: () => ({
         isDestroyed: () => false,
         getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
-      })
+      }),
+      appLogService: { record: (entry) => logs.push(entry) }
     })
 
     manager.showMessage({ text: 'first line', source: 'test', ttlMs: 6200 })
@@ -541,6 +562,7 @@ test('pet bubble chat manager reuses a single window and latest message replaces
     assert.equal(timers.at(-1).delay, 7000)
     assert.equal(manager.getState().message.text, 'second line')
     assert.equal(instances[0].visible, true)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.auto-hide.canceled' && entry.details.reason === 'reschedule'), true)
   } finally {
     global.setTimeout = originalSetTimeout
     global.clearTimeout = originalClearTimeout
@@ -549,6 +571,7 @@ test('pet bubble chat manager reuses a single window and latest message replaces
 
 test('pet bubble chat manager does not show when disabled and holds visible while pinned', () => {
   const timers = []
+  const logs = []
   const originalSetTimeout = global.setTimeout
   const originalClearTimeout = global.clearTimeout
   global.setTimeout = (callback, delay) => {
@@ -576,7 +599,8 @@ test('pet bubble chat manager does not show when disabled and holds visible whil
       getPetWindow: () => ({
         isDestroyed: () => false,
         getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
-      })
+      }),
+      appLogService: { record: (entry) => logs.push(entry) }
     })
 
     manager.showMessage({ text: 'disabled' })
@@ -589,6 +613,7 @@ test('pet bubble chat manager does not show when disabled and holds visible whil
     assert.equal(instances.length, 1)
     assert.equal(timers.length, 0)
     assert.equal(manager.getState().visible, true)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.auto-hide.frozen' && entry.details.reason === 'pinned'), true)
   } finally {
     global.setTimeout = originalSetTimeout
     global.clearTimeout = originalClearTimeout
@@ -596,6 +621,7 @@ test('pet bubble chat manager does not show when disabled and holds visible whil
 })
 
 test('pet bubble chat manager toggles window-level hit-test passthrough', () => {
+  const logs = []
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -611,7 +637,8 @@ test('pet bubble chat manager toggles window-level hit-test passthrough', () => 
     getPetWindow: () => ({
       isDestroyed: () => false,
       getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
-    })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
   manager.showMessage({ text: '可穿透提示', source: 'plugin:test' })
@@ -626,10 +653,64 @@ test('pet bubble chat manager toggles window-level hit-test passthrough', () => 
   assert.deepEqual(instances[0].ignoreMouseEvents, { ignore: false, options: undefined })
   assert.equal(passthrough.hitTestInteractive, false)
   assert.equal(interactive.hitTestInteractive, true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.hit-test.changed' && entry.details.interactive === true && entry.details.source === 'test-hover'), true)
+})
+
+test('pet bubble chat manager preserves dragged window position until pet moves, then re-anchors', () => {
+  const logs = []
+  let petBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => petBounds
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  manager.showMessage({ text: 'drag me', source: 'plugin:test', ttlMs: 6000 })
+  const initialBounds = { ...instances[0].bounds }
+
+  instances[0].bounds = { ...instances[0].bounds, x: initialBounds.x + 64, y: initialBounds.y + 28 }
+  instances[0].emit('move')
+  instances[0].bounds = { ...instances[0].bounds, x: initialBounds.x + 72, y: initialBounds.y + 36 }
+  instances[0].emit('move')
+
+  const detachedState = manager.getState()
+  assert.equal(detachedState.anchorMode, 'detached-temporary')
+  assert.equal(detachedState.bounds.x, initialBounds.x + 72)
+  assert.equal(detachedState.bounds.y, initialBounds.y + 36)
+
+  manager.showMessage({ text: 'still detached', source: 'plugin:test', ttlMs: 7000 })
+  const afterContentRefresh = manager.getState()
+  assert.equal(afterContentRefresh.anchorMode, 'detached-temporary')
+  assert.equal(afterContentRefresh.bounds.x, initialBounds.x + 72)
+  assert.equal(afterContentRefresh.bounds.y, initialBounds.y + 36)
+
+  petBounds = { x: 360, y: 330, width: 120, height: 120 }
+  manager.syncToPetWindow()
+  const reanchoredState = manager.getState()
+
+  assert.equal(reanchoredState.anchorMode, 'anchored')
+  assert.notEqual(reanchoredState.bounds.x, initialBounds.x + 72)
+  assert.notEqual(reanchoredState.bounds.y, initialBounds.y + 36)
+  assert.equal(logs.filter((entry) => entry.event === 'pet-bubble-chat.window.detached').length, 1)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.reanchored' && entry.details.reason === 'pet-moved'), true)
 })
 
 test('pet bubble chat manager stays visible during sending and after a recoverable send error', () => {
   const timers = []
+  const logs = []
   const originalSetTimeout = global.setTimeout
   const originalClearTimeout = global.clearTimeout
   global.setTimeout = (callback, delay) => {
@@ -656,7 +737,8 @@ test('pet bubble chat manager stays visible during sending and after a recoverab
       getPetWindow: () => ({
         isDestroyed: () => false,
         getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
-      })
+      }),
+      appLogService: { record: (entry) => logs.push(entry) }
     })
 
     manager.showMessage({ text: 'hello there', source: 'test', ttlMs: 3000 })
@@ -674,12 +756,15 @@ test('pet bubble chat manager stays visible during sending and after a recoverab
 
     assert.equal(afterSending.visible, true)
     assert.equal(afterSending.sending, true)
-    assert.equal(afterSending.interacting, true)
+    assert.equal(afterSending.interacting, false)
     assert.equal(afterError.visible, true)
     assert.equal(afterError.sending, false)
-    assert.equal(afterError.interacting, true)
+    assert.equal(afterError.interacting, false)
     assert.equal(afterError.error, 'Temporary provider failure')
+    assert.equal(timers.some((timer) => timer.cleared), true)
     assert.equal(timers.every((timer) => timer.cleared), true)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.auto-hide.frozen' && entry.details.reason === 'awaiting-reply'), true)
+    assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.auto-hide.frozen' && entry.details.reason === 'error'), true)
   } finally {
     global.setTimeout = originalSetTimeout
     global.clearTimeout = originalClearTimeout
@@ -687,6 +772,7 @@ test('pet bubble chat manager stays visible during sending and after a recoverab
 })
 
 test('pet bubble chat manager supports queued follow-ups and pending-merge recovery', () => {
+  const logs = []
   const { FakeBrowserWindow } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -702,7 +788,8 @@ test('pet bubble chat manager supports queued follow-ups and pending-merge recov
     getPetWindow: () => ({
       isDestroyed: () => false,
       getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
-    })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
   })
 
   const first = manager.queueOutgoingMessage({ text: '第一句', requestId: 'req-1' })
@@ -744,4 +831,58 @@ test('pet bubble chat manager supports queued follow-ups and pending-merge recov
     '第二句',
     '一起回复'
   ])
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.request.started' && entry.details.requestId === 'req-1' && entry.details.messageChars === 3), true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.request.queued' && entry.details.requestId === 'req-2'), true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.request.failed' && entry.details.requestId === 'req-1' && entry.details.retryablePendingCount === 2), true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.request.started' && entry.details.requestId === 'req-3' && entry.details.batchCount === 2), true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.request.completed' && entry.details.requestId === 'req-3' && entry.details.conversationMessageCount === 3), true)
+})
+
+test('pet bubble chat manager preserves recent visible dialogue history across request completion rebuilds', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.rebuildItems({
+    reason: 'seed-history',
+    conversationMessages: [
+      { id: 'u1', role: 'user', content: '旧问题 1', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', role: 'assistant', content: '旧回答 1', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'u2', role: 'user', content: '旧问题 2', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', role: 'assistant', content: '旧回答 2', createdAt: '2026-06-24T00:00:03.000Z' }
+    ]
+  })
+
+  manager.queueOutgoingMessage({ text: '新问题', requestId: 'req-1' })
+  manager.showMessage({ text: '思考提示', source: 'pet-renderer', ttlMs: 6000 })
+  const completed = manager.completeRequest({
+    requestId: 'req-1',
+    conversationMessages: [
+      { id: 'u1', role: 'user', content: '旧问题 1', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', role: 'assistant', content: '旧回答 1', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'u2', role: 'user', content: '旧问题 2', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', role: 'assistant', content: '旧回答 2', createdAt: '2026-06-24T00:00:03.000Z' },
+      { id: 'u3', role: 'user', content: '新问题', createdAt: '2026-06-24T00:00:04.000Z' },
+      { id: 'a3', role: 'assistant', content: '新回答', createdAt: '2026-06-24T00:00:05.000Z' }
+    ]
+  })
+
+  assert.deepEqual(
+    completed.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
+    ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答']
+  )
 })

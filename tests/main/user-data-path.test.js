@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { LEGACY_USER_DATA_DIR_NAME, configureUserDataPath } = require('../../src/main/user-data-path')
+const { LEGACY_USER_DATA_DIR_NAME, configureUserDataPath, resolveExplicitUserDataPath } = require('../../src/main/user-data-path')
 
 const createFakeApp = ({ appData, userData }) => {
   const paths = { appData, userData }
@@ -88,6 +88,28 @@ test('configureUserDataPath leaves the legacy userData directory untouched when 
   assert.equal(configuredPath, legacyPath)
   assert.deepEqual(app.setPathCalls, [])
   assert.equal(fs.existsSync(configuredPath), true)
+})
+
+test('configureUserDataPath honors explicit OPENPET_USER_DATA_DIR overrides for isolated smoke profiles', () => {
+  const appData = createTempAppData()
+  const explicitUserDataDir = path.join(appData, 'isolated-openpet-profile')
+  const app = createFakeApp({
+    appData,
+    userData: path.join(appData, 'OpenPet')
+  })
+
+  const configuredPath = configureUserDataPath({
+    app,
+    env: {
+      OPENPET_USER_DATA_DIR: explicitUserDataDir
+    }
+  })
+
+  assert.equal(resolveExplicitUserDataPath({ OPENPET_USER_DATA_DIR: explicitUserDataDir }), explicitUserDataDir)
+  assert.equal(configuredPath, explicitUserDataDir)
+  assert.deepEqual(app.setPathCalls, [['userData', explicitUserDataDir]])
+  assert.equal(app.getPath('userData'), explicitUserDataDir)
+  assert.equal(fs.existsSync(explicitUserDataDir), true)
 })
 
 test('configureUserDataPath requires an Electron app-like object', () => {

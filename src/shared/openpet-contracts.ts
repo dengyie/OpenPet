@@ -52,6 +52,11 @@ export interface CursorOption {
   hotspotX: number
   hotspotY: number
   createdAt: string
+  sizePercent?: number
+  baseWidth?: number
+  baseHeight?: number
+  baseHotspotX?: number
+  baseHotspotY?: number
 }
 
 export interface CustomCursorRecord extends CursorOption {
@@ -932,6 +937,7 @@ export interface PluginCommandViewState {
 export interface PluginCommandEntryViewState extends PluginCommandViewState {
   command: string
   cwd: string
+  timeoutMs?: number
 }
 
 export type PluginSetupRuntimeStatus = 'not-run' | 'running' | 'stopping' | 'succeeded' | 'failed'
@@ -1425,11 +1431,24 @@ export interface PluginLogEntry {
   message: string
 }
 
+export interface PaginatedLogsViewState<T> {
+  entries: T[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
 export interface PluginLogFilters {
   pluginId?: string
   level?: string
   query?: string
   format?: 'json' | 'csv'
+}
+
+export interface PluginLogPageRequest extends PluginLogFilters {
+  page?: number
+  pageSize?: number
 }
 
 export interface CreatorActionsReadResponse {
@@ -1553,6 +1572,140 @@ export interface CreatorStudioDefaultFlowResult extends OkResponse {
   message: string
   runId: string
   lastCommandResult: PluginCommandRunResultViewState | null
+}
+
+export type CreatorReferenceTargetType = 'editable-action-host' | 'pet-pack'
+
+export interface CreatorReferenceViewState {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  assetPath: string
+  assetUrl: string
+  fileName: string
+  width: number
+  height: number
+  contentHash: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreatorEditableTargetViewState {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  displayName: string
+  defaultAction: string
+  clickAction: string
+  actionCount: number
+}
+
+export interface CreatorProviderStateViewState {
+  ready: boolean
+  code: string
+  message: string
+  provider: string
+  model: string
+}
+
+export interface CreatorDashboardAvailabilityViewState {
+  available: boolean
+  pluginId: string
+  dashboardId: string
+  serviceStatus: string
+  reason: string
+}
+
+export type CreatorWorkflowState =
+  | 'missing-input'
+  | 'provider-not-ready'
+  | 'generating'
+  | 'review-required'
+  | 'import-failed'
+  | 'completed'
+
+export interface CreatorLastRunViewState {
+  state: CreatorWorkflowState
+  mode: string
+  runId: string
+  commandId: string
+  message: string
+  importedActionId: string
+  importedPackId: string
+  activatedPackId: string
+}
+
+export interface CreatorImportedActionViewState {
+  actionId: string
+  label: string
+}
+
+export interface CreatorStateViewState extends OkResponse {
+  provider: CreatorProviderStateViewState
+  editableTarget: CreatorEditableTargetViewState
+  editableReference: CreatorReferenceViewState | null
+  lastRun: CreatorLastRunViewState | null
+  dashboard: CreatorDashboardAvailabilityViewState
+}
+
+export interface CreatorBindReferenceResult extends OkResponse {
+  replaced: boolean
+  reference: CreatorReferenceViewState
+}
+
+export interface CreatorReferencePickerResult extends OkResponse {
+  canceled: boolean
+  referenceToken: string
+  fileName: string
+}
+
+export interface CreatorGenerateNewCharacterRequest {
+  characterName: string
+  stylePrompt?: string
+  referenceImageToken: string
+}
+
+export interface CreatorGenerateExistingActionRequest {
+  actionName: string
+  motionPrompt: string
+  referenceImageToken?: string
+}
+
+export interface CreatorWorkflowConditioningSummaryViewState {
+  mode: string
+  endpoint: string
+  referenceImageCount: number
+  referenceFileNames: string[]
+}
+
+export interface CreatorWorkflowDiagnosticsViewState {
+  runStatus: string
+  currentStep: string
+  reviewStatus: string
+  importStatus: string
+  backend: string
+  backendState: string
+  attemptStatus: string
+  outputCount: number
+  generatedAt: string
+  failedAt: string
+  failureReason: string
+  conditioning: CreatorWorkflowConditioningSummaryViewState | null
+}
+
+export interface CreatorWorkflowResult extends OkResponse {
+  state: CreatorWorkflowState
+  code: string
+  message: string
+  run: CreatorLastRunViewState | null
+  reference?: CreatorReferenceViewState | null
+  activePet?: PetPackSummary | null
+  importedAction?: CreatorImportedActionViewState | null
+  clickAction?: string
+  diagnostics?: CreatorWorkflowDiagnosticsViewState | null
+}
+
+export interface PetActionPlaybackResult extends OkResponse {
+  actionId: string
+  source?: string
 }
 
 export interface PluginDashboardOpenOptions {
@@ -2374,6 +2527,11 @@ export interface ServiceLogFilters {
   [key: string]: unknown
 }
 
+export interface ServiceLogPageRequest extends ServiceLogFilters {
+  page?: number
+  pageSize?: number
+}
+
 export interface ReleaseEvidenceFileSummary {
   path: string
   sha256: string
@@ -2833,6 +2991,13 @@ export interface ControlCenterApi {
   setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<Partial<PluginViewState>>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
+  getCreatorState: () => Promise<CreatorStateViewState>
+  pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>
+  bindCreatorReference: (payload: { targetType: CreatorReferenceTargetType; targetId: string; referenceToken: string }) => Promise<CreatorBindReferenceResult>
+  generateCreatorNewCharacter: (payload: CreatorGenerateNewCharacterRequest) => Promise<CreatorWorkflowResult>
+  generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
+  getCreatorLastRun: () => Promise<{ ok: boolean; run: CreatorLastRunViewState | null }>
+  playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
   runPluginSetup: (pluginId: string, setupId: string) => Promise<PluginSetupRunResultViewState>
@@ -2846,13 +3011,13 @@ export interface ControlCenterApi {
   installPlugin: (selectionId: string) => Promise<PluginMutationResult>
   updatePlugin: (selectionId: string) => Promise<PluginMutationResult>
   uninstallPlugin: (pluginId: string, options?: { removeStorage?: boolean }) => Promise<PluginMutationResult>
-  getPluginLogs: (filters?: PluginLogFilters) => Promise<PluginLogEntry[]>
+  getPluginLogs: (filters?: PluginLogPageRequest) => Promise<PaginatedLogsViewState<PluginLogEntry>>
   exportPluginLogs: (filters?: PluginLogFilters) => Promise<string>
   clearPluginLogs: () => Promise<PluginLogEntry[]>
   clearPluginStorage: (pluginId: string) => Promise<Partial<PluginViewState>>
   getServiceStatus: () => Promise<ServiceStatusViewState>
   saveServiceConfig: (config: Partial<LocalHttpConfigViewState>) => Promise<ServiceStatusViewState>
-  getServiceLogs: (filters?: ServiceLogFilters) => Promise<ServiceLogEntry[]>
+  getServiceLogs: (filters?: ServiceLogPageRequest) => Promise<PaginatedLogsViewState<ServiceLogEntry>>
   exportServiceLogs: (filters?: ServiceLogFilters) => Promise<string>
   clearServiceLogs: () => Promise<ServiceLogEntry[]>
   rotateServiceToken: () => Promise<ServiceStatusViewState>

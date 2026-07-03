@@ -31,6 +31,7 @@ const createOpenPetRuntime = ({
   maybeRunPackagedPluginCleanupEvidence,
   maybeRunPackagedCreatorStudioEvidence,
   maybeRunPackagedCreatorStudioUiE2e,
+  maybeRunPackagedCreateUiSmoke,
   factories,
   setPetWindow
 }) => {
@@ -52,6 +53,7 @@ const createOpenPetRuntime = ({
       appLogService,
       behaviorOrchestratorService,
       cursorAssetService,
+      creatorReferenceService,
       imageGenerationModelService,
       localHttpService,
       petMovementPolicy,
@@ -130,6 +132,13 @@ const createOpenPetRuntime = ({
     pluginService,
     imageGenerationModelService
   })
+  const creatorWorkflowService = factories.createCreatorWorkflowService({
+    pluginService,
+    imageGenerationModelService,
+    actionService,
+    creatorReferenceService,
+    appLogService
+  })
 
   runPostPluginStartupSideEffects({
     petService,
@@ -151,6 +160,7 @@ const createOpenPetRuntime = ({
     behaviorOrchestratorService,
     triggerRuleRuntimeService,
     creatorStudioDefaultFlowService,
+    creatorWorkflowService,
     pluginService,
     pluginInstallService: pluginServices.pluginInstallService,
     pluginGithubImportService: pluginServices.pluginGithubImportService,
@@ -199,7 +209,8 @@ const createOpenPetRuntime = ({
     maybeRunPackagedRuntimeSmoke,
     maybeRunPackagedPluginCleanupEvidence,
     maybeRunPackagedCreatorStudioEvidence,
-    maybeRunPackagedCreatorStudioUiE2e
+    maybeRunPackagedCreatorStudioUiE2e,
+    maybeRunPackagedCreateUiSmoke
   })
 
   return {

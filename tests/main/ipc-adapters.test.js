@@ -77,6 +77,7 @@ test('pet settings adapter normalizes local http config onto loopback host and t
 test('pet settings adapter collects cursor asset paths from mixed cursor entries', () => {
   assert.deepEqual(collectCustomCursorAssetPaths([
     { assetPath: '/tmp/a.png' },
+    { assetPath: 'builtin://builtin-claw-purple' },
     { assetPath: '' },
     null,
     { assetPath: '/tmp/b.png' }

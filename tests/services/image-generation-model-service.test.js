@@ -315,6 +315,30 @@ test('image generation model service discovers available models through the opti
   assert.equal(requests[0].options.method, 'GET')
 })
 
+test('image generation model service can bound health probe time with an explicit timeout override', async () => {
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({
+      baseUrl: 'https://images.example.test/v1',
+      model: 'openpet-image-test'
+    })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-custom', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'health-timeout-test',
+    fetchImpl: async () => new Promise(() => {})
+  })
+
+  const result = await service.checkHealth({ timeoutMs: 25 })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'health_check_timeout')
+  assert.match(result.message, /timed out/i)
+  assert.equal(logs[1].event, 'imageGeneration.health.failed')
+  assert.equal(logs[1].details.errorCode, 'health_check_timeout')
+})
+
 test('image generation model service maps legacy local settings into the unified provider view', () => {
   const service = createImageGenerationModelService({
     settingsService: createSettingsService({
@@ -446,6 +470,42 @@ test('image generation model service writes generated provider outputs under the
   assert.equal(JSON.stringify(logs).includes(dataDir), false)
 })
 
+test('image generation model service honors per-request timeout overrides', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ timeoutMs: 120000 })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [{ b64_json: Buffer.from('fake-image-bytes').toString('base64') }]
+      })
+    })
+  })
+
+  await service.generateImage({
+    prompt: 'small mint helper cat, transparent background',
+    timeoutMs: 300000,
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/2026-06-19-sprout-cat/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  })
+
+  assert.equal(logs[1].event, 'imageGeneration.provider.request.started')
+  assert.equal(logs[1].details.timeoutMs, 300000)
+})
+
 test('image generation model service uses a gpt-image-2 compatible generation payload', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []
@@ -494,6 +554,69 @@ test('image generation model service uses a gpt-image-2 compatible generation pa
   assert.equal(logs[0].details.requestedTransparent, true)
   assert.equal(logs[1].details.backgroundMode, 'omitted')
   assert.equal(logs[1].details.requestedTransparent, true)
+})
+
+test('image generation model service uses image edits when reference conditioning inputs are provided', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-edit-'))
+  const referencePath = path.join(dataDir, 'canonical-reference.png')
+  fs.writeFileSync(referencePath, Buffer.from('reference-image-bytes'))
+  const requests = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            { b64_json: Buffer.from('edited-image-bytes').toString('base64') }
+          ]
+        })
+      }
+    }
+  })
+
+  const result = await service.generateImage({
+    prompt: 'keep the same orange cat identity and create a waving action sheet',
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/reference-conditioned/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    },
+    referenceImages: [{
+      path: referencePath,
+      fileName: 'canonical-reference.png',
+      relativePath: 'runs/reference-conditioned/inputs/references/canonical-reference.png',
+      metadataRelativePath: 'runs/reference-conditioned/inputs/references/reference.json',
+      role: 'canonical-reference'
+    }]
+  })
+
+  const request = requests[0]
+  const form = request.options.body
+  const imageField = form.get('image')
+  assert.equal(request.url, 'http://127.0.0.1:8317/v1/images/edits')
+  assert.ok(form instanceof FormData)
+  assert.equal(form.get('model'), 'gpt-image-2')
+  assert.equal(form.get('prompt'), 'keep the same orange cat identity and create a waving action sheet')
+  assert.equal(form.get('size'), '1024x1024')
+  assert.equal(Object.prototype.toString.call(imageField), '[object File]')
+  assert.equal(imageField.name, 'canonical-reference.png')
+  assert.equal(result.conditioning.mode, 'image-edit')
+  assert.equal(result.conditioning.endpoint, '/images/edits')
+  assert.equal(result.conditioning.referenceImageCount, 1)
+  assert.equal(result.conditioning.references[0].fileName, 'canonical-reference.png')
+  assert.equal(result.conditioning.references[0].relativePath, 'runs/reference-conditioned/inputs/references/canonical-reference.png')
+  assert.equal(result.conditioning.references[0].metadataRelativePath, 'runs/reference-conditioned/inputs/references/reference.json')
+  assert.equal(result.conditioning.references[0].role, 'canonical-reference')
 })
 
 test('image generation model service enforces provider maxConcurrentJobs by queueing requests', async () => {

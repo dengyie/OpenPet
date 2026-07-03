@@ -3,16 +3,25 @@ const test = require('node:test')
 
 const {
   BUILTIN_CURSORS,
+  CUSTOM_CURSOR_MAX_SIZE_PERCENT,
   CUSTOM_CURSOR_MAX_BYTES,
+  CUSTOM_CURSOR_MIN_SIZE_PERCENT,
+  CUSTOM_CURSOR_SIZE_STEP_PERCENT,
+  createPersistedCursorRecord,
   LEGACY_CUSTOM_CURSOR_ID,
   SYSTEM_CURSOR_ID,
   listCursorOptions,
   normalizeCursorSettingsState,
+  removeStoredCursorRecord,
+  resizeCustomCursorRecord,
   resolveSelectedCursor
 } = require('../../src/shared/cursor-library')
 
 test('cursor library exposes the built-in picker catalog', () => {
   assert.equal(CUSTOM_CURSOR_MAX_BYTES, 500 * 1024)
+  assert.equal(CUSTOM_CURSOR_MIN_SIZE_PERCENT, 50)
+  assert.equal(CUSTOM_CURSOR_MAX_SIZE_PERCENT, 200)
+  assert.equal(CUSTOM_CURSOR_SIZE_STEP_PERCENT, 5)
   assert.equal(BUILTIN_CURSORS.length, 6)
   assert.deepEqual(
     BUILTIN_CURSORS.map((cursor) => cursor.name),
@@ -67,6 +76,28 @@ test('listCursorOptions returns system, built-ins, and custom cursors in order',
   assert.equal(options.length, 8)
 })
 
+test('listCursorOptions merges built-in cursor overrides without duplicating cards', () => {
+  const builtin = BUILTIN_CURSORS[0]
+  const options = listCursorOptions([{
+    ...createPersistedCursorRecord(builtin),
+    width: 72,
+    height: 72,
+    hotspotX: 3,
+    hotspotY: 3,
+    sizePercent: 150,
+    baseWidth: 48,
+    baseHeight: 48,
+    baseHotspotX: 2,
+    baseHotspotY: 2
+  }])
+
+  const matchingOptions = options.filter((option) => option.id === builtin.id)
+  assert.equal(matchingOptions.length, 1)
+  assert.equal(matchingOptions[0].type, 'builtin')
+  assert.equal(matchingOptions[0].width, 72)
+  assert.equal(matchingOptions[0].sizePercent, 150)
+})
+
 test('normalizeCursorSettingsState migrates a legacy hosted cursor into the new cursor library state', () => {
   const normalized = normalizeCursorSettingsState({
     selectedCursorId: '',
@@ -118,7 +149,32 @@ test('resolveSelectedCursor returns a disabled runtime cursor for system default
   assert.match(builtin.assetUrl, /^data:image\/svg\+xml/)
 })
 
-test('resolveSelectedCursor centers custom cursor hotspots for runtime overlay alignment', () => {
+test('resolveSelectedCursor prefers persisted overrides for built-in cursors', () => {
+  const builtin = BUILTIN_CURSORS[0]
+  const runtime = resolveSelectedCursor({
+    selectedCursorId: builtin.id,
+    customCursors: [{
+      ...createPersistedCursorRecord(builtin),
+      width: 72,
+      height: 72,
+      hotspotX: 3,
+      hotspotY: 3,
+      sizePercent: 150,
+      baseWidth: 48,
+      baseHeight: 48,
+      baseHotspotX: 2,
+      baseHotspotY: 2
+    }]
+  })
+
+  assert.equal(runtime.enabled, true)
+  assert.equal(runtime.width, 72)
+  assert.equal(runtime.height, 72)
+  assert.equal(runtime.hotspotX, 3)
+  assert.equal(runtime.hotspotY, 3)
+})
+
+test('resolveSelectedCursor preserves explicit custom cursor hotspots for runtime overlay alignment', () => {
   const runtime = resolveSelectedCursor({
     selectedCursorId: 'cursor-large',
     customCursors: [{
@@ -143,7 +199,112 @@ test('resolveSelectedCursor centers custom cursor hotspots for runtime overlay a
     fileName: 'large.png',
     width: 64,
     height: 40,
+    hotspotX: 9,
+    hotspotY: 11
+  })
+})
+
+test('resizeCustomCursorRecord scales a custom cursor from its stored 100 percent baseline', () => {
+  const resized = resizeCustomCursorRecord({
+    id: 'cursor-demo',
+    type: 'custom',
+    name: 'Demo Cursor',
+    assetPath: '/tmp/demo.png',
+    assetUrl: 'file:///tmp/demo.png',
+    fileName: 'demo.png',
+    width: 32,
+    height: 32,
+    byteSize: 2048,
+    hotspotX: 16,
+    hotspotY: 16,
+    createdAt: '2026-06-20T00:00:00.000Z'
+  }, 150)
+
+  assert.equal(resized.sizePercent, 150)
+  assert.equal(resized.width, 48)
+  assert.equal(resized.height, 48)
+  assert.equal(resized.baseWidth, 32)
+  assert.equal(resized.baseHeight, 32)
+  assert.equal(resized.baseHotspotX, 16)
+  assert.equal(resized.baseHotspotY, 16)
+  assert.equal(resized.hotspotX, 24)
+  assert.equal(resized.hotspotY, 24)
+})
+
+test('resolveSelectedCursor recenters invalid custom cursor hotspots when metadata is out of bounds', () => {
+  const runtime = resolveSelectedCursor({
+    selectedCursorId: 'cursor-invalid-hotspot',
+    customCursors: [{
+      id: 'cursor-invalid-hotspot',
+      name: 'Invalid Hotspot Cursor',
+      assetPath: '/tmp/invalid.png',
+      assetUrl: 'file:///tmp/invalid.png',
+      fileName: 'invalid.png',
+      width: 64,
+      height: 40,
+      byteSize: 1200,
+      hotspotX: 640,
+      hotspotY: 400,
+      createdAt: '2026-06-20T00:00:00.000Z'
+    }]
+  })
+
+  assert.deepEqual(runtime, {
+    enabled: true,
+    assetPath: '/tmp/invalid.png',
+    assetUrl: 'file:///tmp/invalid.png',
+    fileName: 'invalid.png',
+    width: 64,
+    height: 40,
     hotspotX: 32,
     hotspotY: 20
   })
+})
+
+test('removeStoredCursorRecord falls back to system when deleting the selected custom-only cursor', () => {
+  const result = removeStoredCursorRecord({
+    selectedCursorId: 'cursor-large',
+    cursorId: 'cursor-large',
+    customCursors: [{
+      id: 'cursor-large',
+      name: 'Large Cursor',
+      assetPath: '/tmp/large.png',
+      assetUrl: 'file:///tmp/large.png',
+      fileName: 'large.png',
+      width: 64,
+      height: 40,
+      byteSize: 1200,
+      hotspotX: 9,
+      hotspotY: 11,
+      createdAt: '2026-06-20T00:00:00.000Z'
+    }]
+  })
+
+  assert.equal(result.selectedCursorId, SYSTEM_CURSOR_ID)
+  assert.deepEqual(result.customCursors, [])
+  assert.equal(result.removedBuiltinOverride, false)
+})
+
+test('removeStoredCursorRecord resets built-in overrides without clearing the current built-in selection', () => {
+  const builtin = BUILTIN_CURSORS[0]
+  const result = removeStoredCursorRecord({
+    selectedCursorId: builtin.id,
+    cursorId: builtin.id,
+    customCursors: [{
+      ...createPersistedCursorRecord(builtin),
+      width: 72,
+      height: 72,
+      hotspotX: 3,
+      hotspotY: 3,
+      sizePercent: 150,
+      baseWidth: 48,
+      baseHeight: 48,
+      baseHotspotX: 2,
+      baseHotspotY: 2
+    }]
+  })
+
+  assert.equal(result.selectedCursorId, builtin.id)
+  assert.deepEqual(result.customCursors, [])
+  assert.equal(result.removedBuiltinOverride, true)
 })

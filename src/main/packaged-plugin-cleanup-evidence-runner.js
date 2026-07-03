@@ -97,7 +97,7 @@ const runCommandEvidence = async ({ pluginService, pluginId, transcriptPath }) =
 
 const runServiceEvidence = async ({ pluginService, pluginId, transcriptPath }) => {
   pluginService.setEnabled(pluginId, true)
-  pluginService.startService(pluginId, 'companion')
+  await pluginService.startService(pluginId, 'companion')
   await waitForLog({ pluginService, pluginId, pattern: /Service started/i })
   pluginService.stopService(pluginId, 'companion')
   await waitForLog({ pluginService, pluginId, pattern: /Service stopped|Service exited|force stop/i, timeoutMs: 4000 })

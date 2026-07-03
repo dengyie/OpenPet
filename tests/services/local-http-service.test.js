@@ -472,6 +472,37 @@ test('local http service trims preloaded access logs by configured limit', () =>
   assert.deepEqual(service.getLogs().map((log) => log.id), ['two'])
 })
 
+test('local http service paginates filtered access logs for control center', () => {
+  const settingsService = createSettingsService({
+    localHttp: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      token: TEST_TOKEN,
+      logs: [
+        { id: '1', timestamp: '2026-01-01T00:00:01.000Z', method: 'GET', path: '/api/a', statusCode: 200, authorized: true },
+        { id: '2', timestamp: '2026-01-01T00:00:02.000Z', method: 'POST', path: '/api/b', statusCode: 404, authorized: true, error: 'missing' },
+        { id: '3', timestamp: '2026-01-01T00:00:03.000Z', method: 'GET', path: '/api/c', statusCode: 404, authorized: false, error: 'missing resource' }
+      ]
+    }
+  })
+  const service = createLocalHttpService({
+    settingsService,
+    petService: {
+      getSnapshot: () => ({}),
+      say: (payload) => payload
+    }
+  })
+
+  const page = service.getLogPage({ status: '404', query: 'missing', page: 2, pageSize: 1 })
+
+  assert.equal(page.page, 2)
+  assert.equal(page.pageSize, 1)
+  assert.equal(page.total, 2)
+  assert.equal(page.totalPages, 2)
+  assert.deepEqual(page.entries.map((entry) => entry.id), ['3'])
+})
+
 test('local http service exposes mcp tools behind token and session', async () => {
   const sayEvents = []
   const service = createLocalHttpService({

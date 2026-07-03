@@ -13,7 +13,7 @@ test('active TODO doc describes the current AI pane layout truthfully', () => {
 
   assert.match(
     todoArchitecture,
-    /`聊天 Provider`\s*\/\s*`图片 Provider` open by default while secondary memory\/persona\/behavior\/chat sections stay collapsed until expanded/i,
+    /one `模型 Provider` section opens by default with `聊天模型` \/ `图片模型` capability cards while secondary memory\/persona\/behavior\/chat sections stay collapsed until expanded/i,
     'openpet-current-todo-architecture.md should describe the current AI pane default-open and collapsed-section layout'
   )
 

@@ -1044,6 +1044,10 @@
       const renderRecoveryPanel = (run) => {
         const recovery = run?.recovery || {}
         const backend = recovery.backend || run?.backendStatus || {}
+        const conditioning = recovery.conditioning || {}
+        const referenceInputs = Array.isArray(conditioning.referenceInputs) && conditioning.referenceInputs.length
+          ? conditioning.referenceInputs.join(', ')
+          : 'none'
         if (run?.status === 'failed') {
           return [
             '<div class="notice error">',
@@ -1055,6 +1059,11 @@
             `<span>Reason: ${escapeHtml(recovery.failureReason || backend.message || run.error || 'Unknown failure')}</span>`,
             `<span>Guidance: ${escapeHtml(recovery.guidance || 'Review the failure details, then retry generation on this same run.')}</span>`,
             `<span>QA focus: ${escapeHtml(recovery.qaFocus || 'No QA artifacts were produced before the generation failure.')}</span>`,
+            `<span>Attempted outputs: ${escapeHtml(recovery.outputCount || 0)}</span>`,
+            `<span>Conditioning: ${escapeHtml(conditioning.mode || 'not recorded')} via ${escapeHtml(conditioning.endpoint || '/images/generations')} · references=${escapeHtml(conditioning.referenceImageCount || 0)}</span>`,
+            `<span>Reference inputs: ${escapeHtml(referenceInputs)}</span>`,
+            recovery.generatedAt ? `<span>Generated at: ${escapeHtml(recovery.generatedAt)}</span>` : '',
+            recovery.attemptFailedAt ? `<span>Failed at: ${escapeHtml(recovery.attemptFailedAt)}</span>` : '',
             recovery.canRetryGeneration
               ? '<span>Retry generation will reuse this same run and preserve the confirmed task.</span>'
               : '<span>Retry is locked until the task is confirmed again.</span>',
@@ -1095,9 +1104,13 @@
         const builder = developerPrompt.promptBuilder || {}
         const preview = developerPrompt.promptPreview || builder.promptPreview || {}
         const snapshot = developerPrompt.modelSnapshot || {}
+        const conditioning = developerPrompt.conditioning || {}
         const sections = Array.isArray(builder.sections) ? builder.sections.join(', ') : ''
         const warnings = Array.isArray(builder.warnings) && builder.warnings.length
           ? builder.warnings.join(', ')
+          : 'none'
+        const conditioningReferences = Array.isArray(conditioning.references) && conditioning.references.length
+          ? conditioning.references.map((reference) => reference.fileName || reference.relativePath || 'reference-image').join(', ')
           : 'none'
         return [
           '<div class="notice">',
@@ -1106,6 +1119,8 @@
           `<span>Source: ${escapeHtml(developerPrompt.source || 'host-model-bridge')}</span>`,
           `<span>Builder: v${escapeHtml(builder.version || 0)} / ${escapeHtml(builder.mode || 'unknown')} / ${escapeHtml(builder.actionId || 'n/a')}</span>`,
           `<span>Model: ${escapeHtml(snapshot.model || 'unknown')} via ${escapeHtml(snapshot.provider || 'unknown')} (${escapeHtml(snapshot.backend || 'unknown')})</span>`,
+          `<span>Conditioning: ${escapeHtml(conditioning.mode || 'text-to-image')} via ${escapeHtml(conditioning.endpoint || '/images/generations')} · references=${escapeHtml(conditioning.referenceImageCount || 0)}</span>`,
+          `<span>Reference inputs: ${escapeHtml(conditioningReferences)}</span>`,
           `<span>Sections: ${escapeHtml(sections || 'none')}</span>`,
           `<span>Warnings: ${escapeHtml(warnings)}</span>`,
           preview.truncated ? `<span>Prompt preview is capped at ${escapeHtml(preview.maxLength || 0)} characters.</span>` : '',

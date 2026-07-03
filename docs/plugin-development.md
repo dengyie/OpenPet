@@ -180,7 +180,7 @@ Services are long-running local process entries managed by OpenPet.
 }
 ```
 
-OpenPet can explicitly run command and setup entries from Control Center, capture stdout/stderr snippets, show setup runtime state, explicitly start and stop services, show service runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and optionally schedule host-managed periodic checks for running services from Control Center. It can attempt best-effort process-group cleanup when stopping services, wait for confirmed child exit before reporting a clean stop, escalate once to a host-side force stop if a service ignores the grace-period shutdown request, and try a host-owned process-tree cleanup path before falling back to direct child kill. Services remain the strongest cleanup shape because they alone combine process-group signalling, process-tree fallback, and bounded force-stop escalation. Declaration-only command runs also receive a short-lived bridge URL/token so they can call `pet.say`, `pet.action`, `pet.event`, and fetch a bounded read-only context during the active run. Command and setup cleanup keep stop intent visible until child exit confirmation and now also try the same host-owned tree cleanup before direct child kill fallback, but they still do not add service-style process groups or force-stop escalation. Command, setup, and service processes do not run during install or enable; services never auto-start; periodic health checks only run for already running services when the user enables the host policy; and the host spawns command, setup, and service processes without shell expansion. OpenPet still does not claim universal process-tree cleanup guarantees across every host/runtime combination. The service model should not require a specific language, a self-contained package, or a full process sandbox.
+OpenPet can explicitly run command and setup entries from Control Center, capture stdout/stderr snippets, show setup runtime state, explicitly start and stop services, show service runtime state, stop services on plugin disable, send stop signals on app quit, manually check declared loopback health endpoints, and optionally schedule host-managed periodic checks for running services from Control Center. It can attempt best-effort process-group cleanup when stopping services, wait for confirmed child exit before reporting a clean stop, escalate once to a host-side force stop if a service ignores the grace-period shutdown request, and try a host-owned process-tree cleanup path before falling back to direct child kill. Services remain the strongest cleanup shape because they combine process-group signalling, process-tree fallback, bounded force-stop escalation, and a service-scoped bridge for long-running pet/context integration. Declaration-only command runs also receive a short-lived command bridge URL/token so they can call `pet.say`, `pet.action`, `pet.event`, creator-tool routes, and fetch a bounded read-only context during the active run. Service runs receive a separate service bridge URL/token for `context` and pet routes only; service bridge tokens expire when the service leaves `running` or stop is requested. Command and setup cleanup keep stop intent visible until child exit confirmation and now also try the same host-owned tree cleanup before direct child kill fallback, but they still do not add service-style process groups or force-stop escalation. Command, setup, and service processes do not run during install or enable; services never auto-start; periodic health checks only run for already running services when the user enables the host policy; and the host spawns command, setup, and service processes without shell expansion. OpenPet still does not claim universal process-tree cleanup guarantees across every host/runtime combination. The service model should not require a specific language, a self-contained package, or a full process sandbox.
 
 ### Dashboards
 
@@ -200,7 +200,7 @@ First-version behavior should stay simple: OpenPet shows an "Open Dashboard" act
 
 OpenPet should use language-neutral context passing.
 
-Current command entries receive context on stdin and run with a minimal host environment. Declaration-only command runs now also receive a short-lived bridge URL/token pair plus host-owned `OPENPET_DATA_DIR`, `OPENPET_CACHE_DIR`, and `OPENPET_LOG_DIR` paths. OpenPet still does not inject generated config files or result-file paths into command processes.
+Current command entries receive context on stdin and run with a minimal host environment. Declaration-only command runs now also receive a short-lived command bridge URL/token pair plus host-owned `OPENPET_DATA_DIR`, `OPENPET_CACHE_DIR`, and `OPENPET_LOG_DIR` paths. Declaration-only service runs receive the same host-owned directory paths plus a separate service bridge URL/token pair. OpenPet still does not inject generated config files or result-file paths into command or service processes.
 
 Current standard environment variables:
 
@@ -208,9 +208,11 @@ Current standard environment variables:
 | --- | --- |
 | `OPENPET_BRIDGE_URL` | Short-lived local bridge endpoint for the active declaration-only command run. |
 | `OPENPET_BRIDGE_TOKEN` | Bearer token for the active declaration-only command bridge. |
-| `OPENPET_DATA_DIR` | Host-owned persistent data directory for the active declaration-only command run. |
-| `OPENPET_CACHE_DIR` | Host-owned cache directory for the active declaration-only command run. |
-| `OPENPET_LOG_DIR` | Host-owned log directory for the active declaration-only command run. |
+| `OPENPET_SERVICE_BRIDGE_URL` | Runtime-scoped local bridge endpoint for the active declaration-only service run. |
+| `OPENPET_SERVICE_BRIDGE_TOKEN` | Bearer token for the active declaration-only service bridge. |
+| `OPENPET_DATA_DIR` | Host-owned persistent data directory for the active declaration-only command or service run. |
+| `OPENPET_CACHE_DIR` | Host-owned cache directory for the active declaration-only command or service run. |
+| `OPENPET_LOG_DIR` | Host-owned log directory for the active declaration-only command or service run. |
 
 Reserved future variables only:
 
@@ -262,7 +264,7 @@ Current bridge routes:
 - `POST /creator/model-health-check`
 - `POST /creator/model-image-generate`
 
-The bridge is loopback-only, token-gated, and valid only while the command run is active.
+The bridge is loopback-only for command runs, token-gated, and valid only while the command run is active. The service bridge uses a separate URL/token pair and is valid only while the service runtime is active; it expires immediately when stop is requested.
 
 OpenPet may interpret common result keys:
 
@@ -278,12 +280,14 @@ OpenPet may interpret common result keys:
 
 ## Optional Bridge
 
-For deeper pet integration, OpenPet now provides a minimal optional local bridge for explicit declaration-only command runs. The bridge is not a heavy SDK and should not become a full permission broker in the first version.
+For deeper pet integration, OpenPet now provides minimal optional local bridges for explicit declaration-only command and service runs. These bridges are not a heavy SDK and should not become a full permission broker in the first version.
 
 Injected values:
 
 - `OPENPET_BRIDGE_URL`
 - `OPENPET_BRIDGE_TOKEN`
+- `OPENPET_SERVICE_BRIDGE_URL`
+- `OPENPET_SERVICE_BRIDGE_TOKEN`
 - `OPENPET_DATA_DIR`
 - `OPENPET_CACHE_DIR`
 - `OPENPET_LOG_DIR`
@@ -313,11 +317,14 @@ Current endpoint set:
 
 Bridge rules:
 
-- the bridge exists only during an explicit declaration-only command run;
-- the command must belong to an enabled, policy-allowed local extension;
-- requests must use `Authorization: Bearer <OPENPET_BRIDGE_TOKEN>`;
+- command bridge exists only during an explicit declaration-only command run;
+- service bridge exists only during an explicit declaration-only service run;
+- the command or service must belong to an enabled, policy-allowed local extension;
+- command requests must use `Authorization: Bearer <OPENPET_BRIDGE_TOKEN>`;
+- service requests must use `Authorization: Bearer <OPENPET_SERVICE_BRIDGE_TOKEN>`;
 - `pet:say`, `pet:action`, `pet:event`, `actions:read`, `actions:write`, `trigger-proposals:write`, `pack-manifest:read`, `pack-manifest:write`, `assets:inspect`, `assets:generate`, `pet-pack:import`, and `model:image-generate` permissions are enforced per route;
 - all pet mutations still flow through `PetService`;
+- service bridge exposes only `/context`, `/pet/say`, `/pet/action`, and `/pet/event`; services do not receive creator-tool bridge routes;
 - creator-tools action reads and writes flow through the host action service boundary, while pack manifest metadata reads and writes flow through the host pet-pack service boundary;
 - `pack-manifest:read` / `pack-manifest:write` only expose the current active installed user pack metadata workflow and do not permit arbitrary pet-pack writes, arbitrary pack targeting, or raw filesystem access;
 - creator-tools frame inspection is read-only, package-local, and confined to the extension directory;
@@ -325,7 +332,14 @@ Bridge rules:
 - creator-tools picker frame inspection/import is host-mediated and user-approved: the command can request a native folder picker, but selected absolute paths stay in the main process and are not returned to the bridge caller;
 - creator-tools full pet-pack import is host-mediated through `PetPackService`: the extension supplies a package-local or `OPENPET_DATA_DIR` relative approved output path, then OpenPet inspects, imports, applies policy checks, and optionally activates the pack;
 - creator-tools model settings, model health checks, and model image generation stay host-managed through the short-lived bridge; OpenPet-owned secrets remain in the main process, and plugin-managed provider credentials are not part of the current supported trust model;
-- setup entries, services, install, enable, and background health paths do not receive bridge access.
+- setup entries, install, enable, and background health paths do not receive bridge access.
+
+Current service bridge endpoint set:
+
+- `GET /context`
+- `POST /pet/say`
+- `POST /pet/action`
+- `POST /pet/event`
 
 Example bridge requests:
 

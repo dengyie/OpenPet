@@ -1,5 +1,6 @@
 import type {
   JsonValue,
+  PaginatedLogsViewState,
   PermissionDiffState,
   PluginLogEntry,
   PluginLogFilters,
@@ -24,6 +25,7 @@ interface PluginConfigField {
 export interface PluginsPaneProps {
   plugins: PluginViewState[]
   logs: PluginLogEntry[]
+  logsPage: PaginatedLogsViewState<PluginLogEntry>
   filters: PluginLogFilters
   status: string
   runningCommand: string
@@ -74,6 +76,8 @@ export interface PluginsPaneProps {
   onCheckServiceHealth: (pluginId: string, serviceId: string) => void | Promise<void>
   onSaveServiceHealthPolicy: (pluginId: string, serviceId: string, enabled: boolean, intervalMs: number) => void | Promise<void>
   onChangeFilters: (filters: PluginLogFilters) => void
+  onPrevLogsPage?: () => void | Promise<void>
+  onNextLogsPage?: () => void | Promise<void>
   onExportLogs: (format: ExportFormat) => void | Promise<void>
   onClearLogs: () => void | Promise<void>
   onClearStorage: (pluginId: string) => void | Promise<void>
@@ -162,7 +166,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onSetNativeExecutionApproved, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, logsPage, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onSetNativeExecutionApproved, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onPrevLogsPage, onNextLogsPage, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   return (
     <section className="pane">
       <header className="pane-header">
@@ -555,7 +559,7 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, cr
         <div className="plugin-log-header">
           <div>
             <h2>运行日志</h2>
-            <span>最近 {logs.length} 条事件</span>
+            <span>第 {logsPage.page} / {logsPage.totalPages} 页 · 共 {logsPage.total} 条</span>
           </div>
           <div className="plugin-log-actions">
             <button type="button" className="ghost" onClick={() => onExportLogs('json')} disabled={logs.length === 0}>JSON</button>
@@ -594,6 +598,11 @@ export function PluginsPane({ plugins, logs, filters, status, runningCommand, cr
               <p>{log.message}</p>
             </div>
           ))}
+        </div>
+        <div className="log-pagination">
+          <button type="button" className="ghost" onClick={onPrevLogsPage} disabled={!onPrevLogsPage}>上一页</button>
+          <span>当前 {logs.length} 条 / 每页 {logsPage.pageSize} 条</span>
+          <button type="button" className="ghost" onClick={onNextLogsPage} disabled={!onNextLogsPage}>下一页</button>
         </div>
       </div>
     </section>

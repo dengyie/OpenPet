@@ -45,6 +45,49 @@ const writeSolidPng = async (targetPath, { width, height, background }) => {
   }).png().toFile(targetPath)
 }
 
+const writeTransparentActionSheetPng = async (targetPath, {
+  columns = 4,
+  rows = 3,
+  cellWidth = 96,
+  cellHeight = 112
+} = {}) => {
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+  const width = columns * cellWidth
+  const height = rows * cellHeight
+  const poses = []
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const left = column * cellWidth
+      const top = row * cellHeight
+      const sway = ((row * columns) + column) % 3 - 1
+      const cx = left + (cellWidth / 2) + sway
+      poses.push(`
+        <ellipse cx="${cx}" cy="${top + (cellHeight * 0.58)}" rx="${cellWidth * 0.24}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
+        <circle cx="${cx}" cy="${top + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
+        <circle cx="${cx - (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" r="${cellWidth * 0.022}" fill="#273f43"/>
+        <circle cx="${cx + (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" r="${cellWidth * 0.022}" fill="#273f43"/>
+      `)
+    }
+  }
+  const svg = Buffer.from(`
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="none"/>
+      ${poses.join('\n')}
+    </svg>
+  `)
+  await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite([{ input: svg, left: 0, top: 0 }])
+    .png()
+    .toFile(targetPath)
+}
+
 const seedImportedActionRun = async (dataDir) => {
   const run = createRun({
     dataDir,
@@ -2089,17 +2132,7 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
       if (request.url.endsWith('/creator/model-image-generate')) {
         const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        sharp({
-          create: {
-            width: 96,
-            height: 112,
-            channels: 4,
-            background: { r: 255, g: 170, b: 90, alpha: 1 }
-          }
-        })
-          .png()
-          .toFile(generatedPath)
+        writeTransparentActionSheetPng(generatedPath)
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -2232,17 +2265,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
         }
         const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        sharp({
-          create: {
-            width: 96,
-            height: 112,
-            channels: 4,
-            background: { r: 255, g: 170, b: 90, alpha: 1 }
-          }
-        })
-          .png()
-          .toFile(generatedPath)
+        writeTransparentActionSheetPng(generatedPath)
           .then(() => {
             response.end(JSON.stringify({
               ok: true,

@@ -52,31 +52,48 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
-const createFixtureSourcePng = async ({ outputPath }) => {
-  const catSvg = Buffer.from(`
-    <svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-      <rect width="256" height="256" fill="transparent"/>
-      <path d="M78 66 L104 32 L124 78 Z" fill="#f0b26d"/>
-      <path d="M178 66 L152 32 L132 78 Z" fill="#f0b26d"/>
-      <ellipse cx="128" cy="142" rx="74" ry="70" fill="#f4c27c"/>
-      <ellipse cx="100" cy="136" rx="10" ry="12" fill="#17202a"/>
-      <ellipse cx="156" cy="136" rx="10" ry="12" fill="#17202a"/>
-      <ellipse cx="128" cy="164" rx="16" ry="10" fill="#f7e7c6"/>
-      <path d="M118 162 Q128 172 138 162" stroke="#9f4726" stroke-width="4" fill="none" stroke-linecap="round"/>
-      <path d="M82 172 Q60 178 48 194" stroke="#9f4726" stroke-width="6" fill="none" stroke-linecap="round"/>
-      <path d="M174 172 Q196 178 208 194" stroke="#9f4726" stroke-width="6" fill="none" stroke-linecap="round"/>
-    </svg>
-  `)
+const createFixtureSourcePng = async ({ outputPath, frameCount = 12 }) => {
+  const columns = Math.max(1, Math.min(4, Number(frameCount) || 1))
+  const rows = Math.max(1, Math.ceil((Number(frameCount) || 1) / columns))
+  const cellWidth = 256
+  const cellHeight = 256
+  const composites = Array.from({ length: frameCount }, (_entry, index) => {
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    const headOffsetX = ((index % 4) - 1.5) * 7
+    const bodyOffsetY = (index % 2) * -10
+    const pawArc = 12 + ((index % 3) * 8)
+    const tailLift = 182 - ((index % 4) * 6)
+    return {
+      input: Buffer.from(`
+        <svg width="${cellWidth}" height="${cellHeight}" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+          <rect width="256" height="256" fill="transparent"/>
+          <path d="M78 66 L104 32 L124 78 Z" fill="#f0b26d"/>
+          <path d="M178 66 L152 32 L132 78 Z" fill="#f0b26d"/>
+          <ellipse cx="${128 + headOffsetX}" cy="${142 + bodyOffsetY}" rx="74" ry="70" fill="#f4c27c"/>
+          <ellipse cx="${100 + headOffsetX}" cy="${136 + bodyOffsetY}" rx="10" ry="12" fill="#17202a"/>
+          <ellipse cx="${156 + headOffsetX}" cy="${136 + bodyOffsetY}" rx="10" ry="12" fill="#17202a"/>
+          <ellipse cx="${128 + headOffsetX}" cy="${164 + bodyOffsetY}" rx="16" ry="10" fill="#f7e7c6"/>
+          <path d="M118 162 Q128 ${172 + (index % 3) * 2} 138 162" stroke="#9f4726" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M82 172 Q${70 - pawArc} ${178 + bodyOffsetY} 48 194" stroke="#9f4726" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M174 172 Q${186 + pawArc} ${178 + bodyOffsetY} 208 194" stroke="#9f4726" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M184 178 Q214 ${tailLift} 220 204" stroke="#9f4726" stroke-width="6" fill="none" stroke-linecap="round"/>
+        </svg>
+      `),
+      left: column * cellWidth,
+      top: row * cellHeight
+    }
+  })
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
   await sharp({
     create: {
-      width: 256,
-      height: 256,
+      width: columns * cellWidth,
+      height: rows * cellHeight,
       channels: 4,
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     }
   })
-    .composite([{ input: catSvg }])
+    .composite(composites)
     .png()
     .toFile(outputPath)
 }
@@ -92,7 +109,7 @@ const generateFixtureActionOutput = async ({ dataDir, runId, now = () => new Dat
   const sourceRelativePath = path.relative(path.resolve(dataDir), sourcePath).split(path.sep).join('/')
   const creatorStudio = createCreatorStudioMetadata(run)
 
-  await createFixtureSourcePng({ outputPath: sourcePath })
+  await createFixtureSourcePng({ outputPath: sourcePath, frameCount: action.frameCount })
   const generationResult = {
     ok: true,
     backend: 'fixture',

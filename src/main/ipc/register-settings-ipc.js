@@ -1,4 +1,70 @@
 const { IPC } = require('../../shared/ipc-channels')
+const {
+  createPersistedCursorRecord,
+  getBuiltinCursorById,
+  normalizeCursorSettingsState,
+  normalizeCustomCursorCollection,
+  normalizeCustomCursorRecord,
+  resizeCustomCursorRecord
+} = require('../../shared/cursor-library')
+
+const hasIncompleteCustomCursorMetrics = (cursor) => {
+  const normalized = normalizeCustomCursorRecord(cursor)
+  if (!normalized?.assetPath || !normalized?.assetUrl) return false
+  return normalized.width <= 0
+    || normalized.height <= 0
+    || normalized.baseWidth <= 0
+    || normalized.baseHeight <= 0
+}
+
+const repairCustomCursorRecord = async (cursorAssetService, cursor) => {
+  const normalized = normalizeCustomCursorRecord(cursor)
+  if (!normalized) return null
+  if (!hasIncompleteCustomCursorMetrics(normalized)) return normalized
+  const builtinCursor = createPersistedCursorRecord(getBuiltinCursorById(normalized.id))
+  if (builtinCursor) {
+    const repairedBaseRecord = normalizeCustomCursorRecord({
+      ...normalized,
+      assetPath: builtinCursor.assetPath,
+      assetUrl: builtinCursor.assetUrl,
+      fileName: builtinCursor.fileName,
+      width: builtinCursor.width,
+      height: builtinCursor.height,
+      hotspotX: builtinCursor.hotspotX,
+      hotspotY: builtinCursor.hotspotY,
+      baseWidth: builtinCursor.width,
+      baseHeight: builtinCursor.height,
+      baseHotspotX: builtinCursor.hotspotX,
+      baseHotspotY: builtinCursor.hotspotY,
+      sizePercent: 100
+    })
+    if (!repairedBaseRecord) return normalized
+    return resizeCustomCursorRecord(repairedBaseRecord, normalized.sizePercent) || repairedBaseRecord
+  }
+  const repairedRuntimeCursor = await cursorAssetService.repairCursor(normalized)
+  const repairedBaseRecord = normalizeCustomCursorRecord({
+    ...normalized,
+    assetPath: repairedRuntimeCursor.assetPath,
+    assetUrl: repairedRuntimeCursor.assetUrl,
+    fileName: repairedRuntimeCursor.fileName,
+    width: repairedRuntimeCursor.width,
+    height: repairedRuntimeCursor.height,
+    hotspotX: repairedRuntimeCursor.hotspotX,
+    hotspotY: repairedRuntimeCursor.hotspotY,
+    baseWidth: repairedRuntimeCursor.width,
+    baseHeight: repairedRuntimeCursor.height,
+    baseHotspotX: repairedRuntimeCursor.hotspotX,
+    baseHotspotY: repairedRuntimeCursor.hotspotY,
+    sizePercent: 100
+  })
+  if (!repairedBaseRecord) return normalized
+  return resizeCustomCursorRecord(repairedBaseRecord, normalized.sizePercent) || repairedBaseRecord
+}
+
+const hasCustomCursorRecordChanged = (before, after) => (
+  ['assetPath', 'assetUrl', 'fileName', 'width', 'height', 'hotspotX', 'hotspotY', 'baseWidth', 'baseHeight', 'baseHotspotX', 'baseHotspotY', 'sizePercent']
+    .some((key) => before?.[key] !== after?.[key])
+)
 
 const registerSettingsIpc = ({
   ipcMainService,
@@ -14,7 +80,71 @@ const registerSettingsIpc = ({
   mergePetSettingsViewIntoHostSettings,
   recordAppLog
 }) => {
-  ipcMainService.handle(IPC.SETTINGS_GET, () => createPetRendererSettings(petService.getSettings()))
+  const maybeRepairStoredCustomCursorRecords = async () => {
+    if (!cursorAssetService?.repairCursor) return petService.getSettings()
+    const currentSettings = petService.getSettings()
+    const currentCustomCursors = normalizeCustomCursorCollection(currentSettings.customCursors)
+    const repairableCursors = currentCustomCursors.filter(hasIncompleteCustomCursorMetrics)
+    if (repairableCursors.length === 0) return currentSettings
+
+    const repairFailures = []
+    const repairedCustomCursors = await Promise.all(currentCustomCursors.map(async (cursor) => {
+      if (!hasIncompleteCustomCursorMetrics(cursor)) return cursor
+      try {
+        return await repairCustomCursorRecord(cursorAssetService, cursor)
+      } catch (error) {
+        repairFailures.push({
+          cursorId: cursor.id,
+          fileName: cursor.fileName,
+          message: error?.message || String(error)
+        })
+        return cursor
+      }
+    }))
+    const changedCursorIds = repairedCustomCursors
+      .filter((cursor, index) => hasCustomCursorRecordChanged(currentCustomCursors[index], cursor))
+      .map((cursor) => cursor.id)
+    if (repairFailures.length > 0) {
+      recordAppLog({
+        scope: 'settings',
+        level: 'warn',
+        actor: 'system',
+        event: 'settings.cursor.collection.repair.skipped',
+        message: 'Some stored custom cursor records could not be repaired',
+        details: {
+          failures: repairFailures
+        }
+      })
+    }
+    if (changedCursorIds.length === 0) return currentSettings
+
+    const cursorState = normalizeCursorSettingsState({
+      selectedCursorId: currentSettings.selectedCursorId,
+      customCursors: repairedCustomCursors,
+      customCursor: currentSettings.customCursor
+    })
+    const repairedSettings = petService.saveSettings({
+      ...currentSettings,
+      selectedCursorId: cursorState.selectedCursorId,
+      customCursors: cursorState.customCursors,
+      customCursor: cursorState.customCursor
+    })
+    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(repairedSettings))
+    recordAppLog({
+      scope: 'settings',
+      level: 'info',
+      actor: 'system',
+      event: 'settings.cursor.collection.repaired',
+      message: 'Stored custom cursor metadata repaired before rendering settings',
+      details: {
+        count: changedCursorIds.length,
+        cursorIds: changedCursorIds
+      }
+    })
+    return repairedSettings
+  }
+
+  ipcMainService.handle(IPC.SETTINGS_GET, async () => createPetRendererSettings(await maybeRepairStoredCustomCursorRecords()))
 
   ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
     if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')

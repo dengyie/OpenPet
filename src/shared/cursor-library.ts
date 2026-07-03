@@ -3,6 +3,9 @@ import type { ControlCenterSettings, CustomCursorRecord, CustomCursorSettings, C
 export const CUSTOM_CURSOR_MAX_BYTES = 500 * 1024
 export const SYSTEM_CURSOR_ID = 'system'
 export const LEGACY_CUSTOM_CURSOR_ID = 'legacy-custom-cursor'
+export const CUSTOM_CURSOR_MIN_SIZE_PERCENT = 50
+export const CUSTOM_CURSOR_MAX_SIZE_PERCENT = 200
+export const CUSTOM_CURSOR_SIZE_STEP_PERCENT = 5
 
 const svgDataUrl = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`
 
@@ -146,6 +149,12 @@ const normalizeNumber = (value: unknown, fallback = 0) => {
   return Number.isFinite(number) ? number : fallback
 }
 
+const clampCursorSizePercent = (value: unknown) => {
+  const normalized = normalizeNumber(value, 100)
+  const stepped = Math.round(normalized / CUSTOM_CURSOR_SIZE_STEP_PERCENT) * CUSTOM_CURSOR_SIZE_STEP_PERCENT
+  return Math.min(CUSTOM_CURSOR_MAX_SIZE_PERCENT, Math.max(CUSTOM_CURSOR_MIN_SIZE_PERCENT, stepped))
+}
+
 const createCenteredHotspot = (width: unknown, height: unknown, fallbackX = 0, fallbackY = 0) => {
   const normalizedWidth = normalizeNumber(width, 0)
   const normalizedHeight = normalizeNumber(height, 0)
@@ -159,6 +168,25 @@ const createCenteredHotspot = (width: unknown, height: unknown, fallbackX = 0, f
     hotspotX: Math.max(0, Math.floor(normalizedWidth / 2)),
     hotspotY: Math.max(0, Math.floor(normalizedHeight / 2))
   }
+}
+
+const normalizeCursorHotspot = (width: number, height: number, hotspotX: unknown, hotspotY: unknown) => {
+  const normalizedHotspotX = normalizeNumber(hotspotX, NaN)
+  const normalizedHotspotY = normalizeNumber(hotspotY, NaN)
+  if (
+    Number.isFinite(normalizedHotspotX) &&
+    Number.isFinite(normalizedHotspotY) &&
+    normalizedHotspotX >= 0 &&
+    normalizedHotspotY >= 0 &&
+    normalizedHotspotX <= width &&
+    normalizedHotspotY <= height
+  ) {
+    return {
+      hotspotX: Math.round(normalizedHotspotX),
+      hotspotY: Math.round(normalizedHotspotY)
+    }
+  }
+  return createCenteredHotspot(width, height)
 }
 
 export const normalizeRuntimeCursor = (cursor: Partial<CustomCursorSettings> | null | undefined): CustomCursorSettings => {
@@ -189,7 +217,15 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     : stripFileExtension(fileName) || '未命名指针'
   const width = Math.max(0, normalizeNumber(cursor.width, 0))
   const height = Math.max(0, normalizeNumber(cursor.height, 0))
-  const hotspot = createCenteredHotspot(width, height, cursor.hotspotX, cursor.hotspotY)
+  const hotspot = normalizeCursorHotspot(width, height, cursor.hotspotX, cursor.hotspotY)
+  const baseWidth = Math.max(0, normalizeNumber(cursor.baseWidth, width))
+  const baseHeight = Math.max(0, normalizeNumber(cursor.baseHeight, height))
+  const baseHotspotX = Math.max(0, normalizeNumber(cursor.baseHotspotX, hotspot.hotspotX))
+  const baseHotspotY = Math.max(0, normalizeNumber(cursor.baseHotspotY, hotspot.hotspotY))
+  const derivedSizePercent = baseWidth > 0
+    ? Math.round((width / baseWidth) * 100)
+    : 100
+  const sizePercent = clampCursorSizePercent(cursor.sizePercent ?? derivedSizePercent)
   return {
     id,
     type: 'custom',
@@ -202,7 +238,12 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     byteSize: Math.max(0, normalizeNumber(cursor.byteSize, 0)),
     hotspotX: hotspot.hotspotX,
     hotspotY: hotspot.hotspotY,
-    createdAt: typeof cursor.createdAt === 'string' && cursor.createdAt ? cursor.createdAt : new Date(0).toISOString()
+    createdAt: typeof cursor.createdAt === 'string' && cursor.createdAt ? cursor.createdAt : new Date(0).toISOString(),
+    sizePercent,
+    baseWidth,
+    baseHeight,
+    baseHotspotX,
+    baseHotspotY
   }
 }
 
@@ -232,6 +273,17 @@ export const migrateLegacyCustomCursorRecord = (cursor: Partial<CustomCursorSett
 
 export const getBuiltinCursorById = (cursorId: string) => BUILTIN_CURSORS.find((cursor) => cursor.id === cursorId) || null
 
+export const createPersistedCursorRecord = (
+  cursor: Partial<CursorOption> | null | undefined
+): CustomCursorRecord | null => {
+  if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return null
+  return normalizeCustomCursorRecord({
+    ...cursor,
+    type: 'custom',
+    createdAt: typeof cursor.createdAt === 'string' && cursor.createdAt ? cursor.createdAt : 'builtin'
+  })
+}
+
 const toRuntimeCursor = (cursor: Pick<CursorOption, 'assetPath' | 'assetUrl' | 'fileName' | 'width' | 'height' | 'hotspotX' | 'hotspotY'>) => normalizeRuntimeCursor({
   enabled: true,
   assetPath: cursor.assetPath,
@@ -251,10 +303,10 @@ export const resolveSelectedCursor = ({
   customCursors?: Array<Partial<CustomCursorRecord> | null | undefined>
 }): CustomCursorSettings => {
   if (!selectedCursorId || selectedCursorId === SYSTEM_CURSOR_ID) return createDefaultRuntimeCursor()
-  const builtIn = getBuiltinCursorById(selectedCursorId)
-  if (builtIn) return toRuntimeCursor(builtIn)
   const customCursor = normalizeCustomCursorCollection(customCursors).find((cursor) => cursor.id === selectedCursorId)
-  return customCursor ? toRuntimeCursor(customCursor) : createDefaultRuntimeCursor()
+  if (customCursor) return toRuntimeCursor(customCursor)
+  const builtIn = getBuiltinCursorById(selectedCursorId)
+  return builtIn ? toRuntimeCursor(builtIn) : createDefaultRuntimeCursor()
 }
 
 export const normalizeCursorSettingsState = (
@@ -290,21 +342,80 @@ export const normalizeCursorSettingsState = (
   }
 }
 
-export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecord> | null | undefined> = []): CursorOption[] => ([
-  {
-    id: SYSTEM_CURSOR_ID,
-    type: 'system',
-    name: '系统默认',
-    assetPath: '',
-    assetUrl: SYSTEM_CURSOR_PREVIEW_URL,
-    fileName: 'system-default.svg',
-    width: 48,
-    height: 48,
-    byteSize: 0,
-    hotspotX: 0,
-    hotspotY: 0,
-    createdAt: 'builtin'
-  },
-  ...BUILTIN_CURSORS,
-  ...normalizeCustomCursorCollection(customCursors)
-])
+export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecord> | null | undefined> = []): CursorOption[] => {
+  const normalizedCustomCursors = normalizeCustomCursorCollection(customCursors)
+  const customCursorById = new Map(normalizedCustomCursors.map((cursor) => [cursor.id, cursor]))
+  const builtinIds = new Set(BUILTIN_CURSORS.map((cursor) => cursor.id))
+
+  return [
+    {
+      id: SYSTEM_CURSOR_ID,
+      type: 'system',
+      name: '系统默认',
+      assetPath: '',
+      assetUrl: SYSTEM_CURSOR_PREVIEW_URL,
+      fileName: 'system-default.svg',
+      width: 48,
+      height: 48,
+      byteSize: 0,
+      hotspotX: 0,
+      hotspotY: 0,
+      createdAt: 'builtin'
+    },
+    ...BUILTIN_CURSORS.map((cursor) => {
+      const overrideCursor = customCursorById.get(cursor.id)
+      return overrideCursor ? { ...cursor, ...overrideCursor, type: 'builtin' as const } : cursor
+    }),
+    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id))
+  ]
+}
+
+export const resizeCustomCursorRecord = (
+  cursor: Partial<CustomCursorRecord> | null | undefined,
+  sizePercent: number
+): CustomCursorRecord | null => {
+  const normalized = normalizeCustomCursorRecord(cursor)
+  if (!normalized) return null
+  const nextSizePercent = clampCursorSizePercent(sizePercent)
+  const scale = nextSizePercent / 100
+  const baseWidth = Math.max(0, normalizeNumber(normalized.baseWidth, normalized.width))
+  const baseHeight = Math.max(0, normalizeNumber(normalized.baseHeight, normalized.height))
+  const baseHotspotX = Math.max(0, normalizeNumber(normalized.baseHotspotX, normalized.hotspotX))
+  const baseHotspotY = Math.max(0, normalizeNumber(normalized.baseHotspotY, normalized.hotspotY))
+
+  return normalizeCustomCursorRecord({
+    ...normalized,
+    width: baseWidth > 0 ? Math.max(1, Math.round(baseWidth * scale)) : normalized.width,
+    height: baseHeight > 0 ? Math.max(1, Math.round(baseHeight * scale)) : normalized.height,
+    hotspotX: Math.round(baseHotspotX * scale),
+    hotspotY: Math.round(baseHotspotY * scale),
+    sizePercent: nextSizePercent,
+    baseWidth,
+    baseHeight,
+    baseHotspotX,
+    baseHotspotY
+  })
+}
+
+export const removeStoredCursorRecord = ({
+  selectedCursorId,
+  cursorId,
+  customCursors
+}: {
+  selectedCursorId?: string | null
+  cursorId: string
+  customCursors?: Array<Partial<CustomCursorRecord> | null | undefined>
+}) => {
+  const normalizedCursorId = typeof cursorId === 'string' ? cursorId.trim() : ''
+  const nextCustomCursors = normalizeCustomCursorCollection(customCursors).filter((cursor) => cursor.id !== normalizedCursorId)
+  const removedBuiltinOverride = Boolean(getBuiltinCursorById(normalizedCursorId))
+  const nextSelectedCursorId = selectedCursorId === normalizedCursorId && !removedBuiltinOverride
+    ? SYSTEM_CURSOR_ID
+    : (typeof selectedCursorId === 'string' && selectedCursorId.trim() ? selectedCursorId.trim() : SYSTEM_CURSOR_ID)
+
+  return {
+    selectedCursorId: nextSelectedCursorId,
+    customCursors: nextCustomCursors,
+    removedBuiltinOverride
+  }
+}

@@ -177,6 +177,11 @@ const createPublicModelSnapshot = ({ dataDir, modelSnapshot = {} }) => {
   return createPublicLogValue({ dataDir, value: modelSnapshot })
 }
 
+const createPublicConditioning = ({ dataDir, conditioning = {} }) => {
+  if (!conditioning || typeof conditioning !== 'object') return undefined
+  return createPublicLogValue({ dataDir, value: conditioning })
+}
+
 const createDeveloperPrompt = ({ dataDir, run }) => {
   const generatedImage = run.artifacts?.generatedImage || null
   const promptBuilder = generatedImage?.promptBuilder || null
@@ -191,6 +196,7 @@ const createDeveloperPrompt = ({ dataDir, run }) => {
     available: true,
     source: 'host-model-bridge',
     modelSnapshot: createPublicModelSnapshot({ dataDir, modelSnapshot: generatedImage.modelSnapshot || run.modelSnapshot }),
+    conditioning: createPublicConditioning({ dataDir, conditioning: generatedImage.conditioning || {} }),
     promptBuilder: createPublicPromptBuilder({ dataDir, promptBuilder }),
     promptPreview: createPublicPromptPreview({ dataDir, promptPreview: promptBuilder.promptPreview || {} })
   }
@@ -221,6 +227,14 @@ const classifyRecoveryFailure = (message = '') => {
 
 const createPublicRecovery = ({ dataDir, run }) => {
   const backendStatus = run.backendStatus || {}
+  const generatedImage = run.artifacts?.generatedImage || {}
+  const conditioning = generatedImage?.conditioning && typeof generatedImage.conditioning === 'object'
+    ? generatedImage.conditioning
+    : {}
+  const references = Array.isArray(conditioning.references)
+    ? conditioning.references.map((reference) => String(reference?.fileName || reference?.relativePath || '')).filter(Boolean)
+    : []
+  const outputCount = Array.isArray(generatedImage.outputs) ? generatedImage.outputs.length : 0
   const canRetryGeneration = run.status === 'failed' && run.taskStatus === 'confirmed' && run.currentStep === 'generate'
   const isFullPet = run.generationTask?.mode === 'full-pet'
   const failureReason = createPublicText({ dataDir, value: run.error || backendStatus.message || '' })
@@ -232,7 +246,16 @@ const createPublicRecovery = ({ dataDir, run }) => {
     failureReason,
     failureKind: createPublicText({ dataDir, value: classified.failureKind }),
     guidance: createPublicText({ dataDir, value: classified.guidance }),
-    qaFocus: createPublicText({ dataDir, value: classified.qaFocus })
+    qaFocus: createPublicText({ dataDir, value: classified.qaFocus }),
+    attemptFailedAt: createPublicText({ dataDir, value: generatedImage.failedAt || '' }),
+    generatedAt: createPublicText({ dataDir, value: generatedImage.generatedAt || '' }),
+    outputCount: Number(outputCount) || 0,
+    conditioning: {
+      mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
+      endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
+      referenceImageCount: Number(conditioning.referenceImageCount) || 0,
+      referenceInputs: createPublicTextList({ dataDir, values: references })
+    }
   }
 }
 

@@ -184,6 +184,11 @@ const isAbortError = (error) => (
   error?.code === 'ABORT_ERR'
 )
 
+const normalizeTimeoutMs = (value, fallback) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
+}
+
 const fetchWithTimeout = async ({
   fetchImpl,
   url,
@@ -192,21 +197,28 @@ const fetchWithTimeout = async ({
   timeoutMessage
 }) => {
   const controller = new AbortController()
-  const timeoutHandle = setTimeout(() => {
-    controller.abort(new Error(timeoutMessage))
-  }, timeoutMs)
+  const effectiveTimeoutMs = normalizeTimeoutMs(timeoutMs, PROVIDER_GENERATION_TIMEOUT_MS)
+  let timeoutHandle = null
   try {
-    return await fetchImpl(url, {
-      ...options,
-      signal: controller.signal
-    })
+    return await Promise.race([
+      fetchImpl(url, {
+        ...options,
+        signal: controller.signal
+      }),
+      new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          controller.abort(new Error(timeoutMessage))
+          reject(new Error(timeoutMessage))
+        }, effectiveTimeoutMs)
+      })
+    ])
   } catch (error) {
     if (isAbortError(error) || controller.signal.aborted) {
       throw new Error(timeoutMessage)
     }
     throw error
   } finally {
-    clearTimeout(timeoutHandle)
+    if (timeoutHandle) clearTimeout(timeoutHandle)
   }
 }
 
@@ -254,6 +266,51 @@ const extractDiscoveredModels = (body) => {
   return models
 }
 
+const getImageMimeType = (filePath) => {
+  const extension = path.extname(String(filePath || '')).toLowerCase()
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg'
+  if (extension === '.webp') return 'image/webp'
+  if (extension === '.gif') return 'image/gif'
+  return 'image/png'
+}
+
+const createSafeReferenceRelativePath = (value) => {
+  const normalized = String(value || '').trim().replace(/\\/g, '/')
+  if (!normalized || normalized.startsWith('/') || normalized.includes('../')) return ''
+  return normalized
+}
+
+const normalizeReferenceImages = (referenceImages = []) => {
+  if (!Array.isArray(referenceImages)) return []
+  return referenceImages
+    .map((entry, index) => {
+      if (!entry || typeof entry !== 'object') return null
+      const sourcePath = path.resolve(String(entry.path || '').trim())
+      if (!sourcePath || !fs.existsSync(sourcePath)) {
+        throw new Error(`Reference image ${index + 1} does not exist`)
+      }
+      const stat = fs.statSync(sourcePath)
+      if (!stat.isFile()) {
+        throw new Error(`Reference image ${index + 1} must be a file`)
+      }
+      const fileName = String(entry.fileName || path.basename(sourcePath) || `reference-${index + 1}.png`).trim() || `reference-${index + 1}.png`
+      const mimeType = String(entry.mimeType || getImageMimeType(sourcePath)).trim() || 'image/png'
+      const bytes = fs.readFileSync(sourcePath)
+      return {
+        path: sourcePath,
+        fileName,
+        mimeType,
+        byteLength: bytes.length,
+        sha256: String(entry.sha256 || sha256File(sourcePath)).trim() || sha256File(sourcePath),
+        relativePath: createSafeReferenceRelativePath(entry.relativePath),
+        metadataRelativePath: createSafeReferenceRelativePath(entry.metadataRelativePath),
+        role: String(entry.role || 'reference-image').trim() || 'reference-image',
+        bytes
+      }
+    })
+    .filter(Boolean)
+}
+
 const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
   const payload = {
     model,
@@ -267,10 +324,53 @@ const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
   return payload
 }
 
+const buildProviderEditFormData = ({ model, prompt, constraints, referenceImages = [] }) => {
+  const form = new FormData()
+  const imageField = referenceImages.length > 1 ? 'image[]' : 'image'
+  for (const referenceImage of referenceImages) {
+    form.append(
+      imageField,
+      new Blob([referenceImage.bytes], { type: referenceImage.mimeType }),
+      referenceImage.fileName
+    )
+  }
+  form.append('model', model)
+  form.append('prompt', prompt)
+  form.append('size', `${constraints.width}x${constraints.height}`)
+  if (model !== 'gpt-image-2') {
+    form.append('background', constraints.transparent ? 'transparent' : 'white')
+    form.append('response_format', 'b64_json')
+  }
+  return form
+}
+
 const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
   if (model === 'gpt-image-2') return 'omitted'
   return constraints.transparent ? 'transparent' : 'white'
 }
+
+const createConditioningSummary = ({
+  endpoint,
+  referenceImages = [],
+  constraints,
+  model
+}) => ({
+  mode: referenceImages.length > 0 ? 'image-edit' : 'text-to-image',
+  endpoint,
+  referenceImageCount: referenceImages.length,
+  requestedTransparent: Boolean(constraints?.transparent),
+  size: `${constraints?.width || 0}x${constraints?.height || 0}`,
+  references: referenceImages.map((referenceImage) => ({
+    fileName: referenceImage.fileName,
+    mimeType: referenceImage.mimeType,
+    sha256: referenceImage.sha256,
+    byteLength: referenceImage.byteLength,
+    relativePath: referenceImage.relativePath,
+    metadataRelativePath: referenceImage.metadataRelativePath,
+    role: referenceImage.role
+  })),
+  model: String(model || '')
+})
 
 const createImageGenerationModelService = ({
   settingsService,
@@ -432,11 +532,11 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const checkHealth = async () => {
+  const checkHealth = async (options = {}) => {
     const config = getStoredConfig()
     const requestId = idFactory()
     const startedMs = nowMs()
-    const baseUrl = assertProviderBaseUrl(config.baseUrl)
+    const timeoutMs = normalizeTimeoutMs(options?.timeoutMs, getProviderTimeoutMs(config))
     recordLog({
       level: 'info',
       event: 'imageGeneration.health.started',
@@ -445,7 +545,8 @@ const createImageGenerationModelService = ({
         requestId,
         provider: config.provider,
         model: config.model,
-        baseUrlHost: getUrlHost(baseUrl)
+        baseUrlHost: getUrlHost(config.baseUrl),
+        timeoutMs
       }
     })
 
@@ -458,9 +559,10 @@ const createImageGenerationModelService = ({
           requestId,
           provider: config.provider,
           model: config.model,
-          baseUrlHost: getUrlHost(baseUrl),
+          baseUrlHost: getUrlHost(config.baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: result.ok ? '' : result.code,
+          timeoutMs,
           ...extraDetails
         }
       })
@@ -468,14 +570,21 @@ const createImageGenerationModelService = ({
     }
 
     try {
+      const baseUrl = assertProviderBaseUrl(config.baseUrl)
       const apiKey = secretService.getSecretValue(config.apiKeyRef)
       if (!apiKey) {
         return completeHealth({ ok: false, provider: config.provider, code: 'missing_api_key', message: 'Image generation API key is missing' })
       }
-      const response = await fetchImpl(`${baseUrl}/models`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`
+      const response = await fetchWithTimeout({
+        fetchImpl,
+        url: `${baseUrl}/models`,
+        timeoutMs,
+        timeoutMessage: `Image Provider health check timed out after ${timeoutMs}ms`,
+        options: {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${apiKey}`
+          }
         }
       })
       const status = response?.status || 'error'
@@ -525,21 +634,23 @@ const createImageGenerationModelService = ({
         { status, modelsProbe: 'ok', discoveredModelCount: availableModels.length }
       )
     } catch (error) {
-      recordLog({
-        level: 'error',
-        event: 'imageGeneration.health.failed',
-        message: 'Image Provider health check failed',
-        details: {
-          requestId,
+      const errorMessage = String(error?.message || error).slice(0, 240)
+      const isTimeout = /health check timed out/i.test(errorMessage)
+      return completeHealth(
+        {
+          ok: false,
           provider: config.provider,
-          model: config.model,
-          baseUrlHost: getUrlHost(baseUrl),
-          durationMs: nowMs() - startedMs,
-          errorCode: 'health_check_error',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          code: isTimeout ? 'health_check_timeout' : 'health_check_error',
+          message: errorMessage,
+          modelsProbe: isTimeout ? 'timed_out' : 'failed',
+          availableModels: [],
+          currentModelDiscovered: false
+        },
+        {
+          modelsProbe: isTimeout ? 'timed_out' : 'failed',
+          errorMessage
         }
-      })
-      throw error
+      )
     }
   }
 
@@ -657,13 +768,21 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId }) => {
+  const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     if (!apiKey) throw new Error('Image generation API key is missing')
     const baseUrl = assertProviderBaseUrl(config.baseUrl)
     const providerStartMs = nowMs()
-    const timeoutMs = getProviderTimeoutMs(config)
+    const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(config))
     const backgroundMode = getProviderGenerationBackgroundMode({ model: config.model, constraints })
+    const normalizedReferenceImages = normalizeReferenceImages(referenceImages)
+    const endpoint = normalizedReferenceImages.length > 0 ? '/images/edits' : '/images/generations'
+    const conditioning = createConditioningSummary({
+      endpoint,
+      referenceImages: normalizedReferenceImages,
+      constraints,
+      model: config.model
+    })
     recordLog({
       level: 'info',
       event: 'imageGeneration.provider.request.started',
@@ -677,27 +796,43 @@ const createImageGenerationModelService = ({
         height: constraints.height,
         requestedTransparent: Boolean(constraints.transparent),
         backgroundMode,
+        endpoint,
+        requestMode: conditioning.mode,
+        referenceImageCount: normalizedReferenceImages.length,
         timeoutMs
       }
     })
     let response
     try {
-      response = await fetchWithTimeout({
-        fetchImpl,
-        url: `${baseUrl}/images/generations`,
-        timeoutMs,
-        timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
-        options: {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(buildProviderGenerationPayload({
+      const requestBody = normalizedReferenceImages.length > 0
+        ? buildProviderEditFormData({
+            model: config.model,
+            prompt,
+            constraints,
+            referenceImages: normalizedReferenceImages
+          })
+        : JSON.stringify(buildProviderGenerationPayload({
             model: config.model,
             prompt,
             constraints
           }))
+      const headers = normalizedReferenceImages.length > 0
+        ? {
+            Authorization: `Bearer ${apiKey}`
+          }
+        : {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          }
+      response = await fetchWithTimeout({
+        fetchImpl,
+        url: `${baseUrl}${endpoint}`,
+        timeoutMs,
+        timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
+        options: {
+          method: 'POST',
+          headers,
+          body: requestBody
         }
       })
     } catch (error) {
@@ -711,6 +846,9 @@ const createImageGenerationModelService = ({
           model: config.model,
           baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - providerStartMs,
+          endpoint,
+          requestMode: conditioning.mode,
+          referenceImageCount: normalizedReferenceImages.length,
           timeoutMs,
           errorCode: /timed out/i.test(String(error?.message || '')) ? 'provider_timeout' : 'provider_request_error',
           errorMessage: String(error?.message || error).slice(0, 240)
@@ -732,6 +870,9 @@ const createImageGenerationModelService = ({
           baseUrlHost: getUrlHost(baseUrl),
           status,
           durationMs: nowMs() - providerStartMs,
+          endpoint,
+          requestMode: conditioning.mode,
+          referenceImageCount: normalizedReferenceImages.length,
           errorCode: 'provider_http_error',
           errorMessage
         }
@@ -754,6 +895,9 @@ const createImageGenerationModelService = ({
             baseUrlHost: getUrlHost(baseUrl),
             status: response.status || 200,
             durationMs: nowMs() - providerStartMs,
+            endpoint,
+            requestMode: conditioning.mode,
+            referenceImageCount: normalizedReferenceImages.length,
             outputCount: 0,
             errorCode: 'provider_business_error',
             errorMessage: businessError
@@ -772,6 +916,9 @@ const createImageGenerationModelService = ({
           baseUrlHost: getUrlHost(baseUrl),
           status: response.status || 200,
           durationMs: nowMs() - providerStartMs,
+          endpoint,
+          requestMode: conditioning.mode,
+          referenceImageCount: normalizedReferenceImages.length,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
           errorMessage: 'Image Provider generation returned no outputs'
@@ -806,6 +953,9 @@ const createImageGenerationModelService = ({
           baseUrlHost: getUrlHost(baseUrl),
           status: response.status || 200,
           durationMs: nowMs() - providerStartMs,
+          endpoint,
+          requestMode: conditioning.mode,
+          referenceImageCount: normalizedReferenceImages.length,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
           errorMessage: String(error?.message || error).slice(0, 240)
@@ -825,6 +975,9 @@ const createImageGenerationModelService = ({
         baseUrlHost: getUrlHost(baseUrl),
         status: response.status || 200,
         durationMs: nowMs() - providerStartMs,
+        endpoint,
+        requestMode: conditioning.mode,
+        referenceImageCount: normalizedReferenceImages.length,
         outputCount: outputs.length
       }
     })
@@ -835,6 +988,7 @@ const createImageGenerationModelService = ({
       provider: config.provider,
       model: config.model,
       generatedAt: now().toISOString(),
+      conditioning,
       outputs,
       usage: {
         estimatedCostUsd: 0
@@ -842,7 +996,7 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateImage = async ({ prompt, output, constraints }) => {
+  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [] }) => {
     const config = getStoredConfig()
     const requestId = idFactory()
     const startedMs = nowMs()
@@ -861,14 +1015,24 @@ const createImageGenerationModelService = ({
         model: config.model,
         width: constraints?.width,
         height: constraints?.height,
-        requestedTransparent: Boolean(constraints?.transparent)
+        requestedTransparent: Boolean(constraints?.transparent),
+        referenceImageCount: Array.isArray(referenceImages) ? referenceImages.length : 0
       }
     })
 
     let releaseProviderJobSlot = null
     try {
       releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId })
-      const result = await generateProviderImage({ config, prompt, targetDir, relativeDir, constraints, requestId })
+      const result = await generateProviderImage({
+        config,
+        prompt,
+        targetDir,
+        relativeDir,
+        constraints,
+        requestId,
+        timeoutMs,
+        referenceImages
+      })
       recordLog({
         level: 'info',
         event: 'imageGeneration.request.completed',
@@ -906,8 +1070,6 @@ const createImageGenerationModelService = ({
     saveConfig,
     saveProviderApiKey,
     clearProviderApiKey,
-    saveCloudApiKey: saveProviderApiKey,
-    clearCloudApiKey: clearProviderApiKey,
     checkHealth,
     discoverModels,
     generateImage

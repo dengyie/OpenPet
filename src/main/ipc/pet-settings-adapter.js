@@ -84,7 +84,7 @@ const normalizeLocalHttpConfig = (currentConfig = {}, nextConfig = {}) => {
 const collectCustomCursorAssetPaths = (cursors = []) => (
   (Array.isArray(cursors) ? cursors : [])
     .map((cursor) => (typeof cursor?.assetPath === 'string' ? cursor.assetPath : ''))
-    .filter(Boolean)
+    .filter((assetPath) => Boolean(assetPath) && !assetPath.startsWith('builtin://'))
 )
 
 module.exports = {

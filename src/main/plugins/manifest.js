@@ -110,6 +110,15 @@ const normalizeShellCommand = (value, fieldName) => {
 
 const normalizeCwd = (value = '', fieldName) => normalizeRelativeFilePath(value || '.', fieldName)
 
+const normalizeTimeoutMs = (value, fieldName) => {
+  if (value == null || value === '') return undefined
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new Error(`Plugin ${fieldName} timeoutMs must be a non-negative number`)
+  }
+  return Math.floor(numeric)
+}
+
 const normalizePlatformOverrides = (platforms = {}) => {
   if (!platforms || typeof platforms !== 'object' || Array.isArray(platforms)) return {}
   return Object.fromEntries(Object.entries(platforms).map(([platform, override]) => {
@@ -137,12 +146,15 @@ const normalizeEntryCommands = (commands = []) => {
   return commands.map((command) => {
     if (!command?.id) throw new Error('Plugin command entry id is required')
     assertSafeId(command.id, 'command entry id')
-    return {
+    const entry = {
       id: command.id,
       title: command.title || command.id,
       command: normalizeShellCommand(command.command, 'command'),
       cwd: normalizeCwd(command.cwd, 'command entry cwd')
     }
+    const timeoutMs = normalizeTimeoutMs(command.timeoutMs, 'command entry')
+    if (timeoutMs !== undefined) entry.timeoutMs = timeoutMs
+    return entry
   })
 }
 

@@ -147,6 +147,19 @@ test('plugin command runner rejects child process errors and cleans waiters', as
   assert.equal(harness.commandBridgeRuntimes.size, 0)
 })
 
+test('plugin command runner prefers per-command timeout overrides', async () => {
+  const harness = createHarness({ commandProcessTimeoutMs: 25 })
+  harness.options.commandEntry.timeoutMs = 1
+  const resultPromise = runPluginCommandEntryProcess(harness.options)
+  const rejectionPromise = assert.rejects(resultPromise, /Plugin command timed out after 1ms/)
+  await flushAsyncSetup()
+
+  await rejectionPromise
+  assert.deepEqual(harness.child.killedWith, ['SIGTERM'])
+  assert.equal(harness.commandRuntimes.size, 0)
+  assert.equal(harness.commandBridgeRuntimes.size, 0)
+})
+
 test('plugin command runner rejects stdin errors and kills the child', async () => {
   const harness = createHarness()
   const resultPromise = runPluginCommandEntryProcess(harness.options)

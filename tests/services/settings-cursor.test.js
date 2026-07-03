@@ -46,6 +46,44 @@ test('mergeSettings preserves ai automatic memory config', () => {
   assert.deepEqual(settings.ai.memory, { enabled: true })
 })
 
+test('mergeSettings preserves creator reference bindings across reloads', () => {
+  const settings = mergeSettings({
+    creator: {
+      references: {
+        'editable-action-host:legacy-editable-host': {
+          targetType: 'editable-action-host',
+          targetId: 'legacy-editable-host',
+          assetPath: '/tmp/openpet/reference.png',
+          assetUrl: 'file:///tmp/openpet/reference.png',
+          fileName: 'reference.png',
+          width: 512,
+          height: 512,
+          contentHash: 'creator-reference-hash',
+          createdAt: '2026-07-02T10:00:00.000Z',
+          updatedAt: '2026-07-02T10:00:00.000Z'
+        }
+      }
+    }
+  })
+
+  assert.deepEqual(settings.creator, {
+    references: {
+      'editable-action-host:legacy-editable-host': {
+        targetType: 'editable-action-host',
+        targetId: 'legacy-editable-host',
+        assetPath: '/tmp/openpet/reference.png',
+        assetUrl: 'file:///tmp/openpet/reference.png',
+        fileName: 'reference.png',
+        width: 512,
+        height: 512,
+        contentHash: 'creator-reference-hash',
+        createdAt: '2026-07-02T10:00:00.000Z',
+        updatedAt: '2026-07-02T10:00:00.000Z'
+      }
+    }
+  })
+})
+
 test('mergeSettings preserves legacy image generation config without injecting flat defaults', () => {
   const settings = mergeSettings({
     models: {

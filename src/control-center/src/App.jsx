@@ -4,6 +4,7 @@ import { useAboutPane } from './hooks/useAboutPane'
 import { useActionsPane } from './hooks/useActionsPane'
 import { useAiPane } from './hooks/useAiPane'
 import { useCatalogPane } from './hooks/useCatalogPane'
+import { useCreatorPane } from './hooks/useCreatorPane'
 import { usePetSettingsPane } from './hooks/usePetSettingsPane'
 import { usePluginsPane } from './hooks/usePluginsPane'
 import { useServicePane } from './hooks/useServicePane'
@@ -11,12 +12,14 @@ import { AboutPane } from './panes/AboutPane'
 import { ActionsPane } from './panes/ActionsPane'
 import { AiPane } from './panes/AiPane'
 import { CatalogPane } from './panes/CatalogPane'
+import { CreatorPane } from './panes/CreatorPane'
 import { PetPane } from './panes/PetPane'
 import { PluginsPane } from './panes/PluginsPane'
 import { ServicePane } from './panes/ServicePane'
 
 export function App() {
   const [activeTab, setActiveTab] = useState('pet')
+  const creator = useCreatorPane(activeTab === 'create')
   const pet = usePetSettingsPane()
   const actions = useActionsPane()
   const ai = useAiPane(activeTab)
@@ -24,9 +27,10 @@ export function App() {
   const catalog = useCatalogPane()
   const service = useServicePane()
   const about = useAboutPane()
-  const loading = pet.loading || actions.loading || ai.loading || plugins.loading || catalog.loading || service.loading || about.loading
+  const loading = (activeTab === 'create' && creator.loading) || pet.loading || actions.loading || ai.loading || plugins.loading || catalog.loading || service.loading || about.loading
 
   let page = <AboutPane {...about.paneProps} />
+  if (activeTab === 'create') page = <CreatorPane {...creator.paneProps} />
   if (activeTab === 'pet') page = <PetPane {...pet.paneProps} />
   if (activeTab === 'actions') page = <ActionsPane {...actions.paneProps} />
   if (activeTab === 'ai') page = <AiPane {...ai.paneProps} />

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const { IPC } = require('../../src/shared/ipc-channels')
 const { registerAiIpc } = require('../../src/main/ipc/register-ai-ipc')
+const { registerCreatorIpc } = require('../../src/main/ipc/register-creator-ipc')
 const { registerPetRuntimeIpc } = require('../../src/main/ipc/register-pet-runtime-ipc')
 const { registerPluginIpc } = require('../../src/main/ipc/register-plugin-ipc')
 const { registerServiceIpc } = require('../../src/main/ipc/register-service-ipc')
@@ -184,8 +185,8 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
     imageGenerationModelService: {
       getConfig: () => ({ provider: 'cloud' }),
       saveConfig: (config) => config,
-      saveCloudApiKey: () => ({ ok: true }),
-      clearCloudApiKey: () => ({ ok: true }),
+      saveProviderApiKey: () => ({ ok: true }),
+      clearProviderApiKey: () => ({ ok: true }),
       checkHealth: async () => ({ ok: true })
     },
     behaviorOrchestratorService: {
@@ -279,6 +280,98 @@ test('registerPluginIpc wires plugin lifecycle and package inspection handlers',
   })
   assert.ok(ipcMain.handlers.has(IPC.PLUGINS_INSPECT_GITHUB_REPOSITORY))
   assert.ok(ipcMain.handlers.has(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY))
+})
+
+test('registerCreatorIpc wires creator workflow handlers', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const creatorWorkflowService = {
+    getState: async () => ({ ok: true, provider: { ready: true } }),
+    approveReferenceSourcePath: () => ({
+      referenceToken: 'token-reference',
+      fileName: 'reference.png'
+    }),
+    bindReference: async (payload) => {
+      calls.push({ type: 'bind', payload })
+      return { ok: true, replaced: false, reference: payload }
+    },
+    generateNewCharacter: async (payload) => {
+      calls.push({ type: 'new', payload })
+      return { ok: true, state: 'completed', code: 'pet_imported', message: 'ok', run: null }
+    },
+    generateExistingAction: async (payload) => {
+      calls.push({ type: 'action', payload })
+      return { ok: true, state: 'completed', code: 'action_imported', message: 'ok', run: null }
+    },
+    getLastRun: async () => ({ ok: true, run: null })
+  }
+
+  registerCreatorIpc({
+    ipcMainService: ipcMain,
+    showOpenDialogForEvent: async () => ({ canceled: false, filePaths: ['/tmp/reference.png'] }),
+    creatorWorkflowService
+  })
+
+  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_STATE)(), { ok: true, provider: { ready: true } })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_PICK_REFERENCE_IMAGE)({}, {}), {
+    ok: true,
+    canceled: false,
+    referenceToken: 'token-reference',
+    fileName: 'reference.png'
+  })
+  assert.deepEqual(
+    await ipcMain.handlers.get(IPC.CREATOR_BIND_REFERENCE)(null, {
+      targetType: 'editable-action-host',
+      targetId: 'legacy-editable-host',
+      referenceToken: 'token-reference'
+    }),
+    {
+      ok: true,
+      replaced: false,
+      reference: {
+        targetType: 'editable-action-host',
+        targetId: 'legacy-editable-host',
+        referenceToken: 'token-reference'
+      }
+    }
+  )
+  await ipcMain.handlers.get(IPC.CREATOR_GENERATE_NEW_CHARACTER)(null, {
+    characterName: 'Mango',
+    stylePrompt: 'orange cat',
+    referenceImageToken: 'token-reference'
+  })
+  await ipcMain.handlers.get(IPC.CREATOR_GENERATE_EXISTING_ACTION)(null, {
+    actionName: 'spin',
+    motionPrompt: 'spin quickly',
+    referenceImageToken: 'token-reference'
+  })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_LAST_RUN)(), { ok: true, run: null })
+  assert.deepEqual(calls, [
+    {
+      type: 'bind',
+      payload: {
+        targetType: 'editable-action-host',
+        targetId: 'legacy-editable-host',
+        referenceToken: 'token-reference'
+      }
+    },
+    {
+      type: 'new',
+      payload: {
+        characterName: 'Mango',
+        stylePrompt: 'orange cat',
+        referenceImageToken: 'token-reference'
+      }
+    },
+    {
+      type: 'action',
+      payload: {
+        actionName: 'spin',
+        motionPrompt: 'spin quickly',
+        referenceImageToken: 'token-reference'
+      }
+    }
+  ])
 })
 
 test('registerServiceIpc wires service status, token rotation, and config persistence handlers', async () => {

@@ -93,15 +93,11 @@ const createCreatorStudioDefaultFlowService = ({
     if (!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked) {
       throw new Error('请先启用 Creator Studio 插件')
     }
-    if (getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID) !== 'running') {
-      throw new Error('请先启动 Creator Studio Service，再使用生成并导入')
-    }
-
     const health = await imageGenerationModelService.checkHealth({})
     if (!health?.ok) {
       return createStructuredResult({
         state: 'blocked',
-        message: '请先到 AI -> 图片 Provider 配置并保存可用模型，然后再使用生成并导入'
+        message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成并导入'
       })
     }
 

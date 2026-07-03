@@ -80,6 +80,9 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
     maybeRunPackagedCreatorStudioEvidence: () => {},
     maybeRunPackagedCreatorStudioUiE2e: () => {},
     maybeRunPackagedPluginCleanupEvidence: (payload) => cleanupCalls.push(payload),
+    maybeRunPackagedCreatorStudioEvidence: () => {},
+    maybeRunPackagedCreatorStudioUiE2e: () => {},
+    maybeRunPackagedCreateUiSmoke: () => {},
     factories: {
       createAboutService: () => ({ id: 'about' }),
       createActionImportService: () => ({ id: 'action-import' }),
@@ -101,6 +104,18 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
         stop: () => {},
         refresh: () => {}
       }),
+      createCreatorReferenceService: () => ({
+        getReference: () => null,
+        bindReference: async () => ({ replaced: false, reference: null }),
+        copyReferenceIntoRun: () => ({})
+      }),
+      createCreatorStudioDefaultFlowService: () => ({
+        id: 'creator-studio-default-flow',
+        start: () => {},
+        stop: () => {},
+        refresh: () => {}
+      }),
+      createCreatorWorkflowService: () => ({ id: 'creator-workflow' }),
       createEventBus: () => ({ on: () => {}, emit: () => {} }),
       createImageGenerationModelService: () => ({ id: 'image-service' }),
       createTriggerRuleRuntimeService: () => ({
@@ -225,6 +240,9 @@ test('bootstrap runtime waits for plugin shutdown before allowing app quit', asy
     maybeRunPackagedCreatorStudioEvidence: () => {},
     maybeRunPackagedCreatorStudioUiE2e: () => {},
     maybeRunPackagedPluginCleanupEvidence: () => {},
+    maybeRunPackagedCreatorStudioEvidence: () => {},
+    maybeRunPackagedCreatorStudioUiE2e: () => {},
+    maybeRunPackagedCreateUiSmoke: () => {},
     factories: {
       createAboutService: () => ({ id: 'about' }),
       createActionImportService: () => ({ id: 'action-import' }),
@@ -246,6 +264,18 @@ test('bootstrap runtime waits for plugin shutdown before allowing app quit', asy
         stop: () => {},
         refresh: () => {}
       }),
+      createCreatorReferenceService: () => ({
+        getReference: () => null,
+        bindReference: async () => ({ replaced: false, reference: null }),
+        copyReferenceIntoRun: () => ({})
+      }),
+      createCreatorStudioDefaultFlowService: () => ({
+        id: 'creator-studio-default-flow',
+        start: () => {},
+        stop: () => {},
+        refresh: () => {}
+      }),
+      createCreatorWorkflowService: () => ({ id: 'creator-workflow' }),
       createEventBus: () => ({ on: () => {}, emit: () => {} }),
       createImageGenerationModelService: () => ({ id: 'image-service' }),
       createTriggerRuleRuntimeService: () => ({

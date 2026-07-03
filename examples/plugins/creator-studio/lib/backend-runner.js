@@ -82,6 +82,35 @@ const isHostGeneratedSingleActionRun = (run) => (
   run.generationTask.actions.length > 0
 )
 
+const persistGeneratedImageAttempt = ({ dataDir, run, generationResult, now }) => {
+  const currentRun = readRun({ dataDir, runId: run.runId })
+  const nextRun = {
+    ...currentRun,
+    updatedAt: now(),
+    artifacts: {
+      ...currentRun.artifacts,
+      generatedImage: generationResult
+    },
+    ...(generationResult.modelSnapshot ? { modelSnapshot: generationResult.modelSnapshot } : {})
+  }
+  writeRun({ dataDir, run: nextRun })
+  return nextRun
+}
+
+const createFailedGenerationAttempt = ({ generationResult, error, failedAt }) => {
+  if (!generationResult || typeof generationResult !== 'object') return null
+  return {
+    ...generationResult,
+    outputs: Array.isArray(generationResult.outputs) ? generationResult.outputs : [],
+    failure: {
+      message: String(error?.message || 'Creator Studio generation failed'),
+      backend: String(error?.backend || generationResult.backend || ''),
+      state: String(error?.state || 'failed')
+    },
+    failedAt
+  }
+}
+
 const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, now }) => {
   const completedAt = now()
   const action = run.generationTask.actions[0]
@@ -199,10 +228,11 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
     if (backend === FIXTURE_BACKEND) {
       output = await getBackendAdapter(backend).run({ dataDir, runId, now })
     } else {
-      const generationResult = await generateViaHostModelBridge({ backend, run })
-      output = isHostGeneratedSingleActionRun(run)
-        ? await buildHostGeneratedActionOutput({ dataDir, run, generationResult, now })
-        : await buildHostGeneratedRunOutput({ dataDir, run, generationResult, now })
+      const generationResult = await generateViaHostModelBridge({ backend, run, dataDir })
+      const runWithGeneratedImage = persistGeneratedImageAttempt({ dataDir, run, generationResult, now })
+      output = isHostGeneratedSingleActionRun(runWithGeneratedImage)
+        ? await buildHostGeneratedActionOutput({ dataDir, run: runWithGeneratedImage, generationResult, now })
+        : await buildHostGeneratedRunOutput({ dataDir, run: runWithGeneratedImage, generationResult, now })
     }
     const completedAt = now()
     const completedRun = {
@@ -232,6 +262,19 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
     return { ...output, run: completedRun }
   } catch (error) {
     const failedAt = now()
+    const failedGenerationAttempt = createFailedGenerationAttempt({
+      generationResult: error?.partialGenerationResult,
+      error,
+      failedAt
+    })
+    if (failedGenerationAttempt) {
+      persistGeneratedImageAttempt({
+        dataDir,
+        run,
+        generationResult: failedGenerationAttempt,
+        now: () => failedAt
+      })
+    }
     const failedRun = updateRunStatus({
       dataDir,
       runId,

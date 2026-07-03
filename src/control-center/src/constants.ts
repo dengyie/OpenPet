@@ -1,4 +1,4 @@
-export type ControlCenterTabId = 'pet' | 'actions' | 'ai' | 'plugins' | 'catalog' | 'service' | 'about'
+export type ControlCenterTabId = 'create' | 'pet' | 'actions' | 'ai' | 'plugins' | 'catalog' | 'service' | 'about'
 
 interface ControlCenterTab {
   id: ControlCenterTabId
@@ -16,6 +16,7 @@ interface StringOption<T extends string = string> {
 }
 
 export const tabs: ControlCenterTab[] = [
+  { id: 'create', label: 'Create' },
   { id: 'pet', label: 'Pet' },
   { id: 'actions', label: 'Actions' },
   { id: 'ai', label: 'AI' },

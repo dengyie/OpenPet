@@ -132,7 +132,9 @@ const runPackagedCreatorStudioEvidence = async ({
 
     if (serviceEntry) {
       artifact.service.startRequested = true
-      const started = pluginService.startService?.(pluginId, serviceId) || {}
+      const started = pluginService.startService
+        ? await pluginService.startService(pluginId, serviceId)
+        : {}
       artifact.service.statusAfterStart = started?.runtime?.status || 'running'
       const health = await waitForHealthyService({
         pluginService,

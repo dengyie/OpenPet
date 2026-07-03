@@ -9,6 +9,12 @@
   <body>
     <main class="bubble-shell" id="bubble-shell">
       <div class="bubble-card">
+        <header class="bubble-toolbar" id="bubble-toolbar" aria-label="轻量聊天工具栏">
+          <div class="bubble-drag-handle" aria-hidden="true">
+            <span class="bubble-drag-pill"></span>
+          </div>
+          <button type="button" id="close-button" class="bubble-close-button" aria-label="关闭轻量聊天">×</button>
+        </header>
         <button type="button" id="new-message-button" class="new-message-button" hidden>有新消息</button>
         <section class="bubble-stream" id="bubble-stream" aria-live="polite">
           <ol class="bubble-items" id="bubble-items"></ol>

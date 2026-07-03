@@ -6,6 +6,7 @@ import { toCommandResultPreview } from '../lib/plugin-command-result.mjs'
 import type {
   JsonObject,
   JsonValue,
+  PaginatedLogsViewState,
   PluginLogEntry,
   PluginLogFilters,
   PluginPackageReviewViewState,
@@ -16,6 +17,7 @@ import type { PluginsPaneProps } from '../panes/PluginsPane'
 type ExportFormat = 'json' | 'csv'
 
 type PluginCommandResultPreview = ReturnType<typeof toCommandResultPreview>
+const PLUGIN_LOG_PAGE_SIZE = 50
 
 const parseCommandPayload = (draft: string): JsonObject | undefined => {
   const trimmed = String(draft || '').trim()
@@ -47,6 +49,13 @@ export function usePluginsPane() {
   const [loading, setLoading] = useState(true)
   const [plugins, setPlugins] = useState<PluginViewState[]>([])
   const [logs, setLogs] = useState<PluginLogEntry[]>([])
+  const [logsPage, setLogsPage] = useState<PaginatedLogsViewState<PluginLogEntry>>({
+    entries: [],
+    page: 1,
+    pageSize: PLUGIN_LOG_PAGE_SIZE,
+    total: 0,
+    totalPages: 1
+  })
   const [filters, setFilters] = useState<PluginLogFilters>({ pluginId: '', level: '', query: '' })
   const [status, setStatus] = useState('')
   const [runningCommand, setRunningCommand] = useState('')
@@ -69,15 +78,23 @@ export function usePluginsPane() {
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState('')
   const [inspectingGithubPlugin, setInspectingGithubPlugin] = useState(false)
 
+  const loadLogsPage = async (nextFilters = filters, page = 1) => {
+    const result = await api.getPluginLogs({ ...nextFilters, page, pageSize: PLUGIN_LOG_PAGE_SIZE })
+    setLogsPage(result)
+    setLogs(Array.isArray(result.entries) ? result.entries : [])
+    return result
+  }
+
   useEffect(() => {
     let mounted = true
     Promise.all([
       api.getPlugins(),
-      api.getPluginLogs(filters)
+      api.getPluginLogs({ ...filters, page: 1, pageSize: PLUGIN_LOG_PAGE_SIZE })
     ]).then(([loadedPlugins, loadedLogs]) => {
       if (!mounted) return
       setPlugins(loadedPlugins)
-      setLogs(Array.isArray(loadedLogs) ? loadedLogs : [])
+      setLogsPage(loadedLogs)
+      setLogs(Array.isArray(loadedLogs.entries) ? loadedLogs.entries : [])
       setLoading(false)
     }).catch((error) => {
       if (!mounted) return
@@ -89,8 +106,11 @@ export function usePluginsPane() {
 
   useEffect(() => {
     let mounted = true
-    api.getPluginLogs(filters).then((loadedLogs) => {
-      if (mounted) setLogs(Array.isArray(loadedLogs) ? loadedLogs : [])
+    api.getPluginLogs({ ...filters, page: 1, pageSize: PLUGIN_LOG_PAGE_SIZE }).then((loadedLogs) => {
+      if (mounted) {
+        setLogsPage(loadedLogs)
+        setLogs(Array.isArray(loadedLogs.entries) ? loadedLogs.entries : [])
+      }
     }).catch((error) => {
       if (mounted) setStatus(messageFromError(error, '日志加载失败'))
     })
@@ -98,7 +118,7 @@ export function usePluginsPane() {
   }, [filters])
 
   const refreshLogs = async () => {
-    setLogs(await api.getPluginLogs(filters))
+    await loadLogsPage(filters, logsPage.page)
   }
 
   const refreshPlugins = async () => {
@@ -447,7 +467,8 @@ export function usePluginsPane() {
   const onClearLogs = async () => {
     setStatus('')
     try {
-      setLogs(await api.clearPluginLogs())
+      await api.clearPluginLogs()
+      await loadLogsPage(filters, 1)
     } catch (error) {
       setStatus(messageFromError(error, '日志清空失败'))
     }
@@ -490,6 +511,7 @@ export function usePluginsPane() {
   const paneProps = {
     plugins,
     logs,
+    logsPage,
     filters,
     status,
     runningCommand,
@@ -530,7 +552,9 @@ export function usePluginsPane() {
     onStopService,
     onCheckServiceHealth,
     onSaveServiceHealthPolicy,
-    onChangeFilters: setFilters,
+    onChangeFilters: (nextFilters: PluginLogFilters) => setFilters(nextFilters),
+    onPrevLogsPage: logsPage.page > 1 ? async () => { await loadLogsPage(filters, logsPage.page - 1) } : undefined,
+    onNextLogsPage: logsPage.page < logsPage.totalPages ? async () => { await loadLogsPage(filters, logsPage.page + 1) } : undefined,
     onExportLogs,
     onClearLogs,
     onClearStorage

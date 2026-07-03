@@ -5,29 +5,46 @@ import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
 import type {
   LocalHttpConfigViewState,
+  PaginatedLogsViewState,
   ServiceLogEntry,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts'
 import type { ServicePaneProps } from '../panes/ServicePane'
 
 type LogExportFormat = 'json' | 'csv'
+const SERVICE_LOG_PAGE_SIZE = 50
 
 export function useServicePane() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [serviceStatus, setServiceStatus] = useState<ServiceStatusViewState>(defaultServiceStatus)
   const [logs, setLogs] = useState<ServiceLogEntry[]>([])
+  const [logsPage, setLogsPage] = useState<PaginatedLogsViewState<ServiceLogEntry>>({
+    entries: [],
+    page: 1,
+    pageSize: SERVICE_LOG_PAGE_SIZE,
+    total: 0,
+    totalPages: 1
+  })
   const [status, setStatus] = useState('')
+
+  const loadLogsPage = async (page = 1) => {
+    const nextPage = await api.getServiceLogs({ page, pageSize: SERVICE_LOG_PAGE_SIZE })
+    setLogsPage(nextPage)
+    setLogs(cloneServiceLogs(nextPage.entries))
+    return nextPage
+  }
 
   useEffect(() => {
     let mounted = true
     Promise.all([
       api.getServiceStatus(),
-      api.getServiceLogs()
+      api.getServiceLogs({ page: 1, pageSize: SERVICE_LOG_PAGE_SIZE })
     ]).then(([loadedStatus, loadedLogs]) => {
       if (!mounted) return
       setServiceStatus(cloneServiceStatus(loadedStatus))
-      setLogs(cloneServiceLogs(loadedLogs))
+      setLogsPage(loadedLogs)
+      setLogs(cloneServiceLogs(loadedLogs.entries))
       setLoading(false)
     }).catch((error) => {
       if (!mounted) return
@@ -43,7 +60,7 @@ export function useServicePane() {
     try {
       const nextStatus = cloneServiceStatus(await api.saveServiceConfig(serviceStatus.config))
       setServiceStatus(nextStatus)
-      setLogs(cloneServiceLogs(await api.getServiceLogs()))
+      await loadLogsPage(logsPage.page)
       setStatus(nextStatus.runtime.enabled ? '本地服务已启动' : '本地服务已停止')
     } catch (error) {
       setStatus(messageFromError(error, '服务配置保存失败'))
@@ -83,7 +100,7 @@ export function useServicePane() {
   const onRefreshLogs = async () => {
     setStatus('')
     try {
-      setLogs(cloneServiceLogs(await api.getServiceLogs()))
+      await loadLogsPage(logsPage.page)
     } catch (error) {
       setStatus(messageFromError(error, '日志加载失败'))
     }
@@ -105,7 +122,8 @@ export function useServicePane() {
   const onClearLogs = async () => {
     setStatus('')
     try {
-      setLogs(cloneServiceLogs(await api.clearServiceLogs()))
+      await api.clearServiceLogs()
+      await loadLogsPage(1)
     } catch (error) {
       setStatus(messageFromError(error, '日志清空失败'))
     }
@@ -114,6 +132,7 @@ export function useServicePane() {
   const paneProps = {
     serviceStatus,
     logs,
+    logsPage,
     status,
     saving,
     onChange: (partial: Partial<LocalHttpConfigViewState>) => {
@@ -126,6 +145,8 @@ export function useServicePane() {
     onRotateToken,
     onRevokeMcpSessions,
     onRefreshLogs,
+    onPrevLogsPage: logsPage.page > 1 ? async () => { await loadLogsPage(logsPage.page - 1) } : undefined,
+    onNextLogsPage: logsPage.page < logsPage.totalPages ? async () => { await loadLogsPage(logsPage.page + 1) } : undefined,
     onExportLogs,
     onClearLogs
   } satisfies ServicePaneProps

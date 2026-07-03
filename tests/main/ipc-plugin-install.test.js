@@ -814,12 +814,12 @@ test('image generation handlers delegate to the model service', async () => {
         calls.push(['saveConfig', config])
         return { ...config, model: 'gpt-image-2', hasApiKey: false, secretValue: 'sk-hidden' }
       },
-      saveCloudApiKey: (apiKey) => {
-        calls.push(['saveCloudApiKey', apiKey])
+      saveProviderApiKey: (apiKey) => {
+        calls.push(['saveProviderApiKey', apiKey])
         return { apiKeyRef: 'secret:model.image.openai.apiKey', hasApiKey: true, apiKeyPreview: '••••1234', secretValue: 'sk-hidden' }
       },
-      clearCloudApiKey: () => {
-        calls.push(['clearCloudApiKey'])
+      clearProviderApiKey: () => {
+        calls.push(['clearProviderApiKey'])
         return { apiKeyRef: 'secret:model.image.openai.apiKey', hasApiKey: false, apiKeyPreview: '', secretValue: 'sk-hidden' }
       },
       checkHealth: (payload) => {
@@ -920,8 +920,8 @@ test('image generation handlers delegate to the model service', async () => {
   assert.deepEqual(calls, [
     ['getConfig'],
     ['saveConfig', { defaultBackend: 'local' }],
-    ['saveCloudApiKey', 'sk-demo-1234'],
-    ['clearCloudApiKey'],
+    ['saveProviderApiKey', 'sk-demo-1234'],
+    ['clearProviderApiKey'],
     ['checkHealth', { backend: 'cloud' }],
     ['discoverModels', {}]
   ])

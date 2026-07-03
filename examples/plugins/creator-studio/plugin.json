@@ -12,7 +12,7 @@
       { "id": "draft-task", "title": "Draft Creator Task", "command": "node ./commands/draft-task.js", "cwd": "." },
       { "id": "answer-question", "title": "Answer Creator Task Question", "command": "node ./commands/answer-question.js", "cwd": "." },
       { "id": "confirm-task", "title": "Confirm Creator Task", "command": "node ./commands/confirm-task.js", "cwd": "." },
-      { "id": "run-step", "title": "Run Step", "command": "node ./commands/run-step.js", "cwd": "." },
+      { "id": "run-step", "title": "Run Step", "command": "node ./commands/run-step.js", "cwd": ".", "timeoutMs": 360000 },
       { "id": "approve-run", "title": "Approve Run", "command": "node ./commands/approve-run.js", "cwd": "." },
       { "id": "import-approved-pet", "title": "Import Approved Pet", "command": "node ./commands/import-approved-pet.js", "cwd": "." },
       { "id": "import-approved-action", "title": "Import Approved Action", "command": "node ./commands/import-approved-action.js", "cwd": "." },

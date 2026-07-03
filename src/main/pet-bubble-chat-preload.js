@@ -13,7 +13,9 @@ const IPC = {
 
 contextBridge.exposeInMainWorld('petBubbleChatAPI', {
   getState: () => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_GET_STATE),
-  hide: () => ipcRenderer.send(IPC.PET_BUBBLE_CHAT_HIDE),
+  hide: (payload = {}) => ipcRenderer.send(IPC.PET_BUBBLE_CHAT_HIDE, {
+    source: typeof payload.source === 'string' ? payload.source : 'pet-bubble-chat-renderer'
+  }),
   setPinned: (pinned) => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_SET_PINNED, { pinned: Boolean(pinned) }),
   setInteracting: (interacting) => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_SET_INTERACTING, { interacting: Boolean(interacting) }),
   setHitTestMode: (payload = {}) => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_SET_HIT_TEST_MODE, {

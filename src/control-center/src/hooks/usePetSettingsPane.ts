@@ -4,11 +4,16 @@ import { cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import { shouldRestoreScalePreview } from '../lib/pet-scale-preview.mjs'
 import {
+  CUSTOM_CURSOR_MAX_SIZE_PERCENT,
+  CUSTOM_CURSOR_MIN_SIZE_PERCENT,
   SYSTEM_CURSOR_ID,
-  createDefaultRuntimeCursor,
+  createPersistedCursorRecord,
+  getBuiltinCursorById,
   listCursorOptions,
   normalizeCursorSettingsState,
-  normalizeCustomCursorCollection
+  normalizeCustomCursorCollection,
+  removeStoredCursorRecord,
+  resizeCustomCursorRecord
 } from '../../../shared/cursor-library.ts'
 import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
 import type { PetPaneProps } from '../panes/PetPane'
@@ -142,6 +147,32 @@ export function usePetSettingsPane() {
     }
   }
 
+  const onResizeCursor = async (cursorId: string, sizePercent: number) => {
+    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+      || createPersistedCursorRecord(getBuiltinCursorById(cursorId))
+    if (!targetCursor) {
+      setStatus('未找到要调整的指针')
+      return
+    }
+    const nextCursor = resizeCustomCursorRecord(targetCursor, sizePercent)
+    if (!nextCursor) {
+      setStatus('指针尺寸调整失败')
+      return
+    }
+    if (nextCursor.sizePercent === targetCursor.sizePercent) return
+    const nextCustomCursors = normalizeCustomCursorRecords([
+      ...settings.customCursors.filter((cursor) => cursor.id !== cursorId),
+      nextCursor
+    ])
+    const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
+    setSettings(nextSettings)
+    await persistSettings(
+      nextSettings,
+      `已将 ${targetCursor.name} 调整为 ${Math.min(CUSTOM_CURSOR_MAX_SIZE_PERCENT, Math.max(CUSTOM_CURSOR_MIN_SIZE_PERCENT, sizePercent))}%`,
+      '指针尺寸保存失败'
+    )
+  }
+
   const onRenameCursor = async (cursorId: string, nextName: string) => {
     const normalizedName = nextName.trim()
     if (!normalizedName) {
@@ -150,7 +181,7 @@ export function usePetSettingsPane() {
     }
     const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
     if (!targetCursor) {
-      setStatus('未找到要编辑的自定义指针')
+      setStatus('未找到要编辑的指针')
       return
     }
     const nextCustomCursors = normalizeCustomCursorRecords(settings.customCursors.map((cursor) => (
@@ -158,27 +189,33 @@ export function usePetSettingsPane() {
     )))
     const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
     setSettings(nextSettings)
-    await persistSettings(nextSettings, `已更新指针名称：${normalizedName}`, '自定义指针名称保存失败')
+    await persistSettings(nextSettings, `已更新指针名称：${normalizedName}`, '指针名称保存失败')
   }
 
   const onDeleteCursor = async (cursorId: string) => {
     const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
     if (!targetCursor) {
-      setStatus('未找到要删除的自定义指针')
+      setStatus('未找到要处理的指针')
       return
     }
-    const deletingSelectedCursor = settings.selectedCursorId === cursorId
-    const nextCustomCursors = normalizeCustomCursorRecords(settings.customCursors.filter((cursor) => cursor.id !== cursorId))
+    const removal = removeStoredCursorRecord({
+      selectedCursorId: settings.selectedCursorId,
+      cursorId,
+      customCursors: settings.customCursors
+    })
     const nextSettings = applyCursorState(settings, {
-      selectedCursorId: deletingSelectedCursor ? SYSTEM_CURSOR_ID : settings.selectedCursorId,
-      customCursor: deletingSelectedCursor ? createDefaultRuntimeCursor() : settings.customCursor,
-      customCursors: nextCustomCursors
+      selectedCursorId: removal.selectedCursorId,
+      customCursors: removal.customCursors
     })
     setSettings(nextSettings)
     await persistSettings(
       nextSettings,
-      deletingSelectedCursor ? '已删除当前指针，并切回系统默认' : `已删除指针：${targetCursor.name}`,
-      '自定义指针删除失败'
+      removal.removedBuiltinOverride
+        ? `已重置 ${targetCursor.name} 的自定义尺寸`
+        : settings.selectedCursorId === cursorId
+          ? '已删除当前指针，并切回系统默认'
+          : `已删除指针：${targetCursor.name}`,
+      removal.removedBuiltinOverride ? '指针重置失败' : '指针删除失败'
     )
   }
 
@@ -191,6 +228,7 @@ export function usePetSettingsPane() {
     onChange,
     onSelectCursor,
     onImportCursor,
+    onResizeCursor,
     onRenameCursor,
     onDeleteCursor,
     onSave,

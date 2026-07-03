@@ -21,6 +21,10 @@ const DEFAULT_HISTORY_TTL_MS = 8000
 const MIN_HISTORY_TTL_MS = 6000
 const MAX_HISTORY_TTL_MS = 30000
 const BUBBLE_ALWAYS_ON_TOP_LEVEL = 'pop-up-menu'
+const BUBBLE_ANCHOR_MODE = Object.freeze({
+  ANCHORED: 'anchored',
+  DETACHED_TEMPORARY: 'detached-temporary'
+})
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -55,6 +59,12 @@ const normalizePetBounds = (bounds) => {
     width: Math.round(width),
     height: Math.round(height)
   }
+}
+
+const samePetBounds = (left, right) => {
+  if (!left && !right) return true
+  if (!left || !right) return false
+  return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height
 }
 
 const getWorkAreaForPetBounds = (screenService, petBounds) => {
@@ -282,10 +292,13 @@ const createPetBubbleChatWindowManager = ({
   if (!settingsService) throw new Error('settingsService is required')
   let bubbleWindow = null
   let hideTimer = null
+  let hideTimerDetails = null
   let historyTimer = null
   let allowClose = false
   let appliedHitTestInteractive = null
   let lastConversationMessages = []
+  let lastPetBoundsSnapshot = null
+  let syncingWindowBounds = false
   const dialogueVisibility = new Map()
   let state = {
     visible: false,
@@ -304,7 +317,8 @@ const createPetBubbleChatWindowManager = ({
     awaitingReply: false,
     error: '',
     placement: '',
-    bounds: null
+    bounds: null,
+    anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED
   }
 
   const recordLog = (entry) => {
@@ -319,6 +333,33 @@ const createPetBubbleChatWindowManager = ({
     }
   }
 
+  const sanitizeLogText = (value, maxLength = 120) => String(value || '').slice(0, maxLength)
+
+  const getStateLogDetails = (extra = {}) => {
+    const message = state.message || {}
+    const ttlMs = Number.isFinite(extra.ttlMs)
+      ? extra.ttlMs
+      : (Number.isFinite(message.ttlMs) ? message.ttlMs : 0)
+    return {
+      ...extra,
+      requestId: sanitizeLogText(extra.requestId || message.requestId || ''),
+      source: sanitizeLogText(extra.source || message.source || ''),
+      sourceSurface: sanitizeLogText(extra.sourceSurface || message.sourceSurface || extra.source || message.source || ''),
+      interactive: Boolean(state.hitTestInteractive),
+      pinned: Boolean(state.pinned),
+      interacting: Boolean(state.interacting),
+      visible: Boolean(state.visible),
+      awaitingReply: Boolean(state.awaitingReply),
+      sending: Boolean(state.sending),
+      anchorMode: state.anchorMode,
+      ttlMs,
+      reason: sanitizeLogText(extra.reason || ''),
+      itemCount: Array.isArray(state.items) ? state.items.length : 0,
+      noticeCount: Array.isArray(state.noticeItems) ? state.noticeItems.length : 0,
+      pendingCount: Array.isArray(state.pendingUserMessages) ? state.pendingUserMessages.length : 0
+    }
+  }
+
   const getSettings = () => normalizeBubbleChatSettings(settingsService.get?.().petBubbleChat)
 
   const applyHitTestMode = (interactive = state.hitTestInteractive) => {
@@ -330,9 +371,21 @@ const createPetBubbleChatWindowManager = ({
     appliedHitTestInteractive = shouldInteract
   }
 
-  const clearHideTimer = () => {
-    if (hideTimer) clearTimeout(hideTimer)
+  const clearHideTimer = (reason = 'clear') => {
+    if (hideTimer) {
+      clearTimeout(hideTimer)
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.auto-hide.canceled',
+        message: 'Pet bubble chat auto-hide canceled',
+        details: getStateLogDetails({
+          ...(hideTimerDetails || {}),
+          reason
+        })
+      })
+    }
     hideTimer = null
+    hideTimerDetails = null
   }
 
   const clearHistoryTimer = () => {
@@ -356,7 +409,7 @@ const createPetBubbleChatWindowManager = ({
   }
 
   const hide = ({ source = 'pet-bubble-chat' } = {}) => {
-    clearHideTimer()
+    clearHideTimer('hide')
     clearHistoryTimer()
     if (bubbleWindow && !bubbleWindow.isDestroyed?.()) bubbleWindow.hide?.()
     patchState({ visible: false, interacting: false, hitTestInteractive: false })
@@ -365,14 +418,24 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: 'pet-bubble-chat.window.hidden',
       message: 'Pet bubble chat window hidden',
-      details: { source }
+      details: getStateLogDetails({ source, reason: 'window-hidden' })
     })
     return getState()
   }
 
   const shouldHoldVisible = () => {
     const settings = getSettings()
-    return state.pinned || state.interacting || state.awaitingReply || settings.autoHide === false
+    return state.pinned || state.interacting || state.awaitingReply || Boolean(state.error) || settings.autoHide === false
+  }
+
+  const getHoldVisibleReason = () => {
+    const settings = getSettings()
+    if (settings.autoHide === false) return 'auto-hide-disabled'
+    if (state.pinned) return 'pinned'
+    if (state.interacting) return 'interacting'
+    if (state.awaitingReply) return 'awaiting-reply'
+    if (state.error) return 'error'
+    return ''
   }
 
   const getDialogueVisibilityKey = (item = {}) => item.messageId || item.id || `${item.role}:${item.createdAt}:${item.text}`
@@ -431,12 +494,64 @@ const createPetBubbleChatWindowManager = ({
     }, delay)
   }
 
-  const scheduleAutoHide = () => {
-    clearHideTimer()
+  const scheduleAutoHide = (reason = 'schedule') => {
+    clearHideTimer('reschedule')
     const settings = getSettings()
-    if (!settings.autoHide || shouldHoldVisible() || !state.message?.ttlMs) return
+    if (!settings.autoHide) {
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.auto-hide.skipped',
+        message: 'Pet bubble chat auto-hide skipped',
+        details: getStateLogDetails({ reason: 'settings-disabled' })
+      })
+      return
+    }
+    const holdReason = getHoldVisibleReason()
+    if (holdReason) {
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.auto-hide.frozen',
+        message: 'Pet bubble chat auto-hide frozen',
+        details: getStateLogDetails({ reason: holdReason })
+      })
+      return
+    }
+    if (!state.message?.ttlMs) {
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.auto-hide.skipped',
+        message: 'Pet bubble chat auto-hide skipped',
+        details: getStateLogDetails({ reason: 'missing-ttl' })
+      })
+      return
+    }
+    hideTimerDetails = getStateLogDetails({ reason, ttlMs: state.message.ttlMs })
+    recordLog({
+      level: 'debug',
+      event: 'pet-bubble-chat.auto-hide.scheduled',
+      message: 'Pet bubble chat auto-hide scheduled',
+      details: hideTimerDetails
+    })
     hideTimer = setTimeout(() => {
-      if (!shouldHoldVisible()) hide({ source: 'auto-hide' })
+      hideTimer = null
+      const expiredDetails = hideTimerDetails || getStateLogDetails({ reason: 'auto-hide-expired' })
+      hideTimerDetails = null
+      if (!shouldHoldVisible()) {
+        recordLog({
+          level: 'debug',
+          event: 'pet-bubble-chat.auto-hide.expired',
+          message: 'Pet bubble chat auto-hide expired',
+          details: expiredDetails
+        })
+        hide({ source: 'auto-hide' })
+      } else {
+        recordLog({
+          level: 'debug',
+          event: 'pet-bubble-chat.auto-hide.frozen',
+          message: 'Pet bubble chat auto-hide frozen',
+          details: getStateLogDetails({ reason: getHoldVisibleReason() || 'timer-expired-held' })
+        })
+      }
     }, state.message.ttlMs)
   }
 
@@ -444,6 +559,18 @@ const createPetBubbleChatWindowManager = ({
     const petWindow = getPetWindow()
     if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return null
     return normalizePetBounds(petWindow.getBounds())
+  }
+
+  const applyWindowBounds = (bounds) => {
+    if (!bubbleWindow || bubbleWindow.isDestroyed?.() || !bounds) return
+    syncingWindowBounds = true
+    bubbleWindow.setBounds?.({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height
+    })
+    syncingWindowBounds = false
   }
 
   const calculateBounds = () => {
@@ -459,14 +586,53 @@ const createPetBubbleChatWindowManager = ({
 
   const syncToPetWindow = () => {
     if (!bubbleWindow || bubbleWindow.isDestroyed?.()) return getState()
-    const bounds = calculateBounds()
-    bubbleWindow.setBounds?.({
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height
+    const petBounds = getPetBounds()
+    const height = estimateBubbleHeight(state)
+    const anchoredBounds = resolveBubbleBounds({
+      petBounds,
+      workArea: getWorkAreaForPetBounds(screen, petBounds),
+      width: DEFAULT_BUBBLE_WIDTH,
+      height
     })
-    patchState({ bounds, placement: bounds.placement })
+    const petMoved = !samePetBounds(petBounds, lastPetBoundsSnapshot)
+    const shouldPreserveDetachedPosition =
+      state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY &&
+      !petMoved
+    let nextBounds = anchoredBounds
+    let nextPlacement = anchoredBounds.placement
+    let nextAnchorMode = state.anchorMode
+
+    if (shouldPreserveDetachedPosition) {
+      const currentBounds = normalizePetBounds(bubbleWindow.getBounds?.())
+      if (currentBounds) {
+        nextBounds = {
+          ...anchoredBounds,
+          x: currentBounds.x,
+          y: currentBounds.y
+        }
+        nextPlacement = 'detached-temporary'
+      }
+    } else if (state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY) {
+      nextAnchorMode = BUBBLE_ANCHOR_MODE.ANCHORED
+      nextPlacement = anchoredBounds.placement
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.window.reanchored',
+        message: 'Pet bubble chat window re-anchored to pet',
+        details: getStateLogDetails({
+          reason: petMoved ? 'pet-moved' : 'manual-reanchor',
+          x: anchoredBounds.x,
+          y: anchoredBounds.y,
+          width: anchoredBounds.width,
+          height: anchoredBounds.height,
+          placement: anchoredBounds.placement
+        })
+      })
+    }
+
+    applyWindowBounds(nextBounds)
+    lastPetBoundsSnapshot = petBounds
+    patchState({ bounds: nextBounds, placement: nextPlacement, anchorMode: nextAnchorMode })
     return getState()
   }
 
@@ -481,7 +647,7 @@ const createPetBubbleChatWindowManager = ({
       frame: false,
       transparent: true,
       resizable: false,
-      movable: false,
+      movable: true,
       show: false,
       alwaysOnTop: true,
       skipTaskbar: true,
@@ -498,6 +664,39 @@ const createPetBubbleChatWindowManager = ({
     bubbleWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
     bubbleWindow.setAlwaysOnTop?.(true, BUBBLE_ALWAYS_ON_TOP_LEVEL)
     applyHitTestMode(false)
+    bubbleWindow.on?.('move', () => {
+      if (syncingWindowBounds || !bubbleWindow || bubbleWindow.isDestroyed?.()) return
+      const movedBounds = normalizePetBounds(bubbleWindow.getBounds?.())
+      if (!movedBounds) return
+      const alreadyDetached = state.anchorMode === BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY
+      if (alreadyDetached) {
+        state = {
+          ...state,
+          bounds: movedBounds,
+          placement: 'detached-temporary',
+          hasWindow: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.())
+        }
+        return
+      }
+      patchState({
+        bounds: movedBounds,
+        placement: 'detached-temporary',
+        anchorMode: BUBBLE_ANCHOR_MODE.DETACHED_TEMPORARY
+      })
+      recordLog({
+        level: 'debug',
+        event: 'pet-bubble-chat.window.detached',
+        message: 'Pet bubble chat window detached from pet anchor',
+        details: getStateLogDetails({
+          reason: 'window-moved',
+          x: movedBounds.x,
+          y: movedBounds.y,
+          width: movedBounds.width,
+          height: movedBounds.height,
+          placement: 'detached-temporary'
+        })
+      })
+    })
     bubbleWindow.on?.('close', (event) => {
       if (allowClose) return
       event?.preventDefault?.()
@@ -506,7 +705,7 @@ const createPetBubbleChatWindowManager = ({
     bubbleWindow.once?.('closed', () => {
       bubbleWindow = null
       appliedHitTestInteractive = null
-      clearHideTimer()
+      clearHideTimer('window-closed')
       patchState({ visible: false, hasWindow: false })
     })
     bubbleWindow.once?.('ready-to-show', () => sendStateChanged())
@@ -520,13 +719,14 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: 'pet-bubble-chat.window.opened',
       message: 'Pet bubble chat window opened',
-      details: {
+      details: getStateLogDetails({
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
         height: bounds.height,
-        placement: bounds.placement
-      }
+        placement: bounds.placement,
+        reason: 'window-created'
+      })
     })
     return bubbleWindow
   }
@@ -538,14 +738,18 @@ const createPetBubbleChatWindowManager = ({
         level: 'info',
         event: 'pet-bubble-chat.window.open-skipped',
         message: 'Pet bubble chat window open skipped by settings',
-        details: { enabled: false, source }
+        details: getStateLogDetails({ enabled: false, source, reason: 'settings-disabled' })
       })
       if (state.visible) hide({ source: 'settings-disabled' })
       return getState()
     }
     const win = ensureWindow()
+    patchState({
+      anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED,
+      placement: ''
+    })
     syncToPetWindow()
-    clearHideTimer()
+    clearHideTimer('manual-open')
     patchState({
       message: state.message || createManualOpenMessage(),
       visible: true,
@@ -566,7 +770,7 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: 'pet-bubble-chat.window.open-requested',
       message: 'Pet bubble chat window open requested',
-      details: { source, focus: Boolean(focus) }
+      details: getStateLogDetails({ source, focus: Boolean(focus), reason: focus ? 'manual-focus' : 'manual-open' })
     })
     return getState()
   }
@@ -629,13 +833,13 @@ const createPetBubbleChatWindowManager = ({
       level: 'debug',
       event: 'pet-bubble-chat.items.updated',
       message: 'Pet bubble chat items updated',
-        details: {
+        details: getStateLogDetails({
           reason,
           itemCount: items.length,
           noticeCount: normalizedNotices.length,
           conversationMessageCount: Array.isArray(conversationMessages) ? conversationMessages.length : 0,
           requestId: typeof state.message?.requestId === 'string' ? state.message.requestId : ''
-        }
+        })
       })
     return getState()
   }
@@ -660,13 +864,13 @@ const createPetBubbleChatWindowManager = ({
         level: 'debug',
         event: 'pet-bubble-chat.notice.buffered',
         message: 'Pet bubble chat notice buffered',
-        details: {
+        details: getStateLogDetails({
           source: item.source,
           sourceSurface: item.sourceSurface || item.source,
           textChars: item.text.length,
           noticeCount: noticeItems.length,
           requestId: item.requestId || ''
-        }
+        })
       })
       return nextState
     }
@@ -715,6 +919,7 @@ const createPetBubbleChatWindowManager = ({
     if (!message) return getState()
     appendNoticeOrDialogue({ ...payload, ...message })
     const win = ensureWindow()
+    if (!state.visible) patchState({ anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED, placement: '' })
     syncToPetWindow()
     patchState({
       message: {
@@ -731,15 +936,15 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: 'pet-bubble-chat.message.displayed',
       message: 'Pet bubble chat message displayed',
-      details: {
+      details: getStateLogDetails({
         source: message.source,
         sourceSurface: message.sourceSurface || message.source,
         textChars: message.text.length,
         ttlMs: message.ttlMs,
         requestId: typeof payload?.requestId === 'string' ? payload.requestId.slice(0, 120) : ''
-      }
+      })
     })
-    scheduleAutoHide()
+    scheduleAutoHide('message-displayed')
     return getState()
   }
 
@@ -750,9 +955,9 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: Boolean(pinned) ? 'pet-bubble-chat.interaction.pinned' : 'pet-bubble-chat.interaction.unpinned',
       message: Boolean(pinned) ? 'Pet bubble chat pinned' : 'Pet bubble chat unpinned',
-      details: { source }
+      details: getStateLogDetails({ source, reason: Boolean(pinned) ? 'pinned' : 'unpinned' })
     })
-    scheduleAutoHide()
+    scheduleAutoHide('pin-changed')
     scheduleHistoryPrune()
     return getState()
   }
@@ -764,9 +969,9 @@ const createPetBubbleChatWindowManager = ({
       level: 'debug',
       event: 'pet-bubble-chat.interaction.changed',
       message: 'Pet bubble chat interaction state changed',
-      details: { source, interacting: Boolean(interacting) }
+      details: getStateLogDetails({ source, interacting: Boolean(interacting), reason: Boolean(interacting) ? 'interaction-started' : 'interaction-ended' })
     })
-    scheduleAutoHide()
+    scheduleAutoHide('interaction-changed')
     scheduleHistoryPrune()
     return getState()
   }
@@ -779,7 +984,7 @@ const createPetBubbleChatWindowManager = ({
       level: 'debug',
       event: 'pet-bubble-chat.hit-test.changed',
       message: 'Pet bubble chat hit-test mode changed',
-      details: { source, interactive: shouldInteract }
+      details: getStateLogDetails({ source, interactive: shouldInteract, reason: shouldInteract ? 'hit-test-interactive' : 'hit-test-passthrough' })
     })
     return getState()
   }
@@ -796,10 +1001,10 @@ const createPetBubbleChatWindowManager = ({
       awaitingReply: Boolean(sending) || state.pendingUserMessages.some((item) => item.status === 'queued' || item.status === 'sending'),
       lastUserMessage: normalizedUserMessage?.text ? normalizedUserMessage : null,
       error: String(error || '').slice(0, 240),
-      interacting: Boolean(sending) || Boolean(error) || state.interacting
+      interacting: state.interacting
     })
     syncToPetWindow()
-    scheduleAutoHide()
+    scheduleAutoHide('sending-state-changed')
     scheduleHistoryPrune()
     return getState()
   }
@@ -817,6 +1022,17 @@ const createPetBubbleChatWindowManager = ({
       awaitingReply: true,
       error: '',
       lastUserMessage: { text: pending.text, createdAt: pending.createdAt }
+    })
+    recordLog({
+      level: 'info',
+      event: state.sending ? 'pet-bubble-chat.request.queued' : 'pet-bubble-chat.request.started',
+      message: state.sending ? 'Pet bubble chat request queued' : 'Pet bubble chat request started',
+      details: getStateLogDetails({
+        requestId: pending.requestId,
+        reason: state.sending ? 'active-request-in-flight' : 'mini-input-submit',
+        messageChars: pending.text.length,
+        queued: Boolean(state.sending)
+      })
     })
     rebuildItems({
       conversationMessages: lastConversationMessages,
@@ -863,6 +1079,16 @@ const createPetBubbleChatWindowManager = ({
       noticeItems: state.noticeItems,
       reason: 'request-completed'
     })
+    recordLog({
+      level: 'info',
+      event: 'pet-bubble-chat.request.completed',
+      message: 'Pet bubble chat request completed',
+      details: getStateLogDetails({
+        requestId,
+        reason: 'request-completed',
+        conversationMessageCount: Array.isArray(conversationMessages) ? conversationMessages.length : 0
+      })
+    })
     return nextState
   }
 
@@ -880,11 +1106,23 @@ const createPetBubbleChatWindowManager = ({
       awaitingReply: nextPending.length > 0,
       error: String(error || '').slice(0, 240)
     })
-    return rebuildItems({
+    const nextState = rebuildItems({
       conversationMessages: lastConversationMessages,
       noticeItems: state.noticeItems,
       reason: 'request-failed'
     })
+    recordLog({
+      level: 'warn',
+      event: 'pet-bubble-chat.request.failed',
+      message: 'Pet bubble chat request failed',
+      details: getStateLogDetails({
+        requestId,
+        reason: 'request-failed',
+        errorChars: String(error || '').length,
+        retryablePendingCount: nextPending.filter((item) => item.status === 'pending-merge').length
+      })
+    })
+    return nextState
   }
 
   const startQueuedRequest = (requestId = '') => {
@@ -901,6 +1139,17 @@ const createPetBubbleChatWindowManager = ({
       sending: true,
       awaitingReply: true,
       error: ''
+    })
+    recordLog({
+      level: 'info',
+      event: 'pet-bubble-chat.request.started',
+      message: 'Pet bubble chat queued request started',
+      details: getStateLogDetails({
+        requestId,
+        reason: 'queued-request-started',
+        batchCount: queued.length,
+        messageChars: queued.reduce((total, item) => total + String(item.text || '').length, 0)
+      })
     })
     rebuildItems({
       conversationMessages: lastConversationMessages,
@@ -920,7 +1169,7 @@ const createPetBubbleChatWindowManager = ({
 
   electron.app?.on?.('before-quit', () => {
     allowClose = true
-    clearHideTimer()
+    clearHideTimer('before-quit')
   })
 
   return {

@@ -15,6 +15,7 @@ const SENSITIVE_DETAIL_KEYS = new Set([
   'memoryText',
   'path',
   'rawProviderReply',
+  'referenceToken',
   'selectedPath',
   'sourceDir',
   'sourcePath',

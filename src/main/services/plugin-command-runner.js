@@ -140,8 +140,10 @@ const runPluginCommandEntryProcess = async ({
       stopRuntimeProcessWithFallback(runtime, signal)
       return true
     }
-    const timeoutMs = Number.isFinite(Number(commandProcessTimeoutMs))
-      ? Math.max(0, Number(commandProcessTimeoutMs))
+    const timeoutMs = Number.isFinite(Number(commandEntry?.timeoutMs))
+      ? Math.max(0, Number(commandEntry.timeoutMs))
+      : Number.isFinite(Number(commandProcessTimeoutMs))
+        ? Math.max(0, Number(commandProcessTimeoutMs))
       : LOCAL_PLUGIN_COMMAND_TIMEOUT_MS
     const timeoutId = timeoutMs > 0
       ? setTimeout(() => {

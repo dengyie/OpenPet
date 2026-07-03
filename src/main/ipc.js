@@ -15,6 +15,7 @@ const { createBubbleRequestId } = require('./pet-bubble-chat-window')
 const { createLocalHttpToken } = require('./services/local-http-service')
 const { registerAiIpc } = require('./ipc/register-ai-ipc')
 const { registerCatalogIpc } = require('./ipc/register-catalog-ipc')
+const { registerCreatorIpc } = require('./ipc/register-creator-ipc')
 const { registerPetRuntimeIpc } = require('./ipc/register-pet-runtime-ipc')
 const { registerPluginIpc } = require('./ipc/register-plugin-ipc')
 const { registerSettingsIpc } = require('./ipc/register-settings-ipc')
@@ -131,7 +132,7 @@ const resolvePetSaySourceSurface = ({ source = '', requestSource = '' } = {}) =>
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -408,8 +409,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return petChatFacade.showLocalBubbleChatMessage(payload)
   })
 
-  ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, () => {
-    petChatFacade.hideBubbleChat()
+  ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, (_event, payload = {}) => {
+    petChatFacade.hideBubbleChat(payload)
   })
 
   ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SET_PINNED, (_event, payload) => {
@@ -979,6 +980,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     pluginGithubImportService,
     createPluginListView,
     createPluginMutationResult
+  })
+  registerCreatorIpc({
+    ipcMainService,
+    showOpenDialogForEvent,
+    creatorWorkflowService
   })
 
   registerServiceIpc({

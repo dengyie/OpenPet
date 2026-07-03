@@ -47,11 +47,12 @@ const createPluginServices = ({
 }) => {
   const pluginDir = path.join(app.getPath('userData'), 'plugins')
   const bundledCreatorStudioDir = path.join(projectRoot, 'examples', 'plugins', 'creator-studio')
+  const bundledAgentAwarenessDir = path.join(projectRoot, 'examples', 'plugins', 'agent-awareness')
   const getCatalogBlockStatus = (candidate, catalogService, methodName) => catalogService?.[methodName]?.(candidate) || { blocked: false, reasons: [] }
 
   const bundledPluginSync = syncBundledPlugins({
     pluginDir,
-    bundledPluginDirs: [bundledCreatorStudioDir],
+    bundledPluginDirs: [bundledCreatorStudioDir, bundledAgentAwarenessDir],
     settingsService
   })
   logBundledPluginSync({ bundledPluginSync, appLogService })

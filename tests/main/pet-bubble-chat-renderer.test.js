@@ -61,8 +61,16 @@ const createElement = (id = '') => ({
 })
 
 const dispatch = async (target, eventName, event = {}) => {
+  if (eventName === 'wheel' && typeof event.preventDefault !== 'function') {
+    event.preventDefault = () => {
+      event.defaultPrevented = true
+    }
+  }
   for (const listener of target.listeners?.[eventName] || []) {
     await listener(event)
+  }
+  if (eventName === 'wheel' && target?.id === 'bubble-stream' && !event.defaultPrevented) {
+    target.scrollTop = Math.max(0, (target.scrollTop || 0) + (Number(event.deltaY) || 0))
   }
 }
 
@@ -72,7 +80,7 @@ const dispatchDocument = async (documentListeners, eventName, event = {}) => {
   }
 }
 
-const createHarness = async () => {
+const createHarness = async ({ initialState } = {}) => {
   const apiCalls = {
     hide: [],
     setInteracting: [],
@@ -91,11 +99,13 @@ const createHarness = async () => {
     error: '',
     pinned: false
   })
-  let latestState = baseState()
+  let latestState = initialState ? { ...baseState(), ...initialState } : baseState()
   const apiStateListeners = []
   const documentListeners = {}
   const elements = {
     'bubble-shell': createElement('bubble-shell'),
+    'bubble-toolbar': createElement('bubble-toolbar'),
+    'close-button': createElement('close-button'),
     'bubble-stream': createElement('bubble-stream'),
     'bubble-items': createElement('bubble-items'),
     'new-message-button': createElement('new-message-button'),
@@ -112,13 +122,17 @@ const createHarness = async () => {
   }
   const context = {
     console,
+    setTimeout,
+    clearTimeout,
     window: {
       addEventListener() {},
+      setTimeout,
+      clearTimeout,
       getSelection: () => selection.text,
       petBubbleChatAPI: {
         getState: async () => latestState,
-        hide: () => {
-          apiCalls.hide.push(true)
+        hide: (payload) => {
+          apiCalls.hide.push(payload || true)
         },
         setPinned: async () => {
           latestState = { ...latestState, pinned: true }
@@ -267,6 +281,19 @@ test('bubble chat renderer Escape first collapses a draft and then hides when al
   assert.deepEqual(apiCalls.hide, [true])
 })
 
+test('bubble chat renderer close button hides the popup with a close-button source', async () => {
+  const harness = await createHarness()
+  const { apiCalls, elements } = harness
+
+  await dispatch(elements['close-button'], 'click', {
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.equal(apiCalls.hide.length, 1)
+  assert.equal(apiCalls.hide[0].source, 'bubble-close-button')
+})
+
 test('bubble chat renderer keeps interaction while text is selected and releases active interaction after selection clears', async () => {
   const harness = await createHarness()
   const { apiCalls, documentListeners, selection } = harness
@@ -334,6 +361,23 @@ test('bubble chat renderer enables hit-test interaction while hovered and focuse
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
 })
 
+test('bubble chat renderer only expands the collapsed composer on double-click, not single-click', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements } = harness
+
+  await dispatchDocument(documentListeners, 'click')
+
+  assert.equal(elements['mini-input-form'].classList.contains('expanded'), false)
+  assert.equal(apiCalls.setInteracting.includes(true), false)
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-click'), false)
+
+  await dispatchDocument(documentListeners, 'dblclick')
+
+  assert.equal(elements['mini-input-form'].classList.contains('expanded'), true)
+  assert.equal(apiCalls.setInteracting.includes(true), true)
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-double-click' && payload.interactive === true), true)
+})
+
 test('bubble chat renderer enables passive hit-test on initial render when history is scrollable', async () => {
   const harness = await createHarness()
   const { apiCalls } = harness
@@ -343,28 +387,63 @@ test('bubble chat renderer enables passive hit-test on initial render when histo
   )), true)
 })
 
+test('bubble chat renderer keeps window controls clickable for a single visible popup item', async () => {
+  const harness = await createHarness({
+    initialState: {
+      visible: true,
+      items: [
+        { id: 'n1', kind: 'notice', role: 'system', text: '单条提示', source: 'plugin:weather', createdAt: '2026-06-24T00:00:02.000Z' }
+      ],
+      message: { id: 'n1', kind: 'notice', role: 'system', text: '单条提示', source: 'plugin:weather', createdAt: '2026-06-24T00:00:02.000Z' }
+    }
+  })
+  const { apiCalls } = harness
+
+  assert.equal(apiCalls.setHitTestMode.some((payload) => (
+    payload.source === 'renderer-refresh-state' && payload.interactive === true
+  )), true)
+})
+
 test('bubble chat renderer scrolls bubble list on wheel without scrolling the input composer', async () => {
   const harness = await createHarness()
-  const { apiCalls, documentListeners, elements } = harness
-  let streamPrevented = false
+  const { apiCalls, elements } = harness
   let inputPrevented = false
 
-  await dispatchDocument(documentListeners, 'mouseenter')
   elements['bubble-stream'].scrollTop = 24
   await dispatch(elements['bubble-stream'], 'wheel', {
     deltaY: 36,
-    preventDefault() { streamPrevented = true },
     stopPropagation() {}
   })
-  await Promise.resolve()
   await dispatch(elements['mini-input'], 'wheel', {
     deltaY: 40,
     preventDefault() { inputPrevented = true },
     stopPropagation() {}
   })
 
-  assert.equal(streamPrevented, true)
   assert.equal(inputPrevented, true)
   assert.equal(elements['bubble-stream'].scrollTop, 60)
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.interactive === true), true)
+})
+
+test('bubble chat renderer keeps history scrollable while awaiting reply and syncs interactive hold state to main', async () => {
+  const harness = await createHarness()
+  const { apiCalls, apiStateListeners, elements } = harness
+
+  apiStateListeners[0]({
+    sending: true,
+    awaitingReply: true,
+    interacting: false,
+    hitTestInteractive: true,
+    lastUserMessage: { text: '新问题', createdAt: '2026-06-24T00:00:05.000Z' }
+  })
+
+  const before = elements['bubble-stream'].scrollTop
+  await dispatch(elements['bubble-stream'], 'wheel', {
+    deltaY: 36,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.equal(elements['bubble-stream'].scrollTop, before + 36)
+  assert.equal(apiCalls.setInteracting.includes(true), true)
 })

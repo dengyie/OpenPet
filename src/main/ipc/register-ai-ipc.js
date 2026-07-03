@@ -64,8 +64,8 @@ const registerAiIpc = ({
 
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => createImageGenerationConfigView(imageGenerationModelService.getConfig()))
   ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_CONFIG, (_event, config) => createImageGenerationConfigView(imageGenerationModelService.saveConfig(config)))
-  ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_API_KEY, (_event, apiKey) => createImageGenerationApiKeyResult(imageGenerationModelService.saveCloudApiKey(apiKey)))
-  ipcMainService.handle(IPC.IMAGE_GENERATION_CLEAR_API_KEY, () => createImageGenerationApiKeyResult(imageGenerationModelService.clearCloudApiKey()))
+  ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_API_KEY, (_event, apiKey) => createImageGenerationApiKeyResult(imageGenerationModelService.saveProviderApiKey(apiKey)))
+  ipcMainService.handle(IPC.IMAGE_GENERATION_CLEAR_API_KEY, () => createImageGenerationApiKeyResult(imageGenerationModelService.clearProviderApiKey()))
   ipcMainService.handle(IPC.IMAGE_GENERATION_CHECK_HEALTH, async (_event, payload) => (
     createImageGenerationHealthCheckResult(await imageGenerationModelService.checkHealth(payload || {}))
   ))

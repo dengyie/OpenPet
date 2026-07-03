@@ -107,6 +107,32 @@ const exportAccessLogs = (logs, format = 'json') => {
   return JSON.stringify(logs, null, 2)
 }
 
+const normalizePageNumber = (value) => {
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : 1
+}
+
+const normalizePageSize = (value, fallback = 50) => {
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric > 0 ? Math.min(numeric, 200) : fallback
+}
+
+const paginateLogs = (entries, request = {}) => {
+  const pageSize = normalizePageSize(request.pageSize)
+  const page = normalizePageNumber(request.page)
+  const total = entries.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * pageSize
+  return {
+    entries: entries.slice(start, start + pageSize),
+    page: safePage,
+    pageSize,
+    total,
+    totalPages
+  }
+}
+
 const getState = (server, config) => {
   const address = server?.address()
   return {
@@ -362,12 +388,13 @@ const createLocalHttpService = ({ petService, settingsService, maxAccessLogs = D
   const revokeMcpSessions = () => active?.mcp.revokeSessions() || { activeSessions: 0, sessionTtlMs: mcpSessionTtlMs || 0 }
 
   const getLogs = (filters = {}) => filterAccessLogs(readLogs(), filters)
+  const getLogPage = (filters = {}) => paginateLogs(getLogs(filters), filters)
 
   const clearLogs = () => saveLogs([])
 
   const exportLogs = (filters = {}) => exportAccessLogs(getLogs(filters), filters.format)
 
-  return { start, stop, getStatus, revokeMcpSessions, getLogs, clearLogs, exportLogs }
+  return { start, stop, getStatus, revokeMcpSessions, getLogs, getLogPage, clearLogs, exportLogs }
 }
 
 module.exports = {

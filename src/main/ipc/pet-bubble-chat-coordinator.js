@@ -58,8 +58,10 @@ const createPetBubbleChatCoordinator = ({
     return refreshBubbleChatItems({ reason: 'local-show-message' }) || state
   }
 
-  const hideBubbleChat = () => {
-    petBubbleChatWindowService?.hide?.({ source: 'pet-bubble-chat-renderer' })
+  const hideBubbleChat = (payload = {}) => {
+    petBubbleChatWindowService?.hide?.({
+      source: normalizeMessageText(payload?.source) || 'pet-bubble-chat-renderer'
+    })
   }
 
   const setBubbleChatPinned = (payload) => (

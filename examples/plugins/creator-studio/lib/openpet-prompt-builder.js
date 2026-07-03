@@ -16,6 +16,8 @@ const SECTION_ORDER = [
   'User Creative Brief'
 ]
 
+const ACTION_SHEET_MAX_COLUMNS = 4
+
 const sanitizeCreativeBrief = (value = '') => {
   let sanitized = String(value || '')
   sanitized = sanitized.replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[redacted-secret]')
@@ -66,6 +68,63 @@ const describeTrigger = (action) => {
   ].filter(Boolean).join(', ')
 }
 
+const getActionSheetLayout = (action) => {
+  const frameCount = Math.max(1, Number(action?.frameCount) || 1)
+  const columns = Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
+  return { frameCount, columns, rows }
+}
+
+const toSentence = (value = '') => {
+  const text = sanitizeCreativeBrief(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[。！？]+$/u, '')
+  return text ? `${text}.` : ''
+}
+
+const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetContext }) => {
+  const mode = task.mode
+  const styleSource = task.styleSource
+  const actionName = sanitizeCreativeBrief(action?.name || 'pose')
+  const visibleStyleContext = sanitizeCreativeBrief(currentPetContext)
+  const actionSheet = getActionSheetLayout(action)
+  const sentences = [
+    mode === 'full-pet'
+      ? `Create one full-body OpenPet desktop pet sprite: ${sanitizeCreativeBrief(creativeBrief || task.characterBrief || actionName || 'cute desktop pet')}.`
+      : `Create one OpenPet action sheet of the current character doing this action: ${actionName}.`,
+    mode === 'single-action'
+      ? 'Keep the same character identity, proportions, face, palette, and overall style.'
+      : 'Use cute compact proportions, a clear face, and simple readable shapes.',
+    mode === 'single-action'
+      ? `Arrange exactly ${actionSheet.frameCount} sequential poses in a ${actionSheet.columns} column by ${actionSheet.rows} row grid.`
+      : 'One character only. Fully visible and centered.',
+    mode === 'single-action'
+      ? 'Each grid cell must contain one full-body pose of the same character, fully visible and centered.'
+      : 'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, or accessories.',
+    'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, or accessories.',
+    'Readable at small desktop size with a clean silhouette and stable body center.',
+    'Use a plain clean background that is easy to cut out. No scene background.',
+    mode === 'single-action'
+      ? 'No text, logo, watermark, UI, labels, panel borders, extra characters, or extra bonus poses outside the required grid.'
+      : 'No text, logo, watermark, UI, border, extra characters, sticker sheet, or extra poses.',
+    mode === 'single-action'
+      ? action?.loop
+        ? 'Show clear motion progression from anticipation to action to recovery, with the first and last pose compatible for a seamless loop.'
+        : 'Show clear motion progression from neutral to action to recovery, with readable pose changes across the grid.'
+      : action?.loop
+        ? 'Make the pose balanced and loop-friendly.'
+        : 'Make the pose clear, balanced, and easy to read.',
+    styleSource === 'currentPet' || styleSource === 'referenceImage'
+      ? 'Match the current character style as closely as possible.'
+      : '',
+    visibleStyleContext ? `Current pet style context: ${visibleStyleContext}.` : '',
+    mode === 'single-action' ? `Action sheet label: ${actionName}.` : '',
+    mode === 'single-action' ? toSentence(creativeBrief) : ''
+  ].filter(Boolean)
+  return sentences.join(' ')
+}
+
 const buildSections = ({ task, action, creativeBrief, backend, model, currentPetContext }) => {
   const mode = task.mode
   const target = task.targetPet
@@ -73,6 +132,7 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
   const actionName = sanitizeCreativeBrief(action?.name || 'Base Pose')
   const actionId = sanitizeCreativeBrief(action?.actionId || 'base-pose')
   const motionPrompt = sanitizeCreativeBrief(action?.motionPrompt || actionName)
+  const actionSheet = getActionSheetLayout(action)
   const providerWording = model === 'gpt-image-2'
     ? 'Use transparent-friendly, easy cutout silhouette wording; do not depend on a provider alpha-channel parameter.'
     : 'Prefer transparent-background output when available, with a clean cutout silhouette.'
@@ -114,10 +174,10 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
       `Style source: ${styleSource}`,
       mode === 'full-pet'
         ? 'Create a coherent new pet identity with a body structure that can support multiple future actions.'
-        : 'Create an action pose that stays readable as an OpenPet sprite.',
+        : 'Create a sequential action sheet that stays readable as an OpenPet sprite animation source.',
       mode === 'full-pet'
         ? 'Use a neutral base pose unless the creative brief explicitly asks otherwise.'
-        : 'Do not redesign the pet; only change the required pose/action.'
+        : 'Do not redesign the pet; only change the required pose/action and preserve identity across all frames.'
     ],
     'Action Requirements': [
       `Action ID: ${actionId}`,
@@ -125,6 +185,9 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
       `Motion intent: ${motionPrompt}`,
       `Loop policy: ${describeLoop(action)}`,
       `Frame count intent: ${action?.frameCount || 12}`,
+      mode === 'single-action'
+        ? `Action sheet layout: ${actionSheet.columns} columns x ${actionSheet.rows} rows`
+        : 'Action sheet layout: single pose source',
       `Trigger: ${describeTrigger(action)}`,
       'Key pose plan: anticipation, primary action pose, readable exaggeration, and recovery or loop return.',
       action?.loop
@@ -141,15 +204,23 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
       currentPetContext ? `Current pet context: ${sanitizeCreativeBrief(currentPetContext)}` : ''
     ].filter(Boolean),
     'Output Requirements': [
-      'Output one centered pet sprite source image.',
-      'Do not create a multi-pose sheet.',
+      mode === 'full-pet'
+        ? 'Output one centered pet sprite source image.'
+        : `Output one action sheet containing exactly ${actionSheet.frameCount} readable poses in a ${actionSheet.columns} x ${actionSheet.rows} grid.`,
+      mode === 'full-pet'
+        ? 'Do not create a multi-pose sheet.'
+        : 'Each grid cell must contain one sequential frame of the same character with no empty required cells.',
       'Do not add labels, annotations, UI chrome, or borders.',
-      'The result should be suitable for OpenPet action frame generation.'
+      mode === 'full-pet'
+        ? 'The result should be suitable for OpenPet action frame generation.'
+        : 'The result should be suitable for direct OpenPet action frame slicing.'
     ],
     'Negative Constraints': [
       'No background scene, floor, furniture, room, landscape, or unrelated props.',
       'no text, logo, watermark, signature, UI, frame, or border.',
-      'No extra characters, no sticker sheet, no multiple poses in one image.',
+      mode === 'full-pet'
+        ? 'No extra characters, no sticker sheet, no multiple poses in one image.'
+        : 'No extra characters, no decorative sticker sheet layout, no empty required cells, and no extra bonus poses beyond the required action grid.',
       'No cropped body parts, close-up portrait, realistic noisy fur, tiny unreadable ornamentation, heavy shadow, complex lighting, strong perspective, malformed limbs, duplicate limbs, extra tails, or merged facial features.'
     ],
     'User Creative Brief': [
@@ -189,9 +260,16 @@ const buildOpenPetImagePrompt = ({
     model,
     currentPetContext
   })
+  const providerPrompt = buildCompactProviderPrompt({
+    task,
+    action,
+    creativeBrief,
+    currentPetContext
+  })
 
   return {
     prompt: renderPrompt(sectionMap),
+    providerPrompt,
     sections: SECTION_ORDER.slice(),
     warnings,
     mode: task.mode,

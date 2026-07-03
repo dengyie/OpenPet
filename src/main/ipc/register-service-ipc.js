@@ -14,7 +14,7 @@ const registerServiceIpc = ({
   )
 
   ipcMainService.handle(IPC.SERVICE_GET_STATUS, getServiceStatusView)
-  ipcMainService.handle(IPC.SERVICE_GET_LOGS, (_event, filters) => localHttpService.getLogs(filters))
+  ipcMainService.handle(IPC.SERVICE_GET_LOGS, (_event, filters) => localHttpService.getLogPage(filters))
   ipcMainService.handle(IPC.SERVICE_EXPORT_LOGS, (_event, filters) => localHttpService.exportLogs(filters))
   ipcMainService.handle(IPC.SERVICE_CLEAR_LOGS, () => localHttpService.clearLogs())
 

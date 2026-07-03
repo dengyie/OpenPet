@@ -1,0 +1,104 @@
+:root {
+  color-scheme: light;
+  --bg: #f4efe5;
+  --ink: #241a12;
+  --muted: #7a6a5c;
+  --line: #dccfbf;
+  --card: #fffaf2;
+  --accent: #c25b2c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(194, 91, 44, 0.18), transparent 28rem),
+    linear-gradient(135deg, #f8f0df, var(--bg));
+}
+
+.shell {
+  width: min(920px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 48px 0;
+}
+
+.hero {
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(40px, 8vw, 76px);
+  line-height: 0.95;
+}
+
+h2 {
+  margin: 0;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 20px;
+  background: rgba(255, 250, 242, 0.86);
+  box-shadow: 0 24px 80px rgba(49, 31, 16, 0.12);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  color: white;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.sessions {
+  display: grid;
+  gap: 12px;
+}
+
+.session {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--card);
+}
+
+.session div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session span,
+.session small,
+.empty {
+  color: var(--muted);
+}
+
+.session p {
+  margin: 10px 0;
+}
