@@ -599,7 +599,32 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.cursor-card-delete')).toHaveCount(0)
 
     const seenConfirmMessages = await page.evaluate(() => window.__cursorConfirmMessages || [])
-    expect(seenConfirmMessages[0]).toContain('确认删除自定义指针“demo-cursor”？')
+    expect(seenConfirmMessages[0]).toContain('确认删除指针“demo-cursor”？')
+  })
+
+  test('deletes a built-in cursor card with the same affordance and removes it from the picker rail', async ({ page }) => {
+    await page.addInitScript(() => {
+      const messages = []
+      window.__cursorBuiltinConfirmMessages = messages
+      window.confirm = (message) => {
+        messages.push(String(message || ''))
+        return true
+      }
+    })
+
+    await page.goto('/')
+
+    const builtinCard = page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' }).first()
+    await expect(builtinCard).toBeVisible()
+    await expect(page.getByRole('button', { name: '删除指针 爪爪紫' })).toBeVisible()
+
+    await page.getByRole('button', { name: '删除指针 爪爪紫' }).click()
+
+    await expect(page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' })).toHaveCount(0)
+    await expect(page.locator('.cursor-option-card')).toHaveCount(6)
+
+    const seenConfirmMessages = await page.evaluate(() => window.__cursorBuiltinConfirmMessages || [])
+    expect(seenConfirmMessages[0]).toContain('确认删除指针“爪爪紫”？')
   })
 
   test('persists grounded and home settings in the demo API session', async ({ page }) => {

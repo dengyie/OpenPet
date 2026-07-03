@@ -19,7 +19,7 @@ import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '..
 import type { PetPaneProps } from '../panes/PetPane'
 
 const normalizeCursorState = (settings: Partial<ControlCenterSettings>) => (
-  normalizeCursorSettingsState(settings) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors'>
+  normalizeCursorSettingsState(settings) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds'>
 )
 
 const normalizeCustomCursorRecords = (cursors: Partial<CustomCursorRecord>[] | null | undefined) => (
@@ -36,7 +36,8 @@ const applyCursorState = (settings: ControlCenterSettings, partial: Partial<Cont
     ...normalizeCursorState({
       selectedCursorId: partial.selectedCursorId ?? settings.selectedCursorId,
       customCursors: partial.customCursors ?? settings.customCursors,
-      customCursor: partial.customCursor ?? settings.customCursor
+      customCursor: partial.customCursor ?? settings.customCursor,
+      hiddenCursorIds: partial.hiddenCursorIds ?? settings.hiddenCursorIds
     })
   })
 }
@@ -79,8 +80,8 @@ export function usePetSettingsPane() {
   }, [settings.scale])
 
   const cursorOptions = useMemo<CursorOption[]>(
-    () => listCursorOptions(settings.customCursors) as CursorOption[],
-    [settings.customCursors]
+    () => listCursorOptions(settings.customCursors, settings.hiddenCursorIds) as CursorOption[],
+    [settings.customCursors, settings.hiddenCursorIds]
   )
 
   const persistSettings = async (nextSettings: ControlCenterSettings, successMessage: string, errorFallback: string) => {
@@ -193,19 +194,23 @@ export function usePetSettingsPane() {
   }
 
   const onDeleteCursor = async (cursorId: string) => {
-    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
+    const targetCursor = cursorOptions.find((cursor) => cursor.id === cursorId)
     if (!targetCursor || targetCursor.canDelete !== true) {
-      setStatus('未找到要删除的自定义指针')
+      setStatus('未找到要删除的指针')
       return
     }
-    if (!window.confirm(`确认删除自定义指针“${targetCursor.name}”？\n\n删除后会从指针列表移除；如果它正在使用中，将自动切回系统默认。`)) {
+    if (!window.confirm(`确认删除指针“${targetCursor.name}”？\n\n删除后会从指针列表移除；如果它正在使用中，将自动切回系统默认。`)) {
       return
     }
 
     const deletingSelectedCursor = settings.selectedCursorId === cursorId
+    const nextHiddenCursorIds = targetCursor.source === 'builtin'
+      ? Array.from(new Set([...settings.hiddenCursorIds, cursorId]))
+      : settings.hiddenCursorIds
     const nextSettings = applyCursorState(settings, {
       selectedCursorId: deletingSelectedCursor ? SYSTEM_CURSOR_ID : settings.selectedCursorId,
       customCursor: createDefaultRuntimeCursor(),
+      hiddenCursorIds: nextHiddenCursorIds,
       customCursors: normalizeCustomCursorRecords(
         settings.customCursors.filter((cursor) => cursor.id !== cursorId)
       )

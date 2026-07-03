@@ -23,7 +23,7 @@ const createBuiltinCursor = ({ id, name, svg, hotspotX = 0, hotspotY = 0, width 
   hotspotX,
   hotspotY,
   createdAt: 'builtin',
-  canDelete: false,
+  canDelete: true,
   canRename: false
 })
 
@@ -133,6 +133,14 @@ const normalizeNumber = (value, fallback = 0) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
 }
+
+const normalizeHiddenCursorIds = (hiddenCursorIds) => (
+  Array.from(new Set(
+    (Array.isArray(hiddenCursorIds) ? hiddenCursorIds : [])
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value) => Boolean(value) && value !== SYSTEM_CURSOR_ID)
+  ))
+)
 
 const clampCursorSizePercent = (value) => {
   const normalized = normalizeNumber(value, 100)
@@ -294,6 +302,7 @@ const resolveSelectedCursor = ({ selectedCursorId, customCursors }) => {
 const normalizeCursorSettingsState = (settings = {}) => {
   const legacyCustomCursor = normalizeRuntimeCursor(settings.customCursor)
   const customCursors = normalizeCustomCursorCollection(settings.customCursors)
+  const hiddenCursorIds = normalizeHiddenCursorIds(settings.hiddenCursorIds)
   const migratedLegacyCursor = migrateLegacyCustomCursorRecord(settings.customCursor)
   const nextCustomCursors = migratedLegacyCursor && customCursors.length === 0
     ? [migratedLegacyCursor, ...customCursors]
@@ -307,13 +316,14 @@ const normalizeCursorSettingsState = (settings = {}) => {
   }
 
   const cursorExists = selectedCursorId === SYSTEM_CURSOR_ID
-    || Boolean(getBuiltinCursorById(selectedCursorId))
+    || (Boolean(getBuiltinCursorById(selectedCursorId)) && !hiddenCursorIds.includes(selectedCursorId))
     || nextCustomCursors.some((cursor) => cursor.id === selectedCursorId)
 
   if (!cursorExists) selectedCursorId = SYSTEM_CURSOR_ID
 
   return {
     selectedCursorId,
+    hiddenCursorIds,
     customCursors: nextCustomCursors,
     customCursor: resolveSelectedCursor({
       selectedCursorId,
@@ -322,8 +332,9 @@ const normalizeCursorSettingsState = (settings = {}) => {
   }
 }
 
-const listCursorOptions = (customCursors = []) => {
+const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
   const normalizedCustomCursors = normalizeCustomCursorCollection(customCursors)
+  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
   const customCursorById = new Map(normalizedCustomCursors.map((cursor) => [cursor.id, cursor]))
   const builtinIds = new Set(BUILTIN_CURSORS.map((cursor) => cursor.id))
 
@@ -345,7 +356,9 @@ const listCursorOptions = (customCursors = []) => {
       canDelete: false,
       canRename: false
     },
-    ...BUILTIN_CURSORS.map((cursor) => {
+    ...BUILTIN_CURSORS
+      .filter((cursor) => !hiddenCursorIdSet.has(cursor.id))
+      .map((cursor) => {
       const overrideCursor = customCursorById.get(cursor.id)
       return overrideCursor
         ? {
@@ -353,12 +366,12 @@ const listCursorOptions = (customCursors = []) => {
             ...overrideCursor,
             type: 'custom',
             source: 'builtin',
-            canDelete: false,
+            canDelete: true,
             canRename: false
           }
         : cursor
     }),
-    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id))
+    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id) && !hiddenCursorIdSet.has(cursor.id))
   ]
 }
 

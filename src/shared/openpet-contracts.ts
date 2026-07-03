@@ -14,6 +14,7 @@ export interface ControlCenterSettings {
   selectedCursorId: string
   customCursor: CustomCursorSettings
   customCursors: CustomCursorRecord[]
+  hiddenCursorIds: string[]
   grounded: boolean
   home: ControlCenterPetHomeSettings
   petBubbleChat: PetBubbleChatSettings

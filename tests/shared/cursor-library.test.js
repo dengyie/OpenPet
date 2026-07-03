@@ -80,6 +80,14 @@ test('listCursorOptions returns system, built-ins, and custom cursors in order',
   assert.equal(options.length, 8)
 })
 
+test('listCursorOptions can hide deleted built-in cursor cards from the visible picker rail', () => {
+  const hiddenId = BUILTIN_CURSORS[0].id
+  const options = listCursorOptions([], [hiddenId])
+
+  assert.equal(options.some((option) => option.id === hiddenId), false)
+  assert.equal(options.length, 6)
+})
+
 test('listCursorOptions merges built-in cursor overrides without duplicating cards', () => {
   const builtin = BUILTIN_CURSORS[0]
   const options = listCursorOptions([{
@@ -99,7 +107,7 @@ test('listCursorOptions merges built-in cursor overrides without duplicating car
   assert.equal(matchingOptions.length, 1)
   assert.equal(matchingOptions[0].type, 'custom')
   assert.equal(matchingOptions[0].source, 'builtin')
-  assert.equal(matchingOptions[0].canDelete, false)
+  assert.equal(matchingOptions[0].canDelete, true)
   assert.equal(matchingOptions[0].width, 72)
   assert.equal(matchingOptions[0].sizePercent, 150)
 })

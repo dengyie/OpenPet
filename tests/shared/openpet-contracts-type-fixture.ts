@@ -71,6 +71,7 @@ const controlCenterSettingsFixture = {
     hotspotY: 0
   },
   customCursors: [],
+  hiddenCursorIds: [],
   grounded: true,
   home: {
     enabled: true,
