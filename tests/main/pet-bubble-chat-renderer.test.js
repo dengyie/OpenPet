@@ -505,6 +505,70 @@ test('bubble chat renderer drags the window from the bubble body without relying
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-drag-start' && payload.interactive === true), true)
 })
 
+test('bubble chat renderer can start dragging from the composer shell when no history bubbles are visible', async () => {
+  const harness = await createHarness({
+    initialState: {
+      items: [],
+      message: null,
+      awaitingReply: true,
+      visible: true
+    }
+  })
+  const { apiCalls, documentListeners, elements } = harness
+
+  await dispatch(elements['bubble-card'], 'pointerdown', {
+    target: elements['mini-input-form'],
+    pointerId: 12,
+    screenX: 420,
+    screenY: 360,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+  await dispatchDocument(documentListeners, 'pointermove', {
+    pointerId: 12,
+    screenX: 454,
+    screenY: 390
+  })
+  await dispatchDocument(documentListeners, 'pointerup', {
+    pointerId: 12
+  })
+
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-drag-prepare' && payload.interactive === true), true)
+  assert.deepEqual(apiCalls.dragWindowTo, [{ x: 234, y: 210 }])
+})
+
+test('bubble chat renderer does not start dragging when the pointer starts on the textarea itself', async () => {
+  const harness = await createHarness({
+    initialState: {
+      items: [],
+      message: null,
+      awaitingReply: true,
+      visible: true
+    }
+  })
+  const { apiCalls, documentListeners, elements } = harness
+
+  await dispatch(elements['bubble-card'], 'pointerdown', {
+    target: elements['mini-input'],
+    pointerId: 13,
+    screenX: 420,
+    screenY: 360,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+  await dispatchDocument(documentListeners, 'pointermove', {
+    pointerId: 13,
+    screenX: 454,
+    screenY: 390
+  })
+  await dispatchDocument(documentListeners, 'pointerup', {
+    pointerId: 13
+  })
+
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-drag-prepare'), false)
+  assert.deepEqual(apiCalls.dragWindowTo, [])
+})
+
 test('bubble chat renderer allows dragging from the bubble text content itself', async () => {
   const harness = await createHarness()
   const { apiCalls, documentListeners, elements } = harness

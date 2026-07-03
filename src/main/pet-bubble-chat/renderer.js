@@ -119,8 +119,10 @@ const isComposerTarget = (target) => {
 
 const isBubbleDragTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
-  if (target.closest('#mini-input-form, #close-button, #new-message-button, textarea, button')) return false
-  return Boolean(target.closest('.bubble-item, #last-user-message, #error-message'))
+  if (target.closest('#close-button, #new-message-button, textarea, button')) return false
+  return Boolean(target.closest(
+    '.bubble-card, #bubble-shell, #bubble-stream, #bubble-items, .bubble-item, #last-user-message, #error-message, #mini-input-form'
+  ))
 }
 
 const isSelectableBubbleTarget = (target) => {
@@ -375,6 +377,8 @@ bubbleCard?.addEventListener('pointerdown', (event) => {
   }
   hovering = true
   expanded = true
+  setInteracting(true)
+  setHitTestMode(true, 'renderer-drag-prepare')
   event.target?.setPointerCapture?.(event.pointerId)
 })
 
