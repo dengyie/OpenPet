@@ -164,18 +164,22 @@ test('createDialogueItemsFromMessages keeps only the latest lightweight dialogue
 
 test('resolveBubbleBounds anchors above pet and flips below when needed', () => {
   const { resolveBubbleBounds } = loadModuleWithElectron({ app: { on: () => {} } })
+  const abovePetBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const belowPetBounds = { x: 10, y: 20, width: 120, height: 120 }
 
   const above = resolveBubbleBounds({
-    petBounds: { x: 300, y: 300, width: 120, height: 120 },
+    petBounds: abovePetBounds,
     workArea: { x: 0, y: 0, width: 900, height: 700 }
   })
   const below = resolveBubbleBounds({
-    petBounds: { x: 10, y: 20, width: 120, height: 120 },
+    petBounds: belowPetBounds,
     workArea: { x: 0, y: 0, width: 900, height: 700 }
   })
 
   assert.equal(above.placement, 'above')
-  assert.equal(above.y, 32)
+  const aboveGap = abovePetBounds.y - (above.y + above.height)
+  assert.ok(above.y > 32)
+  assert.ok(aboveGap >= 0 && aboveGap <= 4)
   assert.equal(above.height, 260)
   assert.equal(below.placement, 'below')
   assert.equal(below.y, 148)
@@ -193,9 +197,11 @@ test('resolveBubbleBounds uses side placement when vertical space would cover th
   })
 
   assert.equal(bounds.placement, 'right')
-  assert.ok(bounds.x >= petBounds.x + petBounds.width + 8)
+  assert.ok(bounds.x >= petBounds.x + petBounds.width + 4)
   assert.ok(bounds.y < petBounds.y + petBounds.height)
   assert.ok(bounds.y + bounds.height > petBounds.y)
+  const oldCenteredY = petBounds.y + Math.round((petBounds.height - bounds.height) / 2)
+  assert.ok(bounds.y < oldCenteredY)
 })
 
 test('pet bubble chat manager opens manually with a chat prompt even when auto popup is disabled', () => {
@@ -232,6 +238,7 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
   assert.equal(state.message.kind, 'dialogue')
   assert.equal(state.message.role, 'pet')
   assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.open-requested'), true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.opened' && entry.details.anchorProfile === 'tight-head-anchor-v1'), true)
 })
 
 test('pet bubble chat manager shows latest message and auto hides when idle', () => {
@@ -704,8 +711,14 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
   assert.equal(reanchoredState.anchorMode, 'anchored')
   assert.notEqual(reanchoredState.bounds.x, initialBounds.x + 72)
   assert.notEqual(reanchoredState.bounds.y, initialBounds.y + 36)
+  const reanchorGap = petBounds.y - (reanchoredState.bounds.y + reanchoredState.bounds.height)
+  assert.ok(reanchorGap >= 0 && reanchorGap <= 4)
   assert.equal(logs.filter((entry) => entry.event === 'pet-bubble-chat.window.detached').length, 1)
-  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.reanchored' && entry.details.reason === 'pet-moved'), true)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.window.reanchored' &&
+    entry.details.reason === 'pet-moved' &&
+    entry.details.anchorProfile === 'tight-head-anchor-v1'
+  )), true)
 })
 
 test('pet bubble chat manager supports renderer-driven dragging without a toolbar region', () => {

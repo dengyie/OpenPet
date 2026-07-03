@@ -9,7 +9,12 @@ const MIN_BUBBLE_HEIGHT = 176
 const MIN_BUBBLE_WIDTH = 240
 const MAX_BUBBLE_WIDTH = 380
 const MAX_BUBBLE_HEIGHT = 360
-const BUBBLE_GAP = 8
+const BUBBLE_GAP_ABOVE = 2
+const BUBBLE_GAP_BELOW = 8
+const BUBBLE_GAP_SIDE = 4
+const BUBBLE_HEAD_ANCHOR_RATIO_X = 0.5
+const BUBBLE_SIDE_ANCHOR_RATIO_Y = 0.3
+const BUBBLE_SIDE_WINDOW_OFFSET_RATIO_Y = 0.42
 const WORK_AREA_MARGIN = 8
 const MIN_TTL_MS = 6000
 const MAX_TTL_MS = 30000
@@ -25,6 +30,7 @@ const BUBBLE_ANCHOR_MODE = Object.freeze({
   ANCHORED: 'anchored',
   DETACHED_TEMPORARY: 'detached-temporary'
 })
+const BUBBLE_ANCHOR_PROFILE = 'tight-head-anchor-v1'
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -105,19 +111,20 @@ const resolveBubbleBounds = ({ petBounds, workArea, width = DEFAULT_BUBBLE_WIDTH
   const maxX = Math.max(minX, area.x + area.width - resolvedWidth - WORK_AREA_MARGIN)
   const minY = area.y + WORK_AREA_MARGIN
   const maxY = Math.max(minY, area.y + area.height - resolvedHeight - WORK_AREA_MARGIN)
-  const preferredX = anchor.x + Math.round((anchor.width - resolvedWidth) / 2)
-  const preferredY = anchor.y + Math.round((anchor.height - resolvedHeight) / 2)
-  const aboveY = anchor.y - resolvedHeight - BUBBLE_GAP
-  const belowY = anchor.y + anchor.height + BUBBLE_GAP
-  const leftX = anchor.x - resolvedWidth - BUBBLE_GAP
-  const rightX = anchor.x + anchor.width + BUBBLE_GAP
-  const centeredX = Math.round(clamp(preferredX, minX, maxX))
-  const centeredY = Math.round(clamp(preferredY, minY, maxY))
+  const headAnchorX = anchor.x + Math.round(anchor.width * BUBBLE_HEAD_ANCHOR_RATIO_X)
+  const sideAnchorY = anchor.y + Math.round(anchor.height * BUBBLE_SIDE_ANCHOR_RATIO_Y)
+  const aboveX = Math.round(clamp(headAnchorX - resolvedWidth / 2, minX, maxX))
+  const belowX = Math.round(clamp(headAnchorX - resolvedWidth / 2, minX, maxX))
+  const aboveY = anchor.y - resolvedHeight - BUBBLE_GAP_ABOVE
+  const belowY = anchor.y + anchor.height + BUBBLE_GAP_BELOW
+  const leftX = anchor.x - resolvedWidth - BUBBLE_GAP_SIDE
+  const rightX = anchor.x + anchor.width + BUBBLE_GAP_SIDE
+  const sideY = Math.round(clamp(sideAnchorY - resolvedHeight * BUBBLE_SIDE_WINDOW_OFFSET_RATIO_Y, minY, maxY))
   const candidates = [
-    { placement: 'above', x: centeredX, y: aboveY, fits: aboveY >= minY },
-    { placement: 'below', x: centeredX, y: belowY, fits: belowY <= maxY },
-    { placement: 'right', x: rightX, y: centeredY, fits: rightX <= maxX },
-    { placement: 'left', x: leftX, y: centeredY, fits: leftX >= minX }
+    { placement: 'above', x: aboveX, y: aboveY, fits: aboveY >= minY },
+    { placement: 'below', x: belowX, y: belowY, fits: belowY <= maxY },
+    { placement: 'right', x: rightX, y: sideY, fits: rightX <= maxX },
+    { placement: 'left', x: leftX, y: sideY, fits: leftX >= minX }
   ]
   const candidate = candidates.find((item) => item.fits)
   if (candidate) {
@@ -131,10 +138,10 @@ const resolveBubbleBounds = ({ petBounds, workArea, width = DEFAULT_BUBBLE_WIDTH
   }
 
   const availableSpaces = [
-    { placement: 'above', space: Math.max(0, anchor.y - BUBBLE_GAP - minY), x: centeredX, y: aboveY },
-    { placement: 'below', space: Math.max(0, maxY - belowY), x: centeredX, y: belowY },
-    { placement: 'right', space: Math.max(0, maxX - rightX), x: rightX, y: centeredY },
-    { placement: 'left', space: Math.max(0, leftX - minX), x: leftX, y: centeredY }
+    { placement: 'above', space: Math.max(0, anchor.y - BUBBLE_GAP_ABOVE - minY), x: aboveX, y: aboveY },
+    { placement: 'below', space: Math.max(0, maxY - belowY), x: belowX, y: belowY },
+    { placement: 'right', space: Math.max(0, maxX - rightX), x: rightX, y: sideY },
+    { placement: 'left', space: Math.max(0, leftX - minX), x: leftX, y: sideY }
   ].sort((a, b) => b.space - a.space)[0]
   return {
     x: Math.round(clamp(availableSpaces.x, minX, maxX)),
@@ -661,7 +668,8 @@ const createPetBubbleChatWindowManager = ({
           y: anchoredBounds.y,
           width: anchoredBounds.width,
           height: anchoredBounds.height,
-          placement: anchoredBounds.placement
+          placement: anchoredBounds.placement,
+          anchorProfile: BUBBLE_ANCHOR_PROFILE
         })
       })
     }
@@ -803,6 +811,7 @@ const createPetBubbleChatWindowManager = ({
         width: bounds.width,
         height: bounds.height,
         placement: bounds.placement,
+        anchorProfile: BUBBLE_ANCHOR_PROFILE,
         reason: 'window-created'
       })
     })
