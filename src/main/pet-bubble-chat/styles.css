@@ -81,6 +81,12 @@ body {
   pointer-events: auto;
 }
 
+.bubble-card.dragging,
+.bubble-card.dragging * {
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+
 button {
   border: 0;
   border-radius: 999px;
@@ -168,6 +174,7 @@ button[aria-pressed="true"] {
   backdrop-filter: blur(16px) saturate(1.08);
   transform-origin: bottom center;
   animation: bubble-pop 180ms ease-out;
+  cursor: grab;
 }
 
 .bubble-item--user {
@@ -223,6 +230,7 @@ button[aria-pressed="true"] {
   white-space: pre-wrap;
   word-break: break-word;
   text-wrap: pretty;
+  user-select: text;
 }
 
 .bubble-item-meta {
@@ -279,6 +287,8 @@ button[aria-pressed="true"] {
   font-size: 12px;
   line-height: 1.34;
   backdrop-filter: blur(14px);
+  cursor: grab;
+  user-select: text;
 }
 
 .error-message {

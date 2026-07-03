@@ -915,3 +915,78 @@ test('pet bubble chat manager preserves recent visible dialogue history across r
     ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答']
   )
 })
+
+test('pet bubble chat manager refreshes visible dialogue ttl when a new request starts', () => {
+  const timers = []
+  const originalSetTimeout = global.setTimeout
+  const originalClearTimeout = global.clearTimeout
+  const originalDateNow = Date.now
+  let now = 0
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, cleared: false }
+    timers.push(timer)
+    return timer
+  }
+  global.clearTimeout = (timer) => {
+    if (timer) timer.cleared = true
+  }
+  Date.now = () => now
+
+  try {
+    const { FakeBrowserWindow } = createFakeBrowserWindow()
+    const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+      BrowserWindow: FakeBrowserWindow,
+      app: { on: () => {} },
+      screen: {
+        getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+      }
+    })
+    const manager = createPetBubbleChatWindowManager({
+      BrowserWindow: FakeBrowserWindow,
+      screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+      settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+      getPetWindow: () => ({
+        isDestroyed: () => false,
+        getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+      })
+    })
+
+    manager.rebuildItems({
+      reason: 'seed-history',
+      conversationMessages: [
+        { id: 'u1', role: 'user', content: '旧问题 1', createdAt: '2026-06-24T00:00:00.000Z' },
+        { id: 'a1', role: 'assistant', content: '旧回答 1', createdAt: '2026-06-24T00:00:01.000Z' },
+        { id: 'u2', role: 'user', content: '旧问题 2', createdAt: '2026-06-24T00:00:02.000Z' },
+        { id: 'a2', role: 'assistant', content: '旧回答 2', createdAt: '2026-06-24T00:00:03.000Z' }
+      ]
+    })
+
+    const initialHistoryTimer = timers.at(-1)
+    assert.ok(initialHistoryTimer)
+
+    now = 8999
+    manager.queueOutgoingMessage({ text: '新问题', requestId: 'req-1' })
+    manager.completeRequest({
+      requestId: 'req-1',
+      conversationMessages: [
+        { id: 'u1', role: 'user', content: '旧问题 1', createdAt: '2026-06-24T00:00:00.000Z' },
+        { id: 'a1', role: 'assistant', content: '旧回答 1', createdAt: '2026-06-24T00:00:01.000Z' },
+        { id: 'u2', role: 'user', content: '旧问题 2', createdAt: '2026-06-24T00:00:02.000Z' },
+        { id: 'a2', role: 'assistant', content: '旧回答 2', createdAt: '2026-06-24T00:00:03.000Z' },
+        { id: 'u3', role: 'user', content: '新问题', createdAt: '2026-06-24T00:00:04.000Z' },
+        { id: 'a3', role: 'assistant', content: '新回答', createdAt: '2026-06-24T00:00:05.000Z' }
+      ]
+    })
+
+    const refreshedHistoryTimer = timers.at(-1)
+    assert.ok(refreshedHistoryTimer)
+    assert.ok(
+      refreshedHistoryTimer.delay >= 6000,
+      `expected refreshed history timer to be extended, got ${refreshedHistoryTimer.delay}`
+    )
+  } finally {
+    global.setTimeout = originalSetTimeout
+    global.clearTimeout = originalClearTimeout
+    Date.now = originalDateNow
+  }
+})

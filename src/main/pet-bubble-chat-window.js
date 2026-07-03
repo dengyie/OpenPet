@@ -475,6 +475,26 @@ const createPetBubbleChatWindowManager = ({
     }
   }
 
+  const refreshDialogueVisibility = (items = [], { minimumVisibleMs = DEFAULT_HISTORY_TTL_MS } = {}) => {
+    const now = Date.now()
+    for (const item of items) {
+      if (item?.kind !== 'dialogue' || !item.text) continue
+      const key = getDialogueVisibilityKey(item)
+      const existing = dialogueVisibility.get(key)
+      if (!existing || existing.hidden) continue
+      const ttlMs = clamp(
+        Number(item.ttlMs) || calculateBubbleTtlMs({ text: item.text, source: item.source }),
+        MIN_HISTORY_TTL_MS,
+        MAX_HISTORY_TTL_MS
+      )
+      dialogueVisibility.set(key, {
+        ...existing,
+        hidden: false,
+        visibleUntil: now + Math.max(ttlMs, minimumVisibleMs)
+      })
+    }
+  }
+
   const pruneDialogueVisibility = (items = []) => {
     const now = Date.now()
     if (shouldHoldVisible()) return
@@ -1081,6 +1101,7 @@ const createPetBubbleChatWindowManager = ({
       error: '',
       lastUserMessage: { text: pending.text, createdAt: pending.createdAt }
     })
+    refreshDialogueVisibility(getCurrentDialogueItems(state.items))
     recordLog({
       level: 'info',
       event: state.sending ? 'pet-bubble-chat.request.queued' : 'pet-bubble-chat.request.started',
@@ -1132,6 +1153,7 @@ const createPetBubbleChatWindowManager = ({
       awaitingReply: remainingPending.length > 0,
       error: ''
     })
+    refreshDialogueVisibility(getCurrentDialogueItems(state.items))
     const nextState = rebuildItems({
       conversationMessages,
       noticeItems: state.noticeItems,
@@ -1198,6 +1220,7 @@ const createPetBubbleChatWindowManager = ({
       awaitingReply: true,
       error: ''
     })
+    refreshDialogueVisibility(getCurrentDialogueItems(state.items))
     recordLog({
       level: 'info',
       event: 'pet-bubble-chat.request.started',

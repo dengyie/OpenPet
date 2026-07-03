@@ -19,6 +19,7 @@ let lastItemCount = 0
 let scrollingHistory = false
 let scrollInteractionTimer = null
 let dragState = null
+const DRAG_START_DISTANCE_PX = 4
 
 const hasTextSelection = () => Boolean(String(window.getSelection?.() || '').trim())
 
@@ -119,8 +120,66 @@ const isComposerTarget = (target) => {
 const isBubbleDragTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
   if (target.closest('#mini-input-form, #close-button, #new-message-button, textarea, button')) return false
-  if (target.closest('.bubble-item-source, .bubble-item-text, .bubble-item-meta')) return false
   return Boolean(target.closest('.bubble-item, #last-user-message, #error-message'))
+}
+
+const isSelectableBubbleTarget = (target) => {
+  if (!target || typeof target.closest !== 'function') return false
+  return Boolean(target.closest('.bubble-item-text, .bubble-item-source, .bubble-item-meta, #last-user-message, #error-message'))
+}
+
+const setDraggingUi = (dragging) => {
+  bubbleCard?.classList?.toggle('dragging', dragging)
+}
+
+const sameBounds = (left, right) => Boolean(
+  left &&
+  right &&
+  left.x === right.x &&
+  left.y === right.y
+)
+
+const applyDragStatePatch = (patch = {}) => {
+  if (!patch || typeof patch !== 'object') return
+  currentState = {
+    ...currentState,
+    ...patch
+  }
+}
+
+const flushDragMove = () => {
+  if (!dragState?.queuedBounds) return
+  const nextBounds = dragState.queuedBounds
+  dragState.queuedBounds = null
+  window.petBubbleChatAPI.dragWindowTo({
+    x: nextBounds.x,
+    y: nextBounds.y,
+    source: 'renderer-drag-move'
+  }).then((state) => {
+    if (dragState) dragState.lastCommittedBounds = nextBounds
+    applyDragStatePatch(state)
+    if (dragState?.queuedBounds) scheduleDragMove()
+  }).catch(() => {})
+}
+
+const scheduleDragMove = () => {
+  if (!dragState || dragState.frameScheduled) return
+  dragState.frameScheduled = true
+  window.requestAnimationFrame(() => {
+    if (dragState) dragState.frameScheduled = false
+    flushDragMove()
+  })
+}
+
+const flushFinalDragMove = (bounds, source) => {
+  if (!bounds || sameBounds(bounds, dragState?.lastCommittedBounds)) return
+  window.petBubbleChatAPI.dragWindowTo({
+    x: bounds.x,
+    y: bounds.y,
+    source
+  }).then((state) => {
+    applyDragStatePatch(state)
+  }).catch(() => {})
 }
 
 const handleBubbleWheel = (event) => {
@@ -307,31 +366,63 @@ bubbleCard?.addEventListener('pointerdown', (event) => {
     pointerId: event.pointerId,
     originScreenX: event.screenX,
     originScreenY: event.screenY,
-    originBounds: { ...currentState.bounds }
+    originBounds: { ...currentState.bounds },
+    startedFromSelectableContent: isSelectableBubbleTarget(event.target),
+    dragging: false,
+    lastCommittedBounds: null,
+    queuedBounds: null,
+    frameScheduled: false
   }
   hovering = true
   expanded = true
-  event.preventDefault?.()
-  event.stopPropagation?.()
   event.target?.setPointerCapture?.(event.pointerId)
-  setInteracting(true)
-  setHitTestMode(true, 'renderer-drag-start')
 })
 
 document.addEventListener('pointermove', (event) => {
   if (!dragState) return
   if (dragState.pointerId !== undefined && event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return
+  const deltaX = event.screenX - dragState.originScreenX
+  const deltaY = event.screenY - dragState.originScreenY
+  if (!dragState.dragging) {
+    if (dragState.startedFromSelectableContent && hasTextSelection()) return
+    if (Math.hypot(deltaX, deltaY) < DRAG_START_DISTANCE_PX) return
+    dragState.dragging = true
+    event.preventDefault?.()
+    event.stopPropagation?.()
+    setDraggingUi(true)
+    setInteracting(true)
+    setHitTestMode(true, 'renderer-drag-start')
+  }
   const nextX = dragState.originBounds.x + Math.round(event.screenX - dragState.originScreenX)
   const nextY = dragState.originBounds.y + Math.round(event.screenY - dragState.originScreenY)
-  window.petBubbleChatAPI.dragWindowTo({ x: nextX, y: nextY, source: 'renderer-drag-move' }).then(renderState).catch(() => {})
+  dragState.queuedBounds = { x: nextX, y: nextY }
+  applyDragStatePatch({
+    bounds: {
+      ...(currentState.bounds || dragState.originBounds),
+      x: nextX,
+      y: nextY
+    },
+    anchorMode: 'detached-temporary',
+    hitTestInteractive: true
+  })
+  scheduleDragMove()
 })
 
 const finishDrag = (event, source) => {
   if (!dragState) return
   if (dragState.pointerId !== undefined && event?.pointerId !== undefined && dragState.pointerId !== event.pointerId) return
+  const finalBounds = dragState.dragging && Number.isFinite(event?.screenX) && Number.isFinite(event?.screenY)
+    ? {
+        x: dragState.originBounds.x + Math.round(event.screenX - dragState.originScreenX),
+        y: dragState.originBounds.y + Math.round(event.screenY - dragState.originScreenY)
+      }
+    : dragState.queuedBounds
+  const wasDragging = Boolean(dragState.dragging)
+  if (wasDragging && finalBounds) flushFinalDragMove(finalBounds, source)
   dragState = null
+  setDraggingUi(false)
   if (!hovering) expanded = false
-  setHitTestMode(true, source)
+  if (wasDragging) setHitTestMode(true, source)
   syncUiInteractionState()
 }
 

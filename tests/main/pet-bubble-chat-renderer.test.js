@@ -100,7 +100,7 @@ const dispatchDocument = async (documentListeners, eventName, event = {}) => {
   }
 }
 
-const createHarness = async ({ initialState } = {}) => {
+const createHarness = async ({ initialState, deferAnimationFrames = false } = {}) => {
   const apiCalls = {
     hide: [],
     setInteracting: [],
@@ -108,6 +108,7 @@ const createHarness = async ({ initialState } = {}) => {
     dragWindowTo: [],
     sendMessage: []
   }
+  const animationFrameQueue = []
   const initialItems = [
     { id: 'u1', kind: 'dialogue', role: 'user', text: '你好', source: 'user', createdAt: '2026-06-24T00:00:00.000Z' },
     { id: 'a1', kind: 'dialogue', role: 'pet', text: '我在', source: 'ai', createdAt: '2026-06-24T00:00:01.000Z' },
@@ -157,6 +158,11 @@ const createHarness = async ({ initialState } = {}) => {
       addEventListener() {},
       setTimeout,
       clearTimeout,
+      requestAnimationFrame: (callback) => {
+        if (deferAnimationFrames) animationFrameQueue.push(callback)
+        else callback()
+        return 1
+      },
       getSelection: () => selection.text,
       petBubbleChatAPI: {
         getState: async () => latestState,
@@ -238,7 +244,11 @@ const createHarness = async ({ initialState } = {}) => {
     documentListeners,
     elements,
     focusState,
-    selection
+    selection,
+    flushAnimationFrame() {
+      const callback = animationFrameQueue.shift()
+      if (callback) callback()
+    }
   }
 }
 
@@ -495,7 +505,90 @@ test('bubble chat renderer drags the window from the bubble body without relying
   assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-drag-start' && payload.interactive === true), true)
 })
 
-test('bubble chat renderer keeps history scrollable while awaiting reply and syncs interactive hold state to main', async () => {
+test('bubble chat renderer allows dragging from the bubble text content itself', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements } = harness
+  const bubbleItem = elements['bubble-items'].children[0]
+  const bubbleText = bubbleItem.children[1]
+
+  await dispatch(elements['bubble-card'], 'pointerdown', {
+    target: bubbleText,
+    pointerId: 9,
+    screenX: 410,
+    screenY: 340,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+  await dispatchDocument(documentListeners, 'pointermove', {
+    pointerId: 9,
+    screenX: 452,
+    screenY: 374
+  })
+  await dispatchDocument(documentListeners, 'pointerup', {
+    pointerId: 9
+  })
+
+  assert.deepEqual(apiCalls.dragWindowTo, [{ x: 242, y: 214 }])
+})
+
+test('bubble chat renderer lets users start text selection from bubble content without forcing drag mode', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements, selection } = harness
+  const bubbleItem = elements['bubble-items'].children[0]
+  const bubbleText = bubbleItem.children[1]
+  let prevented = false
+
+  await dispatch(elements['bubble-card'], 'pointerdown', {
+    target: bubbleText,
+    pointerId: 10,
+    screenX: 410,
+    screenY: 340,
+    preventDefault() { prevented = true },
+    stopPropagation() {}
+  })
+  selection.text = '你好'
+  await dispatchDocument(documentListeners, 'selectionchange')
+  await dispatchDocument(documentListeners, 'pointermove', {
+    pointerId: 10,
+    screenX: 452,
+    screenY: 374
+  })
+  await dispatchDocument(documentListeners, 'pointerup', {
+    pointerId: 10
+  })
+
+  assert.equal(prevented, false)
+  assert.deepEqual(apiCalls.dragWindowTo, [])
+  assert.equal(apiCalls.setHitTestMode.some((payload) => payload.source === 'renderer-drag-start'), false)
+})
+
+test('bubble chat renderer flushes the final drag position even when pointerup happens before animation frame delivery', async () => {
+  const harness = await createHarness({ deferAnimationFrames: true })
+  const { apiCalls, documentListeners, elements, flushAnimationFrame } = harness
+  const bubbleItem = elements['bubble-items'].children[0]
+
+  await dispatch(elements['bubble-card'], 'pointerdown', {
+    target: bubbleItem,
+    pointerId: 11,
+    screenX: 420,
+    screenY: 360,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+  await dispatchDocument(documentListeners, 'pointermove', {
+    pointerId: 11,
+    screenX: 456,
+    screenY: 392
+  })
+  await dispatchDocument(documentListeners, 'pointerup', {
+    pointerId: 11
+  })
+  flushAnimationFrame()
+
+  assert.deepEqual(apiCalls.dragWindowTo, [{ x: 236, y: 212 }])
+})
+
+test('bubble chat renderer keeps history scrollable while awaiting reply without forcing interactive state churn', async () => {
   const harness = await createHarness()
   const { apiCalls, apiStateListeners, elements } = harness
 
@@ -515,5 +608,5 @@ test('bubble chat renderer keeps history scrollable while awaiting reply and syn
   })
 
   assert.equal(elements['bubble-stream'].scrollTop, before + 36)
-  assert.equal(apiCalls.setInteracting.includes(true), true)
+  assert.equal(apiCalls.setInteracting.includes(true), false)
 })
