@@ -21,7 +21,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 | --- | --- |
 | Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
-| Agent awareness plugin | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md) |
+| Agent awareness and ClaudePet-inspired development route | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md), [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
 | AI Talk and pet dialogue | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md), [`superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md`](./superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md), [`superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md`](./superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md) |
 | Control Center visual design notes | [`design-system/cursor-settings.md`](./design-system/cursor-settings.md) |
@@ -45,7 +45,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 - [`archive/`](./archive/) stores superseded one-off root-level reports and status snapshots.
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
-- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, Creator Studio provider-path archives under `creator-studio-provider-smoke/`, packaged runtime smoke archives under `packaged-runtime/`, and release-claim closure archives under `signed-release-closure/`.
+- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, `agent-awareness-local-smoke/`, and `creator-studio-provider-smoke/`, plus packaged runtime smoke archives under `packaged-runtime/` and release-claim closure archives under `signed-release-closure/`.
 - [`release-notes/`](./release-notes/) stores GitHub Release body drafts.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 
