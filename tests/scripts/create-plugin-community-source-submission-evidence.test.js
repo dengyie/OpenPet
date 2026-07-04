@@ -12,6 +12,9 @@ const {
 } = require('../../scripts/create-plugin-community-source-submission-evidence')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/weather-status')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 const sha256 = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
@@ -133,23 +136,24 @@ test('createPluginCommunitySourceSubmissionEvidence records provenance without c
     'Runtime smoke, cleanup readiness, signing, and catalog publication evidence must be collected separately.'
   ])
 
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.checklist), true)
-  assert.equal(fs.existsSync(summary.files.commands), true)
-  assert.equal(fs.existsSync(summary.files.communityEvidence), true)
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.remoteSourceRehearsal.summary), true)
-  assert.equal(fs.existsSync(summary.remoteSourceRehearsal.provenance), true)
-  assert.equal(fs.existsSync(summary.packagePath), true)
-  assert.equal(fs.existsSync(summary.submission.bundleDir), true)
+  assert.equal(summary.outputDir, 'plugin-community-source-submission-evidence')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.checklist)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.commands)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.communityEvidence)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.remoteSourceRehearsal.summary)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.remoteSourceRehearsal.provenance)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.packagePath)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.submission.bundleDir)), true)
 
-  const evidence = JSON.parse(fs.readFileSync(summary.files.communityEvidence, 'utf-8'))
+  const evidence = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, summary.files.communityEvidence), 'utf-8'))
   assert.equal(evidence.communitySource.url, 'https://example.test/community/submission/42')
   assert.equal(evidence.communityEvidenceReady, true)
   assert.equal(evidence.sourceArchive.archiveSha256, fixture.archiveSha256)
   assert.equal(evidence.approval.approvalReady, true)
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(resolveOutputPath(outputDir, summary.files.readme), 'utf-8')
   assert.match(readme, /does not prove signing trust, catalog publication, runtime safety, or release readiness/)
 })
 
@@ -178,7 +182,7 @@ test('createPluginCommunitySourceSubmissionEvidence keeps unknown relation from 
   })
 
   assert.equal(summary.communityEvidenceReady, false)
-  const checklist = fs.readFileSync(summary.files.checklist, 'utf-8')
+  const checklist = fs.readFileSync(resolveOutputPath(outputDir, summary.files.checklist), 'utf-8')
   assert.match(checklist, /Community source URL recorded/)
   assert.match(checklist, /Runtime smoke evidence is collected separately/)
 })

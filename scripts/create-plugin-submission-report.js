@@ -4,6 +4,7 @@ const path = require('path')
 const { validatePluginPackage } = require('./validate-plugin-package')
 
 const DEFAULT_OUTPUT_NAME = 'plugin-submission-report.md'
+const DEFAULT_SOURCE_LABEL = 'plugin-source'
 
 const usage = () => [
   'Usage: node scripts/create-plugin-submission-report.js <plugin-dir-or-zip> [options]',
@@ -76,6 +77,25 @@ const defaultOutputPath = (sourcePath) => {
   return path.join(directory, DEFAULT_OUTPUT_NAME)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeSourcePath = (sourcePath) => {
+  const absoluteSourcePath = path.resolve(sourcePath)
+  return createSafeProjectPath(absoluteSourcePath, path.basename(absoluteSourcePath) || DEFAULT_SOURCE_LABEL)
+}
+
 const createChecklist = (validation) => {
   const review = validation.review
   const signatureStatus = review.signature?.status || 'unknown'
@@ -141,7 +161,7 @@ const createPluginSubmissionReport = ({
 
   return {
     generatedAt: now().toISOString(),
-    sourcePath: path.resolve(sourcePath),
+    sourcePath: createSafeSourcePath(sourcePath),
     requireSignature,
     readyForHumanReview: validation.ok,
     decision: validation.ok ? 'ready-for-human-review' : 'blocked-before-review',

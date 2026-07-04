@@ -133,12 +133,14 @@ test('createPluginCommunitySourceIntakeReport marks compatible OpenPet plugin ca
   assert.equal(summary.plugin.version, '1.0.0')
   assert.equal(summary.archive.archiveSha256, fixture.archiveSha256)
   assert.equal(summary.archive.archivePluginPath, 'community-plugin-main/plugin')
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.files.intake), true)
-  assert.equal(fs.existsSync(summary.files.commands), true)
+  assert.equal(path.isAbsolute(summary.outputDir), false)
+  assert.equal(path.isAbsolute(summary.files.readme), false)
+  assert.equal(fs.existsSync(path.join(outputDir, 'README-community-intake.md')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'plugin-community-source-intake-report-summary.json')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'community-source-intake.json')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'community-intake-commands.json')), true)
 
-  const commands = JSON.parse(fs.readFileSync(summary.files.commands, 'utf-8')).commands
+  const commands = JSON.parse(fs.readFileSync(path.join(outputDir, 'community-intake-commands.json'), 'utf-8')).commands
   assert.ok(commands.some((command) => command.includes('create-plugin-community-source-intake-report')))
   assert.ok(commands.some((command) => command.includes('create-plugin-community-source-submission-evidence')))
   assert.ok(commands.some((command) => command.includes('docs/release-evidence/plugin-community-source-submission-evidence/<session>')))
@@ -203,7 +205,7 @@ test('createPluginCommunitySourceIntakeReport records incompatible package model
   assert.match(summary.compatibility.summary, /plugin\.json/i)
   assert.equal(summary.plugin, null)
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(path.join(outputDir, 'README-community-intake.md'), 'utf-8')
   assert.match(readme, /does not prove community plugin compatibility/i)
   assert.match(readme, /requires a package rooted by plugin\.json/i)
 })

@@ -8,6 +8,9 @@ const {
   createPluginCommunitySourceInvitationKit,
   parseArgs
 } = require('../../scripts/create-plugin-community-source-invitation-kit')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 test('parseArgs accepts community-source invitation options', () => {
   const options = parseArgs([
@@ -68,24 +71,25 @@ test('createPluginCommunitySourceInvitationKit writes conservative invitation ar
     'Invitation kits do not prove signing trust, catalog publication, runtime safety, or release readiness.',
     'A received package must still pass Phase 104 discovery, Phase 100 intake, Phase 103 bridge, Phase 99 evidence, and maintainer review.'
   ])
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.message), true)
-  assert.equal(fs.existsSync(summary.files.checklist), true)
+  assert.equal(summary.outputDir, 'plugin-community-source-invitation-kit')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.message)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.checklist)), true)
 
-  const persistedSummary = JSON.parse(fs.readFileSync(summary.files.summary, 'utf-8'))
+  const persistedSummary = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, summary.files.summary), 'utf-8'))
   assert.equal(persistedSummary.status, 'invitation-draft-ready')
   assert.equal(persistedSummary.contactState, 'not-sent')
   assert.equal(persistedSummary.nextAction, 'send-invitation-and-wait-for-compatible-plugin-json-package')
   assert.deepEqual(persistedSummary.boundaries, summary.boundaries)
 
-  const message = fs.readFileSync(summary.files.message, 'utf-8')
+  const message = fs.readFileSync(resolveOutputPath(outputDir, summary.files.message), 'utf-8')
   assert.match(message, /OpenPet welcomes third-party extension authors/)
   assert.match(message, /weather/)
   assert.match(message, /Phase 100 intake/)
   assert.match(message, /does not approve, install, run, sign, publish, or trust/i)
 
-  const checklist = fs.readFileSync(summary.files.checklist, 'utf-8')
+  const checklist = fs.readFileSync(resolveOutputPath(outputDir, summary.files.checklist), 'utf-8')
   assert.match(checklist, /Invitation sent/)
   assert.match(checklist, /Compatible `plugin.json` package received/)
   assert.match(checklist, /Phase 104 discovery report updated or linked/)
@@ -104,7 +108,7 @@ test('createPluginCommunitySourceInvitationKit can omit target URL without claim
   assert.equal(summary.status, 'invitation-draft-ready')
   assert.equal(summary.contactState, 'not-sent')
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(resolveOutputPath(outputDir, summary.files.readme), 'utf-8')
   assert.match(readme, /This kit is a draft invitation packet/)
   assert.match(readme, /It does not prove an invitation was sent/)
 })

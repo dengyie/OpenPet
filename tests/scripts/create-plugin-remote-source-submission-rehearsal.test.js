@@ -13,6 +13,9 @@ const {
 } = require('../../scripts/create-plugin-remote-source-submission-rehearsal')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/weather-status')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 const sha256 = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
@@ -122,17 +125,18 @@ test('createPluginRemoteSourceSubmissionRehearsal records remote-source provenan
   assert.equal(summary.sourcePlugin.id, 'openpet.example.weather-status')
   assert.equal(summary.submission.bundleValidation.ok, true)
   assert.equal(summary.approval.validation.ok, true)
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.checklist), true)
-  assert.equal(fs.existsSync(summary.files.commands), true)
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.files.provenance), true)
-  assert.equal(fs.existsSync(summary.packagePath), true)
-  assert.equal(fs.existsSync(summary.submission.bundleDir), true)
-  assert.equal(fs.existsSync(summary.approval.record.files.markdown), true)
-  assert.equal(fs.existsSync(summary.approval.record.files.json), true)
+  assert.equal(summary.outputDir, 'plugin-remote-source-submission-rehearsal')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.checklist)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.commands)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.provenance)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.packagePath)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.submission.bundleDir)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(path.join(outputDir, summary.submission.bundleDir), summary.approval.record.files.markdown)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(path.join(outputDir, summary.submission.bundleDir), summary.approval.record.files.json)), true)
 
-  const provenance = JSON.parse(fs.readFileSync(summary.files.provenance, 'utf-8'))
+  const provenance = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, summary.files.provenance), 'utf-8'))
   assert.equal(provenance.kind, 'https-archive')
   assert.equal(provenance.archiveSha256, fixture.archiveSha256)
   assert.equal(provenance.pluginPath, 'examples/plugins/weather-status')

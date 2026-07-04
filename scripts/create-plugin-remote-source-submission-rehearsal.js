@@ -107,6 +107,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeMetadataPath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeMetadataPath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeMetadataPath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`
 
 const sha256Buffer = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
@@ -335,6 +355,7 @@ const createPluginRemoteSourceSubmissionRehearsal = async ({
   const generatedAt = now().toISOString()
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, path.basename(DEFAULT_OUTPUT_ROOT))
   const packagesDir = path.join(absoluteOutputDir, 'packages')
   const bundleDir = path.join(absoluteOutputDir, 'submission-bundle')
   const downloadDir = fsImpl.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-remote-archive-'))
@@ -411,15 +432,30 @@ const createPluginRemoteSourceSubmissionRehearsal = async ({
       archiveUrl,
       pluginPath,
       archivePluginPath: source.archivePluginPath,
-      packagePath,
-      bundleDir,
+      packagePath: createSafeOutputFilePath({
+        filePath: packagePath,
+        outputDir: absoluteOutputDir,
+        fallback: path.basename(packagePath)
+      }),
+      bundleDir: createSafeOutputFilePath({
+        filePath: bundleDir,
+        outputDir: absoluteOutputDir,
+        fallback: 'submission-bundle'
+      }),
       reviewer,
       decision,
       notes
     })
+    const outputFiles = {
+      readme: path.join(absoluteOutputDir, 'README.md'),
+      checklist: path.join(absoluteOutputDir, 'submission-checklist.md'),
+      commands: path.join(absoluteOutputDir, 'commands.json'),
+      provenance: path.join(absoluteOutputDir, 'source-provenance.json'),
+      summary: path.join(absoluteOutputDir, 'plugin-remote-source-submission-rehearsal-summary.json')
+    }
     const summary = {
       generatedAt,
-      outputDir: absoluteOutputDir,
+      outputDir: safeOutputDir,
       sourceArchive: {
         kind: 'https-archive',
         archiveUrl,
@@ -439,7 +475,11 @@ const createPluginRemoteSourceSubmissionRehearsal = async ({
         errors: sourceValidation.errors,
         riskLevel: sourceValidation.review.riskLevel
       },
-      packagePath,
+      packagePath: createSafeOutputFilePath({
+        filePath: packagePath,
+        outputDir: absoluteOutputDir,
+        fallback: path.basename(packagePath)
+      }),
       packageValidation: {
         ok: packageValidation.ok,
         warnings: packageValidation.warnings,
@@ -448,7 +488,11 @@ const createPluginRemoteSourceSubmissionRehearsal = async ({
         sha256: packageValidation.review.packageHash
       },
       submission: {
-        bundleDir,
+        bundleDir: createSafeOutputFilePath({
+          filePath: bundleDir,
+          outputDir: absoluteOutputDir,
+          fallback: 'submission-bundle'
+        }),
         bundle,
         bundleValidation
       },
@@ -457,19 +501,23 @@ const createPluginRemoteSourceSubmissionRehearsal = async ({
         validation: approvalValidation
       },
       files: {
-        readme: path.join(absoluteOutputDir, 'README.md'),
-        checklist: path.join(absoluteOutputDir, 'submission-checklist.md'),
-        commands: path.join(absoluteOutputDir, 'commands.json'),
-        provenance: path.join(absoluteOutputDir, 'source-provenance.json'),
-        summary: path.join(absoluteOutputDir, 'plugin-remote-source-submission-rehearsal-summary.json')
+        readme: createSafeOutputFilePath({ filePath: outputFiles.readme, outputDir: absoluteOutputDir, fallback: 'README.md' }),
+        checklist: createSafeOutputFilePath({ filePath: outputFiles.checklist, outputDir: absoluteOutputDir, fallback: 'submission-checklist.md' }),
+        commands: createSafeOutputFilePath({ filePath: outputFiles.commands, outputDir: absoluteOutputDir, fallback: 'commands.json' }),
+        provenance: createSafeOutputFilePath({ filePath: outputFiles.provenance, outputDir: absoluteOutputDir, fallback: 'source-provenance.json' }),
+        summary: createSafeOutputFilePath({
+          filePath: outputFiles.summary,
+          outputDir: absoluteOutputDir,
+          fallback: 'plugin-remote-source-submission-rehearsal-summary.json'
+        })
       }
     }
 
-    writeText(summary.files.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
-    writeText(summary.files.checklist, renderChecklist({ summary }), fsImpl)
-    writeJson(summary.files.commands, { commands }, fsImpl)
-    writeJson(summary.files.provenance, summary.sourceArchive, fsImpl)
-    writeJson(summary.files.summary, summary, fsImpl)
+    writeText(outputFiles.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
+    writeText(outputFiles.checklist, renderChecklist({ summary }), fsImpl)
+    writeJson(outputFiles.commands, { commands }, fsImpl)
+    writeJson(outputFiles.provenance, summary.sourceArchive, fsImpl)
+    writeJson(outputFiles.summary, summary, fsImpl)
 
     return summary
   } finally {

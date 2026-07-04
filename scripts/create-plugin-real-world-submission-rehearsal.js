@@ -98,6 +98,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeMetadataPath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeMetadataPath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeMetadataPath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`
 
 const commandList = ({ sourcePath, zipPath, bundleDir, reviewer, decision, notes }) => [
@@ -173,6 +193,7 @@ const createPluginRealWorldSubmissionRehearsal = ({
   const absoluteSourcePath = path.resolve(sourcePath)
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, path.basename(DEFAULT_OUTPUT_ROOT))
   const packagesDir = path.join(absoluteOutputDir, 'packages')
   const bundleDir = path.join(absoluteOutputDir, 'submission-bundle')
 
@@ -228,17 +249,31 @@ const createPluginRealWorldSubmissionRehearsal = ({
   }
 
   const commands = commandList({
-    sourcePath: absoluteSourcePath,
-    zipPath: packagePath,
-    bundleDir,
+    sourcePath: createSafeProjectPath(absoluteSourcePath, path.basename(absoluteSourcePath) || 'plugin-source'),
+    zipPath: createSafeOutputFilePath({
+      filePath: packagePath,
+      outputDir: absoluteOutputDir,
+      fallback: path.basename(packagePath)
+    }),
+    bundleDir: createSafeOutputFilePath({
+      filePath: bundleDir,
+      outputDir: absoluteOutputDir,
+      fallback: 'submission-bundle'
+    }),
     reviewer,
     decision,
     notes
   })
+  const outputFiles = {
+    readme: path.join(absoluteOutputDir, 'README.md'),
+    checklist: path.join(absoluteOutputDir, 'submission-checklist.md'),
+    commands: path.join(absoluteOutputDir, 'commands.json'),
+    summary: path.join(absoluteOutputDir, 'plugin-real-world-submission-rehearsal-summary.json')
+  }
   const summary = {
     generatedAt,
-    outputDir: absoluteOutputDir,
-    sourcePath: absoluteSourcePath,
+    outputDir: safeOutputDir,
+    sourcePath: createSafeProjectPath(absoluteSourcePath, path.basename(absoluteSourcePath) || 'plugin-source'),
     sourcePlugin,
     sourceValidation: {
       ok: sourceValidation.ok,
@@ -246,7 +281,11 @@ const createPluginRealWorldSubmissionRehearsal = ({
       errors: sourceValidation.errors,
       riskLevel: sourceValidation.review.riskLevel
     },
-    packagePath,
+    packagePath: createSafeOutputFilePath({
+      filePath: packagePath,
+      outputDir: absoluteOutputDir,
+      fallback: path.basename(packagePath)
+    }),
     packageValidation: {
       ok: packageValidation.ok,
       warnings: packageValidation.warnings,
@@ -255,7 +294,11 @@ const createPluginRealWorldSubmissionRehearsal = ({
       sha256: packageValidation.review.packageHash
     },
     submission: {
-      bundleDir,
+      bundleDir: createSafeOutputFilePath({
+        filePath: bundleDir,
+        outputDir: absoluteOutputDir,
+        fallback: 'submission-bundle'
+      }),
       bundle,
       bundleValidation
     },
@@ -264,17 +307,21 @@ const createPluginRealWorldSubmissionRehearsal = ({
       validation: approvalValidation
     },
     files: {
-      readme: path.join(absoluteOutputDir, 'README.md'),
-      checklist: path.join(absoluteOutputDir, 'submission-checklist.md'),
-      commands: path.join(absoluteOutputDir, 'commands.json'),
-      summary: path.join(absoluteOutputDir, 'plugin-real-world-submission-rehearsal-summary.json')
+      readme: createSafeOutputFilePath({ filePath: outputFiles.readme, outputDir: absoluteOutputDir, fallback: 'README.md' }),
+      checklist: createSafeOutputFilePath({ filePath: outputFiles.checklist, outputDir: absoluteOutputDir, fallback: 'submission-checklist.md' }),
+      commands: createSafeOutputFilePath({ filePath: outputFiles.commands, outputDir: absoluteOutputDir, fallback: 'commands.json' }),
+      summary: createSafeOutputFilePath({
+        filePath: outputFiles.summary,
+        outputDir: absoluteOutputDir,
+        fallback: 'plugin-real-world-submission-rehearsal-summary.json'
+      })
     }
   }
 
-  writeText(summary.files.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
-  writeText(summary.files.checklist, renderChecklist({ summary }), fsImpl)
-  writeJson(summary.files.commands, { commands }, fsImpl)
-  writeJson(summary.files.summary, summary, fsImpl)
+  writeText(outputFiles.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
+  writeText(outputFiles.checklist, renderChecklist({ summary }), fsImpl)
+  writeJson(outputFiles.commands, { commands }, fsImpl)
+  writeJson(outputFiles.summary, summary, fsImpl)
 
   return summary
 }

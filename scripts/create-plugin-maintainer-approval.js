@@ -4,6 +4,7 @@ const path = require('path')
 const { loadBundle, validateBundle } = require('./validate-plugin-submission-bundle')
 
 const VALID_DECISIONS = new Set(['approved', 'changes-requested'])
+const DEFAULT_BUNDLE_LABEL = 'submission-bundle'
 
 const DEFAULT_FILES = {
   markdown: 'plugin-maintainer-approval.md',
@@ -75,6 +76,26 @@ const writeText = ({ outputPath, content, fsImpl = fs }) => {
   return absoluteOutputPath
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeBundleFilePath = ({ filePath, bundleDir, fallback }) => {
+  const relative = toPosixPath(path.relative(bundleDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const renderMarkdownApproval = (approval) => [
   '# OpenPet Plugin Maintainer Approval',
   '',
@@ -127,12 +148,16 @@ const createPluginMaintainerApproval = ({
 
   const summary = bundle.summary
   const absoluteBundleDir = path.resolve(bundleDir)
+  const outputFiles = {
+    markdown: path.join(absoluteBundleDir, DEFAULT_FILES.markdown),
+    json: path.join(absoluteBundleDir, DEFAULT_FILES.json)
+  }
   const approval = {
     generatedAt: now().toISOString(),
     reviewer: reviewer.trim(),
     decision,
     notes: notes.trim(),
-    sourceBundleDir: absoluteBundleDir,
+    sourceBundleDir: createSafeProjectPath(absoluteBundleDir, DEFAULT_BUNDLE_LABEL),
     plugin: {
       id: summary.plugin.id,
       name: summary.plugin.name,
@@ -144,18 +169,26 @@ const createPluginMaintainerApproval = ({
     submissionDecision: summary.decision,
     approvalReady: validation.summary.readyForHumanReview && decision === 'approved',
     files: {
-      markdown: path.join(absoluteBundleDir, DEFAULT_FILES.markdown),
-      json: path.join(absoluteBundleDir, DEFAULT_FILES.json)
+      markdown: createSafeBundleFilePath({
+        filePath: outputFiles.markdown,
+        bundleDir: absoluteBundleDir,
+        fallback: DEFAULT_FILES.markdown
+      }),
+      json: createSafeBundleFilePath({
+        filePath: outputFiles.json,
+        bundleDir: absoluteBundleDir,
+        fallback: DEFAULT_FILES.json
+      })
     }
   }
 
   writeText({
-    outputPath: approval.files.markdown,
+    outputPath: outputFiles.markdown,
     content: renderMarkdownApproval(approval),
     fsImpl
   })
   writeText({
-    outputPath: approval.files.json,
+    outputPath: outputFiles.json,
     content: JSON.stringify(approval, null, 2),
     fsImpl
   })
