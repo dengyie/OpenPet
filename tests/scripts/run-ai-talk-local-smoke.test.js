@@ -241,3 +241,109 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.doesNotMatch(JSON.stringify(persisted), /Library\/Application Support\/ibot/)
   assert.doesNotMatch(JSON.stringify(persisted), /127\.0\.0\.1/)
 })
+
+test('runAiTalkLocalSmoke stays green when connection test fails but real chat and bubble dispatch succeed', async () => {
+  const userDataDir = createTempDir('openpet-ai-talk-user-data-connection-softfail-')
+  const outputDir = createTempDir('openpet-ai-talk-output-connection-softfail-')
+  fs.writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5'
+    },
+    petPacks: {
+      activePackId: 'legacy-cat',
+      installed: {}
+    }
+  }, null, 2))
+  fs.writeFileSync(path.join(userDataDir, 'secrets.json'), JSON.stringify({
+    secrets: {
+      'ai.default': {
+        label: 'AI API Key',
+        value: 'sk-test-secret',
+        updatedAt: '2026-06-28T12:00:00.000Z'
+      }
+    }
+  }, null, 2))
+
+  const result = await runAiTalkLocalSmoke({
+    message: '连接失败但聊天成功',
+    userDataDir,
+    outputDir,
+    now: () => new Date('2026-07-04T20:52:15.389Z'),
+    createSecretServiceImpl: () => ({
+      getSecretValue: () => 'sk-test-secret'
+    }),
+    createAiServiceImpl: ({ appLogService }) => ({
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        hasApiKey: true
+      }),
+      testConnection: async () => {
+        appLogService.record({
+          scope: 'ai-settings',
+          level: 'error',
+          event: 'ai.settings.connection-test.failed',
+          message: 'AI provider connection test failed',
+          details: { elapsedMs: 10, code: 'network_error', message: 'AI provider request failed' }
+        })
+        return {
+          ok: false,
+          code: 'network_error',
+          message: 'AI provider request failed',
+          elapsedMs: 10,
+          reply: ''
+        }
+      }
+    }),
+    createAiTalkStoreImpl: () => ({}),
+    createPetUtteranceLogServiceImpl: () => ({}),
+    createPetPackServiceImpl: () => ({
+      getActivePetPack: () => ({
+        manifest: {
+          id: 'legacy-cat',
+          displayName: 'Legacy Cat'
+        }
+      })
+    }),
+    createAiTalkServiceImpl: ({ appLogService }) => ({
+      chat: async ({ requestId }) => {
+        appLogService.record({
+          scope: 'ai-talk',
+          level: 'info',
+          event: 'ai-talk.chat.completed',
+          message: 'AI talk chat completed',
+          details: { replyChars: 6 }
+        })
+        return {
+          requestId,
+          conversationId: 'control-center:legacy-cat:main',
+          reply: '聊天成功',
+          bubbleSegments: ['聊天成功'],
+          messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: '聊天成功' }],
+          behaviorIntent: { intent: 'comfort', actionId: 'idle' },
+          providerLatencyMs: 820
+        }
+      },
+      flushMemoryJobs: async () => {},
+      getTraceExport: () => ({ traces: [] })
+    })
+  })
+
+  assert.equal(result.connectionTest.ok, false)
+  assert.equal(result.chat.ok, true)
+  assert.equal(result.bubbleDispatch.petSayReceived, true)
+  assert.equal(result.bubbleDispatch.bubbleStateVisible, true)
+  assert.equal(result.ok, true)
+
+  const persisted = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, result.sessionId, result.resultPath), 'utf-8'))
+  assert.equal(persisted.connectionTest.ok, false)
+  assert.equal(persisted.chat.ok, true)
+  assert.equal(persisted.bubbleDispatch.petSayReceived, true)
+  assert.equal(persisted.bubbleDispatch.bubbleStateVisible, true)
+  assert.equal(persisted.ok, true)
+})
