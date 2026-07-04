@@ -107,6 +107,40 @@ function ProviderModelPicker({
   )
 }
 
+function ProviderCapabilityPanelSummary({
+  title,
+  description,
+  hostSummary,
+  modelSummary,
+  draftSummary,
+  hasApiKey
+}: {
+  title: string
+  description: string
+  hostSummary: string
+  modelSummary: string
+  draftSummary: string
+  hasApiKey: boolean
+}) {
+  return (
+    <summary className="provider-capability-summary">
+      <div className="provider-capability-summary-main">
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <div className="provider-inline-summary provider-inline-summary-compact">
+          <code>{hostSummary || '未设置 host'}</code>
+          <span>{modelSummary || '未设置模型'}</span>
+          <span>{hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+          <span>{draftSummary || '无未保存草稿'}</span>
+        </div>
+      </div>
+      <span className="provider-capability-caret" aria-hidden="true">⌄</span>
+    </summary>
+  )
+}
+
 const getProviderHostSummary = (value: string) => {
   try {
     const parsed = new URL(String(value || '').trim())
@@ -792,7 +826,16 @@ export function AiPane({
           </div>
 
           <div className="provider-capability-grid">
-            <article className="provider-capability-card" data-testid="chat-provider-card">
+            <details className="provider-capability-card provider-capability-panel" data-testid="chat-provider-card" open>
+              <ProviderCapabilityPanelSummary
+                title="聊天模型"
+                description="用于宠物气泡聊天、扩展聊天面板、人格生成、记忆抽取和行为编排。"
+                hostSummary={activeChatHostSummary}
+                modelSummary={activeConfig.model}
+                draftSummary={draftSummary}
+                hasApiKey={activeConfig.hasApiKey}
+              />
+              <div className="provider-capability-body">
               <div className="provider-card-header">
                 <div>
                   <h3>聊天模型</h3>
@@ -1026,10 +1069,19 @@ export function AiPane({
                   ))}
                 </div>
               </div>
+              </div>
+            </details>
 
-            </article>
-
-            <article className="provider-capability-card" data-testid="image-provider-card">
+            <details className="provider-capability-card provider-capability-panel" data-testid="image-provider-card" open>
+              <ProviderCapabilityPanelSummary
+                title="图片模型"
+                description="用于 Creator Studio 生成宠物立绘、动作帧和导入前图片资产。"
+                hostSummary={activeImageHostSummary}
+                modelSummary={activeImageGenerationConfig.model}
+                draftSummary={imageDraftSummary}
+                hasApiKey={activeImageGenerationConfig.hasApiKey}
+              />
+              <div className="provider-capability-body">
               <div className="provider-card-header">
                 <div>
                   <h3>图片模型</h3>
@@ -1246,7 +1298,8 @@ export function AiPane({
                   <span>{imageTransparencyCompatibilityHint}</span>
                 </div>
               </div>
-            </article>
+              </div>
+            </details>
           </div>
         </div>
       </CollapsibleAiSection>
