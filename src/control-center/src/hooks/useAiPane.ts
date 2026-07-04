@@ -18,10 +18,14 @@ import {
 import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
 import {
+  buildImageGenerationConfigSavePayload,
   formatActiveProviderSummary,
   getProviderConfigChanges,
+  getImageGenerationConfigChanges,
+  hasImageGenerationConfigChanges,
   hasProviderConfigChanges,
   normalizeProviderBaseUrl,
+  validateImageProviderConfig,
   validateProviderConfig
 } from '../lib/ai-provider-config'
 import {
@@ -79,33 +83,6 @@ const normalizePersonaListText = (value: string) => (
     .map((item) => item.trim())
     .filter(Boolean)
 )
-
-const pickImageGenerationComparableFields = (config: ImageGenerationConfigViewState) => JSON.stringify({
-  provider: String(config.provider || '').trim(),
-  baseUrl: String(config.baseUrl || '').trim(),
-  model: String(config.model || '').trim(),
-  timeoutMs: Number(config.timeoutMs || 0),
-  maxConcurrentJobs: Number(config.maxConcurrentJobs || 0),
-  hasApiKey: Boolean(config.hasApiKey)
-})
-
-const validateImageProviderConfig = (config: ImageGenerationConfigViewState): string => {
-  const baseUrl = String(config.baseUrl || '').trim()
-  const model = String(config.model || '').trim()
-  if (!baseUrl) return '图片 Base URL 不能为空'
-  try {
-    const parsed = new URL(baseUrl)
-    if (!['http:', 'https:'].includes(parsed.protocol)) return '图片 Base URL 只支持 http 或 https'
-    if (parsed.username || parsed.password) return '图片 Base URL 不能包含用户名或密码，请把凭证放在图片 API Key 中'
-    if (parsed.search || parsed.hash) return '图片 Base URL 不能包含 query 或 hash，请仅保留 API 根路径'
-  } catch (_) {
-    return '图片 Base URL 不是有效 URL'
-  }
-  if (!model) return '图片 Model 不能为空'
-  if (!Number.isFinite(Number(config.timeoutMs)) || Number(config.timeoutMs) < 1000) return '图片 Timeout 至少为 1000ms'
-  if (!Number.isFinite(Number(config.maxConcurrentJobs)) || Number(config.maxConcurrentJobs) < 1) return '图片最大并发至少为 1'
-  return ''
-}
 
 const buildAiConfigSavePayload = (config: AiConfigViewState, activeConfig: AiConfigViewState) => {
   const payload: Partial<AiConfigViewState> = {}
@@ -551,7 +528,7 @@ export function useAiPane(activeTab = 'ai') {
 
   const hasUnsavedConfigChanges = hasProviderConfigChanges(config, activeConfig)
   const hasUnsavedApiKeyDraft = Boolean(apiKeyDraft.trim())
-  const hasUnsavedImageGenerationChanges = pickImageGenerationComparableFields(imageGenerationConfig) !== pickImageGenerationComparableFields(activeImageGenerationConfig)
+  const hasUnsavedImageGenerationChanges = hasImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
   const hasUnsavedImageApiKeyDraft = Boolean(imageApiKeyDraft.trim())
 
   const onSave = async () => {
@@ -580,12 +557,15 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const validationError = validateImageProviderConfig(imageGenerationConfig)
       if (validationError) throw new Error(validationError)
-      const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(imageGenerationConfig))
+      const changedFields = getImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
+      const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(
+        buildImageGenerationConfigSavePayload(imageGenerationConfig, activeImageGenerationConfig)
+      ))
       setImageGenerationConfig(savedConfig)
       setActiveImageGenerationConfig(savedConfig)
       setImageModelDiscovery(null)
       setImageModelDiscoveryStatus('')
-      setImageStatus('图片 Provider 配置已保存')
+      setImageStatus(changedFields.length ? `图片 Provider 配置已保存：${changedFields.join(' / ')}` : '图片 Provider 配置已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 Provider 配置保存失败'))
     } finally {
