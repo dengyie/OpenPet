@@ -8,6 +8,37 @@ const DEFAULT_README_NAME = 'README.md'
 const DEFAULT_ARCHIVE_RESULT_NAME = 'agent-awareness-local-smoke-archive-result.json'
 
 const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const sanitizeRelativePath = (value, fallback, maxChars = 240) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (isSafeRelativePath(normalized)) return sanitizeText(normalized, maxChars)
+  return sanitizeText(fallback, maxChars)
+}
+
+const createSafeArchiveDirPath = (archiveDir, sessionId) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(archiveDir || '').trim()))
+  return sanitizeRelativePath(relative, `${toPosixPath(DEFAULT_ARCHIVE_ROOT)}/${sanitizeText(sessionId, 80)}`)
+}
+
+const createSafeSourceSummary = ({ report, sessionId }) => {
+  const sourceSessionDir = sanitizeRelativePath(
+    report?.sessionDir,
+    `tmp/agent-awareness-real-codex-acceptance/${sanitizeText(sessionId, 80)}`
+  )
+  const resultPath = sanitizeRelativePath(
+    report?.resultPath,
+    `${sourceSessionDir}/${DEFAULT_RESULT_NAME}`
+  )
+  return { sourceSessionDir, resultPath }
+}
+
 const formatManualAcceptanceStatus = (value) => {
   if (value === true) return 'pass'
   if (value === false) return 'fail'
@@ -130,14 +161,19 @@ const assertNoSensitiveArchiveText = (content, role) => {
   }
 }
 
-const copyFile = ({ sourcePath, targetPath, role, fsImpl = fs }) => {
+const createSafeArchivedFilePath = (targetPath, archiveDir, fallback) => {
+  const relative = toPosixPath(path.relative(archiveDir, targetPath))
+  return sanitizeRelativePath(relative, fallback)
+}
+
+const copyFile = ({ sourcePath, targetPath, archiveDir, role, fallbackPath, fsImpl = fs }) => {
   assertPlainFile(sourcePath, role, fsImpl)
   const content = fsImpl.readFileSync(sourcePath)
   fsImpl.mkdirSync(path.dirname(targetPath), { recursive: true })
   fsImpl.writeFileSync(targetPath, content)
   return {
     role,
-    path: targetPath,
+    path: createSafeArchivedFilePath(targetPath, archiveDir, fallbackPath),
     bytes: content.length,
     sha256: sha256(content)
   }
@@ -150,23 +186,24 @@ const writeJson = ({ filePath, value, fsImpl = fs }) => {
 
 const createArchiveResultValue = ({
   report,
-  absoluteSessionDir,
-  sourceResultPath,
   absoluteArchiveDir,
-  absoluteOutputPath,
+  sessionId,
   files,
   now = () => new Date()
-}) => ({
-  generatedAt: now().toISOString(),
-  ok: true,
-  source: {
-    sessionDir: absoluteSessionDir,
-    resultPath: sourceResultPath
-  },
-  archive: {
-    archiveDir: absoluteArchiveDir,
-    outputPath: absoluteOutputPath
-  },
+}) => {
+  const safeArchiveDir = createSafeArchiveDirPath(absoluteArchiveDir, sessionId)
+  const safeSource = createSafeSourceSummary({ report, sessionId })
+  return {
+    generatedAt: now().toISOString(),
+    ok: true,
+    source: {
+      sessionDir: safeSource.sourceSessionDir,
+      resultPath: safeSource.resultPath
+    },
+    archive: {
+      archiveDir: safeArchiveDir,
+      outputPath: `${safeArchiveDir}/${DEFAULT_ARCHIVE_RESULT_NAME}`
+    },
   smoke: {
     sanitizedSignalDetected: report?.sanitizedSignalDetected === true,
     sessionCount: Number(report?.health?.diagnostics?.sessionCount) || 0,
@@ -177,7 +214,8 @@ const createArchiveResultValue = ({
     manualAcceptance: summarizeManualAcceptance(report?.manualAcceptanceTemplate || {})
   },
   files
-})
+  }
+}
 
 const createReadme = ({ report, archiveDir }) => {
   const sessionCount = Number(report?.health?.diagnostics?.sessionCount) || 0
@@ -287,24 +325,29 @@ const createAgentAwarenessLocalSmokeArchive = ({
 
   fsImpl.mkdirSync(absoluteArchiveDir, { recursive: true })
   const files = [
-    copyFile({ sourcePath: sourceResultPath, targetPath: archivedResultPath, role: 'agentAwarenessLocalSmokeResult', fsImpl })
+    copyFile({
+      sourcePath: sourceResultPath,
+      targetPath: archivedResultPath,
+      archiveDir: absoluteArchiveDir,
+      role: 'agentAwarenessLocalSmokeResult',
+      fallbackPath: DEFAULT_RESULT_NAME,
+      fsImpl
+    })
   ]
 
   const readme = createReadme({ report, archiveDir: absoluteArchiveDir })
   fsImpl.writeFileSync(archivedReadmePath, readme)
   files.push({
     role: 'archiveReadme',
-    path: archivedReadmePath,
+    path: createSafeArchivedFilePath(archivedReadmePath, absoluteArchiveDir, DEFAULT_README_NAME),
     bytes: Buffer.byteLength(readme),
     sha256: sha256(readme)
   })
 
   const archiveResult = createArchiveResultValue({
     report,
-    absoluteSessionDir,
-    sourceResultPath,
     absoluteArchiveDir,
-    absoluteOutputPath,
+    sessionId,
     files,
     now
   })

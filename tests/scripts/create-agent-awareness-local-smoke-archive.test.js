@@ -128,7 +128,6 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.archive.archiveDir, path.resolve(archiveDir))
   assert.equal(result.smoke.sanitizedSignalDetected, true)
   assert.equal(result.smoke.sessionCount, 20)
   assert.equal(result.smoke.unsupportedLifecycleRecordCount, 19)
@@ -137,7 +136,15 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
   assert.equal(result.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pending')
   assert.equal(result.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(result.smoke.manualAcceptance.notesPresent, false)
+  assert.equal(result.source.sessionDir, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z')
+  assert.equal(result.source.resultPath, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json')
+  assert.equal(result.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z')
+  assert.equal(result.archive.outputPath, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-archive-result.json')
   assert.equal(result.files.length, 2)
+  assert.deepEqual(result.files.map((file) => file.path), [
+    'agent-awareness-local-smoke-result.json',
+    'README.md'
+  ])
 
   const archivedReportPath = path.join(archiveDir, 'agent-awareness-local-smoke-result.json')
   const archivedReadmePath = path.join(archiveDir, 'README.md')
@@ -158,6 +165,7 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
   assert.equal(archiveResult.ok, true)
   assert.equal(archiveResult.smoke.totalEvents, 1000)
   assert.equal(archiveResult.smoke.manualAcceptance.dashboardUseful, 'pending')
+  assert.doesNotMatch(JSON.stringify(archiveResult), /\/Users\//)
 })
 
 test('createAgentAwarenessLocalSmokeArchive rejects missing required files', () => {

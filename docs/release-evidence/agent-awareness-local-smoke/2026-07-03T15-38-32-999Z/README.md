@@ -35,6 +35,16 @@ This evidence records a sanitized real-Codex agent-awareness smoke run against a
 
 - Report: `agent-awareness-local-smoke-result.json`
 
+## Manual Acceptance
+
+| Review area | Status |
+| --- | --- |
+| Dashboard usefulness | pending |
+| Pet speech noise | pending |
+| Redaction review | pass |
+
+- Notes: _none recorded_
+
 ## Claim Boundary
 
 This evidence confirms that the bundled agent-awareness service can discover real local Codex rollout data, reduce it to sanitized session summaries, and preserve the current privacy boundary for archived results.
@@ -46,4 +56,5 @@ It does not by itself prove that dashboard usefulness, pet speech noisiness, or 
 ```bash
 npm run run-agent-awareness-local-smoke -- --codex-home ~/.codex --output-dir tmp/agent-awareness-real-codex-acceptance
 node scripts/create-agent-awareness-local-smoke-archive.js --session-dir tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z --archive-dir docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z
+npm run update-agent-awareness-local-smoke-report -- docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json --dashboard-useful true --pet-speech-noise-acceptable true --redaction-looks-safe true --notes "Record the human dashboard/noise review here." --validate-complete
 ```
