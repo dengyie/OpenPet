@@ -27,7 +27,7 @@ const MAX_DISPLAY_SIZE = 260                     // 帧显示最大尺寸（px�
 const PET_BASE_SCALE = 0.5                       // UI 100% 对应旧版视觉大小的 50%
 const BUBBLE_TOP_INSET = 64                      // 给头顶聊天气泡预留窗口空间，避免被宠物裁剪或覆盖。
 const MIN_INLINE_BUBBLE_DURATION = 4000          // 兼容旧配置，避免 1 秒级气泡闪退到不可读。
-const SINGLE_CLICK_ACTION_DELAY_MS = 220          // 等待双击事件窗口，避免双击先触发单击动作。
+const SINGLE_CLICK_ACTION_DELAY_MS = 220         // 延迟执行单击动作，给原生 dblclick 留出取消窗口。
 const cursorStyle = {
   resolvePetCursorStyle: () => '',
   resolvePetCursorOverlayState: () => ({ visible: false, assetUrl: '', nativeCursor: '' }),
@@ -186,6 +186,17 @@ const scheduleClickAction = () => {
     state.clickActionTimer = 0
     setAction(state.clickAction)
   }, SINGLE_CLICK_ACTION_DELAY_MS)
+}
+
+const handlePetClick = () => {
+  scheduleClickAction()
+}
+
+const onPetDoubleClick = (event) => {
+  logPetEvent('pet.pointer.double-click-detected', {
+    ...createPointDetails(event)
+  }, { level: 'info', actor: 'user', message: 'Pet double-click detected' })
+  openBubbleChat()
 }
 
 // ═══════════════════════════════════════════
@@ -708,7 +719,7 @@ const onPointerUp = (event) => {
   }, { actor: 'user', message: 'Pointer up' })
   if (wasClick) {
     if (state.walking) toggleWalk()
-    else scheduleClickAction()
+    else handlePetClick(event)
   }
 }
 
@@ -930,7 +941,7 @@ pet.addEventListener('pointermove', updateMousePassthroughFromPoint)
 pet.addEventListener('pointermove', onPointerMove)
 pet.addEventListener('pointerup', onPointerUp)
 pet.addEventListener('pointerleave', clearPointerHoverState)
-pet.addEventListener('dblclick', openBubbleChat)
+pet.addEventListener('dblclick', onPetDoubleClick)
 pet.addEventListener('contextmenu', showContextMenu)
 window.addEventListener('focus', () => {
   state.windowFocused = true
