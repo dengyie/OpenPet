@@ -110,6 +110,18 @@ test('createRunbook documents every required packaged runtime check', () => {
   }
 })
 
+test('createRunbook falls back to a safe report filename outside the repository', () => {
+  const report = createPendingReport()
+  const runbook = createRunbook({
+    report,
+    reportPath: '/tmp/private/packaged-runtime-smoke-report.json',
+    generatedAt: new Date('2026-06-16T01:30:00.000Z')
+  })
+
+  assert.match(runbook, /Report: `packaged-runtime-smoke-report\.json`/)
+  assert.doesNotMatch(runbook, /\/tmp\/private/)
+})
+
 test('createRunbook rejects structurally invalid reports', () => {
   const report = createPendingReport()
   report.checks = report.checks.filter((check) => check.id !== 'packaged-launch')

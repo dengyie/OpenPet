@@ -53,6 +53,20 @@ const loadReport = (reportPath, fsImpl = fs) => {
 }
 
 const defaultOutputPath = (reportPath) => path.join(path.dirname(path.resolve(reportPath)), DEFAULT_OUTPUT_NAME)
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+const createSafeCommandPath = (reportPath) => {
+  const absolutePath = path.resolve(reportPath)
+  const relative = toPosixPath(path.relative(process.cwd(), absolutePath))
+  if (isSafeRelativePath(relative)) return relative
+  return path.basename(absolutePath) || 'windows-smoke-report.json'
+}
 
 const psSingleQuote = (value) => `'${String(value).replace(/'/g, "''")}'`
 
@@ -98,7 +112,7 @@ const createCollector = ({ report, reportPath, generatedAt = new Date() }) => {
     throw new Error(`Cannot create Windows smoke collector from an invalid report: ${validation.errors.join('; ')}`)
   }
 
-  const reportFileName = path.basename(reportPath || 'windows-smoke-report.json')
+  const reportFileName = createSafeCommandPath(reportPath || 'windows-smoke-report.json')
   const manualChecklist = createManualChecklist()
   const commandNotes = createCommandNotes({ reportFileName })
   const lines = []

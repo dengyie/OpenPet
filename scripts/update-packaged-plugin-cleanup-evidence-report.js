@@ -10,6 +10,7 @@ const {
 } = require('./update-plugin-cleanup-evidence-report')
 
 const CHECKS = new Set(REQUIRED_CHECKS.map((check) => check.id))
+const DEFAULT_TRANSCRIPT_LABEL = 'cleanup-transcript.txt'
 
 const usage = () => [
   'Usage: node scripts/update-packaged-plugin-cleanup-evidence-report.js <report.json> --runtime-artifact <runtime.json> [--output <report.json>]',
@@ -53,6 +54,25 @@ const parseArgs = (argv) => {
 }
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+const createSafeTranscriptPath = (transcriptPath) => {
+  const absoluteTranscriptPath = path.resolve(String(transcriptPath || '').trim())
+  return createSafeProjectPath(
+    absoluteTranscriptPath,
+    path.basename(absoluteTranscriptPath) || DEFAULT_TRANSCRIPT_LABEL
+  )
+}
 
 const validateRuntimeArtifact = (artifact) => {
   if (!isObject(artifact)) throw new Error('Packaged cleanup runtime artifact must be an object')
@@ -84,7 +104,7 @@ const evidenceFor = ({ artifact, pathLabel, transcriptPath }) => [
   `Packaged app: ${artifact.hostApp}`,
   `Plugin: ${artifact.pluginId}`,
   `Observed path: ${pathLabel}`,
-  transcriptPath ? `Transcript: ${transcriptPath}` : ''
+  transcriptPath ? `Transcript: ${createSafeTranscriptPath(transcriptPath)}` : ''
 ].filter(Boolean).join('; ')
 
 const markPassIf = ({ report, artifact, checkId, condition, pathLabel, transcriptPath, passNotes, pendingNotes }) => {
