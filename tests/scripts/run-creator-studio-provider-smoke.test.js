@@ -16,6 +16,9 @@ const {
 } = require('../../scripts/run-creator-studio-provider-smoke')
 
 const createTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 test('default user data path follows desktop conventions for creator studio smoke', () => {
   assert.equal(defaultUserDataDir({ appDataDir: '/Users/mango/Library/Application Support' }), '/Users/mango/Library/Application Support/ibot')
@@ -229,9 +232,18 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
   assert.equal(result.logs.every((entry) => entry.scope === 'image-generation'), true)
   assert.doesNotMatch(result.promptBuilder.promptPreview, /sk-real-secret-value/)
   assert.doesNotMatch(result.promptBuilder.promptPreview, /127\.0\.0\.1:8317/)
-  assert.equal(fs.existsSync(result.resultPath), true)
-  const persisted = fs.readFileSync(result.resultPath, 'utf-8')
+  assert.equal(result.sessionDir, 'creator-studio-provider-smoke/2026-06-28T12-34-56-789Z')
+  assert.equal(result.logPath, 'logs/openpet-app.jsonl')
+  assert.equal(result.resultPath, 'creator-studio-provider-smoke-result.json')
+  const persistedPath = resolveOutputPath(path.join(outputDir, '2026-06-28T12-34-56-789Z'), result.resultPath)
+  assert.equal(fs.existsSync(persistedPath), true)
+  const persisted = fs.readFileSync(persistedPath, 'utf-8')
+  const persistedReport = JSON.parse(persisted)
+  assert.equal(persistedReport.sessionDir, 'creator-studio-provider-smoke/2026-06-28T12-34-56-789Z')
+  assert.equal(persistedReport.logPath, 'logs/openpet-app.jsonl')
+  assert.equal(persistedReport.resultPath, 'creator-studio-provider-smoke-result.json')
   assert.doesNotMatch(persisted, /sk-real-secret-value/)
+  assert.doesNotMatch(persisted, new RegExp(outputDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   const persistedSettings = JSON.parse(fs.readFileSync(path.join(userDataDir, 'settings.json'), 'utf-8'))
   assert.equal(persistedSettings.models.imageGeneration.timeoutMs, 30000)
 })
@@ -266,5 +278,5 @@ test('runCreatorStudioProviderSmoke fails honestly when the saved image provider
   assert.match(result.healthCheck.message, /API key is missing/i)
   assert.match(result.error.message, /API key is missing/i)
   assert.equal(result.generation.ok, false)
-  assert.equal(fs.existsSync(result.resultPath), true)
+  assert.equal(fs.existsSync(resolveOutputPath(path.join(outputDir, result.sessionId), result.resultPath)), true)
 })
