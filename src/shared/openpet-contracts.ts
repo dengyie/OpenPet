@@ -485,8 +485,29 @@ export interface AiConfigViewState {
   systemPrompt: string
   memory: AiMemoryConfig
   behavior: AiBehaviorConfig
+  vision: VisionConfigViewState
   hasApiKey: boolean
   modelCatalog: ProviderModelCatalogViewState
+}
+
+export type VisionProviderMode = 'follow-chat' | 'override'
+
+export interface VisionConfigViewState {
+  mode: VisionProviderMode
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  hasApiKey: boolean
+  modelCatalog: ProviderModelCatalogViewState
+  effectiveProvider: string
+  effectiveBaseUrl: string
+  effectiveModel: string
+  effectiveHasApiKey: boolean
+}
+
+export type AiConfigSaveRequest = Partial<Omit<AiConfigViewState, 'vision'>> & {
+  vision?: Partial<VisionConfigViewState>
 }
 
 export interface ServiceLogEntry {
@@ -3047,10 +3068,13 @@ export interface ControlCenterApi {
   onActivePetPackChanged?: (listener: (event: ActivePetPackChangedEvent) => void) => () => void
   removePetPack: (packId: string) => Promise<PetPackMutationResult>
   getAiConfig: () => Promise<AiConfigViewState>
-  saveAiConfig: (config: Partial<AiConfigViewState>) => Promise<AiConfigViewState>
+  saveAiConfig: (config: AiConfigSaveRequest) => Promise<AiConfigViewState>
   saveAiApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
+  saveAiVisionApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
+  clearAiVisionApiKey: () => Promise<AiSaveApiKeyResult>
   testAiConnection: () => Promise<AiConnectionTestResult>
   discoverAiModels: () => Promise<ProviderModelDiscoveryResult>
+  discoverAiVisionModels: () => Promise<ProviderModelDiscoveryResult>
   getAiPersonaProfile: () => Promise<AiPersonaProfileViewState>
   generateAiPersonaDraft: (request?: AiPersonaGenerateRequest) => Promise<AiPersonaDraftViewState>
   saveAiPersonaOverride: (override: AiPersonaOverride) => Promise<AiPersonaProfileViewState>

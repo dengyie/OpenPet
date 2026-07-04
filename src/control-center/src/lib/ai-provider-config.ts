@@ -1,7 +1,9 @@
 import type {
   AiConfigViewState,
   AiConnectionTestResult,
-  ImageGenerationConfigViewState
+  AiConfigSaveRequest,
+  ImageGenerationConfigViewState,
+  VisionConfigViewState
 } from '../../../shared/openpet-contracts'
 
 export const normalizeProviderBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
@@ -17,6 +19,25 @@ export const validateProviderConfig = (config: AiConfigViewState): string => {
     return 'Base URL 不是有效 URL'
   }
   if (!config.model.trim()) return 'Model 不能为空'
+  if (config.vision?.mode === 'override') {
+    const visionError = validateVisionProviderConfig(config.vision)
+    if (visionError) return visionError
+  }
+  return ''
+}
+
+export const validateVisionProviderConfig = (config: VisionConfigViewState): string => {
+  if (config.mode !== 'override') return ''
+  if (config.provider !== 'openai-compatible') return 'Vision 当前只支持 OpenAI compatible provider'
+  try {
+    const parsed = new URL(config.baseUrl.trim())
+    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Vision Base URL 只支持 http 或 https'
+    if (parsed.username || parsed.password) return 'Vision Base URL 不能包含用户名或密码，请把凭证放在 API Key 中'
+    if (parsed.search || parsed.hash) return 'Vision Base URL 不能包含 query 或 hash，请仅保留 API 根路径'
+  } catch (_) {
+    return 'Vision Base URL 不是有效 URL'
+  }
+  if (!config.model.trim()) return 'Vision Model 不能为空'
   return ''
 }
 
@@ -32,6 +53,7 @@ export const getProviderConfigChanges = (draft: AiConfigViewState, active: AiCon
   if (draft.model.trim() !== active.model.trim()) changes.push('Model')
   if (draft.systemPrompt !== active.systemPrompt) changes.push('System Prompt')
   if (Boolean(draft.memory?.enabled) !== Boolean(active.memory?.enabled)) changes.push('长期记忆')
+  changes.push(...getVisionConfigChanges(draft.vision, active.vision))
   return changes
 }
 
@@ -42,8 +64,8 @@ export const hasProviderConfigChanges = (draft: AiConfigViewState, active: AiCon
 export const buildProviderConfigSavePayload = (
   config: AiConfigViewState,
   activeConfig: AiConfigViewState
-): Partial<AiConfigViewState> => {
-  const payload: Partial<AiConfigViewState> = {}
+): AiConfigSaveRequest => {
+  const payload: AiConfigSaveRequest = {}
 
   if (Boolean(config.enabled) !== Boolean(activeConfig.enabled)) {
     payload.enabled = Boolean(config.enabled)
@@ -63,7 +85,52 @@ export const buildProviderConfigSavePayload = (
   if (Boolean(config.memory?.enabled) !== Boolean(activeConfig.memory?.enabled)) {
     payload.memory = { enabled: Boolean(config.memory?.enabled) }
   }
+  const visionPayload = buildVisionConfigSavePayload(config.vision, activeConfig.vision)
+  if (Object.keys(visionPayload).length) {
+    payload.vision = visionPayload
+  }
 
+  return payload
+}
+
+export const getVisionConfigChanges = (
+  draft: VisionConfigViewState,
+  active: VisionConfigViewState
+) => {
+  const changes: string[] = []
+  if (draft.mode !== active.mode) changes.push('Vision 模式')
+  if (draft.mode === 'override' || active.mode === 'override') {
+    if (draft.provider !== active.provider) changes.push('Vision Provider')
+    if (normalizeProviderBaseUrl(draft.baseUrl) !== normalizeProviderBaseUrl(active.baseUrl)) changes.push('Vision Base URL')
+    if (draft.model.trim() !== active.model.trim()) changes.push('Vision Model')
+  }
+  return changes
+}
+
+export const hasVisionConfigChanges = (
+  draft: VisionConfigViewState,
+  active: VisionConfigViewState
+) => getVisionConfigChanges(draft, active).length > 0
+
+export const buildVisionConfigSavePayload = (
+  config: VisionConfigViewState,
+  activeConfig: VisionConfigViewState
+): Partial<VisionConfigViewState> => {
+  const payload: Partial<VisionConfigViewState> = {}
+  if (config.mode !== activeConfig.mode) {
+    payload.mode = config.mode
+  }
+  if (config.mode === 'override' || activeConfig.mode === 'override') {
+    if (String(config.provider || '') !== String(activeConfig.provider || '')) {
+      payload.provider = String(config.provider || '')
+    }
+    if (normalizeProviderBaseUrl(config.baseUrl || '') !== normalizeProviderBaseUrl(activeConfig.baseUrl || '')) {
+      payload.baseUrl = normalizeProviderBaseUrl(config.baseUrl || '')
+    }
+    if (String(config.model || '').trim() !== String(activeConfig.model || '').trim()) {
+      payload.model = String(config.model || '').trim()
+    }
+  }
   return payload
 }
 

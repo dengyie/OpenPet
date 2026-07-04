@@ -21,7 +21,8 @@ import type {
   ServiceLogEntry,
   ServiceStatusViewState,
   UpdateAssetViewState,
-  UpdateCheckViewState
+  UpdateCheckViewState,
+  VisionConfigViewState
 } from '../../../shared/openpet-contracts'
 import {
   SYSTEM_CURSOR_ID,
@@ -87,6 +88,24 @@ export const defaultAiConfig = {
     rules: [],
     decisions: []
   },
+  vision: {
+    mode: 'follow-chat',
+    provider: 'openai-compatible',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    apiKeyRef: 'ai.vision',
+    hasApiKey: false,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    },
+    effectiveProvider: 'openai-compatible',
+    effectiveBaseUrl: 'https://api.openai.com/v1',
+    effectiveModel: 'gpt-4o-mini',
+    effectiveHasApiKey: false
+  } satisfies VisionConfigViewState,
   hasApiKey: false,
   modelCatalog: {
     cacheKey: '',
@@ -221,7 +240,9 @@ export const defaultPetChatState = {
   },
   bubbleChat: {
     visible: false,
-    hasWindow: false
+    hasWindow: false,
+    pinned: false,
+    placement: ''
   },
   messages: []
 } satisfies PetChatStateViewState
@@ -404,6 +425,15 @@ export const cloneAiConfig = (config: Partial<AiConfigViewState> | null | undefi
     ...(config?.memory || {})
   },
   behavior: cloneAiBehavior(config?.behavior),
+  vision: {
+    ...defaultAiConfig.vision,
+    ...(config?.vision || {}),
+    modelCatalog: {
+      ...defaultAiConfig.vision.modelCatalog,
+      ...(config?.vision?.modelCatalog || {}),
+      models: Array.isArray(config?.vision?.modelCatalog?.models) ? config.vision.modelCatalog.models : []
+    }
+  },
   modelCatalog: {
     ...defaultAiConfig.modelCatalog,
     ...(config?.modelCatalog || {}),
@@ -672,6 +702,10 @@ export const clonePetChatState = (
   bubble: {
     ...defaultPetChatState.bubble,
     ...(state?.bubble || {})
+  },
+  bubbleChat: {
+    ...defaultPetChatState.bubbleChat,
+    ...(state?.bubbleChat || {})
   },
   messages: cloneChatMessages(state?.messages)
 })

@@ -97,8 +97,11 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     getConfig: () => ({}),
     saveConfig: (config) => config,
     saveApiKey: () => ({ ok: true }),
+    saveVisionApiKey: () => ({ ok: true }),
+    clearVisionApiKey: () => ({ ok: true }),
     testConnection: () => ({ ok: true }),
     discoverModels: () => ({ ok: true, models: [] }),
+    discoverVisionModels: () => ({ ok: true, models: [] }),
     getConversation: () => [],
     chat: () => ({ reply: 'ok' })
   },
@@ -528,6 +531,14 @@ test('ai provider settings IPC delegates config save key save and connection tes
         calls.push(['saveApiKey', apiKey])
         return { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' }
       },
+      saveVisionApiKey: (apiKey) => {
+        calls.push(['saveVisionApiKey', apiKey])
+        return { apiKeyRef: 'ai.vision', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' }
+      },
+      clearVisionApiKey: () => {
+        calls.push(['clearVisionApiKey'])
+        return { apiKeyRef: 'ai.vision', hasApiKey: false }
+      },
       testConnection: () => {
         calls.push(['testConnection'])
         return {
@@ -548,6 +559,8 @@ test('ai provider settings IPC delegates config save key save and connection tes
   const config = await ipcMain.handlers.get(IPC.AI_GET_CONFIG)()
   const savedConfig = await ipcMain.handlers.get(IPC.AI_SAVE_CONFIG)(null, { model: 'next-model' })
   const savedKey = await ipcMain.handlers.get(IPC.AI_SAVE_API_KEY)(null, 'sk-demo-secret')
+  const savedVisionKey = await ipcMain.handlers.get(IPC.AI_SAVE_VISION_API_KEY)(null, 'sk-vision-secret')
+  const clearedVisionKey = await ipcMain.handlers.get(IPC.AI_CLEAR_VISION_API_KEY)()
   const connection = await ipcMain.handlers.get(IPC.AI_TEST_CONNECTION)()
 
   assert.deepEqual(config, {
@@ -564,6 +577,24 @@ test('ai provider settings IPC delegates config save key save and connection tes
       cooldownMs: 2500,
       rules: [{ id: 'rule-1' }],
       decisions: []
+    },
+    vision: {
+      mode: 'follow-chat',
+      provider: '',
+      baseUrl: '',
+      model: '',
+      apiKeyRef: '',
+      hasApiKey: false,
+      modelCatalog: {
+        cacheKey: '',
+        models: [],
+        fetchedAt: '',
+        source: 'none'
+      },
+      effectiveProvider: '',
+      effectiveBaseUrl: '',
+      effectiveModel: '',
+      effectiveHasApiKey: false
     },
     hasApiKey: false,
     modelCatalog: {
@@ -588,6 +619,24 @@ test('ai provider settings IPC delegates config save key save and connection tes
       rules: [],
       decisions: []
     },
+    vision: {
+      mode: 'follow-chat',
+      provider: '',
+      baseUrl: '',
+      model: '',
+      apiKeyRef: '',
+      hasApiKey: false,
+      modelCatalog: {
+        cacheKey: '',
+        models: [],
+        fetchedAt: '',
+        source: 'none'
+      },
+      effectiveProvider: '',
+      effectiveBaseUrl: '',
+      effectiveModel: '',
+      effectiveHasApiKey: false
+    },
     hasApiKey: false,
     modelCatalog: {
       cacheKey: '',
@@ -597,6 +646,8 @@ test('ai provider settings IPC delegates config save key save and connection tes
     }
   })
   assert.deepEqual(savedKey, { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
+  assert.deepEqual(savedVisionKey, { apiKeyRef: 'ai.vision', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
+  assert.deepEqual(clearedVisionKey, { apiKeyRef: 'ai.vision', hasApiKey: false })
   assert.deepEqual(connection, {
     ok: true,
     provider: 'openai-compatible',
@@ -611,6 +662,8 @@ test('ai provider settings IPC delegates config save key save and connection tes
     ['getConfig'],
     ['saveConfig', { model: 'next-model' }],
     ['saveApiKey', 'sk-demo-secret'],
+    ['saveVisionApiKey', 'sk-vision-secret'],
+    ['clearVisionApiKey'],
     ['testConnection']
   ])
 })
@@ -636,12 +689,26 @@ test('ai provider settings IPC delegates model discovery', async () => {
           code: 'ok',
           message: 'AI provider model discovery succeeded'
         }
+      },
+      discoverVisionModels: () => {
+        calls.push(['discoverVisionModels'])
+        return {
+          ok: true,
+          provider: 'openai-compatible',
+          baseUrl: 'https://vision.example.test/v1',
+          model: 'gpt-4.1-mini',
+          hasApiKey: true,
+          models: ['gpt-4.1-mini'],
+          code: 'ok',
+          message: 'Vision provider model discovery succeeded'
+        }
       }
     },
     ipcMainService: ipcMain
   })
 
   const result = await ipcMain.handlers.get(IPC.AI_DISCOVER_MODELS)()
+  const visionResult = await ipcMain.handlers.get(IPC.AI_DISCOVER_VISION_MODELS)()
 
   assert.deepEqual(result, {
     ok: true,
@@ -653,7 +720,17 @@ test('ai provider settings IPC delegates model discovery', async () => {
     code: 'ok',
     message: 'AI provider model discovery succeeded'
   })
-  assert.deepEqual(calls, [['discoverModels']])
+  assert.deepEqual(visionResult, {
+    ok: true,
+    provider: 'openai-compatible',
+    baseUrl: 'https://vision.example.test/v1',
+    model: 'gpt-4.1-mini',
+    hasApiKey: true,
+    models: ['gpt-4.1-mini'],
+    code: 'ok',
+    message: 'Vision provider model discovery succeeded'
+  })
+  assert.deepEqual(calls, [['discoverModels'], ['discoverVisionModels']])
 })
 
 test('service:get-status returns Control Center service status shape', async () => {

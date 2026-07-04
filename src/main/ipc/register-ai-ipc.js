@@ -19,8 +19,11 @@ const registerAiIpc = ({
   ipcMainService.handle(IPC.AI_GET_CONFIG, () => createAiConfigView(aiService.getConfig()))
   ipcMainService.handle(IPC.AI_SAVE_CONFIG, (_event, config) => createAiConfigView(aiService.saveConfig(config)))
   ipcMainService.handle(IPC.AI_SAVE_API_KEY, (_event, apiKey) => aiService.saveApiKey(apiKey))
+  ipcMainService.handle(IPC.AI_SAVE_VISION_API_KEY, (_event, apiKey) => aiService.saveVisionApiKey(apiKey))
+  ipcMainService.handle(IPC.AI_CLEAR_VISION_API_KEY, () => aiService.clearVisionApiKey())
   ipcMainService.handle(IPC.AI_TEST_CONNECTION, () => aiService.testConnection())
   ipcMainService.handle(IPC.AI_DISCOVER_MODELS, () => aiService.discoverModels())
+  ipcMainService.handle(IPC.AI_DISCOVER_VISION_MODELS, () => aiService.discoverVisionModels())
 
   ipcMainService.handle(IPC.AI_GET_PERSONA_PROFILE, async () => {
     if (!aiTalkService?.getPersonaProfile) throw new Error('AI talk persona profile is not available')

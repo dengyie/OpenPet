@@ -241,6 +241,7 @@ const createAiConfigView = (config = {}) => {
   const input = toRecord(config)
   const memory = toRecord(input.memory)
   const behavior = toRecord(input.behavior)
+  const vision = toRecord(input.vision)
   return {
     enabled: Boolean(input.enabled),
     provider: typeof input.provider === 'string' ? input.provider : '',
@@ -257,6 +258,19 @@ const createAiConfigView = (config = {}) => {
       cooldownMs: toNonNegativeInteger(behavior.cooldownMs),
       rules: Array.isArray(behavior.rules) ? behavior.rules.filter((item) => item && typeof item === 'object') : [],
       decisions: Array.isArray(behavior.decisions) ? behavior.decisions.filter((item) => item && typeof item === 'object') : []
+    },
+    vision: {
+      mode: vision.mode === 'override' ? 'override' : 'follow-chat',
+      provider: typeof vision.provider === 'string' ? vision.provider : '',
+      baseUrl: typeof vision.baseUrl === 'string' ? vision.baseUrl : '',
+      model: typeof vision.model === 'string' ? vision.model : '',
+      apiKeyRef: typeof vision.apiKeyRef === 'string' ? vision.apiKeyRef : '',
+      hasApiKey: Boolean(vision.hasApiKey),
+      modelCatalog: createProviderModelCatalogView(vision.modelCatalog),
+      effectiveProvider: typeof vision.effectiveProvider === 'string' ? vision.effectiveProvider : '',
+      effectiveBaseUrl: typeof vision.effectiveBaseUrl === 'string' ? vision.effectiveBaseUrl : '',
+      effectiveModel: typeof vision.effectiveModel === 'string' ? vision.effectiveModel : '',
+      effectiveHasApiKey: Boolean(vision.effectiveHasApiKey)
     },
     hasApiKey: Boolean(input.hasApiKey),
     modelCatalog: createProviderModelCatalogView(input.modelCatalog)

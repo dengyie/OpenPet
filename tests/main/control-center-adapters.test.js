@@ -39,6 +39,24 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       decisions: ['bad'],
       internal: 'ignore-me'
     },
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: 99,
+      model: 'gpt-4.1-mini',
+      apiKeyRef: null,
+      hasApiKey: 1,
+      modelCatalog: {
+        cacheKey: 'vision-cache',
+        models: ['gpt-4.1-mini', 42],
+        fetchedAt: '2026-07-04T08:00:00.000Z',
+        source: 'saved'
+      },
+      effectiveProvider: 'openai-compatible',
+      effectiveBaseUrl: 'https://vision.example.test/v1',
+      effectiveModel: 'gpt-4.1-mini',
+      effectiveHasApiKey: 'yes'
+    },
     hasApiKey: 'yes',
     secretValue: 'sk-hidden'
   }), {
@@ -55,6 +73,24 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       cooldownMs: 2500,
       rules: [{ id: 'rule-1' }],
       decisions: [],
+    },
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: '',
+      model: 'gpt-4.1-mini',
+      apiKeyRef: '',
+      hasApiKey: true,
+      modelCatalog: {
+        cacheKey: 'vision-cache',
+        models: ['gpt-4.1-mini'],
+        fetchedAt: '2026-07-04T08:00:00.000Z',
+        source: 'saved'
+      },
+      effectiveProvider: 'openai-compatible',
+      effectiveBaseUrl: 'https://vision.example.test/v1',
+      effectiveModel: 'gpt-4.1-mini',
+      effectiveHasApiKey: true
     },
     hasApiKey: true,
     modelCatalog: {
