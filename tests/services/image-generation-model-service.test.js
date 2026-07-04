@@ -5,6 +5,7 @@ const os = require('os')
 const path = require('path')
 
 const { createImageGenerationModelService } = require('../../src/main/services/image-generation-model-service')
+const { createSavedProviderModelCatalog } = require('../../src/main/services/provider-model-catalog')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {
@@ -126,6 +127,55 @@ test('image generation model service saves unified config without persisting der
   assert.equal(settingsService.get().models.imageGeneration.model, 'gpt-image-2')
   assert.equal(Object.hasOwn(settingsService.get().models.imageGeneration, 'hasApiKey'), false)
   assert.equal(Object.hasOwn(settingsService.get().models.imageGeneration, 'apiKeyPreview'), false)
+})
+
+test('image generation model service does not persist renderer-only model catalog or unexpected fields', () => {
+  const savedCatalog = createSavedProviderModelCatalog({
+    capability: 'image',
+    provider: 'openai-compatible',
+    baseUrl: 'https://images.example.test/v1',
+    models: ['saved-image-model'],
+    fetchedAt: '2026-07-04T08:00:00.000Z'
+  })
+  const settingsService = createSettingsService({
+    models: {
+      imageGeneration: {
+        provider: 'openai-compatible',
+        baseUrl: 'https://images.example.test/v1',
+        model: 'saved-image-model',
+        apiKeyRef: 'secret:model.image.openai.apiKey',
+        timeoutMs: 120000,
+        maxConcurrentJobs: 1,
+        modelCatalog: savedCatalog
+      }
+    }
+  })
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService()
+  })
+
+  service.saveConfig({
+    model: 'next-image-model',
+    hasApiKey: true,
+    apiKeyPreview: '••••9999',
+    apiKeyLabel: 'Image API Key',
+    unexpectedField: 'ignore me',
+    modelCatalog: {
+      cacheKey: 'draft-cache',
+      models: ['draft-image-model'],
+      fetchedAt: '2026-07-05T09:00:00.000Z',
+      source: 'draft'
+    }
+  })
+
+  assert.equal(settingsService.get().models.imageGeneration.model, 'next-image-model')
+  assert.equal(Object.hasOwn(settingsService.get().models.imageGeneration, 'hasApiKey'), false)
+  assert.equal(Object.hasOwn(settingsService.get().models.imageGeneration, 'apiKeyPreview'), false)
+  assert.equal(Object.hasOwn(settingsService.get().models.imageGeneration, 'apiKeyLabel'), false)
+  assert.equal(Object.hasOwn(settingsService.get().models.imageGeneration, 'unexpectedField'), false)
+  assert.deepEqual(settingsService.get().models.imageGeneration.modelCatalog, savedCatalog)
+  assert.deepEqual(service.getConfig().modelCatalog, savedCatalog)
 })
 
 test('image generation model service does not let config saves retarget the provider api key ref', () => {
