@@ -138,6 +138,7 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     checkForUpdates: () => ({ ok: true })
   },
   actionService: {
+    applyCreatorActionMutation: (payload) => ({ defaultAction: payload.defaultAction || '', clickAction: payload.clickAction || '', actions: [] }),
     acceptTriggerProposal: (proposal) => ({
       ok: true,
       applied: proposal.type === 'click',
@@ -1187,6 +1188,10 @@ test('action mutation handlers return contract-shaped results and refreshed anim
             updatedAt: '2026-06-22T10:01:00.000Z'
           }
         }
+      },
+      applyCreatorActionMutation: (payload) => {
+        calls.push(['apply-action-mutation', payload])
+        return { ...animations, internal: 'service-only' }
       }
     },
     ipcMainService: ipcMain
@@ -1335,7 +1340,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     ['import', sourceDir, 'wave', 'Wave hello'],
     ['inspect', sourceDir, 'broken'],
     ['inspect', sourceDir, 'broken'],
-    ['save', { defaultAction: 'idle', clickAction: 'wave' }],
+    ['apply-action-mutation', { defaultAction: 'idle', clickAction: 'wave' }],
     ['trigger', {
       actionId: 'wave',
       type: 'click',
@@ -1383,6 +1388,11 @@ test('actions save config IPC surfaces trigger rule validation failures', async 
         throw new Error('Trigger rule action does not exist: missing')
       },
       deleteAction: () => ({ ok: true })
+    },
+    actionService: {
+      applyCreatorActionMutation: () => {
+        throw new Error('Trigger rule action does not exist: missing')
+      }
     },
     ipcMainService: ipcMain
   })
@@ -1433,6 +1443,9 @@ test('actions save config IPC refreshes trigger rule runtime after saving edited
       importActionFrames: () => ({ ok: true }),
       updateActionConfig: async () => ({ ok: true }),
       deleteAction: () => ({ ok: true })
+    },
+    actionService: {
+      applyCreatorActionMutation: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [] })
     },
     triggerRuleRuntimeService: {
       refresh: () => { refreshCalls += 1 }

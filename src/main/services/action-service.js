@@ -27,6 +27,8 @@ const emptyPetPack = {
   }
 }
 
+const LEGACY_PACK_ID = 'legacy-cat'
+
 const normalizeActionId = (value, fieldName = 'action id') => {
   if (typeof value !== 'string' || !SAFE_ACTION_ID_PATTERN.test(value)) {
     throw new Error(`Creator ${fieldName} must be a safe id`)
@@ -364,6 +366,22 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
   const persistMutableConfig = (nextConfig) => {
     const persistedConfig = normalizePersistedCreatorConfig(nextConfig)
     assertTriggerRulesReferenceActions(persistedConfig)
+    const petPack = getPetPack()
+    const sourceType = petPack.source?.type || ''
+    const isLegacyBuiltInPack = sourceType === 'built-in' && (petPack.manifest?.id || '') === LEGACY_PACK_ID
+
+    if (sourceType === 'user-installed') {
+      if (!petPackService?.updateActivePetPackManifest) {
+        throw new Error('Installed pet pack persistence is not available')
+      }
+      petPackService.updateActivePetPackManifest(persistedConfig)
+      return reload()
+    }
+
+    if (sourceType === 'built-in' && !isLegacyBuiltInPack) {
+      throw new Error('Built-in pet packs are read-only for action persistence')
+    }
+
     if (typeof saveLegacyAnimations === 'function') {
       legacyConfigOverride = persistedConfig
       saveLegacyAnimations(persistedConfig)
