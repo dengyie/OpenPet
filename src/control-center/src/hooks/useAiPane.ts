@@ -18,6 +18,7 @@ import {
 import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
 import {
+  buildProviderConfigSavePayload,
   buildImageGenerationConfigSavePayload,
   formatActiveProviderSummary,
   getProviderConfigChanges,
@@ -83,31 +84,6 @@ const normalizePersonaListText = (value: string) => (
     .map((item) => item.trim())
     .filter(Boolean)
 )
-
-const buildAiConfigSavePayload = (config: AiConfigViewState, activeConfig: AiConfigViewState) => {
-  const payload: Partial<AiConfigViewState> = {}
-
-  if (Boolean(config.enabled) !== Boolean(activeConfig.enabled)) {
-    payload.enabled = Boolean(config.enabled)
-  }
-  if (String(config.provider || '') !== String(activeConfig.provider || '')) {
-    payload.provider = String(config.provider || '')
-  }
-  if (normalizeProviderBaseUrl(config.baseUrl || '') !== normalizeProviderBaseUrl(activeConfig.baseUrl || '')) {
-    payload.baseUrl = normalizeProviderBaseUrl(config.baseUrl || '')
-  }
-  if (String(config.model || '').trim() !== String(activeConfig.model || '').trim()) {
-    payload.model = String(config.model || '').trim()
-  }
-  if (String(config.systemPrompt || '') !== String(activeConfig.systemPrompt || '')) {
-    payload.systemPrompt = String(config.systemPrompt || '')
-  }
-  if (Boolean(config.memory?.enabled) !== Boolean(activeConfig.memory?.enabled)) {
-    payload.memory = { enabled: Boolean(config.memory?.enabled) }
-  }
-
-  return payload
-}
 
 const buildPersonaOverrideFromDraft = (draft: ReturnType<typeof personaToDraft>): AiPersonaOverride => {
   const override: AiPersonaOverride = {}
@@ -507,7 +483,7 @@ export function useAiPane(activeTab = 'ai') {
     const validationError = validateProviderConfig(config)
     if (validationError) throw new Error(validationError)
     const changedFields = getProviderConfigChanges(config, activeConfig)
-    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildAiConfigSavePayload(config, activeConfig)))
+    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildProviderConfigSavePayload(config, activeConfig)))
     setConfig(savedConfig)
     setActiveConfig(savedConfig)
     return { savedConfig, changedFields }

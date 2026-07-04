@@ -39,6 +39,34 @@ export const hasProviderConfigChanges = (draft: AiConfigViewState, active: AiCon
   getProviderConfigChanges(draft, active).length > 0
 )
 
+export const buildProviderConfigSavePayload = (
+  config: AiConfigViewState,
+  activeConfig: AiConfigViewState
+): Partial<AiConfigViewState> => {
+  const payload: Partial<AiConfigViewState> = {}
+
+  if (Boolean(config.enabled) !== Boolean(activeConfig.enabled)) {
+    payload.enabled = Boolean(config.enabled)
+  }
+  if (String(config.provider || '') !== String(activeConfig.provider || '')) {
+    payload.provider = String(config.provider || '')
+  }
+  if (normalizeProviderBaseUrl(config.baseUrl || '') !== normalizeProviderBaseUrl(activeConfig.baseUrl || '')) {
+    payload.baseUrl = normalizeProviderBaseUrl(config.baseUrl || '')
+  }
+  if (String(config.model || '').trim() !== String(activeConfig.model || '').trim()) {
+    payload.model = String(config.model || '').trim()
+  }
+  if (String(config.systemPrompt || '') !== String(activeConfig.systemPrompt || '')) {
+    payload.systemPrompt = String(config.systemPrompt || '')
+  }
+  if (Boolean(config.memory?.enabled) !== Boolean(activeConfig.memory?.enabled)) {
+    payload.memory = { enabled: Boolean(config.memory?.enabled) }
+  }
+
+  return payload
+}
+
 export const formatActiveProviderSummary = (config: AiConfigViewState) => (
   `${formatProviderDisplayName(config.provider)} · ${normalizeProviderBaseUrl(config.baseUrl)} · ${config.model.trim() || '未设置 Model'} · ${config.hasApiKey ? 'API key saved' : 'API key missing'}`
 )
