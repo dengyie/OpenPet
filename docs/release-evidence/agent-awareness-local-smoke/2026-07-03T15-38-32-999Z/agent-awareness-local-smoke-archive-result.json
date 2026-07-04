@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-03T15:47:40.706Z",
+  "generatedAt": "2026-07-04T08:32:35.114Z",
   "ok": true,
   "source": {
-    "sessionDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z",
-    "resultPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json"
+    "sessionDir": "tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z",
+    "resultPath": "tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json"
   },
   "archive": {
-    "archiveDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z",
-    "outputPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-archive-result.json"
+    "archiveDir": "docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z",
+    "outputPath": "docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-archive-result.json"
   },
   "smoke": {
     "sanitizedSignalDetected": true,
@@ -15,20 +15,26 @@
     "activeSessionCount": 2,
     "totalEvents": 1000,
     "unsupportedLifecycleRecordCount": 19,
-    "manualAcceptanceTemplatePresent": true
+    "manualAcceptanceTemplatePresent": true,
+    "manualAcceptance": {
+      "dashboardUseful": "pending",
+      "petSpeechNoiseAcceptable": "pending",
+      "redactionLooksSafe": "pass",
+      "notesPresent": false
+    }
   },
   "files": [
     {
       "role": "agentAwarenessLocalSmokeResult",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json",
+      "path": "agent-awareness-local-smoke-result.json",
       "bytes": 3533,
       "sha256": "92c5b7ef5623e50917f344d1c6b504747e8a78cdd200bbaebfcad1a3d39ff35a"
     },
     {
       "role": "archiveReadme",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/README.md",
-      "bytes": 2262,
-      "sha256": "6bfec04911140f49e906a69216dab0755bd14d045cdf4ca09f7d58508128334e"
+      "path": "README.md",
+      "bytes": 2775,
+      "sha256": "ad5870d9029b3c0bb3b32eeb337942c7653495d428220e2b1774e01f6763dbb1"
     }
   ]
 }

@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-03T16:30:58.904Z",
+  "generatedAt": "2026-07-04T08:32:35.491Z",
   "ok": true,
   "source": {
-    "sessionDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance-rerun3/2026-07-03T16-04-08-824Z",
-    "resultPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance-rerun3/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json"
+    "sessionDir": "tmp/agent-awareness-real-codex-acceptance-rerun3/2026-07-03T16-04-08-824Z",
+    "resultPath": "tmp/agent-awareness-real-codex-acceptance-rerun3/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json"
   },
   "archive": {
-    "archiveDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z",
-    "outputPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-archive-result.json"
+    "archiveDir": "docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z",
+    "outputPath": "docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-archive-result.json"
   },
   "smoke": {
     "sanitizedSignalDetected": true,
@@ -26,13 +26,13 @@
   "files": [
     {
       "role": "agentAwarenessLocalSmokeResult",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json",
+      "path": "agent-awareness-local-smoke-result.json",
       "bytes": 3543,
       "sha256": "f05480bc218a9be2f92df7b56be450d7dc5262ff5aec80de7925886381724b45"
     },
     {
       "role": "archiveReadme",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/README.md",
+      "path": "README.md",
       "bytes": 2786,
       "sha256": "df3dfc78ffb1a3e985851707f48632a0306631d42cb7dff00122fd336aabaf2c"
     }

@@ -222,10 +222,19 @@ test('updateAgentAwarenessLocalSmokeReport rewrites the report and companion REA
   assert.equal(archiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.notesPresent, true)
+  assert.equal(archiveResult.source.sessionDir, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T16-04-08-824Z')
+  assert.equal(archiveResult.source.resultPath, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json')
+  assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
+  assert.equal(archiveResult.archive.outputPath, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-archive-result.json')
   assert.equal(Array.isArray(archiveResult.files), true)
   assert.equal(archiveResult.files.length, 2)
   assert.equal(archiveResult.files[0].role, 'agentAwarenessLocalSmokeResult')
   assert.equal(archiveResult.files[1].role, 'archiveReadme')
+  assert.deepEqual(archiveResult.files.map((file) => file.path), [
+    'agent-awareness-local-smoke-result.json',
+    'README.md'
+  ])
+  assert.doesNotMatch(JSON.stringify(archiveResult), /\/tmp\//)
 })
 
 test('updateAgentAwarenessLocalSmokeReport creates an archive result when the archive summary is missing', () => {
@@ -247,6 +256,7 @@ test('updateAgentAwarenessLocalSmokeReport creates an archive result when the ar
   assert.equal(archiveResult.smoke.sessionCount, 20)
   assert.equal(archiveResult.smoke.manualAcceptance.dashboardUseful, 'pending')
   assert.equal(archiveResult.files.length, 2)
+  assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
 })
 
 test('updateAgentAwarenessLocalSmokeReport rejects unsafe notes before writing', () => {

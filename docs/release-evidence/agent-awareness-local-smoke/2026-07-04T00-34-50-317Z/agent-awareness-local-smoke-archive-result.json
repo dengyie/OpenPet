@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-04T00:35:48.263Z",
+  "generatedAt": "2026-07-04T08:32:35.606Z",
   "ok": true,
   "source": {
-    "sessionDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance-codex-dev7/2026-07-04T00-34-50-317Z",
-    "resultPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance-codex-dev7/2026-07-04T00-34-50-317Z/agent-awareness-local-smoke-result.json"
+    "sessionDir": "tmp/agent-awareness-real-codex-acceptance-codex-dev7/2026-07-04T00-34-50-317Z",
+    "resultPath": "tmp/agent-awareness-real-codex-acceptance-codex-dev7/2026-07-04T00-34-50-317Z/agent-awareness-local-smoke-result.json"
   },
   "archive": {
-    "archiveDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-04T00-34-50-317Z",
-    "outputPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-04T00-34-50-317Z/agent-awareness-local-smoke-archive-result.json"
+    "archiveDir": "docs/release-evidence/agent-awareness-local-smoke/2026-07-04T00-34-50-317Z",
+    "outputPath": "docs/release-evidence/agent-awareness-local-smoke/2026-07-04T00-34-50-317Z/agent-awareness-local-smoke-archive-result.json"
   },
   "smoke": {
     "sanitizedSignalDetected": true,
@@ -26,13 +26,13 @@
   "files": [
     {
       "role": "agentAwarenessLocalSmokeResult",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-04T00-34-50-317Z/agent-awareness-local-smoke-result.json",
+      "path": "agent-awareness-local-smoke-result.json",
       "bytes": 3554,
       "sha256": "4c4fd69ece860c9ccd475ec4b034b2a5e2a0b4dbbcd58919f3c1f55a2a807399"
     },
     {
       "role": "archiveReadme",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-04T00-34-50-317Z/README.md",
+      "path": "README.md",
       "bytes": 2797,
       "sha256": "3d396996046c4c622a6a0c80fd02f7f79b84b659b18425aaf81b12ae23b09283"
     }
