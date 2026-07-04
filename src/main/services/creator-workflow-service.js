@@ -475,12 +475,28 @@ const createCreatorWorkflowService = ({
     activeWorkflow = null
   }
 
-  const createWorkflowInProgressResult = () => createWorkflowResult({
+const createWorkflowInProgressResult = () => createWorkflowResult({
     state: 'generating',
     code: 'workflow_in_progress',
     message: '已有生成任务正在进行，请等待当前流程完成',
     run: lastRun || createGeneratingRunView(activeWorkflow || {})
   })
+
+  const createUnsupportedReferenceImageResult = (message) => createWorkflowResult({
+    state: 'missing-input',
+    code: 'unsupported_reference_image',
+    message: normalizeText(message) || '默认一键生成暂只支持单张干净正面图'
+  })
+
+  const inspectApprovedReferenceForDefaultPath = async (referenceToken) => {
+    if (!creatorReferenceService?.inspectApprovedSource) return null
+    return creatorReferenceService.inspectApprovedSource({ referenceToken })
+  }
+
+  const inspectBoundReferenceForDefaultPath = async ({ targetType, targetId }) => {
+    if (!creatorReferenceService?.inspectReference) return null
+    return creatorReferenceService.inspectReference({ targetType, targetId })
+  }
 
   const runExclusively = async ({ mode, message }, execute) => {
     if (activeWorkflow) {
@@ -871,6 +887,10 @@ const createCreatorWorkflowService = ({
       message: `正在生成角色 ${normalizedCharacterName}`
     }, async () => {
       try {
+        const inspection = await inspectApprovedReferenceForDefaultPath(normalizedReferenceImageToken)
+        if (inspection && inspection.defaultPathEligible === false) {
+          return createUnsupportedReferenceImageResult(inspection.message)
+        }
         await creatorReferenceService.bindReference({
           targetType: 'pet-pack',
           targetId: petId,
@@ -927,6 +947,10 @@ const createCreatorWorkflowService = ({
       let reference = null
       if (normalizedReferenceImageToken) {
         try {
+          const inspection = await inspectApprovedReferenceForDefaultPath(normalizedReferenceImageToken)
+          if (inspection && inspection.defaultPathEligible === false) {
+            return createUnsupportedReferenceImageResult(inspection.message)
+          }
           const bound = await creatorReferenceService.bindReference({
             targetType: EDITABLE_TARGET_TYPE,
             targetId: EDITABLE_TARGET_ID,
@@ -945,6 +969,15 @@ const createCreatorWorkflowService = ({
           targetType: EDITABLE_TARGET_TYPE,
           targetId: EDITABLE_TARGET_ID
         })
+        if (reference) {
+          const inspection = await inspectBoundReferenceForDefaultPath({
+            targetType: EDITABLE_TARGET_TYPE,
+            targetId: EDITABLE_TARGET_ID
+          })
+          if (inspection && inspection.defaultPathEligible === false) {
+            return createUnsupportedReferenceImageResult(inspection.message)
+          }
+        }
       }
 
       if (!reference) {

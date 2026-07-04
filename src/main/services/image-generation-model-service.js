@@ -20,6 +20,7 @@ const DEFAULT_CONFIG = {
 }
 
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
+const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -257,6 +258,34 @@ const getErrorMessage = async (response) => {
 const sanitizeModelId = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, '')
   .trim()
+
+const isVerifiedCreatorWorkflowImageModel = (value) => VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS
+  .includes(sanitizeModelId(value))
+
+const createCreatorWorkflowModelPolicy = ({ config = {}, storedState = {} }) => {
+  const catalog = getScopedProviderModelCatalog({
+    capability: 'image',
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    catalog: storedState.modelCatalog
+  })
+  const discoveredModels = Array.isArray(catalog?.models)
+    ? uniqueModelIds(catalog.models.map(sanitizeModelId).filter(Boolean))
+    : []
+  const preferredModel = sanitizeModelId(config.model)
+  const verifiedModels = uniqueModelIds([
+    ...(isVerifiedCreatorWorkflowImageModel(preferredModel) ? [preferredModel] : []),
+    ...discoveredModels.filter(isVerifiedCreatorWorkflowImageModel)
+  ])
+  return {
+    evidenceScope: 'creator-one-click-default',
+    preferredModel,
+    verifiedModels,
+    fallbackModels: verifiedModels.filter((modelId) => modelId !== preferredModel),
+    discoveredModels,
+    preferredModelVerified: isVerifiedCreatorWorkflowImageModel(preferredModel)
+  }
+}
 
 const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
@@ -581,7 +610,8 @@ const createImageGenerationModelService = ({
       hasApiKey: Boolean(secretValue),
       apiKeyPreview: maskSecret(secretValue),
       apiKeyLabel: 'Image API Key',
-      modelCatalog: getModelCatalog(config, storedState)
+      modelCatalog: getModelCatalog(config, storedState),
+      creatorWorkflowModelPolicy: createCreatorWorkflowModelPolicy({ config, storedState })
     }
   }
 
@@ -1204,5 +1234,8 @@ const createImageGenerationModelService = ({
 
 module.exports = {
   DEFAULT_IMAGE_GENERATION_MODEL_CONFIG: DEFAULT_CONFIG,
+  VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS,
+  createCreatorWorkflowModelPolicy,
+  isVerifiedCreatorWorkflowImageModel,
   createImageGenerationModelService
 }

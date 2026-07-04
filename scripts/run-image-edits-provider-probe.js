@@ -3,14 +3,12 @@
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
+const { VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS } = require('../src/main/services/image-generation-model-service')
 
 const DEFAULT_API_KEY_ENV = 'OPENPET_IMAGE_PROVIDER_API_KEY'
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'release', 'image-edits-provider-probe')
 const DEFAULT_TIMEOUT_MS = 300000
-const DEFAULT_MODELS = [
-  'gpt-image-2',
-  'gpt-image-1.5'
-]
+const DEFAULT_MODELS = Array.from(VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS)
 const DEFAULT_PROMPT = 'OpenPet provider probe: keep the same pet identity, transparent background, simple centered pose, no text.'
 
 const usage = () => [

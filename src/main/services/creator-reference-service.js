@@ -6,6 +6,10 @@ const { pathToFileURL } = require('url')
 
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
 const ALLOWED_TARGET_TYPES = new Set(['editable-action-host', 'pet-pack'])
+const DEFAULT_PATH_MIN_ASPECT_RATIO = 0.5
+const DEFAULT_PATH_MAX_ASPECT_RATIO = 1.9
+const UNSUPPORTED_DEFAULT_PATH_REFERENCE_CODE = 'unsupported_multi_view_reference'
+const UNSUPPORTED_DEFAULT_PATH_REFERENCE_MESSAGE = '默认一键生成暂只支持单张干净正面图，请改用一张清晰的正面图，不要使用拼图、三视图或多视图合成图。'
 
 const normalizeTargetType = (value) => {
   const normalized = String(value || '').trim()
@@ -81,6 +85,24 @@ const createView = (record) => {
 
 const writeJson = (filePath, value) => fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 
+const createDefaultPathReferenceInspection = ({ fileName, width, height }) => {
+  const normalizedWidth = Number(width) || 0
+  const normalizedHeight = Number(height) || 0
+  const aspectRatio = normalizedWidth > 0 && normalizedHeight > 0
+    ? Number((normalizedWidth / normalizedHeight).toFixed(4))
+    : 0
+  const likelyMultiView = aspectRatio >= DEFAULT_PATH_MAX_ASPECT_RATIO || aspectRatio <= DEFAULT_PATH_MIN_ASPECT_RATIO
+  return {
+    fileName: String(fileName || '').trim(),
+    width: normalizedWidth,
+    height: normalizedHeight,
+    aspectRatio,
+    defaultPathEligible: !likelyMultiView,
+    code: likelyMultiView ? UNSUPPORTED_DEFAULT_PATH_REFERENCE_CODE : '',
+    message: likelyMultiView ? UNSUPPORTED_DEFAULT_PATH_REFERENCE_MESSAGE : ''
+  }
+}
+
 const createCreatorReferenceService = ({
   settingsService,
   referenceRoot,
@@ -113,6 +135,26 @@ const createCreatorReferenceService = ({
       referenceToken,
       fileName: path.basename(resolvedSourcePath)
     }
+  }
+
+  const inspectSourceImage = async (sourcePath, fileName = '') => {
+    const resolvedSourcePath = normalizeSourcePath(sourcePath)
+    if (!resolvedSourcePath || !fs.existsSync(resolvedSourcePath)) {
+      throw new Error('Creator reference source image does not exist')
+    }
+    const stat = fs.statSync(resolvedSourcePath)
+    if (!stat.isFile()) throw new Error('Creator reference source image must be a file')
+    const metadata = await sharp(resolvedSourcePath).metadata()
+    const width = Number(metadata.width) || 0
+    const height = Number(metadata.height) || 0
+    if (width <= 0 || height <= 0) {
+      throw new Error('Creator reference image dimensions are invalid')
+    }
+    return createDefaultPathReferenceInspection({
+      fileName: fileName || path.basename(resolvedSourcePath),
+      width,
+      height
+    })
   }
 
   const getReferenceRecord = ({ targetType, targetId }) => {
@@ -154,12 +196,9 @@ const createCreatorReferenceService = ({
     const stat = fs.statSync(resolvedSourcePath)
     if (!stat.isFile()) throw new Error('Creator reference source image must be a file')
 
-    const metadata = await sharp(resolvedSourcePath).metadata()
-    const width = Number(metadata.width) || 0
-    const height = Number(metadata.height) || 0
-    if (width <= 0 || height <= 0) {
-      throw new Error('Creator reference image dimensions are invalid')
-    }
+    const inspection = await inspectSourceImage(resolvedSourcePath, path.basename(resolvedSourcePath))
+    const width = inspection.width
+    const height = inspection.height
 
     const previous = getReferenceRecord({ targetType: normalizedTargetType, targetId: normalizedTargetId })
     const timestamp = now()
@@ -194,6 +233,24 @@ const createCreatorReferenceService = ({
       replaced: Boolean(previous),
       reference: createView(record)
     }
+  }
+
+  const inspectApprovedSource = async ({ referenceToken }) => {
+    const normalizedReferenceToken = normalizeReferenceToken(referenceToken)
+    if (!normalizedReferenceToken) {
+      throw new Error('Creator reference source image was not approved by the main picker')
+    }
+    const resolvedSourcePath = approvedReferenceTokens.get(normalizedReferenceToken) || ''
+    if (!resolvedSourcePath) {
+      throw new Error('Creator reference source image was not approved by the main picker')
+    }
+    return inspectSourceImage(resolvedSourcePath, path.basename(resolvedSourcePath))
+  }
+
+  const inspectReference = async ({ targetType, targetId }) => {
+    const record = getReferenceRecord({ targetType, targetId })
+    if (!record) return null
+    return inspectSourceImage(record.assetPath, record.fileName)
   }
 
   const copyReferenceIntoRun = ({ targetType, targetId, pluginDataDir, runId }) => {
@@ -258,10 +315,14 @@ const createCreatorReferenceService = ({
     approveSourcePath,
     getReference,
     bindReference,
-    copyReferenceIntoRun
+    copyReferenceIntoRun,
+    inspectApprovedSource,
+    inspectReference
   }
 }
 
 module.exports = {
+  UNSUPPORTED_DEFAULT_PATH_REFERENCE_CODE,
+  UNSUPPORTED_DEFAULT_PATH_REFERENCE_MESSAGE,
   createCreatorReferenceService
 }

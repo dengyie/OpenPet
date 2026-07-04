@@ -65,7 +65,26 @@ const buildModelCandidateList = ({ settings = {}, preferredModel = '' }) => {
     seen.add(normalized)
     candidates.push(normalized)
   }
-  addCandidate(preferredModel)
+  const normalizedPreferredModel = normalizeModelName(preferredModel)
+  const hasHostWorkflowModelPolicy = Boolean(
+    settings?.creatorWorkflowModelPolicy &&
+    Array.isArray(settings.creatorWorkflowModelPolicy.verifiedModels)
+  )
+  const hostPolicyVerifiedModels = Array.isArray(settings?.creatorWorkflowModelPolicy?.verifiedModels)
+    ? settings.creatorWorkflowModelPolicy.verifiedModels
+    : []
+  const hostPolicyFallbackModels = Array.isArray(settings?.creatorWorkflowModelPolicy?.fallbackModels)
+    ? settings.creatorWorkflowModelPolicy.fallbackModels
+    : []
+  if (hasHostWorkflowModelPolicy) {
+    const preferredModelVerified = normalizedPreferredModel &&
+      hostPolicyVerifiedModels.some((candidate) => normalizeModelName(candidate) === normalizedPreferredModel)
+    if (preferredModelVerified) addCandidate(normalizedPreferredModel)
+    for (const candidate of hostPolicyVerifiedModels) addCandidate(candidate)
+    for (const candidate of hostPolicyFallbackModels) addCandidate(candidate)
+    return candidates
+  }
+  addCandidate(normalizedPreferredModel)
   for (const candidate of KNOWN_FALLBACK_IMAGE_MODELS) {
     if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
   }
@@ -234,6 +253,9 @@ const generateWithModelFallback = async ({
 }) => {
   const attempts = []
   const modelCandidates = buildModelCandidateList({ settings, preferredModel })
+  if (modelCandidates.length === 0) {
+    throw new Error('Creator Studio one-click generation has no verified image model available')
+  }
   let lastError = null
   for (const model of modelCandidates) {
     try {

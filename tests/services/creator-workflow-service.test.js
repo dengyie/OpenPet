@@ -758,6 +758,48 @@ test('creator workflow service binds a new character reference and completes a f
   }])
 })
 
+test('creator workflow service blocks new-character default flow when the approved reference looks like a multi-view collage', async () => {
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      runCommand: async () => {
+        throw new Error('should not draft when the reference is unsupported')
+      },
+      getPluginCreatorDataDir: () => '/tmp/openpet-plugin-data'
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      inspectApprovedSource: async () => ({
+        defaultPathEligible: false,
+        code: 'unsupported_multi_view_reference',
+        message: '默认一键生成暂只支持单张干净正面图，请改用一张清晰的正面图，不要使用拼图、三视图或多视图合成图。'
+      }),
+      bindReference: async () => {
+        throw new Error('bind should not run for unsupported default-path references')
+      },
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const result = await service.generateNewCharacter({
+    characterName: 'Mango Cat',
+    stylePrompt: 'bright orange helper',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.state, 'missing-input')
+  assert.equal(result.code, 'unsupported_reference_image')
+  assert.match(result.message, /单张干净正面图/)
+})
+
 test('creator workflow service rejects overlapping workflow starts while one run is active', async () => {
   let releaseDraft = null
   const draftStarted = new Promise((resolve) => {
@@ -917,4 +959,55 @@ test('creator workflow service clears transient generating state when a locked w
     ok: true,
     run: null
   })
+})
+
+test('creator workflow service blocks existing-action default flow when the stored reference looks like a multi-view collage', async () => {
+  const reference = {
+    targetType: EDITABLE_TARGET_TYPE,
+    targetId: EDITABLE_TARGET_ID,
+    assetPath: '/tmp/reference.png',
+    assetUrl: 'file:///tmp/reference.png',
+    fileName: 'reference.png',
+    width: 512,
+    height: 180,
+    contentHash: 'hash',
+    createdAt: '2026-07-05T00:00:00.000Z',
+    updatedAt: '2026-07-05T00:00:00.000Z'
+  }
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      runCommand: async () => {
+        throw new Error('should not draft when the stored reference is unsupported')
+      },
+      getPluginCreatorDataDir: () => '/tmp/openpet-plugin-data'
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => reference,
+      inspectReference: async () => ({
+        defaultPathEligible: false,
+        code: 'unsupported_multi_view_reference',
+        message: '默认一键生成暂只支持单张干净正面图，请改用一张清晰的正面图，不要使用拼图、三视图或多视图合成图。'
+      }),
+      bindReference: async () => ({ replaced: false, reference }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const result = await service.generateExistingAction({
+    actionName: 'shy-spin',
+    motionPrompt: 'spin shyly'
+  })
+
+  assert.equal(result.state, 'missing-input')
+  assert.equal(result.code, 'unsupported_reference_image')
+  assert.match(result.message, /单张干净正面图/)
 })

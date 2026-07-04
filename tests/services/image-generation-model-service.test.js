@@ -178,6 +178,43 @@ test('image generation model service does not persist renderer-only model catalo
   assert.deepEqual(service.getConfig().modelCatalog, savedCatalog)
 })
 
+test('image generation model service exposes a creator workflow model policy with host-owned verified fallback truth', () => {
+  const settingsService = createSettingsService({
+    models: {
+      imageGeneration: {
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-image-2',
+        apiKeyRef: 'secret:model.image.openai.apiKey',
+        timeoutMs: 120000,
+        maxConcurrentJobs: 1,
+        modelCatalog: createSavedProviderModelCatalog({
+          capability: 'image',
+          provider: 'openai-compatible',
+          baseUrl: 'http://127.0.0.1:8317/v1',
+          models: ['gpt-image-2', 'gpt-image-1.5', 'grok-imagine-image'],
+          fetchedAt: '2026-07-05T09:00:00.000Z'
+        })
+      }
+    }
+  })
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService()
+  })
+
+  const config = service.getConfig()
+
+  assert.deepEqual(config.creatorWorkflowModelPolicy, {
+    evidenceScope: 'creator-one-click-default',
+    preferredModel: 'gpt-image-2',
+    verifiedModels: ['gpt-image-2'],
+    fallbackModels: [],
+    discoveredModels: ['gpt-image-1.5', 'gpt-image-2', 'grok-imagine-image'],
+    preferredModelVerified: true
+  })
+})
+
 test('image generation model service does not let config saves retarget the provider api key ref', () => {
   const settingsService = createSettingsService()
   const service = createImageGenerationModelService({

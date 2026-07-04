@@ -247,3 +247,25 @@ test('creator reference service consumes approval tokens after the first bind so
     referenceToken: approval.referenceToken
   }), /not approved/i)
 })
+
+test('creator reference service flags likely collage or multi-view inputs as unsupported for the default path', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-multiview-'))
+  const sourcePath = path.join(tempRoot, 'overview.png')
+  await createReferenceImage(sourcePath, { width: 240, height: 80 })
+
+  const settingsService = createSettingsService()
+  const service = createCreatorReferenceService({
+    settingsService,
+    referenceRoot: path.join(tempRoot, 'references'),
+    now: () => '2026-07-05T09:00:00.000Z'
+  })
+
+  const approval = service.approveSourcePath(sourcePath)
+  const inspection = await service.inspectApprovedSource({ referenceToken: approval.referenceToken })
+
+  assert.equal(inspection.defaultPathEligible, false)
+  assert.equal(inspection.code, 'unsupported_multi_view_reference')
+  assert.match(inspection.message, /单张干净正面图/)
+  assert.equal(inspection.width, 240)
+  assert.equal(inspection.height, 80)
+})

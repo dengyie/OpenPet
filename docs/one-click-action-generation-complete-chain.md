@@ -167,13 +167,23 @@ Current local validation notes:
 - Provider-backed full-pet generation is still sensitive to gateway/model stability. The current implementation intentionally minimizes action-specific follow-up generation so base generation remains the critical path.
 - Auto-replacing `clickAction` is intentionally opinionated. The Create result must make the replacement explicit and reversible.
 
+## Failure Triage
+
+| Symptom | Likely owner | Current meaning |
+| --- | --- | --- |
+| `请先到 AI -> 模型 Provider -> 图片模型 配置...` | Host/provider config | Saved image provider is not ready yet |
+| `unsupported_reference_image` or `单张干净正面图` guidance | Input contract | Default one-click path detected a collage or multi-view reference and blocked before generation |
+| `/images/edits` timeout, multipart failure, empty output, or provider business error | Gateway/provider path | Request reached the image provider path but failed before usable asset output |
+| Missing required `idle` / `waving` coverage in full-pet QA | Full-pet generation / QA | Technical chain ran, but the imported pet is not honest enough to pass the current basic-action gate |
+| Import handoff failure after approval | Host import/action binding path | Generated output exists, but OpenPet import or trigger handoff still needs advanced follow-up |
+
 ## Current Stable Path
 
 - The current stable shortest path is one clean front-facing reference image.
 - On the active dev8 branch, the verified real-user chain is:
   - one-click new pet generation from `正面.png`
   - one-click existing-pet action generation from `正面.png`
-- Multi-view collage inputs such as `全面.png` are not the preferred path for the current provider/gateway setup.
+- Default one-click generation now explicitly blocks collage or multi-view references such as `全面.png` and asks for one clean front-facing image instead.
 
 ## Non-Goals
 

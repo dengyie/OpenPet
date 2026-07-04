@@ -60,7 +60,7 @@ npm run create-ai-talk-local-smoke-archive -- --session-dir ai-talk-local-smoke/
 - Release evidence still needs real signed macOS and Windows artifacts before support claims can move.
 - Packaged native picker evidence still needs real archived runs.
 - Creator Studio image-provider polish remains open product work, but host-owned durable trigger rules are already landed for `random`, `state`, and `event`.
-- The current one-click full-pet policy is intentionally narrow: QA/import requires real `idle` and `waving`, host-side extra pose generation only attempts `waving`, and the stable shortest path is a single clean front-facing image with the saved `gpt-image-2` gateway path; multi-view collage inputs remain less stable and should not be presented as the default success path.
+- The current one-click full-pet policy is intentionally narrow: QA/import requires real `idle` and `waving`, host-side extra pose generation only attempts `waving`, and the stable shortest path is a single clean front-facing image with the saved `gpt-image-2` gateway path; the default one-click path now blocks collage or multi-view inputs instead of pretending they are a normal supported success path.
 - Extension-community proof still needs a compatible third-party package path without overstating trust or safety.
 
 ## Reference Points

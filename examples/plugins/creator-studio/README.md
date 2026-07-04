@@ -12,6 +12,7 @@ Current full-pet policy:
 - Host-side extra pose generation is intentionally limited to `waving`.
 - Other atlas rows may fall back from the validated base pose.
 - The currently verified shortest real-user path is one clean front-facing reference image on the saved `gpt-image-2` gateway path.
+- The default one-click path now blocks collage or multi-view references and asks for one clean front-facing image instead.
 
 Current commands:
 
