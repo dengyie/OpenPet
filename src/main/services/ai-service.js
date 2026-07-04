@@ -1,4 +1,9 @@
 const { sanitizeLogText } = require('./log-safety')
+const {
+  createSavedProviderModelCatalog,
+  getScopedProviderModelCatalog,
+  uniqueModelIds
+} = require('./provider-model-catalog')
 
 const DEFAULT_AI_CONFIG = {
   enabled: false,
@@ -391,6 +396,15 @@ const createAiService = ({
   const conversationQueues = new Map()
 
   const getRawConfig = () => normalizeConfig(settingsService.get().ai)
+  const getStoredAiState = () => (isPlainObject(settingsService.get().ai) ? settingsService.get().ai : {})
+  const getModelCatalog = (config = getRawConfig(), storedState = getStoredAiState()) => (
+    getScopedProviderModelCatalog({
+      capability: 'chat',
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      catalog: storedState.modelCatalog
+    })
+  )
 
   const getConfigLogDetails = (config) => ({
     provider: config.provider,
@@ -437,26 +451,53 @@ const createAiService = ({
         ...settings,
         ai: {
           ...normalizeConfig(currentAi),
-          conversations
+          conversations,
+          modelCatalog: currentAi.modelCatalog
         }
       }
     })
   }
 
+  const persistModelCatalog = (config, models) => {
+    const nextCatalog = createSavedProviderModelCatalog({
+      capability: 'chat',
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      models: uniqueModelIds(models),
+      fetchedAt: new Date().toISOString()
+    })
+    settingsService.update((settings) => {
+      const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
+      return {
+        ...settings,
+        ai: {
+          ...normalizeConfig(currentAi),
+          conversations: normalizeConversationStore(currentAi.conversations, historyLimit),
+          modelCatalog: nextCatalog
+        }
+      }
+    })
+    return nextCatalog
+  }
+
   const getConfig = () => {
     const config = getRawConfig()
+    const storedState = getStoredAiState()
     return {
       ...config,
       baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
-      hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef))
+      hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef)),
+      modelCatalog: getModelCatalog(config, storedState)
     }
   }
 
   const saveConfig = (partialConfig) => {
     const settings = settingsService.get()
+    const currentAi = getStoredAiState()
     const nextAi = {
       ...normalizeConfig(mergeConfigWithoutDisplayDowngrade(settings.ai, partialConfig)),
-      conversations: getStoredConversations()
+      conversations: getStoredConversations(),
+      modelCatalog: currentAi.modelCatalog
     }
     settingsService.save({ ...settings, ai: nextAi })
     recordLog({
@@ -690,6 +731,9 @@ const createAiService = ({
         message: 'AI provider connection test succeeded',
         ...modelProbe
       }
+      if (response.modelsProbe === 'ok') {
+        persistModelCatalog(config, response.availableModels)
+      }
       recordLog({
         scope: 'ai-settings',
         level: 'info',
@@ -818,6 +862,7 @@ const createAiService = ({
       }
 
       const discoveredModels = extractDiscoveredModelIds(body)
+      persistModelCatalog(config, discoveredModels)
       return {
         ok: true,
         ...baseResult,

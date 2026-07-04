@@ -565,7 +565,13 @@ test('ai provider settings IPC delegates config save key save and connection tes
       rules: [{ id: 'rule-1' }],
       decisions: []
     },
-    hasApiKey: false
+    hasApiKey: false,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(savedConfig, {
     enabled: false,
@@ -582,7 +588,13 @@ test('ai provider settings IPC delegates config save key save and connection tes
       rules: [],
       decisions: []
     },
-    hasApiKey: false
+    hasApiKey: false,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(savedKey, { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
   assert.deepEqual(connection, {
@@ -872,7 +884,13 @@ test('image generation handlers delegate to the model service', async () => {
     maxConcurrentJobs: 2,
     hasApiKey: true,
     apiKeyPreview: '',
-    apiKeyLabel: 'Image API Key'
+    apiKeyLabel: 'Image API Key',
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(saved, {
     provider: '',
@@ -885,7 +903,13 @@ test('image generation handlers delegate to the model service', async () => {
     maxConcurrentJobs: 0,
     hasApiKey: false,
     apiKeyPreview: '',
-    apiKeyLabel: 'Image API Key'
+    apiKeyLabel: 'Image API Key',
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(savedApiKey, {
     apiKeyRef: 'secret:model.image.openai.apiKey',

@@ -471,6 +471,11 @@ button {
   flex-wrap: wrap;
 }
 
+.provider-model-picker {
+  display: grid;
+  gap: 8px;
+}
+
 .memory-section {
   gap: 0;
 }

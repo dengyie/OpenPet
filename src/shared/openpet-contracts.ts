@@ -464,6 +464,7 @@ export interface AiConfigViewState {
   memory: AiMemoryConfig
   behavior: AiBehaviorConfig
   hasApiKey: boolean
+  modelCatalog: ProviderModelCatalogViewState
 }
 
 export interface ServiceLogEntry {
@@ -2455,6 +2456,13 @@ export interface ProviderModelDiscoveryResult {
   message: string
 }
 
+export interface ProviderModelCatalogViewState {
+  cacheKey: string
+  models: string[]
+  fetchedAt: string
+  source: 'none' | 'saved'
+}
+
 export interface ImageGenerationConfigViewState {
   provider: string
   baseUrl: string
@@ -2467,6 +2475,7 @@ export interface ImageGenerationConfigViewState {
   hasApiKey: boolean
   apiKeyPreview: string
   apiKeyLabel: string
+  modelCatalog: ProviderModelCatalogViewState
 }
 
 export interface ImageGenerationSaveApiKeyResult {

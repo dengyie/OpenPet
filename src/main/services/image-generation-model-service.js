@@ -2,6 +2,11 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { sanitizeLogText } = require('./log-safety')
+const {
+  createSavedProviderModelCatalog,
+  getScopedProviderModelCatalog,
+  uniqueModelIds
+} = require('./provider-model-catalog')
 
 const DEFAULT_CONFIG = {
   provider: 'openai-compatible',
@@ -391,6 +396,19 @@ const createImageGenerationModelService = ({
   const queuedProviderJobs = []
 
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
+  const getStoredImageGenerationState = () => (
+    isPlainObject(settingsService.get().models?.imageGeneration)
+      ? settingsService.get().models.imageGeneration
+      : {}
+  )
+  const getModelCatalog = (config = getStoredConfig(), storedState = getStoredImageGenerationState()) => (
+    getScopedProviderModelCatalog({
+      capability: 'image',
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      catalog: storedState.modelCatalog
+    })
+  )
   const getProviderTimeoutMs = (config) => Math.max(1, Number(cloudGenerationTimeoutMs ?? providerGenerationTimeoutMs ?? config.timeoutMs ?? PROVIDER_GENERATION_TIMEOUT_MS) || PROVIDER_GENERATION_TIMEOUT_MS)
   const getConfigLogDetails = (config) => ({
     provider: config.provider,
@@ -492,24 +510,44 @@ const createImageGenerationModelService = ({
     })
   }
 
+  const persistModelCatalog = (config, models) => {
+    const nextCatalog = createSavedProviderModelCatalog({
+      capability: 'image',
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      models: uniqueModelIds(models),
+      fetchedAt: now().toISOString()
+    })
+    const current = getStoredImageGenerationState()
+    saveStoredConfig({
+      ...toPersistedConfig(current),
+      modelCatalog: nextCatalog
+    })
+    return nextCatalog
+  }
+
   const getConfig = () => {
     const config = getStoredConfig()
+    const storedState = getStoredImageGenerationState()
     const secretValue = secretService.getSecretValue(config.apiKeyRef)
     return {
       ...config,
       hasApiKey: Boolean(secretValue),
       apiKeyPreview: maskSecret(secretValue),
-      apiKeyLabel: 'Image API Key'
+      apiKeyLabel: 'Image API Key',
+      modelCatalog: getModelCatalog(config, storedState)
     }
   }
 
   const saveConfig = (partialConfig = {}) => {
     const current = getStoredConfig()
+    const currentState = getStoredImageGenerationState()
     const next = toPersistedConfig({
       ...current,
       ...(isPlainObject(partialConfig) ? partialConfig : {}),
       apiKeyRef: current.apiKeyRef
     })
+    next.modelCatalog = currentState.modelCatalog
     next.baseUrl = assertProviderBaseUrl(next.baseUrl)
     saveStoredConfig(next)
     recordLog({
@@ -656,6 +694,7 @@ const createImageGenerationModelService = ({
         body = await response.json()
       } catch (_) {}
       const availableModels = extractDiscoveredModels(body)
+      persistModelCatalog(config, availableModels)
       return completeHealth(
         {
           ok: true,
@@ -774,11 +813,13 @@ const createImageGenerationModelService = ({
           { status, modelsProbe: 'failed', providerMessage: extractProviderBusinessError(body) }
         )
       }
+      const discoveredModels = extractDiscoveredModels(body)
+      persistModelCatalog(config, discoveredModels)
       return completeDiscovery(
         {
           ok: true,
           ...baseResult,
-          models: extractDiscoveredModels(body),
+          models: discoveredModels,
           code: 'ok',
           message: 'Image Provider model discovery succeeded'
         },

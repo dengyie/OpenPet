@@ -93,6 +93,29 @@ interface DemoState {
 
 let demoApi: ControlCenterApi
 
+const normalizeDemoProviderBaseUrl = (value: string) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  try {
+    const parsed = new URL(raw)
+    parsed.username = ''
+    parsed.password = ''
+    parsed.search = ''
+    parsed.hash = ''
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.origin}${normalizedPath === '/' ? '' : normalizedPath}`
+  } catch (_) {
+    return raw
+      .replace(/^([a-z]+:\/\/)([^/@]+)@/i, '$1')
+      .replace(/[?#].*$/, '')
+      .replace(/\/+$/, '')
+  }
+}
+
+const buildDemoProviderCacheKey = (capability: 'chat' | 'image', provider: string, baseUrl: string) => (
+  [capability, String(provider || '').trim(), normalizeDemoProviderBaseUrl(baseUrl)].join(':')
+)
+
 const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult => ({
   canceled: false,
   selectionId: 'demo-selection',
@@ -1209,6 +1232,32 @@ const writeDemoState = () => {
   window.sessionStorage.setItem(demoStorageKey, JSON.stringify(demoState))
 }
 
+const persistDemoAiModelCatalog = (models: string[]) => {
+  demoState.aiConfig = cloneAiConfig({
+    ...demoState.aiConfig,
+    modelCatalog: {
+      cacheKey: buildDemoProviderCacheKey('chat', demoState.aiConfig.provider, demoState.aiConfig.baseUrl),
+      models,
+      fetchedAt: new Date().toISOString(),
+      source: 'saved'
+    }
+  })
+  writeDemoState()
+}
+
+const persistDemoImageModelCatalog = (models: string[]) => {
+  demoState.imageGenerationConfig = cloneImageGenerationConfig({
+    ...demoState.imageGenerationConfig,
+    modelCatalog: {
+      cacheKey: buildDemoProviderCacheKey('image', demoState.imageGenerationConfig.provider, demoState.imageGenerationConfig.baseUrl),
+      models,
+      fetchedAt: new Date().toISOString(),
+      source: 'saved'
+    }
+  })
+  writeDemoState()
+}
+
 const emitDemoActivePetPackChanged = (payload: ActivePetPackChangedEvent) => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(demoActivePetPackChangedEvent, { detail: payload }))
@@ -2096,6 +2145,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     const availableModels = /healthy-models/i.test(demoState.aiConfig.baseUrl)
       ? ['gpt-4o-mini', 'deepseek-chat', 'openpet-chat-test']
       : ['gpt-4o-mini']
+    persistDemoAiModelCatalog(availableModels)
     return {
       ok: true,
       provider: demoState.aiConfig.provider,
@@ -2139,6 +2189,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     const models = /127\.0\.0\.1:11434|ollama|qwen/i.test(demoState.aiConfig.baseUrl)
       ? ['llama3.1:8b-instruct', 'qwen2.5:7b-instruct']
       : ['gpt-4.1-mini', 'gpt-4o-mini']
+    persistDemoAiModelCatalog(models)
     return {
       ok: true,
       provider: demoState.aiConfig.provider,
@@ -2264,6 +2315,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     const availableModels = /healthy-models/i.test(demoState.imageGenerationConfig.baseUrl)
       ? ['gpt-image-2', 'openpet-image-test', 'flux-dev-transparent']
       : ['gpt-image-2']
+    persistDemoImageModelCatalog(availableModels)
     return {
       ok: true,
       provider: demoState.imageGenerationConfig.provider,
@@ -2307,6 +2359,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     const models = /127\.0\.0\.1|localhost|local/i.test(demoState.imageGenerationConfig.baseUrl)
       ? ['flux-schnell', 'gpt-image-2']
       : ['gpt-image-2']
+    persistDemoImageModelCatalog(models)
     return {
       ok: true,
       provider: demoState.imageGenerationConfig.provider,

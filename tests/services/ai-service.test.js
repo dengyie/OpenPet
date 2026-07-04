@@ -55,7 +55,13 @@ test('ai service exposes config without secret values', () => {
       rules: [],
       decisions: []
     },
-    hasApiKey: true
+    hasApiKey: true,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
 })
 
@@ -1049,6 +1055,79 @@ test('ai service discovers available models through the optional /models probe',
   assert.deepEqual(result.models, ['gpt-4.1-mini', 'gpt-4o-mini'])
   assert.equal(requests[0].url, 'https://models.example.test/v1/models')
   assert.equal(requests[0].options.method, 'GET')
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['gpt-4.1-mini', 'gpt-4o-mini'])
+  assert.equal(service.getConfig().modelCatalog.source, 'saved')
+})
+
+test('ai service only exposes cached models for the active provider owner key', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://models.example.test/v1',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      modelCatalog: {
+        cacheKey: 'chat:openai-compatible:https://other.example.test/v1',
+        models: ['stale-model'],
+        fetchedAt: '2026-07-04T00:00:00.000Z',
+        source: 'saved'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    }
+  })
+
+  assert.deepEqual(service.getConfig().modelCatalog, {
+    cacheKey: '',
+    models: [],
+    fetchedAt: '',
+    source: 'none'
+  })
+})
+
+test('ai service exposes a renderer-safe model catalog cache key', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://user:pass@models.example.test/v1?token=secret#frag',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: ''
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [{ id: 'gpt-4o-mini' }]
+      })
+    })
+  })
+
+  await service.discoverModels()
+
+  assert.deepEqual(service.getConfig().modelCatalog, {
+    cacheKey: 'chat:openai-compatible:https://models.example.test/v1',
+    models: ['gpt-4o-mini'],
+    fetchedAt: settingsService.get().ai.modelCatalog.fetchedAt,
+    source: 'saved'
+  })
+  assert.equal(service.getConfig().modelCatalog.cacheKey.includes('user:pass'), false)
+  assert.equal(service.getConfig().modelCatalog.cacheKey.includes('token=secret'), false)
 })
 
 test('ai service treats missing /models support as a safe discovery fallback', async () => {

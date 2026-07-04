@@ -218,11 +218,11 @@ test.describe('Control Center smoke', () => {
     await expect(memorySection).toContainText('Legacy Cat · legacy-cat')
     await expect(personaSection).toContainText('当前激活宠物包：Legacy Cat · legacy-cat')
 
-    await page.evaluate(async () => {
-      const api = window.controlCenterAPI
-      if (!api?.setActivePetPack) throw new Error('controlCenterAPI.setActivePetPack is unavailable')
-      await api.setActivePetPack('citrus-cat')
-    })
+    await page.getByRole('button', { name: 'Actions' }).click()
+    const citrusPackRow = page.locator('.pet-pack-row', { hasText: 'Citrus Cat' })
+    await citrusPackRow.getByRole('button', { name: '启用' }).click()
+    await expect(page.locator('.status-line')).toContainText('已启用 Citrus Cat')
+    await page.getByRole('button', { name: 'AI' }).click()
 
     await expect(memorySection).toContainText('Citrus Cat · citrus-cat')
     await expect(personaSection).toContainText('当前激活宠物包：Citrus Cat · citrus-cat')
@@ -231,8 +231,9 @@ test.describe('Control Center smoke', () => {
   test('exports ai talk trace from the AI pane', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
-    await page.getByRole('button', { name: '导出 AI Talk Trace' }).click()
-    await expect(page.locator('[data-testid="ai-status-line"]')).toContainText('AI Talk trace 已导出')
+    const memorySection = await expandAiSection(page, '长期记忆')
+    await memorySection.getByRole('button', { name: '导出 AI Talk Trace' }).click()
+    await expect(page.locator('[data-testid="ai-status-line"]')).toContainText('AI Talk Trace 已导出')
   })
 
   test('shows ai talk trace summary in the AI pane', async ({ page }) => {
@@ -1099,6 +1100,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('chat-model-compatibility')).toContainText('gpt-4o-mini')
     await expect(page.getByTestId('chat-model-compatibility')).toContainText('OpenAI 官方兼容模式')
 
+    await openProviderDisclosure(chatProviderSection, '显示常用聊天 Provider 预设')
     await chatProviderSection.getByRole('button', { name: 'LM Studio' }).click()
     await chatModelInput(page).fill('qwen2.5-7b-instruct')
     await expect(page.getByTestId('chat-model-compatibility')).toContainText('LM Studio 聊天兼容模式')
@@ -1502,6 +1504,11 @@ test.describe('Control Center smoke', () => {
 
     await pluginEnabledSwitch.click()
     await expect(page.locator('.status-line')).toContainText('插件已启用')
+    const nativeExecutionSwitch = pluginRow.getByRole('switch', { name: 'Allow native process execution for Demo Manual Review' })
+    await expect(nativeExecutionSwitch).toHaveAttribute('aria-checked', 'false')
+    await nativeExecutionSwitch.click()
+    await expect(page.locator('.status-line')).toContainText('已允许原生进程执行')
+    await expect(nativeExecutionSwitch).toHaveAttribute('aria-checked', 'true')
     await pluginRow.getByRole('button', { name: 'Say hello' }).click()
     await expect(page.locator('.status-line')).toContainText('Demo command completed')
     await expect(pluginRow).toContainText('最近命令结果')
@@ -1799,8 +1806,8 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('shy-spin')
     await expect(pluginRow).toContainText('动作目录')
     await expect(pluginRow).toContainText('/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin')
-    await expect(pluginRow).toContainText('触发建议')
-    await expect(pluginRow).toContainText('已提交')
+    await expect(pluginRow).toContainText('入队状态')
+    await expect(pluginRow).toContainText('submitted')
     await expect(pluginRow).toContainText('proposal:click:shy-spin:test')
   })
 
@@ -2024,8 +2031,8 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('run-demo-action-123')
     await expect(pluginRow).toContainText('已导入动作')
     await expect(pluginRow).toContainText('shy-spin')
-    await expect(pluginRow).toContainText('触发建议')
-    await expect(pluginRow).toContainText('已提交')
+    await expect(pluginRow).toContainText('入队状态')
+    await expect(pluginRow).toContainText('submitted')
   })
 
   test('routes failed host-owned Creator Studio generate-and-import runs to the advanced details path', async ({ page }) => {
@@ -2189,7 +2196,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('run-demo-action-trigger-handoff-fail')
     await expect(page.locator('.status-line')).toContainText('查看任务详情')
     await expect(pluginRow).toContainText('触发建议')
-    await expect(pluginRow).toContainText('提交失败')
+    await expect(pluginRow).toContainText('failed')
 
     await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
     await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
@@ -2237,7 +2244,7 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.locator('.status-line')).toContainText('Imported action shy-spin from run run-demo-action-456')
     await expect(pluginRow).toContainText('触发建议')
-    await expect(pluginRow).toContainText('提交失败')
+    await expect(pluginRow).toContainText('failed')
     await expect(pluginRow).toContainText('[redacted-token]')
     await expect(pluginRow).toContainText('[redacted-path]')
     await expect(pluginRow).toContainText('[redacted-local-url]')

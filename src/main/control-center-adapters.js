@@ -258,7 +258,8 @@ const createAiConfigView = (config = {}) => {
       rules: Array.isArray(behavior.rules) ? behavior.rules.filter((item) => item && typeof item === 'object') : [],
       decisions: Array.isArray(behavior.decisions) ? behavior.decisions.filter((item) => item && typeof item === 'object') : []
     },
-    hasApiKey: Boolean(input.hasApiKey)
+    hasApiKey: Boolean(input.hasApiKey),
+    modelCatalog: createProviderModelCatalogView(input.modelCatalog)
   }
 }
 
@@ -274,6 +275,20 @@ const uniqueStrings = (items) => {
     values.push(item)
   }
   return values
+}
+
+/**
+ * @param {unknown} catalog
+ * @returns {import('../shared/openpet-contracts').ProviderModelCatalogViewState}
+ */
+const createProviderModelCatalogView = (catalog = {}) => {
+  const input = toRecord(catalog)
+  return {
+    cacheKey: typeof input.cacheKey === 'string' ? input.cacheKey : '',
+    models: Array.isArray(input.models) ? uniqueStrings(input.models) : [],
+    fetchedAt: typeof input.fetchedAt === 'string' ? input.fetchedAt : '',
+    source: input.source === 'saved' ? 'saved' : 'none'
+  }
 }
 
 /**
@@ -422,7 +437,8 @@ const createImageGenerationConfigView = (config = {}) => {
     maxConcurrentJobs: toNonNegativeInteger(input.maxConcurrentJobs),
     hasApiKey: Boolean(input.hasApiKey),
     apiKeyPreview: typeof input.apiKeyPreview === 'string' ? input.apiKeyPreview : '',
-    apiKeyLabel: typeof input.apiKeyLabel === 'string' && input.apiKeyLabel ? input.apiKeyLabel : 'Image API Key'
+    apiKeyLabel: typeof input.apiKeyLabel === 'string' && input.apiKeyLabel ? input.apiKeyLabel : 'Image API Key',
+    modelCatalog: createProviderModelCatalogView(input.modelCatalog)
   }
 }
 

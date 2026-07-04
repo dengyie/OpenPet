@@ -87,7 +87,13 @@ export const defaultAiConfig = {
     rules: [],
     decisions: []
   },
-  hasApiKey: false
+  hasApiKey: false,
+  modelCatalog: {
+    cacheKey: '',
+    models: [],
+    fetchedAt: '',
+    source: 'none'
+  }
 } satisfies AiConfigViewState
 
 export const defaultAiPersonaProfile = {
@@ -177,7 +183,13 @@ export const defaultImageGenerationConfig = {
   maxConcurrentJobs: 1,
   hasApiKey: false,
   apiKeyPreview: '',
-  apiKeyLabel: 'Image API Key'
+  apiKeyLabel: 'Image API Key',
+  modelCatalog: {
+    cacheKey: '',
+    models: [],
+    fetchedAt: '',
+    source: 'none'
+  }
 } satisfies ImageGenerationConfigViewState
 
 export const defaultPetChatState = {
@@ -391,7 +403,12 @@ export const cloneAiConfig = (config: Partial<AiConfigViewState> | null | undefi
     ...defaultAiConfig.memory,
     ...(config?.memory || {})
   },
-  behavior: cloneAiBehavior(config?.behavior)
+  behavior: cloneAiBehavior(config?.behavior),
+  modelCatalog: {
+    ...defaultAiConfig.modelCatalog,
+    ...(config?.modelCatalog || {}),
+    models: Array.isArray(config?.modelCatalog?.models) ? config.modelCatalog.models : []
+  }
 })
 
 export const cloneAiPersonaProfile = (profile: Partial<AiPersonaProfileViewState> | null | undefined): AiPersonaProfileViewState => ({
@@ -495,7 +512,12 @@ export const cloneImageGenerationConfig = (
   config: Partial<ImageGenerationConfigViewState> | null | undefined
 ): ImageGenerationConfigViewState => ({
   ...defaultImageGenerationConfig,
-  ...(config || {})
+  ...(config || {}),
+  modelCatalog: {
+    ...defaultImageGenerationConfig.modelCatalog,
+    ...(config?.modelCatalog || {}),
+    models: Array.isArray(config?.modelCatalog?.models) ? config.modelCatalog.models : []
+  }
 })
 
 export const cloneServiceStatus = (status: Partial<ServiceStatusViewState> | null | undefined): ServiceStatusViewState => ({
