@@ -70,9 +70,20 @@ const loadReport = (reportPath, fsImpl = fs) => {
 
 const defaultOutputPath = (reportPath) => path.join(path.dirname(path.resolve(reportPath)), DEFAULT_OUTPUT_NAME)
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
 const commandPath = (reportPath) => {
-  const relative = path.relative(process.cwd(), path.resolve(reportPath))
-  return relative && !relative.startsWith('..') ? relative : path.resolve(reportPath)
+  const absolutePath = path.resolve(reportPath)
+  const relative = toPosixPath(path.relative(process.cwd(), absolutePath))
+  if (isSafeRelativePath(relative)) return relative
+  return path.basename(absolutePath) || 'packaged-runtime-smoke-report.json'
 }
 
 const valueOrPlaceholder = (value, placeholder = '<fill during packaged runtime validation>') => {

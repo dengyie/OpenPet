@@ -104,6 +104,18 @@ test('createCollector writes a PowerShell helper without claiming readiness', ()
   }
 })
 
+test('createCollector falls back to a safe report filename outside the repository', () => {
+  const report = createPendingReport()
+  const collector = createCollector({
+    report,
+    reportPath: '/tmp/private/windows-smoke-report.json',
+    generatedAt: new Date('2026-06-14T01:30:00.000Z')
+  })
+
+  assert.match(collector, /Join-Path \$PSScriptRoot 'windows-smoke-report\.json'/)
+  assert.doesNotMatch(collector, /\/tmp\/private/)
+})
+
 test('createCollector rejects structurally invalid reports', () => {
   const report = createPendingReport()
   report.checks = report.checks.filter((check) => check.id !== 'launch')
