@@ -1,7 +1,7 @@
 # OpenPet Project Status Review
 
 > Last updated: 2026-07-05
-> Branch: `codex/dev8`
+> Branch: `main`
 
 This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for the active queue and `docs/release-evidence/` for archived proof.
 

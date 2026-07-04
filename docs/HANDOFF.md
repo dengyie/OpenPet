@@ -2,7 +2,7 @@
 
 > Last updated: 2026-07-05
 > Canonical active queue: [`TODO.md`](./TODO.md)
-> Branch: `codex/dev8`
+> Branch: `main`
 
 This file is the compact maintainer continuation note. Historical phase-level detail lives in `docs/phases/`, `docs/reviews/`, and older planning docs.
 
