@@ -1,8 +1,8 @@
 {
   "project": "OpenPet",
   "releaseTrack": "1.0.1-rc.3",
-  "updated": "2026-07-03",
-  "branch": "codex/dev7",
+  "updated": "2026-07-05",
+  "branch": "codex/dev8",
   "scope": {
     "platform": [
       "macOS",
@@ -29,6 +29,7 @@
     "Creator Studio provider smoke evidence is archived under docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/ where a gpt-image-2 request completed in about 265s under a 420000ms timeout override and was explicitly treated as provider-path validation, not production asset-quality approval",
     "AI Talk Bubble Chat smoke evidence is archived under docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ and the run-ai-talk-local-smoke entrypoint records bubbleAcceptance requestId, providerLatencyMs, bubbleDispatch.petSayReceived, bubbleDispatch.bubbleStateVisible, and a manualAcceptanceTemplate placeholder",
     "The archived AI Talk Bubble Chat smoke proves providerLatencyMs was 2141, bubbleDispatch.petSayReceived was true, and bubbleDispatch.bubbleStateVisible was true, but it does not by itself prove transparent popup placement or full human acceptance",
+    "Creator Workflow host smoke evidence is archived under docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/ where the narrowed one-click new-pet and existing-action chain both completed through /images/edits with one redacted front-image reference on codex/dev8, while main-branch acceptance remains outstanding",
     "Bundled agent-awareness ships as openpet.agent-awareness, stays enabled by default but stopped until an explicit user start, and keeps native execution approval as the boundary before the service can run",
     "The reserved agent-awareness health-note summary contract is X active · Y sessions · Z events",
     "Agent-awareness real-session smoke keeps run-agent-awareness-local-smoke and its manualAcceptanceTemplate boundary tied to docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/ where unknownRecordCount 0 and unsupportedLifecycleRecordCount 0 were preserved for later human review",
@@ -75,6 +76,7 @@
       "npm run check:syntax",
       "npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model>",
       "npm run smoke:creator-studio-provider -- --prompt <text>",
+      "npm run smoke:creator-workflow-host -- --reference-image <file>",
       "npm run run-ai-talk-local-smoke -- --message <text>",
       "npm run update-ai-talk-local-smoke-report -- <report.json> ...",
       "npm run run-agent-awareness-local-smoke -- --codex-home <dir>",

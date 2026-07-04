@@ -45,7 +45,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 - [`archive/`](./archive/) stores superseded one-off root-level reports and status snapshots.
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
-- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, `agent-awareness-local-smoke/`, and `creator-studio-provider-smoke/`, plus packaged runtime smoke archives under `packaged-runtime/` and release-claim closure archives under `signed-release-closure/`.
+- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, `agent-awareness-local-smoke/`, `creator-studio-provider-smoke/`, and `creator-workflow-host-smoke/`, plus packaged runtime smoke archives under `packaged-runtime/` and release-claim closure archives under `signed-release-closure/`.
 - [`release-notes/`](./release-notes/) stores GitHub Release body drafts.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 

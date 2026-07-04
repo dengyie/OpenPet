@@ -1,6 +1,6 @@
 # One-Click Action Generation Complete Chain
 
-> Date: 2026-07-04
+> Date: 2026-07-05
 > Owner: dev8
 > Status: implemented in `codex/dev8`
 > Scope: complete the ordinary-user one-click generation chain while preserving advanced Creator Studio and Actions workflows
@@ -158,6 +158,7 @@ Current local validation notes:
 - `node --test tests/services/creator-workflow-service.test.js tests/examples/creator-studio-host-model-bridge.test.js tests/examples/creator-studio-real-atlas-builder.test.js` passed.
 - `node --test tests/examples/creator-studio-plugin.test.js` passed.
 - `node --test tests/control-center/demo-control-center-api.test.js` passed.
+- `npm run smoke:creator-workflow-host -- --source-user-data-dir "/Users/mango/Library/Application Support/ibot" --reference-image "/Users/mango/Downloads/正面.png" --scenario both` passed on `codex/dev8`, and its sanitized archive now lives at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
 - `npm run typecheck` passed.
 - `npm run check:syntax` passed, including Control Center production build.
 
@@ -183,6 +184,7 @@ Current local validation notes:
 - On the active dev8 branch, the verified real-user chain is:
   - one-click new pet generation from `正面.png`
   - one-click existing-pet action generation from `正面.png`
+- That branch-level verification is archived at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
 - Default one-click generation now explicitly blocks collage or multi-view references such as `全面.png` and asks for one clean front-facing image instead.
 
 ## Non-Goals

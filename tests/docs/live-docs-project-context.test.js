@@ -75,10 +75,10 @@ test('project-context indexes the archived provider smoke evidence and current s
     )
   )
 
-  assert.equal(context.updated, '2026-07-03', 'project-context.json should carry the current live-doc update date')
+  assert.equal(context.updated, '2026-07-05', 'project-context.json should carry the current live-doc update date')
   assert.equal(
     context.branch,
-    'codex/dev7',
+    'codex/dev8',
     'project-context.json should describe the current live-doc branch context'
   )
 
@@ -109,6 +109,11 @@ test('project-context indexes the archived provider smoke evidence and current s
   )
   assert.match(
     facts,
+    /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-38-29-834Z-dev8-acceptance\/[\s\S]*\/images\/edits[\s\S]*codex\/dev8[\s\S]*main-branch acceptance remains outstanding/i,
+    'project-context.json should point to the archived Creator Workflow host smoke evidence path and current branch-level claim boundary'
+  )
+  assert.match(
+    facts,
     /run-ai-talk-local-smoke[\s\S]*bubbleAcceptance[\s\S]*providerLatencyMs[\s\S]*manualAcceptanceTemplate/i,
     'project-context.json should describe the AI Talk Bubble Chat smoke entrypoint and acceptance fields'
   )
@@ -135,8 +140,18 @@ test('project-context indexes the archived provider smoke evidence and current s
 
   assert.match(
     docsReadme,
-    /release-evidence\/.*ai-provider-smoke\/.*ai-talk-local-smoke\/.*agent-awareness-local-smoke\/.*creator-studio-provider-smoke\/.*packaged-runtime\/.*signed-release-closure\//is,
+    /release-evidence\/.*ai-provider-smoke\/.*ai-talk-local-smoke\/.*agent-awareness-local-smoke\/.*creator-studio-provider-smoke\/.*creator-workflow-host-smoke\/.*packaged-runtime\/.*signed-release-closure\//is,
     'docs/README.md should surface provider smoke, AI Talk smoke, and release-truth archives in the release evidence map'
+  )
+})
+
+test('project-context validation commands include the Creator Workflow host smoke entrypoint', () => {
+  const context = readProjectContext()
+
+  assert.equal(
+    context.validation.commands.includes('npm run smoke:creator-workflow-host -- --reference-image <file>'),
+    true,
+    'project-context.json should list the Creator Workflow host smoke command in validation.commands'
   )
 })
 
@@ -282,7 +297,7 @@ test('live docs keep branch metadata aligned with project-context', () => {
 
   assert.equal(
     context.branch,
-    'codex/dev7',
+    'codex/dev8',
     'project-context.json should keep live-doc metadata on the current development baseline'
   )
 
@@ -293,7 +308,7 @@ test('live docs keep branch metadata aligned with project-context', () => {
   ]) {
     assert.match(
       content,
-      /Branch:\s*`codex\/dev7`/i,
+      /Branch:\s*`codex\/dev8`/i,
       `${name} should keep the same branch header as project-context.json`
     )
   }

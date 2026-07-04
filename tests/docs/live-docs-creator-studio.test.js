@@ -171,6 +171,51 @@ test('live docs mention archived real Creator Studio provider smoke evidence and
   assert.equal(fileExists(`${evidenceDir}/qa/action-frame-validation.json`), true, 'action-frame QA JSON should be archived')
   assert.equal(fileExists(`${evidenceDir}/logs/openpet-app.jsonl`), true, 'redacted image-generation logs should be archived')
 })
+
+test('live docs mention archived Creator Workflow host smoke evidence and its branch-level claim boundary', () => {
+  const evidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance'
+  const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
+  const developmentSummary = readText('docs/development-summary.md')
+  const handoff = readText('docs/HANDOFF.md')
+  const projectStatusReview = readText('docs/project-status-review.md')
+  const projectContext = readText('docs/project-context.json')
+  const evidenceReadme = readText(`${evidenceDir}/README.md`)
+  const evidenceReportRaw = readText(`${evidenceDir}/creator-workflow-host-smoke-result.json`)
+  const evidenceReport = readJson(`${evidenceDir}/creator-workflow-host-smoke-result.json`)
+
+  const archivePathPattern = /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-38-29-834Z-dev8-acceptance\//i
+  const claimBoundaryPattern = /main-branch acceptance remains required|does not by itself prove production art quality/i
+  const sensitiveEvidencePattern = /sk-[A-Za-z0-9_-]+|Authorization|Bearer|\/Users\/mango|\.codex\/worktrees/i
+
+  for (const [name, content] of [
+    ['one-click-action-generation-complete-chain.md', oneClickDoc],
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview],
+    ['project-context.json', projectContext]
+  ]) {
+    assert.match(
+      content,
+      archivePathPattern,
+      `${name} should mention the archived Creator Workflow host smoke evidence path`
+    )
+  }
+
+  assert.match(evidenceReadme, /host-side one-click Creator Workflow smoke run/i, 'evidence README should explain the host smoke scope')
+  assert.match(evidenceReadme, claimBoundaryPattern, 'evidence README should keep the branch-only claim boundary explicit')
+  assert.doesNotMatch(
+    [evidenceReadme, evidenceReportRaw].join('\n'),
+    sensitiveEvidencePattern,
+    'host smoke evidence should not archive raw secrets or local worktree paths'
+  )
+  assert.equal(evidenceReport.ok, true, 'host smoke evidence report should record a successful smoke run')
+  assert.equal(evidenceReport.scenarios.length, 2, 'host smoke evidence should record both default-path scenarios')
+  assert.equal(evidenceReport.scenarios.every((scenario) => scenario.ok === true), true, 'both archived host smoke scenarios should succeed')
+  assert.equal(evidenceReport.scenarios[0].conditioning.endpoint, '/images/edits', 'host smoke evidence should preserve /images/edits conditioning evidence')
+  assert.equal(fileExists(`${evidenceDir}/README.md`), true, 'host smoke evidence README should be archived')
+  assert.equal(fileExists(`${evidenceDir}/creator-workflow-host-smoke-result.json`), true, 'host smoke evidence report should be archived')
+})
+
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const developmentSummary = readText('docs/development-summary.md')
