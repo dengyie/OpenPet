@@ -15,7 +15,8 @@ import type {
   ImageGenerationConfigViewState,
   ProviderModelCatalogViewState,
   ProviderModelDiscoveryResult,
-  PetChatStateViewState
+  PetChatStateViewState,
+  VisionConfigViewState
 } from '../../../shared/openpet-contracts'
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
@@ -489,14 +490,16 @@ const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null
 const renderChatModelDiscovery = (
   result: ProviderModelDiscoveryResult | null,
   currentModel: string,
-  hasUnsavedDraft: boolean
+  hasUnsavedDraft: boolean,
+  label = '聊天',
+  rerunActionLabel = '测试已保存配置'
 ) => {
   const normalizedCurrentModel = String(currentModel || '').trim()
   if (!result) {
     return (
       <div className="provider-feedback" data-testid="chat-model-discovery">
         <strong>模型列表探测</strong>
-        <span>运行“测试已保存配置”后，这里会显示聊天 Provider 的 /models 探测结果。</span>
+        <span>运行“{rerunActionLabel}”后，这里会显示{label} Provider 的 /models 探测结果。</span>
       </div>
     )
   }
@@ -507,9 +510,9 @@ const renderChatModelDiscovery = (
     return (
       <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="chat-model-discovery">
         <strong>模型列表探测成功</strong>
-        {hasUnsavedDraft ? <span>当前有未保存的聊天草稿；下面的模型列表结果仍对应已保存配置，保存后请重新测试已保存配置。</span> : null}
+        {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的模型列表结果仍对应已保存配置，保存后请重新运行“{rerunActionLabel}”。</span> : null}
         <span>共发现 {discoveredModels.length} 个模型。</span>
-        <span>{hasUnsavedDraft ? '当前草稿模型是否在列表中仍未重新验证' : (currentModelIncluded ? '已包含当前模型' : '当前保存的聊天 Model 未出现在探测列表中')}</span>
+        <span>{hasUnsavedDraft ? '当前草稿模型是否在列表中仍未重新验证' : (currentModelIncluded ? '已包含当前模型' : `当前保存的${label} Model 未出现在探测列表中`)}</span>
         {discoveredModels.length ? (
           <div className="model-chip-list">
             {discoveredModels.map((modelName) => (
@@ -527,7 +530,7 @@ const renderChatModelDiscovery = (
     return (
       <div className="provider-feedback" data-testid="chat-model-discovery">
         <strong>模型列表探测不可用</strong>
-        {hasUnsavedDraft ? <span>当前有未保存的聊天草稿；下面的探测状态仍对应已保存配置，保存后请重新测试已保存配置。</span> : null}
+        {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的探测状态仍对应已保存配置，保存后请重新运行“{rerunActionLabel}”。</span> : null}
         <span>当前 Provider 可达，但没有开放 /models；请手动确认模型名称。</span>
       </div>
     )
@@ -536,7 +539,7 @@ const renderChatModelDiscovery = (
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="chat-model-discovery">
       <strong>模型列表探测未返回结果</strong>
-      {hasUnsavedDraft ? <span>当前有未保存的聊天草稿；下面的探测状态仍对应已保存配置。</span> : null}
+      {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的探测状态仍对应已保存配置。</span> : null}
       <span>{result.message || '本次连接测试没有拿到模型列表。'}</span>
     </div>
   )
@@ -644,17 +647,23 @@ export interface AiPaneProps {
   connectionTestResult: AiConnectionTestResult | null
   chatModelDiscovery: ProviderModelDiscoveryResult | null
   chatModelDiscoveryStatus: string
+  visionModelDiscovery: ProviderModelDiscoveryResult | null
+  visionModelDiscoveryStatus: string
   imageProviderValidationError: string
   imageHealthResult: ImageGenerationHealthCheckResult | null
   imageModelDiscovery: ProviderModelDiscoveryResult | null
   imageModelDiscoveryStatus: string
   imageTransparencyCompatibilityHint: string
   onChange: (partial: Partial<AiConfigViewState>) => void
+  onChangeVision: (partial: Partial<VisionConfigViewState>) => void
   onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
   onSave: () => void | Promise<void>
   onSaveApiKey: () => void | Promise<void>
+  onSaveVisionApiKey: () => void | Promise<void>
+  onClearVisionApiKey: () => void | Promise<void>
   onTest: () => void | Promise<void>
   onDiscoverAiModels: () => void | Promise<void>
+  onDiscoverVisionModels: () => void | Promise<void>
   onSaveImageGeneration: () => void | Promise<void>
   onSavePersonaOverride: () => void | Promise<void>
   onResetPersonaOverride: () => void | Promise<void>
@@ -669,15 +678,19 @@ export interface AiPaneProps {
   saving: boolean
   status: string
   connectionStatus: string
+  visionStatus: string
   imageStatus: string
   imageHealthStatus: string
   chatStatus: string
   hasUnsavedConfigChanges: boolean
   hasUnsavedApiKeyDraft: boolean
+  hasUnsavedVisionApiKeyDraft: boolean
   hasUnsavedImageGenerationChanges: boolean
   hasUnsavedImageApiKeyDraft: boolean
   apiKeyDraft: string
   setApiKeyDraft: (value: string) => void
+  visionApiKeyDraft: string
+  setVisionApiKeyDraft: (value: string) => void
   imageApiKeyDraft: string
   setImageApiKeyDraft: (value: string) => void
   onChangePersonaDraft: (partial: Partial<AiPaneProps['personaDraft']>) => void
@@ -731,17 +744,23 @@ export function AiPane({
   connectionTestResult,
   chatModelDiscovery,
   chatModelDiscoveryStatus,
+  visionModelDiscovery,
+  visionModelDiscoveryStatus,
   imageProviderValidationError,
   imageHealthResult,
   imageModelDiscovery,
   imageModelDiscoveryStatus,
   imageTransparencyCompatibilityHint,
   onChange,
+  onChangeVision,
   onChangeImageGeneration,
   onSave,
   onSaveApiKey,
+  onSaveVisionApiKey,
+  onClearVisionApiKey,
   onTest,
   onDiscoverAiModels,
+  onDiscoverVisionModels,
   onSaveImageGeneration,
   onSavePersonaOverride,
   onResetPersonaOverride,
@@ -756,15 +775,19 @@ export function AiPane({
   saving,
   status,
   connectionStatus,
+  visionStatus,
   imageStatus,
   imageHealthStatus,
   chatStatus,
   hasUnsavedConfigChanges,
   hasUnsavedApiKeyDraft,
+  hasUnsavedVisionApiKeyDraft,
   hasUnsavedImageGenerationChanges,
   hasUnsavedImageApiKeyDraft,
   apiKeyDraft,
   setApiKeyDraft,
+  visionApiKeyDraft,
+  setVisionApiKeyDraft,
   imageApiKeyDraft,
   setImageApiKeyDraft,
   onChangePersonaDraft,
@@ -807,9 +830,15 @@ export function AiPane({
   const saveDisabled = saving || Boolean(providerConfigValidationError)
   const imageSaveDisabled = saving || Boolean(imageProviderValidationError)
   const apiKeyDraftReady = Boolean(apiKeyDraft.trim())
+  const visionApiKeyDraftReady = Boolean(visionApiKeyDraft.trim())
+  const visionConfigChanges = providerConfigChanges.filter((item) => item.startsWith('Vision'))
   const draftSummary = [
     hasUnsavedConfigChanges ? '配置草稿未保存' : '',
     hasUnsavedApiKeyDraft ? '密钥草稿未保存' : ''
+  ].filter(Boolean).join(' · ')
+  const visionDraftSummary = [
+    visionConfigChanges.length ? visionConfigChanges.join(' / ') : '',
+    hasUnsavedVisionApiKeyDraft ? 'Vision 密钥草稿未保存' : ''
   ].filter(Boolean).join(' · ')
   const imageDraftSummary = [
     hasUnsavedImageGenerationChanges ? '图片配置草稿未保存' : '',
@@ -821,12 +850,15 @@ export function AiPane({
   const chatRecommendedModels = chatProviderPresets
     .map((preset) => String(preset.model || '').trim())
     .filter(Boolean)
+  const visionRecommendedModels = Array.from(new Set(['gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', ...chatRecommendedModels]))
   const imageRecommendedModels = imageProviderPresets
     .map((preset) => String(preset.model || '').trim())
     .filter(Boolean)
   const hasUnsavedChatProbeInputs = hasUnsavedConfigChanges || hasUnsavedApiKeyDraft
+  const hasUnsavedVisionProbeInputs = hasUnsavedConfigChanges || hasUnsavedVisionApiKeyDraft
   const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
   const activeChatHostSummary = getProviderHostSummary(activeConfig.baseUrl)
+  const activeVisionHostSummary = getProviderHostSummary(activeConfig.vision.effectiveBaseUrl)
   const activeImageHostSummary = getProviderHostSummary(activeImageGenerationConfig.baseUrl)
   const chatConnectionSummary = connectionTestResult
     ? (connectionTestResult.ok ? '最近测试通过' : '最近测试失败')
@@ -1000,6 +1032,122 @@ export function AiPane({
                     onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
                   />
                 </div>
+
+                <details className="provider-disclosure" open>
+                  <summary>Vision / 多模态文本模型</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="readonly-row" data-testid="vision-provider-effective-summary">
+                      <strong>当前生效 Vision Provider</strong>
+                      <div className="provider-inline-summary">
+                        <code>{activeVisionHostSummary}</code>
+                        <span>{activeConfig.vision.effectiveModel || '未设置模型'}</span>
+                        <span>{activeConfig.vision.effectiveHasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                        <span>{activeConfig.vision.mode === 'override' ? '单独配置' : '跟随聊天模型'}</span>
+                      </div>
+                    </div>
+
+                    <label className="field-row">
+                      <span className="field-label">Vision 模式</span>
+                      <select
+                        aria-label="Vision Provider Mode"
+                        className="text-input"
+                        value={config.vision.mode}
+                        onChange={(event) => onChangeVision({ mode: event.target.value === 'override' ? 'override' : 'follow-chat' })}
+                      >
+                        <option value="follow-chat">跟随聊天模型</option>
+                        <option value="override">单独配置</option>
+                      </select>
+                    </label>
+
+                    {config.vision.mode === 'follow-chat' ? (
+                      <div className="provider-feedback" data-testid="vision-provider-follow-chat">
+                        <strong>当前跟随聊天模型</strong>
+                        <span>Vision / 多模态文本任务默认复用聊天 Provider，不单独保存 endpoint、模型或密钥。</span>
+                        <span>当前继承：{activeConfig.provider} · {activeConfig.baseUrl} · {activeConfig.model}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <label className="field-row">
+                          <span className="field-label">Vision Provider</span>
+                          <select
+                            className="text-input"
+                            value={config.vision.provider}
+                            onChange={(event) => onChangeVision({ provider: event.target.value })}
+                          >
+                            <option value="openai-compatible">OpenAI compatible</option>
+                          </select>
+                        </label>
+
+                        <label className="field-row">
+                          <span className="field-label">Vision Base URL</span>
+                          <input
+                            aria-label="Vision Base URL"
+                            className="text-input"
+                            value={config.vision.baseUrl}
+                            onChange={(event) => onChangeVision({ baseUrl: event.target.value })}
+                          />
+                        </label>
+
+                        <div className="field-row">
+                          <span className="field-label">Vision Model</span>
+                          <ProviderModelPicker
+                            ariaLabel="Vision Model"
+                            currentModel={config.vision.model}
+                            cachedCatalog={activeConfig.vision.modelCatalog}
+                            recommendedModels={visionRecommendedModels}
+                            onSelectModel={(model) => onChangeVision({ model })}
+                          />
+                        </div>
+
+                        <div className="field-row">
+                          <div>
+                            <div className="field-label">Vision API Key</div>
+                            <div className="field-note">{config.vision.hasApiKey ? '已保存' : '未保存'}</div>
+                          </div>
+                          <div className="inline-action">
+                            <input
+                              aria-label="Vision API Key"
+                              className="text-input"
+                              type="password"
+                              value={visionApiKeyDraft}
+                              placeholder={config.vision.hasApiKey ? '输入新密钥覆盖' : '输入 Vision API Key'}
+                              onChange={(event) => setVisionApiKeyDraft(event.target.value)}
+                            />
+                            <button type="button" className="ghost" onClick={onSaveVisionApiKey} disabled={!visionApiKeyDraftReady || saving}>
+                              保存 Vision 密钥
+                            </button>
+                            <button type="button" className="danger-text" onClick={onClearVisionApiKey} disabled={saving || !config.vision.hasApiKey}>
+                              清除
+                            </button>
+                          </div>
+                        </div>
+
+                        {(visionStatus || visionModelDiscoveryStatus || visionModelDiscovery) ? (
+                          <div className="provider-feedback" data-testid="vision-provider-status">
+                            <strong>Vision Provider 状态</strong>
+                            {visionStatus ? <span>{visionStatus}</span> : null}
+                            {visionModelDiscoveryStatus ? <span>{visionModelDiscoveryStatus}</span> : null}
+                            {visionModelDiscovery?.models?.length ? (
+                              <span>models: {visionModelDiscovery.models.join(', ')}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {renderChatModelDiscovery(visionModelDiscovery, config.vision.model, hasUnsavedVisionProbeInputs, 'Vision', '刷新 Vision 模型')}
+
+                        <div className="provider-card-secondary-actions">
+                          <button type="button" className="ghost" onClick={onDiscoverVisionModels} disabled={saving}>
+                            刷新 Vision 模型
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {visionDraftSummary ? (
+                      <div className="field-note">{visionDraftSummary}</div>
+                    ) : null}
+                  </div>
+                </details>
 
                 <details className="provider-disclosure">
                   <summary>查看聊天 Provider 边界</summary>

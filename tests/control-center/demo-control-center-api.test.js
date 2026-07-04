@@ -152,6 +152,19 @@ test('demo API provider saves follow the same owner-only payload rules as the ma
     enabled: !previousAiConfig.enabled,
     baseUrl: 'https://gateway.example.test/v1/',
     model: 'gpt-5.5',
+    vision: {
+      ...previousAiConfig.vision,
+      mode: 'override',
+      baseUrl: 'https://vision.example.test/v1/',
+      model: 'gpt-4.1-mini',
+      hasApiKey: false,
+      modelCatalog: {
+        cacheKey: 'draft-vision-cache',
+        models: ['draft-vision-model'],
+        fetchedAt: '2026-07-05T09:00:00.000Z',
+        source: 'draft'
+      }
+    },
     hasApiKey: false,
     apiKeyRef: 'draft.ai.ref',
     modelCatalog: {
@@ -167,6 +180,11 @@ test('demo API provider saves follow the same owner-only payload rules as the ma
   assert.equal(savedAiConfig.model, 'gpt-5.5')
   assert.equal(savedAiConfig.hasApiKey, previousAiConfig.hasApiKey)
   assert.deepEqual(savedAiConfig.modelCatalog, previousAiConfig.modelCatalog)
+  assert.equal(savedAiConfig.vision.mode, 'override')
+  assert.equal(savedAiConfig.vision.baseUrl, 'https://vision.example.test/v1')
+  assert.equal(savedAiConfig.vision.model, 'gpt-4.1-mini')
+  assert.equal(savedAiConfig.vision.hasApiKey, previousAiConfig.vision.hasApiKey)
+  assert.deepEqual(savedAiConfig.vision.modelCatalog, previousAiConfig.vision.modelCatalog)
 
   const savedImageConfig = await demoControlCenterAPI.saveImageGenerationConfig({
     baseUrl: 'https://images.example.test/v1/',
@@ -188,6 +206,31 @@ test('demo API provider saves follow the same owner-only payload rules as the ma
   assert.equal(savedImageConfig.hasApiKey, previousImageConfig.hasApiKey)
   assert.equal(savedImageConfig.apiKeyPreview, previousImageConfig.apiKeyPreview)
   assert.deepEqual(savedImageConfig.modelCatalog, previousImageConfig.modelCatalog)
+})
+
+test('demo API saves and clears vision API key and discovers vision models', async () => {
+  await demoControlCenterAPI.saveAiConfig({
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: 'https://healthy-vision.example.test/v1',
+      model: 'gpt-4.1-mini'
+    }
+  })
+
+  const saved = await demoControlCenterAPI.saveAiVisionApiKey('sk-demo-vision')
+  assert.equal(saved.hasApiKey, true)
+
+  const discovered = await demoControlCenterAPI.discoverAiVisionModels()
+  assert.equal(discovered.ok, true)
+  assert.deepEqual(discovered.models, ['gpt-4.1-mini', 'gpt-4o', 'qwen2.5-vl-7b-instruct'])
+
+  const config = await demoControlCenterAPI.getAiConfig()
+  assert.equal(config.vision.hasApiKey, true)
+  assert.deepEqual(config.vision.modelCatalog.models, discovered.models)
+
+  const cleared = await demoControlCenterAPI.clearAiVisionApiKey()
+  assert.equal(cleared.hasApiKey, false)
 })
 
 test('demo API installs a fixture plugin and returns command mock output', async () => {

@@ -218,6 +218,29 @@ test.describe('Control Center smoke', () => {
     await expect(imageSection.getByRole('button', { name: '保存图片 Provider' })).toBeVisible()
   })
 
+  test('supports vision follow-chat and override flows inside the chat provider card', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatSection = await expandAiSection(page, '聊天 Provider')
+    await expect(chatSection.getByTestId('vision-provider-follow-chat')).toContainText('Vision / 多模态文本任务默认复用聊天 Provider')
+
+    await chatSection.getByLabel('Vision Provider Mode').selectOption('override')
+    await expect(chatSection.getByLabel('Vision Base URL')).toHaveValue(/https?:\/\//)
+
+    await chatSection.getByLabel('Vision Base URL').fill('https://vision.example.test/v1')
+    await chatSection.getByLabel('Vision Model').fill('gpt-4.1-mini')
+    await chatSection.getByLabel('Vision API Key').fill('sk-demo-vision')
+    await chatSection.getByRole('button', { name: '保存 Vision 密钥' }).click()
+    await expect(chatSection.getByTestId('vision-provider-status')).toContainText('Vision API Key 已保存')
+
+    await chatSection.getByRole('button', { name: '刷新 Vision 模型' }).click()
+    await expect(chatSection.getByTestId('vision-provider-status')).toContainText('Vision Provider')
+
+    await page.getByRole('button', { name: '保存聊天 Provider' }).click()
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('AI 配置已保存')
+  })
+
   test('keeps key Pet and About interactions responsive', async ({ page }) => {
     await page.goto('/')
 

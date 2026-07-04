@@ -50,7 +50,8 @@ import type {
   ImageGenerationHealthCheckResult,
   ImageGenerationConfigViewState,
   ProviderModelDiscoveryResult,
-  PetChatStateViewState
+  PetChatStateViewState,
+  VisionConfigViewState
 } from '../../../shared/openpet-contracts'
 import type { AiPaneProps } from '../panes/AiPane'
 
@@ -259,9 +260,11 @@ export function useAiPane(activeTab = 'ai') {
   const [imageGenerationConfig, setImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [activeImageGenerationConfig, setActiveImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [visionApiKeyDraft, setVisionApiKeyDraft] = useState('')
   const [imageApiKeyDraft, setImageApiKeyDraft] = useState('')
   const [status, setStatus] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('')
+  const [visionStatus, setVisionStatus] = useState('')
   const [connectionTestResult, setConnectionTestResult] = useState<AiConnectionTestResult | null>(null)
   const [imageStatus, setImageStatus] = useState('')
   const [imageHealthStatus, setImageHealthStatus] = useState('')
@@ -269,6 +272,8 @@ export function useAiPane(activeTab = 'ai') {
   const [chatStatus, setChatStatus] = useState('')
   const [chatModelDiscovery, setChatModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
   const [chatModelDiscoveryStatus, setChatModelDiscoveryStatus] = useState('')
+  const [visionModelDiscovery, setVisionModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
+  const [visionModelDiscoveryStatus, setVisionModelDiscoveryStatus] = useState('')
   const [imageModelDiscovery, setImageModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
   const [imageModelDiscoveryStatus, setImageModelDiscoveryStatus] = useState('')
   const [chatDraft, setChatDraft] = useState('')
@@ -504,6 +509,7 @@ export function useAiPane(activeTab = 'ai') {
 
   const hasUnsavedConfigChanges = hasProviderConfigChanges(config, activeConfig)
   const hasUnsavedApiKeyDraft = Boolean(apiKeyDraft.trim())
+  const hasUnsavedVisionApiKeyDraft = Boolean(visionApiKeyDraft.trim())
   const hasUnsavedImageGenerationChanges = hasImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
   const hasUnsavedImageApiKeyDraft = Boolean(imageApiKeyDraft.trim())
 
@@ -517,6 +523,8 @@ export function useAiPane(activeTab = 'ai') {
       setConnectionTestResult(null)
       setChatModelDiscovery(null)
       setChatModelDiscoveryStatus('')
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus('')
       setConnectionStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
     } catch (error) {
       setConnectionStatus(messageFromError(error, '保存失败'))
@@ -636,6 +644,8 @@ export function useAiPane(activeTab = 'ai') {
         setConnectionTestResult(null)
         setChatModelDiscovery(null)
         setChatModelDiscoveryStatus('')
+        setVisionModelDiscovery(null)
+        setVisionModelDiscoveryStatus('')
         setConnectionStatus(result.updatedAt ? `API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'API Key 已保存')
       }
     } catch (error) {
@@ -667,6 +677,62 @@ export function useAiPane(activeTab = 'ai') {
       setImageStatus('图片 API Key 已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveVisionApiKey = async () => {
+    setSaving(true)
+    setVisionStatus('保存 Vision API Key 中')
+    try {
+      const key = visionApiKeyDraft.trim()
+      if (!key) throw new Error('Vision API Key 不能为空')
+      const result = await api.saveAiVisionApiKey(key)
+      const applyResult = (current: AiConfigViewState) => cloneAiConfig({
+        ...current,
+        vision: {
+          ...current.vision,
+          apiKeyRef: result.apiKeyRef,
+          hasApiKey: result.hasApiKey,
+          effectiveHasApiKey: current.vision.mode === 'override' ? result.hasApiKey : current.vision.effectiveHasApiKey
+        }
+      })
+      setConfig(applyResult)
+      setActiveConfig(applyResult)
+      setVisionApiKeyDraft('')
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus('')
+      setVisionStatus(result.updatedAt ? `Vision API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'Vision API Key 已保存')
+    } catch (error) {
+      setVisionStatus(messageFromError(error, 'Vision API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onClearVisionApiKey = async () => {
+    setSaving(true)
+    setVisionStatus('清除 Vision API Key 中')
+    try {
+      const result = await api.clearAiVisionApiKey()
+      const applyResult = (current: AiConfigViewState) => cloneAiConfig({
+        ...current,
+        vision: {
+          ...current.vision,
+          apiKeyRef: result.apiKeyRef,
+          hasApiKey: result.hasApiKey,
+          effectiveHasApiKey: current.vision.mode === 'override' ? result.hasApiKey : current.vision.effectiveHasApiKey
+        }
+      })
+      setConfig(applyResult)
+      setActiveConfig(applyResult)
+      setVisionApiKeyDraft('')
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus('')
+      setVisionStatus('Vision API Key 已清除')
+    } catch (error) {
+      setVisionStatus(messageFromError(error, 'Vision API Key 清除失败'))
     } finally {
       setSaving(false)
     }
@@ -748,6 +814,32 @@ export function useAiPane(activeTab = 'ai') {
     } catch (error) {
       setChatModelDiscovery(null)
       setChatModelDiscoveryStatus(messageFromError(error, '聊天模型探测失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onDiscoverVisionModels = async () => {
+    if (config.vision.mode !== 'override') {
+      setVisionModelDiscoveryStatus('当前 Vision 跟随聊天模型；无需单独刷新模型列表。')
+      return
+    }
+    if (hasUnsavedConfigChanges || hasUnsavedVisionApiKeyDraft) {
+      setVisionModelDiscoveryStatus('当前 Vision Provider 配置有未保存修改；请先保存聊天 Provider 和 Vision 密钥后再刷新模型。')
+      return
+    }
+    setSaving(true)
+    setVisionModelDiscoveryStatus('Vision 模型探测中')
+    try {
+      const result = await api.discoverAiVisionModels()
+      const nextActiveConfig = result.ok && result.code === 'ok'
+        ? await loadAiConfig({ preserveDraft: true })
+        : activeConfig
+      setVisionModelDiscovery(result)
+      setVisionModelDiscoveryStatus(`${formatModelDiscoveryStatus('Vision Provider', result)} ${formatProviderModelCatalogMeta(nextActiveConfig.vision.modelCatalog)}`.trim())
+    } catch (error) {
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus(messageFromError(error, 'Vision 模型探测失败'))
     } finally {
       setSaving(false)
     }
@@ -1011,6 +1103,8 @@ export function useAiPane(activeTab = 'ai') {
     connectionTestResult,
     chatModelDiscovery,
     chatModelDiscoveryStatus,
+    visionModelDiscovery,
+    visionModelDiscoveryStatus,
     imageProviderValidationError: validateImageProviderConfig(imageGenerationConfig),
     imageModelDiscovery,
     imageModelDiscoveryStatus,
@@ -1018,16 +1112,20 @@ export function useAiPane(activeTab = 'ai') {
     saving,
     status,
     connectionStatus,
+    visionStatus,
     imageStatus,
     imageHealthStatus,
     imageHealthResult,
     chatStatus,
     hasUnsavedConfigChanges,
     hasUnsavedApiKeyDraft,
+    hasUnsavedVisionApiKeyDraft,
     hasUnsavedImageGenerationChanges,
     hasUnsavedImageApiKeyDraft,
     apiKeyDraft,
     setApiKeyDraft,
+    visionApiKeyDraft,
+    setVisionApiKeyDraft,
     imageApiKeyDraft,
     setImageApiKeyDraft,
     onChangePersonaDraft,
@@ -1053,6 +1151,24 @@ export function useAiPane(activeTab = 'ai') {
     setBehaviorRulesText,
     onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => setBehavior({ ...behavior, ...partial }),
     onChange: (partial: Partial<AiConfigViewState>) => setConfig({ ...config, ...partial }),
+    onChangeVision: (partial: Partial<VisionConfigViewState>) => setConfig((current) => {
+      const shouldHydrateFromChat = partial.mode === 'override' && current.vision.mode !== 'override'
+      const baseVision = shouldHydrateFromChat
+        ? {
+            ...current.vision,
+            provider: current.provider,
+            baseUrl: current.baseUrl,
+            model: current.model
+          }
+        : current.vision
+      return cloneAiConfig({
+        ...current,
+        vision: {
+          ...baseVision,
+          ...partial
+        }
+      })
+    }),
     onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => setImageGenerationConfig((current) => cloneImageGenerationConfig({
       ...current,
       ...partial
@@ -1066,10 +1182,13 @@ export function useAiPane(activeTab = 'ai') {
     onDismissGeneratedPersonaDraft: () => setGeneratedPersonaDraft(null),
     onSaveBehavior,
     onSaveApiKey,
+    onSaveVisionApiKey,
+    onClearVisionApiKey,
     onSaveImageGenerationApiKey,
     onClearImageGenerationApiKey,
     onCheckImageGenerationHealth,
     onDiscoverAiModels,
+    onDiscoverVisionModels,
     onDiscoverImageGenerationModels,
     onTest,
     onDryRunBehavior,

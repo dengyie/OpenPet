@@ -17,6 +17,7 @@ import type {
   ActionsConfigViewState,
   AiChatRequest,
   AiConfigViewState,
+  AiConfigSaveRequest,
   AiMemoryItemViewState,
   AiMemoryJobViewState,
   AiMemoryProfileViewState,
@@ -136,7 +137,7 @@ const normalizeDemoProviderBaseUrl = (value: string) => {
   }
 }
 
-const buildDemoProviderCacheKey = (capability: 'chat' | 'image', provider: string, baseUrl: string) => (
+const buildDemoProviderCacheKey = (capability: 'chat' | 'image' | 'vision', provider: string, baseUrl: string) => (
   [capability, String(provider || '').trim(), normalizeDemoProviderBaseUrl(baseUrl)].join(':')
 )
 const demoPetPackSelectionId = 'demo-pet-pack-selection'
@@ -1509,7 +1510,7 @@ const createDefaultDemoState = (): DemoState => {
   return {
     settings: cloneSettings(defaultSettings),
     actionsConfig: createDemoActionsConfig(),
-    aiConfig: cloneAiConfig({
+    aiConfig: cloneDemoAiConfig({
       ...defaultAiConfig,
       behavior: {
         ...defaultAiConfig.behavior,
@@ -1616,7 +1617,7 @@ const readDemoState = (): DemoState => {
           ? state.actionsConfig
           : createDemoActionsConfig()
       ),
-      aiConfig: cloneAiConfig(state.aiConfig),
+      aiConfig: cloneDemoAiConfig(state.aiConfig),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       aiMemories: Array.isArray(state.aiMemories) ? state.aiMemories.map(createDemoMemory) : createDefaultDemoState().aiMemories,
       aiMemoryJobs: Array.isArray(state.aiMemoryJobs) ? state.aiMemoryJobs : [],
@@ -1659,13 +1660,29 @@ const writeDemoState = () => {
 }
 
 const persistDemoAiModelCatalog = (models: string[]) => {
-  demoState.aiConfig = cloneAiConfig({
+  demoState.aiConfig = cloneDemoAiConfig({
     ...demoState.aiConfig,
     modelCatalog: {
       cacheKey: buildDemoProviderCacheKey('chat', demoState.aiConfig.provider, demoState.aiConfig.baseUrl),
       models,
       fetchedAt: new Date().toISOString(),
       source: 'saved'
+    }
+  })
+  writeDemoState()
+}
+
+const persistDemoVisionModelCatalog = (models: string[]) => {
+  demoState.aiConfig = cloneDemoAiConfig({
+    ...demoState.aiConfig,
+    vision: {
+      ...demoState.aiConfig.vision,
+      modelCatalog: {
+        cacheKey: buildDemoProviderCacheKey('vision', demoState.aiConfig.vision.provider, demoState.aiConfig.vision.baseUrl),
+        models,
+        fetchedAt: new Date().toISOString(),
+        source: 'saved'
+      }
     }
   })
   writeDemoState()
@@ -1682,6 +1699,24 @@ const persistDemoImageModelCatalog = (models: string[]) => {
     }
   })
   writeDemoState()
+}
+
+const cloneDemoAiConfig = (config: Partial<AiConfigViewState> | AiConfigSaveRequest | null | undefined) => {
+  const nextConfig = cloneAiConfig(config as Partial<AiConfigViewState> | null | undefined)
+  const effectiveProvider = nextConfig.vision.mode === 'override' ? nextConfig.vision.provider : nextConfig.provider
+  const effectiveBaseUrl = nextConfig.vision.mode === 'override' ? nextConfig.vision.baseUrl : nextConfig.baseUrl
+  const effectiveModel = nextConfig.vision.mode === 'override' ? nextConfig.vision.model : nextConfig.model
+  const effectiveHasApiKey = nextConfig.vision.mode === 'override' ? nextConfig.vision.hasApiKey : nextConfig.hasApiKey
+  return cloneAiConfig({
+    ...nextConfig,
+    vision: {
+      ...nextConfig.vision,
+      effectiveProvider,
+      effectiveBaseUrl,
+      effectiveModel,
+      effectiveHasApiKey
+    }
+  })
 }
 
 const emitDemoActivePetPackChanged = (payload: ActivePetPackChangedEvent) => {
@@ -2960,23 +2995,71 @@ export const demoControlCenterAPI: ControlCenterApi = {
     window.addEventListener(demoActivePetPackChangedEvent, handler)
     return () => window.removeEventListener(demoActivePetPackChangedEvent, handler)
   },
-  getAiConfig: async () => cloneAiConfig(demoState.aiConfig),
+  getAiConfig: async () => cloneDemoAiConfig(demoState.aiConfig),
   saveAiConfig: async (config) => {
+    const mergedDraft = cloneDemoAiConfig({
+      ...demoState.aiConfig,
+      ...config,
+      ...(config?.vision ? {
+        vision: {
+          ...demoState.aiConfig.vision,
+          ...config.vision
+        }
+      } : {})
+    })
     const ownerPayload = buildProviderConfigSavePayload(
-      cloneAiConfig({ ...demoState.aiConfig, ...config }),
+      mergedDraft,
       demoState.aiConfig
     )
-    demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, ...ownerPayload })
+    demoState.aiConfig = cloneDemoAiConfig({
+      ...demoState.aiConfig,
+      ...ownerPayload,
+      ...(ownerPayload?.vision ? {
+        vision: {
+          ...demoState.aiConfig.vision,
+          ...ownerPayload.vision
+        }
+      } : {})
+    })
     writeDemoState()
-    return cloneAiConfig(demoState.aiConfig)
+    return cloneDemoAiConfig(demoState.aiConfig)
   },
   saveAiApiKey: async () => {
-    demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, apiKeyRef: 'ai.default', hasApiKey: true })
+    demoState.aiConfig = cloneDemoAiConfig({ ...demoState.aiConfig, apiKeyRef: 'ai.default', hasApiKey: true })
     writeDemoState()
     return {
       apiKeyRef: 'ai.default',
       hasApiKey: true,
       updatedAt: new Date().toISOString()
+    }
+  },
+  saveAiVisionApiKey: async (apiKey) => {
+    demoState.aiConfig = cloneDemoAiConfig({
+      ...demoState.aiConfig,
+      vision: {
+        ...demoState.aiConfig.vision,
+        hasApiKey: Boolean(String(apiKey || '').trim())
+      }
+    })
+    writeDemoState()
+    return {
+      apiKeyRef: demoState.aiConfig.vision.apiKeyRef,
+      hasApiKey: demoState.aiConfig.vision.hasApiKey,
+      updatedAt: new Date().toISOString()
+    }
+  },
+  clearAiVisionApiKey: async () => {
+    demoState.aiConfig = cloneDemoAiConfig({
+      ...demoState.aiConfig,
+      vision: {
+        ...demoState.aiConfig.vision,
+        hasApiKey: false
+      }
+    })
+    writeDemoState()
+    return {
+      apiKeyRef: demoState.aiConfig.vision.apiKeyRef,
+      hasApiKey: false
     }
   },
   testAiConnection: async () => {
@@ -3112,6 +3195,59 @@ export const demoControlCenterAPI: ControlCenterApi = {
       models,
       code: 'ok',
       message: 'AI provider model discovery succeeded'
+    }
+  },
+  discoverAiVisionModels: async () => {
+    const visionConfig = demoState.aiConfig.vision
+    if (!visionConfig.hasApiKey) {
+      return {
+        ok: false,
+        provider: visionConfig.provider,
+        baseUrl: visionConfig.baseUrl,
+        model: visionConfig.model,
+        hasApiKey: false,
+        models: [],
+        code: 'missing_api_key',
+        message: 'Vision API key is not configured'
+      }
+    }
+    if (/models-timeout/i.test(visionConfig.baseUrl)) {
+      return {
+        ok: false,
+        provider: visionConfig.provider,
+        baseUrl: visionConfig.baseUrl,
+        model: visionConfig.model,
+        hasApiKey: true,
+        models: [],
+        code: 'timeout',
+        message: 'Vision provider request timed out'
+      }
+    }
+    if (/models-unavailable/i.test(visionConfig.baseUrl)) {
+      return {
+        ok: true,
+        provider: visionConfig.provider,
+        baseUrl: visionConfig.baseUrl,
+        model: visionConfig.model,
+        hasApiKey: true,
+        models: [],
+        code: 'provider_reachable_models_unavailable',
+        message: 'Vision provider is reachable, but the optional /models probe is unavailable'
+      }
+    }
+    const models = /healthy-models|vision/i.test(visionConfig.baseUrl)
+      ? ['gpt-4.1-mini', 'gpt-4o', 'qwen2.5-vl-7b-instruct']
+      : ['gpt-4.1-mini']
+    persistDemoVisionModelCatalog(models)
+    return {
+      ok: true,
+      provider: visionConfig.provider,
+      baseUrl: visionConfig.baseUrl,
+      model: visionConfig.model,
+      hasApiKey: true,
+      models,
+      code: 'ok',
+      message: 'Vision provider model discovery succeeded'
     }
   },
   getAiPersonaProfile: async () => createDemoPersonaProfile(demoState.petPacks, demoState.aiConfig, demoState.aiPersonaOverrides),

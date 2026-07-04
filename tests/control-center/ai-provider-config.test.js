@@ -11,6 +11,24 @@ test('buildProviderConfigSavePayload only includes owner-managed changed fields'
     model: 'gpt-4o-mini',
     systemPrompt: 'You are a friendly desktop pet companion.',
     memory: { enabled: false },
+    vision: {
+      mode: 'follow-chat',
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.vision',
+      hasApiKey: false,
+      effectiveProvider: 'openai-compatible',
+      effectiveBaseUrl: 'https://api.openai.com/v1',
+      effectiveModel: 'gpt-4o-mini',
+      effectiveHasApiKey: false,
+      modelCatalog: {
+        cacheKey: '',
+        models: [],
+        fetchedAt: '',
+        source: 'none'
+      }
+    },
     hasApiKey: true,
     apiKeyRef: 'ai.default',
     modelCatalog: {
@@ -27,6 +45,19 @@ test('buildProviderConfigSavePayload only includes owner-managed changed fields'
     baseUrl: 'https://gateway.example.test/v1/',
     model: 'gpt-5.5',
     memory: { enabled: true },
+    vision: {
+      ...activeConfig.vision,
+      mode: 'override',
+      baseUrl: 'https://vision.example.test/v1/',
+      model: 'gpt-4.1-mini',
+      hasApiKey: true,
+      modelCatalog: {
+        cacheKey: 'draft-vision-cache',
+        models: ['gpt-4.1-mini'],
+        fetchedAt: '2026-07-05T09:00:00.000Z',
+        source: 'draft'
+      }
+    },
     hasApiKey: false,
     apiKeyRef: 'draft.ai.ref',
     modelCatalog: {
@@ -43,7 +74,12 @@ test('buildProviderConfigSavePayload only includes owner-managed changed fields'
       enabled: true,
       baseUrl: 'https://gateway.example.test/v1',
       model: 'gpt-5.5',
-      memory: { enabled: true }
+      memory: { enabled: true },
+      vision: {
+        mode: 'override',
+        baseUrl: 'https://vision.example.test/v1',
+        model: 'gpt-4.1-mini'
+      }
     }
   )
 })
@@ -124,4 +160,43 @@ test('getImageGenerationConfigChanges reports only image owner field changes', a
     ['Project', '图片最大并发']
   )
   assert.equal(hasImageGenerationConfigChanges(draftConfig, activeConfig), true)
+})
+
+test('validateProviderConfig validates vision override only when enabled', async () => {
+  const { validateProviderConfig } = await import('../../src/control-center/src/lib/ai-provider-config.ts')
+
+  const baseConfig = {
+    enabled: true,
+    provider: 'openai-compatible',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-5.5',
+    apiKeyRef: 'ai.default',
+    systemPrompt: '',
+    memory: { enabled: false },
+    behavior: { enabled: false, useTools: true, cooldownMs: 1500, rules: [], decisions: [] },
+    hasApiKey: true,
+    modelCatalog: { cacheKey: '', models: [], fetchedAt: '', source: 'none' },
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: 'not-a-url',
+      model: '',
+      apiKeyRef: 'ai.vision',
+      hasApiKey: false,
+      modelCatalog: { cacheKey: '', models: [], fetchedAt: '', source: 'none' },
+      effectiveProvider: '',
+      effectiveBaseUrl: '',
+      effectiveModel: '',
+      effectiveHasApiKey: false
+    }
+  }
+
+  assert.equal(validateProviderConfig(baseConfig), 'Vision Base URL 不是有效 URL')
+  assert.equal(validateProviderConfig({
+    ...baseConfig,
+    vision: {
+      ...baseConfig.vision,
+      mode: 'follow-chat'
+    }
+  }), '')
 })
