@@ -90,6 +90,15 @@ const normalizeConfig = (config = {}) => {
   }
 }
 
+const withRuntimeModelOverride = (config = {}, overrideModel = '') => {
+  const normalizedModel = String(overrideModel || '').trim()
+  if (!normalizedModel) return config
+  return normalizeConfig({
+    ...config,
+    model: normalizedModel
+  })
+}
+
 const toPersistedConfig = (config = {}) => {
   const normalized = normalizeConfig(config)
   return {
@@ -245,6 +254,10 @@ const getErrorMessage = async (response) => {
   }
 }
 
+const sanitizeModelId = (value) => String(value || '')
+  .replace(/[\u0000-\u001F\u007F]/g, '')
+  .trim()
+
 const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
   if (Array.isArray(body.data)) return ''
@@ -263,9 +276,9 @@ const extractDiscoveredModels = (body) => {
       : []
   const models = []
   for (const entry of source) {
-    const modelId = typeof entry === 'string'
-      ? entry.trim()
-      : String(entry?.id || '').trim()
+    const modelId = sanitizeModelId(typeof entry === 'string'
+      ? entry
+      : entry?.id)
     if (!modelId || models.includes(modelId)) continue
     models.push(modelId)
   }
@@ -330,24 +343,57 @@ const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
   return payload
 }
 
-const buildProviderEditFormData = ({ model, prompt, constraints, referenceImages = [] }) => {
-  const form = new FormData()
+const createMultipartBoundary = () => `----OpenPetFormBoundary${crypto.randomBytes(12).toString('hex')}`
+
+const sanitizeMultipartToken = (value, fallback) => {
+  const normalized = String(value || '').replace(/[\r\n"]/g, '').trim()
+  return normalized || fallback
+}
+
+const appendMultipartTextPart = (buffers, boundary, name, value) => {
+  buffers.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${sanitizeMultipartToken(name, 'field')}"\r\n\r\n` +
+    `${String(value)}\r\n`
+  ))
+}
+
+const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
+  const fieldName = sanitizeMultipartToken(name, 'image')
+  const fileName = sanitizeMultipartToken(referenceImage.fileName, 'reference.png')
+  const mimeType = sanitizeMultipartToken(referenceImage.mimeType, 'application/octet-stream')
+  buffers.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${fileName}"\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n`
+  ))
+  buffers.push(referenceImage.bytes)
+  buffers.push(Buffer.from('\r\n'))
+}
+
+const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
+  const boundary = createMultipartBoundary()
+  const buffers = []
   const imageField = referenceImages.length > 1 ? 'image[]' : 'image'
   for (const referenceImage of referenceImages) {
-    form.append(
-      imageField,
-      new Blob([referenceImage.bytes], { type: referenceImage.mimeType }),
-      referenceImage.fileName
-    )
+    appendMultipartFilePart(buffers, boundary, imageField, referenceImage)
   }
-  form.append('model', model)
-  form.append('prompt', prompt)
-  form.append('size', `${constraints.width}x${constraints.height}`)
+  appendMultipartTextPart(buffers, boundary, 'model', model)
+  appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
+  appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
   if (model !== 'gpt-image-2') {
-    form.append('background', constraints.transparent ? 'transparent' : 'white')
-    form.append('response_format', 'b64_json')
+    appendMultipartTextPart(buffers, boundary, 'background', constraints.transparent ? 'transparent' : 'white')
+    appendMultipartTextPart(buffers, boundary, 'response_format', 'b64_json')
   }
-  return form
+  buffers.push(Buffer.from(`--${boundary}--\r\n`))
+  const body = Buffer.concat(buffers)
+  return {
+    body,
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': String(body.byteLength)
+    }
+  }
 }
 
 const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
@@ -880,21 +926,25 @@ const createImageGenerationModelService = ({
     })
     let response
     try {
-      const requestBody = normalizedReferenceImages.length > 0
-        ? buildProviderEditFormData({
+      const multipartRequest = normalizedReferenceImages.length > 0
+        ? buildProviderEditMultipartRequest({
             model: config.model,
             prompt,
             constraints,
             referenceImages: normalizedReferenceImages
           })
+        : null
+      const requestBody = multipartRequest
+        ? multipartRequest.body
         : JSON.stringify(buildProviderGenerationPayload({
             model: config.model,
             prompt,
             constraints
           }))
-      const headers = normalizedReferenceImages.length > 0
+      const headers = multipartRequest
         ? {
-            Authorization: `Bearer ${apiKey}`
+            Authorization: `Bearer ${apiKey}`,
+            ...multipartRequest.headers
           }
         : {
             Authorization: `Bearer ${apiKey}`,
@@ -1072,8 +1122,8 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [] }) => {
-    const config = getStoredConfig()
+  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
+    const config = withRuntimeModelOverride(getStoredConfig(), model)
     const requestId = idFactory()
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({

@@ -72,6 +72,30 @@ test('creator reference service binds a canonical reference and persists metadat
   assert.match(view.assetUrl, /^file:/)
 })
 
+test('creator reference service preserves a usable file name when the source name is non-ascii', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-unicode-'))
+  const sourcePath = path.join(tempRoot, '正面.png')
+  await createReferenceImage(sourcePath, { width: 32, height: 20 })
+
+  const settingsService = createSettingsService()
+  const service = createCreatorReferenceService({
+    settingsService,
+    referenceRoot: path.join(tempRoot, 'references'),
+    now: () => '2026-07-05T00:10:00.000Z'
+  })
+  const approval = service.approveSourcePath(sourcePath)
+
+  const result = await service.bindReference({
+    targetType: 'pet-pack',
+    targetId: 'unicode-cat',
+    referenceToken: approval.referenceToken
+  })
+
+  assert.equal(result.reference.fileName, 'reference.png')
+  assert.ok(fs.existsSync(result.reference.assetPath))
+  assert.equal(path.basename(result.reference.assetPath), 'reference.png')
+})
+
 test('creator reference service copies canonical reference into a creator run and patches run metadata', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-run-'))
   const sourcePath = path.join(tempRoot, 'source.png')

@@ -16,6 +16,8 @@ const {
   resolveReferenceImagePath,
   resolveImportedPetRoot,
   verifyNewCharacterScenario,
+  approveScenarioReferenceImage,
+  runScenarioWorkflow,
   runCreatorWorkflowHostSmoke
 } = require('../../scripts/run-creator-workflow-host-smoke')
 
@@ -79,6 +81,7 @@ test('prepareSeedSettings enables the bundled creator plugin and resets the edit
 
   assert.equal(settings.plugins.enabled['official.basic-behavior'], false)
   assert.equal(settings.plugins.enabled['openpet.creator-studio'], true)
+  assert.equal(settings.plugins.nativeExecutionApproved['openpet.creator-studio'], true)
   assert.equal(settings.petPacks.activePackId, 'legacy-cat')
   assert.deepEqual(settings.creator.references, {})
   assert.equal(settings.localHttp.enabled, false)
@@ -157,6 +160,105 @@ test('verifyNewCharacterScenario resolves imported pack root from isolated userD
   assert.match(verification.message, /smoke-mango-cat/)
   assert.equal(verification.artifactPaths.petRoot, packRoot)
   assert.equal(verification.artifactPaths.petManifestPath, path.join(packRoot, 'pet.json'))
+})
+
+test('approveScenarioReferenceImage returns a workflow token for a reference path', () => {
+  const calls = []
+  const token = approveScenarioReferenceImage({
+    runtime: {
+      creatorWorkflowService: {
+        approveReferenceSourcePath: (sourcePath) => {
+          calls.push(sourcePath)
+          return { referenceToken: 'token-reference' }
+        }
+      }
+    },
+    referenceImagePath: '/tmp/reference.png'
+  })
+
+  assert.equal(token, 'token-reference')
+  assert.deepEqual(calls, ['/tmp/reference.png'])
+})
+
+test('runScenarioWorkflow approves the reference image before generating a new character', async () => {
+  const repoRoot = createTempDir('openpet-creator-workflow-repo-')
+  const sourceUserDataDir = createTempDir('openpet-creator-workflow-source-user-data-')
+  const scenarioDir = createTempDir('openpet-creator-workflow-scenario-')
+  const referenceImagePath = path.join(sourceUserDataDir, 'reference.png')
+  fs.mkdirSync(path.join(repoRoot, 'cat_anime'), { recursive: true })
+  fs.writeFileSync(path.join(sourceUserDataDir, 'settings.json'), JSON.stringify({}, null, 2))
+  fs.writeFileSync(path.join(sourceUserDataDir, 'secrets.json'), JSON.stringify({ secrets: {} }, null, 2))
+  fs.writeFileSync(referenceImagePath, 'reference')
+
+  const calls = []
+  const result = await runScenarioWorkflow({
+    scenario: 'new-character',
+    scenarioDir,
+    repoRoot,
+    sourceUserDataDir,
+    referenceImagePath,
+    createSmokeRuntimeImpl: ({ userDataDir }) => {
+      const pluginDataDir = path.join(userDataDir, 'plugins', 'openpet.creator-studio', '.openpet', 'openpet.creator-studio', 'data')
+      return {
+        creatorWorkflowService: {
+          getState: async () => ({ provider: { ready: true, code: 'provider_healthy' } }),
+          approveReferenceSourcePath: (sourcePath) => {
+            calls.push(['approve', sourcePath])
+            return { referenceToken: 'token-reference' }
+          },
+          generateNewCharacter: async (payload) => {
+            calls.push(['generateNewCharacter', payload])
+            const packRoot = path.join(userDataDir, 'pet-packs', 'smoke-mango-cat')
+            const runDir = path.join(pluginDataDir, 'runs', 'run-new-character')
+            fs.mkdirSync(packRoot, { recursive: true })
+            fs.mkdirSync(runDir, { recursive: true })
+            fs.writeFileSync(path.join(packRoot, 'pet.json'), JSON.stringify({ id: 'smoke-mango-cat' }, null, 2))
+            fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({
+              runId: 'run-new-character',
+              status: 'completed',
+              artifacts: {
+                generatedImage: {
+                  conditioning: {
+                    mode: 'image-edit',
+                    endpoint: '/images/edits',
+                    referenceImageCount: 1,
+                    references: [{
+                      fileName: 'reference.png',
+                      relativePath: 'runs/run-new-character/inputs/references/canonical-reference.png',
+                      metadataRelativePath: 'runs/run-new-character/inputs/references/reference.json',
+                      role: 'reference'
+                    }]
+                  }
+                }
+              }
+            }, null, 2))
+            return {
+              ok: true,
+              state: 'completed',
+              run: {
+                runId: 'run-new-character',
+                activatedPackId: 'smoke-mango-cat'
+              }
+            }
+          }
+        },
+        pluginService: {
+          getPluginCreatorDataDir: () => pluginDataDir,
+          stopAllServices: async () => {},
+          getLogs: () => []
+        },
+        appLogService: {
+          read: () => []
+        }
+      }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls[0], ['approve', referenceImagePath])
+  assert.equal(calls[1][0], 'generateNewCharacter')
+  assert.equal(calls[1][1].referenceImageToken, 'token-reference')
+  assert.equal(calls[1][1].referenceImagePath, undefined)
 })
 
 test('runCreatorWorkflowHostSmoke writes a structured report with injected scenario runner results', async () => {

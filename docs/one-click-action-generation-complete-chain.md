@@ -27,7 +27,7 @@ The ordinary path must support:
 - Existing-action generation automatically replaces `clickAction`.
 - The previous `clickAction` must be visible and recoverable from the Create result surface.
 - New-pet generation should prefer real basic actions where available, while allowing honest fallback rows.
-- Minimum useful new-pet gate: `idle` and `waving` should be real when multi-action outputs are available; other rows may fall back in the first implementation.
+- Minimum useful new-pet gate: `idle` and `waving` are the required real basic actions; other rows may fall back in the first implementation.
 - The first implementation stays inside the existing Creator Studio, ActionService, and PetPackService architecture.
 - No new pet/action package format is introduced.
 - The Create tab stays simple; advanced customization remains in Creator Studio and Actions.
@@ -115,8 +115,9 @@ Returned for new-pet generation when atlas QA reports action row coverage:
   - Existing-action generation captures the previous `clickAction`, accepts the generated trigger proposal, and returns a reversible change summary.
   - New-pet generation reads `runs/<runId>/qa/atlas-validation.json` and returns basic action coverage to the Create result surface.
 - `examples/plugins/creator-studio/lib/host-model-bridge.js`
-  - Full-pet provider runs now attempt additional source images for `idle`, `waving`, `waiting`, and `failed`.
-  - Basic action source generation runs with a bounded 90s per-action budget in parallel, so optional action poses can fall back without consuming the whole plugin command timeout.
+  - Full-pet provider runs now attempt only the required extra action-specific source image: `waving`.
+  - `idle` remains the validated base source, while optional rows continue to fall back from the base pose unless a usable action-specific image is already present in the generation outputs.
+  - Basic action source generation runs with a bounded per-action timeout, so the required extra pose can fail honestly without expanding the whole full-pet generation budget.
   - Action pose prompts reuse the existing sanitized prompt rules before reaching the host image model bridge.
   - Missing per-action outputs are recorded as failed attempts and left for atlas fallback instead of failing the whole pet generation.
 - `examples/plugins/creator-studio/lib/real-atlas-builder.js`
@@ -163,8 +164,16 @@ Current local validation notes:
 ## Risks
 
 - Provider outputs may not include action-specific metadata yet. The builder treats optional rows as fallback, while required coverage is surfaced through QA for review/import gating.
-- Full multi-action provider generation can be expensive and slow. Action-specific pose requests are parallelized and bounded so base generation remains the critical path.
+- Provider-backed full-pet generation is still sensitive to gateway/model stability. The current implementation intentionally minimizes action-specific follow-up generation so base generation remains the critical path.
 - Auto-replacing `clickAction` is intentionally opinionated. The Create result must make the replacement explicit and reversible.
+
+## Current Stable Path
+
+- The current stable shortest path is one clean front-facing reference image.
+- On the active dev8 branch, the verified real-user chain is:
+  - one-click new pet generation from `正面.png`
+  - one-click existing-pet action generation from `正面.png`
+- Multi-view collage inputs such as `全面.png` are not the preferred path for the current provider/gateway setup.
 
 ## Non-Goals
 

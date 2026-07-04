@@ -189,3 +189,36 @@ test('plugin command bridge server shares one startup across concurrent ensureSt
 
   bridgeServer.close()
 })
+
+test('plugin command bridge server disables the default request timeout for long-running local bridge requests', async () => {
+  const createdServers = []
+  const createServer = () => {
+    const server = new EventEmitter()
+    server.listening = false
+    server.requestTimeout = 300000
+    server.off = server.removeListener.bind(server)
+    server.listen = () => {
+      createdServers.push(server)
+    }
+    server.address = () => ({ port: 8317 })
+    server.unref = () => {}
+    server.close = () => {
+      server.listening = false
+    }
+    return server
+  }
+  const bridgeServer = createPluginCommandBridgeServer({
+    commandBridgeRuntimes: new Map(),
+    createServer
+  })
+
+  const start = bridgeServer.ensureStarted()
+  assert.equal(createdServers.length, 1)
+  assert.equal(createdServers[0].requestTimeout, 0)
+
+  createdServers[0].listening = true
+  createdServers[0].emit('listening')
+  await assert.doesNotReject(start)
+
+  bridgeServer.close()
+})

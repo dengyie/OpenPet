@@ -178,6 +178,10 @@ const prepareSeedSettings = (settings = {}) => ({
       'official.basic-behavior': settings.plugins?.enabled?.['official.basic-behavior'] !== false,
       [CREATOR_STUDIO_PLUGIN_ID]: true
     },
+    nativeExecutionApproved: {
+      ...(isObject(settings.plugins?.nativeExecutionApproved) ? settings.plugins.nativeExecutionApproved : {}),
+      [CREATOR_STUDIO_PLUGIN_ID]: true
+    },
     config: isObject(settings.plugins?.config) ? settings.plugins.config : {},
     storage: isObject(settings.plugins?.storage) ? settings.plugins.storage : {},
     logs: []
@@ -519,19 +523,29 @@ const summarizeVerification = (verification = {}, sessionDir) => {
   }
 }
 
+const approveScenarioReferenceImage = ({ runtime, referenceImagePath } = {}) => {
+  const approval = runtime?.creatorWorkflowService?.approveReferenceSourcePath?.(referenceImagePath)
+  const referenceImageToken = String(approval?.referenceToken || '').trim()
+  if (!referenceImageToken) {
+    throw new Error('Creator workflow did not approve the reference image')
+  }
+  return referenceImageToken
+}
+
 const runScenarioWorkflow = async ({
   scenario,
   scenarioDir,
   repoRoot,
   sourceUserDataDir,
   referenceImagePath,
-  logLimit = DEFAULT_LOG_LIMIT
+  logLimit = DEFAULT_LOG_LIMIT,
+  createSmokeRuntimeImpl = createSmokeRuntime
 } = {}) => {
   const userDataDir = path.join(scenarioDir, 'user-data')
   const workspaceRoot = path.join(scenarioDir, 'workspace')
   prepareScenarioWorkspace({ repoRoot, workspaceRoot })
   const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir })
-  const runtime = createSmokeRuntime({ repoRoot, workspaceRoot, userDataDir })
+  const runtime = createSmokeRuntimeImpl({ repoRoot, workspaceRoot, userDataDir })
   const seededProviderConfig = typeof runtime.imageGenerationModelService?.getConfig === 'function'
     ? runtime.imageGenerationModelService.getConfig()
     : {}
@@ -539,16 +553,17 @@ const runScenarioWorkflow = async ({
   const startedAtMs = Date.now()
   try {
     const stateBefore = await runtime.creatorWorkflowService.getState()
+    const referenceImageToken = approveScenarioReferenceImage({ runtime, referenceImagePath })
     const result = scenario === 'new-character'
       ? await runtime.creatorWorkflowService.generateNewCharacter({
           characterName: DEFAULT_NEW_CHARACTER_NAME,
           stylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
-          referenceImagePath
+          referenceImageToken
         })
       : await runtime.creatorWorkflowService.generateExistingAction({
           actionName: DEFAULT_EXISTING_ACTION_NAME,
           motionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
-          referenceImagePath
+          referenceImageToken
         })
     const stateAfter = await runtime.creatorWorkflowService.getState()
     const pluginDataDir = runtime.pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
@@ -735,5 +750,7 @@ module.exports = {
   resolveImportedPetRoot,
   verifyNewCharacterScenario,
   verifyScenarioResult,
+  approveScenarioReferenceImage,
+  runScenarioWorkflow,
   runCreatorWorkflowHostSmoke
 }

@@ -50,13 +50,19 @@ test('plugin process support creates minimal process env per platform', () => {
     createPluginProcessEnv({
       env: {
         PATH: '/usr/bin',
+        NODE_PATH: '/custom/node_modules',
         HOME: '/Users/tester',
         SystemRoot: 'C:\\Windows',
         WINDIR: 'C:\\Windows'
       },
-      platform: 'darwin'
+      platform: 'darwin',
+      modulePaths: ['/repo/node_modules', '/repo/src/node_modules'],
+      existsSync: (candidate) => candidate === '/repo/node_modules'
     }),
-    { PATH: '/usr/bin' }
+    {
+      PATH: '/usr/bin',
+      NODE_PATH: ['/custom/node_modules', '/repo/node_modules'].join(path.delimiter)
+    }
   )
 
   assert.deepEqual(
@@ -67,10 +73,13 @@ test('plugin process support creates minimal process env per platform', () => {
         WINDIR: 'C:\\Windows',
         TEMP: 'C:\\Temp'
       },
-      platform: 'win32'
+      platform: 'win32',
+      modulePaths: ['C:\\repo\\node_modules'],
+      existsSync: () => true
     }),
     {
       PATH: 'C:\\Windows\\System32',
+      NODE_PATH: 'C:\\repo\\node_modules',
       SystemRoot: 'C:\\Windows',
       WINDIR: 'C:\\Windows'
     }

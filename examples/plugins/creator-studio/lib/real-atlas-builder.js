@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const sharp = require('sharp')
+const { createBasicActionCoverage } = require('./full-pet-basic-actions')
 
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const CODEX_ATLAS = {
@@ -22,8 +23,6 @@ const CODEX_ROWS = [
   { id: 'running', row: 7, durations: [120, 120, 120, 120, 120, 220] },
   { id: 'review', row: 8, durations: [150, 150, 150, 150, 150, 280] }
 ]
-const REQUIRED_REAL_BASIC_ACTION_IDS = ['idle', 'waving']
-
 const toSafePosixRelativePath = (value) => {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error('Generated image is missing')
@@ -158,19 +157,6 @@ const findEntryForAction = ({ entries, actionId, fallbackEntry }) => {
   if (exact) return { entry: exact, fallback: false, sourceActionId: actionId }
   if (actionId === 'idle') return { entry: fallbackEntry, fallback: false, sourceActionId: fallbackEntry.actionId || 'base-pose' }
   return { entry: fallbackEntry, fallback: true, sourceActionId: fallbackEntry.actionId || 'base-pose' }
-}
-
-const createBasicActionCoverage = (rows) => {
-  const realActionIds = rows.filter((row) => !row.fallback).map((row) => row.actionId)
-  const fallbackActionIds = rows.filter((row) => row.fallback).map((row) => row.actionId)
-  const missingRequiredActionIds = REQUIRED_REAL_BASIC_ACTION_IDS.filter((actionId) => !realActionIds.includes(actionId))
-  return {
-    requiredRealActionIds: REQUIRED_REAL_BASIC_ACTION_IDS.slice(),
-    realActionIds,
-    fallbackActionIds,
-    missingRequiredActionIds,
-    rows
-  }
 }
 
 const createCellComposites = (rowCellBuffers) => {

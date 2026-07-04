@@ -1,8 +1,8 @@
 # OpenPet Handoff
 
-> Last updated: 2026-07-03
+> Last updated: 2026-07-05
 > Canonical active queue: [`TODO.md`](./TODO.md)
-> Branch: `codex/dev7`
+> Branch: `codex/dev8`
 
 This file is the compact maintainer continuation note. Historical phase-level detail lives in `docs/phases/`, `docs/reviews/`, and older planning docs.
 
@@ -25,6 +25,8 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - The archived OpenPet gateway smoke confirms `gpt-5.5`, `gpt-image-2`, chat completion smoke success, and that image generation was intentionally opt-in and was skipped in that smoke run; it does not prove image generation output quality or asset readiness.
 - The AI Talk Bubble Chat smoke path records `bubbleAcceptance`, `providerLatencyMs`, and `manualAcceptanceTemplate`, and the archived `ai-talk-local-smoke/2026-06-28T15-35-59-210Z/` result does not by itself prove full desktop feel or later human desktop validation.
 - Creator Studio full-pet review now uses a landed real-atlas QA/import path backed by `source-image-validation.json` and `atlas-validation.json`.
+- The current one-click full-pet policy requires real `idle` and `waving` coverage at QA/import time, while host-side extra pose generation is intentionally limited to `waving`; other rows may fall back from the base pose.
+- The current stable shortest path is a single clean front-facing reference image on the saved `gpt-image-2` gateway path; multi-view collage inputs remain less stable and should not be treated as the default success path.
 - `random`, `state`, and `event` trigger proposals now create active host-owned durable trigger rules, while Creator Studio follow-up review goes through the Trigger Proposal Inbox.
 - Imported action success follow-up now routes reviewers to `Actions -> Trigger Proposal Inbox`, imported action handoff failure follow-up routes to `Control Center -> Plugins`, and imported pet follow-up stays in `OpenPet` through `Import Approved Pet`.
 - Creator Studio imported review surfaces are phase-aware imported review guidance: after import they no longer mix pre-import QA, repair controls, or retry generation cues into the imported state.
