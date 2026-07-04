@@ -144,6 +144,52 @@ test('demo API saves and returns settings from session-backed state', async () =
   assert.deepEqual(await demoControlCenterAPI.getSettings(), savedSettings)
 })
 
+test('demo API provider saves follow the same owner-only payload rules as the main host', async () => {
+  const previousAiConfig = await demoControlCenterAPI.getAiConfig()
+  const previousImageConfig = await demoControlCenterAPI.getImageGenerationConfig()
+
+  const savedAiConfig = await demoControlCenterAPI.saveAiConfig({
+    enabled: !previousAiConfig.enabled,
+    baseUrl: 'https://gateway.example.test/v1/',
+    model: 'gpt-5.5',
+    hasApiKey: false,
+    apiKeyRef: 'draft.ai.ref',
+    modelCatalog: {
+      cacheKey: 'draft-cache',
+      models: ['custom-model'],
+      fetchedAt: '2026-07-05T09:00:00.000Z',
+      source: 'draft'
+    }
+  })
+
+  assert.equal(savedAiConfig.enabled, !previousAiConfig.enabled)
+  assert.equal(savedAiConfig.baseUrl, 'https://gateway.example.test/v1')
+  assert.equal(savedAiConfig.model, 'gpt-5.5')
+  assert.equal(savedAiConfig.hasApiKey, previousAiConfig.hasApiKey)
+  assert.deepEqual(savedAiConfig.modelCatalog, previousAiConfig.modelCatalog)
+
+  const savedImageConfig = await demoControlCenterAPI.saveImageGenerationConfig({
+    baseUrl: 'https://images.example.test/v1/',
+    model: 'custom-image-model',
+    timeoutMs: 90000,
+    hasApiKey: false,
+    apiKeyPreview: '',
+    modelCatalog: {
+      cacheKey: 'draft-image-cache',
+      models: ['draft-image-model'],
+      fetchedAt: '2026-07-05T09:00:00.000Z',
+      source: 'draft'
+    }
+  })
+
+  assert.equal(savedImageConfig.baseUrl, 'https://images.example.test/v1')
+  assert.equal(savedImageConfig.model, 'custom-image-model')
+  assert.equal(savedImageConfig.timeoutMs, 90000)
+  assert.equal(savedImageConfig.hasApiKey, previousImageConfig.hasApiKey)
+  assert.equal(savedImageConfig.apiKeyPreview, previousImageConfig.apiKeyPreview)
+  assert.deepEqual(savedImageConfig.modelCatalog, previousImageConfig.modelCatalog)
+})
+
 test('demo API installs a fixture plugin and returns command mock output', async () => {
   const review = await demoControlCenterAPI.inspectPluginPackage()
   const installResult = await demoControlCenterAPI.installPlugin(review.selectionId)

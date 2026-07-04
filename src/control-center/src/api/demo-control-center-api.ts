@@ -1,4 +1,5 @@
 import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneCreatorLastRun, cloneCreatorReference, cloneCreatorState, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultCreatorState, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults.ts'
+import { buildImageGenerationConfigSavePayload, buildProviderConfigSavePayload } from '../lib/ai-provider-config.ts'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
@@ -2961,7 +2962,11 @@ export const demoControlCenterAPI: ControlCenterApi = {
   },
   getAiConfig: async () => cloneAiConfig(demoState.aiConfig),
   saveAiConfig: async (config) => {
-    demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, ...config })
+    const ownerPayload = buildProviderConfigSavePayload(
+      cloneAiConfig({ ...demoState.aiConfig, ...config }),
+      demoState.aiConfig
+    )
+    demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, ...ownerPayload })
     writeDemoState()
     return cloneAiConfig(demoState.aiConfig)
   },
@@ -3161,9 +3166,13 @@ export const demoControlCenterAPI: ControlCenterApi = {
   },
   getImageGenerationConfig: async () => cloneImageGenerationConfig(demoState.imageGenerationConfig),
   saveImageGenerationConfig: async (config) => {
+    const ownerPayload = buildImageGenerationConfigSavePayload(
+      cloneImageGenerationConfig({ ...demoState.imageGenerationConfig, ...config }),
+      demoState.imageGenerationConfig
+    )
     demoState.imageGenerationConfig = cloneImageGenerationConfig({
       ...demoState.imageGenerationConfig,
-      ...config
+      ...ownerPayload
     })
     writeDemoState()
     return cloneImageGenerationConfig(demoState.imageGenerationConfig)
