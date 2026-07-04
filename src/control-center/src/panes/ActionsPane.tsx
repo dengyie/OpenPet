@@ -125,9 +125,10 @@ const readSpecText = (value: unknown) => (typeof value === 'string' && value.tri
 const readSpecNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
 
 const createTriggerRuleEditDraft = (rule: ActionTriggerRule): ActionTriggerRuleSpecInput => {
-  const summary = readSpecText(rule.ruleSpec.summary)
+  const spec = rule.ruleSpec && typeof rule.ruleSpec === 'object' ? rule.ruleSpec : undefined
+  const summary = readSpecText(spec?.summary)
   if (rule.type === 'random') {
-    const schedule = rule.ruleSpec.type === 'random' ? rule.ruleSpec.schedule : { mode: 'opportunistic' as const }
+    const schedule = spec?.type === 'random' ? spec.schedule : { mode: 'opportunistic' as const }
     const mode = schedule.mode === 'interval' ? 'interval' : 'opportunistic'
     const intervalMs = readSpecNumber(schedule.intervalMs)
     return {
@@ -140,7 +141,7 @@ const createTriggerRuleEditDraft = (rule: ActionTriggerRule): ActionTriggerRuleS
     }
   }
   if (rule.type === 'state') {
-    const state = rule.ruleSpec.type === 'state' ? rule.ruleSpec.state : { predicate: 'host.state.available', source: 'host' }
+    const state = spec?.type === 'state' ? spec.state : { predicate: 'host.state.available', source: 'host' }
     return {
       type: 'state',
       summary,
@@ -150,7 +151,7 @@ const createTriggerRuleEditDraft = (rule: ActionTriggerRule): ActionTriggerRuleS
       }
     }
   }
-  const event = rule.ruleSpec.type === 'event' ? rule.ruleSpec.event : { name: 'openpet.event', source: 'host' }
+  const event = spec?.type === 'event' ? spec.event : { name: 'openpet.event', source: 'host' }
   return {
     type: 'event',
     summary,

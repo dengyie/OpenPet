@@ -27,7 +27,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - Creator Studio full-pet review now uses a landed real-atlas QA/import path backed by `source-image-validation.json` and `atlas-validation.json`.
 - The current one-click full-pet policy requires real `idle` and `waving` coverage at QA/import time, while host-side extra pose generation is intentionally limited to `waving`; other rows may fall back from the base pose.
 - The current stable shortest path is a single clean front-facing reference image on the saved `gpt-image-2` gateway path; multi-view collage inputs remain less stable and should not be treated as the default success path.
-- `random`, `state`, and `event` trigger proposals now create active host-owned durable trigger rules, while Creator Studio follow-up review goes through the Trigger Proposal Inbox.
+- `random`, `state`, and `event` trigger proposals now create active host-owned durable trigger rules, the Actions pane can minimally edit those saved host rules inline, and Creator Studio follow-up review still goes through the Trigger Proposal Inbox.
 - Imported action success follow-up now routes reviewers to `Actions -> Trigger Proposal Inbox`, imported action handoff failure follow-up routes to `Control Center -> Plugins`, and imported pet follow-up stays in `OpenPet` through `Import Approved Pet`.
 - Creator Studio imported review surfaces are phase-aware imported review guidance: after import they no longer mix pre-import QA, repair controls, or retry generation cues into the imported state.
 - The typed plugin view config schema/storage/signature payloads, action-frame `inspectionResult` payloads, and pet-pack mutation view payloads are already normalized through the TypeScript adapter boundary.
@@ -46,7 +46,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - Keep `cat_anime/` structure intact.
 - Keep extension capability wording honest and conservative.
 - Keep local HTTP/MCP loopback-only and off by default.
-- Keep trigger proposal ownership on the host side; `random`, `state`, and `event` already create active host-owned durable trigger rules, while Creator Studio still submits reviewable proposals through the Trigger Proposal Inbox instead of mutating rules directly.
+- Keep trigger proposal ownership on the host side; `random`, `state`, and `event` already create active host-owned durable trigger rules with minimal inline host editing in the Actions pane, while Creator Studio still submits reviewable proposals through the Trigger Proposal Inbox instead of mutating rules directly.
 
 ## High-Signal Commands
 

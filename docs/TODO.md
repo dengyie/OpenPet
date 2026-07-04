@@ -21,10 +21,10 @@ Use this file for open work and priority changes. Keep phase docs, reviews, and 
 
 - [ ] Find or receive a compatible third-party `plugin.json` package that can pass discovery, intake, and community-source evidence flow without overstating trust.
 - [ ] Continue provider-path verification with broader packaged/runtime smoke coverage and only promote additional provider presets when they have honest evidence and operator guidance.
-- [ ] Add a host-owned trigger-rule editor/schema for `random`, `state`, and `event` proposals before allowing those trigger bindings to be applied.
 
 ## P2 Later
 
+- [ ] Expand the minimal host-owned trigger-rule editor only after richer random/state/event runtime semantics need more than the current inline `ruleSpec` fields.
 - [ ] Continue TypeScript coverage into remaining high-drift main-process adapters, evidence summaries, and report boundaries.
 - [ ] Expand packaged-app evidence where it improves confidence, especially around release smoke, cleanup behavior, and real-host validation gaps.
 
