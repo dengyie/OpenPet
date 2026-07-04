@@ -7,6 +7,7 @@ const { REQUIRED_CHECKS } = require('./validate-desktop-picker-smoke-report')
 
 const DEFAULT_RELEASE_DIR = path.join(__dirname, '..', 'release')
 const DEFAULT_OUTPUT_PATH = path.join(DEFAULT_RELEASE_DIR, 'desktop-picker-smoke-report.json')
+const DEFAULT_RELEASE_DIR_LABEL = 'release'
 
 const usage = () => [
   'Usage: node scripts/create-desktop-picker-smoke-report.js [--platform <darwin|win32>] [--release-dir <dir>] [--output <report.json>] [--allow-any-platform]',
@@ -21,6 +22,20 @@ const createPendingChecks = () => REQUIRED_CHECKS.map((check) => ({
   evidence: '',
   notes: `${check.label}. Fill with evidence from a real packaged-app native picker smoke validation run.`
 }))
+
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
 
 const hasPlatformToken = (fileName, tokens) => {
   const lowerName = String(fileName || '').toLowerCase()
@@ -191,7 +206,7 @@ const createDesktopPickerSmokeReport = ({
     },
     artifact: {
       version: packageJson.version || '',
-      releaseDir: absoluteReleaseDir,
+      releaseDir: createSafeProjectPath(absoluteReleaseDir, DEFAULT_RELEASE_DIR_LABEL),
       ...artifact,
       ...signature
     },

@@ -10,6 +10,45 @@ const DEFAULT_COLLECTOR_NAME = 'plugin-cleanup-evidence-collector.sh'
 const DEFAULT_EVIDENCE_DIR_NAME = 'plugin-cleanup-evidence-collected'
 const DEFAULT_MANIFEST_NAME = 'plugin-cleanup-evidence-archive-manifest.json'
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeArchiveDirPath = (archiveDir) => createSafeProjectPath(archiveDir, DEFAULT_ARCHIVE_DIR)
+
+const createSafeArchiveFilePath = ({ filePath, archiveDir, fallback }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
+const createSafeArchiveOutputPath = ({ outputPath, archiveDir, safeArchiveDir }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(outputPath || '').trim()))
+  if (isSafeRelativePath(relative)) return joinPosixPath(safeArchiveDir, relative)
+  return createSafeProjectPath(outputPath, joinPosixPath(safeArchiveDir, DEFAULT_MANIFEST_NAME))
+}
+
+const sanitizeMessage = (message, replacements) => replacements.reduce((text, [unsafeValue, safeValue]) => {
+  if (!unsafeValue || !safeValue) return text
+  return String(text || '').split(String(unsafeValue)).join(String(safeValue))
+}, String(message || ''))
+
 const REQUIRED_EVIDENCE_FILES = [
   'environment.txt',
   'report-structure-validation.txt',
@@ -95,18 +134,18 @@ const resolveArchivePaths = ({
 
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
-const describeFile = ({ role, filePath, fsImpl = fs }) => {
+const describeFile = ({ role, filePath, displayPath = filePath, fsImpl = fs }) => {
   if (!fsImpl.existsSync(filePath)) {
-    return { role, path: filePath, exists: false, bytes: 0, sha256: '' }
+    return { role, path: displayPath, exists: false, bytes: 0, sha256: '' }
   }
   const stat = fsImpl.statSync(filePath)
   if (!stat.isFile()) {
-    return { role, path: filePath, exists: false, bytes: 0, sha256: '', error: 'path is not a file' }
+    return { role, path: displayPath, exists: false, bytes: 0, sha256: '', error: 'path is not a file' }
   }
   const content = fsImpl.readFileSync(filePath)
   return {
     role,
-    path: filePath,
+    path: displayPath,
     exists: true,
     bytes: content.length,
     sha256: sha256(content)
@@ -156,13 +195,13 @@ const walkEvidenceFiles = ({ evidenceDir, fsImpl = fs }) => {
 
 const loadJsonFile = (filePath, fsImpl = fs) => JSON.parse(fsImpl.readFileSync(filePath, 'utf-8'))
 
-const validateCollectorFile = ({ collectorPath, fsImpl = fs }) => {
-  const file = describeFile({ role: 'collector', filePath: collectorPath, fsImpl })
+const validateCollectorFile = ({ collectorPath, displayPath, fsImpl = fs }) => {
+  const file = describeFile({ role: 'collector', filePath: collectorPath, displayPath, fsImpl })
   const errors = []
   const warnings = []
 
   if (!file.exists) {
-    errors.push(file.error ? `collector: ${file.error}` : `missing archive file: ${collectorPath}`)
+    errors.push(file.error ? `collector: ${file.error}` : `missing archive file: ${displayPath}`)
     return { file, conservativeWording: false, avoidsPassShortcut: false, errors, warnings }
   }
 
@@ -236,8 +275,36 @@ const createPluginCleanupEvidenceArchiveManifest = ({
   fsImpl = fs
 } = {}) => {
   const paths = resolveArchivePaths({ archiveDir, reportPath, collectorPath, evidenceDir, outputPath })
-  const reportFile = describeFile({ role: 'report', filePath: paths.reportPath, fsImpl })
-  const collector = validateCollectorFile({ collectorPath: paths.collectorPath, fsImpl })
+  const safeArchiveDir = createSafeArchiveDirPath(paths.archiveDir)
+  const safeReportPath = createSafeArchiveFilePath({
+    filePath: paths.reportPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_REPORT_NAME
+  })
+  const safeCollectorPath = createSafeArchiveFilePath({
+    filePath: paths.collectorPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_COLLECTOR_NAME
+  })
+  const safeEvidenceDir = createSafeArchiveFilePath({
+    filePath: paths.evidenceDir,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_EVIDENCE_DIR_NAME
+  })
+  const safeOutputPath = createSafeArchiveOutputPath({
+    outputPath: paths.outputPath,
+    archiveDir: paths.archiveDir,
+    safeArchiveDir
+  })
+  const messagePathReplacements = [
+    [paths.outputPath, safeOutputPath],
+    [paths.evidenceDir, safeEvidenceDir],
+    [paths.collectorPath, safeCollectorPath],
+    [paths.reportPath, safeReportPath],
+    [paths.archiveDir, safeArchiveDir]
+  ].sort((left, right) => String(right[0]).length - String(left[0]).length)
+  const reportFile = describeFile({ role: 'report', filePath: paths.reportPath, displayPath: safeReportPath, fsImpl })
+  const collector = validateCollectorFile({ collectorPath: paths.collectorPath, displayPath: safeCollectorPath, fsImpl })
   const errors = []
   const warnings = []
   let report = null
@@ -245,7 +312,7 @@ const createPluginCleanupEvidenceArchiveManifest = ({
   let readinessValidation = { ok: false, errors: ['report could not be loaded'], warnings: [], summary: { passed: 0, total: REQUIRED_CHECKS.length, cleanupReady: false } }
 
   if (!reportFile.exists) {
-    errors.push(reportFile.error ? `report: ${reportFile.error}` : `missing archive file: ${paths.reportPath}`)
+    errors.push(reportFile.error ? `report: ${reportFile.error}` : `missing archive file: ${safeReportPath}`)
   } else {
     try {
       report = loadJsonFile(paths.reportPath, fsImpl)
@@ -255,7 +322,7 @@ const createPluginCleanupEvidenceArchiveManifest = ({
       warnings.push(...structuralValidation.warnings.map((warning) => `report: ${warning}`))
       if (!readinessValidation.ok) warnings.push('archive is valid but does not prove plugin cleanup readiness until every required check passes with evidence')
     } catch (err) {
-      errors.push(`report could not be parsed: ${err.message || err}`)
+      errors.push(`report could not be parsed: ${sanitizeMessage(err.message || err, messagePathReplacements)}`)
     }
   }
 
@@ -263,33 +330,42 @@ const createPluginCleanupEvidenceArchiveManifest = ({
   warnings.push(...collector.warnings)
 
   const walkedEvidence = walkEvidenceFiles({ evidenceDir: paths.evidenceDir, fsImpl })
-  errors.push(...walkedEvidence.errors)
+  errors.push(...walkedEvidence.errors.map((error) => sanitizeMessage(error, messagePathReplacements)))
   const evidenceValidation = validateEvidenceFiles({ evidenceDir: paths.evidenceDir, files: walkedEvidence.files, fsImpl })
-  errors.push(...evidenceValidation.errors)
-  warnings.push(...evidenceValidation.warnings)
+  errors.push(...evidenceValidation.errors.map((error) => sanitizeMessage(error, messagePathReplacements)))
+  warnings.push(...evidenceValidation.warnings.map((warning) => sanitizeMessage(warning, messagePathReplacements)))
+
+  const evidenceFiles = walkedEvidence.files.map((file) => ({
+    ...file,
+    path: createSafeArchiveFilePath({
+      filePath: file.path,
+      archiveDir: paths.archiveDir,
+      fallback: joinPosixPath(DEFAULT_EVIDENCE_DIR_NAME, file.file)
+    })
+  }))
 
   const manifest = {
     generatedAt: now().toISOString(),
     ok: false,
     cleanupReady: false,
     archive: {
-      archiveDir: paths.archiveDir,
-      outputPath: paths.outputPath
+      archiveDir: safeArchiveDir,
+      outputPath: safeOutputPath
     },
     files: [reportFile, collector.file],
     collector: {
-      path: paths.collectorPath,
+      path: safeCollectorPath,
       conservativeWording: collector.conservativeWording,
       avoidsPassShortcut: collector.avoidsPassShortcut
     },
     evidence: {
-      evidenceDir: paths.evidenceDir,
+      evidenceDir: safeEvidenceDir,
       requiredFiles: evidenceValidation.requiredFiles,
       requiredFilesPresent: evidenceValidation.requiredFilesPresent,
-      files: walkedEvidence.files
+      files: evidenceFiles
     },
     report: {
-      path: paths.reportPath,
+      path: safeReportPath,
       schemaVersion: report?.schemaVersion || '',
       generatedAt: report?.generatedAt || '',
       source: report?.source || '',

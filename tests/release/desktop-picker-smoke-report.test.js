@@ -94,6 +94,7 @@ test('createDesktopPickerSmokeReport writes a pending macOS report that passes s
   assert.equal(report.generatedAt, '2026-06-15T00:00:00.000Z')
   assert.equal(report.environment.machine, 'mac-smoke-host')
   assert.equal(report.artifact.version, packageJson.version)
+  assert.equal(report.artifact.releaseDir, 'release')
   assert.equal(report.artifact.appPath, path.join('mac-arm64', 'OpenPet.app'))
   assert.equal(report.artifact.signed, true)
   assert.equal(report.artifact.signatureStatus, 'Valid')

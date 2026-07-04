@@ -7,6 +7,7 @@ const { REQUIRED_CHECKS } = require('./validate-rc-upgrade-smoke-report')
 const LEGACY_USER_DATA_DIR_NAME = 'ibot'
 const CURRENT_USER_DATA_DIR_NAME = 'OpenPet'
 const DEFAULT_OUTPUT_PATH = path.join(__dirname, '..', 'release', 'rc-upgrade-smoke-report.json')
+const DEFAULT_APP_DATA_DIR_LABEL = 'app-data'
 
 const defaultAppDataDir = ({ platform = process.platform, env = process.env, homedir = os.homedir } = {}) => {
   if (platform === 'darwin') return path.join(homedir(), 'Library', 'Application Support')
@@ -69,6 +70,26 @@ const createPendingChecks = () => REQUIRED_CHECKS.map((check) => createCheck({
   notes: `${check.label}. Fill by running the packaged OpenPet RC against a seeded legacy ibot userData directory.`
 }))
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
 const stateEntriesInDir = (dirPath, fsImpl = fs) => {
   const entries = []
   if (fileExists(path.join(dirPath, 'settings.json'), fsImpl)) entries.push('settings.json')
@@ -78,7 +99,18 @@ const stateEntriesInDir = (dirPath, fsImpl = fs) => {
   return entries
 }
 
-const createChecks = ({ legacyUserDataDir, currentUserDataDir, observedUserDataDir, settingsResult, fsImpl = fs }) => {
+const createChecks = ({
+  legacyUserDataDir,
+  currentUserDataDir,
+  observedUserDataDir,
+  settingsResult,
+  safeLegacyUserDataDir,
+  safeCurrentUserDataDir,
+  safeObservedUserDataDir,
+  safeSettingsPath,
+  safeSecretsPath,
+  fsImpl = fs
+}) => {
   const checks = []
   const legacyExists = dirExists(legacyUserDataDir, fsImpl)
   const observed = observedUserDataDir ? path.resolve(observedUserDataDir) : ''
@@ -87,30 +119,30 @@ const createChecks = ({ legacyUserDataDir, currentUserDataDir, observedUserDataD
   checks.push(createCheck({
     id: 'legacy-dir-exists',
     status: legacyExists ? 'pass' : 'fail',
-    evidence: legacyExists ? legacyUserDataDir : '',
-    notes: legacyExists ? 'Legacy directory exists.' : `Legacy directory missing: ${legacyUserDataDir}`
+    evidence: legacyExists ? safeLegacyUserDataDir : '',
+    notes: legacyExists ? 'Legacy directory exists.' : `Legacy directory missing: ${safeLegacyUserDataDir}`
   }))
 
   checks.push(createCheck({
     id: 'observed-user-data-dir',
     status: observed ? (observed === legacyResolved ? 'pass' : 'fail') : 'pending',
-    evidence: observed || '',
+    evidence: safeObservedUserDataDir || '',
     notes: observed
-      ? (observed === legacyResolved ? 'Observed userData resolves to the legacy directory.' : `Observed userData did not resolve to legacy directory: ${legacyResolved}`)
+      ? (observed === legacyResolved ? 'Observed userData resolves to the legacy directory.' : `Observed userData did not resolve to legacy directory: ${safeLegacyUserDataDir}`)
       : 'Pass --observed-user-data-dir from the packaged smoke run before claiming upgrade readiness.'
   }))
 
   checks.push(createCheck({
     id: 'settings-preserved',
     status: settingsResult.ok ? 'pass' : 'fail',
-    evidence: settingsResult.ok ? path.join(legacyUserDataDir, 'settings.json') : '',
+    evidence: settingsResult.ok ? safeSettingsPath : '',
     notes: settingsResult.ok ? 'settings.json is readable JSON.' : `settings.json missing or unreadable: ${settingsResult.error}`
   }))
 
   checks.push(createCheck({
     id: 'secrets-preserved',
     status: fileExists(path.join(legacyUserDataDir, 'secrets.json'), fsImpl) ? 'pass' : 'fail',
-    evidence: fileExists(path.join(legacyUserDataDir, 'secrets.json'), fsImpl) ? path.join(legacyUserDataDir, 'secrets.json') : '',
+    evidence: fileExists(path.join(legacyUserDataDir, 'secrets.json'), fsImpl) ? safeSecretsPath : '',
     notes: 'Seed a legacy secrets.json fixture before the RC upgrade smoke run.'
   }))
 
@@ -142,7 +174,7 @@ const createChecks = ({ legacyUserDataDir, currentUserDataDir, observedUserDataD
   checks.push(createCheck({
     id: 'openpet-dir-not-active',
     status: currentStateEntries.length === 0 ? 'pass' : 'fail',
-    evidence: currentStateEntries.length === 0 ? `No active state files in ${currentUserDataDir}` : currentStateEntries.join(', '),
+    evidence: currentStateEntries.length === 0 ? `No active state files in ${safeCurrentUserDataDir}` : currentStateEntries.join(', '),
     notes: currentStateEntries.length === 0
       ? 'OpenPet-named directory is absent or has no active state files.'
       : 'OpenPet-named directory contains state files and may have become an active data source.'
@@ -169,6 +201,16 @@ const createRcUpgradeSmokeReport = ({
   const settingsPath = path.join(legacyUserDataDir, 'settings.json')
   const settingsResult = safeReadJson(settingsPath, fsImpl)
   const packageJson = JSON.parse(fsImpl.readFileSync(packageJsonPath, 'utf-8'))
+  const safeAppDataDir = createSafeProjectPath(absoluteAppDataDir, DEFAULT_APP_DATA_DIR_LABEL)
+  const safeLegacyUserDataDir = joinPosixPath(safeAppDataDir, legacyDirName)
+  const safeCurrentUserDataDir = joinPosixPath(safeAppDataDir, currentDirName)
+  const safeObservedUserDataDir = observedUserDataDir
+    ? createSafeProjectPath(path.resolve(observedUserDataDir), safeLegacyUserDataDir)
+    : ''
+  const safeSettingsPath = joinPosixPath(safeLegacyUserDataDir, 'settings.json')
+  const safeSecretsPath = joinPosixPath(safeLegacyUserDataDir, 'secrets.json')
+  const safePluginsPath = joinPosixPath(safeLegacyUserDataDir, 'plugins')
+  const safePetPacksPath = joinPosixPath(safeLegacyUserDataDir, 'pet-packs')
 
   return {
     platform,
@@ -176,10 +218,10 @@ const createRcUpgradeSmokeReport = ({
     generatedAt: now().toISOString(),
     source: 'scripts/create-rc-upgrade-smoke-report.js',
     environment: {
-      appDataDir: absoluteAppDataDir,
-      legacyUserDataDir,
-      currentUserDataDir,
-      observedUserDataDir: observedUserDataDir ? path.resolve(observedUserDataDir) : '',
+      appDataDir: safeAppDataDir,
+      legacyUserDataDir: safeLegacyUserDataDir,
+      currentUserDataDir: safeCurrentUserDataDir,
+      observedUserDataDir: safeObservedUserDataDir,
       machine: hostname()
     },
     artifact: {
@@ -189,13 +231,24 @@ const createRcUpgradeSmokeReport = ({
       currentDirName
     },
     fixture: {
-      settings: settingsPath,
-      secrets: path.join(legacyUserDataDir, 'secrets.json'),
-      plugins: path.join(legacyUserDataDir, 'plugins'),
-      petPacks: path.join(legacyUserDataDir, 'pet-packs')
+      settings: safeSettingsPath,
+      secrets: safeSecretsPath,
+      plugins: safePluginsPath,
+      petPacks: safePetPacksPath
     },
     checks: dirExists(legacyUserDataDir, fsImpl)
-      ? createChecks({ legacyUserDataDir, currentUserDataDir, observedUserDataDir, settingsResult, fsImpl })
+      ? createChecks({
+        legacyUserDataDir,
+        currentUserDataDir,
+        observedUserDataDir,
+        settingsResult,
+        safeLegacyUserDataDir,
+        safeCurrentUserDataDir,
+        safeObservedUserDataDir,
+        safeSettingsPath,
+        safeSecretsPath,
+        fsImpl
+      })
       : createPendingChecks()
   }
 }

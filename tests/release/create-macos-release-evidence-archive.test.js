@@ -79,6 +79,20 @@ test('createMacosReleaseEvidenceArchive copies unsigned artifact evidence withou
   assert.equal(manifest.source.artifactName, 'openpet-macos-release-evidence-v1.0.1-rc.2')
   assert.equal(manifest.source.releaseTag, 'v1.0.1-rc.2')
   assert.equal(manifest.files.length, 5)
+  assert.equal(path.isAbsolute(manifest.archive.archiveDir), false)
+  assert.equal(path.isAbsolute(manifest.archive.outputPath), false)
+  assert.equal(path.isAbsolute(manifest.source.artifactDir), false)
+  assert.equal(manifest.source.artifactDir, 'downloaded-artifact')
+  assert.deepEqual(
+    manifest.files.map((file) => [file.fileName, file.sourcePath, file.archivedPath]),
+    [
+      ['macos-codesign.txt', 'macos-codesign.txt', 'macos-codesign.txt'],
+      ['macos-notarization.txt', 'macos-notarization.txt', 'macos-notarization.txt'],
+      ['macos-gatekeeper.txt', 'macos-gatekeeper.txt', 'macos-gatekeeper.txt'],
+      ['macos-release-evidence-summary.md', 'macos-release-evidence-summary.md', 'macos-release-evidence-summary.md'],
+      ['macos-release-evidence-summary.json', 'macos-release-evidence-summary.json', 'macos-release-evidence-summary.json']
+    ]
+  )
   assert.deepEqual(
     manifest.files.filter((file) => file.releaseReady === false).map((file) => file.role),
     ['macosCodesignEvidence', 'macosNotarizationEvidence', 'macosGatekeeperEvidence']
@@ -90,6 +104,7 @@ test('createMacosReleaseEvidenceArchive copies unsigned artifact evidence withou
   assert.equal(fs.existsSync(path.join(archiveDir, 'macos-release-evidence-summary.json')), true)
   assert.equal(fs.existsSync(path.join(archiveDir, 'macos-release-evidence-artifact-manifest.json')), true)
   assert.match(manifest.warnings.join('\n'), /does not prove official signed release readiness/)
+  assert.equal(manifest.archive.outputPath, 'docs/release-evidence/macos-release-evidence-archive/macos-release-evidence-artifact-manifest.json')
 })
 
 test('createMacosReleaseEvidenceArchive marks passing-looking evidence only as evidence-ready', () => {

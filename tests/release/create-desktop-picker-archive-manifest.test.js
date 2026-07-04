@@ -148,6 +148,27 @@ test('createDesktopPickerArchiveManifest records a complete pending archive with
   assert.equal(manifest.report.readinessValidation.ok, false)
 })
 
+test('createDesktopPickerArchiveManifest stores archive-safe relative paths in its contract', () => {
+  const { archiveDir } = createArchive()
+
+  const manifest = createDesktopPickerArchiveManifest({ archiveDir, now: fixedNow })
+
+  assert.equal(path.isAbsolute(manifest.archive.archiveDir), false)
+  assert.equal(path.isAbsolute(manifest.archive.outputPath), false)
+  assert.equal(path.isAbsolute(manifest.report.path), false)
+  assert.equal(path.isAbsolute(manifest.summary.path), false)
+  assert.equal(path.isAbsolute(manifest.evidence.evidenceDir), false)
+  assert.deepEqual(
+    manifest.files.map((file) => file.path),
+    [
+      'desktop-picker-smoke-report.json',
+      'desktop-picker-smoke-runbook.md',
+      'desktop-picker-evidence-summary.md'
+    ]
+  )
+  assert.ok(manifest.evidence.files.every((file) => file.path.startsWith('desktop-picker-evidence/')))
+})
+
 test('createDesktopPickerArchiveManifest fails when required archive files are missing', () => {
   const { archiveDir } = createArchive()
   fs.unlinkSync(path.join(archiveDir, 'desktop-picker-smoke-runbook.md'))
@@ -217,5 +238,7 @@ test('writeManifest writes a pretty JSON desktop picker archive manifest', () =>
   const manifest = createDesktopPickerArchiveManifest({ archiveDir, outputPath, now: fixedNow })
 
   assert.equal(writeManifest({ manifest, outputPath }), outputPath)
-  assert.equal(JSON.parse(fs.readFileSync(outputPath, 'utf-8')).releaseReady, false)
+  const written = JSON.parse(fs.readFileSync(outputPath, 'utf-8'))
+  assert.equal(written.releaseReady, false)
+  assert.equal(written.archive.outputPath, 'desktop-picker-archive/manifest/desktop-picker-archive-manifest.json')
 })

@@ -149,8 +149,12 @@ test('updateReport updates environment, artifact, fixture, and selected check ev
   const report = createPendingReport()
   const updated = updateReport(report, {
     envUpdates: [{ key: 'machine', value: 'mac-smoke-host-2' }],
-    artifactUpdates: [{ key: 'signed', value: 'true' }, { key: 'signatureStatus', value: 'Valid' }],
-    fixtureUpdates: [{ key: 'pluginPackage', value: 'fixtures/focus.openpet-plugin.zip' }],
+    artifactUpdates: [
+      { key: 'signed', value: 'true' },
+      { key: 'signatureStatus', value: 'Valid' },
+      { key: 'releaseDir', value: '/tmp/custom-release' }
+    ],
+    fixtureUpdates: [{ key: 'pluginPackage', value: '/tmp/focus.openpet-plugin.zip' }],
     checkId: 'plugin-picker-cancel',
     status: 'pass',
     evidence: 'Canceled native picker without side effects',
@@ -160,7 +164,8 @@ test('updateReport updates environment, artifact, fixture, and selected check ev
   assert.equal(updated.environment.machine, 'mac-smoke-host-2')
   assert.equal(updated.artifact.signed, true)
   assert.equal(updated.artifact.signatureStatus, 'Valid')
-  assert.equal(updated.fixture.pluginPackage, 'fixtures/focus.openpet-plugin.zip')
+  assert.equal(updated.artifact.releaseDir, 'release')
+  assert.equal(updated.fixture.pluginPackage, 'focus.openpet-plugin.zip')
   const check = updated.checks.find((item) => item.id === 'plugin-picker-cancel')
   assert.equal(check.status, 'pass')
   assert.equal(check.evidence, 'Canceled native picker without side effects')

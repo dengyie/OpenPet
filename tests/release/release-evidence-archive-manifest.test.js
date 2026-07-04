@@ -344,8 +344,10 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
   assert.equal(manifest.requireSigned, true)
   assert.equal(typeof manifest.ok, 'boolean')
   assert.equal(typeof manifest.releaseReady, 'boolean')
-  assert.equal(manifest.archive.archiveDir, archiveDir)
-  assert.match(manifest.archive.outputPath, /release-evidence-archive-manifest\.json$/)
+  assert.equal(path.isAbsolute(manifest.archive.archiveDir), false)
+  assert.equal(path.isAbsolute(manifest.archive.outputPath), false)
+  assert.equal(manifest.archive.archiveDir, 'release-evidence-archive')
+  assert.equal(manifest.archive.outputPath, 'release-evidence-archive/release-evidence-archive-manifest.json')
   assert.deepEqual(
     manifest.files.map((file) => [file.role, typeof file.path, typeof file.exists, typeof file.bytes, typeof file.sha256]),
     [
@@ -373,6 +375,19 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
   assert.equal(typeof manifest.archives.desktopPicker.ok, 'boolean')
   assert.equal(typeof manifest.archives.desktopPicker.releaseReady, 'boolean')
   assert.equal(typeof manifest.archives.desktopPicker.matchesReport, 'boolean')
+  assert.deepEqual(
+    manifest.files.map((file) => file.path),
+    [
+      'windows-smoke-report.json',
+      'windows-smoke-archive-manifest.json',
+      'desktop-picker-smoke-report.json',
+      'desktop-picker-archive-manifest.json',
+      'packaged-runtime-smoke-report.json',
+      'macos-codesign.txt',
+      'macos-notarization.txt',
+      'macos-gatekeeper.txt'
+    ]
+  )
   assert.ok(Array.isArray(manifest.errors))
   assert.ok(Array.isArray(manifest.warnings))
 })
@@ -520,5 +535,5 @@ test('writeManifest writes a pretty release evidence archive manifest', () => {
   assert.equal(writeManifest({ manifest, outputPath }), outputPath)
   const written = JSON.parse(fs.readFileSync(outputPath, 'utf-8'))
   assert.equal(written.releaseReady, false)
-  assert.equal(written.archive.outputPath, outputPath)
+  assert.equal(written.archive.outputPath, 'release-evidence-archive/nested/manifest.json')
 })
