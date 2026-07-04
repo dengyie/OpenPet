@@ -91,6 +91,12 @@ test('image generation model service exposes a renderer-safe unified provider co
   assert.equal(config.model, 'gpt-image-1')
   assert.equal(config.hasApiKey, true)
   assert.equal(config.apiKeyPreview, '••••abcd')
+  assert.deepEqual(config.modelCatalog, {
+    cacheKey: '',
+    models: [],
+    fetchedAt: '',
+    source: 'none'
+  })
   assert.equal(Object.hasOwn(config, 'apiKey'), false)
   assert.equal(Object.hasOwn(config, 'cloud'), false)
   assert.equal(Object.hasOwn(config, 'local'), false)
@@ -343,6 +349,30 @@ test('image generation model service discovers available models through the opti
   assert.deepEqual(result.models, ['gpt-image-2', 'openpet-image-test'])
   assert.equal(requests[0].url, 'https://images-models.example.test/v1/models')
   assert.equal(requests[0].options.method, 'GET')
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['gpt-image-2', 'openpet-image-test'])
+  assert.equal(service.getConfig().modelCatalog.source, 'saved')
+})
+
+test('image generation model service only exposes cached models for the active provider owner key', () => {
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({
+      baseUrl: 'https://images-models.example.test/v1',
+      modelCatalog: {
+        cacheKey: 'image:openai-compatible:https://old-images.example.test/v1',
+        models: ['stale-image-model'],
+        fetchedAt: '2026-07-04T00:00:00.000Z',
+        source: 'saved'
+      }
+    })),
+    secretService: createSecretService()
+  })
+
+  assert.deepEqual(service.getConfig().modelCatalog, {
+    cacheKey: '',
+    models: [],
+    fetchedAt: '',
+    source: 'none'
+  })
 })
 
 test('image generation model service can bound health probe time with an explicit timeout override', async () => {

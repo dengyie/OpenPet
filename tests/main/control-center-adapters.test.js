@@ -56,7 +56,13 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       rules: [{ id: 'rule-1' }],
       decisions: [],
     },
-    hasApiKey: true
+    hasApiKey: true,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
 })
 
@@ -239,7 +245,13 @@ test('image generation adapters normalize provider payloads for Control Center',
     maxConcurrentJobs: 2,
     hasApiKey: true,
     apiKeyPreview: '',
-    apiKeyLabel: 'Image API Key'
+    apiKeyLabel: 'Image API Key',
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
 
   assert.deepEqual(createImageGenerationApiKeyResult({

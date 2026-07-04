@@ -13,11 +13,13 @@ import type {
   AiTalkTraceSummaryViewState,
   ChatMessage,
   ImageGenerationConfigViewState,
+  ProviderModelCatalogViewState,
   ProviderModelDiscoveryResult,
   PetChatStateViewState
 } from '../../../shared/openpet-contracts'
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
+import { formatProviderModelCatalogMeta, mergeRecommendedAndCachedModels } from '../lib/provider-model-catalog'
 
 type ImageProviderPreset = {
   id: string
@@ -45,11 +47,62 @@ type ProviderStatusItemProps = {
   tone?: 'default' | 'ok' | 'warn'
 }
 
+type ProviderModelPickerProps = {
+  ariaLabel: string
+  currentModel: string
+  cachedCatalog: ProviderModelCatalogViewState
+  recommendedModels?: string[]
+  onSelectModel: (model: string) => void
+}
+
 function ProviderStatusItem({ label, value, tone = 'default' }: ProviderStatusItemProps) {
   return (
     <div className={`provider-status-item provider-status-item-${tone}`}>
       <strong>{label}</strong>
       <span>{value}</span>
+    </div>
+  )
+}
+
+function ProviderModelPicker({
+  ariaLabel,
+  currentModel,
+  cachedCatalog,
+  recommendedModels = [],
+  onSelectModel
+}: ProviderModelPickerProps) {
+  const options = mergeRecommendedAndCachedModels({
+    currentModel,
+    recommendedModels,
+    cachedModels: cachedCatalog.models
+  })
+  if (!options.length) {
+    return (
+      <div className="provider-model-picker">
+        <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
+      </div>
+    )
+  }
+
+  const normalizedCurrentModel = String(currentModel || '').trim()
+  const selectValue = options.includes(normalizedCurrentModel) ? normalizedCurrentModel : ''
+
+  return (
+    <div className="provider-model-picker">
+      <select
+        aria-label={ariaLabel}
+        className="text-input"
+        value={selectValue}
+        onChange={(event) => {
+          if (event.target.value) onSelectModel(event.target.value)
+        }}
+      >
+        <option value="">从缓存模型中选择</option>
+        {options.map((modelName) => (
+          <option key={modelName} value={modelName}>{modelName}</option>
+        ))}
+      </select>
+      <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
     </div>
   )
 }
@@ -681,6 +734,12 @@ export function AiPane({
   const imageTargetSummary = `${activeImageGenerationConfig.provider} · ${activeImageGenerationConfig.baseUrl} · ${activeImageGenerationConfig.model} · ${activeImageGenerationConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
   const imageModelCompatibility = describeImageModelCompatibility(imageGenerationConfig.baseUrl, imageGenerationConfig.model)
   const chatModelCompatibility = describeChatModelCompatibility(config.baseUrl, config.model)
+  const chatRecommendedModels = chatProviderPresets
+    .map((preset) => String(preset.model || '').trim())
+    .filter(Boolean)
+  const imageRecommendedModels = imageProviderPresets
+    .map((preset) => String(preset.model || '').trim())
+    .filter(Boolean)
   const hasUnsavedChatProbeInputs = hasUnsavedConfigChanges || hasUnsavedApiKeyDraft
   const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
   const activeChatHostSummary = getProviderHostSummary(activeConfig.baseUrl)
@@ -806,12 +865,24 @@ export function AiPane({
                   />
                 </label>
 
+                <div className="field-row">
+                  <span className="field-label">缓存模型</span>
+                  <ProviderModelPicker
+                    ariaLabel="聊天缓存模型选择"
+                    currentModel={config.model}
+                    cachedCatalog={activeConfig.modelCatalog}
+                    recommendedModels={chatRecommendedModels}
+                    onSelectModel={(model) => onChange({ model })}
+                  />
+                </div>
+
                 <label className="field-row">
                   <span className="field-label">Model</span>
                   <input
                     aria-label="聊天 Model"
                     className="text-input"
                     value={config.model}
+                    placeholder="可从上方缓存列表选择，也可直接手填"
                     onChange={(event) => onChange({ model: event.target.value })}
                   />
                 </label>
@@ -1014,12 +1085,24 @@ export function AiPane({
                   />
                 </label>
 
+                <div className="field-row">
+                  <span className="field-label">缓存模型</span>
+                  <ProviderModelPicker
+                    ariaLabel="图片缓存模型选择"
+                    currentModel={imageGenerationConfig.model}
+                    cachedCatalog={activeImageGenerationConfig.modelCatalog}
+                    recommendedModels={imageRecommendedModels}
+                    onSelectModel={(model) => onChangeImageGeneration({ model })}
+                  />
+                </div>
+
                 <label className="field-row">
                   <span className="field-label">图片 Model</span>
                   <input
                     aria-label="图片 Model"
                     className="text-input"
                     value={imageGenerationConfig.model}
+                    placeholder="可从上方缓存列表选择，也可直接手填"
                     onChange={(event) => onChangeImageGeneration({ model: event.target.value })}
                   />
                 </label>

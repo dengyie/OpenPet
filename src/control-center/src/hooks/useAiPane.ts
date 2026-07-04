@@ -24,6 +24,11 @@ import {
   normalizeProviderBaseUrl,
   validateProviderConfig
 } from '../lib/ai-provider-config'
+import {
+  applySavedAiConfigState,
+  applySavedImageGenerationConfigState
+} from '../lib/provider-config-state'
+import { formatProviderModelCatalogMeta } from '../lib/provider-model-catalog'
 import type {
   AiBehaviorConfig,
   AiBehaviorResult,
@@ -349,6 +354,28 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
+
+  const loadAiConfig = async ({ preserveDraft = false } = {}) => {
+    const nextConfig = cloneAiConfig(await api.getAiConfig())
+    setConfig((current) => applySavedAiConfigState({
+      draftConfig: current,
+      savedConfig: nextConfig,
+      preserveDraft
+    }).config)
+    setActiveConfig(nextConfig)
+    return nextConfig
+  }
+
+  const loadImageGenerationConfig = async ({ preserveDraft = false } = {}) => {
+    const nextConfig = cloneImageGenerationConfig(await api.getImageGenerationConfig())
+    setImageGenerationConfig((current) => applySavedImageGenerationConfigState({
+      draftConfig: current,
+      savedConfig: nextConfig,
+      preserveDraft
+    }).imageGenerationConfig)
+    setActiveImageGenerationConfig(nextConfig)
+    return nextConfig
+  }
 
   const loadAiTalkTraceSummary = async (conversationId?: string) => {
     try {
@@ -720,15 +747,23 @@ export function useAiPane(activeTab = 'ai') {
       setImageHealthResult(null)
       return
     }
+    if (hasUnsavedImageApiKeyDraft) {
+      setImageHealthStatus('当前图片 API Key 草稿未保存；请先保存图片密钥后再检查健康。')
+      setImageHealthResult(null)
+      return
+    }
     setSaving(true)
     setImageHealthStatus('图片 Provider 健康检查中')
     setImageHealthResult(null)
     try {
       const result = await api.checkImageGenerationHealth({})
+      const nextActiveImageConfig = result.modelsProbe === 'ok'
+        ? await loadImageGenerationConfig({ preserveDraft: true })
+        : activeImageGenerationConfig
       setImageHealthResult(result)
-      const discovery = createImageModelDiscoveryFromHealth(result, activeImageGenerationConfig)
+      const discovery = createImageModelDiscoveryFromHealth(result, nextActiveImageConfig)
       setImageModelDiscovery(discovery)
-      setImageModelDiscoveryStatus(formatModelDiscoveryStatus('图片 Provider', discovery))
+      setImageModelDiscoveryStatus(`${formatModelDiscoveryStatus('图片 Provider', discovery)} ${formatProviderModelCatalogMeta(nextActiveImageConfig.modelCatalog)}`.trim())
       setImageHealthStatus(formatImageGenerationHealthStatus(result))
     } catch (error) {
       setImageHealthResult(null)
@@ -749,8 +784,11 @@ export function useAiPane(activeTab = 'ai') {
     setChatModelDiscoveryStatus('聊天模型探测中')
     try {
       const result = await api.discoverAiModels()
+      const nextActiveConfig = result.ok && result.code === 'ok'
+        ? await loadAiConfig({ preserveDraft: true })
+        : activeConfig
       setChatModelDiscovery(result)
-      setChatModelDiscoveryStatus(formatModelDiscoveryStatus('聊天 Provider', result))
+      setChatModelDiscoveryStatus(`${formatModelDiscoveryStatus('聊天 Provider', result)} ${formatProviderModelCatalogMeta(nextActiveConfig.modelCatalog)}`.trim())
     } catch (error) {
       setChatModelDiscovery(null)
       setChatModelDiscoveryStatus(messageFromError(error, '聊天模型探测失败'))
@@ -768,8 +806,11 @@ export function useAiPane(activeTab = 'ai') {
     setImageModelDiscoveryStatus('图片模型探测中')
     try {
       const result = await api.discoverImageGenerationModels()
+      const nextActiveImageConfig = result.ok && result.code === 'ok'
+        ? await loadImageGenerationConfig({ preserveDraft: true })
+        : activeImageGenerationConfig
       setImageModelDiscovery(result)
-      setImageModelDiscoveryStatus(formatModelDiscoveryStatus('图片 Provider', result))
+      setImageModelDiscoveryStatus(`${formatModelDiscoveryStatus('图片 Provider', result)} ${formatProviderModelCatalogMeta(nextActiveImageConfig.modelCatalog)}`.trim())
     } catch (error) {
       setImageModelDiscovery(null)
       setImageModelDiscoveryStatus(messageFromError(error, '图片模型探测失败'))
@@ -784,10 +825,13 @@ export function useAiPane(activeTab = 'ai') {
     setConnectionTestResult(null)
     try {
       const result = await api.testAiConnection()
+      const nextActiveConfig = result.modelsProbe === 'ok'
+        ? await loadAiConfig({ preserveDraft: true })
+        : activeConfig
       setConnectionTestResult(result)
       const discovery = createChatModelDiscoveryFromConnectionTest(result)
       setChatModelDiscovery(discovery)
-      setChatModelDiscoveryStatus(formatModelDiscoveryStatus('聊天 Provider', discovery))
+      setChatModelDiscoveryStatus(`${formatModelDiscoveryStatus('聊天 Provider', discovery)} ${formatProviderModelCatalogMeta(nextActiveConfig.modelCatalog)}`.trim())
       setConnectionStatus(formatConnectionStatus({
         result,
         hasUnsavedConfigChanges,
