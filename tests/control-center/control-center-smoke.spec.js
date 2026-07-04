@@ -15,6 +15,8 @@ const providerCard = (page, name) => (
   page.getByTestId(name === '图片 Provider' ? 'image-provider-card' : 'chat-provider-card')
 )
 
+const providerCardSummary = (section) => section.locator('.provider-capability-summary')
+
 const providerStatusItem = (section, label) => (
   section.locator('.provider-status-item').filter({ hasText: new RegExp(`^${escapeRegExp(label)}\\s*`) })
 )
@@ -36,6 +38,10 @@ const expandAiSection = async (page, name) => {
     await expect(providerSection).toHaveAttribute('open', '')
     const card = providerCard(page, name)
     await expect(card).toHaveCount(1)
+    if (await card.getAttribute('open') === null) {
+      await providerCardSummary(card).click()
+    }
+    await expect(card).toHaveAttribute('open', '')
     return card
   }
 
@@ -183,6 +189,33 @@ test.describe('Control Center smoke', () => {
 
     await openProviderDisclosure(chatSection, '显示高级聊天配置')
     await expect(chatSection.getByLabel('System Prompt')).toBeVisible()
+  })
+
+  test('supports collapsing and reopening chat and image provider panels', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatSection = providerCard(page, '聊天 Provider')
+    const imageSection = providerCard(page, '图片 Provider')
+
+    await expect(chatSection).toHaveAttribute('open', '')
+    await expect(imageSection).toHaveAttribute('open', '')
+
+    await providerCardSummary(chatSection).click()
+    await expect(chatSection).not.toHaveAttribute('open', '')
+    await expect(chatSection.getByRole('button', { name: '保存聊天 Provider' })).toBeHidden()
+
+    await providerCardSummary(chatSection).click()
+    await expect(chatSection).toHaveAttribute('open', '')
+    await expect(chatSection.getByRole('button', { name: '保存聊天 Provider' })).toBeVisible()
+
+    await providerCardSummary(imageSection).click()
+    await expect(imageSection).not.toHaveAttribute('open', '')
+    await expect(imageSection.getByRole('button', { name: '保存图片 Provider' })).toBeHidden()
+
+    await providerCardSummary(imageSection).click()
+    await expect(imageSection).toHaveAttribute('open', '')
+    await expect(imageSection.getByRole('button', { name: '保存图片 Provider' })).toBeVisible()
   })
 
   test('keeps key Pet and About interactions responsive', async ({ page }) => {

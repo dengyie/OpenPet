@@ -340,6 +340,74 @@ button {
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
 }
 
+.provider-capability-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.provider-capability-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.provider-capability-summary::-webkit-details-marker {
+  display: none;
+}
+
+.provider-capability-summary-main {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.provider-capability-summary h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.provider-capability-summary p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.provider-capability-caret {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #cfd6df;
+  border-radius: 999px;
+  color: #475569;
+  transition: transform 160ms ease;
+}
+
+.provider-capability-panel[open] .provider-capability-caret {
+  transform: rotate(180deg);
+}
+
+.provider-capability-body {
+  display: grid;
+  padding: 0 18px 18px;
+  border-top: 1px solid #dde2e8;
+}
+
+.provider-inline-summary-compact {
+  min-width: 0;
+}
+
+.provider-capability-panel:not([open]) .provider-capability-summary {
+  border-bottom: 0;
+}
+
 .provider-card-header {
   display: grid;
   gap: 14px;
