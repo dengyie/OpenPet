@@ -265,6 +265,25 @@ test('image generation model service exposes a creator workflow model policy wit
   assert.deepEqual(config.creatorWorkflowModelPolicy, {
     evidenceScope: 'creator-one-click-default',
     preferredModel: 'gpt-image-2',
+    verifiedModels: ['gpt-image-2'],
+    fallbackModels: [],
+    discoveredModels: ['gpt-image-1.5', 'gpt-image-2', 'grok-imagine-image'],
+    preferredModelVerified: true
+  })
+})
+
+test('image generation model service does not let config saves retarget the provider api key ref', () => {
+  const settingsService = createSettingsService()
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService()
+  })
+
+  const config = service.getConfig()
+
+  assert.deepEqual(config.creatorWorkflowModelPolicy, {
+    evidenceScope: 'creator-one-click-default',
+    preferredModel: 'gpt-image-2',
     verifiedModels: ['gpt-image-1.5', 'gpt-image-2'],
     fallbackModels: ['gpt-image-1.5'],
     discoveredModels: ['gpt-image-1.5', 'gpt-image-2', 'grok-imagine-image'],

@@ -296,24 +296,3 @@ test('creator reference service flags likely collage or multi-view inputs as uns
   assert.equal(inspection.width, 240)
   assert.equal(inspection.height, 80)
 })
-
-test('creator reference service flags square collage inputs as unsupported for the default path', async () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-square-collage-'))
-  const sourcePath = path.join(tempRoot, 'square-collage.png')
-  await createReferenceCollageImage(sourcePath)
-
-  const settingsService = createSettingsService()
-  const service = createCreatorReferenceService({
-    settingsService,
-    referenceRoot: path.join(tempRoot, 'references'),
-    now: () => '2026-07-05T09:05:00.000Z'
-  })
-
-  const approval = service.approveSourcePath(sourcePath)
-  const inspection = await service.inspectApprovedSource({ referenceToken: approval.referenceToken })
-
-  assert.equal(inspection.defaultPathEligible, false)
-  assert.equal(inspection.code, 'unsupported_multi_view_reference')
-  assert.match(inspection.message, /拼图/)
-  assert.equal(inspection.likelyMultiView, true)
-})

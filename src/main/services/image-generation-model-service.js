@@ -29,13 +29,7 @@ const DEFAULT_CONFIG = {
 }
 
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
-const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
-const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
-const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2', 'gpt-image-1', 'gpt-image-1.5'])
-const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
-
-const normalizeImageModelCapabilityKey = (value) => String(value || '').trim().toLowerCase()
-const isGptImage2Model = (value) => normalizeImageModelCapabilityKey(value) === 'gpt-image-2'
+const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -314,7 +308,7 @@ const sanitizeModelId = (value) => String(value || '')
   .trim()
 
 const isVerifiedCreatorWorkflowImageModel = (value) => VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS
-  .includes(normalizeImageModelCapabilityKey(sanitizeModelId(value)))
+  .includes(sanitizeModelId(value))
 
 const createCreatorWorkflowModelPolicy = ({ config = {}, storedState = {} }) => {
   const catalog = getScopedProviderModelCatalog({
@@ -327,27 +321,20 @@ const createCreatorWorkflowModelPolicy = ({ config = {}, storedState = {} }) => 
     ? uniqueModelIds(catalog.models.map(sanitizeModelId).filter(Boolean))
     : []
   const preferredModel = sanitizeModelId(config.model)
-  const verifiedModelsByCapability = new Map()
-  const addVerifiedModel = (modelId) => {
-    const capabilityKey = normalizeImageModelCapabilityKey(modelId)
-    if (!capabilityKey || verifiedModelsByCapability.has(capabilityKey)) return
-    verifiedModelsByCapability.set(capabilityKey, modelId)
-  }
-  if (isVerifiedCreatorWorkflowImageModel(preferredModel)) addVerifiedModel(preferredModel)
-  discoveredModels.filter(isVerifiedCreatorWorkflowImageModel).forEach(addVerifiedModel)
-  const verifiedModels = uniqueModelIds([...verifiedModelsByCapability.values()])
-  const preferredCapabilityKey = normalizeImageModelCapabilityKey(preferredModel)
+  const verifiedModels = uniqueModelIds([
+    ...(isVerifiedCreatorWorkflowImageModel(preferredModel) ? [preferredModel] : []),
+    ...discoveredModels.filter(isVerifiedCreatorWorkflowImageModel)
+  ])
   return {
     evidenceScope: 'creator-one-click-default',
     preferredModel,
     verifiedModels,
-    fallbackModels: verifiedModels.filter((modelId) => (
-      normalizeImageModelCapabilityKey(modelId) !== preferredCapabilityKey
-    )),
+    fallbackModels: verifiedModels.filter((modelId) => modelId !== preferredModel),
     discoveredModels,
     preferredModelVerified: isVerifiedCreatorWorkflowImageModel(preferredModel)
   }
 }
+
 const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
   if (Array.isArray(body.data)) return ''

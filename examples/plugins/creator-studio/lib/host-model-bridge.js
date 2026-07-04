@@ -155,18 +155,32 @@ const buildHostPromptCandidateModels = ({ settings = {}, preferredModel = '' }) 
     seen.add(key)
     candidates.push(model)
   }
-  addCandidate(preferredModel)
-  const verifiedModels = new Set(
-    (Array.isArray(settings?.creatorWorkflowModelPolicy?.verifiedModels)
-      ? settings.creatorWorkflowModelPolicy.verifiedModels
-      : [])
-      .map((model) => normalizeModelName(model).toLowerCase())
-      .filter(Boolean)
+  const normalizedPreferredModel = normalizeModelName(preferredModel)
+  const hasHostWorkflowModelPolicy = Boolean(
+    settings?.creatorWorkflowModelPolicy &&
+    Array.isArray(settings.creatorWorkflowModelPolicy.verifiedModels)
   )
-  for (const fallbackModel of Array.isArray(settings?.creatorWorkflowModelPolicy?.fallbackModels)
+  const hostPolicyVerifiedModels = Array.isArray(settings?.creatorWorkflowModelPolicy?.verifiedModels)
+    ? settings.creatorWorkflowModelPolicy.verifiedModels
+    : []
+  const hostPolicyFallbackModels = Array.isArray(settings?.creatorWorkflowModelPolicy?.fallbackModels)
     ? settings.creatorWorkflowModelPolicy.fallbackModels
-    : []) {
-    if (verifiedModels.has(normalizeModelName(fallbackModel).toLowerCase())) addCandidate(fallbackModel)
+    : []
+  if (hasHostWorkflowModelPolicy) {
+    const preferredModelVerified = normalizedPreferredModel &&
+      hostPolicyVerifiedModels.some((candidate) => normalizeModelName(candidate) === normalizedPreferredModel)
+    if (preferredModelVerified) addCandidate(normalizedPreferredModel)
+    for (const candidate of hostPolicyVerifiedModels) addCandidate(candidate)
+    for (const candidate of hostPolicyFallbackModels) addCandidate(candidate)
+    return candidates
+  }
+  addCandidate(normalizedPreferredModel)
+  for (const candidate of KNOWN_FALLBACK_IMAGE_MODELS) {
+    if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
+  }
+  const discoveredModels = Array.isArray(settings?.modelCatalog?.models) ? settings.modelCatalog.models : []
+  for (const candidate of discoveredModels) {
+    if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
   }
   return candidates
 }
@@ -619,77 +633,21 @@ const generateWithModelFallback = async ({
   buildPromptForModel = null,
   callHostImageGenerateImpl = callHostImageGenerate
 }) => {
-  assertExactlyOneProviderReferenceImage(referenceImages)
-  const startedAtMs = Date.now()
-  const effectiveTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
-  const candidateModels = buildHostPromptCandidateModels({ settings, preferredModel })
-  const promptVariants = candidateModels.map((model, index) => {
-    const promptBuild = typeof buildPromptForModel === 'function'
-      ? buildPromptForModel(model)
-      : index === 0
-        ? { prompt, promptCompiler }
-        : null
-    if (!promptBuild) return null
-    return {
-      model,
-      prompt: String(promptBuild.providerPrompt || promptBuild.prompt || '').trim(),
-      promptCompiler: promptBuild.promptCompiler || null,
-      constraints: promptBuild.promptCompiler
-        ? resolveCompiledPromptConstraints(promptBuild)
-        : { ...constraints }
-    }
-  }).filter((variant) => variant?.prompt)
-  const primaryVariant = promptVariants.find((variant) => (
-    normalizeModelName(variant.model).toLowerCase() === normalizeModelName(preferredModel).toLowerCase()
-  )) || promptVariants[0] || {
-    model: preferredModel,
-    prompt,
-    promptCompiler,
-    constraints
+  const attempts = []
+  const modelCandidates = buildModelCandidateList({ settings, preferredModel })
+  if (modelCandidates.length === 0) {
+    throw new Error('Creator Studio one-click generation has no verified image model available')
   }
-  try {
-    const response = await callHostImageGenerateImpl({
-      expectedModel: normalizeModelName(preferredModel),
-      prompt: primaryVariant.prompt,
-      promptCompiler: primaryVariant.promptCompiler,
-      promptVariants,
-      requestedTimeoutMs: effectiveTimeoutMs,
-      referenceImages,
-      runId,
-      dataRelativeDir,
-      constraints: primaryVariant.constraints
-    })
-    const selectedModel = normalizeModelName(response?.result?.model) || normalizeModelName(preferredModel)
-    const hostAttempts = Array.isArray(response?.result?.modelAttempts)
-      ? response.result.modelAttempts.map((attempt) => createGenerationAttemptRecord({
-          model: attempt?.model,
-          ok: attempt?.ok,
-          error: attempt?.error,
-          timeoutMs: attempt?.timeoutMs,
-          referenceImages,
-          durationMs: attempt?.durationMs
-        }))
-      : []
-    return {
-      response,
-      selectedModel,
-      attempts: hostAttempts.length
-        ? hostAttempts
-        : [createGenerationAttemptRecord({
-            model: selectedModel,
-            ok: true,
-            timeoutMs: effectiveTimeoutMs,
-            referenceImages,
-            durationMs: Date.now() - startedAtMs
-          })]
-    }
-  } catch (error) {
-    if (error && typeof error === 'object') {
-      error.modelAttempts = [createGenerationAttemptRecord({
-        model: preferredModel,
-        ok: false,
-        error: error?.message || error,
-        timeoutMs: effectiveTimeoutMs,
+  let lastError = null
+  for (const model of modelCandidates) {
+    try {
+      const effectiveTimeoutMs = normalizeModelName(model) === normalizeModelName(preferredModel)
+        ? requestedTimeoutMs
+        : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS)
+      const response = await callHostImageGenerate({
+        model,
+        prompt,
+        requestedTimeoutMs: effectiveTimeoutMs,
         referenceImages,
         durationMs: Date.now() - startedAtMs
       })]
