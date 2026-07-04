@@ -7,7 +7,9 @@ const path = require('node:path')
 const {
   createCreatorWorkflowHostSmokeArchive,
   createReadme,
-  parseArgs
+  parseArgs,
+  resolveAcceptanceScope,
+  createWarnings
 } = require('../../scripts/create-creator-workflow-host-smoke-archive')
 
 const fixedNow = () => new Date('2026-07-05T10:00:00.000Z')
@@ -131,12 +133,14 @@ test('parseArgs accepts archive inputs and flags', () => {
     '--session-dir', 'release/session',
     '--archive-dir', 'docs/archive',
     '--output', 'docs/archive/result.json',
+    '--acceptance-scope', 'main',
     '--json'
   ])
 
   assert.equal(options.sessionDir, 'release/session')
   assert.equal(options.archiveDir, 'docs/archive')
   assert.equal(options.outputPath, 'docs/archive/result.json')
+  assert.equal(options.acceptanceScope, 'main')
   assert.equal(options.json, true)
 })
 
@@ -186,6 +190,18 @@ test('createReadme preserves branch-level claim boundary', () => {
   assert.match(readme, /create-creator-workflow-host-smoke-archive\.js/)
 })
 
+test('resolveAcceptanceScope infers main acceptance from explicit flag or archive directory name', () => {
+  assert.equal(resolveAcceptanceScope({ acceptanceScope: 'main', archiveDir: '/tmp/archive' }), 'main')
+  assert.equal(resolveAcceptanceScope({ archiveDir: '/tmp/2026-07-04-main-acceptance' }), 'main')
+  assert.equal(resolveAcceptanceScope({ archiveDir: '/tmp/2026-07-04-dev8-acceptance' }), 'branch')
+})
+
+test('createWarnings keeps acceptance-scope wording truthful', () => {
+  assert.match(createWarnings('branch')[1], /branch acceptance run is sufficient/i)
+  assert.doesNotMatch(createWarnings('main')[1], /branch acceptance run is sufficient/i)
+  assert.match(createWarnings('main')[1], /Human review is still required for art quality/i)
+})
+
 test('createCreatorWorkflowHostSmokeArchive writes a sanitized archive result and README', () => {
   const { rootDir, sessionDir } = createSessionFixture()
   const archiveDir = path.join(rootDir, 'archive', '2026-07-04T21-38-29-834Z-dev8-acceptance')
@@ -197,6 +213,7 @@ test('createCreatorWorkflowHostSmokeArchive writes a sanitized archive result an
   })
 
   assert.equal(result.ok, true)
+  assert.equal(result.acceptanceScope, 'branch')
   assert.equal(result.archive.sessionId, '2026-07-04T21-38-29-834Z')
   assert.equal(result.referenceImage.fileName, '正面.png')
   assert.equal(result.scenarios.length, 2)
@@ -219,6 +236,27 @@ test('createCreatorWorkflowHostSmokeArchive writes a sanitized archive result an
   const archivedReadme = fs.readFileSync(archivedReadmePath, 'utf-8')
   assert.match(archivedReadme, /host-side one-click Creator Workflow smoke run/i)
   assert.match(archivedReadme, /does not by itself prove/i)
+  assert.match(archivedReport.warnings[1], /branch acceptance run is sufficient/i)
+})
+
+test('createCreatorWorkflowHostSmokeArchive writes a main-acceptance README without the branch-only blocker wording', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const archiveDir = path.join(rootDir, 'archive', '2026-07-04T21-56-30-104Z-main-acceptance')
+
+  const result = createCreatorWorkflowHostSmokeArchive({
+    sessionDir,
+    archiveDir,
+    acceptanceScope: 'main',
+    now: fixedNow
+  })
+
+  assert.equal(result.acceptanceScope, 'main')
+  assert.doesNotMatch(result.warnings[1], /branch acceptance run is sufficient/i)
+  const archivedReadme = fs.readFileSync(path.join(archiveDir, 'README.md'), 'utf-8')
+  const archivedReport = JSON.parse(fs.readFileSync(path.join(archiveDir, 'creator-workflow-host-smoke-result.json'), 'utf-8'))
+  assert.match(archivedReadme, /supported one-click path on `main`/i)
+  assert.doesNotMatch(archivedReadme, /main-branch acceptance remains required/i)
+  assert.doesNotMatch(archivedReport.warnings[1], /branch acceptance run is sufficient/i)
 })
 
 test('createCreatorWorkflowHostSmokeArchive rejects missing report files', () => {
