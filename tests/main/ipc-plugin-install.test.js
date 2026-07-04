@@ -1149,21 +1149,30 @@ test('action mutation handlers return contract-shaped results and refreshed anim
           sourceCommandId: proposal.sourceCommandId || ''
         }
       },
-      setTriggerRuleStatus: (ruleId, status) => {
-        calls.push(['set-trigger-rule-status', ruleId, status])
+      updateTriggerRule: (ruleId, updates = {}) => {
+        calls.push(['update-trigger-rule', ruleId, updates])
         return {
           animations,
           rule: {
             id: ruleId,
             actionId: 'wave',
             type: 'state',
-            status,
+            status: updates.status || 'active',
             sourceProposalId: 'proposal:state:wave:test',
             sourcePluginId: 'openpet.creator-studio',
             sourceRunId: 'run-1',
             sourceCommandId: 'import-approved-action',
             message: 'updated',
             preview: 'State trigger rule can play wave when a host state condition matches.',
+            ruleSpec: {
+              schemaVersion: 1,
+              type: 'state',
+              summary: 'Use Wave when focus mode is idle.',
+              state: {
+                predicate: 'focus.mode === idle',
+                source: 'host'
+              }
+            },
             createdAt: '2026-06-22T10:00:00.000Z',
             updatedAt: '2026-06-22T10:01:00.000Z'
           }
@@ -1230,7 +1239,14 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   })
   const updatedRuleResult = await ipcMain.handlers.get(IPC.ACTIONS_UPDATE_TRIGGER_RULE)(null, {
     ruleId: 'rule:state:wave:test',
-    status: 'disabled'
+    status: 'disabled',
+    ruleSpec: {
+      summary: 'Use Wave when focus mode is idle.',
+      state: {
+        predicate: 'focus.mode === idle',
+        source: 'host'
+      }
+    }
   })
   const deletedRuleResult = await ipcMain.handlers.get(IPC.ACTIONS_DELETE_TRIGGER_RULE)(null, {
     ruleId: 'rule:state:wave:test'
@@ -1306,6 +1322,15 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceCommandId: 'import-approved-action',
       message: 'updated',
       preview: 'State trigger rule can play wave when a host state condition matches.',
+      ruleSpec: {
+        schemaVersion: 1,
+        type: 'state',
+        summary: 'Use Wave when focus mode is idle.',
+        state: {
+          predicate: 'focus.mode === idle',
+          source: 'host'
+        }
+      },
       createdAt: '2026-06-22T10:00:00.000Z',
       updatedAt: '2026-06-22T10:01:00.000Z'
     }
@@ -1357,7 +1382,16 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceRunId: 'run-1',
       sourceCommandId: 'import-approved-action'
     }],
-    ['set-trigger-rule-status', 'rule:state:wave:test', 'disabled'],
+    ['update-trigger-rule', 'rule:state:wave:test', {
+      status: 'disabled',
+      ruleSpec: {
+        summary: 'Use Wave when focus mode is idle.',
+        state: {
+          predicate: 'focus.mode === idle',
+          source: 'host'
+        }
+      }
+    }],
     ['delete-trigger-rule', 'rule:state:wave:test'],
     ['delete', 'wave']
   ])

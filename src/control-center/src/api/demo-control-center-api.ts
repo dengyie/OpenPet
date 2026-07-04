@@ -2854,6 +2854,61 @@ export const demoControlCenterAPI: ControlCenterApi = {
       rule: nextRule
     }
   },
+  updateActionTriggerRule: async (payload) => {
+    const rule = demoState.actionsConfig.triggerRules.find((item) => item.id === payload.ruleId)
+    if (!rule) throw new Error('Trigger rule not found')
+    const hasStatusUpdate = payload.status !== undefined
+    const hasRuleSpecUpdate = payload.ruleSpec && typeof payload.ruleSpec === 'object'
+    if (!hasStatusUpdate && !hasRuleSpecUpdate) {
+      throw new Error('Trigger rule update must include status or ruleSpec')
+    }
+    if (hasStatusUpdate && payload.status !== 'active' && payload.status !== 'disabled') {
+      throw new Error(`Unsupported trigger rule status: ${payload.status || 'unknown'}`)
+    }
+    const nextRule = {
+      ...rule,
+      ...(hasStatusUpdate ? { status: payload.status } : {}),
+      ...(hasRuleSpecUpdate
+        ? {
+            ruleSpec: createDemoTriggerRuleSpec(rule.type, rule.actionId, {
+              message: rule.message,
+              ruleSpec: {
+                ...(rule.ruleSpec || {}),
+                ...(payload.ruleSpec || {}),
+                ...(payload.ruleSpec?.schedule ? {
+                  schedule: {
+                    ...((rule.ruleSpec && 'schedule' in rule.ruleSpec && rule.ruleSpec.schedule) ? rule.ruleSpec.schedule : {}),
+                    ...payload.ruleSpec.schedule
+                  }
+                } : {}),
+                ...(payload.ruleSpec?.state ? {
+                  state: {
+                    ...((rule.ruleSpec && 'state' in rule.ruleSpec && rule.ruleSpec.state) ? rule.ruleSpec.state : {}),
+                    ...payload.ruleSpec.state
+                  }
+                } : {}),
+                ...(payload.ruleSpec?.event ? {
+                  event: {
+                    ...((rule.ruleSpec && 'event' in rule.ruleSpec && rule.ruleSpec.event) ? rule.ruleSpec.event : {}),
+                    ...payload.ruleSpec.event
+                  }
+                } : {})
+              }
+            })
+          }
+        : {}),
+      updatedAt: '2026-06-22T00:00:00.000Z'
+    }
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      triggerRules: demoState.actionsConfig.triggerRules.map((item) => item.id === payload.ruleId ? nextRule : item)
+    })
+    writeDemoState()
+    return {
+      animations: cloneActionsConfig(demoState.actionsConfig),
+      rule: nextRule
+    }
+  },
   deleteActionTriggerRule: async (ruleId) => {
     const rule = demoState.actionsConfig.triggerRules.find((item) => item.id === ruleId)
     if (!rule) throw new Error('Trigger rule not found')

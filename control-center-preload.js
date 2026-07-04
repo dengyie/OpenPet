@@ -130,6 +130,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   acceptActionTriggerProposal: (proposalId) => ipcRenderer.invoke(IPC.ACTIONS_ACCEPT_TRIGGER_PROPOSAL, { proposalId }),
   rejectActionTriggerProposal: (proposalId, reason) => ipcRenderer.invoke(IPC.ACTIONS_REJECT_TRIGGER_PROPOSAL, { proposalId, reason }),
   setActionTriggerRuleStatus: (ruleId, status) => ipcRenderer.invoke(IPC.ACTIONS_UPDATE_TRIGGER_RULE, { ruleId, status }),
+  updateActionTriggerRule: (payload) => ipcRenderer.invoke(IPC.ACTIONS_UPDATE_TRIGGER_RULE, payload),
   deleteActionTriggerRule: (ruleId) => ipcRenderer.invoke(IPC.ACTIONS_DELETE_TRIGGER_RULE, { ruleId }),
   deleteAction: (actionId) => ipcRenderer.invoke(IPC.ACTIONS_DELETE, { actionId }),
   listPetPacks: () => ipcRenderer.invoke(IPC.PET_PACKS_LIST),

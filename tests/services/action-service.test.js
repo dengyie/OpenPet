@@ -984,6 +984,95 @@ test('action service can disable, re-enable, and delete host trigger rules', () 
   )
 })
 
+test('action service updates persisted trigger rule ruleSpec and status through one host-owned mutation path', () => {
+  let savedConfig = {
+    defaultAction: 'idle',
+    clickAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 16,
+        frameMs: 95,
+        frameWidth: 191,
+        frameHeight: 453,
+        sprite: 'cat_anime/sprites/idle.png'
+      },
+      {
+        id: 'wave',
+        label: 'Wave',
+        kind: 'custom',
+        loop: false,
+        frameCount: 8,
+        frameMs: 90,
+        frameWidth: 192,
+        frameHeight: 208,
+        sprite: 'cat_anime/sprites/wave.png'
+      }
+    ],
+    triggerProposalInbox: [],
+    triggerRules: [
+      {
+        id: 'rule:state:wave:test',
+        actionId: 'wave',
+        type: 'state',
+        status: 'active',
+        sourceProposalId: 'proposal:state:wave:test',
+        sourcePluginId: 'openpet.creator-studio',
+        sourceRunId: 'run-99',
+        sourceCommandId: 'import-approved-action',
+        message: 'Play wave when the pet becomes alert.',
+        preview: 'State trigger rule can play wave when a host state condition matches.',
+        createdAt: '2026-06-22T10:04:00.000Z',
+        updatedAt: '2026-06-22T10:04:00.000Z'
+      }
+    ]
+  }
+
+  const timestamps = [
+    '2026-06-22T10:05:00.000Z',
+    '2026-06-22T10:06:00.000Z'
+  ]
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => timestamps.shift() || '2026-06-22T10:07:00.000Z',
+    loadLegacyAnimations: () => savedConfig,
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const edited = service.updateTriggerRule('rule:state:wave:test', {
+    ruleSpec: {
+      summary: 'Play Wave when focus mode is idle.',
+      state: {
+        predicate: 'focus.mode === idle',
+        source: 'host'
+      }
+    }
+  })
+  assert.equal(edited.rule.ruleSpec.summary, 'Play Wave when focus mode is idle.')
+  assert.equal(edited.rule.ruleSpec.state.predicate, 'focus.mode === idle')
+  assert.equal(edited.rule.ruleSpec.state.source, 'host')
+  assert.equal(savedConfig.triggerRules[0].updatedAt, '2026-06-22T10:05:00.000Z')
+
+  const disabled = service.updateTriggerRule('rule:state:wave:test', {
+    status: 'disabled'
+  })
+  assert.equal(disabled.rule.status, 'disabled')
+  assert.equal(savedConfig.triggerRules[0].status, 'disabled')
+  assert.equal(savedConfig.triggerRules[0].ruleSpec.summary, 'Play Wave when focus mode is idle.')
+  assert.equal(savedConfig.triggerRules[0].updatedAt, '2026-06-22T10:06:00.000Z')
+
+  assert.throws(
+    () => service.updateTriggerRule('rule:missing', { status: 'disabled' }),
+    /does not exist/
+  )
+})
+
 test('action service rejects unsafe trigger proposal inbox mutations', () => {
   const service = createActionService({
     projectRoot: '/app/openpet',
