@@ -41,13 +41,65 @@ test('checkDocsDrift fails when stale save-and-test wording returns', () => {
   assert.match(result.errors.join('\n'), /save-and-test/i)
 })
 
+test('checkDocsDrift fails when agent-awareness bundled plugin baseline disappears', () => {
+  const docsRoot = createDocsFixture()
+  for (const relativePath of LIVE_DOC_FILES) {
+    const filePath = path.join(docsRoot, relativePath)
+    const content = fs.readFileSync(filePath, 'utf-8')
+    fs.writeFileSync(
+      filePath,
+      content
+        .replace(/openpet\.agent-awareness/gi, 'openpet.agent')
+        .replace(/native execution approval/gi, 'manual review gate')
+        .replace(/X active\s*·\s*Y sessions\s*·\s*Z events/gi, 'activity summary')
+        .replace(/run-agent-awareness-local-smoke/gi, 'run-agent-smoke')
+        .replace(/update-agent-awareness-local-smoke-report/gi, 'update-agent-smoke-report')
+        .replace(/update-ai-talk-local-smoke-report/gi, 'update-ai-talk-report')
+        .replace(/manualAcceptanceTemplate/gi, 'acceptanceTemplate')
+        .replace(/codex-hook-plan/gi, 'hook-plan')
+        .replace(/\bdoctor\b/gi, 'diagnostics'),
+      'utf-8'
+    )
+  }
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /openpet\.agent-awareness/i)
+  assert.match(result.errors.join('\n'), /native execution approval/i)
+  assert.match(result.errors.join('\n'), /health-note summary/i)
+  assert.match(result.errors.join('\n'), /doctor and codex-hook-plan/i)
+  assert.match(result.errors.join('\n'), /real-session smoke/i)
+  assert.match(result.errors.join('\n'), /manual acceptance update command/i)
+  assert.match(result.errors.join('\n'), /AI Talk manual acceptance update command/i)
+})
+
+test('checkDocsDrift fails when docs map stops indexing the agent-awareness canonical docs', () => {
+  const docsRoot = createDocsFixture()
+  const readmePath = path.join(docsRoot, 'README.md')
+  const readme = fs.readFileSync(readmePath, 'utf-8')
+  fs.writeFileSync(
+    readmePath,
+    readme.replace(
+      /\| Agent awareness and ClaudePet-inspired development route \| \[`agent-awareness-development-design\.md`\]\(\.\/agent-awareness-development-design\.md\), \[`\.\.\/examples\/plugins\/agent-awareness\/README\.md`\]\(\.\.\/examples\/plugins\/agent-awareness\/README\.md\), \[`superpowers\/specs\/2026-07-03-agent-awareness-real-codex-acceptance-runbook\.md`\]\(\.\/superpowers\/specs\/2026-07-03-agent-awareness-real-codex-acceptance-runbook\.md\) \|/,
+      '| Agent awareness and ClaudePet-inspired development route | documentation pending |'
+    ),
+    'utf-8'
+  )
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /agent-awareness design|plugin README/i)
+})
+
 test('checkDocsDrift fails when release-evidence archive classes disappear from the docs map', () => {
   const docsRoot = createDocsFixture()
   const readmePath = path.join(docsRoot, 'README.md')
   const readme = fs.readFileSync(readmePath, 'utf-8')
   fs.writeFileSync(
     readmePath,
-    readme.replace(/, packaged runtime smoke archives under `packaged-runtime\/`, and release-claim closure archives under `signed-release-closure\/`\./, '.'),
+    readme.replace(/, `agent-awareness-local-smoke\/`, and `creator-studio-provider-smoke\/`/, ', `creator-studio-provider-smoke/`'),
     'utf-8'
   )
 
@@ -55,6 +107,31 @@ test('checkDocsDrift fails when release-evidence archive classes disappear from 
 
   assert.equal(result.ok, false)
   assert.match(result.errors.join('\n'), /release-evidence archive classes/i)
+})
+
+test('checkDocsDrift fails when AI pane timeout and saved-config honesty baselines disappear', () => {
+  const docsRoot = createDocsFixture()
+  for (const relativePath of LIVE_DOC_FILES) {
+    const filePath = path.join(docsRoot, relativePath)
+    const content = fs.readFileSync(filePath, 'utf-8')
+    fs.writeFileSync(
+      filePath,
+      content
+        .replace(/model discovery timeout/gi, 'discovery failure')
+        .replace(/模型探测超时/gi, '探测失败')
+        .replace(/unsaved/gi, 'draft')
+        .replace(/未保存/gi, '草稿')
+        .replace(/saved config/gi, 'stored values')
+        .replace(/已保存配置/gi, '存储值'),
+      'utf-8'
+    )
+  }
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /model discovery timeout/i)
+  assert.match(result.errors.join('\n'), /saved config when drafts are unsaved/i)
 })
 
 test('checkDocsDrift fails when active TODO recommendations reopen closed milestones', () => {

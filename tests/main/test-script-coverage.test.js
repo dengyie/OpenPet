@@ -23,4 +23,15 @@ test('package scripts expose core and auxiliary test suites separately', () => {
   assert.match(scripts['test:tools'], /tests\/release\/\*\.test\.js/)
   assert.equal(scripts['test:control-center'], 'node scripts/run-control-center-playwright.js')
   assert.equal(scripts['create-ai-talk-local-smoke-archive'], 'node scripts/create-ai-talk-local-smoke-archive.js')
+  assert.equal(scripts['update-ai-talk-local-smoke-report'], 'node scripts/update-ai-talk-local-smoke-report.js')
+  assert.equal(scripts['run-agent-awareness-local-smoke'], 'node scripts/run-agent-awareness-local-smoke.js')
+  assert.equal(scripts['create-agent-awareness-local-smoke-archive'], 'node scripts/create-agent-awareness-local-smoke-archive.js')
+  assert.equal(scripts['update-agent-awareness-local-smoke-report'], 'node scripts/update-agent-awareness-local-smoke-report.js')
+})
+
+test('packaged app includes bundled official plugin directories', () => {
+  const buildFiles = Array.isArray(packageJson.build?.files) ? packageJson.build.files : []
+
+  assert.equal(buildFiles.includes('examples/plugins/creator-studio/**/*'), true)
+  assert.equal(buildFiles.includes('examples/plugins/agent-awareness/**/*'), true)
 })

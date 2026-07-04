@@ -3,24 +3,41 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenPet Agent Awareness</title>
+    <title>Agent Awareness</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">OpenPet Official Plugin</p>
-        <h1>Agent Awareness</h1>
-        <p>Sanitized local coding-agent activity, reflected through your desktop pet.</p>
-      </section>
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Recent Sessions</h2>
+    <main class="page">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">OpenPet Plugin Dashboard</p>
+          <h1>Agent Awareness</h1>
+          <p class="summary">Sanitized local coding-agent state with session status, recent timeline, and diagnostics only.</p>
+        </div>
+        <div class="hero-actions">
+          <p id="status-line" class="status-line">Loading dashboard…</p>
           <button id="refresh" type="button">Refresh</button>
         </div>
-        <div id="sessions" class="sessions">Loading...</div>
+      </header>
+
+      <section class="panel">
+        <h2>Summary</h2>
+        <div id="summary" class="metrics" data-testid="agent-summary">Loading…</div>
+      </section>
+
+      <section class="panel">
+        <h2>Diagnostics</h2>
+        <div id="health" class="health-grid" data-testid="agent-health">Loading…</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Sessions</h2>
+          <p class="panel-note">Project labels and session hashes only. No transcripts, stdout, or raw paths.</p>
+        </div>
+        <div id="sessions" class="sessions" data-testid="agent-sessions">Loading…</div>
       </section>
     </main>
-    <script src="/dashboard.js"></script>
+    <script src="/dashboard.js" defer></script>
   </body>
 </html>
