@@ -128,6 +128,19 @@ test('createReadme preserves telemetry-only claim boundary', () => {
   assert.match(readme, /npm run update-ai-talk-local-smoke-report/)
 })
 
+test('createReadme falls back to current ai-talk-local-smoke contract when source session fields are missing', () => {
+  const { report } = createSessionFixture()
+  delete report.sessionDir
+  delete report.resultPath
+  delete report.logPath
+
+  const readme = createReadme({ report, archiveDir: '/tmp/archive' })
+
+  assert.match(readme, /--output-dir ai-talk-local-smoke/i)
+  assert.match(readme, /--session-dir ai-talk-local-smoke\/<session>/i)
+  assert.doesNotMatch(readme, /tmp\/real-provider-chat-acceptance/i)
+})
+
 test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archive result', () => {
   const { rootDir, sessionDir } = createSessionFixture()
   const archiveDir = path.join(rootDir, 'archive', '2026-06-28T15-35-59-210Z')
@@ -180,6 +193,23 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   assert.equal(archiveResult.smoke.bubbleVisible, true)
   assert.equal(archiveResult.smoke.manualAcceptance.inputUsable, 'pending')
   assert.doesNotMatch(JSON.stringify(archiveResult), /\/Users\//)
+})
+
+test('createAiTalkLocalSmokeArchive falls back to current ai-talk-local-smoke source paths when report fields are missing', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'ai-talk-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  delete report.sessionDir
+  delete report.resultPath
+  delete report.logPath
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-06-28T15-35-59-210Z')
+  const result = createAiTalkLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow })
+
+  assert.equal(result.source.sessionDir, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
+  assert.equal(result.source.resultPath, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
+  assert.equal(result.source.logPath, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
 })
 
 test('createAiTalkLocalSmokeArchive rejects missing required files', () => {

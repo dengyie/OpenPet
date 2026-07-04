@@ -6,6 +6,7 @@ const DEFAULT_ARCHIVE_ROOT = path.join('docs', 'release-evidence', 'agent-awaren
 const DEFAULT_RESULT_NAME = 'agent-awareness-local-smoke-result.json'
 const DEFAULT_README_NAME = 'README.md'
 const DEFAULT_ARCHIVE_RESULT_NAME = 'agent-awareness-local-smoke-archive-result.json'
+const DEFAULT_SESSION_DIR_LABEL = 'agent-awareness-local-smoke'
 
 const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
 const isSafeRelativePath = (value) => {
@@ -30,7 +31,7 @@ const createSafeArchiveDirPath = (archiveDir, sessionId) => {
 const createSafeSourceSummary = ({ report, sessionId }) => {
   const sourceSessionDir = sanitizeRelativePath(
     report?.sessionDir,
-    `tmp/agent-awareness-real-codex-acceptance/${sanitizeText(sessionId, 80)}`
+    `${DEFAULT_SESSION_DIR_LABEL}/${sanitizeText(sessionId, 80)}`
   )
   const normalizeSourceChildPath = (value, fallback) => {
     const normalized = sanitizeRelativePath(value, fallback)
@@ -234,8 +235,8 @@ const createReadme = ({ report, archiveDir }) => {
       `| \`${sanitizeText(session.sessionId, 40)}\` | \`${sanitizeText(session.status, 32)}\` | \`${sanitizeText(session.project, 120)}\` | ${Number(session.eventCount) || 0} |`
     )).join('\n')
     : '| none | - | - | 0 |'
-  const sourceSessionDir = sanitizeText(report?.sessionDir || '', 200) || 'tmp/agent-awareness-real-codex-acceptance/<session>'
-  const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : 'tmp/agent-awareness-real-codex-acceptance'
+  const sourceSessionDir = sanitizeText(report?.sessionDir || '', 200) || `${DEFAULT_SESSION_DIR_LABEL}/<session>`
+  const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : DEFAULT_SESSION_DIR_LABEL
   const archiveSessionDir = sanitizeText(toPosixPath(path.relative(process.cwd(), archiveDir) || archiveDir), 240)
   const manualAcceptance = report?.manualAcceptanceTemplate || {}
   const manualNotes = sanitizeText(manualAcceptance.notes || '', 400)

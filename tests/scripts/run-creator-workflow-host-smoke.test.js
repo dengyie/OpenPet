@@ -397,3 +397,43 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
   assert.doesNotMatch(persisted, /sk-real-secret-value/)
   assert.doesNotMatch(persisted, new RegExp(sourceUserDataDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+
+test('runCreatorWorkflowHostSmoke redacts top-level sourceUserDataDir even when it is inside the repo root', async () => {
+  const outputDir = createTempDir('openpet-creator-workflow-output-repo-')
+  const sourceUserDataDir = path.join('/Users/mango/.codex/worktrees/ef96/OpenPet', 'tests', 'fixtures', 'creator-workflow-source-user-data')
+  const referenceImagePath = path.join(createTempDir('openpet-creator-workflow-reference-'), 'reference.png')
+  fs.writeFileSync(referenceImagePath, 'reference')
+
+  const report = await runCreatorWorkflowHostSmoke({
+    sourceUserDataDir,
+    referenceImagePath,
+    outputDir,
+    scenario: 'existing-action',
+    now: () => new Date('2026-07-02T12:34:56.789Z'),
+    runScenarioImpl: async ({ scenario, scenarioDir, referenceImagePath: resolvedReferencePath }) => ({
+      scenario,
+      ok: true,
+      startedAt: '2026-07-02T12:34:56.789Z',
+      durationMs: 12,
+      referenceImagePath: resolvedReferencePath,
+      userDataDir: path.join(scenarioDir, 'user-data'),
+      workspaceRoot: path.join(scenarioDir, 'workspace'),
+      pluginDataDir: path.join(scenarioDir, 'plugin-data'),
+      providerBefore: { ready: true, code: 'provider_healthy' },
+      providerAfter: { ready: true, code: 'provider_healthy' },
+      result: { ok: true, state: 'completed', code: 'smoke_completed', message: 'completed existing-action' },
+      verification: { ok: true, message: 'verified existing-action', artifactPaths: {} },
+      conditioningVerification: { ok: true, message: 'conditioning verified', artifactPaths: {} },
+      runRecordPath: path.join(scenarioDir, 'run.json'),
+      runRecord: { runId: 'run-existing-action', status: 'approved', artifacts: [] },
+      seededSettingsSummary: { activePackId: 'legacy-cat' },
+      appLogs: [],
+      pluginLogs: []
+    })
+  })
+
+  assert.equal(report.sourceUserDataDir, '[redacted-local-user-data]')
+  const persisted = fs.readFileSync(resolveOutputPath(path.join(outputDir, report.sessionId), report.reportPath), 'utf-8')
+  assert.match(persisted, /"\s*sourceUserDataDir": "\[redacted-local-user-data\]"/)
+  assert.doesNotMatch(persisted, /tests\/fixtures\/creator-workflow-source-user-data/)
+})

@@ -117,6 +117,18 @@ test('createReadme preserves privacy-first claim boundary', () => {
   assert.match(readme, /npm run update-agent-awareness-local-smoke-report/)
 })
 
+test('createReadme falls back to current agent-awareness-local-smoke contract when source session fields are missing', () => {
+  const { report } = createSessionFixture()
+  delete report.sessionDir
+  delete report.resultPath
+
+  const readme = createReadme({ report, archiveDir: '/tmp/archive' })
+
+  assert.match(readme, /--output-dir agent-awareness-local-smoke/i)
+  assert.match(readme, /--session-dir agent-awareness-local-smoke\/<session>/i)
+  assert.doesNotMatch(readme, /tmp\/agent-awareness-real-codex-acceptance/i)
+})
+
 test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and writes archive result', () => {
   const { rootDir, sessionDir } = createSessionFixture()
   const archiveDir = path.join(rootDir, 'archive', '2026-07-03T15-38-32-999Z')
@@ -166,6 +178,21 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
   assert.equal(archiveResult.smoke.totalEvents, 1000)
   assert.equal(archiveResult.smoke.manualAcceptance.dashboardUseful, 'pending')
   assert.doesNotMatch(JSON.stringify(archiveResult), /\/Users\//)
+})
+
+test('createAgentAwarenessLocalSmokeArchive falls back to current agent-awareness-local-smoke source paths when report fields are missing', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'agent-awareness-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  delete report.sessionDir
+  delete report.resultPath
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-07-03T15-38-32-999Z')
+  const result = createAgentAwarenessLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow })
+
+  assert.equal(result.source.sessionDir, 'agent-awareness-local-smoke/2026-07-03T15-38-32-999Z')
+  assert.equal(result.source.resultPath, 'agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json')
 })
 
 test('createAgentAwarenessLocalSmokeArchive rejects missing required files', () => {

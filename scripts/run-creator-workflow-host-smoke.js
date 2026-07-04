@@ -803,7 +803,7 @@ const runCreatorWorkflowHostSmoke = async ({
       targetPath: sessionPaths.reportPath,
       fallback: 'creator-workflow-host-smoke-report.json'
     }),
-    sourceUserDataDir: createSafeProjectPath(path.resolve(sourceUserDataDir), DEFAULT_SOURCE_USER_DATA_LABEL),
+    sourceUserDataDir: DEFAULT_SOURCE_USER_DATA_LABEL,
     referenceImagePath: createSafeProjectPath(
       path.resolve(resolvedReferenceImagePath),
       path.basename(path.resolve(resolvedReferenceImagePath)) || DEFAULT_REFERENCE_IMAGE_LABEL
