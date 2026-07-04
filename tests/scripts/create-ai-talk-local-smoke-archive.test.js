@@ -115,6 +115,7 @@ test('createReadme preserves telemetry-only claim boundary', () => {
 
   assert.match(readme, /AI Talk Bubble Chat Smoke Evidence/)
   assert.match(readme, /providerLatencyMs = 2141/)
+  assert.match(readme, /## Manual Acceptance/)
   assert.match(readme, /manualAcceptanceTemplate/)
   assert.match(readme, /does not by itself prove/i)
   assert.match(readme, /npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir tmp\/real-provider-chat-acceptance/)
@@ -123,6 +124,7 @@ test('createReadme preserves telemetry-only claim boundary', () => {
     /npm run create-ai-talk-local-smoke-archive -- --session-dir tmp\/real-provider-chat-acceptance\/2026-06-28T15-35-59-210Z --archive-dir /,
     'README reproduction command should pass the source session dir and explicit archive dir separately'
   )
+  assert.match(readme, /npm run update-ai-talk-local-smoke-report/)
 })
 
 test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archive result', () => {
@@ -140,6 +142,10 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   assert.equal(result.smoke.requestId, 'chat-mqxyb5gj-6tvex3h5')
   assert.equal(result.smoke.providerLatencyMs, 2141)
   assert.equal(result.smoke.manualAcceptanceTemplatePresent, true)
+  assert.equal(result.smoke.manualAcceptance.bubbleVisibleLongEnough, 'pending')
+  assert.equal(result.smoke.manualAcceptance.inputUsable, 'pending')
+  assert.equal(result.smoke.manualAcceptance.desktopFeelNotesPresent, false)
+  assert.equal(result.smoke.manualAcceptance.requestId, 'chat-mqxyb5gj-6tvex3h5')
   assert.equal(result.files.length, 3)
 
   const archivedReportPath = path.join(archiveDir, 'ai-talk-local-smoke-result.json')
@@ -162,6 +168,7 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   assert.equal(archiveResult.ok, true)
   assert.equal(archiveResult.smoke.provider, 'openai-compatible')
   assert.equal(archiveResult.smoke.bubbleVisible, true)
+  assert.equal(archiveResult.smoke.manualAcceptance.inputUsable, 'pending')
 })
 
 test('createAiTalkLocalSmokeArchive rejects missing required files', () => {
