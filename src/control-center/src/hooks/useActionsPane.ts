@@ -6,6 +6,7 @@ import type {
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalPreviewResult,
   ActionTriggerRuleStatus,
+  ActionTriggerRuleUpdateRequest,
   ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
@@ -208,6 +209,23 @@ export function useActionsPane() {
       setStatus(`已删除触发规则：${ruleId}`)
     } catch (error) {
       setStatus(messageFromError(error, '删除触发规则失败'))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const onUpdateTriggerRule = async (payload: ActionTriggerRuleUpdateRequest) => {
+    if (!payload.ruleId) return false
+    setWorking(true)
+    setStatus('')
+    try {
+      const response = await api.updateActionTriggerRule(payload)
+      setActionsConfig(cloneActionsConfig(response.animations))
+      setStatus(`已保存触发规则：${payload.ruleId}`)
+      return true
+    } catch (error) {
+      setStatus(messageFromError(error, '保存触发规则失败'))
+      return false
     } finally {
       setWorking(false)
     }
@@ -430,6 +448,7 @@ export function useActionsPane() {
     onAcceptTriggerProposal,
     onRejectTriggerProposal,
     onSetTriggerRuleStatus,
+    onUpdateTriggerRule,
     onDeleteTriggerRule,
     triggerProposalType,
     setTriggerProposalType: onChangeTriggerProposalType,

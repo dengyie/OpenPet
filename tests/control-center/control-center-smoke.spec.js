@@ -449,6 +449,61 @@ test.describe('Control Center smoke', () => {
     await expect(rulesPanel).toContainText('暂无非点击触发规则')
   })
 
+  test('edits host-owned state trigger rules from the Actions UI', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        actionsConfig: {
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 120, frameWidth: 8, frameHeight: 8 },
+            { id: 'wave', label: 'Wave', kind: 'click', loop: false, frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+            { id: 'sleep', label: 'Sleep', kind: 'idle', loop: true, frameCount: 1, frameMs: 140, frameWidth: 8, frameHeight: 8 }
+          ],
+          triggerProposalInbox: [],
+          triggerRules: [
+            {
+              id: 'rule:state:sleep:test',
+              actionId: 'sleep',
+              type: 'state',
+              status: 'active',
+              sourceProposalId: 'proposal:state:sleep:test',
+              sourcePluginId: 'openpet.creator-studio',
+              sourceRunId: 'run-demo-state',
+              sourceCommandId: 'import-approved-action',
+              message: 'Use Sleep when the pet enters idle focus mode.',
+              preview: 'State trigger rule can play sleep when a host state condition matches.',
+              ruleSpec: {
+                schemaVersion: 1,
+                type: 'state',
+                summary: 'Use Sleep when idle focus mode is detected.',
+                state: { predicate: 'pet.idle && focus.mode', source: 'creator-studio' }
+              },
+              createdAt: '2026-06-24T08:00:00.000Z',
+              updatedAt: '2026-06-24T08:00:00.000Z'
+            }
+          ]
+        }
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Actions' }).click()
+
+    const sleepRule = page.locator('[aria-label="触发规则"]').locator('.trigger-inbox-item', { hasText: 'Sleep' })
+    await sleepRule.getByRole('button', { name: '编辑规则' }).click()
+
+    await sleepRule.getByLabel('规则摘要').fill('Use Sleep while the pet is in focus idle mode.')
+    await sleepRule.getByLabel('状态条件').fill('pet.idle && focus.mode === "idle"')
+    await sleepRule.getByLabel('状态来源').fill('host')
+    await sleepRule.getByRole('button', { name: '保存规则' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('已保存触发规则：rule:state:sleep:test')
+    await expect(sleepRule).toContainText('Use Sleep while the pet is in focus idle mode.')
+    await expect(sleepRule).toContainText('pet.idle && focus.mode === "idle"')
+    await expect(sleepRule).toContainText('host')
+  })
+
   test('reviews queued trigger proposals from the Actions inbox', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
