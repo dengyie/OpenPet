@@ -4,15 +4,15 @@
   "source": "scripts/run-ai-talk-local-smoke.js",
   "userDataDir": "[redacted-local-user-data]",
   "sessionId": "2026-06-28T15-35-59-210Z",
-  "sessionDir": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z",
+  "sessionDir": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
   "copiedLiveAiTalkStore": true,
   "liveAiTalkStorePath": "[redacted-local-user-data]/ai-talk-store.json",
-  "tempAiTalkStorePath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-store.json",
-  "logPath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl",
+  "tempAiTalkStorePath": "ai-talk-store.json",
+  "logPath": "logs/openpet-app.jsonl",
   "config": {
     "enabled": true,
     "provider": "openai-compatible",
-    "baseUrl": "http://127.0.0.1:8317/v1",
+    "baseUrl": "[redacted-local-url]",
     "model": "gpt-5.5",
     "hasApiKey": true
   },
@@ -157,7 +157,7 @@
       "message": "AI provider connection test started",
       "details": {
         "provider": "openai-compatible",
-        "baseUrl": "http://127.0.0.1:8317/v1",
+        "baseUrl": "[redacted-local-url]",
         "model": "gpt-5.5",
         "hasApiKey": true
       }
@@ -173,7 +173,7 @@
       "details": {
         "provider": "openai-compatible",
         "model": "gpt-5.5",
-        "endpoint": "http://127.0.0.1:8317/v1/chat/completions",
+        "endpoint": "[redacted-local-url]",
         "messagesCount": 1,
         "toolsCount": 0,
         "timeoutMs": 30000,
@@ -191,7 +191,7 @@
       "details": {
         "provider": "openai-compatible",
         "model": "gpt-5.5",
-        "endpoint": "http://127.0.0.1:8317/v1/chat/completions",
+        "endpoint": "[redacted-local-url]",
         "messagesCount": 1,
         "toolsCount": 0,
         "timeoutMs": 30000,
@@ -212,7 +212,7 @@
       "message": "AI provider connection test completed",
       "details": {
         "provider": "openai-compatible",
-        "baseUrl": "http://127.0.0.1:8317/v1",
+        "baseUrl": "[redacted-local-url]",
         "model": "gpt-5.5",
         "hasApiKey": true,
         "elapsedMs": 2656,
@@ -273,7 +273,7 @@
       "details": {
         "provider": "openai-compatible",
         "model": "gpt-5.5",
-        "endpoint": "http://127.0.0.1:8317/v1/chat/completions",
+        "endpoint": "[redacted-local-url]",
         "messagesCount": 23,
         "toolsCount": 0,
         "timeoutMs": 30000,
@@ -291,7 +291,7 @@
       "details": {
         "provider": "openai-compatible",
         "model": "gpt-5.5",
-        "endpoint": "http://127.0.0.1:8317/v1/chat/completions",
+        "endpoint": "[redacted-local-url]",
         "messagesCount": 23,
         "toolsCount": 0,
         "timeoutMs": 30000,
@@ -388,5 +388,5 @@
     "chat-mqxr7ciz-wqqgxavc",
     "chat-mqxr2dn5-ppfoidjz"
   ],
-  "resultPath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json"
+  "resultPath": "ai-talk-local-smoke-result.json"
 }

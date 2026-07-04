@@ -28,9 +28,9 @@ const createReportFixture = ({
     source: 'scripts/run-agent-awareness-local-smoke.js',
     codexHome: '[redacted-local-codex-home]',
     sessionId,
-    sessionDir: `tmp/agent-awareness-real-codex-acceptance/${sessionId}`,
-    pluginDataDir: `tmp/agent-awareness-real-codex-acceptance/${sessionId}/plugin-data`,
-    resultPath: `tmp/agent-awareness-real-codex-acceptance/${sessionId}/agent-awareness-local-smoke-result.json`,
+    sessionDir: `agent-awareness-local-smoke/${sessionId}`,
+    pluginDataDir: 'plugin-data',
+    resultPath: 'agent-awareness-local-smoke-result.json',
     scanTimeoutMs: 12000,
     sampleLimit: 5,
     sanitizedSignalDetected: true,
@@ -222,8 +222,8 @@ test('updateAgentAwarenessLocalSmokeReport rewrites the report and companion REA
   assert.equal(archiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.notesPresent, true)
-  assert.equal(archiveResult.source.sessionDir, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T16-04-08-824Z')
-  assert.equal(archiveResult.source.resultPath, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json')
+  assert.equal(archiveResult.source.sessionDir, 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
+  assert.equal(archiveResult.source.resultPath, 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json')
   assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
   assert.equal(archiveResult.archive.outputPath, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-archive-result.json')
   assert.equal(Array.isArray(archiveResult.files), true)

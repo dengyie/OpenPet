@@ -15,6 +15,9 @@ const {
 } = require('../../scripts/run-ai-talk-local-smoke')
 
 const createTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+const resolveOutputPath = (outputDir, sessionId, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, sessionId, recordedPath)
+)
 
 test('default user data path follows desktop conventions', () => {
   assert.equal(defaultUserDataDir({ appDataDir: '/Users/mango/Library/Application Support' }), '/Users/mango/Library/Application Support/ibot')
@@ -74,9 +77,9 @@ test('sanitizeArchiveSummary redacts local absolute paths for persisted evidence
   assert.equal(sanitized.userDataDir, '[redacted-local-user-data]')
   assert.equal(sanitized.liveAiTalkStorePath, '[redacted-local-user-data]/ai-talk-store.json')
   assert.equal(sanitized.sessionDir, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z')
-  assert.equal(sanitized.tempAiTalkStorePath, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/ai-talk-store.json')
-  assert.equal(sanitized.logPath, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/logs/openpet-app.jsonl')
-  assert.equal(sanitized.resultPath, 'tmp/real-provider-chat-acceptance/2026-06-28T12-34-56-789Z/ai-talk-local-smoke-result.json')
+  assert.equal(sanitized.tempAiTalkStorePath, 'ai-talk-store.json')
+  assert.equal(sanitized.logPath, 'logs/openpet-app.jsonl')
+  assert.equal(sanitized.resultPath, 'ai-talk-local-smoke-result.json')
 })
 
 test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host services', async () => {
@@ -218,8 +221,13 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.equal(result.bubbleDispatch.requestId, result.bubbleAcceptance.requestId)
   assert.equal(result.logs.some((entry) => entry.scope === 'ai-talk'), true)
   assert.equal(result.logs.some((entry) => entry.scope === 'pet-bubble-chat'), true)
-  assert.equal(fs.existsSync(result.resultPath), true)
-  const persisted = JSON.parse(fs.readFileSync(result.resultPath, 'utf-8'))
+  assert.equal(result.sessionDir, 'ai-talk-local-smoke/2026-06-28T12-34-56-789Z')
+  assert.equal(result.tempAiTalkStorePath, 'ai-talk-store.json')
+  assert.equal(result.logPath, 'logs/openpet-app.jsonl')
+  assert.equal(result.resultPath, 'ai-talk-local-smoke-result.json')
+  assert.equal(result.config.baseUrl, '[redacted-local-url]')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, result.sessionId, result.resultPath)), true)
+  const persisted = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, result.sessionId, result.resultPath), 'utf-8'))
   assert.equal(persisted.chat.replyPreview, '烟测完成')
   assert.equal(persisted.bubbleDispatch.requestId, result.bubbleDispatch.requestId)
   assert.equal(persisted.bubbleDispatch.petSayReceived, true)
@@ -228,6 +236,8 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.equal(persisted.manualAcceptanceTemplate.requestId, persisted.bubbleAcceptance.requestId)
   assert.equal(persisted.userDataDir, '[redacted-local-user-data]')
   assert.equal(persisted.liveAiTalkStorePath, '[redacted-local-user-data]/ai-talk-store.json')
-  assert.match(persisted.sessionDir, /openpet-ai-talk-output-/)
+  assert.equal(persisted.sessionDir, 'ai-talk-local-smoke/2026-06-28T12-34-56-789Z')
+  assert.equal(persisted.config.baseUrl, '[redacted-local-url]')
   assert.doesNotMatch(JSON.stringify(persisted), /Library\/Application Support\/ibot/)
+  assert.doesNotMatch(JSON.stringify(persisted), /127\.0\.0\.1/)
 })

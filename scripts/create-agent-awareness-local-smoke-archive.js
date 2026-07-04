@@ -32,8 +32,14 @@ const createSafeSourceSummary = ({ report, sessionId }) => {
     report?.sessionDir,
     `tmp/agent-awareness-real-codex-acceptance/${sanitizeText(sessionId, 80)}`
   )
+  const normalizeSourceChildPath = (value, fallback) => {
+    const normalized = sanitizeRelativePath(value, fallback)
+    if (normalized === sourceSessionDir) return normalized
+    if (normalized.startsWith(`${sourceSessionDir}/`)) return normalized
+    return sanitizeRelativePath(`${sourceSessionDir}/${normalized}`, `${sourceSessionDir}/${fallback}`)
+  }
   const resultPath = sanitizeRelativePath(
-    report?.resultPath,
+    normalizeSourceChildPath(report?.resultPath, DEFAULT_RESULT_NAME),
     `${sourceSessionDir}/${DEFAULT_RESULT_NAME}`
   )
   return { sourceSessionDir, resultPath }

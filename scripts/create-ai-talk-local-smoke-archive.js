@@ -119,12 +119,18 @@ const createSafeSourceSummary = ({ report, sessionId }) => {
     report?.sessionDir,
     `tmp/real-provider-chat-acceptance/${sanitizeText(sessionId, 80)}`
   )
+  const normalizeSourceChildPath = (value, fallback) => {
+    const normalized = sanitizeRelativePath(value, fallback)
+    if (normalized === sourceSessionDir) return normalized
+    if (normalized.startsWith(`${sourceSessionDir}/`)) return normalized
+    return sanitizeRelativePath(`${sourceSessionDir}/${normalized}`, `${sourceSessionDir}/${fallback}`)
+  }
   const resultPath = sanitizeRelativePath(
-    report?.resultPath,
+    normalizeSourceChildPath(report?.resultPath, DEFAULT_RESULT_NAME),
     `${sourceSessionDir}/${DEFAULT_RESULT_NAME}`
   )
   const logPath = sanitizeRelativePath(
-    report?.logPath,
+    normalizeSourceChildPath(report?.logPath, toPosixPath(DEFAULT_LOG_NAME)),
     `${sourceSessionDir}/${toPosixPath(DEFAULT_LOG_NAME)}`
   )
   return { sourceSessionDir, resultPath, logPath }
@@ -156,6 +162,9 @@ const assertNoSensitiveArchiveText = (content, role) => {
   }
   if (/\/Users\/[^"'\s]+/.test(text)) {
     throw new Error(`${role} is not sanitized for archive: local user path found`)
+  }
+  if (/127\.0\.0\.1|localhost|\[::1\]/i.test(text)) {
+    throw new Error(`${role} is not sanitized for archive: loopback address found`)
   }
 }
 

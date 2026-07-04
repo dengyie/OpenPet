@@ -10,6 +10,9 @@ const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'release', 'agent-awarenes
 const DEFAULT_SCAN_TIMEOUT_MS = 12000
 const DEFAULT_SAMPLE_LIMIT = 5
 const POLL_INTERVAL_MS = 400
+const DEFAULT_SESSION_DIR_LABEL = 'agent-awareness-local-smoke'
+const DEFAULT_RESULT_PATH_LABEL = 'agent-awareness-local-smoke-result.json'
+const DEFAULT_PLUGIN_DATA_DIR_LABEL = 'plugin-data'
 
 const usage = () => [
   'Usage: node scripts/run-agent-awareness-local-smoke.js [options]',
@@ -43,15 +46,30 @@ const createSessionPaths = ({ outputDir = DEFAULT_OUTPUT_DIR, now = () => new Da
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const toRepoRelativePath = (filePath, projectRoot) => {
+const toRepoRelativePath = (filePath, projectRoot, fallback = '') => {
   const rawPath = String(filePath || '').trim()
   const rootPath = String(projectRoot || '').trim()
-  if (!rawPath || !rootPath) return sanitizeText(rawPath, 240)
+  if (!rawPath) return fallback || ''
+  if (!rootPath) return fallback || sanitizeText(rawPath, 240)
   const resolvedFilePath = path.resolve(rawPath)
   const resolvedProjectRoot = path.resolve(rootPath)
   if (resolvedFilePath === resolvedProjectRoot) return '.'
-  if (!resolvedFilePath.startsWith(`${resolvedProjectRoot}${path.sep}`)) return sanitizeText(rawPath, 240)
+  if (!resolvedFilePath.startsWith(`${resolvedProjectRoot}${path.sep}`)) return fallback || sanitizeText(rawPath, 240)
   return path.relative(resolvedProjectRoot, resolvedFilePath) || '.'
+}
+
+const sanitizePersistedValue = (value, depth = 0) => {
+  if (value == null) return value
+  if (depth >= 6) return '[truncated]'
+  if (typeof value === 'string') return sanitizeText(value, 500)
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return value.map((entry) => sanitizePersistedValue(entry, depth + 1))
+  if (!value || typeof value !== 'object') return undefined
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entryValue]) => [key, sanitizePersistedValue(entryValue, depth + 1)])
+      .filter(([, entryValue]) => entryValue !== undefined)
+  )
 }
 
 const sanitizeSessions = (sessions = [], sampleLimit = DEFAULT_SAMPLE_LIMIT) => (
@@ -103,12 +121,16 @@ const createEmptyHealth = () => ({
   }
 })
 
-const sanitizePersistedSummary = (summary = {}, { projectRoot } = {}) => ({
+const sanitizePersistedSummary = (summary = {}, { projectRoot } = {}) => sanitizePersistedValue({
   ...summary,
   codexHome: '[redacted-local-codex-home]',
-  sessionDir: toRepoRelativePath(summary.sessionDir, projectRoot),
-  pluginDataDir: toRepoRelativePath(summary.pluginDataDir, projectRoot),
-  resultPath: toRepoRelativePath(summary.resultPath, projectRoot),
+  sessionDir: toRepoRelativePath(
+    summary.sessionDir,
+    projectRoot,
+    `${DEFAULT_SESSION_DIR_LABEL}/${sanitizeText(summary.sessionId || 'session', 80)}`
+  ),
+  pluginDataDir: toRepoRelativePath(summary.pluginDataDir, projectRoot, DEFAULT_PLUGIN_DATA_DIR_LABEL),
+  resultPath: toRepoRelativePath(summary.resultPath, projectRoot, DEFAULT_RESULT_PATH_LABEL),
   healthUrl: '[local-url]',
   hookPlan: {
     ...(summary.hookPlan || {}),
@@ -337,10 +359,8 @@ const runAgentAwarenessLocalSmoke = async ({
         await service.close()
       } catch (_) {}
     }
-    persistSummary({ summary, projectRoot })
+    return persistSummary({ summary, projectRoot })
   }
-
-  return summary
 }
 
 const main = async () => {

@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-07-04T08:27:05.219Z",
+  "generatedAt": "2026-07-04T16:39:19.924Z",
   "ok": true,
   "source": {
-    "sessionDir": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z",
-    "resultPath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json",
-    "logPath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl"
+    "sessionDir": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
+    "resultPath": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json",
+    "logPath": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl"
   },
   "archive": {
     "archiveDir": "docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
@@ -14,7 +14,7 @@
   "smoke": {
     "generatedAt": "2026-06-28T15:35:59.235Z",
     "provider": "openai-compatible",
-    "baseUrl": "http://127.0.0.1:8317/v1",
+    "baseUrl": "[redacted-local-url]",
     "model": "gpt-5.5",
     "activePetPackId": "duodong",
     "requestId": "chat-mqxyb5gj-6tvex3h5",
@@ -32,20 +32,20 @@
     {
       "role": "aiTalkLocalSmokeResult",
       "path": "ai-talk-local-smoke-result.json",
-      "bytes": 11789,
-      "sha256": "414664b9c6467580de1c484124f3367de947bd983fedef19b24cdce28ef683c1"
+      "bytes": 11502,
+      "sha256": "eb563555cac1034077c3a7db3a58dea89bd38ec0014af822431d0647f991f631"
     },
     {
       "role": "aiTalkLocalSmokeLog",
       "path": "logs/openpet-app.jsonl",
-      "bytes": 5529,
-      "sha256": "38422e928f072f63f9909907dff68baadff795efa68c3b1841eeef93f805d314"
+      "bytes": 5437,
+      "sha256": "712c77c5c25dbbeae4a703942ebf17af1bc397056bf3931374d33ffade2222dc"
     },
     {
       "role": "archiveReadme",
       "path": "README.md",
-      "bytes": 2693,
-      "sha256": "ead27a882ff8f783ab11a56473a2f654b32ed01856477bae2882b1c3a00fe347"
+      "bytes": 2661,
+      "sha256": "336a6dfe6df2dcce9bbcc5e6bb3a4c61a7e35024c55be0ec75cbda95b2a992bf"
     }
   ],
   "warnings": [

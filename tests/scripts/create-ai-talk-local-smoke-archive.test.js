@@ -27,15 +27,16 @@ const createSessionFixture = ({
     source: 'scripts/run-ai-talk-local-smoke.js',
     userDataDir: sanitized ? '[redacted-local-user-data]' : '/Users/mango/Library/Application Support/ibot',
     sessionId,
-    sessionDir: `tmp/real-provider-chat-acceptance/${sessionId}`,
+    sessionDir: `ai-talk-local-smoke/${sessionId}`,
     copiedLiveAiTalkStore: true,
     liveAiTalkStorePath: sanitized ? '[redacted-local-user-data]/ai-talk-store.json' : '/Users/mango/Library/Application Support/ibot/ai-talk-store.json',
-    tempAiTalkStorePath: `tmp/real-provider-chat-acceptance/${sessionId}/ai-talk-store.json`,
-    logPath: `tmp/real-provider-chat-acceptance/${sessionId}/logs/openpet-app.jsonl`,
+    tempAiTalkStorePath: 'ai-talk-store.json',
+    logPath: 'logs/openpet-app.jsonl',
+    resultPath: 'ai-talk-local-smoke-result.json',
     config: {
       enabled: true,
       provider: 'openai-compatible',
-      baseUrl: 'http://127.0.0.1:8317/v1',
+      baseUrl: sanitized ? '[redacted-local-url]' : 'http://127.0.0.1:8317/v1',
       model: 'gpt-5.5',
       hasApiKey: true
     },
@@ -118,10 +119,10 @@ test('createReadme preserves telemetry-only claim boundary', () => {
   assert.match(readme, /## Manual Acceptance/)
   assert.match(readme, /manualAcceptanceTemplate/)
   assert.match(readme, /does not by itself prove/i)
-  assert.match(readme, /npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir tmp\/real-provider-chat-acceptance/)
+  assert.match(readme, /npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir ai-talk-local-smoke/)
   assert.match(
     readme,
-    /npm run create-ai-talk-local-smoke-archive -- --session-dir tmp\/real-provider-chat-acceptance\/2026-06-28T15-35-59-210Z --archive-dir /,
+    /npm run create-ai-talk-local-smoke-archive -- --session-dir ai-talk-local-smoke\/2026-06-28T15-35-59-210Z --archive-dir /,
     'README reproduction command should pass the source session dir and explicit archive dir separately'
   )
   assert.match(readme, /npm run update-ai-talk-local-smoke-report/)
@@ -145,9 +146,9 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   assert.equal(result.smoke.manualAcceptance.inputUsable, 'pending')
   assert.equal(result.smoke.manualAcceptance.desktopFeelNotesPresent, false)
   assert.equal(result.smoke.manualAcceptance.requestId, 'chat-mqxyb5gj-6tvex3h5')
-  assert.equal(result.source.sessionDir, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z')
-  assert.equal(result.source.resultPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
-  assert.equal(result.source.logPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
+  assert.equal(result.source.sessionDir, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
+  assert.equal(result.source.resultPath, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
+  assert.equal(result.source.logPath, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
   assert.equal(result.archive.archiveDir, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
   assert.equal(result.archive.outputPath, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json')
   assert.equal(result.files.length, 3)
@@ -207,6 +208,20 @@ test('createAiTalkLocalSmokeArchive rejects raw API key-like tokens in reports',
   assert.throws(
     () => createAiTalkLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow }),
     /raw API key-like token/
+  )
+})
+
+test('createAiTalkLocalSmokeArchive rejects loopback URLs in reports', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'ai-talk-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  report.config.baseUrl = 'http://127.0.0.1:8317/v1'
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-06-28T15-35-59-210Z')
+  assert.throws(
+    () => createAiTalkLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow }),
+    /loopback address found/
   )
 })
 

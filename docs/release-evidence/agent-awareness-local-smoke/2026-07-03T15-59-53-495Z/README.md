@@ -54,7 +54,7 @@ It does not by itself prove that dashboard usefulness, pet speech noisiness, or 
 ## Reproduction Command
 
 ```bash
-npm run run-agent-awareness-local-smoke -- --codex-home ~/.codex --output-dir tmp/agent-awareness-real-codex-acceptance-rerun2
-node scripts/create-agent-awareness-local-smoke-archive.js --session-dir tmp/agent-awareness-real-codex-acceptance-rerun2/2026-07-03T15-59-53-495Z --archive-dir docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z
+npm run run-agent-awareness-local-smoke -- --codex-home ~/.codex --output-dir agent-awareness-local-smoke
+node scripts/create-agent-awareness-local-smoke-archive.js --session-dir agent-awareness-local-smoke/2026-07-03T15-59-53-495Z --archive-dir docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z
 npm run update-agent-awareness-local-smoke-report -- docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z/agent-awareness-local-smoke-result.json --dashboard-useful true --pet-speech-noise-acceptable true --redaction-looks-safe true --notes "Record the human dashboard/noise review here." --validate-complete
 ```

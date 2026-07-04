@@ -13,6 +13,9 @@ const {
 } = require('../../scripts/run-agent-awareness-local-smoke')
 
 const createTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+const resolveOutputPath = (outputDir, sessionId, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, sessionId, recordedPath)
+)
 
 const createCodexRolloutFixture = () => {
   const codexHome = createTempDir('openpet-agent-awareness-codex-home-')
@@ -95,6 +98,7 @@ test('runAgentAwarenessLocalSmoke writes a redacted report when sanitized Codex 
   assert.equal(result.health.diagnostics.totalEvents >= 2, true)
   assert.equal(result.hookPlan.authFile, 'plugin-auth-file')
   assert.equal(result.hookPlan.instructionsFile, 'codex-hook-plan.md')
+  assert.equal(result.hookPlan.serviceUrl, '[local-url]')
   assert.equal(result.sessions.length >= 1, true)
   assert.match(result.sessions[0].sessionId, /^[a-f0-9]{12}$/)
   assert.match(result.sessions[0].project, /^OpenPet #[a-f0-9]{6}$/)
@@ -109,9 +113,13 @@ test('runAgentAwarenessLocalSmoke writes a redacted report when sanitized Codex 
     redactionLooksSafe: true,
     notes: ''
   })
-  assert.equal(fs.existsSync(result.resultPath), true)
+  assert.equal(result.sessionDir, 'agent-awareness-local-smoke/2026-07-03T12-34-56-789Z')
+  assert.equal(result.pluginDataDir, 'plugin-data')
+  assert.equal(result.resultPath, 'agent-awareness-local-smoke-result.json')
+  assert.equal(result.healthUrl, '[local-url]')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, result.sessionId, result.resultPath)), true)
 
-  const persisted = JSON.parse(fs.readFileSync(result.resultPath, 'utf-8'))
+  const persisted = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, result.sessionId, result.resultPath), 'utf-8'))
   assert.equal(persisted.ok, true)
   assert.equal(persisted.codexHome, '[redacted-local-codex-home]')
   assert.equal(persisted.healthUrl, '[local-url]')
@@ -136,5 +144,5 @@ test('runAgentAwarenessLocalSmoke fails cleanly when no sanitized Codex session 
   assert.equal(result.timedOut, true)
   assert.equal(result.health.diagnostics.sessionCount, 0)
   assert.equal(result.sessions.length, 0)
-  assert.equal(fs.existsSync(result.resultPath), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, result.sessionId, result.resultPath)), true)
 })

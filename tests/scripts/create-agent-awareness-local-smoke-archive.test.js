@@ -26,9 +26,9 @@ const createSessionFixture = ({
     source: 'scripts/run-agent-awareness-local-smoke.js',
     codexHome: sanitized ? '[redacted-local-codex-home]' : '/Users/mango/.codex',
     sessionId,
-    sessionDir: `tmp/agent-awareness-real-codex-acceptance/${sessionId}`,
-    pluginDataDir: `tmp/agent-awareness-real-codex-acceptance/${sessionId}/plugin-data`,
-    resultPath: `tmp/agent-awareness-real-codex-acceptance/${sessionId}/agent-awareness-local-smoke-result.json`,
+    sessionDir: `agent-awareness-local-smoke/${sessionId}`,
+    pluginDataDir: 'plugin-data',
+    resultPath: 'agent-awareness-local-smoke-result.json',
     scanTimeoutMs: 12000,
     sampleLimit: 5,
     sanitizedSignalDetected: true,
@@ -136,8 +136,8 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
   assert.equal(result.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pending')
   assert.equal(result.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(result.smoke.manualAcceptance.notesPresent, false)
-  assert.equal(result.source.sessionDir, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z')
-  assert.equal(result.source.resultPath, 'tmp/agent-awareness-real-codex-acceptance/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json')
+  assert.equal(result.source.sessionDir, 'agent-awareness-local-smoke/2026-07-03T15-38-32-999Z')
+  assert.equal(result.source.resultPath, 'agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json')
   assert.equal(result.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z')
   assert.equal(result.archive.outputPath, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-archive-result.json')
   assert.equal(result.files.length, 2)

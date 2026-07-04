@@ -29,15 +29,16 @@ const createReportFixture = ({
     source: 'scripts/run-ai-talk-local-smoke.js',
     userDataDir: '[redacted-local-user-data]',
     sessionId,
-    sessionDir: `tmp/real-provider-chat-acceptance/${sessionId}`,
+    sessionDir: `ai-talk-local-smoke/${sessionId}`,
     copiedLiveAiTalkStore: true,
     liveAiTalkStorePath: '[redacted-local-user-data]/ai-talk-store.json',
-    tempAiTalkStorePath: `tmp/real-provider-chat-acceptance/${sessionId}/ai-talk-store.json`,
-    logPath: `tmp/real-provider-chat-acceptance/${sessionId}/logs/openpet-app.jsonl`,
+    tempAiTalkStorePath: 'ai-talk-store.json',
+    logPath: 'logs/openpet-app.jsonl',
+    resultPath: 'ai-talk-local-smoke-result.json',
     config: {
       enabled: true,
       provider: 'openai-compatible',
-      baseUrl: 'http://127.0.0.1:8317/v1',
+      baseUrl: '[redacted-local-url]',
       model: 'gpt-5.5',
       hasApiKey: true
     },
@@ -213,9 +214,9 @@ test('updateAiTalkLocalSmokeReport rewrites report, README, and archive result',
   assert.equal(archiveResult.smoke.manualAcceptance.inputUsable, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.desktopFeelNotesPresent, true)
   assert.equal(archiveResult.smoke.manualAcceptance.requestId, 'chat-mqxyb5gj-6tvex3h5')
-  assert.equal(archiveResult.source.sessionDir, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z')
-  assert.equal(archiveResult.source.resultPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
-  assert.equal(archiveResult.source.logPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
+  assert.equal(archiveResult.source.sessionDir, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
+  assert.equal(archiveResult.source.resultPath, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
+  assert.equal(archiveResult.source.logPath, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
   assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
   assert.equal(archiveResult.archive.outputPath, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json')
   assert.equal(Array.isArray(archiveResult.files), true)
@@ -259,6 +260,22 @@ test('updateAiTalkLocalSmokeReport rejects unsafe notes before writing', () => {
       desktopFeelNotes: 'Observed local path /Users/mango/private during review.'
     }
   }), /local user path found/)
+})
+
+test('validateUpdatedReport rejects loopback URLs that re-enter the report', () => {
+  const { report } = createReportFixture({
+    reportOverrides: {
+      config: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        hasApiKey: true
+      }
+    }
+  })
+
+  assert.throws(() => validateUpdatedReport(report, {}), /loopback address found/)
 })
 
 test('cli exits non-zero when complete validation is requested with pending review fields', () => {

@@ -58,7 +58,7 @@ npm run check:syntax
 ```bash
 node scripts/run-ai-talk-local-smoke.js \
   --message "你好，请用一句简短中文回复，用于 bubble chat 验收" \
-  --output-dir tmp/real-provider-chat-acceptance
+  --output-dir ai-talk-local-smoke
 ```
 
 通过标准：

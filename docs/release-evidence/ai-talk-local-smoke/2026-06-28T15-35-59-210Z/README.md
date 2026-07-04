@@ -7,7 +7,7 @@ This evidence records a sanitized real-provider AI Talk smoke run against the sa
 ## Scope
 
 - Provider: `openai-compatible`
-- Base URL: `http://127.0.0.1:8317/v1`
+- Base URL: `[redacted-local-url]`
 - Chat model: `gpt-5.5`
 - Active pet-pack during the run: `duodong`
 - Prompt: not recorded in the archive README
@@ -47,7 +47,7 @@ It does not by itself prove that transparent popup placement, dwell time comfort
 ## Reproduction Command
 
 ```bash
-npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir tmp/real-provider-chat-acceptance
-npm run create-ai-talk-local-smoke-archive -- --session-dir tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z --archive-dir docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z
+npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir ai-talk-local-smoke
+npm run create-ai-talk-local-smoke-archive -- --session-dir ai-talk-local-smoke/2026-06-28T15-35-59-210Z --archive-dir docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z
 npm run update-ai-talk-local-smoke-report -- docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json --bubble-visible-long-enough true --input-usable true --desktop-feel-notes "Record the desktop interaction review here." --validate-complete
 ```

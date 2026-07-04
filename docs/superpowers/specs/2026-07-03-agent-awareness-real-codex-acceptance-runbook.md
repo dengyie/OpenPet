@@ -57,7 +57,7 @@ npm run check:docs-drift
 ```bash
 npm run run-agent-awareness-local-smoke -- \
   --codex-home ~/.codex \
-  --output-dir tmp/agent-awareness-real-codex-acceptance
+  --output-dir agent-awareness-local-smoke
 ```
 
 可选参数：
