@@ -85,10 +85,10 @@ test('project-context indexes the archived provider smoke evidence and current s
     )
   )
 
-  assert.equal(context.updated, '2026-07-16', 'project-context.json should carry the current live-doc update date')
+  assert.equal(context.updated, '2026-07-05', 'project-context.json should carry the current live-doc update date')
   assert.equal(
     context.branch,
-    'main',
+    'codex/dev8',
     'project-context.json should describe the current live-doc branch context'
   )
 
@@ -119,8 +119,8 @@ test('project-context indexes the archived provider smoke evidence and current s
   )
   assert.match(
     facts,
-    /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-38-29-834Z-dev8-acceptance\/[\s\S]*docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-56-30-104Z-main-acceptance\/[\s\S]*\/images\/edits[\s\S]*codex\/dev8[\s\S]*clean main acceptance worktree/i,
-    'project-context.json should point to both archived Creator Workflow host smoke evidence paths and the current main-acceptance truth'
+    /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-38-29-834Z-dev8-acceptance\/[\s\S]*\/images\/edits[\s\S]*codex\/dev8[\s\S]*main-branch acceptance remains outstanding/i,
+    'project-context.json should point to the archived Creator Workflow host smoke evidence path and current branch-level claim boundary'
   )
   assert.match(
     facts,
@@ -307,8 +307,8 @@ test('live docs keep branch metadata aligned with project-context', () => {
 
   assert.equal(
     context.branch,
-    'main',
-    'project-context.json should keep live-doc metadata on the current main baseline'
+    'codex/dev8',
+    'project-context.json should keep live-doc metadata on the current development baseline'
   )
 
   for (const [name, content] of [
@@ -318,7 +318,7 @@ test('live docs keep branch metadata aligned with project-context', () => {
   ]) {
     assert.match(
       content,
-      /Branch:\s*`main`/i,
+      /Branch:\s*`codex\/dev8`/i,
       `${name} should keep the same branch header as project-context.json`
     )
   }

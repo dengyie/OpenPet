@@ -35,3 +35,4 @@ It does not by itself prove production art quality, broad multi-view support, or
 npm run smoke:creator-workflow-host -- --source-user-data-dir "[redacted-local-user-data]" --reference-image "[redacted-local-reference]/正面.png" --scenario both
 node scripts/create-creator-workflow-host-smoke-archive.js --session-dir release/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z --archive-dir docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance
 ```
+
