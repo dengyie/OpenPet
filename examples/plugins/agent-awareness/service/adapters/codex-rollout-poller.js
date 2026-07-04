@@ -8,6 +8,7 @@ const DEFAULT_SCAN_INTERVAL_MS = 3000
 const DEFAULT_MAX_FILES = 24
 const DEFAULT_MAX_LINES = 256
 const DEFAULT_MAX_DEPTH = 5
+const DEFAULT_MAX_TAIL_BYTES = 256 * 1024
 
 const CONTENT_BEARING_EVENT_TYPES = new Set([
   'agent_message',
@@ -114,16 +115,47 @@ const toIso = (value, fallbackMs = Date.now()) => {
   return new Date(Number.isFinite(parsed) ? parsed : fallbackMs).toISOString()
 }
 
-const readTailLines = ({ filePath, maxLines = DEFAULT_MAX_LINES }) => {
-  let lines = []
+const readFirstLine = (fd, fileSize, maxBytes = 64 * 1024) => {
+  const chunks = []
+  let offset = 0
+  while (offset < fileSize && offset < maxBytes) {
+    const chunkSize = Math.min(8192, fileSize - offset, maxBytes - offset)
+    const buffer = Buffer.alloc(chunkSize)
+    const bytesRead = fs.readSync(fd, buffer, 0, chunkSize, offset)
+    if (!bytesRead) break
+    chunks.push(buffer.subarray(0, bytesRead))
+    const combined = Buffer.concat(chunks)
+    const newlineIndex = combined.indexOf(0x0a)
+    if (newlineIndex >= 0) return combined.subarray(0, newlineIndex).toString('utf-8').replace(/\r$/, '')
+    offset += bytesRead
+  }
+  return Buffer.concat(chunks).toString('utf-8').split(/\r?\n/, 1)[0] || ''
+}
+
+const readTailLines = ({ filePath, maxLines = DEFAULT_MAX_LINES, maxTailBytes = DEFAULT_MAX_TAIL_BYTES }) => {
+  let fd = null
   try {
-    lines = fs.readFileSync(filePath, 'utf-8').split(/\r?\n/).filter(Boolean)
+    fd = fs.openSync(filePath, 'r')
+    const stat = fs.fstatSync(fd)
+    if (!stat.size) return []
+    const tailBytes = Math.min(stat.size, Math.max(8192, Number(maxTailBytes) || DEFAULT_MAX_TAIL_BYTES))
+    const tailBuffer = Buffer.alloc(tailBytes)
+    fs.readSync(fd, tailBuffer, 0, tailBytes, stat.size - tailBytes)
+    const allTailLines = tailBuffer.toString('utf-8').split(/\r?\n/).filter(Boolean)
+    const tailLines = allTailLines.slice(-Math.max(1, maxLines))
+    const firstLine = tailBytes === stat.size
+      ? allTailLines[0]
+      : readFirstLine(fd, stat.size)
+    return [...new Set([firstLine, ...tailLines].filter(Boolean))]
   } catch (_) {
     return []
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd)
+      } catch (_) {}
+    }
   }
-  if (lines.length <= maxLines) return lines
-  const firstLine = lines[0]
-  return [firstLine, ...lines.slice(-(maxLines - 1))]
 }
 
 const getRecordKey = ({ filePath, line }) => `${filePath}:${hashText(line)}`
@@ -294,25 +326,7 @@ const createEventFromRecord = ({ filePath, record, sessionMeta = {}, fallbackTim
   return null
 }
 
-const readRolloutEvents = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => {
-  const lines = readTailLines({ filePath, maxLines })
-  const events = []
-  let sessionMeta = {}
-  const fallbackTimestamp = Date.now()
-  for (const line of lines) {
-    const record = safeParse(line)
-    if (!record) continue
-    if (record.type === 'session_meta') {
-      sessionMeta = {
-        id: record.payload?.id || filePath,
-        cwd: record.payload?.cwd || ''
-      }
-    }
-    const event = createEventFromRecord({ filePath, record, sessionMeta, fallbackTimestamp })
-    if (event) events.push(event)
-  }
-  return events
-}
+const readRolloutEvents = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => inspectRolloutFile({ filePath, maxLines }).events
 
 const inspectRolloutFile = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => {
   const lines = readTailLines({ filePath, maxLines })
@@ -340,7 +354,7 @@ const inspectRolloutFile = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => 
     }
     const event = createEventFromRecord({ filePath, record, sessionMeta, fallbackTimestamp })
     if (event) {
-      events.push(event)
+      events.push({ event, recordKey })
       continue
     }
     const ignored = classifyIgnoredRecord({ record })
@@ -351,7 +365,8 @@ const inspectRolloutFile = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => 
   }
 
   return {
-    events,
+    events: events.map(({ event }) => event),
+    eventRecordKeys: events.map(({ recordKey }) => recordKey),
     ignoredContentRecordKeys,
     ignoredMetadataRecordKeys,
     malformedRecordKeys,
@@ -423,8 +438,8 @@ const createCodexRolloutPoller = ({
           seenUnknown.add(unknownKey)
           unknownRecordCount += 1
         }
-        for (const event of inspection.events) {
-          const key = `${file.filePath}:${event.type}:${event.timestamp}`
+        for (const [index, event] of inspection.events.entries()) {
+          const key = `${file.filePath}:${inspection.eventRecordKeys[index] || `${event.type}:${event.timestamp}`}`
           if (seen.has(key)) continue
           seen.add(key)
           emitted += 1

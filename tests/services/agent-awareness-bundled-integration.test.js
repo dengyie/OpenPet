@@ -42,7 +42,7 @@ const createFakeServiceProcess = ({ pid = 4321 } = {}) => {
   return child
 }
 
-test('bundled agent-awareness sync stays enabled-by-default, remains stopped on discovery, and requires native approval to start', () => {
+test('bundled agent-awareness sync stays enabled-by-default, remains stopped on discovery, and requires native approval to start', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-bundled-'))
   const pluginDir = path.join(root, 'plugins')
   const userPluginDir = path.join(pluginDir, 'user-notes')
@@ -101,7 +101,7 @@ test('bundled agent-awareness sync stays enabled-by-default, remains stopped on 
   const approvedView = service.setNativeExecutionApproved(pluginId, true)
   assert.equal(approvedView.nativeExecutionApproved, true)
 
-  const started = service.startService(pluginId, 'agent-awareness')
+  const started = await service.startService(pluginId, 'agent-awareness')
   assert.equal(started.ok, true)
   assert.equal(started.runtime.status, 'running')
   assert.equal(spawned.length, 1)

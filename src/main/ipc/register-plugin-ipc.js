@@ -27,7 +27,9 @@ const registerPluginIpc = ({
   ipcMainService.handle(IPC.PLUGINS_OPEN_DASHBOARD, (_event, payload) => (
     pluginService.openDashboard(payload.pluginId, payload.dashboardId, payload?.options || {})
   ))
-  ipcMainService.handle(IPC.PLUGINS_START_SERVICE, (_event, payload) => pluginService.startService(payload.pluginId, payload.serviceId))
+  ipcMainService.handle(IPC.PLUGINS_START_SERVICE, async (_event, payload) => (
+    await pluginService.startService(payload.pluginId, payload.serviceId)
+  ))
   ipcMainService.handle(IPC.PLUGINS_STOP_SERVICE, (_event, payload) => pluginService.stopService(payload.pluginId, payload.serviceId))
   ipcMainService.handle(IPC.PLUGINS_CHECK_SERVICE_HEALTH, (_event, payload) => pluginService.checkServiceHealth(payload.pluginId, payload.serviceId))
   ipcMainService.handle(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY, (_event, payload) => (

@@ -78,7 +78,7 @@ const createPluginCopyRoot = () => {
   return root
 }
 
-test('plugin service discovers bundled agent-awareness plugin and gates service start behind native execution approval', () => {
+test('plugin service discovers bundled agent-awareness plugin and gates service start behind native execution approval', async () => {
   const spawned = []
   const child = createSlowStoppingServiceProcess()
   const settingsService = createBareSettingsService({
@@ -111,7 +111,7 @@ test('plugin service discovers bundled agent-awareness plugin and gates service 
   assert.equal(spawned.length, 0)
 
   service.setNativeExecutionApproved('openpet.agent-awareness', true)
-  const started = service.startService('openpet.agent-awareness', 'agent-awareness')
+  const started = await service.startService('openpet.agent-awareness', 'agent-awareness')
 
   assert.equal(started.ok, true)
   assert.equal(started.runtime.status, 'running')
