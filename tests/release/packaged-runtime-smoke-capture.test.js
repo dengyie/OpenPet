@@ -66,7 +66,7 @@ test('mergeRuntimeEvidenceIntoReport marks automated runtime checks pass and kee
         bodyBackground: 'rgba(0, 0, 0, 0)',
         htmlBackground: 'rgba(0, 0, 0, 0)',
         transparentBackground: true,
-        sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
+        sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///Users/mango/private/sprite.png)' },
         legacyInlineBubble: { present: true, visible: false, text: '' },
         bubbleChat: createBubbleChatEvidence(),
         action: { requested: 'idle', current: 'idle', advanced: true }
@@ -85,19 +85,21 @@ test('mergeRuntimeEvidenceIntoReport marks automated runtime checks pass and kee
   const merged = mergeRuntimeEvidenceIntoReport(report, evidence)
   const checks = Object.fromEntries(merged.checks.map((check) => [check.id, check]))
 
-  assert.equal(checks['packaged-launch'].status, 'pass')
-  assert.match(checks['packaged-launch'].evidence, /pid 1234/)
-  assert.equal(checks['sprite-visible'].status, 'pass')
-  assert.match(checks['sprite-visible'].evidence, /runtime\.png/)
-  assert.match(checks['speech-bubble-rendered'].evidence, /"kind":"notice"/)
-  assert.match(checks['speech-bubble-rendered'].evidence, /bubbleScreenshot=\/tmp\/evidence\/screenshots\/runtime-bubble\.png/)
+    assert.equal(checks['packaged-launch'].status, 'pass')
+    assert.match(checks['packaged-launch'].evidence, /pid 1234/)
+    assert.equal(checks['sprite-visible'].status, 'pass')
+    assert.match(checks['sprite-visible'].evidence, /runtime\.png/)
+    assert.match(checks['sprite-visible'].evidence, /\[redacted-local-url\]/)
+    assert.doesNotMatch(checks['sprite-visible'].evidence, /file:\/\/|\/Users\//)
+    assert.match(checks['speech-bubble-rendered'].evidence, /"kind":"notice"/)
+    assert.match(checks['speech-bubble-rendered'].evidence, /bubbleScreenshot=runtime-bubble\.png/)
   assert.equal(checks['pack-switch-doro'].status, 'pass')
   assert.equal(checks['plugin-picker-evidence-linked'].status, 'pending')
   assert.match(checks['plugin-picker-evidence-linked'].notes, /desktop picker smoke report/)
   assert.equal(checks['pet-picker-evidence-linked'].status, 'pending')
   assert.equal(checks['invalid-package-feedback'].status, 'blocked')
-  assert.equal(merged.linkedEvidence.screenshots.includes('/tmp/evidence/screenshots/runtime.png'), true)
-  assert.equal(merged.linkedEvidence.screenshots.includes('/tmp/evidence/screenshots/runtime-bubble.png'), true)
+  assert.equal(merged.linkedEvidence.screenshots.includes('runtime.png'), true)
+  assert.equal(merged.linkedEvidence.screenshots.includes('runtime-bubble.png'), true)
 
   const structural = validateReport(merged, { allowPending: true })
   assert.equal(structural.ok, true)
@@ -139,7 +141,7 @@ test('mergeRuntimeEvidenceIntoReport can produce a ready runtime report when pic
 
   assert.equal(readiness.ok, true)
   assert.equal(readiness.summary.smokeReady, true)
-  assert.equal(merged.linkedEvidence.desktopPickerSmokeReport, '/tmp/evidence/desktop-picker-smoke-report.json')
+  assert.equal(merged.linkedEvidence.desktopPickerSmokeReport, 'desktop-picker-smoke-report.json')
 })
 
 test('runPackagedRuntimeSmoke merges evidence into a report file', async () => {
@@ -201,7 +203,7 @@ test('runPackagedRuntimeSmoke merges evidence into a report file', async () => {
   const written = JSON.parse(fs.readFileSync(result.reportPath, 'utf-8'))
   assert.equal(result.validation.ok, true)
   assert.equal(written.checks.find((check) => check.id === 'packaged-launch').status, 'pass')
-  assert.equal(written.linkedEvidence.desktopPickerSmokeReport, pickerReportPath)
+  assert.equal(written.linkedEvidence.desktopPickerSmokeReport, 'desktop-picker-smoke-report.json')
   assert.match(written.checks.find((check) => check.id === 'sprite-visible').evidence, /runtime\.png/)
   assert.equal(written.checks.find((check) => check.id === 'invalid-package-feedback').status, 'pass')
   assert.match(written.checks.find((check) => check.id === 'invalid-package-feedback').evidence, /invalid-package-feedback/)
@@ -352,10 +354,11 @@ test('applyDesktopPickerEvidence maps ready picker checks to runtime evidence', 
 
   const mapped = applyDesktopPickerEvidence(runtimeEvidence, {
     absolutePath: '/tmp/desktop-picker-smoke-report.json',
+    safePath: 'desktop-picker-smoke-report.json',
     report: pickerReport
   })
 
-  assert.equal(mapped.desktopPickerSmokeReport, '/tmp/desktop-picker-smoke-report.json')
+  assert.equal(mapped.desktopPickerSmokeReport, 'desktop-picker-smoke-report.json')
   assert.equal(mapped.state.pluginPicker.status, 'pass')
   assert.match(mapped.state.pluginPicker.evidence, /plugin-picker-cancel/)
   assert.equal(mapped.state.petPicker.status, 'pass')

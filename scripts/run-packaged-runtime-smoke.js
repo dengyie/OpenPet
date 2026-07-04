@@ -6,10 +6,15 @@ const path = require('path')
 const { createPackagedRuntimeSmokeReport, writeReport } = require('./create-packaged-runtime-smoke-report')
 const { REQUIRED_CHECKS, validateReport } = require('./validate-packaged-runtime-smoke-report')
 const { validateReport: validateDesktopPickerReport } = require('./validate-desktop-picker-smoke-report')
+const { sanitizeLogText } = require('../src/main/services/log-safety')
 
 const DEFAULT_RELEASE_DIR = path.join(__dirname, '..', 'release')
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'docs', 'release-evidence', 'packaged-runtime')
 const DEFAULT_TIMEOUT_MS = 30000
+const DEFAULT_APP_PATH_LABEL = 'OpenPet.app'
+const DEFAULT_SCREENSHOT_LABEL = 'packaged-runtime.png'
+const DEFAULT_BUBBLE_SCREENSHOT_LABEL = 'packaged-runtime-bubble-chat.png'
+const DEFAULT_PICKER_REPORT_LABEL = 'desktop-picker-smoke-report.json'
 
 const usage = () => [
   'Usage: node scripts/run-packaged-runtime-smoke.js [options]',
@@ -105,9 +110,30 @@ const createRuntimeSmokeSession = ({ appPath, outputDir = DEFAULT_OUTPUT_DIR, pl
   }
 }
 
-const normalizePath = (value) => value ? path.resolve(value) : ''
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+const createSafePathValue = (targetPath, fallback) => {
+  if (!targetPath) return ''
+  const absolutePath = path.resolve(String(targetPath || '').trim())
+  return createSafeProjectPath(absolutePath, path.basename(absolutePath) || fallback)
+}
 
 const hasText = (value) => String(value || '').trim().length > 0
+const sanitizeEvidenceText = (value, maxChars = 2000) => {
+  const text = String(value || '')
+  if (!text) return ''
+  return sanitizeLogText(text, { maxChars })
+}
 
 const findCheck = (report, id) => report.checks.find((check) => check.id === id)
 
@@ -115,8 +141,8 @@ const setCheck = (report, id, status, evidence, notes = '') => {
   const check = findCheck(report, id)
   if (!check) throw new Error(`Missing packaged runtime check: ${id}`)
   check.status = status
-  check.evidence = evidence || ''
-  check.notes = notes || check.notes || REQUIRED_CHECKS.find((item) => item.id === id)?.label || ''
+  check.evidence = sanitizeEvidenceText(evidence)
+  check.notes = sanitizeEvidenceText(notes || check.notes || REQUIRED_CHECKS.find((item) => item.id === id)?.label || '')
 }
 
 const packById = (evidence, packId) => (Array.isArray(evidence.state?.packs)
@@ -125,9 +151,9 @@ const packById = (evidence, packId) => (Array.isArray(evidence.state?.packs)
 
 const createRuntimeCheckEvidence = ({ sessionId, appPath, screenshotPath, desktopPickerSmokeReport = '', state = {} } = {}) => ({
   sessionId: sessionId || '',
-  appPath: appPath || '',
-  screenshotPath: screenshotPath || '',
-  desktopPickerSmokeReport: desktopPickerSmokeReport || '',
+  appPath: createSafePathValue(appPath, DEFAULT_APP_PATH_LABEL),
+  screenshotPath: createSafePathValue(screenshotPath, DEFAULT_SCREENSHOT_LABEL),
+  desktopPickerSmokeReport: createSafePathValue(desktopPickerSmokeReport, DEFAULT_PICKER_REPORT_LABEL),
   state: state || {}
 })
 
@@ -142,7 +168,12 @@ const loadDesktopPickerSmokeReport = (reportPath, fsImpl = fs) => {
   if (!validation.ok) {
     throw new Error(`Linked desktop picker smoke report is not ready: ${validation.errors.join('; ')}`)
   }
-  return { absolutePath, report, validation }
+  return {
+    absolutePath,
+    safePath: createSafePathValue(absolutePath, DEFAULT_PICKER_REPORT_LABEL),
+    report,
+    validation
+  }
 }
 
 const desktopPickerCheckEvidence = (desktopPickerEvidence, checkIds) => {
@@ -160,7 +191,7 @@ const desktopPickerCheckEvidence = (desktopPickerEvidence, checkIds) => {
 
 const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   const merged = JSON.parse(JSON.stringify(report))
-  const screenshot = normalizePath(evidence.screenshotPath)
+  const screenshot = evidence.screenshotPath ? createSafePathValue(evidence.screenshotPath, DEFAULT_SCREENSHOT_LABEL) : ''
   const session = evidence.sessionId ? `session ${evidence.sessionId}` : 'packaged runtime smoke session'
   const prefix = `${session}${evidence.appPath ? ` for ${evidence.appPath}` : ''}`
   const state = evidence.state || {}
@@ -168,7 +199,9 @@ const mergeRuntimeEvidenceIntoReport = (report, evidence) => {
   const windowState = state.window || {}
   const bubbleChat = renderer.bubbleChat || {}
   const legacyInlineBubble = renderer.legacyInlineBubble || {}
-  const bubbleScreenshot = normalizePath(bubbleChat.screenshotPath)
+  const bubbleScreenshot = bubbleChat.screenshotPath
+    ? createSafePathValue(bubbleChat.screenshotPath, DEFAULT_BUBBLE_SCREENSHOT_LABEL)
+    : ''
   const bubbleItems = Array.isArray(bubbleChat.items) ? bubbleChat.items : []
   const hasRenderedBubbleItem = bubbleItems.some((item) => hasText(item?.text))
   const floatingBubbleVisible = Boolean(
@@ -282,7 +315,7 @@ const applyDesktopPickerEvidence = (runtimeEvidence, desktopPickerEvidence) => {
   if (!desktopPickerEvidence) return runtimeEvidence
   return {
     ...runtimeEvidence,
-    desktopPickerSmokeReport: desktopPickerEvidence.absolutePath,
+    desktopPickerSmokeReport: desktopPickerEvidence.safePath,
     state: {
       ...runtimeEvidence.state,
       pluginPicker: {
@@ -291,20 +324,20 @@ const applyDesktopPickerEvidence = (runtimeEvidence, desktopPickerEvidence) => {
           'plugin-picker-cancel',
           'plugin-picker-zip-review',
           'plugin-install-disabled'
-        ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.absolutePath}`
+        ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.safePath}`
       },
       petPicker: {
         status: 'pass',
         evidence: desktopPickerCheckEvidence(desktopPickerEvidence, [
           'pet-pack-picker-cancel',
           'action-frame-picker-cancel'
-        ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.absolutePath}`
+        ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.safePath}`
       },
       invalidPackage: {
         status: 'pass',
         evidence: desktopPickerCheckEvidence(desktopPickerEvidence, [
           'invalid-package-feedback'
-        ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.absolutePath}`
+        ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.safePath}`
       }
     }
   }
@@ -376,7 +409,7 @@ const runPackagedRuntimeSmoke = async ({
       sessionId: session.sessionId,
       appPath: resolvedAppPath,
       screenshotPath: evidence.screenshotPath || session.screenshotPath,
-      desktopPickerSmokeReport: desktopPickerEvidence?.absolutePath || '',
+      desktopPickerSmokeReport: desktopPickerEvidence?.safePath || '',
       state: evidence.state || {}
     })
     const merged = mergeRuntimeEvidenceIntoReport(baseReport, applyDesktopPickerEvidence(runtimeEvidence, desktopPickerEvidence))

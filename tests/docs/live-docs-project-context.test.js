@@ -65,6 +65,15 @@ test('project-context indexes the archived provider smoke evidence and current s
   const context = readProjectContext()
   const facts = context.currentFacts.join('\n')
   const docsReadme = fs.readFileSync(path.join(repoRoot, 'docs/README.md'), 'utf-8')
+  const agentAwarenessEvidence = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        repoRoot,
+        'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json'
+      ),
+      'utf-8'
+    )
+  )
 
   assert.equal(context.updated, '2026-07-03', 'project-context.json should carry the current live-doc update date')
   assert.equal(
@@ -108,6 +117,11 @@ test('project-context indexes the archived provider smoke evidence and current s
     /run-agent-awareness-local-smoke[\s\S]*manualAcceptanceTemplate[\s\S]*docs\/release-evidence\/agent-awareness-local-smoke\/2026-07-03T16-04-08-824Z\/[\s\S]*unknownRecordCount 0[\s\S]*unsupportedLifecycleRecordCount 0/i,
     'project-context.json should describe the agent-awareness smoke entrypoint and archived evidence path'
   )
+  assert.equal(agentAwarenessEvidence.sessionDir, 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
+  assert.equal(agentAwarenessEvidence.pluginDataDir, 'plugin-data')
+  assert.equal(agentAwarenessEvidence.resultPath, 'agent-awareness-local-smoke-result.json')
+  assert.equal(agentAwarenessEvidence.healthUrl, '[local-url]')
+  assert.equal(agentAwarenessEvidence.hookPlan?.serviceUrl, '[local-url]')
   assert.match(
     facts,
     /docs\/release-evidence\/ai-talk-local-smoke\/2026-06-28T15-35-59-210Z\/[\s\S]*providerLatencyMs was 2141[\s\S]*bubbleDispatch\.petSayReceived was true[\s\S]*bubbleDispatch\.bubbleStateVisible was true/i,

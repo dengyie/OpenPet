@@ -39,14 +39,20 @@ OpenPet currently has:
 ## Validation Baseline
 
 ```bash
-npm run test:core
-npm run test:tools
-npm run test:control-center
-npm test
-npm run check:syntax
+npm test                     # full Node regression suite
+npm run test:core            # core runtime regression suite
+npm run test:tools           # tooling and evidence regression suite
+npm run test:control-center  # Playwright UI regression baseline
+npm run typecheck            # TypeScript no-emit checks
+npm run check:syntax         # Node syntax + typecheck + Control Center build
 npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model>
 npm run smoke:creator-studio-provider -- --prompt "<prompt>"
-npm run run-ai-talk-local-smoke -- --message "<message>"
+npm run run-ai-talk-local-smoke -- --message "你好，请用一句简短中文回复，用于 bubble chat 验收"
+npm run update-ai-talk-local-smoke-report -- docs/release-evidence/ai-talk-local-smoke/<session>/ai-talk-local-smoke-result.json --bubble-visible-long-enough true --input-usable true --desktop-feel-notes "Bubble readable and input usable." --validate-complete
+npm run run-agent-awareness-local-smoke -- --codex-home ~/.codex
+npm run create-agent-awareness-local-smoke-archive -- --session-dir agent-awareness-local-smoke/<session>
+npm run update-agent-awareness-local-smoke-report -- docs/release-evidence/agent-awareness-local-smoke/<session>/agent-awareness-local-smoke-result.json --dashboard-useful true --pet-speech-noise-acceptable true --redaction-looks-safe true --notes "Dashboard useful and low-noise." --validate-complete
+npm run create-ai-talk-local-smoke-archive -- --session-dir ai-talk-local-smoke/<session>
 ```
 
 ## Open Engineering Themes

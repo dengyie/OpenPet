@@ -103,6 +103,7 @@ test('live docs surface the AI Talk bubble acceptance smoke entrypoint with the 
   const projectStatusReview = readText('docs/project-status-review.md')
   const smokeEvidence = readJson('docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
   const smokeReadme = readText('docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/README.md')
+  const smokeLog = readText('docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
 
   assert.match(
     docsReadme,
@@ -117,12 +118,21 @@ test('live docs surface the AI Talk bubble acceptance smoke entrypoint with the 
 
   assert.equal(smokeEvidence.ok, true)
   assert.equal(smokeEvidence.config.model, 'gpt-5.5')
+  assert.equal(smokeEvidence.config.baseUrl, '[redacted-local-url]')
+  assert.equal(smokeEvidence.sessionDir, 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
+  assert.equal(smokeEvidence.tempAiTalkStorePath, 'ai-talk-store.json')
+  assert.equal(smokeEvidence.logPath, 'logs/openpet-app.jsonl')
+  assert.equal(smokeEvidence.resultPath, 'ai-talk-local-smoke-result.json')
   assert.equal(smokeEvidence.bubbleAcceptance.providerLatencyMs, 2141)
   assert.equal(smokeEvidence.bubbleDispatch.petSayReceived, true)
   assert.equal(smokeEvidence.bubbleDispatch.bubbleStateVisible, true)
   assert.equal(smokeEvidence.manualAcceptanceTemplate.requestId, smokeEvidence.bubbleAcceptance.requestId)
-  assert.match(smokeReadme, /ttlMs = 9835/i)
+  assert.doesNotMatch(JSON.stringify(smokeEvidence), /127\.0\.0\.1|localhost|\[::1\]|\/Users\//i)
+  assert.match(smokeReadme, /popup telemetry in `logs\/openpet-app\.jsonl`/i)
   assert.match(smokeReadme, /does not by itself prove/i)
+  assert.doesNotMatch(smokeReadme, /127\.0\.0\.1|localhost|\[::1\]|\/Users\//i)
+  assert.match(smokeLog, /"ttlMs":9835/i)
+  assert.doesNotMatch(smokeLog, /127\.0\.0\.1|localhost|\[::1\]|\/Users\//i)
 
   for (const [name, content] of [
     ['openpet-current-todo-architecture.md', todoArchitecture],

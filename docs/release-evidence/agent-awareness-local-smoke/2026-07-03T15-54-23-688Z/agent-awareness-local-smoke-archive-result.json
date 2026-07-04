@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-07-04T08:32:35.244Z",
+  "generatedAt": "2026-07-04T16:33:49.082Z",
   "ok": true,
   "source": {
-    "sessionDir": "tmp/agent-awareness-real-codex-acceptance-rerun/2026-07-03T15-54-23-688Z",
-    "resultPath": "tmp/agent-awareness-real-codex-acceptance-rerun/2026-07-03T15-54-23-688Z/agent-awareness-local-smoke-result.json"
+    "sessionDir": "agent-awareness-local-smoke/2026-07-03T15-54-23-688Z",
+    "resultPath": "agent-awareness-local-smoke/2026-07-03T15-54-23-688Z/agent-awareness-local-smoke-result.json"
   },
   "archive": {
     "archiveDir": "docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-54-23-688Z",
@@ -27,14 +27,14 @@
     {
       "role": "agentAwarenessLocalSmokeResult",
       "path": "agent-awareness-local-smoke-result.json",
-      "bytes": 3549,
-      "sha256": "a0aa01492e2bf182ae8b89eb29b7ffd91696037970cdb023e55baac2aee935ba"
+      "bytes": 3383,
+      "sha256": "767f8ec17c8c1cc9af2b99ce71f91a4cf5b81b06212701e56bd864820d0b7b1e"
     },
     {
       "role": "archiveReadme",
       "path": "README.md",
-      "bytes": 2786,
-      "sha256": "3b1ecd48fabf2979d3eb4631076dd80acdd8c97a67b072cd594fe545bb8abd59"
+      "bytes": 2746,
+      "sha256": "06f5a1b8bcbe37593eb07fcda015661ab98592b118898d638f04bf5920af9557"
     }
   ]
 }
