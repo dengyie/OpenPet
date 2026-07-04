@@ -19,6 +19,7 @@ const usage = () => [
   '  --session-dir <dir>    Source smoke session directory produced by run-creator-workflow-host-smoke',
   '  --archive-dir <dir>    Archive directory to create. Defaults to docs/release-evidence/creator-workflow-host-smoke/<session-id>',
   '  --output <file>        Archive result JSON path. Defaults to <archive-dir>/creator-workflow-host-smoke-result.json',
+  '  --acceptance-scope <branch|main>',
   '  --json                 Print archive result JSON',
   '  --help',
   '',
@@ -36,6 +37,7 @@ const parseArgs = (argv) => {
     sessionDir: '',
     archiveDir: '',
     outputPath: '',
+    acceptanceScope: '',
     json: false,
     help: false
   }
@@ -50,6 +52,9 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--output') {
       options.outputPath = readValue(argv, index, arg)
+      index += 1
+    } else if (arg === '--acceptance-scope') {
+      options.acceptanceScope = readValue(argv, index, arg)
       index += 1
     } else if (arg === '--json') {
       options.json = true
@@ -108,6 +113,14 @@ const sanitizeSourceSessionDir = (sessionDir) => {
   const relative = toPosixPath(path.relative(process.cwd(), String(sessionDir || '').trim()))
   if (relative && !relative.startsWith('../') && !path.isAbsolute(relative)) return sanitizeText(relative, 240)
   return 'release/creator-workflow-host-smoke/<session>'
+}
+
+const resolveAcceptanceScope = ({ acceptanceScope = '', archiveDir = '' } = {}) => {
+  const normalizedScope = sanitizeText(acceptanceScope, 20).toLowerCase()
+  if (normalizedScope === 'branch' || normalizedScope === 'main') return normalizedScope
+  const archiveBaseName = sanitizeText(path.basename(String(archiveDir || '').trim()), 120).toLowerCase()
+  if (archiveBaseName.includes('main-acceptance')) return 'main'
+  return 'branch'
 }
 
 const summarizeBasicActions = (value = {}) => {
@@ -178,11 +191,19 @@ const summarizeScenario = (scenario = {}) => {
   }
 }
 
+const createWarnings = (acceptanceScope = 'branch') => [
+  'This archive proves the technical host-owned one-click chain and reference-conditioning evidence only.',
+  acceptanceScope === 'main'
+    ? 'Human review is still required for art quality before broadening support claims.'
+    : 'Human review is still required for art quality and for deciding whether a branch acceptance run is sufficient to promote broader support claims.'
+]
+
 const createArchiveResultValue = ({
   report,
   sessionDir,
   archiveDir,
   outputPath,
+  acceptanceScope,
   now = () => new Date()
 }) => {
   const referenceImage = sanitizeReferenceImageSummary(report.referenceImagePath)
@@ -191,6 +212,7 @@ const createArchiveResultValue = ({
     ok: report.ok === true,
     generatedAt: now().toISOString(),
     evidenceType: 'creator-workflow-host-smoke',
+    acceptanceScope,
     source: 'scripts/create-creator-workflow-host-smoke-archive.js',
     claimBoundary: 'Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and records evidence that the run-local canonical reference image was sent into the provider request as an image-edit conditioning input. It does not guarantee provider art quality or visual fidelity.',
     archive: {
@@ -204,10 +226,7 @@ const createArchiveResultValue = ({
     },
     referenceImage,
     scenarios: Array.isArray(report.scenarios) ? report.scenarios.map(summarizeScenario) : [],
-    warnings: [
-      'This archive proves the technical host-owned one-click chain and reference-conditioning evidence only.',
-      'Human review is still required for art quality and for deciding whether a branch acceptance run is sufficient to promote broader support claims.'
-    ]
+    warnings: createWarnings(acceptanceScope)
   }
 }
 
@@ -217,6 +236,13 @@ const createReadme = ({ report, archiveResult, archiveDir }) => {
     const conditioning = `${scenario.conditioning.mode || 'unknown'} via ${scenario.conditioning.endpoint || 'unknown'} with ${scenario.conditioning.referenceImageCount} reference image(s)`
     return `| ${scenario.scenario} | ${scenario.ok ? 'pass' : 'fail'} | \`${workflowTarget}\` completed in \`${scenario.durationMs}ms\`; conditioning: ${conditioning}. |`
   })
+
+  const scopeLine = archiveResult.acceptanceScope === 'main'
+    ? 'This archive confirms the current supported one-click path on `main` for the supplied single-image material shape.'
+    : 'This archive confirms the current supported one-click path on the current branch for the supplied single-image material shape.'
+  const claimBoundaryLine = archiveResult.acceptanceScope === 'main'
+    ? 'It does not by itself prove production art quality or broad multi-view support. Human review is still required before broadening support claims.'
+    : 'It does not by itself prove production art quality, broad multi-view support, or main-branch acceptance. Human review is still required, and main-branch acceptance remains required before broadening support claims.'
 
   return [
     '# Creator Workflow Host Smoke Evidence',
@@ -241,9 +267,9 @@ const createReadme = ({ report, archiveResult, archiveDir }) => {
     '',
     '## Claim Boundary',
     '',
-    'This archive confirms that the saved host-owned Creator Workflow can complete provider generation, import/apply handoff, and reference-conditioning recording on the current branch with the supplied single-image material shape.',
+    scopeLine,
     '',
-    'It does not by itself prove production art quality, broad multi-view support, or main-branch acceptance. Human review is still required, and main-branch acceptance remains required before broadening support claims.',
+    claimBoundaryLine,
     '',
     '## Artifacts',
     '',
@@ -279,6 +305,7 @@ const createCreatorWorkflowHostSmokeArchive = ({
   sessionDir,
   archiveDir = '',
   outputPath = '',
+  acceptanceScope = '',
   now = () => new Date()
 } = {}) => {
   const absoluteSessionDir = path.resolve(String(sessionDir || '').trim())
@@ -293,6 +320,7 @@ const createCreatorWorkflowHostSmokeArchive = ({
 
   const absoluteArchiveDir = path.resolve(String(archiveDir || path.join(DEFAULT_ARCHIVE_ROOT, sessionId)).trim())
   const absoluteOutputPath = path.resolve(String(outputPath || path.join(absoluteArchiveDir, DEFAULT_RESULT_NAME)).trim())
+  const resolvedAcceptanceScope = resolveAcceptanceScope({ acceptanceScope, archiveDir: absoluteArchiveDir })
   assertDoesNotExist(absoluteArchiveDir, 'archiveDir')
   fs.mkdirSync(absoluteArchiveDir, { recursive: true })
 
@@ -301,6 +329,7 @@ const createCreatorWorkflowHostSmokeArchive = ({
     sessionDir: absoluteSessionDir,
     archiveDir: absoluteArchiveDir,
     outputPath: absoluteOutputPath,
+    acceptanceScope: resolvedAcceptanceScope,
     now
   })
   const archiveResultContent = `${JSON.stringify(archiveResult, null, 2)}\n`
@@ -338,7 +367,8 @@ const main = () => {
   const result = createCreatorWorkflowHostSmokeArchive({
     sessionDir: options.sessionDir,
     archiveDir: options.archiveDir,
-    outputPath: options.outputPath
+    outputPath: options.outputPath,
+    acceptanceScope: options.acceptanceScope
   })
 
   if (options.json) console.log(JSON.stringify(result, null, 2))
@@ -357,5 +387,7 @@ if (require.main === module) {
 module.exports = {
   createCreatorWorkflowHostSmokeArchive,
   createReadme,
-  parseArgs
+  parseArgs,
+  resolveAcceptanceScope,
+  createWarnings
 }

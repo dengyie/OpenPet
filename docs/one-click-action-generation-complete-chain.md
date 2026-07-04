@@ -159,6 +159,7 @@ Current local validation notes:
 - `node --test tests/examples/creator-studio-plugin.test.js` passed.
 - `node --test tests/control-center/demo-control-center-api.test.js` passed.
 - `npm run smoke:creator-workflow-host -- --source-user-data-dir "/Users/mango/Library/Application Support/ibot" --reference-image "/Users/mango/Downloads/正面.png" --scenario both` passed on `codex/dev8`, and its sanitized archive now lives at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
+- `npm run smoke:creator-workflow-host -- --source-user-data-dir "/Users/mango/Library/Application Support/ibot" --reference-image "/Users/mango/Downloads/正面.png" --scenario both` also passed on a clean `main` acceptance worktree, and its sanitized archive now lives at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`.
 - `npm run typecheck` passed.
 - `npm run check:syntax` passed, including Control Center production build.
 
@@ -185,6 +186,7 @@ Current local validation notes:
   - one-click new pet generation from `正面.png`
   - one-click existing-pet action generation from `正面.png`
 - That branch-level verification is archived at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
+- The same narrowed path is now archived on `main` at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`.
 - Default one-click generation now explicitly blocks collage or multi-view references such as `全面.png` and asks for one clean front-facing image instead.
 
 ## Non-Goals

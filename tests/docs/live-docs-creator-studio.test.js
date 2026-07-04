@@ -174,6 +174,7 @@ test('live docs mention archived real Creator Studio provider smoke evidence and
 
 test('live docs mention archived Creator Workflow host smoke evidence and its branch-level claim boundary', () => {
   const evidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance'
+  const mainEvidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance'
   const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
   const developmentSummary = readText('docs/development-summary.md')
   const handoff = readText('docs/HANDOFF.md')
@@ -182,8 +183,12 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
   const evidenceReadme = readText(`${evidenceDir}/README.md`)
   const evidenceReportRaw = readText(`${evidenceDir}/creator-workflow-host-smoke-result.json`)
   const evidenceReport = readJson(`${evidenceDir}/creator-workflow-host-smoke-result.json`)
+  const mainEvidenceReadme = readText(`${mainEvidenceDir}/README.md`)
+  const mainEvidenceReportRaw = readText(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`)
+  const mainEvidenceReport = readJson(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`)
 
   const archivePathPattern = /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-38-29-834Z-dev8-acceptance\//i
+  const mainArchivePathPattern = /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-56-30-104Z-main-acceptance\//i
   const claimBoundaryPattern = /main-branch acceptance remains required|does not by itself prove production art quality/i
   const sensitiveEvidencePattern = /sk-[A-Za-z0-9_-]+|Authorization|Bearer|\/Users\/mango|\.codex\/worktrees/i
 
@@ -199,12 +204,19 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
       archivePathPattern,
       `${name} should mention the archived Creator Workflow host smoke evidence path`
     )
+    assert.match(
+      content,
+      mainArchivePathPattern,
+      `${name} should mention the archived main Creator Workflow host smoke evidence path`
+    )
   }
 
   assert.match(evidenceReadme, /host-side one-click Creator Workflow smoke run/i, 'evidence README should explain the host smoke scope')
   assert.match(evidenceReadme, claimBoundaryPattern, 'evidence README should keep the branch-only claim boundary explicit')
+  assert.match(mainEvidenceReadme, /supported one-click path on `main`/i, 'main evidence README should explain the main acceptance scope')
+  assert.doesNotMatch(mainEvidenceReadme, /main-branch acceptance remains required/i, 'main evidence README should not keep the old branch-only blocker wording')
   assert.doesNotMatch(
-    [evidenceReadme, evidenceReportRaw].join('\n'),
+    [evidenceReadme, evidenceReportRaw, mainEvidenceReadme, mainEvidenceReportRaw].join('\n'),
     sensitiveEvidencePattern,
     'host smoke evidence should not archive raw secrets or local worktree paths'
   )
@@ -212,8 +224,18 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
   assert.equal(evidenceReport.scenarios.length, 2, 'host smoke evidence should record both default-path scenarios')
   assert.equal(evidenceReport.scenarios.every((scenario) => scenario.ok === true), true, 'both archived host smoke scenarios should succeed')
   assert.equal(evidenceReport.scenarios[0].conditioning.endpoint, '/images/edits', 'host smoke evidence should preserve /images/edits conditioning evidence')
+  assert.equal(mainEvidenceReport.ok, true, 'main host smoke evidence report should record a successful smoke run')
+  assert.equal(mainEvidenceReport.acceptanceScope, 'main', 'main host smoke evidence should mark main acceptance explicitly')
+  assert.equal(mainEvidenceReport.scenarios.every((scenario) => scenario.ok === true), true, 'both archived main host smoke scenarios should succeed')
+  assert.doesNotMatch(
+    mainEvidenceReport.warnings.join('\n'),
+    /branch acceptance run is sufficient/i,
+    'main host smoke evidence warnings should not keep the branch-only acceptance wording'
+  )
   assert.equal(fileExists(`${evidenceDir}/README.md`), true, 'host smoke evidence README should be archived')
   assert.equal(fileExists(`${evidenceDir}/creator-workflow-host-smoke-result.json`), true, 'host smoke evidence report should be archived')
+  assert.equal(fileExists(`${mainEvidenceDir}/README.md`), true, 'main host smoke evidence README should be archived')
+  assert.equal(fileExists(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`), true, 'main host smoke evidence report should be archived')
 })
 
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {
