@@ -341,6 +341,14 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     const serviceKey = `${plugin.id}:${service.id}`
                     const runtimeStatus = service.runtime?.status || 'stopped'
                     const healthStatus = service.runtime?.health?.status || (service.health?.url ? 'unknown' : 'not-configured')
+                    const healthMessage = typeof service.runtime?.health?.message === 'string' ? service.runtime.health.message : ''
+                    const healthNoteTone = healthStatus === 'healthy'
+                      ? 'success'
+                      : healthStatus === 'unhealthy'
+                        ? 'danger'
+                        : healthStatus === 'checking'
+                          ? 'info'
+                          : 'neutral'
                     const policy = service.healthPolicy || { enabled: false, intervalMs: 30000 }
                     const policyEnabled = Boolean(policy.enabled)
                     const running = runtimeStatus === 'running'
@@ -351,6 +359,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       <div className="plugin-service-control" key={service.id}>
                         <span>Service status: {runtimeStatus}{service.runtime?.pid ? ` · pid ${service.runtime.pid}` : ''}</span>
                         <span>Health: {healthStatus}</span>
+                        {healthMessage ? <span className={`plugin-service-note plugin-service-note-${healthNoteTone}`}>Health note: {healthMessage}</span> : null}
                         <button
                           type="button"
                           className="ghost"

@@ -84,8 +84,7 @@ export interface ControlCenterPetHomeSettings {
   hasAnchor: boolean
 }
 
-export interface AiBehaviorRule {
-  id?: string
+export interface AiBehaviorIntent {
   label?: string
   kind?: string
   actionId?: string
@@ -94,6 +93,29 @@ export interface AiBehaviorRule {
   displayMode?: 'none' | 'bubble' | 'action' | 'event'
   intent?: string
   confidence?: number
+}
+
+export interface AiBehaviorRuleCondition {
+  intent?: string
+  minConfidence?: number
+  contains?: string[]
+  actionKind?: string
+}
+
+export interface AiBehaviorRuleAction {
+  type?: 'say' | 'playAction' | 'setEvent'
+  text?: string
+  actionId?: string
+  event?: string
+  message?: string
+}
+
+export interface AiBehaviorRule {
+  id?: string
+  enabled?: boolean
+  priority?: number
+  when?: AiBehaviorRuleCondition
+  then?: AiBehaviorRuleAction
 }
 
 export interface AiBehaviorDecision {
@@ -116,7 +138,7 @@ export interface AiBehaviorDecision {
   blockedReason?: string
   replay?: {
     reply?: string
-    behaviorIntent?: AiBehaviorRule | null
+    behaviorIntent?: AiBehaviorIntent | null
   }
   replayRedacted?: boolean
 }
@@ -1686,6 +1708,12 @@ export interface CreatorReferencePickerResult extends OkResponse {
   fileName: string
 }
 
+export interface CreatorBindReferenceRequest {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  referenceToken: string
+}
+
 export interface CreatorGenerateNewCharacterRequest {
   characterName: string
   stylePrompt?: string
@@ -1732,6 +1760,10 @@ export interface CreatorWorkflowResult extends OkResponse {
   clickActionChange?: CreatorClickActionChangeViewState | null
   basicActions?: CreatorBasicActionCoverageViewState | null
   diagnostics?: CreatorWorkflowDiagnosticsViewState | null
+}
+
+export interface CreatorLastRunResult extends OkResponse {
+  run: CreatorLastRunViewState | null
 }
 
 export interface PetActionPlaybackResult extends OkResponse {
@@ -1790,6 +1822,10 @@ export interface PluginServiceHealthCheckResult extends OkResponse {
   serviceId: string
   health: PluginServiceHealthViewState
   runtime: PluginServiceRuntimeViewState
+}
+
+export interface PluginUninstallOptions {
+  removeStorage?: boolean
 }
 
 export interface PluginCleanupEvidenceReport {
@@ -2391,6 +2427,8 @@ export interface PetChatBubbleViewState {
 export interface PetBubbleChatWindowStateViewState {
   visible: boolean
   hasWindow: boolean
+  pinned: boolean
+  placement: string
 }
 
 export interface PetChatStateViewState {
@@ -2440,7 +2478,7 @@ export interface AiConnectionTestResult {
   reply?: string
   code?: string
   message?: string
-  modelsProbe?: 'ok' | 'unavailable' | 'failed'
+  modelsProbe?: 'ok' | 'unavailable' | 'failed' | 'timed_out'
   availableModels?: string[]
   currentModelDiscovered?: boolean
 }
@@ -2489,7 +2527,7 @@ export interface ImageGenerationHealthCheckResult {
   provider: string
   code: string
   message: string
-  modelsProbe?: 'ok' | 'unavailable' | 'failed'
+  modelsProbe?: 'ok' | 'unavailable' | 'failed' | 'timed_out'
   availableModels?: string[]
   currentModelDiscovered?: boolean
   usage?: {
@@ -2541,6 +2579,8 @@ export interface AiChatResponse {
   messages?: ChatMessage[]
   bubble?: PetChatBubbleViewState
   state?: PetChatStateViewState
+  bubbleSegments?: string[]
+  providerLatencyMs?: number
   behavior?: Partial<AiBehaviorDecision>
   action?: {
     actionId?: string
@@ -2554,14 +2594,27 @@ export interface AiBehaviorDryRunRequest {
   behavior: AiBehaviorConfig
 }
 
-export interface AiBehaviorResult extends Partial<AiBehaviorDecision> {
+export interface AiBehaviorResult {
   matched: boolean
   reason: string
+  type?: AiBehaviorDecision['type']
+  ruleId?: AiBehaviorDecision['ruleId']
   actionId?: string
+  label?: AiBehaviorDecision['label']
+  kind?: AiBehaviorDecision['kind']
+  event?: AiBehaviorDecision['event']
+  intent?: AiBehaviorDecision['intent']
+  providerReason?: AiBehaviorDecision['providerReason']
+  displayMode?: AiBehaviorDecision['displayMode']
+  cooldown?: AiBehaviorDecision['cooldown']
+  fallback?: AiBehaviorDecision['fallback']
+  blockedReason?: AiBehaviorDecision['blockedReason']
   replayOf?: number
 }
 
 export interface ServiceLogFilters {
+  query?: string
+  status?: string
   format?: 'json' | 'csv'
   [key: string]: unknown
 }
@@ -3026,16 +3079,16 @@ export interface ControlCenterApi {
   exportAiBehaviorDiagnostics: () => Promise<string>
   clearAiBehaviorDecisions: () => Promise<AiBehaviorDecision[]>
   getPlugins: () => Promise<PluginViewState[]>
-  setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
-  setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<Partial<PluginViewState>>
-  savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
+  setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<PluginViewState>
+  setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<PluginViewState>
+  savePluginConfig: (pluginId: string, config: JsonObject) => Promise<PluginViewState>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   getCreatorState: () => Promise<CreatorStateViewState>
   pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>
-  bindCreatorReference: (payload: { targetType: CreatorReferenceTargetType; targetId: string; referenceToken: string }) => Promise<CreatorBindReferenceResult>
+  bindCreatorReference: (payload: CreatorBindReferenceRequest) => Promise<CreatorBindReferenceResult>
   generateCreatorNewCharacter: (payload: CreatorGenerateNewCharacterRequest) => Promise<CreatorWorkflowResult>
   generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
-  getCreatorLastRun: () => Promise<{ ok: boolean; run: CreatorLastRunViewState | null }>
+  getCreatorLastRun: () => Promise<CreatorLastRunResult>
   playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
@@ -3049,11 +3102,11 @@ export interface ControlCenterApi {
   clearPluginSelection: (selectionId: string) => Promise<OkResponse>
   installPlugin: (selectionId: string) => Promise<PluginMutationResult>
   updatePlugin: (selectionId: string) => Promise<PluginMutationResult>
-  uninstallPlugin: (pluginId: string, options?: { removeStorage?: boolean }) => Promise<PluginMutationResult>
+  uninstallPlugin: (pluginId: string, options?: PluginUninstallOptions) => Promise<PluginMutationResult>
   getPluginLogs: (filters?: PluginLogPageRequest) => Promise<PaginatedLogsViewState<PluginLogEntry>>
   exportPluginLogs: (filters?: PluginLogFilters) => Promise<string>
   clearPluginLogs: () => Promise<PluginLogEntry[]>
-  clearPluginStorage: (pluginId: string) => Promise<Partial<PluginViewState>>
+  clearPluginStorage: (pluginId: string) => Promise<PluginViewState>
   getServiceStatus: () => Promise<ServiceStatusViewState>
   saveServiceConfig: (config: Partial<LocalHttpConfigViewState>) => Promise<ServiceStatusViewState>
   getServiceLogs: (filters?: ServiceLogPageRequest) => Promise<PaginatedLogsViewState<ServiceLogEntry>>
