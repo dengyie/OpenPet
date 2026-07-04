@@ -140,6 +140,49 @@ const createServiceHealthView = (health = {}, serviceEntry = {}) => {
   }
 }
 
+const formatCompactInteger = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '0'
+  return new Intl.NumberFormat('en-US').format(numeric)
+}
+
+const isAgentAwarenessHealthTarget = ({ pluginId = '', serviceId = '' } = {}) => (
+  pluginId === 'openpet.agent-awareness' &&
+  serviceId === 'agent-awareness'
+)
+
+const isAgentAwarenessHealthBody = (body) => (
+  isRecord(body) &&
+  body.service === 'agent-awareness' &&
+  body.ok === true &&
+  isRecord(body.diagnostics)
+)
+
+const summarizeAgentAwarenessHealthBody = (body) => {
+  if (!isAgentAwarenessHealthBody(body)) return ''
+  const diagnostics = body.diagnostics
+  const activeSessionCount = formatCompactInteger(diagnostics.activeSessionCount)
+  const sessionCount = formatCompactInteger(diagnostics.sessionCount)
+  const totalEvents = formatCompactInteger(diagnostics.totalEvents)
+  return `${activeSessionCount} active · ${sessionCount} sessions · ${totalEvents} events`
+}
+
+const readServiceHealthResponseMessage = async (response, { pluginId = '', serviceId = '' } = {}) => {
+  const fallbackMessage = response?.ok ? 'OK' : `HTTP ${Number.isFinite(Number(response?.status)) ? Number(response.status) : 'error'}`
+  const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase()
+  if (!contentType.includes('application/json')) return fallbackMessage
+  try {
+    const text = await readLimitedResponseText(response)
+    const body = JSON.parse(text)
+    if (isAgentAwarenessHealthTarget({ pluginId, serviceId })) {
+      return summarizeAgentAwarenessHealthBody(body) || fallbackMessage
+    }
+    return fallbackMessage
+  } catch (_) {
+    return fallbackMessage
+  }
+}
+
 const isRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
 const normalizePageNumber = (value) => {
@@ -1722,12 +1765,13 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         const statusCode = Number(response?.status)
         const hasStatusCode = Number.isFinite(statusCode)
         const healthy = hasStatusCode ? statusCode >= 200 && statusCode < 300 : Boolean(response?.ok)
+        const message = await readServiceHealthResponseMessage(response, { pluginId, serviceId })
         runtime.health = {
           status: healthy ? 'healthy' : 'unhealthy',
           checkedAt: new Date().toISOString(),
           url: healthUrl,
           statusCode: hasStatusCode ? statusCode : null,
-          message: healthy ? 'OK' : `HTTP ${hasStatusCode ? statusCode : 'error'}`
+          message
         }
       } catch (error) {
         runtime.health = {

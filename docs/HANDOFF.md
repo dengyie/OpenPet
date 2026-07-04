@@ -1,7 +1,7 @@
 # OpenPet Handoff
 
 > Last updated: 2026-07-03
-> Branch: `main`
+> Branch: `codex/dev7`
 > Canonical active queue: [`TODO.md`](./TODO.md)
 
 This file is the compact maintainer continuation note. Historical phase-level detail lives in `docs/phases/`, `docs/reviews/`, and older planning docs.
