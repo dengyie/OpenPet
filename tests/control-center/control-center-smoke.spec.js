@@ -294,6 +294,11 @@ test.describe('Control Center smoke', () => {
     await chatSection.getByRole('button', { name: '保存聊天 Provider' }).click()
     await chatSection.getByRole('button', { name: '刷新聊天模型' }).click()
     await expect(chatSection.getByTestId('ai-chat-model-discovery')).toContainText('gpt-4o-mini')
+    await expect(chatSection.getByText('当前来源：推荐模型')).toBeVisible()
+    await chatSection.getByTestId('聊天 Model-sources').getByRole('button', { name: 'gpt-4o-mini' }).click()
+    await expect(chatSection.getByLabel('聊天 Model')).toHaveValue('gpt-4o-mini')
+    await chatSection.getByLabel('聊天 Model').fill('custom-chat-model')
+    await expect(chatSection.getByText('当前来源：手动输入')).toBeVisible()
 
     const imageSection = await expandAiSection(page, '图片 Provider')
     await openProviderDisclosure(imageSection, '显示常用图片 Provider 预设')
@@ -301,8 +306,13 @@ test.describe('Control Center smoke', () => {
     await imageSection.getByRole('button', { name: '保存图片密钥' }).click()
     await imageSection.getByRole('button', { name: '刷新图片模型' }).click()
     await expect(imageSection.getByTestId('ai-image-model-discovery')).toContainText('gpt-image-2')
+    await expect(imageSection.getByText('当前来源：推荐模型')).toBeVisible()
+    await imageSection.getByTestId('图片 Model-sources').getByRole('button', { name: 'gpt-image-2' }).click()
+    await expect(imageSection.getByLabel('图片 Model')).toHaveValue('gpt-image-2')
     await expect(imageSection.getByTestId('ai-image-compatibility-hint')).toContainText('gpt-image-2')
     await expect(imageSection.getByTestId('ai-image-compatibility-hint')).toContainText('transparent')
+    await imageSection.getByLabel('图片 Model').fill('custom-image-model')
+    await expect(imageSection.getByText('当前来源：手动输入')).toBeVisible()
   })
 
   test('applies an action trigger proposal through the demo API', async ({ page }) => {

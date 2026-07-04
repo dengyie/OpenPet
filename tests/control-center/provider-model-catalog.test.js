@@ -15,6 +15,48 @@ test('mergeRecommendedAndCachedModels keeps cached models first and preserves cu
   ])
 })
 
+test('buildProviderModelOptions and current source label distinguish recommended cached and manual values', async () => {
+  const { buildProviderModelOptions, describeCurrentModelSource } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+
+  assert.deepEqual(buildProviderModelOptions({
+    currentModel: 'custom-gateway-model',
+    recommendedModels: ['gpt-4o-mini', 'gpt-5.5'],
+    cachedModels: ['gpt-5.5', 'openpet-chat-test']
+  }), [
+    { id: 'gpt-5.5', source: 'recommended' },
+    { id: 'openpet-chat-test', source: 'cached' },
+    { id: 'gpt-4o-mini', source: 'recommended' },
+    { id: 'custom-gateway-model', source: 'manual' }
+  ])
+
+  assert.deepEqual(describeCurrentModelSource({
+    currentModel: 'gpt-5.5',
+    recommendedModels: ['gpt-4o-mini', 'gpt-5.5'],
+    cachedModels: ['gpt-5.5', 'openpet-chat-test']
+  }), {
+    source: 'recommended',
+    label: '当前来源：推荐模型'
+  })
+
+  assert.deepEqual(describeCurrentModelSource({
+    currentModel: 'openpet-chat-test',
+    recommendedModels: ['gpt-4o-mini', 'gpt-5.5'],
+    cachedModels: ['gpt-5.5', 'openpet-chat-test']
+  }), {
+    source: 'cached',
+    label: '当前来源：缓存模型'
+  })
+
+  assert.deepEqual(describeCurrentModelSource({
+    currentModel: 'custom-gateway-model',
+    recommendedModels: ['gpt-4o-mini', 'gpt-5.5'],
+    cachedModels: ['gpt-5.5', 'openpet-chat-test']
+  }), {
+    source: 'manual',
+    label: '当前来源：手动输入'
+  })
+})
+
 test('formatProviderModelCatalogMeta reports empty and populated cache states', async () => {
   const { formatProviderModelCatalogMeta } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
 
