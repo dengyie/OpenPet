@@ -678,7 +678,12 @@ const runAiTalkLocalSmoke = async ({
     }
 
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
-    summary.ok = summary.chat.ok && (summary.connectionTest.skipped || summary.connectionTest.ok)
+    const bubbleDispatchOk = Boolean(
+      summary.bubbleDispatch?.attempted &&
+      summary.bubbleDispatch?.petSayReceived &&
+      summary.bubbleDispatch?.bubbleStateVisible
+    )
+    summary.ok = Boolean(summary.chat.ok && bubbleDispatchOk)
   } catch (error) {
     summary.error = sanitizeError(error)
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
