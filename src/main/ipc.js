@@ -740,10 +740,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       })
       return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations), { triggerProposal })
     }
-    await actionImportService.updateActionConfig(payload)
-    reloadAndSendAnimations(getPetWindow, petService)
+    if (!actionService?.applyCreatorActionMutation) throw new Error('Action config persistence is not available')
+    actionService.applyCreatorActionMutation(payload)
+    const animations = reloadAndSendAnimations(getPetWindow, petService)
     refreshTriggerRuleRuntime()
-    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService))
+    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations))
   })
 
   ipcMainService.handle(IPC.ACTIONS_PREVIEW_TRIGGER_PROPOSAL, async (_event, payload) => {

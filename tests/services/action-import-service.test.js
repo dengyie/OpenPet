@@ -49,6 +49,232 @@ test('action import service copies selected frames folder and regenerates action
   assert.equal(result.actions.length, 1)
 })
 
+test('action import service imports frames into pet pack manifests without dropping existing actions', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-action-import-'))
+  const sourceDir = path.join(root, 'source-jump')
+  const framesRoot = path.join(root, 'frames')
+  const spritesDir = path.join(root, 'sprites')
+  const configPath = path.join(root, 'pet.json')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  fs.mkdirSync(spritesDir, { recursive: true })
+  fs.writeFileSync(path.join(spritesDir, 'idle.png'), '')
+  fs.writeFileSync(path.join(spritesDir, 'wave.png'), '')
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    id: 'installed-cat',
+    displayName: 'Installed Cat',
+    version: '1.0.0',
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+      { id: 'wave', label: 'Wave', kind: 'greeting', sprite: 'sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 }
+    ]
+  }, null, 2)}\n`)
+  await createFrame(path.join(sourceDir, '01_no_bg.png'))
+  await createFrame(path.join(sourceDir, '02_no_bg.png'))
+  const service = createActionImportService({
+    framesRoot,
+    spritesDir,
+    configPath,
+    configType: 'pet-pack',
+    spriteRelativeDir: 'sprites'
+  })
+
+  const result = await service.importActionFrames({ sourceDir, actionId: 'jump', label: 'Jump' })
+  const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+
+  assert.equal(fs.existsSync(path.join(framesRoot, 'jump', '01_no_bg.png')), true)
+  assert.equal(fs.existsSync(path.join(spritesDir, 'jump.png')), true)
+  assert.deepEqual(persisted.actions.map((action) => action.id), ['idle', 'wave', 'jump'])
+  assert.equal(persisted.actions.find((action) => action.id === 'jump').sprite, 'sprites/jump.png')
+  assert.equal(result.importedAction.id, 'jump')
+  assert.equal(result.importedAction.label, 'Jump')
+})
+
+test('action import service creates pet pack sprite directory during action import', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-action-import-sprites-'))
+  const sourceDir = path.join(root, 'source-jump')
+  const framesRoot = path.join(root, 'frames')
+  const spritesDir = path.join(root, 'sprites')
+  const configPath = path.join(root, 'pet.json')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  fs.mkdirSync(path.join(root, 'art'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'art', 'idle.png'), '')
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    id: 'installed-cat',
+    displayName: 'Installed Cat',
+    version: '1.0.0',
+    defaultAction: 'idle',
+    clickAction: 'idle',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'art/idle.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 }
+    ]
+  }, null, 2)}\n`)
+  await createFrame(path.join(sourceDir, '01_no_bg.png'))
+  await createFrame(path.join(sourceDir, '02_no_bg.png'))
+  const service = createActionImportService({
+    framesRoot,
+    spritesDir,
+    configPath,
+    configType: 'pet-pack',
+    spriteRelativeDir: 'sprites'
+  })
+
+  const result = await service.importActionFrames({ sourceDir, actionId: 'jump', label: 'Jump' })
+  const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+
+  assert.equal(fs.existsSync(path.join(spritesDir, 'jump.png')), true)
+  assert.equal(result.importedAction.sprite, 'sprites/jump.png')
+  assert.equal(persisted.actions.find((action) => action.id === 'jump').sprite, 'sprites/jump.png')
+})
+
+test('action import service rolls back pet pack frames when sprite generation fails', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-action-import-rollback-'))
+  const sourceDir = path.join(root, 'source-jump')
+  const framesRoot = path.join(root, 'frames')
+  const spritesDir = path.join(root, 'sprites')
+  const configPath = path.join(root, 'pet.json')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  fs.mkdirSync(path.join(spritesDir, 'jump.png'), { recursive: true })
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    id: 'installed-cat',
+    displayName: 'Installed Cat',
+    version: '1.0.0',
+    defaultAction: 'idle',
+    clickAction: 'idle',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 }
+    ]
+  }, null, 2)}\n`)
+  await createFrame(path.join(sourceDir, '01_no_bg.png'))
+  await createFrame(path.join(sourceDir, '02_no_bg.png'))
+  const service = createActionImportService({
+    framesRoot,
+    spritesDir,
+    configPath,
+    configType: 'pet-pack',
+    spriteRelativeDir: 'sprites'
+  })
+
+  await assert.rejects(
+    () => service.importActionFrames({ sourceDir, actionId: 'jump', label: 'Jump' }),
+    /unable to open for write|cannot write/
+  )
+  const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+
+  assert.equal(fs.existsSync(path.join(framesRoot, 'jump')), false)
+  assert.equal(persisted.actions.some((action) => action.id === 'jump'), false)
+})
+
+test('action import service updates pet pack manifest action bindings without regenerating frames', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-action-config-'))
+  const configPath = path.join(root, 'pet.json')
+  fs.mkdirSync(root, { recursive: true })
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    id: 'installed-cat',
+    displayName: 'Installed Cat',
+    version: '1.0.0',
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+      { id: 'wave', label: 'Wave', kind: 'greeting', sprite: 'sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 }
+    ]
+  }, null, 2)}\n`)
+  const service = createActionImportService({
+    framesRoot: path.join(root, 'frames'),
+    spritesDir: path.join(root, 'sprites'),
+    configPath,
+    configType: 'pet-pack',
+    spriteRelativeDir: 'sprites'
+  })
+
+  const result = await service.updateActionConfig({ defaultAction: 'wave', clickAction: 'idle' })
+  const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+
+  assert.equal(result.defaultAction, 'wave')
+  assert.equal(result.clickAction, 'idle')
+  assert.equal(persisted.defaultAction, 'wave')
+  assert.equal(persisted.clickAction, 'idle')
+  assert.equal(fs.existsSync(path.join(root, 'frames')), false)
+})
+
+test('action import service treats empty pet pack action bindings as unchanged', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-action-config-empty-'))
+  const configPath = path.join(root, 'pet.json')
+  fs.mkdirSync(root, { recursive: true })
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    id: 'installed-cat',
+    displayName: 'Installed Cat',
+    version: '1.0.0',
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+      { id: 'wave', label: 'Wave', kind: 'greeting', sprite: 'sprites/wave.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 }
+    ]
+  }, null, 2)}\n`)
+  const service = createActionImportService({
+    framesRoot: path.join(root, 'frames'),
+    spritesDir: path.join(root, 'sprites'),
+    configPath,
+    configType: 'pet-pack',
+    spriteRelativeDir: 'sprites'
+  })
+
+  const result = await service.updateActionConfig({ defaultAction: '', clickAction: '' })
+  const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+
+  assert.equal(result.defaultAction, 'idle')
+  assert.equal(result.clickAction, 'wave')
+  assert.equal(persisted.defaultAction, 'idle')
+  assert.equal(persisted.clickAction, 'wave')
+})
+
+test('action import service deletes pet pack manifest actions without removing shared sprites', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-action-delete-'))
+  const framesRoot = path.join(root, 'frames')
+  const spritesDir = path.join(root, 'sprites')
+  const configPath = path.join(root, 'pet.json')
+  fs.mkdirSync(path.join(framesRoot, 'wave'), { recursive: true })
+  fs.mkdirSync(spritesDir, { recursive: true })
+  fs.writeFileSync(path.join(framesRoot, 'wave', '01_no_bg.png'), '')
+  fs.writeFileSync(path.join(spritesDir, 'atlas.png'), '')
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    id: 'installed-cat',
+    displayName: 'Installed Cat',
+    version: '1.0.0',
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    actions: [
+      { id: 'idle', label: 'Idle', kind: 'idle', sprite: 'sprites/atlas.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 },
+      { id: 'wave', label: 'Wave', kind: 'greeting', sprite: 'sprites/atlas.png', frameCount: 1, frameMs: 100, frameWidth: 8, frameHeight: 8 }
+    ]
+  }, null, 2)}\n`)
+  const service = createActionImportService({
+    framesRoot,
+    spritesDir,
+    configPath,
+    configType: 'pet-pack',
+    spriteRelativeDir: 'sprites'
+  })
+
+  const result = await service.deleteAction('wave')
+  const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+
+  assert.deepEqual(result.actions.map((action) => action.id), ['idle'])
+  assert.deepEqual(persisted.actions.map((action) => action.id), ['idle'])
+  assert.equal(persisted.clickAction, 'idle')
+  assert.equal(fs.existsSync(path.join(framesRoot, 'wave')), false)
+  assert.equal(fs.existsSync(path.join(spritesDir, 'atlas.png')), true)
+})
+
 test('action import service inspects a selected frames folder for an action id', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-inspect-'))
   const sourceDir = path.join(root, 'source-wave')

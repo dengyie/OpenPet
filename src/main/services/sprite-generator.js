@@ -80,7 +80,7 @@ const toActionLabel = (folderName, labels = {}) => {
 
 const isLoopAction = (folderName) => /(^idle$|bai|stand|walk|loop)/i.test(folderName)
 
-const processActionFolder = async ({ folderEntry, framesRoot, spritesDir, labels = {}, logger = console }) => {
+const processActionFolder = async ({ folderEntry, framesRoot, spritesDir, labels = {}, logger = console, spriteRelativeDir = 'cat_anime/sprites' }) => {
   const folderPath = path.join(framesRoot, folderEntry.name)
   const frameFiles = fs.readdirSync(folderPath)
     .filter(isImageFile)
@@ -154,7 +154,7 @@ const processActionFolder = async ({ folderEntry, framesRoot, spritesDir, labels
     frameMs,
     frameWidth: cellW,
     frameHeight: cellH,
-    sprite: path.posix.join('cat_anime', 'sprites', `${folderEntry.name}.png`),
+    sprite: path.posix.join(spriteRelativeDir, `${folderEntry.name}.png`),
     frameCount
   }
 }
@@ -168,6 +168,7 @@ const generateSpritesFromFrames = async ({
   labels = {},
   defaultAction,
   clickAction,
+  spriteRelativeDir = 'cat_anime/sprites',
   logger = console
 }) => {
   if (!fs.existsSync(framesRoot)) throw new Error(`Frames root not found: ${framesRoot}`)
@@ -180,7 +181,7 @@ const generateSpritesFromFrames = async ({
 
   const actions = []
   for (const entry of entries) {
-    const action = await processActionFolder({ folderEntry: entry, framesRoot, spritesDir, labels, logger })
+    const action = await processActionFolder({ folderEntry: entry, framesRoot, spritesDir, labels, logger, spriteRelativeDir })
     if (action) actions.push(action)
   }
 
@@ -207,5 +208,6 @@ module.exports = {
   inspectFrameFolder,
   isImageFile,
   isLoopAction,
+  processActionFolder,
   toActionLabel
 }
