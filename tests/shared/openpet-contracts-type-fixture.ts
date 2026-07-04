@@ -1,6 +1,7 @@
 import type {
   ActionsConfigViewState,
   ActionTriggerProposalPreviewResult,
+  ActionTriggerRuleUpdateRequest,
   ActionTriggerRuleSpec,
   AiProviderSmokeReport,
   ControlCenterSettings,
@@ -334,6 +335,18 @@ const actionTriggerRuleSpecBoundaryFixtures = [
     }
   }
 ] satisfies ActionTriggerRuleSpec[]
+
+const actionTriggerRuleUpdateFixture = {
+  ruleId: 'rule:state:wave:test',
+  status: 'disabled',
+  ruleSpec: {
+    summary: 'Play Wave when focus mode is idle.',
+    state: {
+      predicate: 'focus.mode === idle',
+      source: 'host'
+    }
+  }
+} satisfies ActionTriggerRuleUpdateRequest
 
 const actionsConfigTriggerBoundaryFixture = {
   defaultAction: 'idle',

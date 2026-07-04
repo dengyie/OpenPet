@@ -826,8 +826,15 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.ACTIONS_UPDATE_TRIGGER_RULE, async (_event, payload) => {
-    if (!actionService?.setTriggerRuleStatus) throw new Error('Action trigger rule management is not available')
-    const result = actionService.setTriggerRuleStatus(payload?.ruleId, payload?.status)
+    const supportsRuleUpdates = typeof actionService?.updateTriggerRule === 'function'
+    const supportsStatusUpdates = typeof actionService?.setTriggerRuleStatus === 'function'
+    if (!supportsRuleUpdates && !supportsStatusUpdates) throw new Error('Action trigger rule management is not available')
+    const result = supportsRuleUpdates
+      ? actionService.updateTriggerRule(payload?.ruleId, {
+          ...(payload?.status !== undefined ? { status: payload.status } : {}),
+          ...(payload?.ruleSpec && typeof payload.ruleSpec === 'object' ? { ruleSpec: payload.ruleSpec } : {})
+        })
+      : actionService.setTriggerRuleStatus(payload?.ruleId, payload?.status)
     recordAppLog({
       scope: 'actions',
       level: 'info',
@@ -838,7 +845,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         ruleId: result.rule.id,
         actionId: result.rule.actionId,
         type: result.rule.type,
-        status: result.rule.status
+        status: result.rule.status,
+        updatedFields: [
+          ...(payload?.status !== undefined ? ['status'] : []),
+          ...(payload?.ruleSpec && typeof payload.ruleSpec === 'object' ? ['ruleSpec'] : [])
+        ]
       }
     })
     refreshTriggerRuleRuntime()

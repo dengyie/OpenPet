@@ -805,6 +805,12 @@ export interface ActionsMutationResult {
   triggerProposal?: ActionTriggerProposalAcceptanceResult
 }
 
+export interface ActionTriggerRuleUpdateRequest {
+  ruleId: string
+  status?: ActionTriggerRuleStatus
+  ruleSpec?: ActionTriggerRuleSpecInput
+}
+
 export interface ActionTriggerRuleMutationResult {
   animations: ActionsConfigViewState
   rule: ActionTriggerRule
@@ -3057,6 +3063,7 @@ export interface ControlCenterApi {
   acceptActionTriggerProposal: (proposalId: string) => Promise<ActionsMutationResult>
   rejectActionTriggerProposal: (proposalId: string, reason?: string) => Promise<ActionsMutationResult>
   setActionTriggerRuleStatus: (ruleId: string, status: ActionTriggerRuleStatus) => Promise<ActionTriggerRuleMutationResult>
+  updateActionTriggerRule: (payload: ActionTriggerRuleUpdateRequest) => Promise<ActionTriggerRuleMutationResult>
   deleteActionTriggerRule: (ruleId: string) => Promise<ActionTriggerRuleMutationResult>
   deleteAction: (actionId: string) => Promise<ActionsMutationResult>
   listPetPacks: () => Promise<PetPacksViewState>
