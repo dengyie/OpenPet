@@ -21,6 +21,13 @@ const DEFAULT_AI_CONFIG = {
     cooldownMs: 1500,
     rules: [],
     decisions: []
+  },
+  vision: {
+    mode: 'follow-chat',
+    provider: 'openai-compatible',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    apiKeyRef: 'ai.vision'
   }
 }
 
@@ -69,6 +76,18 @@ const normalizeMemoryConfig = (memory = {}) => ({
   enabled: Boolean(memory?.enabled)
 })
 
+const normalizeVisionMode = (value) => (value === 'override' ? 'override' : 'follow-chat')
+
+const normalizeVisionConfig = (vision = {}) => ({
+  ...DEFAULT_AI_CONFIG.vision,
+  ...(isPlainObject(vision) ? vision : {}),
+  mode: normalizeVisionMode(vision?.mode),
+  provider: vision?.provider || DEFAULT_AI_CONFIG.vision.provider,
+  baseUrl: (vision?.baseUrl || DEFAULT_AI_CONFIG.vision.baseUrl).replace(/\/+$/, ''),
+  model: vision?.model || DEFAULT_AI_CONFIG.vision.model,
+  apiKeyRef: vision?.apiKeyRef || DEFAULT_AI_CONFIG.vision.apiKeyRef
+})
+
 const normalizeConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
   baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
@@ -77,7 +96,15 @@ const normalizeConfig = (config = {}) => ({
   systemPrompt: config.systemPrompt ?? DEFAULT_AI_CONFIG.systemPrompt,
   enabled: Boolean(config.enabled),
   memory: normalizeMemoryConfig(config.memory),
-  behavior: normalizeBehaviorConfig(config.behavior)
+  behavior: normalizeBehaviorConfig(config.behavior),
+  vision: normalizeVisionConfig(config.vision)
+})
+
+const normalizeCompletionConfig = (config = {}) => ({
+  provider: config.provider || DEFAULT_AI_CONFIG.provider,
+  baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
+  model: config.model || DEFAULT_AI_CONFIG.model,
+  apiKeyRef: config.apiKeyRef || DEFAULT_AI_CONFIG.apiKeyRef
 })
 
 const parseBehaviorToolArguments = (value) => {
@@ -251,6 +278,44 @@ const normalizeEndpointForLog = (baseUrl) => {
 }
 
 const sanitizeDiagnosticText = (value) => sanitizeLogText(value, { maxChars: 240 })
+
+const buildEffectiveVisionConfig = ({ config, secretService, storedState }) => {
+  const normalizedVision = normalizeVisionConfig(config?.vision)
+  if (normalizedVision.mode !== 'override') {
+    return {
+      ...normalizedVision,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      apiKeyRef: config.apiKeyRef,
+      hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef)),
+      modelCatalog: getScopedProviderModelCatalog({
+        capability: 'vision',
+        provider: config.provider,
+        baseUrl: config.baseUrl,
+        catalog: storedState?.visionModelCatalog
+      }),
+      effectiveProvider: config.provider,
+      effectiveBaseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
+      effectiveModel: config.model,
+      effectiveHasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef))
+    }
+  }
+  return {
+    ...normalizedVision,
+    hasApiKey: Boolean(secretService.getSecretValue(normalizedVision.apiKeyRef)),
+    modelCatalog: getScopedProviderModelCatalog({
+      capability: 'vision',
+      provider: normalizedVision.provider,
+      baseUrl: normalizedVision.baseUrl,
+      catalog: storedState?.visionModelCatalog
+    }),
+    effectiveProvider: normalizedVision.provider,
+    effectiveBaseUrl: sanitizeBaseUrlForDisplay(normalizedVision.baseUrl),
+    effectiveModel: normalizedVision.model,
+    effectiveHasApiKey: Boolean(secretService.getSecretValue(normalizedVision.apiKeyRef))
+  }
+}
 
 const getSafeProviderErrorMessage = (status, code) => {
   const normalizedStatus = Number(status) || 0
@@ -452,7 +517,8 @@ const createAiService = ({
         ai: {
           ...normalizeConfig(currentAi),
           conversations,
-          modelCatalog: currentAi.modelCatalog
+          modelCatalog: currentAi.modelCatalog,
+          visionModelCatalog: currentAi.visionModelCatalog
         }
       }
     })
@@ -473,7 +539,31 @@ const createAiService = ({
         ai: {
           ...normalizeConfig(currentAi),
           conversations: normalizeConversationStore(currentAi.conversations, historyLimit),
-          modelCatalog: nextCatalog
+          modelCatalog: nextCatalog,
+          visionModelCatalog: currentAi.visionModelCatalog
+        }
+      }
+    })
+    return nextCatalog
+  }
+
+  const persistVisionModelCatalog = (visionConfig, models) => {
+    const nextCatalog = createSavedProviderModelCatalog({
+      capability: 'vision',
+      provider: visionConfig.provider,
+      baseUrl: visionConfig.baseUrl,
+      models: uniqueModelIds(models),
+      fetchedAt: new Date().toISOString()
+    })
+    settingsService.update((settings) => {
+      const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
+      return {
+        ...settings,
+        ai: {
+          ...normalizeConfig(currentAi),
+          conversations: normalizeConversationStore(currentAi.conversations, historyLimit),
+          modelCatalog: currentAi.modelCatalog,
+          visionModelCatalog: nextCatalog
         }
       }
     })
@@ -487,6 +577,7 @@ const createAiService = ({
       ...config,
       baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
       hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef)),
+      vision: buildEffectiveVisionConfig({ config, secretService, storedState }),
       modelCatalog: getModelCatalog(config, storedState)
     }
   }
@@ -494,10 +585,19 @@ const createAiService = ({
   const saveConfig = (partialConfig) => {
     const settings = settingsService.get()
     const currentAi = getStoredAiState()
+    const merged = mergeConfigWithoutDisplayDowngrade(settings.ai, partialConfig)
+    const nextVision = normalizeVisionConfig({
+      ...(currentAi.vision || {}),
+      ...(isPlainObject(partialConfig?.vision) ? partialConfig.vision : {})
+    })
     const nextAi = {
-      ...normalizeConfig(mergeConfigWithoutDisplayDowngrade(settings.ai, partialConfig)),
+      ...normalizeConfig({
+        ...merged,
+        vision: nextVision
+      }),
       conversations: getStoredConversations(),
-      modelCatalog: currentAi.modelCatalog
+      modelCatalog: currentAi.modelCatalog,
+      visionModelCatalog: currentAi.visionModelCatalog
     }
     settingsService.save({ ...settings, ai: nextAi })
     recordLog({
@@ -532,6 +632,61 @@ const createAiService = ({
       hasApiKey: true,
       updatedAt
     }
+  }
+
+  const saveVisionApiKey = (value) => {
+    const apiKey = String(value || '').trim()
+    if (!apiKey) throw new Error('Vision API Key 不能为空')
+    const config = getRawConfig()
+    const visionConfig = normalizeVisionConfig(config.vision)
+    const updatedAt = new Date().toISOString()
+    secretService.setSecret({ id: visionConfig.apiKeyRef, value: apiKey, label: 'Vision API Key' })
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.vision-api-key.saved',
+      message: 'Vision provider API key saved',
+      details: {
+        provider: visionConfig.provider,
+        model: visionConfig.model,
+        endpoint: normalizeEndpointForLog(visionConfig.baseUrl),
+        apiKeyRef: visionConfig.apiKeyRef,
+        updatedAt
+      }
+    })
+    return {
+      apiKeyRef: visionConfig.apiKeyRef,
+      hasApiKey: true,
+      updatedAt
+    }
+  }
+
+  const clearVisionApiKey = () => {
+    const config = getRawConfig()
+    const visionConfig = normalizeVisionConfig(config.vision)
+    secretService.deleteSecret?.(visionConfig.apiKeyRef)
+    recordLog({
+      scope: 'ai-settings',
+      level: 'info',
+      event: 'ai.settings.vision-api-key.cleared',
+      message: 'Vision provider API key cleared',
+      details: {
+        provider: visionConfig.provider,
+        model: visionConfig.model,
+        endpoint: normalizeEndpointForLog(visionConfig.baseUrl),
+        apiKeyRef: visionConfig.apiKeyRef
+      }
+    })
+    return {
+      apiKeyRef: visionConfig.apiKeyRef,
+      hasApiKey: false
+    }
+  }
+
+  const getEffectiveVisionConfig = () => {
+    const config = getRawConfig()
+    const storedState = getStoredAiState()
+    return buildEffectiveVisionConfig({ config, secretService, storedState })
   }
 
   const rememberConversation = (conversationId, messages) => {
@@ -569,11 +724,12 @@ const createAiService = ({
     return []
   }
 
-  const complete = async ({ messages, tools = [] }) => {
-    const config = getRawConfig()
+  const complete = async ({ messages, tools = [], configOverride = null } = {}) => {
+    const config = normalizeCompletionConfig(configOverride || getRawConfig())
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     const startedAt = Date.now()
     const baseDetails = {
+      configSource: configOverride ? 'override' : 'chat',
       provider: config.provider,
       model: config.model,
       endpoint: normalizeEndpointForLog(config.baseUrl),
@@ -894,7 +1050,129 @@ const createAiService = ({
     }
   }
 
-  return { getConfig, saveConfig, saveApiKey, getConversation, clearConversation, chat, complete, testConnection, discoverModels }
+  const discoverVisionModels = async () => {
+    const config = getRawConfig()
+    const visionConfig = normalizeVisionConfig(config.vision)
+    const requestId = `vision-models-${Date.now()}`
+    const startedAt = Date.now()
+    const baseResult = {
+      provider: visionConfig.provider,
+      baseUrl: sanitizeBaseUrlForDisplay(visionConfig.baseUrl),
+      model: visionConfig.model,
+      hasApiKey: Boolean(secretService.getSecretValue(visionConfig.apiKeyRef))
+    }
+    recordLog({
+      level: 'info',
+      event: 'ai.vision-models.started',
+      message: 'Vision provider model discovery started',
+      details: {
+        requestId,
+        provider: visionConfig.provider,
+        model: visionConfig.model,
+        endpoint: normalizeEndpointForLog(visionConfig.baseUrl)
+      }
+    })
+    try {
+      const apiKey = secretService.getSecretValue(visionConfig.apiKeyRef)
+      if (!apiKey) {
+        return {
+          ok: false,
+          ...baseResult,
+          models: [],
+          code: 'missing_api_key',
+          message: 'Vision API key is not configured'
+        }
+      }
+      if (visionConfig.provider !== 'openai-compatible') {
+        return {
+          ok: false,
+          ...baseResult,
+          models: [],
+          code: 'unsupported_provider',
+          message: 'Unsupported vision provider'
+        }
+      }
+      const response = await fetchImpl(`${visionConfig.baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      const status = response?.status || 'error'
+      const body = response?.json ? await response.json().catch(() => ({})) : {}
+      if (!response?.ok) {
+        if (isOptionalModelsProbeStatus(status)) {
+          return {
+            ok: true,
+            ...baseResult,
+            models: [],
+            code: 'provider_reachable_models_unavailable',
+            message: 'Vision provider is reachable, but the optional /models probe is unavailable'
+          }
+        }
+        return {
+          ok: false,
+          ...baseResult,
+          models: [],
+          code: 'provider_http_error',
+          message: `Vision provider request failed with status ${status}`
+        }
+      }
+      const discoveredModels = extractDiscoveredModelIds(body)
+      persistVisionModelCatalog(visionConfig, discoveredModels)
+      recordLog({
+        level: 'info',
+        event: 'ai.vision-models.completed',
+        message: 'Vision provider model discovery completed',
+        details: {
+          requestId,
+          provider: visionConfig.provider,
+          model: visionConfig.model,
+          durationMs: Date.now() - startedAt,
+          modelCount: discoveredModels.length
+        }
+      })
+      return {
+        ok: true,
+        ...baseResult,
+        models: discoveredModels,
+        code: 'ok',
+        message: 'Vision provider model discovery succeeded'
+      }
+    } catch (error) {
+      recordLog({
+        level: 'error',
+        event: 'ai.vision-models.failed',
+        message: 'Vision provider model discovery failed',
+        details: {
+          requestId,
+          provider: visionConfig.provider,
+          model: visionConfig.model,
+          durationMs: Date.now() - startedAt,
+          errorCode: 'vision_model_discovery_error',
+          errorMessage: sanitizeDiagnosticText(error?.message || error)
+        }
+      })
+      throw error
+    }
+  }
+
+  return {
+    getConfig,
+    getEffectiveVisionConfig,
+    saveConfig,
+    saveApiKey,
+    saveVisionApiKey,
+    clearVisionApiKey,
+    getConversation,
+    clearConversation,
+    chat,
+    complete,
+    testConnection,
+    discoverModels,
+    discoverVisionModels
+  }
 }
 
 module.exports = {

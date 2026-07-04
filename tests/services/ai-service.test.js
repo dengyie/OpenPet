@@ -55,6 +55,24 @@ test('ai service exposes config without secret values', () => {
       rules: [],
       decisions: []
     },
+    vision: {
+      mode: 'follow-chat',
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      hasApiKey: true,
+      modelCatalog: {
+        cacheKey: '',
+        models: [],
+        fetchedAt: '',
+        source: 'none'
+      },
+      effectiveProvider: 'openai-compatible',
+      effectiveBaseUrl: 'https://api.openai.com/v1',
+      effectiveModel: 'gpt-4o-mini',
+      effectiveHasApiKey: true
+    },
     hasApiKey: true,
     modelCatalog: {
       cacheKey: '',
@@ -829,6 +847,61 @@ test('ai service times out stalled provider requests', async () => {
   )
 })
 
+test('ai service complete supports an override config without mutating chat config', async () => {
+  const requests = []
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://chat.example.test/v1',
+        model: 'chat-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: (key) => (key === 'ai.vision' ? 'sk-vision' : 'sk-chat'),
+      setSecret: () => {}
+    },
+    fetchImpl: async (url, options) => {
+      requests.push({
+        url,
+        headers: options.headers,
+        body: JSON.parse(options.body)
+      })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'override reply' } }] })
+      }
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const result = await service.complete({
+    messages: [{ role: 'user', content: 'describe the pet' }],
+    configOverride: {
+      provider: 'openai-compatible',
+      baseUrl: 'https://vision.example.test/v1',
+      model: 'vision-model',
+      apiKeyRef: 'ai.vision'
+    }
+  })
+
+  assert.equal(result.reply, 'override reply')
+  assert.equal(requests[0].url, 'https://vision.example.test/v1/chat/completions')
+  assert.equal(requests[0].body.model, 'vision-model')
+  assert.equal(requests[0].headers.Authorization, 'Bearer sk-vision')
+  assert.equal(service.getConfig().baseUrl, 'https://chat.example.test/v1')
+  assert.equal(service.getConfig().model, 'chat-model')
+  const startedLog = logs.find((entry) => entry.event === 'ai.provider.request.started')
+  const completedLog = logs.find((entry) => entry.event === 'ai.provider.request.completed')
+  assert.equal(startedLog.details.configSource, 'override')
+  assert.equal(completedLog.details.endpoint, 'https://vision.example.test/v1/chat/completions')
+})
+
 test('ai service testConnection validates provider response', async () => {
   const logs = []
   const requests = []
@@ -1158,4 +1231,122 @@ test('ai service treats missing /models support as a safe discovery fallback', a
   assert.equal(result.ok, true)
   assert.equal(result.code, 'provider_reachable_models_unavailable')
   assert.deepEqual(result.models, [])
+})
+
+test('ai service resolves vision provider to chat config by default and to override when enabled', () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://chat.example.test/v1',
+        model: 'gpt-5.5',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        vision: {
+          mode: 'follow-chat',
+          provider: 'openai-compatible',
+          baseUrl: 'https://vision.example.test/v1',
+          model: 'gpt-4.1-mini',
+          apiKeyRef: 'ai.vision'
+        }
+      }
+    }),
+    secretService: {
+      getSecretValue: (key) => (key === 'ai.default' ? 'sk-chat' : 'sk-vision'),
+      setSecret: () => {}
+    }
+  })
+
+  assert.deepEqual(service.getEffectiveVisionConfig(), {
+    mode: 'follow-chat',
+    provider: 'openai-compatible',
+    baseUrl: 'https://chat.example.test/v1',
+    model: 'gpt-5.5',
+    apiKeyRef: 'ai.default',
+    hasApiKey: true,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    },
+    effectiveProvider: 'openai-compatible',
+    effectiveBaseUrl: 'https://chat.example.test/v1',
+    effectiveModel: 'gpt-5.5',
+    effectiveHasApiKey: true
+  })
+
+  service.saveConfig({
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: 'https://vision.example.test/v1',
+      model: 'gpt-4.1-mini'
+    }
+  })
+
+  assert.deepEqual(service.getEffectiveVisionConfig(), {
+    mode: 'override',
+    provider: 'openai-compatible',
+    baseUrl: 'https://vision.example.test/v1',
+    model: 'gpt-4.1-mini',
+    apiKeyRef: 'ai.vision',
+    hasApiKey: true,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    },
+    effectiveProvider: 'openai-compatible',
+    effectiveBaseUrl: 'https://vision.example.test/v1',
+    effectiveModel: 'gpt-4.1-mini',
+    effectiveHasApiKey: true
+  })
+})
+
+test('ai service discovers vision models with an override-scoped catalog', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://chat.example.test/v1',
+      model: 'gpt-5.5',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      vision: {
+        mode: 'override',
+        provider: 'openai-compatible',
+        baseUrl: 'https://vision.example.test/v1',
+        model: 'gpt-4.1-mini',
+        apiKeyRef: 'ai.vision'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: (key) => (key === 'ai.vision' ? 'sk-vision' : 'sk-chat'),
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [{ id: 'gpt-4.1-mini' }, { id: 'gpt-4o' }]
+      })
+    })
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.models, ['gpt-4.1-mini', 'gpt-4o'])
+  assert.deepEqual(service.getConfig().vision.modelCatalog, {
+    cacheKey: 'vision:openai-compatible:https://vision.example.test/v1',
+    models: ['gpt-4.1-mini', 'gpt-4o'],
+    fetchedAt: settingsService.get().ai.visionModelCatalog.fetchedAt,
+    source: 'saved'
+  })
 })
