@@ -95,6 +95,40 @@ const assertDoesNotExist = (targetPath, role, fsImpl = fs) => {
 }
 
 const sanitizeText = (value, maxChars = 240) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxChars)
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const sanitizeRelativePath = (value, fallback, maxChars = 240) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (isSafeRelativePath(normalized)) return sanitizeText(normalized, maxChars)
+  return sanitizeText(fallback, maxChars)
+}
+
+const createSafeArchiveDirPath = (archiveDir, sessionId) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(archiveDir || '').trim()))
+  return sanitizeRelativePath(relative, `${toPosixPath(DEFAULT_ARCHIVE_ROOT)}/${sanitizeText(sessionId, 80)}`)
+}
+
+const createSafeSourceSummary = ({ report, sessionId }) => {
+  const sourceSessionDir = sanitizeRelativePath(
+    report?.sessionDir,
+    `tmp/real-provider-chat-acceptance/${sanitizeText(sessionId, 80)}`
+  )
+  const resultPath = sanitizeRelativePath(
+    report?.resultPath,
+    `${sourceSessionDir}/${DEFAULT_RESULT_NAME}`
+  )
+  const logPath = sanitizeRelativePath(
+    report?.logPath,
+    `${sourceSessionDir}/${toPosixPath(DEFAULT_LOG_NAME)}`
+  )
+  return { sourceSessionDir, resultPath, logPath }
+}
 
 const summarizeManualAcceptance = (manualAcceptance = {}) => ({
   bubbleVisibleLongEnough: formatManualAcceptanceStatus(manualAcceptance.bubbleVisibleLongEnough),
@@ -127,27 +161,26 @@ const assertNoSensitiveArchiveText = (content, role) => {
 
 const createArchiveResultValue = ({
   report,
-  absoluteSessionDir,
-  sourceResultPath,
-  sourceLogPath,
   absoluteArchiveDir,
-  absoluteOutputPath,
   sessionId,
   files,
   now = () => new Date()
-}) => ({
-  generatedAt: now().toISOString(),
-  ok: true,
-  source: {
-    sessionDir: absoluteSessionDir,
-    resultPath: sourceResultPath,
-    logPath: sourceLogPath
-  },
-  archive: {
-    archiveDir: absoluteArchiveDir,
-    outputPath: absoluteOutputPath,
-    sessionId
-  },
+}) => {
+  const safeArchiveDir = createSafeArchiveDirPath(absoluteArchiveDir, sessionId)
+  const safeSource = createSafeSourceSummary({ report, sessionId })
+  return {
+    generatedAt: now().toISOString(),
+    ok: true,
+    source: {
+      sessionDir: safeSource.sourceSessionDir,
+      resultPath: safeSource.resultPath,
+      logPath: safeSource.logPath
+    },
+    archive: {
+      archiveDir: safeArchiveDir,
+      outputPath: `${safeArchiveDir}/${DEFAULT_ARCHIVE_RESULT_NAME}`,
+      sessionId
+    },
   smoke: {
     generatedAt: sanitizeText(report?.generatedAt || '', 80),
     provider: sanitizeText(report?.config?.provider || '', 80),
@@ -164,7 +197,8 @@ const createArchiveResultValue = ({
   warnings: [
     'Archive preserves sanitized telemetry evidence only; human desktop-feel acceptance remains manual-required.'
   ]
-})
+  }
+}
 
 const createReadme = ({ report, archiveDir }) => {
   const provider = sanitizeText(report?.config?.provider || '', 80)
@@ -254,14 +288,19 @@ const createReadme = ({ report, archiveDir }) => {
   ].join('\n')
 }
 
-const copyFile = ({ sourcePath, targetPath, role, fsImpl = fs }) => {
+const createSafeArchivedFilePath = (targetPath, archiveDir, fallback) => {
+  const relative = toPosixPath(path.relative(archiveDir, targetPath))
+  return sanitizeRelativePath(relative, fallback)
+}
+
+const copyFile = ({ sourcePath, targetPath, archiveDir, role, fallbackPath, fsImpl = fs }) => {
   assertPlainFile(sourcePath, role, fsImpl)
   const content = fsImpl.readFileSync(sourcePath)
   fsImpl.mkdirSync(path.dirname(targetPath), { recursive: true })
   fsImpl.writeFileSync(targetPath, content)
   return {
     role,
-    path: targetPath,
+    path: createSafeArchivedFilePath(targetPath, archiveDir, fallbackPath),
     bytes: content.length,
     sha256: sha256(content)
   }
@@ -307,26 +346,36 @@ const createAiTalkLocalSmokeArchive = ({
 
   fsImpl.mkdirSync(absoluteArchiveDir, { recursive: true })
   const files = [
-    copyFile({ sourcePath: sourceResultPath, targetPath: archivedResultPath, role: 'aiTalkLocalSmokeResult', fsImpl }),
-    copyFile({ sourcePath: sourceLogPath, targetPath: archivedLogPath, role: 'aiTalkLocalSmokeLog', fsImpl })
+    copyFile({
+      sourcePath: sourceResultPath,
+      targetPath: archivedResultPath,
+      archiveDir: absoluteArchiveDir,
+      role: 'aiTalkLocalSmokeResult',
+      fallbackPath: DEFAULT_RESULT_NAME,
+      fsImpl
+    }),
+    copyFile({
+      sourcePath: sourceLogPath,
+      targetPath: archivedLogPath,
+      archiveDir: absoluteArchiveDir,
+      role: 'aiTalkLocalSmokeLog',
+      fallbackPath: toPosixPath(DEFAULT_LOG_NAME),
+      fsImpl
+    })
   ]
 
   const readme = createReadme({ report, archiveDir: absoluteArchiveDir })
   fsImpl.writeFileSync(archivedReadmePath, readme)
   files.push({
     role: 'archiveReadme',
-    path: archivedReadmePath,
+    path: createSafeArchivedFilePath(archivedReadmePath, absoluteArchiveDir, DEFAULT_README_NAME),
     bytes: Buffer.byteLength(readme),
     sha256: sha256(readme)
   })
 
   const archiveResult = createArchiveResultValue({
     report,
-    absoluteSessionDir,
-    sourceResultPath,
-    sourceLogPath,
     absoluteArchiveDir,
-    absoluteOutputPath,
     sessionId,
     files,
     now

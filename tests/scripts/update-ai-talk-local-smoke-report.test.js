@@ -213,8 +213,19 @@ test('updateAiTalkLocalSmokeReport rewrites report, README, and archive result',
   assert.equal(archiveResult.smoke.manualAcceptance.inputUsable, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.desktopFeelNotesPresent, true)
   assert.equal(archiveResult.smoke.manualAcceptance.requestId, 'chat-mqxyb5gj-6tvex3h5')
+  assert.equal(archiveResult.source.sessionDir, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z')
+  assert.equal(archiveResult.source.resultPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
+  assert.equal(archiveResult.source.logPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
+  assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
+  assert.equal(archiveResult.archive.outputPath, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json')
   assert.equal(Array.isArray(archiveResult.files), true)
   assert.equal(archiveResult.files.length, 3)
+  assert.deepEqual(archiveResult.files.map((file) => file.path), [
+    'ai-talk-local-smoke-result.json',
+    'logs/openpet-app.jsonl',
+    'README.md'
+  ])
+  assert.doesNotMatch(JSON.stringify(archiveResult), /\/tmp\//)
 })
 
 test('updateAiTalkLocalSmokeReport creates an archive result when the archive summary is missing', () => {
@@ -236,6 +247,7 @@ test('updateAiTalkLocalSmokeReport creates an archive result when the archive su
   assert.equal(archiveResult.smoke.requestId, 'chat-mqxyb5gj-6tvex3h5')
   assert.equal(archiveResult.smoke.manualAcceptance.requestId, 'chat-mqxyb5gj-6tvex3h5')
   assert.equal(archiveResult.files.length, 3)
+  assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
 })
 
 test('updateAiTalkLocalSmokeReport rejects unsafe notes before writing', () => {

@@ -138,7 +138,6 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.archive.archiveDir, path.resolve(archiveDir))
   assert.equal(result.smoke.requestId, 'chat-mqxyb5gj-6tvex3h5')
   assert.equal(result.smoke.providerLatencyMs, 2141)
   assert.equal(result.smoke.manualAcceptanceTemplatePresent, true)
@@ -146,7 +145,17 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   assert.equal(result.smoke.manualAcceptance.inputUsable, 'pending')
   assert.equal(result.smoke.manualAcceptance.desktopFeelNotesPresent, false)
   assert.equal(result.smoke.manualAcceptance.requestId, 'chat-mqxyb5gj-6tvex3h5')
+  assert.equal(result.source.sessionDir, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z')
+  assert.equal(result.source.resultPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json')
+  assert.equal(result.source.logPath, 'tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl')
+  assert.equal(result.archive.archiveDir, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z')
+  assert.equal(result.archive.outputPath, 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json')
   assert.equal(result.files.length, 3)
+  assert.deepEqual(result.files.map((file) => file.path), [
+    'ai-talk-local-smoke-result.json',
+    'logs/openpet-app.jsonl',
+    'README.md'
+  ])
 
   const archivedReportPath = path.join(archiveDir, 'ai-talk-local-smoke-result.json')
   const archivedReadmePath = path.join(archiveDir, 'README.md')
@@ -169,6 +178,7 @@ test('createAiTalkLocalSmokeArchive copies sanitized artifacts and writes archiv
   assert.equal(archiveResult.smoke.provider, 'openai-compatible')
   assert.equal(archiveResult.smoke.bubbleVisible, true)
   assert.equal(archiveResult.smoke.manualAcceptance.inputUsable, 'pending')
+  assert.doesNotMatch(JSON.stringify(archiveResult), /\/Users\//)
 })
 
 test('createAiTalkLocalSmokeArchive rejects missing required files', () => {
