@@ -1,7 +1,7 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-07-03
-> Branch: `codex/dev7`
+> Last updated: 2026-07-05
+> Branch: `codex/dev8`
 
 This is the compact engineering snapshot for the current repository state. Use [`TODO.md`](./TODO.md) for active work, and use `docs/phases/` plus `docs/reviews/` for detailed implementation history.
 
@@ -54,6 +54,7 @@ npm run run-ai-talk-local-smoke -- --message "<message>"
 - Release evidence still needs real signed macOS and Windows artifacts before support claims can move.
 - Packaged native picker evidence still needs real archived runs.
 - Creator Studio image-provider polish remains open product work, but host-owned durable trigger rules are already landed for `random`, `state`, and `event`.
+- The current one-click full-pet policy is intentionally narrow: QA/import requires real `idle` and `waving`, host-side extra pose generation only attempts `waving`, and the stable shortest path is a single clean front-facing image with the saved `gpt-image-2` gateway path; multi-view collage inputs remain less stable and should not be presented as the default success path.
 - Extension-community proof still needs a compatible third-party package path without overstating trust or safety.
 
 ## Reference Points

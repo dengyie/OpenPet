@@ -195,6 +195,11 @@ docs/
   - 输出写盘
   - action / pet-pack 导入
   - trigger proposal 入队和最终审核
+- 当前 full-pet 一键链路的真实门槛是：
+  - `idle` / `waving` 必须通过真实动作覆盖门禁
+  - 宿主额外补生成只做 `waving`
+  - 其余行允许从 base pose 回退
+- 当前最稳定的真实素材路径是单张干净正面图；多视图拼图输入不是当前默认成功路径。
 
 ### 6.4 插件系统
 

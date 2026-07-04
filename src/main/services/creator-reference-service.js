@@ -27,10 +27,21 @@ const createReferenceKey = ({ targetType, targetId }) => `${targetType}:${target
 
 const ensureDirectory = (dirPath) => fs.mkdirSync(dirPath, { recursive: true })
 
+const sanitizeFileSegment = (value) => String(value || '')
+  .replace(/[^a-zA-Z0-9._-]+/g, '-')
+  .replace(/-{2,}/g, '-')
+  .replace(/^-|-$/g, '')
+
 const createSafeFileName = (value, fallback = 'reference.png') => {
   const normalized = String(value || '').trim()
   const candidate = normalized || fallback
-  return candidate.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-|-$/g, '') || fallback
+  const extension = path.extname(candidate) || path.extname(fallback)
+  const baseName = extension ? candidate.slice(0, -extension.length) : candidate
+  const fallbackExtension = path.extname(fallback)
+  const fallbackBaseName = fallbackExtension ? fallback.slice(0, -fallbackExtension.length) : fallback
+  const safeBaseName = sanitizeFileSegment(baseName) || sanitizeFileSegment(fallbackBaseName) || 'reference'
+  const safeExtension = sanitizeFileSegment(extension.replace(/^\./, ''))
+  return safeExtension ? `${safeBaseName}.${safeExtension}` : safeBaseName
 }
 
 const readSettingsReferences = (settingsService) => {

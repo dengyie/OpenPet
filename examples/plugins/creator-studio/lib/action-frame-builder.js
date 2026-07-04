@@ -52,6 +52,15 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+const sanitizeWarningText = (value, maxChars = 180) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, maxChars)
+
+const createFrameReuseWarning = ({ fileName, error }) => (
+  `Frame ${fileName} reused previous valid frame because ${sanitizeWarningText(error?.message || 'the extracted action-sheet cell was unusable')}.`
+)
+
 const getNearestExistingPath = (targetPath) => {
   let currentPath = targetPath
   while (!fs.existsSync(currentPath)) {
@@ -312,6 +321,49 @@ const resolveFrameSource = async ({ dataDir, generationResult, frameCount, frame
   throw lastError || new Error('Generated action sheet cell could not be extracted')
 }
 
+const resolveFrameSourceWithReuse = async ({
+  dataDir,
+  generationResult,
+  frameCount,
+  frameIndex,
+  fileName,
+  lastSuccessfulFrame,
+  warnings
+}) => {
+  try {
+    const frameSource = await resolveFrameSource({
+      dataDir,
+      generationResult,
+      frameCount,
+      frameIndex
+    })
+    return {
+      frameSource,
+      lastSuccessfulFrame: {
+        ...frameSource,
+        fileName
+      },
+      reusedPreviousFrame: false,
+      reusedFromFileName: ''
+    }
+  } catch (error) {
+    if (!lastSuccessfulFrame) throw error
+    warnings.push(createFrameReuseWarning({ fileName, error }))
+    return {
+      frameSource: {
+        ...lastSuccessfulFrame,
+        extraction: {
+          ...(lastSuccessfulFrame.extraction || {}),
+          mode: lastSuccessfulFrame.extraction?.mode || 'action-sheet-reuse'
+        }
+      },
+      lastSuccessfulFrame,
+      reusedPreviousFrame: true,
+      reusedFromFileName: lastSuccessfulFrame.fileName
+    }
+  }
+}
+
 const toDataRelativePath = ({ dataDir, targetPath }) => path
   .relative(path.resolve(dataDir), path.resolve(targetPath))
   .split(path.sep)
@@ -403,15 +455,22 @@ const buildActionFramesFromGeneratedImage = async ({
   let sourceRelativePath = ''
   let sourceRelativePaths = []
   let extraction = null
+  const warnings = []
+  let lastSuccessfulFrame = null
   for (let index = 0; index < frameCount; index += 1) {
     const fileName = `${String(index + 1).padStart(4, '0')}.png`
     const framePath = path.join(safeOutputFramesDir, fileName)
-    const frameSource = await resolveFrameSource({
+    const resolvedFrame = await resolveFrameSourceWithReuse({
       dataDir,
       generationResult,
       frameCount,
-      frameIndex: index
+      frameIndex: index,
+      fileName,
+      lastSuccessfulFrame,
+      warnings
     })
+    const { frameSource, reusedPreviousFrame, reusedFromFileName } = resolvedFrame
+    lastSuccessfulFrame = resolvedFrame.lastSuccessfulFrame
     sourceRelativePath = sourceRelativePath || frameSource.sourceRelativePath
     sourceRelativePaths = frameSource.sourceRelativePaths
     extraction = frameSource.extraction
@@ -423,6 +482,7 @@ const buildActionFramesFromGeneratedImage = async ({
       visiblePixels: await countVisiblePixels(framePath),
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
       sourceBounds: frameSource.normalized.sourceBounds,
+      ...(reusedPreviousFrame ? { reusedPreviousFrame: true, reusedFromFileName } : {}),
       ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
       ...(Number.isInteger(frameSource.extraction?.sourceOutputIndex) ? { sourceOutputIndex: frameSource.extraction.sourceOutputIndex } : {})
     })
@@ -458,7 +518,7 @@ const buildActionFramesFromGeneratedImage = async ({
     triggerProposal: action?.triggerProposal || { type: 'unbound' },
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
     frames,
-    warnings: []
+    warnings
   })
 
   return {

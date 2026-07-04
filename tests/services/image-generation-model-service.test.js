@@ -403,6 +403,37 @@ test('image generation model service discovers available models through the opti
   assert.equal(service.getConfig().modelCatalog.source, 'saved')
 })
 
+test('image generation model service strips control characters from discovered model ids', async () => {
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({
+      baseUrl: 'https://images-models.example.test/v1',
+      model: 'gpt-image-2'
+    })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    fetchImpl: async (url) => {
+      if (String(url).endsWith('/models')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              { id: 'gpt-image-2\u0000' },
+              { id: 'gpt-image-1.5' },
+              { id: 'gpt-image-2' }
+            ]
+          })
+        }
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    }
+  })
+
+  const discovery = await service.discoverModels()
+  assert.deepEqual(discovery.models, ['gpt-image-2', 'gpt-image-1.5'])
+})
+
 test('image generation model service only exposes cached models for the active provider owner key', () => {
   const service = createImageGenerationModelService({
     settingsService: createSettingsService(providerSettings({
@@ -616,6 +647,45 @@ test('image generation model service honors per-request timeout overrides', asyn
   assert.equal(logs[1].details.timeoutMs, 300000)
 })
 
+test('image generation model service honors per-request model overrides without persisting them', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const requests = []
+  const settingsService = createSettingsService(providerSettings({ model: 'gpt-image-2' }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ b64_json: Buffer.from('fake-image-bytes').toString('base64') }]
+        })
+      }
+    }
+  })
+
+  await service.generateImage({
+    model: 'gpt-image-1.5',
+    prompt: 'small mint helper cat, transparent background',
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/model-override/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  })
+
+  assert.equal(JSON.parse(requests[0].options.body).model, 'gpt-image-1.5')
+  assert.equal(settingsService.get().models.imageGeneration.model, 'gpt-image-2')
+})
+
 test('image generation model service uses a gpt-image-2 compatible generation payload', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []
@@ -711,15 +781,18 @@ test('image generation model service uses image edits when reference conditionin
   })
 
   const request = requests[0]
-  const form = request.options.body
-  const imageField = form.get('image')
+  const body = request.options.body
+  const contentType = request.options.headers['Content-Type']
+  const serialized = Buffer.isBuffer(body) ? body.toString('utf8') : String(body)
   assert.equal(request.url, 'http://127.0.0.1:8317/v1/images/edits')
-  assert.ok(form instanceof FormData)
-  assert.equal(form.get('model'), 'gpt-image-2')
-  assert.equal(form.get('prompt'), 'keep the same orange cat identity and create a waving action sheet')
-  assert.equal(form.get('size'), '1024x1024')
-  assert.equal(Object.prototype.toString.call(imageField), '[object File]')
-  assert.equal(imageField.name, 'canonical-reference.png')
+  assert.ok(Buffer.isBuffer(body))
+  assert.match(contentType, /^multipart\/form-data; boundary=----OpenPetFormBoundary[0-9a-f]+$/)
+  assert.equal(request.options.headers['Content-Length'], String(body.byteLength))
+  assert.match(serialized, /name="image"; filename="canonical-reference\.png"/)
+  assert.match(serialized, /Content-Type: image\/png/)
+  assert.match(serialized, /name="model"\r\n\r\ngpt-image-2\r\n/)
+  assert.match(serialized, /name="prompt"\r\n\r\nkeep the same orange cat identity and create a waving action sheet\r\n/)
+  assert.match(serialized, /name="size"\r\n\r\n1024x1024\r\n/)
   assert.equal(result.conditioning.mode, 'image-edit')
   assert.equal(result.conditioning.endpoint, '/images/edits')
   assert.equal(result.conditioning.referenceImageCount, 1)

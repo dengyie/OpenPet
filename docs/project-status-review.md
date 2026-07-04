@@ -1,7 +1,7 @@
 # OpenPet Project Status Review
 
-> Last updated: 2026-07-03
-> Branch: `codex/dev7`
+> Last updated: 2026-07-05
+> Branch: `codex/dev8`
 
 This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for the active queue and `docs/release-evidence/` for archived proof.
 
@@ -10,8 +10,10 @@ This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for
 OpenPet already has the intended platform shape: desktop pet runtime, Control Center, pet packs, AI settings, local extensions, local HTTP/MCP, and release evidence tooling. The main remaining gap is not architecture. It is evidence, release proof, and ecosystem maturity.
 
 Current archived proof also includes real-provider smoke paths for AI gateway verification, Bubble Chat acceptance telemetry, and Creator Studio provider-path validation at `docs/release-evidence/ai-provider-smoke/2026-06-28T11-08-10Z-openpet-gateway/`, `docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/`, and `docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/`. The operational entrypoints are `npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model>`, `npm run smoke:creator-studio-provider -- --prompt "<prompt>"`, and `npm run run-ai-talk-local-smoke -- --message "<message>"`. The archived OpenPet gateway smoke confirms `gpt-5.5`, `gpt-image-2`, chat completion smoke success, and that image generation was intentionally opt-in and was skipped in that run; it does not prove image generation output quality or asset readiness. The AI Talk smoke carries `bubbleAcceptance`, `providerLatencyMs`, and `manualAcceptanceTemplate` fields for later human review and does not by itself prove full desktop feel. Those archives improve operator confidence, but they do not upgrade desktop release readiness by themselves.
-Current common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet gateway preset is tied to the archived smoke baseline.
-The archived signed closure keeps official desktop not-ready, macOS not-ready, and Windows not-ready until signed release evidence replaces the current blockers.
+
+The current one-click character-generation path is deliberately narrower than older multi-action design notes implied: full-pet QA/import requires real `idle` and `waving`, host-side extra pose generation is intentionally limited to `waving`, and the verified shortest real-user path is a single clean front-facing reference image on the saved `gpt-image-2` gateway path. Multi-view collage inputs remain less stable and should not be described as the default success path.
+
+Current common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet gateway preset is tied to the archived smoke baseline. The archived signed closure keeps official desktop not-ready, macOS not-ready, and Windows not-ready until signed release evidence replaces the current blockers.
 
 ## Release Truth
 

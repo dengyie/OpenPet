@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { getMissingRequiredRealActionIds } = require('./full-pet-basic-actions')
 
 const assertExistingPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   if (!targetPath) throw new Error(`${label} must stay inside the Creator Studio data directory`)
@@ -40,20 +41,7 @@ const normalizeQaRelativePath = (value) => {
 
 const getMissingRequiredBasicActions = (basicActions) => {
   if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) return []
-  const required = Array.isArray(basicActions.requiredRealActionIds)
-    ? basicActions.requiredRealActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
-    : []
-  if (required.length === 0) return []
-  const real = new Set(
-    Array.isArray(basicActions.realActionIds)
-      ? basicActions.realActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
-      : []
-  )
-  const reportedMissing = Array.isArray(basicActions.missingRequiredActionIds)
-    ? basicActions.missingRequiredActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
-    : []
-  const computedMissing = required.filter((actionId) => !real.has(actionId))
-  return [...new Set([...reportedMissing, ...computedMissing])]
+  return getMissingRequiredRealActionIds(basicActions)
 }
 
 const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/import' }) => {
