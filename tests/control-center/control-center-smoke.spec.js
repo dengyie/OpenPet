@@ -1060,6 +1060,109 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('image-usage-summary')).toContainText('仍对应已保存配置')
   })
 
+  test('shows image model discovery timeout feedback in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await page.getByLabel('图片 Base URL').fill('https://models-timeout.example.test/v1')
+    await page.getByLabel('图片 Model').fill('gpt-image-2')
+    await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
+
+    const imageApiKeyRow = page.locator('.field-row', { hasText: '图片 API Key' })
+    await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-timeout-1234')
+    await page.getByRole('button', { name: '保存图片密钥' }).click()
+    await imageProviderSection.getByRole('button', { name: '刷新图片模型' }).click()
+
+    await expect(page.getByTestId('ai-image-model-discovery')).toContainText('图片 Provider 模型探测超时')
+    await expect(page.getByTestId('ai-image-model-discovery')).toContainText('timed out')
+  })
+
+  test('shows chat model discovery timeout feedback in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await chatBaseUrlInput(page).fill('https://models-timeout.example.test/v1')
+    await chatModelInput(page).fill('gpt-4o-mini')
+    await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+
+    const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
+    await apiKeyRow.getByPlaceholder('输入 API Key').fill('sk-chat-timeout-1234')
+    await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
+    await chatProviderSection.getByRole('button', { name: '刷新聊天模型' }).click()
+
+    await expect(page.getByTestId('ai-chat-model-discovery')).toContainText('聊天 Provider 模型探测超时')
+    await expect(page.getByTestId('ai-chat-model-discovery')).toContainText('timed out')
+  })
+
+  test('surfaces chat connection-test model probe timeout honestly in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await chatBaseUrlInput(page).fill('https://models-timeout.example.test/v1')
+    await chatModelInput(page).fill('gpt-4o-mini')
+    await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+
+    const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
+    await apiKeyRow.getByPlaceholder('输入 API Key').fill('sk-chat-timeout-5678')
+    await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
+
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('聊天 Provider 可达，但模型列表探测超时')
+    await expect(page.getByTestId('ai-provider-feedback')).toHaveClass(/error/)
+    await expect(page.getByTestId('ai-connection-result')).toContainText('连接测试部分通过')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('模型列表探测超时')
+  })
+
+  test('surfaces chat connection-test model probe failure honestly in the demo API', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await chatBaseUrlInput(page).fill('https://models-failed.example.test/v1')
+    await chatModelInput(page).fill('gpt-4o-mini')
+    await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+
+    const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
+    await apiKeyRow.getByPlaceholder('输入 API Key').fill('sk-chat-failed-5678')
+    await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
+    await chatProviderSection.getByRole('button', { name: '测试已保存配置' }).click()
+
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('聊天 Provider 可达，但模型列表探测失败')
+    await expect(page.getByTestId('ai-provider-feedback')).toHaveClass(/error/)
+    await expect(page.getByTestId('ai-connection-result')).toContainText('连接测试部分通过')
+    await expect(page.getByTestId('chat-model-discovery')).toContainText('模型列表探测失败')
+  })
+
+  test('clears stale image model refresh results after saving a new image provider config', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const imageProviderSection = await expandAiSection(page, '图片 Provider')
+    await page.getByLabel('图片 Base URL').fill('https://healthy-models.example.test/v1')
+    await page.getByLabel('图片 Model').fill('openpet-image-test')
+    await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
+
+    const imageApiKeyRow = page.locator('.field-row', { hasText: '图片 API Key' })
+    await imageApiKeyRow.locator('input[type="password"]').fill('sk-image-demo-1111')
+    await page.getByRole('button', { name: '保存图片密钥' }).click()
+    await imageProviderSection.getByRole('button', { name: '刷新图片模型' }).click()
+
+    await expect(page.getByTestId('ai-image-model-discovery')).toContainText('图片模型探测')
+    await expect(page.getByTestId('ai-image-model-discovery')).toContainText('models:')
+
+    await page.getByLabel('图片 Model').fill('draft-image-model')
+    await expect(page.getByTestId('ai-image-model-discovery')).toContainText('仍对应已保存配置')
+
+    await page.getByLabel('图片 Model').fill('gpt-image-2')
+    await imageProviderSection.getByRole('button', { name: '保存图片 Provider' }).click()
+
+    await expect(page.getByTestId('ai-image-status')).toContainText('图片 Provider 配置已保存')
+    await expect(page.getByTestId('ai-image-model-discovery')).toHaveCount(0)
+  })
+
   test('shows chat provider model discovery results in the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
@@ -1123,6 +1226,33 @@ test.describe('Control Center smoke', () => {
 
     await expect(page.getByTestId('image-model-discovery')).toContainText('运行“检查图片健康”后')
     await expect(page.getByTestId('image-model-discovery')).not.toContainText('flux-schnell')
+  })
+
+  test('clears stale chat model refresh results after saving a new chat API key', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+
+    const chatProviderSection = await expandAiSection(page, '聊天 Provider')
+    await chatBaseUrlInput(page).fill('https://healthy-models.example.test/v1')
+    await chatModelInput(page).fill('deepseek-chat')
+    await chatProviderSection.getByRole('button', { name: '保存聊天 Provider' }).click()
+
+    const apiKeyRow = page.locator('.field-row').filter({ has: page.getByText('API Key', { exact: true }) })
+    await apiKeyRow.getByPlaceholder('输入 API Key').fill('sk-chat-demo-1111')
+    await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
+    await chatProviderSection.getByRole('button', { name: '刷新聊天模型' }).click()
+
+    await expect(page.getByTestId('ai-chat-model-discovery')).toContainText('聊天模型探测')
+    await expect(page.getByTestId('ai-chat-model-discovery')).toContainText('models:')
+
+    await chatModelInput(page).fill('draft-chat-model')
+    await expect(page.getByTestId('ai-chat-model-discovery')).toContainText('仍对应已保存配置')
+
+    await apiKeyRow.getByPlaceholder('输入新密钥覆盖').fill('sk-chat-demo-2222')
+    await apiKeyRow.getByRole('button', { name: '保存密钥' }).click()
+
+    await expect(page.getByTestId('ai-provider-feedback')).toContainText('API Key 已保存')
+    await expect(page.getByTestId('ai-chat-model-discovery')).toHaveCount(0)
   })
 
   test('shows chat model compatibility hints for default and custom models in the demo API', async ({ page }) => {
@@ -1537,11 +1667,14 @@ test.describe('Control Center smoke', () => {
 
     await pluginEnabledSwitch.click()
     await expect(page.locator('.status-line')).toContainText('插件已启用')
-    const nativeExecutionSwitch = pluginRow.getByRole('switch', { name: 'Allow native process execution for Demo Manual Review' })
-    await expect(nativeExecutionSwitch).toHaveAttribute('aria-checked', 'false')
-    await nativeExecutionSwitch.click()
+    const approvalToggle = pluginRow.getByRole('switch', { name: 'Allow native process execution for Demo Manual Review' })
+    await expect(approvalToggle).toHaveAttribute('aria-checked', 'false')
+    await expect(pluginRow.getByRole('button', { name: 'Say hello' })).toBeDisabled()
+    await expect(pluginRow.getByRole('button', { name: 'Run Install Dependencies Setup' })).toBeDisabled()
+    await expect(pluginRow.getByRole('button', { name: 'Start Manual Companion' })).toBeDisabled()
+    await approvalToggle.click()
     await expect(page.locator('.status-line')).toContainText('已允许原生进程执行')
-    await expect(nativeExecutionSwitch).toHaveAttribute('aria-checked', 'true')
+    await expect(approvalToggle).toHaveAttribute('aria-checked', 'true')
     await pluginRow.getByRole('button', { name: 'Say hello' }).click()
     await expect(page.locator('.status-line')).toContainText('Demo command completed')
     await expect(pluginRow).toContainText('最近命令结果')
@@ -1555,6 +1688,7 @@ test.describe('Control Center smoke', () => {
     await pluginRow.getByRole('button', { name: 'Check Manual Companion Health' }).click()
     await expect(page.locator('.status-line')).toContainText('Service health healthy')
     await expect(pluginRow).toContainText('Health: healthy')
+    await expect(pluginRow).toContainText('Health note: OK')
     await expect(page.locator('.plugin-log-row', { hasText: 'Service health healthy' })).toContainText('service:manual-companion')
     const policyControls = pluginRow.locator('.plugin-health-policy')
     await policyControls.getByRole('switch').click()
@@ -1605,6 +1739,94 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.plugin-row', { hasText: 'Demo Manual Review' })).toContainText('openpet.demo.manual-review')
   })
 
+  test('shows agent-awareness approval gating and health summary in the Plugins pane with the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.agent-awareness',
+            name: 'Agent Awareness',
+            version: '0.1.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: false,
+            permissions: ['pet:say', 'pet:event'],
+            commands: [
+              { id: 'doctor', title: 'Check Agent Awareness Setup' }
+            ],
+            entries: {
+              commands: [
+                { id: 'doctor', title: 'Check Agent Awareness Setup', command: 'node ./commands/doctor.js', cwd: '.' }
+              ],
+              setup: [],
+              services: [
+                {
+                  id: 'agent-awareness',
+                  title: 'Agent Awareness Service',
+                  command: 'node ./service/agent-awareness-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8795/health' },
+                  runtime: {
+                    status: 'stopped',
+                    pid: 0,
+                    health: {
+                      status: 'healthy',
+                      checkedAt: '2026-07-03T12:00:00.000Z',
+                      url: 'http://127.0.0.1:8795/health',
+                      statusCode: 200,
+                      message: '3 active · 23 sessions · 1,250 events'
+                    }
+                  },
+                  healthPolicy: {
+                    enabled: false,
+                    intervalMs: 30000
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Agent Awareness', url: 'http://127.0.0.1:8795' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: {
+              status: 'bundled',
+              label: 'Bundled plugin',
+              signer: 'openpet',
+              algorithm: '',
+              verified: true,
+              errors: []
+            },
+            blockStatus: { blocked: false, reasons: [] }
+          }
+        ],
+        pluginLogs: []
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Agent Awareness' })
+    await expect(pluginRow).toContainText('openpet.agent-awareness')
+    await expect(pluginRow).toContainText('pet:say · pet:event')
+    await expect(pluginRow).toContainText('Health note: 3 active · 23 sessions · 1,250 events')
+
+    const approvalToggle = pluginRow.getByRole('switch', { name: 'Allow native process execution for Agent Awareness' })
+    await expect(approvalToggle).toHaveAttribute('aria-checked', 'false')
+    await expect(pluginRow.getByRole('button', { name: 'Check Agent Awareness Setup' })).toBeDisabled()
+    await expect(pluginRow.getByRole('button', { name: 'Start Agent Awareness Service' })).toBeDisabled()
+
+    await approvalToggle.click()
+
+    await expect(approvalToggle).toHaveAttribute('aria-checked', 'true')
+    await expect(pluginRow.getByRole('button', { name: 'Check Agent Awareness Setup' })).toBeEnabled()
+    await expect(pluginRow.getByRole('button', { name: 'Start Agent Awareness Service' })).toBeEnabled()
+  })
+
   test('opens the Creator Studio dashboard entry from the Plugins pane with the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
@@ -1616,6 +1838,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['pet:say', 'storage'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' },
@@ -1681,6 +1904,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['pet-pack:import', 'model:image-generate', 'assets:generate', 'trigger-proposals:write'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' }
@@ -1736,6 +1960,65 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
   })
 
+  test('surfaces plugin service health loopback validation errors in the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.demo.remote-health',
+            name: 'Remote Health Demo',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: [],
+            commands: [],
+            entries: {
+              setup: [],
+              commands: [],
+              services: [
+                {
+                  id: 'remote-health',
+                  title: 'Remote Health Service',
+                  command: 'node ./service/remote-health.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'https://api.example.com/health' },
+                  runtime: {
+                    status: 'stopped',
+                    health: { status: 'unknown', url: 'https://api.example.com/health', message: '' }
+                  },
+                  healthPolicy: {
+                    enabled: false,
+                    intervalMs: 30000
+                  }
+                }
+              ],
+              dashboards: []
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ],
+        pluginLogs: []
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Remote Health Demo' })
+    const serviceControl = pluginRow.locator('.plugin-service-control', { hasText: 'Remote Health Service' })
+
+    await expect(serviceControl).toContainText('Health: unknown')
+    await serviceControl.getByRole('button', { name: 'Check Remote Health Service Health' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Plugin service health URL must use a loopback host')
+    await expect(serviceControl).toContainText('Health: unknown')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Plugin service health URL must use a loopback host' })).toContainText('service:remote-health')
+  })
+
   test('shows structured Creator Studio command results in the Plugins pane with the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
@@ -1747,6 +2030,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['pet:say', 'storage'],
             commands: [
               { id: 'import-approved-pet', title: 'Import Approved Pet' }
@@ -1802,6 +2086,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['pet:say', 'storage'],
             commands: [
               { id: 'import-approved-action', title: 'Import Approved Action' }
@@ -1840,7 +2125,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('动作目录')
     await expect(pluginRow).toContainText('/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin')
     await expect(pluginRow).toContainText('入队状态')
-    await expect(pluginRow).toContainText('submitted')
+    await expect(pluginRow).toContainText('已提交')
     await expect(pluginRow).toContainText('proposal:click:shy-spin:test')
   })
 
@@ -1865,6 +2150,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' },
@@ -1935,6 +2221,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' }
@@ -1983,6 +2270,77 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).not.toContainText('最近命令结果')
   })
 
+  test('blocks host-owned Creator Studio generate-and-import when native execution is not approved', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        imageGenerationConfig: {
+          provider: 'openai-compatible',
+          baseUrl: 'https://healthy-models.example.test/v1',
+          model: 'gpt-image-2',
+          timeoutMs: 45000,
+          maxConcurrentJobs: 2,
+          apiKeyRef: 'image-provider-key',
+          hasApiKey: true,
+          apiKeyPreview: 'sk-demo'
+        },
+        plugins: [
+          {
+            id: 'openpet.creator-studio',
+            name: 'Creator Studio',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: false,
+            permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
+            commands: [
+              { id: 'draft-task', title: 'Draft Creator Task' }
+            ],
+            entries: {
+              setup: [],
+              commands: [
+                { id: 'draft-task', title: 'Draft Creator Task', command: 'node ./commands/draft-task.js', cwd: '.' }
+              ],
+              services: [
+                {
+                  id: 'studio',
+                  title: 'Creator Studio Service',
+                  command: 'node ./service/studio-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-06-29T10:00:00.000Z',
+                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }
+              ]
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: { label: 'Unsigned local demo' }
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await pluginRow.getByLabel('Creator Studio 请求').fill('给当前猫猫新增一个动作')
+    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Plugin native execution is not approved')
+    await expect(pluginRow).not.toContainText('最近命令结果')
+  })
+
   test('runs the host-owned Creator Studio generate-and-import flow to imported action in the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
@@ -2004,6 +2362,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' },
@@ -2065,7 +2424,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('已导入动作')
     await expect(pluginRow).toContainText('shy-spin')
     await expect(pluginRow).toContainText('入队状态')
-    await expect(pluginRow).toContainText('submitted')
+    await expect(pluginRow).toContainText('已提交')
   })
 
   test('routes failed host-owned Creator Studio generate-and-import runs to the advanced details path', async ({ page }) => {
@@ -2089,6 +2448,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' },
@@ -2172,6 +2532,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['model:image-generate', 'pet-pack:import', 'assets:generate', 'trigger-proposals:write'],
             commands: [
               { id: 'draft-task', title: 'Draft Creator Task' },
@@ -2247,6 +2608,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['pet:say', 'storage'],
             commands: [
               { id: 'import-approved-action', title: 'Import Approved Action' }
@@ -2297,6 +2659,7 @@ test.describe('Control Center smoke', () => {
             source: 'local',
             enabled: true,
             runnable: true,
+            nativeExecutionApproved: true,
             permissions: ['pet:say', 'storage'],
             commands: [
               { id: 'import-approved-action', title: 'Import Approved Action' }

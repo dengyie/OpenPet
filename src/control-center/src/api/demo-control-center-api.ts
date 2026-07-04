@@ -5,6 +5,8 @@ import type {
   ActionFrameInspectionResult,
   ActionFrameImportRequest,
   ActionFrameReinspectRequest,
+  AiBehaviorDryRunRequest,
+  CompletedActionFrameInspectionResult,
   ActionTriggerProposalInboxStatus,
   ActionTriggerProposalType,
   ActionTriggerRuleSpecInput,
@@ -24,16 +26,20 @@ import type {
   AiTalkTraceSummaryViewState,
   CatalogBlocklistEntry,
   CatalogInstallRequest,
+  CatalogPetPackInstallSelection,
   CatalogInstallSelection,
+  CatalogPluginInstallSelection,
   CatalogPetPackEntry,
   CatalogPluginEntry,
   CatalogState,
   ChatMessage,
   ControlCenterApi,
   ControlCenterSettings,
+  CreatorBindReferenceRequest,
   CreatorBindReferenceResult,
   CreatorGenerateExistingActionRequest,
   CreatorGenerateNewCharacterRequest,
+  CreatorLastRunResult,
   CreatorLastRunViewState,
   CreatorReferencePickerResult,
   CreatorReferenceTargetType,
@@ -47,19 +53,25 @@ import type {
   PetChatBubbleViewState,
   PetActionPlaybackResult,
   PetChatStateViewState,
+  PetPackInspectionResult,
   PetPackSummary,
   PetPackMutationResult,
   PetPacksViewState,
   PluginCommandRunResultViewState,
+  PluginConfigSchemaViewState,
   PluginDashboardOpenOptions,
   PluginDashboardOpenResult,
   PluginLogFilters,
   PluginPackageReviewViewState,
+  PluginSignatureStatusViewState,
+  PluginStorageViewState,
   PluginServiceHealthPolicyViewState,
   PluginServiceHealthViewState,
   PluginServiceRuntimeViewState,
   PluginSetupRuntimeViewState,
+  PluginUninstallOptions,
   PluginViewState,
+  ServiceLogFilters,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts.ts'
 
@@ -70,11 +82,22 @@ interface DemoState {
   aiPersonaOverrides: Record<string, AiPersonaOverride>
   aiMemories: AiMemoryItemViewState[]
   aiMemoryJobs: AiMemoryJobViewState[]
+  petChatConversations: Record<string, ChatMessage[]>
+  petChatConversationBubbles: Record<string, PetChatBubbleViewState>
   petChatMessages: ChatMessage[]
   petChatBubble: PetChatBubbleViewState
+  petChatWindowState: {
+    visible: boolean
+    hasWindow: boolean
+    alwaysOnTop: boolean
+    hasUserBounds: boolean
+    bounds: PetChatStateViewState['bounds']
+  }
   petBubbleChatState: {
     visible: boolean
     hasWindow: boolean
+    pinned: boolean
+    placement: string
   }
   imageGenerationConfig: ImageGenerationConfigViewState
   petPacks: PetPacksViewState
@@ -115,10 +138,12 @@ const normalizeDemoProviderBaseUrl = (value: string) => {
 const buildDemoProviderCacheKey = (capability: 'chat' | 'image', provider: string, baseUrl: string) => (
   [capability, String(provider || '').trim(), normalizeDemoProviderBaseUrl(baseUrl)].join(':')
 )
+const demoPetPackSelectionId = 'demo-pet-pack-selection'
+const demoActionFrameSelectionId = 'demo-selection'
 
-const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult => ({
+const createDemoInspection = (actionId = 'wave'): CompletedActionFrameInspectionResult => ({
   canceled: false,
-  selectionId: 'demo-selection',
+  selectionId: demoActionFrameSelectionId,
   folderName: 'demo-wave',
   actionId,
   inspection: {
@@ -136,10 +161,64 @@ const createDemoInspection = (actionId = 'wave'): ActionFrameInspectionResult =>
   }
 })
 
+const createDemoPetPackInspectionPack = (): PetPackSummary => ({
+  id: 'demo-imported-cat',
+  displayName: 'Demo Imported Cat',
+  version: '1.0.0',
+  source: 'local',
+  rootPath: '/demo/imports/demo-imported-cat',
+  active: false,
+  actionCount: 5,
+  defaultAction: 'idle',
+  clickAction: 'wave'
+})
+
+const createDemoPetPackInspectionResult = (): PetPackInspectionResult => ({
+  canceled: false,
+  selectionId: demoPetPackSelectionId,
+  folderName: 'demo-imported-cat',
+  valid: true,
+  errors: [],
+  warnings: [],
+  pack: createDemoPetPackInspectionPack()
+})
+
+const createDemoImportedAction = (actionId = 'wave', label = actionId): ActionsConfigViewState['actions'][number] => ({
+  id: actionId,
+  label,
+  kind: 'manual',
+  frameCount: 2,
+  frameWidth: 8,
+  frameHeight: 8,
+  frameMs: 120,
+  loop: false
+})
+
 const demoStorageKey = 'openpet.controlCenter.demoState'
 const demoActivePetPackChangedEvent = 'openpet:active-pet-pack-changed'
 
 const demoCatalogHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+const demoLoopbackHealthHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const demoManualPluginConfigSchema: PluginConfigSchemaViewState = {
+  title: 'Demo Manual Review Settings',
+  description: 'Demo configuration used to exercise renderer config flows.',
+  properties: [
+    {
+      key: 'city',
+      title: 'City',
+      description: 'City name shown by the demo plugin.',
+      type: 'string',
+      required: true
+    },
+    {
+      key: 'units',
+      title: 'Units',
+      description: 'Preferred weather units.',
+      type: 'string',
+      enum: ['metric', 'imperial']
+    }
+  ]
+}
 
 const demoPetPackPersonas: Record<string, AiPersona> = {
   'legacy-cat': {
@@ -311,18 +390,78 @@ const createDemoMemoryProfile = (petPacks: PetPacksViewState): AiMemoryProfileVi
   })
 }
 
-const createDemoPetChatState = (): PetChatStateViewState => {
+const getDemoMainConversationId = (petPackId = '') => {
+  const normalizedPetPackId = String(petPackId || '').trim() || defaultAiMemoryProfile.petPackId
+  return `control-center:${normalizedPetPackId}:main`
+}
+
+const getDemoConversationPackId = (conversationId = '') => {
+  const normalizedConversationId = String(conversationId || '').trim()
+  const match = normalizedConversationId.match(/^control-center:([^:]+):main$/)
+  return match?.[1] || ''
+}
+
+const cloneDemoConversationMap = (value: unknown): Record<string, ChatMessage[]> => Object.fromEntries(
+  Object.entries((value && typeof value === 'object' && !Array.isArray(value)) ? value : {})
+    .filter(([conversationId]) => typeof conversationId === 'string' && conversationId.trim())
+    .map(([conversationId, messages]) => [conversationId, cloneChatMessages(messages)])
+)
+
+const cloneDemoConversationBubbleMap = (value: unknown): Record<string, PetChatBubbleViewState> => Object.fromEntries(
+  Object.entries((value && typeof value === 'object' && !Array.isArray(value)) ? value : {})
+    .filter(([conversationId]) => typeof conversationId === 'string' && conversationId.trim())
+    .map(([conversationId, bubble]) => [conversationId, clonePetChatState({ bubble }).bubble])
+)
+
+const resolveDemoConversationContext = (
+  { conversationId, petPackId }: { conversationId?: string, petPackId?: string } = {}
+) => {
   const activePack = getActiveDemoPetPack()
+  const requestedConversationId = String(conversationId || '').trim()
+  const requestedPackId = String(petPackId || '').trim() || getDemoConversationPackId(requestedConversationId)
+  const resolvedPackId = demoState.petPacks.packs.some((pack) => pack.id === requestedPackId)
+    ? requestedPackId
+    : (activePack?.id || defaultAiMemoryProfile.petPackId)
+  const pack = demoState.petPacks.packs.find((candidate) => candidate.id === resolvedPackId) || activePack
+  const resolvedConversationId = requestedConversationId || getDemoMainConversationId(resolvedPackId)
+  return {
+    conversationId: resolvedConversationId,
+    petPackId: resolvedPackId,
+    pack
+  }
+}
+
+const getDemoConversationMessages = (conversationId = '') => {
+  const resolvedConversationId = String(conversationId || '').trim()
+  return cloneChatMessages(demoState.petChatConversations[resolvedConversationId] || [])
+}
+
+const getDemoConversationBubble = (conversationId = '') => {
+  const resolvedConversationId = String(conversationId || '').trim()
+  return clonePetChatState({
+    bubble: demoState.petChatConversationBubbles[resolvedConversationId] || defaultPetChatState.bubble
+  }).bubble
+}
+
+const syncActiveDemoConversationState = () => {
+  const { conversationId } = resolveDemoConversationContext()
+  demoState.petChatMessages = getDemoConversationMessages(conversationId)
+  demoState.petChatBubble = getDemoConversationBubble(conversationId)
+}
+
+const createDemoPetChatState = (): PetChatStateViewState => {
+  const { conversationId, pack } = resolveDemoConversationContext()
   return clonePetChatState({
     available: true,
-    visible: false,
-    hasWindow: false,
-    alwaysOnTop: true,
-    hasUserBounds: false,
-    bounds: null,
+    visible: Boolean(demoState.petChatWindowState?.visible),
+    hasWindow: Boolean(demoState.petChatWindowState?.hasWindow),
+    alwaysOnTop: demoState.petChatWindowState?.alwaysOnTop ?? true,
+    hasUserBounds: Boolean(demoState.petChatWindowState?.hasUserBounds),
+    bounds: demoState.petChatWindowState?.bounds || null,
+    conversationId,
     petPack: {
-      id: activePack?.id || defaultAiMemoryProfile.petPackId,
-      displayName: activePack?.displayName || activePack?.id || defaultAiMemoryProfile.petPackDisplayName
+      id: pack?.id || defaultAiMemoryProfile.petPackId,
+      displayName: pack?.displayName || pack?.id || defaultAiMemoryProfile.petPackDisplayName
     },
     ai: {
       enabled: Boolean(demoState.aiConfig.enabled),
@@ -335,21 +474,22 @@ const createDemoPetChatState = (): PetChatStateViewState => {
         ? (demoState.aiConfig.hasApiKey ? '' : '请先在 Control Center 保存 AI API Key')
         : '请先在 Control Center 启用 AI Provider'
     },
-    bubble: demoState.petChatBubble,
     bubbleChat: {
       visible: Boolean(demoState.petBubbleChatState?.visible),
-      hasWindow: Boolean(demoState.petBubbleChatState?.hasWindow)
+      hasWindow: Boolean(demoState.petBubbleChatState?.hasWindow),
+      pinned: Boolean(demoState.petBubbleChatState?.pinned),
+      placement: typeof demoState.petBubbleChatState?.placement === 'string' ? demoState.petBubbleChatState.placement : ''
     },
-    messages: demoState.petChatMessages
+    bubble: getDemoConversationBubble(conversationId),
+    messages: getDemoConversationMessages(conversationId)
   })
 }
 
 const createDemoAiTalkTraceSummary = (
   { conversationId }: { conversationId?: string } = {}
 ): AiTalkTraceSummaryViewState => {
-  const activePack = getActiveDemoPetPack()
-  const resolvedConversationId = conversationId || `control-center:${demoState.petPacks.activePackId}:main`
-  const messages = cloneChatMessages(demoState.petChatMessages)
+  const { conversationId: resolvedConversationId, petPackId, pack } = resolveDemoConversationContext({ conversationId })
+  const messages = getDemoConversationMessages(resolvedConversationId)
   const lastAssistantMessage = messages.filter((message) => message.role === 'assistant').at(-1)
   const lastUserMessage = messages.filter((message) => message.role === 'user').at(-1)
   return cloneAiTalkTraceSummary({
@@ -359,8 +499,8 @@ const createDemoAiTalkTraceSummary = (
     updatedAt: '2026-06-29T10:00:00.000Z',
     conversation: {
       conversationId: resolvedConversationId,
-      petPackId: demoState.petPacks.activePackId,
-      petPackDisplayName: activePack?.displayName || demoState.petPacks.activePackId
+      petPackId,
+      petPackDisplayName: pack?.displayName || petPackId
     },
     provider: {
       provider: demoState.aiConfig.provider,
@@ -541,6 +681,90 @@ const createDemoPetPackReview = (item: CatalogPetPackEntry) => ({
   }
 })
 
+let demoServiceLogCounter = 0
+
+const createDemoServiceLogEntry = (
+  partial: Partial<{
+    method: string
+    path: string
+    statusCode: number
+    authorized: boolean
+    remoteAddress: string
+    error: string
+  }> = {}
+) => ({
+  id: `demo-service-log-${Date.now()}-${demoServiceLogCounter += 1}`,
+  timestamp: new Date().toISOString(),
+  method: partial.method || 'POST',
+  path: partial.path || '/openpet/demo',
+  statusCode: Number.isFinite(Number(partial.statusCode)) ? Number(partial.statusCode) : 200,
+  authorized: partial.authorized ?? true,
+  remoteAddress: partial.remoteAddress || '127.0.0.1',
+  error: partial.error || ''
+})
+
+const escapeDemoCsvCell = (value: unknown) => {
+  const cell = String(value ?? '')
+  return /[",\n\r]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell
+}
+
+const exportDemoPluginLogs = (logs: ReturnType<typeof cloneDemoPluginLogs>, format: PluginLogFilters['format'] = 'json') => {
+  if (format === 'csv') {
+    const rows = [
+      ['timestamp', 'level', 'pluginId', 'commandId', 'message'],
+      ...logs.map((entry) => [entry.timestamp, entry.level, entry.pluginId, entry.commandId, entry.message])
+    ]
+    return rows.map((row) => row.map(escapeDemoCsvCell).join(',')).join('\n')
+  }
+  return JSON.stringify(logs, null, 2)
+}
+
+const exportDemoServiceLogs = (
+  logs: ServiceStatusViewState['config']['logs'],
+  format: ServiceLogFilters['format'] = 'json'
+) => {
+  if (format === 'csv') {
+    const header = ['timestamp', 'method', 'path', 'statusCode', 'authorized', 'remoteAddress', 'error']
+    const rows = logs.map((log) => header.map((key) => escapeDemoCsvCell(log[key as keyof typeof log])).join(','))
+    return [header.join(','), ...rows].join('\n')
+  }
+  return JSON.stringify(logs, null, 2)
+}
+
+const createDemoLocalHttpToken = () => `demo-token-${Date.now().toString(36)}`
+
+const normalizeDemoServiceConfig = (
+  currentConfig: ServiceStatusViewState['config'],
+  nextConfig: Partial<ServiceStatusViewState['config']> = {}
+) => {
+  const enabled = Boolean(nextConfig.enabled)
+  const port = Number(nextConfig.port ?? currentConfig.port ?? 0)
+  const normalizedPort = Number.isFinite(port) ? port : Number(currentConfig.port || 0)
+  const token = nextConfig.token || currentConfig.token || (enabled ? createDemoLocalHttpToken() : '')
+  return {
+    ...currentConfig,
+    ...nextConfig,
+    host: '127.0.0.1',
+    port: normalizedPort,
+    enabled,
+    token
+  }
+}
+
+const filterDemoServiceLogs = (
+  logs: ServiceStatusViewState['config']['logs'],
+  filters: ServiceLogFilters = {}
+) => {
+  const query = String(filters.query || '').trim().toLowerCase()
+  const status = String(filters.status || '').trim()
+  return logs.filter((log) => {
+    if (status && String(log.statusCode) !== status) return false
+    if (!query) return true
+    return [log.method, log.path, log.statusCode, log.remoteAddress, log.error]
+      .some((value) => String(value || '').toLowerCase().includes(query))
+  })
+}
+
 const demoManualPluginReview = {
   canceled: false,
   selectionId: 'demo-manual-plugin-selection',
@@ -603,47 +827,193 @@ const demoManualPluginReview = {
   requiresReview: false
 } satisfies PluginPackageReviewViewState
 
-const createDemoManualPlugin = (): PluginViewState => ({
-  id: demoManualPluginReview.plugin.id,
-  name: demoManualPluginReview.plugin.name,
-  version: demoManualPluginReview.plugin.version,
+const createDemoManualPluginReviewState = (): PluginPackageReviewViewState => {
+  const installedPlugin = getDemoPluginById(demoManualPluginReview.plugin.id)
+  const permissions = installedPlugin
+    ? [...demoManualPluginReview.plugin.permissions, 'network']
+    : [...demoManualPluginReview.plugin.permissions]
+  const networkAllowlist = installedPlugin ? ['api.manual.example'] : []
+  return {
+    ...demoManualPluginReview,
+    installMode: installedPlugin ? 'update' : 'install',
+    existingVersion: installedPlugin?.version || '',
+    plugin: {
+      ...demoManualPluginReview.plugin,
+      version: installedPlugin ? '1.1.0' : demoManualPluginReview.plugin.version,
+      permissions,
+      network: { allowlist: networkAllowlist },
+      commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })),
+      entries: clonePluginEntries(demoManualPluginReview.plugin.entries)
+    },
+    permissionDiff: installedPlugin
+      ? {
+          permissions: {
+            added: permissions.filter((permission) => !installedPlugin.permissions.includes(permission)),
+            removed: installedPlugin.permissions.filter((permission) => !permissions.includes(permission)),
+            unchanged: permissions.filter((permission) => installedPlugin.permissions.includes(permission))
+          },
+          networkAllowlist: {
+            added: [...networkAllowlist],
+            removed: [],
+            unchanged: []
+          }
+        }
+      : {
+          permissions: { ...demoManualPluginReview.permissionDiff.permissions },
+          networkAllowlist: { ...demoManualPluginReview.permissionDiff.networkAllowlist }
+        },
+    requiresReview: Boolean(installedPlugin)
+  }
+}
+
+const validateDemoGithubRepositoryUrl = (repositoryUrl: string) => {
+  let parsed
+  try {
+    parsed = new URL(String(repositoryUrl || '').trim())
+  } catch (_) {
+    throw new Error('Please enter a GitHub repository homepage URL')
+  }
+
+  const pathname = parsed.pathname.endsWith('/')
+    ? parsed.pathname.slice(0, -1)
+    : parsed.pathname
+  const segments = pathname.split('/').filter(Boolean)
+
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.hostname !== 'github.com' ||
+    parsed.search ||
+    parsed.hash ||
+    segments.length !== 2
+  ) {
+    throw new Error('Please enter a GitHub repository homepage URL')
+  }
+
+  return `https://github.com/${segments[0]}/${segments[1]}`
+}
+
+const createDemoManualPlugin = (
+  review: PluginPackageReviewViewState = createDemoManualPluginReviewState(),
+  existingPlugin: PluginViewState | null = null
+): PluginViewState => ({
+  id: review.plugin.id,
+  name: review.plugin.name,
+  version: review.plugin.version,
   source: 'local',
   enabled: false,
   runnable: true,
-  requiresNativeExecution: Boolean(demoManualPluginReview.plugin.entries?.setup?.length || demoManualPluginReview.plugin.entries?.commands?.length || demoManualPluginReview.plugin.entries?.services?.length),
-  nativeExecutionApproved: false,
-  permissions: demoManualPluginReview.plugin.permissions,
-  commands: demoManualPluginReview.plugin.commands,
+  requiresNativeExecution: Boolean(review.plugin.entries?.setup?.length || review.plugin.entries?.commands?.length || review.plugin.entries?.services?.length),
+  nativeExecutionApproved: Boolean(existingPlugin?.nativeExecutionApproved),
+  permissions: review.plugin.permissions,
+  commands: review.plugin.commands.map((command) => ({ ...command })),
   entries: {
-    ...demoManualPluginReview.plugin.entries,
-    setup: demoManualPluginReview.plugin.entries.setup.map((setup) => ({
+    ...review.plugin.entries,
+    setup: review.plugin.entries.setup.map((setup) => ({
       ...setup,
       runtime: { status: 'not-run' }
     }))
   },
-  configSchema: { properties: [] },
-  config: {},
-  storage: { keyCount: 0, byteSize: 2, valid: true },
+  configSchema: {
+    title: demoManualPluginConfigSchema.title,
+    description: demoManualPluginConfigSchema.description,
+    properties: demoManualPluginConfigSchema.properties.map((field) => ({ ...field }))
+  },
+  config: { ...(existingPlugin?.config || {}) },
+  storage: existingPlugin
+    ? { ...(existingPlugin.storage || {}) }
+    : { keyCount: 0, byteSize: 2, valid: true },
   signatureStatus: {
-    status: demoManualPluginReview.signature.status || '',
-    label: demoManualPluginReview.signature.label,
-    signer: demoManualPluginReview.signature.signer || '',
-    algorithm: demoManualPluginReview.signature.algorithm || '',
-    verified: Boolean(demoManualPluginReview.signature.verified),
-    errors: demoManualPluginReview.signature.errors || []
-  }
+    status: review.signature.status || '',
+    label: review.signature.label,
+    signer: review.signature.signer || '',
+    algorithm: review.signature.algorithm || '',
+    verified: Boolean(review.signature.verified),
+    errors: review.signature.errors || []
+  },
+  ...(existingPlugin?.blockStatus ? { blockStatus: { ...existingPlugin.blockStatus } } : {})
 })
 
 let demoPluginLogCounter = 0
 
-const createDemoPluginLog = (pluginId: string, message: string, commandId = '') => ({
+const createDemoPluginLog = (pluginId: string, message: string, commandId = '', level = 'info') => ({
   id: `${pluginId}-${message}-${Date.now()}-${demoPluginLogCounter += 1}`,
   timestamp: new Date().toISOString(),
-  level: 'info',
+  level,
   pluginId,
   commandId,
   message
 })
+
+const normalizeDemoHttpUrl = (
+  input: string,
+  invalidMessage: string,
+  protocolMessage: string
+) => {
+  let parsed: URL
+  try {
+    parsed = new URL(input)
+  } catch (_) {
+    throw new Error(invalidMessage)
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error(protocolMessage)
+  }
+  return parsed.toString()
+}
+
+const normalizeDemoPluginServiceHealthUrl = (health: { type?: string; url?: string } = {}) => {
+  const type = String(health.type || '').trim() || 'none'
+  const url = String(health.url || '').trim()
+  if (type === 'none' || !url) throw new Error('Plugin service health check is not configured')
+  if (type !== 'http') throw new Error('Plugin service health type must be http')
+  const normalizedUrl = normalizeDemoHttpUrl(
+    url,
+    'Plugin service health URL is invalid',
+    'Plugin service health URL must use HTTP or HTTPS'
+  )
+  const parsed = new URL(normalizedUrl)
+  if (!demoLoopbackHealthHosts.has(parsed.hostname.toLowerCase())) {
+    throw new Error('Plugin service health URL must use a loopback host')
+  }
+  return normalizedUrl
+}
+
+const normalizeDemoPluginConfigValue = (
+  value: unknown,
+  field: PluginViewState['configSchema']['properties'][number]
+): string | number | boolean | undefined => {
+  if (value == null || value === '') {
+    if (field.required) throw new Error(`Plugin config ${field.key} is required`)
+    if (field.type === 'boolean') return false
+    if (field.type === 'string') return ''
+    return undefined
+  }
+
+  let normalized: string | number | boolean
+  if (field.type === 'string') normalized = String(value)
+  else if (field.type === 'number') {
+    normalized = Number(value)
+    if (!Number.isFinite(normalized)) throw new Error(`Plugin config ${field.key} must be a number`)
+  } else if (field.type === 'boolean') {
+    normalized = value === true || value === 'true' || value === 1 || value === '1'
+  } else {
+    normalized = String(value)
+  }
+  if (field.enum?.length && !field.enum.includes(normalized)) {
+    throw new Error(`Plugin config ${field.key} must be one of: ${field.enum.join(', ')}`)
+  }
+  return normalized
+}
+
+const normalizeDemoPluginConfig = (plugin: PluginViewState, config: JsonObject = {}) => {
+  const properties = Array.isArray(plugin.configSchema?.properties) ? plugin.configSchema.properties : []
+  if (!properties.length) throw new Error('Plugin does not declare a config schema')
+  return properties.reduce<JsonObject>((result, field) => {
+    const normalizedValue = normalizeDemoPluginConfigValue(config[field.key], field)
+    if (normalizedValue !== undefined) result[field.key] = normalizedValue
+    return result
+  }, {})
+}
 
 const createDemoCreatorStudioImportResult = (payload?: JsonObject): PluginCommandRunResultViewState => {
   const runId = typeof payload?.runId === 'string' && payload.runId.trim()
@@ -968,6 +1338,9 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
   if (!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked) {
     throw new Error('请先启用 Creator Studio 插件')
   }
+  if (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) {
+    throw new Error('Plugin native execution is not approved. Enable native process execution for this plugin in the Control Center before running its commands, services, or setup.')
+  }
   const runtimeStatus = plugin.entries?.services?.find((service) => service.id === 'studio')?.runtime?.status || 'stopped'
   if (runtimeStatus !== 'running') {
     throw new Error('请先启动 Creator Studio Service，再使用生成并导入')
@@ -1109,7 +1482,14 @@ const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus
     ...defaultServiceStatus.config,
     enabled: true,
     port: 4317,
-    token: 'demo-token'
+    token: 'demo-token',
+    logs: [
+      createDemoServiceLogEntry({
+        method: 'GET',
+        path: '/health',
+        statusCode: 200
+      })
+    ]
   },
   runtime: {
     ...defaultServiceStatus.runtime,
@@ -1122,75 +1502,94 @@ const createDemoServiceStatus = (): ServiceStatusViewState => cloneServiceStatus
   }
 })
 
-const createDefaultDemoState = (): DemoState => ({
-  settings: cloneSettings(defaultSettings),
-  actionsConfig: createDemoActionsConfig(),
-  aiConfig: cloneAiConfig({
-    ...defaultAiConfig,
-    behavior: {
-      ...defaultAiConfig.behavior,
-      decisions: [
-        {
-          id: 1,
-          timestamp: '2026-06-16T00:00:00.000Z',
-          matched: true,
-          type: 'playAction',
-          ruleId: 'demo-rule',
-          reason: 'matched rule demo-rule',
-          actionId: 'wave',
-          intent: 'greeting',
-          inputSummary: 'reply:12 chars · intent:greeting',
-          replay: { reply: 'hello there', behaviorIntent: { intent: 'greeting', actionId: 'wave', confidence: 0.9 } }
-        }
-      ]
-    }
-  }),
-  aiPersonaOverrides: {},
-  aiMemories: [
-    createDemoMemory({
-      id: 'demo-memory-global-style',
-      scope: 'global',
-      text: 'User prefers concise Chinese replies during focused work.',
-      tags: ['preference', 'language'],
-      confidence: 0.86,
-      importance: 0.72,
-      reason: 'Demo durable user preference'
+const createDefaultDemoState = (): DemoState => {
+  const petPacks = createDemoPetPacks()
+  const activeConversationId = getDemoMainConversationId(petPacks.activePackId)
+  return {
+    settings: cloneSettings(defaultSettings),
+    actionsConfig: createDemoActionsConfig(),
+    aiConfig: cloneAiConfig({
+      ...defaultAiConfig,
+      behavior: {
+        ...defaultAiConfig.behavior,
+        decisions: [
+          {
+            id: 1,
+            timestamp: '2026-06-16T00:00:00.000Z',
+            matched: true,
+            type: 'playAction',
+            ruleId: 'demo-rule',
+            reason: 'matched rule demo-rule',
+            actionId: 'wave',
+            intent: 'greeting',
+            inputSummary: 'reply:12 chars · intent:greeting',
+            replay: { reply: 'hello there', behaviorIntent: { intent: 'greeting', actionId: 'wave', confidence: 0.9 } }
+          }
+        ]
+      }
     }),
-    createDemoMemory({
-      id: 'demo-memory-legacy-relationship',
-      scope: 'petPack',
-      petPackId: 'legacy-cat',
-      text: 'Legacy Cat should greet the user softly before focus sessions.',
-      tags: ['relationship', 'focus'],
-      confidence: 0.78,
-      importance: 0.64,
-      reason: 'Demo pet-pack relationship memory'
-    }),
-    createDemoMemory({
-      id: 'demo-memory-citrus-relationship',
-      scope: 'petPack',
-      petPackId: 'citrus-cat',
-      text: 'Citrus likes cheerful check-ins after the user finishes a task.',
-      tags: ['relationship', 'celebration'],
-      confidence: 0.74,
-      importance: 0.58,
-      reason: 'Demo pet-pack relationship memory'
-    })
-  ],
-  aiMemoryJobs: [],
-  petChatMessages: [],
-  petChatBubble: defaultPetChatState.bubble,
-  petBubbleChatState: {
-    visible: false,
-    hasWindow: false
-  },
-  imageGenerationConfig: cloneImageGenerationConfig(defaultImageGenerationConfig),
-  petPacks: createDemoPetPacks(),
-  serviceStatus: createDemoServiceStatus(),
-  catalog: createDemoCatalog(),
-  plugins: [],
-  pluginLogs: []
-})
+    aiPersonaOverrides: {},
+    aiMemories: [
+      createDemoMemory({
+        id: 'demo-memory-global-style',
+        scope: 'global',
+        text: 'User prefers concise Chinese replies during focused work.',
+        tags: ['preference', 'language'],
+        confidence: 0.86,
+        importance: 0.72,
+        reason: 'Demo durable user preference'
+      }),
+      createDemoMemory({
+        id: 'demo-memory-legacy-relationship',
+        scope: 'petPack',
+        petPackId: 'legacy-cat',
+        text: 'Legacy Cat should greet the user softly before focus sessions.',
+        tags: ['relationship', 'focus'],
+        confidence: 0.78,
+        importance: 0.64,
+        reason: 'Demo pet-pack relationship memory'
+      }),
+      createDemoMemory({
+        id: 'demo-memory-citrus-relationship',
+        scope: 'petPack',
+        petPackId: 'citrus-cat',
+        text: 'Citrus likes cheerful check-ins after the user finishes a task.',
+        tags: ['relationship', 'celebration'],
+        confidence: 0.74,
+        importance: 0.58,
+        reason: 'Demo pet-pack relationship memory'
+      })
+    ],
+    aiMemoryJobs: [],
+    petChatConversations: {
+      [activeConversationId]: []
+    },
+    petChatConversationBubbles: {
+      [activeConversationId]: defaultPetChatState.bubble
+    },
+    petChatMessages: [],
+    petChatBubble: defaultPetChatState.bubble,
+    petChatWindowState: {
+      visible: false,
+      hasWindow: false,
+      alwaysOnTop: true,
+      hasUserBounds: false,
+      bounds: null
+    },
+    petBubbleChatState: {
+      visible: false,
+      hasWindow: false,
+      pinned: false,
+      placement: ''
+    },
+    imageGenerationConfig: cloneImageGenerationConfig(defaultImageGenerationConfig),
+    petPacks,
+    serviceStatus: createDemoServiceStatus(),
+    catalog: createDemoCatalog(),
+    plugins: [],
+    pluginLogs: []
+  }
+}
 
 const readDemoState = (): DemoState => {
   if (typeof window === 'undefined') return createDefaultDemoState()
@@ -1198,6 +1597,17 @@ const readDemoState = (): DemoState => {
     const rawState = window.sessionStorage.getItem(demoStorageKey)
     if (!rawState) return createDefaultDemoState()
     const state = JSON.parse(rawState)
+    const petPacks = normalizeDemoPetPacks(state.petPacks)
+    const activeConversationId = getDemoMainConversationId(petPacks.activePackId)
+    const petChatConversations = cloneDemoConversationMap(state.petChatConversations)
+    if (!petChatConversations[activeConversationId] && Array.isArray(state.petChatMessages) && state.petChatMessages.length > 0) {
+      petChatConversations[activeConversationId] = cloneChatMessages(state.petChatMessages)
+    }
+    const petChatConversationBubbles = cloneDemoConversationBubbleMap(state.petChatConversationBubbles)
+    const fallbackBubble = clonePetChatState({ bubble: state.petChatBubble }).bubble
+    if (!petChatConversationBubbles[activeConversationId] && fallbackBubble.text) {
+      petChatConversationBubbles[activeConversationId] = fallbackBubble
+    }
     return {
       settings: cloneSettings(state.settings),
       actionsConfig: cloneActionsConfig(
@@ -1209,17 +1619,32 @@ const readDemoState = (): DemoState => {
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       aiMemories: Array.isArray(state.aiMemories) ? state.aiMemories.map(createDemoMemory) : createDefaultDemoState().aiMemories,
       aiMemoryJobs: Array.isArray(state.aiMemoryJobs) ? state.aiMemoryJobs : [],
-      petChatMessages: cloneChatMessages(state.petChatMessages),
-      petChatBubble: clonePetChatState({ bubble: state.petChatBubble }).bubble,
+      petChatConversations,
+      petChatConversationBubbles,
+      petChatMessages: cloneChatMessages(petChatConversations[activeConversationId] || state.petChatMessages),
+      petChatBubble: clonePetChatState({
+        bubble: petChatConversationBubbles[activeConversationId] || state.petChatBubble
+      }).bubble,
+      petChatWindowState: {
+        visible: Boolean(state.petChatWindowState?.visible),
+        hasWindow: Boolean(state.petChatWindowState?.hasWindow),
+        alwaysOnTop: state.petChatWindowState?.alwaysOnTop ?? true,
+        hasUserBounds: Boolean(state.petChatWindowState?.hasUserBounds),
+        bounds: state.petChatWindowState?.bounds || null
+      },
       petBubbleChatState: {
         visible: Boolean(state.petBubbleChatState?.visible),
-        hasWindow: Boolean(state.petBubbleChatState?.hasWindow)
+        hasWindow: Boolean(state.petBubbleChatState?.hasWindow),
+        pinned: Boolean(state.petBubbleChatState?.pinned),
+        placement: typeof state.petBubbleChatState?.placement === 'string' ? state.petBubbleChatState.placement : ''
       },
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
-      petPacks: normalizeDemoPetPacks(state.petPacks),
+      petPacks,
       serviceStatus: cloneServiceStatus(state.serviceStatus),
       catalog: cloneCatalog(state.catalog || createDemoCatalog()),
-      plugins: Array.isArray(state.plugins) ? state.plugins : [],
+      plugins: Array.isArray(state.plugins)
+        ? state.plugins.map((plugin: Partial<PluginViewState>) => normalizeDemoPluginViewState(plugin))
+        : [],
       pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : []
     }
   } catch {
@@ -1262,6 +1687,14 @@ const emitDemoActivePetPackChanged = (payload: ActivePetPackChangedEvent) => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(demoActivePetPackChangedEvent, { detail: payload }))
 }
+
+const createDemoActivePetPackChangedEvent = (
+  partial: Partial<ActivePetPackChangedEvent> = {}
+): ActivePetPackChangedEvent => ({
+  activePackId: partial.activePackId || demoState.petPacks.activePackId,
+  ...(partial.pack !== undefined ? { pack: partial.pack } : {}),
+  petChatState: createDemoPetChatState()
+})
 
 const demoState = readDemoState()
 const demoCreatorReferences = new Map<string, CreatorReferenceViewState>()
@@ -1335,11 +1768,7 @@ const bindDemoCreatorReference = ({
   targetType,
   targetId,
   referenceToken
-}: {
-  targetType: CreatorReferenceTargetType
-  targetId: string
-  referenceToken: string
-}): CreatorBindReferenceResult => {
+}: CreatorBindReferenceRequest): CreatorBindReferenceResult => {
   const sourcePath = consumeDemoCreatorReferenceSourcePath(referenceToken)
   const key = getDemoCreatorReferenceKey(targetType, targetId)
   const previous = demoCreatorReferences.get(key) || null
@@ -1391,8 +1820,11 @@ const syncDemoStateFromStorage = () => {
   demoState.aiPersonaOverrides = nextState.aiPersonaOverrides
   demoState.aiMemories = nextState.aiMemories
   demoState.aiMemoryJobs = nextState.aiMemoryJobs
+  demoState.petChatConversations = nextState.petChatConversations
+  demoState.petChatConversationBubbles = nextState.petChatConversationBubbles
   demoState.petChatMessages = nextState.petChatMessages
   demoState.petChatBubble = nextState.petChatBubble
+  demoState.petChatWindowState = nextState.petChatWindowState
   demoState.petBubbleChatState = nextState.petBubbleChatState
   demoState.imageGenerationConfig = nextState.imageGenerationConfig
   demoState.petPacks = nextState.petPacks
@@ -1403,6 +1835,8 @@ const syncDemoStateFromStorage = () => {
 }
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
+let demoPendingActionFrameSelection: CompletedActionFrameInspectionResult | null = null
+let demoPendingPetPackSelection: PetPackInspectionResult | null = null
 const demoCursorAssetUrl = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
   <path d="M9 5l23 21h-11l8 17-6 3-8-17-8 8z" fill="#111827"/>
@@ -1453,6 +1887,71 @@ const clonePluginEntries = (entries: PluginViewState['entries']): PluginViewStat
     : [],
   dashboards: Array.isArray(entries?.dashboards) ? entries.dashboards.map((dashboard) => ({ ...dashboard })) : []
 })
+
+const cleanupDemoPluginRuntimeEntries = (entries: PluginViewState['entries']): PluginViewState['entries'] => ({
+  ...entries,
+  setup: Array.isArray(entries?.setup)
+    ? entries.setup.map((setup) => ({
+        ...setup,
+        runtime: setup.runtime?.status === 'running'
+          ? {
+              ...setup.runtime,
+              status: 'failed',
+              lastRunAt: new Date().toISOString(),
+              error: 'Setup stopped'
+            }
+          : setup.runtime
+      }))
+    : [],
+  services: Array.isArray(entries?.services)
+    ? entries.services.map((service) => ({
+        ...service,
+        runtime: service.runtime?.status === 'running'
+          ? { ...service.runtime, status: 'stopped', stoppedAt: new Date().toISOString() }
+          : service.runtime
+      }))
+    : []
+})
+
+const normalizeDemoPluginViewState = (plugin: Partial<PluginViewState>): PluginViewState => {
+  const entries = clonePluginEntries(plugin.entries || { setup: [], commands: [], services: [], dashboards: [] })
+  const requiresNativeExecution = Boolean(entries.setup.length || entries.commands.length || entries.services.length)
+  const storage: PluginStorageViewState = {
+    keyCount: Number.isFinite(Number(plugin.storage?.keyCount)) ? Number(plugin.storage?.keyCount) : 0,
+    byteSize: Number.isFinite(Number(plugin.storage?.byteSize)) ? Number(plugin.storage?.byteSize) : 0,
+    ...(plugin.storage?.valid != null ? { valid: Boolean(plugin.storage.valid) } : { valid: true })
+  }
+  const signatureStatus: PluginSignatureStatusViewState = {
+    status: String(plugin.signatureStatus?.status || ''),
+    label: String(plugin.signatureStatus?.label || ''),
+    signer: String(plugin.signatureStatus?.signer || ''),
+    algorithm: String(plugin.signatureStatus?.algorithm || ''),
+    verified: Boolean(plugin.signatureStatus?.verified),
+    errors: Array.isArray(plugin.signatureStatus?.errors) ? plugin.signatureStatus.errors.map((error) => String(error || '')) : []
+  }
+  return {
+    id: String(plugin.id || ''),
+    name: String(plugin.name || ''),
+    version: String(plugin.version || ''),
+    source: String(plugin.source || ''),
+    profile: plugin.profile,
+    enabled: Boolean(plugin.enabled),
+    runnable: Boolean(plugin.runnable),
+    permissions: Array.isArray(plugin.permissions) ? [...plugin.permissions] : [],
+    commands: Array.isArray(plugin.commands) ? plugin.commands.map((command) => ({ ...command })) : [],
+    entries,
+    configSchema: {
+      ...(plugin.configSchema || {}),
+      properties: Array.isArray(plugin.configSchema?.properties) ? plugin.configSchema.properties.map((field) => ({ ...field })) : []
+    },
+    config: { ...(plugin.config || {}) },
+    storage,
+    signatureStatus,
+    requiresNativeExecution,
+    nativeExecutionApproved: requiresNativeExecution ? Boolean(plugin.nativeExecutionApproved) : false,
+    ...(plugin.blockStatus ? { blockStatus: { ...plugin.blockStatus } } : {})
+  }
+}
 
 const updateDemoPluginServiceRuntime = (pluginId: string, serviceId: string, runtime: PluginServiceRuntimeViewState) => {
   let found = false
@@ -1553,26 +2052,144 @@ const updateDemoPluginSetupRuntime = (pluginId: string, setupId: string, runtime
   return { ...runtime }
 }
 
-const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin) => ({
-  ...plugin,
-  permissions: Array.isArray(plugin.permissions) ? [...plugin.permissions] : [],
-  commands: Array.isArray(plugin.commands) ? plugin.commands.map((command) => ({ ...command })) : [],
-  entries: clonePluginEntries(plugin.entries),
-  configSchema: {
-    ...(plugin.configSchema || {}),
-    properties: Array.isArray(plugin.configSchema?.properties) ? plugin.configSchema.properties : []
-  },
-  config: { ...(plugin.config || {}) },
-  storage: { ...(plugin.storage || {}) },
-  signatureStatus: { ...(plugin.signatureStatus || {}) },
-  requiresNativeExecution: Boolean(plugin.requiresNativeExecution),
-  nativeExecutionApproved: Boolean(plugin.nativeExecutionApproved)
-}))
+const cloneDemoPlugins = (): PluginViewState[] => demoState.plugins.map((plugin) => normalizeDemoPluginViewState(plugin))
 
-const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: '' }) => {
+const getDemoPluginById = (pluginId: string): PluginViewState | null => (
+  cloneDemoPlugins().find((plugin) => plugin.id === pluginId) || null
+)
+
+const requireDemoPlugin = (pluginId: string): PluginViewState => {
+  const plugin = getDemoPluginById(pluginId)
+  if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+  return plugin
+}
+
+const assertDemoPluginAllowed = (pluginId: string) => {
+  const plugin = requireDemoPlugin(pluginId)
+  if (plugin.blockStatus?.blocked) {
+    throw new Error(`Plugin is blocked: ${(plugin.blockStatus.reasons || []).join(', ')}`)
+  }
+  return plugin
+}
+
+const requireDemoPluginService = (
+  pluginId: string,
+  serviceId: string,
+  { requireEnabled = false }: { requireEnabled?: boolean } = {}
+) => {
+  const plugin = requireEnabled ? assertDemoPluginEnabled(pluginId) : requireDemoPlugin(pluginId)
+  const service = plugin.entries?.services?.find((candidate) => candidate.id === serviceId)
+  if (!service) throw new Error(`Plugin service not found: ${serviceId}`)
+  return { plugin, service }
+}
+
+const assertDemoPluginEnabled = (pluginId: string) => {
+  const plugin = assertDemoPluginAllowed(pluginId)
+  if (!plugin.enabled) throw new Error('Plugin is disabled')
+  return plugin
+}
+
+const assertDemoPluginNativeExecutionAllowed = (pluginId: string) => {
+  const plugin = assertDemoPluginEnabled(pluginId)
+  if (!plugin.nativeExecutionApproved) {
+    throw new Error('Plugin native execution is not approved. Enable native process execution for this plugin in the Control Center before running its commands, services, or setup.')
+  }
+  return plugin
+}
+
+const requireDemoPluginNativeExecutionIfNeeded = (pluginId: string) => {
+  const plugin = assertDemoPluginEnabled(pluginId)
+  if (plugin.requiresNativeExecution) return assertDemoPluginNativeExecutionAllowed(pluginId)
+  return plugin
+}
+
+const getDemoBehaviorActionMap = () => new Map(
+  demoState.actionsConfig.actions
+    .filter((action) => action.id)
+    .map((action) => [action.id || '', action])
+)
+
+const dryRunDemoBehavior = (
+  payload: Partial<AiBehaviorDryRunRequest> & {
+    behaviorIntent?: { actionId?: string, intent?: string, displayMode?: string, reason?: string } | null
+  } = {}
+) => {
+  const reply = String(payload.reply || '').trim()
+  const behaviorConfig = cloneAiConfig({ behavior: payload.behavior || demoState.aiConfig.behavior }).behavior
+  const actionMap = getDemoBehaviorActionMap()
+  const enabledRules = (behaviorConfig.rules || []).filter((rule) => rule.enabled !== false)
+  const firstPlayableRule = enabledRules.find((rule) => rule.then?.type === 'playAction' && actionMap.has(rule.then?.actionId || ''))
+  const behaviorIntent = payload.behaviorIntent || null
+
+  if (firstPlayableRule) {
+    const actionId = firstPlayableRule.then?.actionId || ''
+    const action = actionMap.get(actionId)
+    return {
+      matched: true,
+      type: 'playAction',
+      ruleId: firstPlayableRule.id,
+      reason: `matched rule ${firstPlayableRule.id || 'demo-rule'}`,
+      actionId,
+      label: action?.label,
+      kind: action?.kind,
+      intent: behaviorIntent?.intent || ''
+    }
+  }
+
+  if (behaviorIntent?.actionId) {
+    const action = actionMap.get(behaviorIntent.actionId)
+    if (action) {
+      return {
+        matched: true,
+        type: 'playAction',
+        reason: 'matched provider actionId',
+        actionId: action.id,
+        label: action.label,
+        kind: action.kind,
+        intent: behaviorIntent.intent || '',
+        providerReason: behaviorIntent.reason || ''
+      }
+    }
+    return {
+      matched: false,
+      reason: 'provider actionId is not available',
+      actionId: behaviorIntent.actionId,
+      intent: behaviorIntent.intent || '',
+      providerReason: behaviorIntent.reason || ''
+    }
+  }
+
+  if (reply && /\b(hello|hi|hey|greet|chat)\b/i.test(reply) && actionMap.has('wave')) {
+    const action = actionMap.get('wave')
+    return {
+      matched: true,
+      type: 'playAction',
+      reason: 'fallback matched greeting',
+      actionId: 'wave',
+      label: action?.label,
+      kind: action?.kind,
+      fallback: true
+    }
+  }
+
+  return {
+    matched: false,
+    reason: 'no behavior rule matched'
+  }
+}
+
+const sendDemoPetChatMessage = async ({ message, conversationId }: AiChatRequest = { message: '' }) => {
   const normalizedMessage = String(message || '').trim()
-  const activePack = getActiveDemoPetPack()
-  const personaProfile = createDemoPersonaProfile(demoState.petPacks, demoState.aiConfig, demoState.aiPersonaOverrides)
+  const resolvedConversation = resolveDemoConversationContext({ conversationId })
+  const { conversationId: resolvedConversationId, petPackId, pack: activePack } = resolvedConversation
+  const personaProfile = createDemoPersonaProfile(
+    clonePetPacks({
+      ...demoState.petPacks,
+      activePackId: petPackId
+    }),
+    demoState.aiConfig,
+    demoState.aiPersonaOverrides
+  )
   const reply = `${personaProfile.effectivePersona.name}: ${normalizedMessage}`
   const decisions = Array.isArray(demoState.aiConfig.behavior?.decisions)
     ? demoState.aiConfig.behavior.decisions
@@ -1600,27 +2217,37 @@ const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: ''
       ].slice(0, 50)
     }
   })
-  demoState.petChatMessages = cloneChatMessages([
-    ...demoState.petChatMessages,
+  const nextMessages = cloneChatMessages([
+    ...getDemoConversationMessages(resolvedConversationId),
     { role: 'user', content: normalizedMessage },
     { role: 'assistant', content: reply }
   ])
-  demoState.petChatBubble = {
+  const nextBubble = {
     text: reply.slice(0, 80),
     source: 'ai',
     ttlMs: 6000,
     updatedAt: timestamp
   }
+  demoState.petChatConversations = {
+    ...demoState.petChatConversations,
+    [resolvedConversationId]: nextMessages
+  }
+  demoState.petChatConversationBubbles = {
+    ...demoState.petChatConversationBubbles,
+    [resolvedConversationId]: nextBubble
+  }
+  syncActiveDemoConversationState()
   if (demoState.aiConfig.memory.enabled) {
     demoState.aiMemories = [
       createDemoMemory({
         id: `demo-memory-chat-${Date.now()}`,
         scope: 'petPack',
-        petPackId: activePack?.id || 'legacy-cat',
+        petPackId,
         text: `${personaProfile.effectivePersona.name} recently discussed: ${normalizedMessage.slice(0, 120)}`,
         tags: ['demo-chat'],
         confidence: 0.62,
         importance: 0.42,
+        sourceConversationId: resolvedConversationId,
         createdAt: timestamp,
         updatedAt: timestamp,
         lastEvidenceAt: timestamp,
@@ -1631,8 +2258,8 @@ const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: ''
     demoState.aiMemoryJobs = [
       {
         id: `demo-memory-job-${Date.now()}`,
-        petPackId: activePack?.id || 'legacy-cat',
-        conversationId: `control-center:${activePack?.id || 'legacy-cat'}:main`,
+        petPackId,
+        conversationId: resolvedConversationId,
         status: 'completed',
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -1645,10 +2272,10 @@ const sendDemoPetChatMessage = async ({ message }: AiChatRequest = { message: ''
   }
   writeDemoState()
   return {
-    conversationId: `control-center:${activePack?.id || 'legacy-cat'}:main`,
+    conversationId: resolvedConversationId,
     reply,
-    messages: cloneChatMessages(demoState.petChatMessages),
-    bubble: demoState.petChatBubble,
+    messages: nextMessages,
+    bubble: nextBubble,
     state: createDemoPetChatState(),
     behavior: { matched: true, type: 'playAction', actionId: 'wave' },
     action: { actionId: 'wave', label: 'Wave' }
@@ -1817,6 +2444,95 @@ const markDemoCatalogItemInstalled = (selection: CatalogInstallSelection): Catal
   return cloneCatalog(demoState.catalog)
 }
 
+const createDemoInstalledCatalogPlugin = (
+  item: CatalogPluginEntry,
+  existingPlugin: PluginViewState | null = null
+): PluginViewState => {
+  const review = createDemoPluginReview(item)
+  return {
+    id: review.plugin.id,
+    name: review.plugin.name,
+    version: review.plugin.version,
+    source: 'catalog',
+    enabled: false,
+    runnable: true,
+    requiresNativeExecution: Boolean(
+      review.plugin.entries?.setup?.length ||
+      review.plugin.entries?.commands?.length ||
+      review.plugin.entries?.services?.length
+    ),
+    nativeExecutionApproved: Boolean(existingPlugin?.nativeExecutionApproved),
+    permissions: [...review.plugin.permissions],
+    commands: review.plugin.commands.map((command) => ({ ...command })),
+    entries: {
+      ...review.plugin.entries,
+      setup: review.plugin.entries.setup.map((setup) => ({
+        ...setup,
+        runtime: { status: 'not-run' }
+      }))
+    },
+    configSchema: { properties: [] },
+    config: { ...(existingPlugin?.config || {}) },
+    storage: existingPlugin
+      ? { ...(existingPlugin.storage || {}) }
+      : { keyCount: 0, byteSize: 0, valid: true },
+    signatureStatus: {
+      status: review.signature.status || '',
+      label: review.signature.label,
+      signer: review.signature.signer || '',
+      algorithm: review.signature.algorithm || '',
+      verified: Boolean(review.signature.verified),
+      errors: review.signature.errors || []
+    },
+    blockStatus: item.blockStatus ? { ...item.blockStatus } : undefined
+  }
+}
+
+const installDemoCatalogPlugin = (selection: CatalogPluginInstallSelection): PluginViewState[] => {
+  const item = findDemoCatalogItem('plugin', selection.itemId) as CatalogPluginEntry | null
+  if (!item) throw new Error('Catalog item not found')
+  const existingPlugin = getDemoPluginById(item.id)
+  const nextPlugin = createDemoInstalledCatalogPlugin(item, existingPlugin)
+  demoState.plugins = [
+    nextPlugin,
+    ...demoState.plugins.filter((plugin) => plugin.id !== nextPlugin.id)
+  ]
+  demoState.pluginLogs = [
+    createDemoPluginLog(
+      nextPlugin.id,
+      selection.pluginReview.installMode === 'update' ? 'Plugin updated from catalog' : 'Plugin installed from catalog'
+    ),
+    ...demoState.pluginLogs
+  ]
+  writeDemoState()
+  return cloneDemoPlugins()
+}
+
+const installDemoCatalogPetPack = (selection: CatalogPetPackInstallSelection): PetPacksViewState => {
+  const item = findDemoCatalogItem('pet-pack', selection.itemId) as CatalogPetPackEntry | null
+  if (!item) throw new Error('Catalog item not found')
+  const activePackId = demoState.petPacks.activePackId
+  demoState.petPacks = normalizeDemoPetPacks({
+    ...demoState.petPacks,
+    packs: [
+      {
+        id: item.id,
+        displayName: item.displayName,
+        version: item.version,
+        source: 'catalog',
+        rootPath: `/demo/pet-packs/${item.id}`,
+        active: item.id === activePackId,
+        actionCount: item.actionCount || 0,
+        defaultAction: 'idle',
+        clickAction: 'wave'
+      },
+      ...demoState.petPacks.packs.filter((pack) => pack.id !== item.id)
+    ]
+  })
+  writeDemoState()
+  return clonePetPacks(demoState.petPacks)
+}
+
 export const demoControlCenterAPI: ControlCenterApi = {
   getSettings: async () => normalizeDemoSettings(demoState.settings),
   saveSettings: async (settings) => {
@@ -1857,10 +2573,65 @@ export const demoControlCenterAPI: ControlCenterApi = {
     }
   },
   getActions: async () => cloneActionsConfig(demoState.actionsConfig),
-  inspectActionFrames: async ({ actionId } = {}) => createDemoInspection(actionId),
-  reinspectActionFrames: async ({ selectionId, actionId } = {}) => ({ ...createDemoInspection(actionId), selectionId: selectionId || 'demo-selection' }),
-  clearActionFrameSelection: async () => ({ ok: true }),
-  importActionFrames: async ({ actionId, label } = {}) => ({ ok: true, result: { importedAction: { id: actionId, label: label || actionId } }, animations: cloneActionsConfig(demoState.actionsConfig) }),
+  inspectActionFrames: async ({ actionId } = {}) => {
+    demoPendingActionFrameSelection = createDemoInspection(actionId)
+    return {
+      ...demoPendingActionFrameSelection,
+      inspection: {
+        ...demoPendingActionFrameSelection.inspection,
+        frames: demoPendingActionFrameSelection.inspection.frames.map((frame) => ({ ...frame })),
+        skippedFiles: [...demoPendingActionFrameSelection.inspection.skippedFiles],
+        errors: [...demoPendingActionFrameSelection.inspection.errors],
+        warnings: [...demoPendingActionFrameSelection.inspection.warnings]
+      }
+    }
+  },
+  reinspectActionFrames: async ({ selectionId, actionId } = {}) => {
+    if (!selectionId || demoPendingActionFrameSelection?.selectionId !== selectionId) {
+      throw new Error('Selected action frame folder is no longer available')
+    }
+    demoPendingActionFrameSelection = createDemoInspection(actionId)
+    return {
+      ...demoPendingActionFrameSelection,
+      selectionId,
+      inspection: {
+        ...demoPendingActionFrameSelection.inspection,
+        frames: demoPendingActionFrameSelection.inspection.frames.map((frame) => ({ ...frame })),
+        skippedFiles: [...demoPendingActionFrameSelection.inspection.skippedFiles],
+        errors: [...demoPendingActionFrameSelection.inspection.errors],
+        warnings: [...demoPendingActionFrameSelection.inspection.warnings]
+      }
+    }
+  },
+  clearActionFrameSelection: async (payload) => {
+    const selectionId = payload?.selectionId
+    if (!selectionId || demoPendingActionFrameSelection?.selectionId === selectionId) {
+      demoPendingActionFrameSelection = null
+    }
+    return { ok: true }
+  },
+  importActionFrames: async ({ selectionId, actionId, label } = {}) => {
+    if (!selectionId || demoPendingActionFrameSelection?.selectionId !== selectionId) {
+      throw new Error('Selected action frame folder is no longer available')
+    }
+    const normalizedActionId = String(actionId || '').trim() || 'custom-action'
+    const normalizedLabel = String(label || '').trim() || normalizedActionId
+    const importedAction = createDemoImportedAction(normalizedActionId, normalizedLabel)
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      actions: [
+        importedAction,
+        ...demoState.actionsConfig.actions.filter((action) => action.id !== normalizedActionId)
+      ]
+    })
+    demoPendingActionFrameSelection = null
+    writeDemoState()
+    return {
+      ok: true,
+      result: { importedAction: { ...importedAction } },
+      animations: cloneActionsConfig(demoState.actionsConfig)
+    }
+  },
   playPetAction: async (actionId: string): Promise<PetActionPlaybackResult> => ({
     ok: true,
     actionId,
@@ -2060,17 +2831,92 @@ export const demoControlCenterAPI: ControlCenterApi = {
       rule
     }
   },
-  deleteAction: async () => ({ animations: cloneActionsConfig(demoState.actionsConfig) }),
+  deleteAction: async (actionId) => {
+    const normalizedActionId = String(actionId || '').trim()
+    const existingAction = demoState.actionsConfig.actions.find((action) => action.id === normalizedActionId)
+    if (!existingAction) throw new Error(`Action not found: ${normalizedActionId || 'unknown'}`)
+    const remainingActions = demoState.actionsConfig.actions.filter((action) => action.id !== normalizedActionId)
+    const fallbackActionId = remainingActions[0]?.id || ''
+    demoState.actionsConfig = cloneActionsConfig({
+      ...demoState.actionsConfig,
+      actions: remainingActions,
+      defaultAction: demoState.actionsConfig.defaultAction === normalizedActionId
+        ? fallbackActionId
+        : demoState.actionsConfig.defaultAction,
+      clickAction: demoState.actionsConfig.clickAction === normalizedActionId
+        ? fallbackActionId
+        : demoState.actionsConfig.clickAction,
+      triggerRules: demoState.actionsConfig.triggerRules.filter((rule) => rule.actionId !== normalizedActionId),
+      triggerProposalInbox: demoState.actionsConfig.triggerProposalInbox.filter((proposal) => proposal.actionId !== normalizedActionId),
+      triggerRuntimeDiagnostics: {
+        ...demoState.actionsConfig.triggerRuntimeDiagnostics,
+        currentState: {
+          ...demoState.actionsConfig.triggerRuntimeDiagnostics.currentState,
+          actionId: demoState.actionsConfig.triggerRuntimeDiagnostics.currentState.actionId === normalizedActionId
+            ? ''
+            : demoState.actionsConfig.triggerRuntimeDiagnostics.currentState.actionId
+        }
+      }
+    })
+    writeDemoState()
+    return { animations: cloneActionsConfig(demoState.actionsConfig) }
+  },
   listPetPacks: async () => clonePetPacks(demoState.petPacks),
-  inspectPetPackDirectory: async () => ({ canceled: true }),
-  clearPetPackSelection: async () => ({ ok: true }),
-  importPetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),
-  exportPetPack: async (packId) => ({ ok: true, packId, fileName: `${packId}.openpet-pet.zip` }),
+  inspectPetPackDirectory: async () => {
+    demoPendingPetPackSelection = createDemoPetPackInspectionResult()
+    return {
+      ...demoPendingPetPackSelection,
+      pack: demoPendingPetPackSelection.pack ? { ...demoPendingPetPackSelection.pack } : undefined,
+      errors: [...(demoPendingPetPackSelection.errors || [])],
+      warnings: [...(demoPendingPetPackSelection.warnings || [])]
+    }
+  },
+  clearPetPackSelection: async (selectionId) => {
+    if (!selectionId || demoPendingPetPackSelection?.selectionId === selectionId) {
+      demoPendingPetPackSelection = null
+    }
+    return { ok: true }
+  },
+  importPetPack: async (selectionId) => {
+    if (!selectionId || demoPendingPetPackSelection?.selectionId !== selectionId) {
+      throw new Error('Selected pet pack is no longer available')
+    }
+    const pack = createDemoPetPackInspectionPack()
+    demoState.petPacks = normalizeDemoPetPacks({
+      ...demoState.petPacks,
+      packs: [
+        pack,
+        ...demoState.petPacks.packs.filter((candidate) => candidate.id !== pack.id)
+      ]
+    })
+    demoPendingPetPackSelection = null
+    writeDemoState()
+    return {
+      pack: clonePetPacks({ activePackId: demoState.petPacks.activePackId, packs: [pack] }).packs[0],
+      activePackId: demoState.petPacks.activePackId,
+      petPacks: clonePetPacks(demoState.petPacks)
+    }
+  },
+  exportPetPack: async (packId) => {
+    const pack = demoState.petPacks.packs.find((candidate) => candidate.id === packId)
+    if (!pack) throw new Error(`Pet pack not found: ${packId}`)
+    return {
+      canceled: false,
+      packId,
+      fileName: `${packId}.openpet-pet.zip`,
+      outputPath: `/demo/exports/${packId}.openpet-pet.zip`,
+      sha256: pack.packageHash || demoCatalogHash,
+      byteSize: 16384 + Math.max(0, Number(pack.actionCount || 0)) * 1024
+    }
+  },
   setActivePetPack: async (packId) => {
+    const existingPack = demoState.petPacks.packs.find((pack) => pack.id === packId)
+    if (!existingPack) throw new Error(`Pet pack not found: ${packId}`)
     demoState.petPacks = normalizeDemoPetPacks({
       ...demoState.petPacks,
       activePackId: packId
     })
+    syncActiveDemoConversationState()
     writeDemoState()
     const activePack = getActiveDemoPetPack()
     const result = {
@@ -2079,13 +2925,31 @@ export const demoControlCenterAPI: ControlCenterApi = {
       petPacks: clonePetPacks(demoState.petPacks),
       animations: cloneActionsConfig(demoState.actionsConfig)
     }
-    emitDemoActivePetPackChanged({
+    emitDemoActivePetPackChanged(createDemoActivePetPackChangedEvent({
       activePackId: result.activePackId,
       pack: activePack || null
-    })
+    }))
     return result
   },
-  removePetPack: async () => ({ petPacks: clonePetPacks(demoState.petPacks) }),
+  removePetPack: async (packId) => {
+    const existingPack = demoState.petPacks.packs.find((pack) => pack.id === packId)
+    if (!existingPack) throw new Error(`Pet pack not found: ${packId}`)
+    const removedWasActive = demoState.petPacks.activePackId === packId
+    if (removedWasActive) throw new Error('Cannot remove the active pet pack')
+    const remainingPacks = demoState.petPacks.packs.filter((pack) => pack.id !== packId)
+    demoState.petPacks = normalizeDemoPetPacks({
+      ...demoState.petPacks,
+      activePackId: demoState.petPacks.activePackId,
+      packs: remainingPacks
+    })
+    writeDemoState()
+    const result = {
+      pack: { ...existingPack },
+      activePackId: demoState.petPacks.activePackId,
+      petPacks: clonePetPacks(demoState.petPacks)
+    }
+    return result
+  },
   onActivePetPackChanged: (callback) => {
     if (typeof window === 'undefined') return () => {}
     const handler = (event: Event) => {
@@ -2121,6 +2985,38 @@ export const demoControlCenterAPI: ControlCenterApi = {
         elapsedMs: 12,
         code: 'missing_api_key',
         message: 'AI API key is not configured',
+        modelsProbe: 'failed',
+        availableModels: [],
+        currentModelDiscovered: false
+      }
+    }
+    if (/models-timeout/i.test(demoState.aiConfig.baseUrl)) {
+      return {
+        ok: true,
+        provider: demoState.aiConfig.provider,
+        baseUrl: demoState.aiConfig.baseUrl,
+        model: demoState.aiConfig.model,
+        hasApiKey: true,
+        elapsedMs: 12,
+        reply: 'ok',
+        code: 'ok',
+        message: 'AI provider connection test succeeded',
+        modelsProbe: 'timed_out',
+        availableModels: [],
+        currentModelDiscovered: false
+      }
+    }
+    if (/models-failed/i.test(demoState.aiConfig.baseUrl)) {
+      return {
+        ok: true,
+        provider: demoState.aiConfig.provider,
+        baseUrl: demoState.aiConfig.baseUrl,
+        model: demoState.aiConfig.model,
+        hasApiKey: true,
+        elapsedMs: 12,
+        reply: 'ok',
+        code: 'ok',
+        message: 'AI provider connection test succeeded',
         modelsProbe: 'failed',
         availableModels: [],
         currentModelDiscovered: false
@@ -2172,6 +3068,18 @@ export const demoControlCenterAPI: ControlCenterApi = {
         models: [],
         code: 'missing_api_key',
         message: 'AI API key is not configured'
+      }
+    }
+    if (/models-timeout/i.test(demoState.aiConfig.baseUrl)) {
+      return {
+        ok: false,
+        provider: demoState.aiConfig.provider,
+        baseUrl: demoState.aiConfig.baseUrl,
+        model: demoState.aiConfig.model,
+        hasApiKey: true,
+        models: [],
+        code: 'timeout',
+        message: 'AI provider request timed out'
       }
     }
     if (/models-unavailable/i.test(demoState.aiConfig.baseUrl)) {
@@ -2342,6 +3250,18 @@ export const demoControlCenterAPI: ControlCenterApi = {
         message: 'Image generation API key is missing'
       }
     }
+    if (/models-timeout/i.test(demoState.imageGenerationConfig.baseUrl)) {
+      return {
+        ok: false,
+        provider: demoState.imageGenerationConfig.provider,
+        baseUrl: demoState.imageGenerationConfig.baseUrl,
+        model: demoState.imageGenerationConfig.model,
+        hasApiKey: true,
+        models: [],
+        code: 'model_discovery_timeout',
+        message: 'Image Provider model discovery timed out after 25000ms'
+      }
+    }
     if (
       /models-unavailable|image\.example\.test/i.test(demoState.imageGenerationConfig.baseUrl)
     ) {
@@ -2371,7 +3291,10 @@ export const demoControlCenterAPI: ControlCenterApi = {
       message: 'Image Provider model discovery succeeded'
     }
   },
-  getAiConversation: async () => cloneChatMessages(demoState.petChatMessages),
+  getAiConversation: async (conversationId) => {
+    const { conversationId: resolvedConversationId } = resolveDemoConversationContext({ conversationId })
+    return getDemoConversationMessages(resolvedConversationId)
+  },
   chat: sendDemoPetChatMessage,
   getPetChatState: async () => {
     syncDemoStateFromStorage()
@@ -2380,7 +3303,11 @@ export const demoControlCenterAPI: ControlCenterApi = {
   openPetBubbleChat: async () => {
     demoState.petBubbleChatState = {
       visible: true,
-      hasWindow: true
+      hasWindow: true,
+      pinned: Boolean(demoState.petBubbleChatState?.pinned),
+      placement: typeof demoState.petBubbleChatState?.placement === 'string' && demoState.petBubbleChatState.placement
+        ? demoState.petBubbleChatState.placement
+        : 'above'
     }
     writeDemoState()
     return { ...demoState.petBubbleChatState }
@@ -2393,20 +3320,25 @@ export const demoControlCenterAPI: ControlCenterApi = {
       if (normalizedConversationId && String(entry.conversationId || '') !== normalizedConversationId) return false
       return true
     }
-    const activeConversationId = `control-center:${demoState.petPacks.activePackId}:main`
-    const conversations = [{
-      key: activeConversationId,
-      conversationId: activeConversationId,
-      petPackId: demoState.petPacks.activePackId,
-      messageCount: demoState.petChatMessages.length,
-      messages: demoState.petChatMessages.map((message, index) => ({
-        id: `demo-message-${index + 1}`,
-        role: message.role,
-        contentChars: message.content.length,
-        contentSha256: `demo-sha256-${index + 1}`,
-        createdAt: ''
-      }))
-    }].filter((entry) => matchesFilters(entry))
+    const activeContext = resolveDemoConversationContext()
+    const conversations = Object.entries(demoState.petChatConversations)
+      .map(([conversationId, messages]) => {
+        const context = resolveDemoConversationContext({ conversationId })
+        return {
+          key: conversationId,
+          conversationId,
+          petPackId: context.petPackId,
+          messageCount: messages.length,
+          messages: cloneChatMessages(messages).map((message, index) => ({
+            id: `demo-message-${index + 1}`,
+            role: message.role,
+            contentChars: message.content.length,
+            contentSha256: `demo-sha256-${index + 1}`,
+            createdAt: ''
+          }))
+        }
+      })
+      .filter((entry) => matchesFilters(entry))
     const memories = demoState.aiMemories.map((memory) => ({
       id: memory.id,
       scope: memory.scope,
@@ -2447,8 +3379,12 @@ export const demoControlCenterAPI: ControlCenterApi = {
       conversations,
       memories,
       memoryJobs,
-      traces: [],
-      behaviorDecisions: (!normalizedPetPackId && !normalizedConversationId)
+      traces: conversations.map((conversation) => ({
+        traceId: 'trace:demo',
+        conversationId: conversation.conversationId,
+        petPackId: conversation.petPackId
+      })),
+      behaviorDecisions: (!normalizedPetPackId && !normalizedConversationId) || matchesFilters(activeContext)
         ? demoState.aiConfig.behavior.decisions.map(({ replay: _replay, ...decision }) => ({
             ...decision,
             replayRedacted: true
@@ -2456,7 +3392,17 @@ export const demoControlCenterAPI: ControlCenterApi = {
         : []
     }, null, 2)
   },
-  openPetChatWindow: async () => createDemoPetChatState(),
+  openPetChatWindow: async () => {
+    demoState.petChatWindowState = {
+      visible: true,
+      hasWindow: true,
+      alwaysOnTop: demoState.petChatWindowState?.alwaysOnTop ?? true,
+      hasUserBounds: Boolean(demoState.petChatWindowState?.hasUserBounds),
+      bounds: demoState.petChatWindowState?.bounds || null
+    }
+    writeDemoState()
+    return createDemoPetChatState()
+  },
   sendPetChatMessage: sendDemoPetChatMessage,
   getAiBehavior: async () => cloneAiConfig(demoState.aiConfig).behavior,
   saveAiBehavior: async (config) => {
@@ -2465,39 +3411,53 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return demoState.aiConfig.behavior
   },
   getAiTalkTraceSummary: async ({ conversationId } = {}) => createDemoAiTalkTraceSummary({ conversationId }),
-  exportAiTalkTrace: async ({ conversationId } = {}) => JSON.stringify({
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    trace: {
-      id: 'trace:demo',
-      conversationId: conversationId || `control-center:${demoState.petPacks.activePackId}:main`,
-      petPackId: demoState.petPacks.activePackId,
-      conversation: {
-        conversationId: conversationId || `control-center:${demoState.petPacks.activePackId}:main`,
-        petPackId: demoState.petPacks.activePackId,
-        petPackDisplayName: demoState.petPacks.packs.find((pack) => pack.id === demoState.petPacks.activePackId)?.displayName || demoState.petPacks.activePackId
-      },
-      provider: {
-        provider: demoState.aiConfig.provider,
-        baseUrl: demoState.aiConfig.baseUrl,
-        model: demoState.aiConfig.model
-      },
-      memory: {
-        injected: [],
-        used: []
-      },
-      behavior: {
-        providerIntent: null,
-        finalDecision: null
-      },
-      result: {
-        replyChars: cloneChatMessages(demoState.petChatMessages).at(-1)?.content?.length || 0,
-        persistedMessageCount: cloneChatMessages(demoState.petChatMessages).length
+  exportAiTalkTrace: async ({ conversationId } = {}) => {
+    const context = resolveDemoConversationContext({ conversationId })
+    const messages = getDemoConversationMessages(context.conversationId)
+    return JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      trace: {
+        id: 'trace:demo',
+        conversationId: context.conversationId,
+        petPackId: context.petPackId,
+        conversation: {
+          conversationId: context.conversationId,
+          petPackId: context.petPackId,
+          petPackDisplayName: context.pack?.displayName || context.petPackId
+        },
+        provider: {
+          provider: demoState.aiConfig.provider,
+          baseUrl: demoState.aiConfig.baseUrl,
+          model: demoState.aiConfig.model
+        },
+        memory: {
+          injected: [],
+          used: []
+        },
+        behavior: {
+          providerIntent: null,
+          finalDecision: null
+        },
+        result: {
+          replyChars: messages.at(-1)?.content?.length || 0,
+          persistedMessageCount: messages.length
+        }
       }
+    }, null, 2)
+  },
+  dryRunAiBehavior: async (payload) => dryRunDemoBehavior(payload || {}),
+  replayAiBehaviorDecision: async (decisionId) => {
+    const decision = demoState.aiConfig.behavior.decisions.find((entry) => entry.id === Number(decisionId))
+    if (!decision) throw new Error('Behavior decision not found')
+    return {
+      replayOf: decision.id,
+      ...dryRunDemoBehavior({
+        reply: decision.replay?.reply || '',
+        behaviorIntent: decision.replay?.behaviorIntent || null
+      })
     }
-  }, null, 2),
-  dryRunAiBehavior: async ({ reply }) => ({ matched: Boolean(reply), reason: reply ? 'demo dry-run matched' : 'demo dry-run empty', actionId: reply ? 'wave' : '' }),
-  replayAiBehaviorDecision: async (decisionId) => ({ replayOf: decisionId, matched: true, reason: 'demo replay matched', actionId: 'wave' }),
+  },
   exportAiBehaviorDiagnostics: async () => JSON.stringify({
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
@@ -2519,25 +3479,13 @@ export const demoControlCenterAPI: ControlCenterApi = {
   },
   getPlugins: async () => cloneDemoPlugins(),
   setPluginEnabled: async (pluginId, enabled) => {
+    if (enabled) assertDemoPluginAllowed(pluginId)
     demoState.plugins = demoState.plugins.map((plugin) => (
       plugin.id === pluginId
         ? {
             ...plugin,
             enabled,
-            nativeExecutionApproved: enabled && plugin.requiresNativeExecution
-              ? true
-              : plugin.nativeExecutionApproved,
-            entries: {
-              ...plugin.entries,
-              services: enabled
-                ? plugin.entries.services
-                : plugin.entries.services.map((service) => ({
-                    ...service,
-                    runtime: service.runtime?.status === 'running'
-                      ? { ...service.runtime, status: 'stopped', stoppedAt: new Date().toISOString() }
-                      : service.runtime
-                  }))
-            }
+            entries: enabled ? plugin.entries : cleanupDemoPluginRuntimeEntries(plugin.entries)
           }
         : plugin
     ))
@@ -2546,25 +3494,18 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return cloneDemoPlugins().find((plugin) => plugin.id === pluginId) || { id: pluginId, enabled }
+    const plugin = getDemoPluginById(pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return plugin
   },
   setPluginNativeExecutionApproved: async (pluginId, approved) => {
+    if (approved) assertDemoPluginAllowed(pluginId)
     demoState.plugins = demoState.plugins.map((plugin) => (
       plugin.id === pluginId
         ? {
             ...plugin,
             nativeExecutionApproved: approved,
-            entries: approved
-              ? plugin.entries
-              : {
-                  ...plugin.entries,
-                  services: (plugin.entries.services || []).map((service) => ({
-                    ...service,
-                    runtime: service.runtime?.status === 'running'
-                      ? { ...service.runtime, status: 'stopped', stoppedAt: new Date().toISOString() }
-                      : service.runtime
-                  }))
-                }
+            entries: approved ? plugin.entries : cleanupDemoPluginRuntimeEntries(plugin.entries)
           }
         : plugin
     ))
@@ -2573,9 +3514,30 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { id: pluginId, nativeExecutionApproved: approved }
+    const plugin = getDemoPluginById(pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return plugin
   },
-  savePluginConfig: async (pluginId, config) => ({ id: pluginId, config }),
+  savePluginConfig: async (pluginId, config) => {
+    const plugin = requireDemoPlugin(pluginId)
+    const normalizedConfig = normalizeDemoPluginConfig(plugin, config || {})
+    demoState.plugins = demoState.plugins.map((plugin) => (
+      plugin.id === pluginId
+        ? {
+            ...plugin,
+            config: normalizedConfig
+          }
+        : plugin
+    ))
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Plugin config saved'),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    const updatedPlugin = getDemoPluginById(pluginId)
+    if (!updatedPlugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return updatedPlugin
+  },
   getCreatorState: async () => createDemoCreatorState(),
   pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference('/demo/creator/reference.png'),
   bindCreatorReference: async ({ targetType, targetId, referenceToken }) => bindDemoCreatorReference({ targetType, targetId, referenceToken }),
@@ -2665,97 +3627,167 @@ export const demoControlCenterAPI: ControlCenterApi = {
       diagnostics: null
     }
   },
-  getCreatorLastRun: async () => ({
+  getCreatorLastRun: async (): Promise<CreatorLastRunResult> => ({
     ok: true,
     run: demoCreatorLastRun ? cloneCreatorLastRun(demoCreatorLastRun) : null
   }),
   runCreatorStudioDefaultFlow: async (prompt) => createDemoCreatorStudioDefaultFlowResult(prompt),
   runPluginCommand: async (pluginId, commandId, payload) => {
-    demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
-    writeDemoState()
-    if (pluginId === 'openpet.creator-studio' && commandId === 'draft-task') {
-      return createDemoCreatorStudioDraftTaskResult(payload)
-    }
-    if (pluginId === 'openpet.creator-studio' && commandId === 'answer-question') {
-      return createDemoCreatorStudioAnswerResult(payload)
-    }
-    if (pluginId === 'openpet.creator-studio' && commandId === 'confirm-task') {
-      return createDemoCreatorStudioConfirmResult(payload)
-    }
-    if (pluginId === 'openpet.creator-studio' && commandId === 'run-step') {
-      if (payload?.runId === 'run-demo-action-fail') {
-        throw new Error('Provider backend timed out')
+    try {
+      requireDemoPluginNativeExecutionIfNeeded(pluginId)
+      let result: PluginCommandRunResultViewState
+      if (pluginId === 'openpet.creator-studio' && commandId === 'draft-task') {
+        result = createDemoCreatorStudioDraftTaskResult(payload)
+      } else if (pluginId === 'openpet.creator-studio' && commandId === 'answer-question') {
+        result = createDemoCreatorStudioAnswerResult(payload)
+      } else if (pluginId === 'openpet.creator-studio' && commandId === 'confirm-task') {
+        result = createDemoCreatorStudioConfirmResult(payload)
+      } else if (pluginId === 'openpet.creator-studio' && commandId === 'run-step') {
+        if (payload?.runId === 'run-demo-action-fail') {
+          throw new Error('Provider backend timed out')
+        }
+        result = createDemoCreatorStudioGenerateResult(payload)
+      } else if (pluginId === 'openpet.creator-studio' && commandId === 'approve-run') {
+        result = createDemoCreatorStudioApproveResult(payload)
+      } else if (pluginId === 'openpet.creator-studio' && commandId === 'import-approved-pet') {
+        result = createDemoCreatorStudioImportResult(payload)
+      } else if (pluginId === 'openpet.creator-studio' && commandId === 'import-approved-action') {
+        result = createDemoCreatorStudioActionImportResult(payload)
+      } else {
+        result = {
+          ok: true,
+          pluginId,
+          commandId,
+          exitCode: 0,
+          result: {
+            ok: true,
+            message: 'Demo command completed',
+            ...(payload ? { payload } : {}),
+            petSay: 'hello'
+          }
+        } satisfies PluginCommandRunResultViewState
       }
-      return createDemoCreatorStudioGenerateResult(payload)
+      demoState.pluginLogs = [createDemoPluginLog(pluginId, 'Command completed', commandId), ...demoState.pluginLogs]
+      writeDemoState()
+      return result
+    } catch (error) {
+      demoState.pluginLogs = [
+        createDemoPluginLog(
+          pluginId,
+          error instanceof Error ? error.message : 'Command failed',
+          commandId,
+          'error'
+        ),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      throw error
     }
-    if (pluginId === 'openpet.creator-studio' && commandId === 'approve-run') {
-      return createDemoCreatorStudioApproveResult(payload)
-    }
-    if (pluginId === 'openpet.creator-studio' && commandId === 'import-approved-pet') {
-      return createDemoCreatorStudioImportResult(payload)
-    }
-    if (pluginId === 'openpet.creator-studio' && commandId === 'import-approved-action') {
-      return createDemoCreatorStudioActionImportResult(payload)
-    }
-    return {
-      ok: true,
-      pluginId,
-      commandId,
-      exitCode: 0,
-      result: {
-        ok: true,
-        message: 'Demo command completed',
-        ...(payload ? { payload } : {}),
-        petSay: 'hello'
-      }
-    } satisfies PluginCommandRunResultViewState
   },
   runPluginSetup: async (pluginId, setupId) => {
-    const runtime = updateDemoPluginSetupRuntime(pluginId, setupId, {
-      status: 'succeeded',
-      lastRunAt: new Date().toISOString(),
-      exitCode: 0,
-      error: ''
-    })
-    demoState.pluginLogs = [
-      createDemoPluginLog(pluginId, 'Setup completed', `setup:${setupId}`),
-      ...demoState.pluginLogs
-    ]
-    writeDemoState()
-    return { ok: true, pluginId, setupId, runtime }
+    try {
+      assertDemoPluginNativeExecutionAllowed(pluginId)
+      const runtime = updateDemoPluginSetupRuntime(pluginId, setupId, {
+        status: 'succeeded',
+        lastRunAt: new Date().toISOString(),
+        exitCode: 0,
+        error: ''
+      })
+      demoState.pluginLogs = [
+        createDemoPluginLog(pluginId, 'Setup completed', `setup:${setupId}`),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      return { ok: true, pluginId, setupId, runtime }
+    } catch (error) {
+      demoState.pluginLogs = [
+        createDemoPluginLog(
+          pluginId,
+          error instanceof Error ? error.message : 'Setup failed',
+          `setup:${setupId}`,
+          'error'
+        ),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      throw error
+    }
   },
   openPluginDashboard: async (pluginId, dashboardId, options?: PluginDashboardOpenOptions): Promise<PluginDashboardOpenResult> => {
-    const plugin = demoState.plugins.find((candidate) => candidate.id === pluginId)
-    const dashboard = plugin?.entries?.dashboards?.find((candidate) => candidate.id === dashboardId)
-    const dashboardUrl = new URL(dashboard?.url || 'http://127.0.0.1/')
-    const query = options?.query && typeof options.query === 'object' ? options.query : {}
-    for (const [key, value] of Object.entries(query)) {
-      const normalizedKey = String(key || '').trim()
-      const normalizedValue = String(value || '').trim()
-      if (!normalizedKey || !normalizedValue) continue
-      dashboardUrl.searchParams.set(normalizedKey, normalizedValue)
+    try {
+      const plugin = assertDemoPluginEnabled(pluginId)
+      const dashboard = plugin.entries?.dashboards?.find((candidate) => candidate.id === dashboardId)
+      if (!dashboard) throw new Error(`Plugin dashboard not found: ${dashboardId}`)
+      const dashboardUrl = new URL(normalizeDemoHttpUrl(
+        dashboard.url,
+        'Plugin dashboard URL is invalid',
+        'Plugin dashboard URL must use HTTP or HTTPS'
+      ))
+      const query = options?.query && typeof options.query === 'object' && !Array.isArray(options.query)
+        ? options.query
+        : {}
+      for (const [key, value] of Object.entries(query)) {
+        const normalizedKey = String(key || '').trim()
+        const normalizedValue = String(value || '').trim()
+        if (!normalizedKey || !normalizedValue) continue
+        dashboardUrl.searchParams.set(normalizedKey, normalizedValue)
+      }
+      demoState.pluginLogs = [
+        createDemoPluginLog(pluginId, 'Dashboard opened', `dashboard:${dashboardId}`),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      return { ok: true, pluginId, dashboardId, url: dashboardUrl.toString() }
+    } catch (error) {
+      demoState.pluginLogs = [
+        createDemoPluginLog(
+          pluginId,
+          error instanceof Error ? error.message : 'Dashboard open failed',
+          `dashboard:${dashboardId}`,
+          'error'
+        ),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      throw error
     }
-    demoState.pluginLogs = [
-      createDemoPluginLog(pluginId, 'Dashboard opened', `dashboard:${dashboardId}`),
-      ...demoState.pluginLogs
-    ]
-    writeDemoState()
-    return { ok: true, pluginId, dashboardId, url: dashboardUrl.toString() }
   },
   startPluginService: async (pluginId, serviceId) => {
-    const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
-      status: 'running',
-      pid: 4321,
-      startedAt: new Date().toISOString()
-    })
-    demoState.pluginLogs = [
-      createDemoPluginLog(pluginId, 'Service started', `service:${serviceId}`),
-      ...demoState.pluginLogs
-    ]
-    writeDemoState()
-    return { ok: true, pluginId, serviceId, runtime }
+    try {
+      assertDemoPluginNativeExecutionAllowed(pluginId)
+      const existingStatus = findDemoPluginServiceRuntimeStatus(pluginId, serviceId)
+      if (existingStatus === 'running' || existingStatus === 'starting' || existingStatus === 'stopping') {
+        throw new Error('Plugin service is already running')
+      }
+      const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
+        status: 'running',
+        pid: 4321,
+        startedAt: new Date().toISOString()
+      })
+      demoState.pluginLogs = [
+        createDemoPluginLog(pluginId, 'Service started', `service:${serviceId}`),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      return { ok: true, pluginId, serviceId, runtime }
+    } catch (error) {
+      demoState.pluginLogs = [
+        createDemoPluginLog(
+          pluginId,
+          error instanceof Error ? error.message : 'Service start failed',
+          `service:${serviceId}`,
+          'error'
+        ),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      throw error
+    }
   },
   stopPluginService: async (pluginId, serviceId) => {
+    requireDemoPluginService(pluginId, serviceId)
+    const existingStatus = findDemoPluginServiceRuntimeStatus(pluginId, serviceId)
+    if (existingStatus !== 'running') throw new Error('Plugin service is not running')
     const runtime = updateDemoPluginServiceRuntime(pluginId, serviceId, {
       status: 'stopped',
       stoppedAt: new Date().toISOString()
@@ -2768,21 +3800,41 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return { ok: true, pluginId, serviceId, runtime }
   },
   checkPluginServiceHealth: async (pluginId, serviceId) => {
-    const { health, runtime } = updateDemoPluginServiceHealth(pluginId, serviceId, {
-      status: 'healthy',
-      checkedAt: new Date().toISOString(),
-      url: 'http://127.0.0.1:8787/health',
-      statusCode: 200,
-      message: 'OK'
-    })
-    demoState.pluginLogs = [
-      createDemoPluginLog(pluginId, 'Service health healthy', `service:${serviceId}`),
-      ...demoState.pluginLogs
-    ]
-    writeDemoState()
-    return { ok: true, pluginId, serviceId, health, runtime }
+    try {
+      const plugin = assertDemoPluginEnabled(pluginId)
+      const service = plugin.entries?.services?.find((candidate) => candidate.id === serviceId)
+      if (!service) throw new Error(`Plugin service not found: ${serviceId}`)
+      const normalizedHealthUrl = normalizeDemoPluginServiceHealthUrl(service.health || {})
+      const { health, runtime } = updateDemoPluginServiceHealth(pluginId, serviceId, {
+        status: 'healthy',
+        checkedAt: new Date().toISOString(),
+        url: normalizedHealthUrl,
+        statusCode: 200,
+        message: 'OK'
+      })
+      demoState.pluginLogs = [
+        createDemoPluginLog(pluginId, 'Service health healthy', `service:${serviceId}`),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      return { ok: true, pluginId, serviceId, health, runtime }
+    } catch (error) {
+      demoState.pluginLogs = [
+        createDemoPluginLog(
+          pluginId,
+          error instanceof Error ? error.message : 'Service health check failed',
+          `service:${serviceId}`,
+          'error'
+        ),
+        ...demoState.pluginLogs
+      ]
+      writeDemoState()
+      throw error
+    }
   },
   savePluginServiceHealthPolicy: async (pluginId, serviceId, policy) => {
+    const { service } = requireDemoPluginService(pluginId, serviceId, { requireEnabled: true })
+    if (!service.health?.url) throw new Error('Plugin service health check is not configured')
     const nextPolicy = updateDemoPluginServiceHealthPolicy(pluginId, serviceId, policy)
     demoState.pluginLogs = [
       createDemoPluginLog(pluginId, nextPolicy.enabled ? 'Service health policy saved' : 'Service health policy cleared', `service:${serviceId}`),
@@ -2794,37 +3846,49 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return plugin
   },
   inspectPluginPackage: async () => {
-    demoManualPluginSelection = demoManualPluginReview.selectionId
+    const review = createDemoManualPluginReviewState()
+    demoManualPluginSelection = review.selectionId || demoManualPluginReview.selectionId
     return {
-      ...demoManualPluginReview,
+      ...review,
       plugin: {
-        ...demoManualPluginReview.plugin,
-        commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })),
-        entries: clonePluginEntries(demoManualPluginReview.plugin.entries)
+        ...review.plugin,
+        commands: review.plugin.commands.map((command) => ({ ...command })),
+        entries: clonePluginEntries(review.plugin.entries)
       },
       permissionDiff: {
-        permissions: { ...demoManualPluginReview.permissionDiff.permissions },
-        networkAllowlist: { ...demoManualPluginReview.permissionDiff.networkAllowlist }
+        permissions: { ...review.permissionDiff.permissions },
+        networkAllowlist: { ...review.permissionDiff.networkAllowlist }
       },
-      signature: { ...demoManualPluginReview.signature },
-      blockStatus: { ...demoManualPluginReview.blockStatus }
+      signature: { ...review.signature },
+      blockStatus: { ...review.blockStatus }
     }
   },
-  inspectPluginGithubRepository: async () => {
-    demoManualPluginSelection = demoManualPluginReview.selectionId
-    return {
-      ...demoManualPluginReview,
+  inspectPluginGithubRepository: async (repositoryUrl) => {
+    const normalizedRepositoryUrl = validateDemoGithubRepositoryUrl(repositoryUrl)
+    const baseReview = createDemoManualPluginReviewState()
+    const review = {
+      ...baseReview,
+      selectionId: 'demo-github-plugin-selection',
+      sourceType: 'github',
       plugin: {
-        ...demoManualPluginReview.plugin,
-        commands: demoManualPluginReview.plugin.commands.map((command) => ({ ...command })),
-        entries: clonePluginEntries(demoManualPluginReview.plugin.entries)
+        ...baseReview.plugin,
+        description: `A GitHub package sample from ${normalizedRepositoryUrl}.`
+      }
+    }
+    demoManualPluginSelection = review.selectionId || demoManualPluginReview.selectionId
+    return {
+      ...review,
+      plugin: {
+        ...review.plugin,
+        commands: review.plugin.commands.map((command) => ({ ...command })),
+        entries: clonePluginEntries(review.plugin.entries)
       },
       permissionDiff: {
-        permissions: { ...demoManualPluginReview.permissionDiff.permissions },
-        networkAllowlist: { ...demoManualPluginReview.permissionDiff.networkAllowlist }
+        permissions: { ...review.permissionDiff.permissions },
+        networkAllowlist: { ...review.permissionDiff.networkAllowlist }
       },
-      signature: { ...demoManualPluginReview.signature },
-      blockStatus: { ...demoManualPluginReview.blockStatus }
+      signature: { ...review.signature },
+      blockStatus: { ...review.blockStatus }
     }
   },
   clearPluginSelection: async (selectionId) => {
@@ -2833,7 +3897,8 @@ export const demoControlCenterAPI: ControlCenterApi = {
   },
   installPlugin: async (selectionId) => {
     if (selectionId !== demoManualPluginSelection) throw new Error('Selected plugin package is no longer available')
-    const nextPlugin = createDemoManualPlugin()
+    const review = createDemoManualPluginReviewState()
+    const nextPlugin = createDemoManualPlugin(review)
     demoState.plugins = [
       nextPlugin,
       ...demoState.plugins.filter((plugin) => plugin.id !== nextPlugin.id)
@@ -2844,23 +3909,80 @@ export const demoControlCenterAPI: ControlCenterApi = {
     ]
     demoManualPluginSelection = null
     writeDemoState()
-    return { ok: true, pluginId: nextPlugin.id, installMode: 'install', disabled: true, plugins: cloneDemoPlugins() }
+    return { ok: true, pluginId: nextPlugin.id, installMode: review.installMode, disabled: true, plugins: cloneDemoPlugins() }
   },
-  updatePlugin: async () => ({ ok: true, plugins: [] }),
-  uninstallPlugin: async () => ({ ok: true, plugins: [] }),
+  updatePlugin: async (selectionId) => {
+    if (selectionId !== demoManualPluginSelection) throw new Error('Selected plugin package is no longer available')
+    const review = createDemoManualPluginReviewState()
+    if (review.installMode !== 'update') throw new Error('Plugin is not installed yet')
+    const existingPlugin = getDemoPluginById(review.plugin.id)
+    if (!existingPlugin) throw new Error(`Plugin not found: ${review.plugin.id}`)
+    const nextPlugin = createDemoManualPlugin(review, existingPlugin)
+    demoState.plugins = [
+      nextPlugin,
+      ...demoState.plugins.filter((plugin) => plugin.id !== nextPlugin.id)
+    ]
+    demoState.pluginLogs = [
+      createDemoPluginLog(nextPlugin.id, 'Plugin updated'),
+      ...demoState.pluginLogs
+    ]
+    demoManualPluginSelection = null
+    writeDemoState()
+    return { ok: true, pluginId: nextPlugin.id, installMode: 'update', disabled: true, plugins: cloneDemoPlugins() }
+  },
+  uninstallPlugin: async (pluginId, options?: PluginUninstallOptions) => {
+    const existingPlugin = getDemoPluginById(pluginId)
+    if (!existingPlugin) throw new Error(`Plugin not found: ${pluginId}`)
+    demoState.plugins = demoState.plugins.filter((plugin) => plugin.id !== pluginId)
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, options?.removeStorage ? 'Plugin uninstalled and storage removed' : 'Plugin uninstalled'),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    return {
+      ok: true,
+      pluginId,
+      storageRemoved: Boolean(options?.removeStorage),
+      plugins: cloneDemoPlugins()
+    }
+  },
   getPluginLogs: async (filters) => paginateEntries(cloneDemoPluginLogs(filters), filters || {}),
-  exportPluginLogs: async (filters) => JSON.stringify(cloneDemoPluginLogs(filters), null, 2),
+  exportPluginLogs: async (filters) => exportDemoPluginLogs(cloneDemoPluginLogs(filters), filters?.format),
   clearPluginLogs: async () => {
     demoState.pluginLogs = []
     writeDemoState()
     return []
   },
-  clearPluginStorage: async (pluginId) => ({ id: pluginId, storage: { keyCount: 0, byteSize: 2 } }),
+  clearPluginStorage: async (pluginId) => {
+    demoState.plugins = demoState.plugins.map((plugin) => (
+      plugin.id === pluginId
+        ? {
+            ...plugin,
+            storage: {
+              ...(plugin.storage || {}),
+              keyCount: 0,
+              byteSize: 0
+            }
+          }
+        : plugin
+    ))
+    demoState.pluginLogs = [
+      createDemoPluginLog(pluginId, 'Plugin storage cleared'),
+      ...demoState.pluginLogs
+    ]
+    writeDemoState()
+    const plugin = getDemoPluginById(pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return plugin
+  },
   getServiceStatus: async () => cloneServiceStatus(demoState.serviceStatus),
   saveServiceConfig: async (config) => {
-    const nextConfig = {
-      ...demoState.serviceStatus.config,
-      ...config
+    const nextConfig = normalizeDemoServiceConfig(demoState.serviceStatus.config, config)
+    if (
+      nextConfig.enabled &&
+      (!Number.isInteger(nextConfig.port) || nextConfig.port < 0 || nextConfig.port > 65535)
+    ) {
+      throw new Error('Local HTTP service port must be between 0 and 65535')
     }
     demoState.serviceStatus = cloneServiceStatus({
       config: nextConfig,
@@ -2871,16 +3993,57 @@ export const demoControlCenterAPI: ControlCenterApi = {
         enabled: nextConfig.enabled
       }
     })
+    demoState.serviceStatus = cloneServiceStatus({
+      ...demoState.serviceStatus,
+      config: {
+        ...demoState.serviceStatus.config,
+        logs: [
+          createDemoServiceLogEntry({
+            method: 'POST',
+            path: nextConfig.enabled ? '/service/start' : '/service/stop',
+            statusCode: 200
+          }),
+          ...demoState.serviceStatus.config.logs
+        ]
+      }
+    })
     writeDemoState()
     return cloneServiceStatus(demoState.serviceStatus)
   },
-  getServiceLogs: async (filters) => paginateEntries([], filters || {}),
-  exportServiceLogs: async () => '[]',
-  clearServiceLogs: async () => [],
+  getServiceLogs: async (filters) => paginateEntries(
+    filterDemoServiceLogs(cloneServiceStatus(demoState.serviceStatus).config.logs, filters),
+    filters || {}
+  ),
+  exportServiceLogs: async (filters) => exportDemoServiceLogs(
+    filterDemoServiceLogs(cloneServiceStatus(demoState.serviceStatus).config.logs, filters),
+    filters?.format
+  ),
+  clearServiceLogs: async () => {
+    demoState.serviceStatus = cloneServiceStatus({
+      ...demoState.serviceStatus,
+      config: {
+        ...demoState.serviceStatus.config,
+        logs: []
+      }
+    })
+    writeDemoState()
+    return []
+  },
   rotateServiceToken: async () => {
     demoState.serviceStatus = cloneServiceStatus({
       ...demoState.serviceStatus,
-      config: { ...demoState.serviceStatus.config, token: 'demo-token-rotated' },
+      config: {
+        ...demoState.serviceStatus.config,
+        token: 'demo-token-rotated',
+        logs: [
+          createDemoServiceLogEntry({
+            method: 'POST',
+            path: '/service/token/rotate',
+            statusCode: 200
+          }),
+          ...demoState.serviceStatus.config.logs
+        ]
+      },
       runtime: {
         ...demoState.serviceStatus.runtime,
         mcp: { ...demoState.serviceStatus.runtime.mcp, activeSessions: 0 }
@@ -2892,6 +4055,17 @@ export const demoControlCenterAPI: ControlCenterApi = {
   revokeMcpSessions: async () => {
     demoState.serviceStatus = cloneServiceStatus({
       ...demoState.serviceStatus,
+      config: {
+        ...demoState.serviceStatus.config,
+        logs: [
+          createDemoServiceLogEntry({
+            method: 'POST',
+            path: '/service/mcp/revoke',
+            statusCode: 200
+          }),
+          ...demoState.serviceStatus.config.logs
+        ]
+      },
       runtime: {
         ...demoState.serviceStatus.runtime,
         mcp: { ...demoState.serviceStatus.runtime.mcp, activeSessions: 0 }
@@ -2931,7 +4105,24 @@ export const demoControlCenterAPI: ControlCenterApi = {
     const selection = demoCatalogSelections.get(selectionId)
     if (!selection) throw new Error('Catalog selection is no longer available')
     demoCatalogSelections.delete(selectionId)
-    return { ok: true, catalog: markDemoCatalogItemInstalled(selection) }
+    if (selection.kind === 'plugin') {
+      return {
+        ok: true,
+        kind: selection.kind,
+        itemId: selection.itemId,
+        catalog: markDemoCatalogItemInstalled(selection),
+        plugins: installDemoCatalogPlugin(selection)
+      }
+    }
+    const petPacks = installDemoCatalogPetPack(selection)
+    return {
+      ok: true,
+      kind: selection.kind,
+      itemId: selection.itemId,
+      catalog: markDemoCatalogItemInstalled(selection),
+      petPacks,
+      ...(petPacks.activePackId === selection.itemId ? { animations: cloneActionsConfig(demoState.actionsConfig) } : {})
+    }
   },
   clearCatalogSelection: async (selectionId) => {
     demoCatalogSelections.delete(selectionId)
