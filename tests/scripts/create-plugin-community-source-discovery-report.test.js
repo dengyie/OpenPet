@@ -8,6 +8,9 @@ const {
   createPluginCommunitySourceDiscoveryReport,
   parseArgs
 } = require('../../scripts/create-plugin-community-source-discovery-report')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 const searchResults = [
   {
@@ -98,10 +101,11 @@ test('createPluginCommunitySourceDiscoveryReport writes compatible-source-not-fo
   assert.equal(summary.candidateCounts.total, 2)
   assert.equal(summary.candidateCounts['incompatible-package-model'], 1)
   assert.equal(summary.candidateCounts['not-found'], 1)
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.files.readme), true)
+  assert.equal(summary.outputDir, 'plugin-community-source-discovery-report')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(resolveOutputPath(outputDir, summary.files.readme), 'utf-8')
   assert.match(readme, /does not approve, install, run, sign, publish, or trust/i)
   assert.match(readme, /compatible-source-not-found/)
   assert.match(readme, /alvinunreal\/openpets/)

@@ -137,6 +137,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeMetadataPath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeMetadataPath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeMetadataPath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`
 
 const commandList = ({
@@ -265,6 +285,7 @@ const createPluginCommunitySourceSubmissionEvidence = async ({
   const generatedAt = now().toISOString()
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, path.basename(DEFAULT_OUTPUT_ROOT))
 
   const remoteSummary = await createPluginRemoteSourceSubmissionRehearsal({
     archiveUrl,
@@ -294,16 +315,43 @@ const createPluginCommunitySourceSubmissionEvidence = async ({
     remoteSummary.approval.validation.ok === true &&
     remoteSummary.approval.record.decision === 'approved'
   )
-  const files = {
+  const outputFiles = {
     readme: path.join(absoluteOutputDir, 'README-community-source.md'),
     checklist: path.join(absoluteOutputDir, 'community-source-checklist.md'),
     commands: path.join(absoluteOutputDir, 'community-source-commands.json'),
     communityEvidence: path.join(absoluteOutputDir, 'community-source-evidence.json'),
     summary: path.join(absoluteOutputDir, 'plugin-community-source-submission-evidence-summary.json')
   }
+  const files = {
+    readme: createSafeOutputFilePath({
+      filePath: outputFiles.readme,
+      outputDir: absoluteOutputDir,
+      fallback: 'README-community-source.md'
+    }),
+    checklist: createSafeOutputFilePath({
+      filePath: outputFiles.checklist,
+      outputDir: absoluteOutputDir,
+      fallback: 'community-source-checklist.md'
+    }),
+    commands: createSafeOutputFilePath({
+      filePath: outputFiles.commands,
+      outputDir: absoluteOutputDir,
+      fallback: 'community-source-commands.json'
+    }),
+    communityEvidence: createSafeOutputFilePath({
+      filePath: outputFiles.communityEvidence,
+      outputDir: absoluteOutputDir,
+      fallback: 'community-source-evidence.json'
+    }),
+    summary: createSafeOutputFilePath({
+      filePath: outputFiles.summary,
+      outputDir: absoluteOutputDir,
+      fallback: 'plugin-community-source-submission-evidence-summary.json'
+    })
+  }
   const summary = {
     generatedAt,
-    outputDir: absoluteOutputDir,
+    outputDir: safeOutputDir,
     communitySource,
     communityEvidenceReady,
     sourceArchive: remoteSummary.sourceArchive,
@@ -334,16 +382,16 @@ const createPluginCommunitySourceSubmissionEvidence = async ({
     submitter: communitySource.submitter,
     sourceRelation,
     independenceNotes: communitySource.independenceNotes,
-    outputDir: absoluteOutputDir,
+    outputDir: safeOutputDir,
     reviewer,
     decision,
     notes
   })
 
-  writeText(files.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
-  writeText(files.checklist, renderChecklist({ summary }), fsImpl)
-  writeJson(files.commands, { commands }, fsImpl)
-  writeJson(files.communityEvidence, {
+  writeText(outputFiles.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
+  writeText(outputFiles.checklist, renderChecklist({ summary }), fsImpl)
+  writeJson(outputFiles.commands, { commands }, fsImpl)
+  writeJson(outputFiles.communityEvidence, {
     generatedAt,
     communitySource,
     communityEvidenceReady,
@@ -356,7 +404,7 @@ const createPluginCommunitySourceSubmissionEvidence = async ({
     },
     boundaries: summary.boundaries
   }, fsImpl)
-  writeJson(files.summary, summary, fsImpl)
+  writeJson(outputFiles.summary, summary, fsImpl)
 
   return summary
 }

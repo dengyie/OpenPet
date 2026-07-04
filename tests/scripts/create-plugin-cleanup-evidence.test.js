@@ -10,6 +10,9 @@ const {
   renderMarkdownCleanupEvidence,
   writeCleanupEvidence
 } = require('../../scripts/create-plugin-cleanup-evidence')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 const fixedNow = () => new Date('2026-06-18T10:00:00.000Z')
 
@@ -51,7 +54,9 @@ test('createPluginCleanupEvidence writes a controlled host cleanup evidence repo
 
   const persisted = JSON.parse(fs.readFileSync(path.join(outputDir, 'plugin-cleanup-evidence.json'), 'utf-8'))
   assert.equal(persisted.ok, true)
-  assert.equal(persisted.files.json, path.join(outputDir, 'plugin-cleanup-evidence.json'))
+  assert.equal(persisted.outputDir, 'plugin-cleanup-evidence')
+  assert.equal(persisted.files.json, 'plugin-cleanup-evidence.json')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, persisted.files.json)), true)
 })
 
 test('writeCleanupEvidence refuses to overwrite existing evidence', () => {

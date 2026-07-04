@@ -127,6 +127,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeMetadataPath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeMetadataPath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeMetadataPath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const renderInvitationMessage = ({ summary }) => [
   `Hi ${summary.target.author},`,
   '',
@@ -212,15 +232,37 @@ const createPluginCommunitySourceInvitationKit = ({
   const generatedAt = now().toISOString()
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
-  const files = {
+  const outputFiles = {
     summary: path.join(absoluteOutputDir, 'plugin-community-source-invitation-summary.json'),
     readme: path.join(absoluteOutputDir, 'README-community-source-invitation.md'),
     message: path.join(absoluteOutputDir, 'invitation-message.md'),
     checklist: path.join(absoluteOutputDir, 'invitation-checklist.md')
   }
+  const files = {
+    summary: createSafeOutputFilePath({
+      filePath: outputFiles.summary,
+      outputDir: absoluteOutputDir,
+      fallback: 'plugin-community-source-invitation-summary.json'
+    }),
+    readme: createSafeOutputFilePath({
+      filePath: outputFiles.readme,
+      outputDir: absoluteOutputDir,
+      fallback: 'README-community-source-invitation.md'
+    }),
+    message: createSafeOutputFilePath({
+      filePath: outputFiles.message,
+      outputDir: absoluteOutputDir,
+      fallback: 'invitation-message.md'
+    }),
+    checklist: createSafeOutputFilePath({
+      filePath: outputFiles.checklist,
+      outputDir: absoluteOutputDir,
+      fallback: 'invitation-checklist.md'
+    })
+  }
   const summary = {
     generatedAt,
-    outputDir: absoluteOutputDir,
+    outputDir: createSafeProjectPath(absoluteOutputDir, path.basename(DEFAULT_OUTPUT_ROOT)),
     status: 'invitation-draft-ready',
     nextAction: 'send-invitation-and-wait-for-compatible-plugin-json-package',
     contactState: 'not-sent',
@@ -241,10 +283,10 @@ const createPluginCommunitySourceInvitationKit = ({
     files
   }
 
-  writeText(files.readme, renderReadme({ generatedAt, summary }), fsImpl)
-  writeText(files.message, renderInvitationMessage({ summary }), fsImpl)
-  writeText(files.checklist, renderChecklist(), fsImpl)
-  writeJson(files.summary, summary, fsImpl)
+  writeText(outputFiles.readme, renderReadme({ generatedAt, summary }), fsImpl)
+  writeText(outputFiles.message, renderInvitationMessage({ summary }), fsImpl)
+  writeText(outputFiles.checklist, renderChecklist(), fsImpl)
+  writeJson(outputFiles.summary, summary, fsImpl)
 
   return summary
 }

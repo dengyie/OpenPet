@@ -83,6 +83,18 @@ const parseArgs = (argv) => {
 }
 
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
 
 const readJson = (filePath, fsImpl = fs) => {
   try {
@@ -147,7 +159,7 @@ const createPluginCommunitySourceEvidenceFromIntake = async ({
   return {
     generatedAt: now().toISOString(),
     bridge: {
-      intakeSummary: absoluteIntakeSummary,
+      intakeSummary: createSafeProjectPath(absoluteIntakeSummary, path.basename(absoluteIntakeSummary) || 'intake-summary.json'),
       intakeOutputDir: intake.outputDir || '',
       intakeStatus: intake.status,
       intakeReasonCode: intake.compatibility.reasonCode,

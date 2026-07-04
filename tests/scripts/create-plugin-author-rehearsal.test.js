@@ -11,6 +11,9 @@ const {
 } = require('../../scripts/create-plugin-author-rehearsal')
 const { validatePluginPackage } = require('../../scripts/validate-plugin-package')
 const { loadBundle, validateBundle } = require('../../scripts/validate-plugin-submission-bundle')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 test('parseArgs accepts plugin author rehearsal options', () => {
   const options = parseArgs([
@@ -49,28 +52,29 @@ test('createPluginAuthorRehearsal scaffolds all templates and validates an AI su
   const aiTemplate = summary.templates.find((item) => item.template === 'ai')
   assert.deepEqual(aiTemplate.plugin.permissions, ['pet:say', 'ai:chat'])
   assert.equal(aiTemplate.plugin.commands[0].id, 'ask')
-  assert.equal(validatePluginPackage(summary.submission.packagePath).ok, true)
+  assert.equal(validatePluginPackage(resolveOutputPath(outputDir, summary.submission.packagePath)).ok, true)
 
-  const bundleValidation = validateBundle(loadBundle({ bundleDir: summary.submission.bundleDir }), { requireReady: true })
+  const bundleValidation = validateBundle(loadBundle({ bundleDir: resolveOutputPath(outputDir, summary.submission.bundleDir) }), { requireReady: true })
   assert.equal(bundleValidation.ok, true)
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.checklist), true)
-  assert.equal(fs.existsSync(summary.files.commands), true)
-  assert.equal(fs.existsSync(summary.files.summary), true)
+  assert.equal(summary.outputDir, 'plugin-author-rehearsal')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.checklist)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.commands)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(resolveOutputPath(outputDir, summary.files.readme), 'utf-8')
   assert.match(readme, /OpenPet Plugin Author Rehearsal/)
   assert.match(readme, /Template \| Plugin ID \| Permissions/)
   assert.match(readme, /ai/)
   assert.match(readme, /Plugin config is public settings/)
   assert.match(readme, /create-plugin-maintainer-approval/)
 
-  const checklist = fs.readFileSync(summary.files.checklist, 'utf-8')
+  const checklist = fs.readFileSync(resolveOutputPath(outputDir, summary.files.checklist), 'utf-8')
   assert.match(checklist, /Scaffolded AI-assisted template/)
   assert.match(checklist, /Created and validated submission bundle/)
   assert.match(checklist, /Maintainer approval record is archived separately/)
 
-  const commands = JSON.parse(fs.readFileSync(summary.files.commands, 'utf-8')).commands
+  const commands = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, summary.files.commands), 'utf-8')).commands
   assert.equal(commands.some((command) => command.includes('--template ai')), true)
   assert.equal(commands.some((command) => command.includes('validate-plugin-submission-bundle')), true)
   assert.equal(commands.some((command) => command.includes('create-plugin-maintainer-approval')), true)

@@ -22,6 +22,18 @@ const usage = () => [
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+const isAbsoluteLocalPath = (value) => {
+  const text = String(value || '').trim()
+  return Boolean(text) && (path.isAbsolute(text) || /^[A-Za-z]:[\\/]/.test(text))
+}
 
 const parseArgs = (argv) => {
   const options = {
@@ -108,8 +120,11 @@ const validateSummaryFiles = ({ bundle, errors, warnings }) => {
     if (path.basename(recordedPath) !== fileName) {
       errors.push(`summary.files.${key} must point to ${fileName}`)
     }
-    if (path.resolve(recordedPath) !== bundle.files[key]) {
+    if (isAbsoluteLocalPath(recordedPath) && path.resolve(recordedPath) !== bundle.files[key]) {
       warnings.push(`summary.files.${key} does not match the current bundle directory; the bundle may have been moved`)
+    }
+    if (!isAbsoluteLocalPath(recordedPath) && !isSafeRelativePath(recordedPath)) {
+      warnings.push(`summary.files.${key} should be a safe relative path`)
     }
   }
 }
@@ -133,8 +148,11 @@ const validateBundle = (bundle, options = {}) => {
     if (!hasText(summary.generatedAt)) errors.push('summary.generatedAt is required')
     if (!hasText(summary.sourcePath)) errors.push('summary.sourcePath is required')
     if (!hasText(summary.outputDir)) errors.push('summary.outputDir is required')
-    if (hasText(summary.outputDir) && path.resolve(summary.outputDir) !== bundle.bundleDir) {
+    if (isAbsoluteLocalPath(summary.outputDir) && path.resolve(summary.outputDir) !== bundle.bundleDir) {
       warnings.push('summary.outputDir does not match the current bundle directory; the bundle may have been moved')
+    }
+    if (!isAbsoluteLocalPath(summary.outputDir) && hasText(summary.outputDir) && !isSafeRelativePath(summary.outputDir)) {
+      warnings.push('summary.outputDir should be a safe relative path')
     }
 
     if (typeof summary.readyForHumanReview !== 'boolean') errors.push('summary.readyForHumanReview must be a boolean')

@@ -99,6 +99,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
 const SAFE_ARCHIVE_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
 
 const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`
@@ -311,6 +331,7 @@ const createPluginCommunitySourceIntakeReport = async ({
   const generatedAt = now().toISOString()
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, DEFAULT_OUTPUT_ROOT)
 
   const downloadDir = fsImpl.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-community-intake-download-'))
   const archivePath = path.join(downloadDir, 'candidate.zip')
@@ -374,9 +395,16 @@ const createPluginCommunitySourceIntakeReport = async ({
       intake: path.join(absoluteOutputDir, 'community-source-intake.json'),
       summary: path.join(absoluteOutputDir, 'plugin-community-source-intake-report-summary.json')
     }
+    const safeFiles = {
+      readme: joinPosixPath(safeOutputDir, 'README-community-intake.md'),
+      checklist: joinPosixPath(safeOutputDir, 'community-intake-checklist.md'),
+      commands: joinPosixPath(safeOutputDir, 'community-intake-commands.json'),
+      intake: joinPosixPath(safeOutputDir, 'community-source-intake.json'),
+      summary: joinPosixPath(safeOutputDir, 'plugin-community-source-intake-report-summary.json')
+    }
     const summary = {
       generatedAt,
-      outputDir: absoluteOutputDir,
+      outputDir: safeOutputDir,
       communitySource: {
         kind: 'community-source',
         url: normalizedCommunitySourceUrl,
@@ -396,7 +424,7 @@ const createPluginCommunitySourceIntakeReport = async ({
       compatibility,
       status,
       notes: notes.trim(),
-      files
+      files: safeFiles
     }
     const commands = commandList({
       archiveUrl: normalizedArchiveUrl,
@@ -404,7 +432,7 @@ const createPluginCommunitySourceIntakeReport = async ({
       communitySourceUrl: normalizedCommunitySourceUrl,
       submitter: summary.communitySource.submitter,
       notes: summary.notes,
-      outputDir: absoluteOutputDir
+      outputDir: safeOutputDir
     })
 
     writeText(files.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)

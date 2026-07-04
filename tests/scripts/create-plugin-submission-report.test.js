@@ -53,6 +53,7 @@ test('createPluginSubmissionReport summarizes a valid unsigned package for human
   assert.equal(report.readyForHumanReview, true)
   assert.equal(report.decision, 'ready-for-human-review')
   assert.equal(report.plugin.id, 'openpet.example.focus-timer')
+  assert.equal(report.sourcePath, 'examples/plugins/focus-timer')
   assert.deepEqual(report.plugin.permissions, ['pet:say', 'storage'])
   assert.equal(report.signature.status, 'unsigned')
   assert.equal(report.package.riskLevel, 'review')
