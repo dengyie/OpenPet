@@ -7,6 +7,7 @@ const DEFAULT_RESULT_NAME = 'ai-talk-local-smoke-result.json'
 const DEFAULT_LOG_NAME = path.join('logs', 'openpet-app.jsonl')
 const DEFAULT_README_NAME = 'README.md'
 const DEFAULT_ARCHIVE_RESULT_NAME = 'ai-talk-local-smoke-archive-result.json'
+const DEFAULT_SESSION_DIR_LABEL = 'ai-talk-local-smoke'
 
 const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
 const formatManualAcceptanceStatus = (value) => {
@@ -117,7 +118,7 @@ const createSafeArchiveDirPath = (archiveDir, sessionId) => {
 const createSafeSourceSummary = ({ report, sessionId }) => {
   const sourceSessionDir = sanitizeRelativePath(
     report?.sessionDir,
-    `tmp/real-provider-chat-acceptance/${sanitizeText(sessionId, 80)}`
+    `${DEFAULT_SESSION_DIR_LABEL}/${sanitizeText(sessionId, 80)}`
   )
   const normalizeSourceChildPath = (value, fallback) => {
     const normalized = sanitizeRelativePath(value, fallback)
@@ -232,8 +233,8 @@ const createReadme = ({ report, archiveDir }) => {
   const bubbleTelemetryLine = providerLatencyMs > 0
     ? `Correlated logs include ${logEvents || 'the expected bubble events'}; the displayed bubble recorded popup telemetry in \`logs/openpet-app.jsonl\`.`
     : 'Correlated logs were copied into `logs/openpet-app.jsonl` for popup telemetry review.'
-  const sourceSessionDir = sanitizeText(report?.sessionDir || '', 200) || 'tmp/real-provider-chat-acceptance/<session>'
-  const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : 'tmp/real-provider-chat-acceptance'
+  const sourceSessionDir = sanitizeText(report?.sessionDir || '', 200) || `${DEFAULT_SESSION_DIR_LABEL}/<session>`
+  const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : DEFAULT_SESSION_DIR_LABEL
   const archiveSessionDir = sanitizeText(toPosixPath(path.relative(process.cwd(), archiveDir) || archiveDir), 240)
   const manualAcceptance = report?.manualAcceptanceTemplate || {}
   const manualNotes = sanitizeText(manualAcceptance.desktopFeelNotes || '', 400)
