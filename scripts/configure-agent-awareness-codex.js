@@ -3,11 +3,14 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { writeCodexHookPlan } = require('../examples/plugins/agent-awareness/commands/codex-hook-plan')
+const {
+  PLAN_FILE,
+  TOKEN_FILE,
+  writeCodexHookPlan
+} = require('../examples/plugins/agent-awareness/commands/codex-hook-plan')
 
 const DEFAULT_PORT = 8795
 const OPENPET_HOOK_SCRIPT = 'openpet-agent-awareness.js'
-const OPENPET_TOKEN_FILE = 'agent-awareness-token.txt'
 const OPENPET_STATUS_MESSAGE = 'Notifying OpenPet'
 const OPENPET_HOOK_EVENTS = [
   'SessionStart',
@@ -129,7 +132,7 @@ const readStdinJson = () => {
 
 const readToken = (dataDir) => {
   try {
-    return fs.readFileSync(path.join(dataDir, '${OPENPET_TOKEN_FILE}'), 'utf-8').trim()
+    return fs.readFileSync(path.join(dataDir, '${TOKEN_FILE}'), 'utf-8').trim()
   } catch (_) {
     return ''
   }
@@ -326,8 +329,8 @@ const configureCodexAgentAwareness = ({
   const hooksPath = path.join(resolvedCodexHome, 'hooks.json')
   const hookPlan = dryRun
     ? {
-        instructionsPath: path.join(resolvedDataDir, 'codex-hooks.manual.md'),
-        tokenPath: path.join(resolvedDataDir, OPENPET_TOKEN_FILE),
+        instructionsPath: path.join(resolvedDataDir, PLAN_FILE),
+        tokenPath: path.join(resolvedDataDir, TOKEN_FILE),
         serviceUrl: `http://127.0.0.1:${port}/api/events`
       }
     : writeCodexHookPlan({ dataDir: resolvedDataDir, port })
