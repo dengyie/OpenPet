@@ -103,9 +103,9 @@ test('updateReport updates environment, artifact, and selected check evidence', 
     ],
     artifactUpdates: [
       { key: 'version', value: '1.0.1-rc.1' },
-      { key: 'installer', value: 'OpenPet-1.0.1-rc.1-win32-x64.exe' },
-      { key: 'zip', value: 'OpenPet-1.0.1-rc.1-win32-x64.zip' },
-      { key: 'latestYml', value: 'latest.yml' },
+      { key: 'installer', value: '/tmp/OpenPet-1.0.1-rc.1-win32-x64.exe' },
+      { key: 'zip', value: '/tmp/OpenPet-1.0.1-rc.1-win32-x64.zip' },
+      { key: 'latestYml', value: '/tmp/latest.yml' },
       { key: 'signed', value: 'false' },
       { key: 'authenticodeStatus', value: 'NotSigned' },
       { key: 'authenticodeEvidence', value: 'Get-AuthenticodeSignature Status : NotSigned' }
@@ -119,6 +119,8 @@ test('updateReport updates environment, artifact, and selected check evidence', 
   assert.equal(updated.environment.windowsVersion, 'Windows 11 23H2')
   assert.equal(updated.environment.evidence, 'screen recording link')
   assert.equal(updated.artifact.signed, false)
+  assert.equal(updated.artifact.installer, 'OpenPet-1.0.1-rc.1-win32-x64.exe')
+  assert.equal(updated.artifact.zip, 'OpenPet-1.0.1-rc.1-win32-x64.zip')
   assert.equal(updated.artifact.latestYml, 'latest.yml')
   assert.equal(updated.checks.find((check) => check.id === 'launch').status, 'pass')
   assert.equal(updated.checks.find((check) => check.id === 'launch').evidence, 'Installed app launched and stayed running for 60 seconds')

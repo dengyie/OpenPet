@@ -15,6 +15,45 @@ const DEFAULT_SUMMARY_MARKDOWN_NAME = 'windows-smoke-evidence-summary.md'
 const DEFAULT_SUMMARY_JSON_NAME = 'windows-smoke-evidence-summary.json'
 const DEFAULT_MANIFEST_NAME = 'windows-smoke-archive-manifest.json'
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeArchiveDirPath = (archiveDir) => createSafeProjectPath(archiveDir, DEFAULT_ARCHIVE_DIR)
+
+const createSafeArchiveFilePath = ({ filePath, archiveDir, fallback }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
+const createSafeArchiveOutputPath = ({ outputPath, archiveDir, safeArchiveDir }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(outputPath || '').trim()))
+  if (isSafeRelativePath(relative)) return joinPosixPath(safeArchiveDir, relative)
+  return createSafeProjectPath(outputPath, joinPosixPath(safeArchiveDir, DEFAULT_MANIFEST_NAME))
+}
+
+const sanitizeMessage = (message, replacements) => replacements.reduce((text, [unsafeValue, safeValue]) => {
+  if (!unsafeValue || !safeValue) return text
+  return String(text || '').split(String(unsafeValue)).join(String(safeValue))
+}, String(message || ''))
+
 const usage = () => [
   'Usage: node scripts/create-windows-smoke-archive-manifest.js [--archive-dir <dir>] [--report <report.json>] [--evidence-dir <dir>] [--runbook <runbook.md>] [--collector <collector.ps1>] [--summary <summary.md|summary.json>] [--output <manifest.json>] [--require-signed] [--json]',
   '',
@@ -114,20 +153,20 @@ const resolveArchivePaths = ({
 
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
-const describeFile = ({ role, filePath, fsImpl = fs }) => {
+const describeFile = ({ role, filePath, displayPath = filePath, fsImpl = fs }) => {
   if (!fsImpl.existsSync(filePath)) {
-    return { role, path: filePath, exists: false, bytes: 0, sha256: '' }
+    return { role, path: displayPath, exists: false, bytes: 0, sha256: '' }
   }
 
   const stat = fsImpl.statSync(filePath)
   if (!stat.isFile()) {
-    return { role, path: filePath, exists: false, bytes: 0, sha256: '', error: 'path is not a file' }
+    return { role, path: displayPath, exists: false, bytes: 0, sha256: '', error: 'path is not a file' }
   }
 
   const content = fsImpl.readFileSync(filePath)
   return {
     role,
-    path: filePath,
+    path: displayPath,
     exists: true,
     bytes: content.length,
     sha256: sha256(content)
@@ -136,14 +175,14 @@ const describeFile = ({ role, filePath, fsImpl = fs }) => {
 
 const loadReport = (reportPath, fsImpl = fs) => JSON.parse(fsImpl.readFileSync(reportPath, 'utf-8'))
 
-const summarizeSummaryFile = ({ summaryPath, computedSummary, requireSigned, fsImpl = fs }) => {
-  const file = describeFile({ role: 'summary', filePath: summaryPath, fsImpl })
+const summarizeSummaryFile = ({ summaryPath, summaryDisplayPath, computedSummary, requireSigned, fsImpl = fs }) => {
+  const file = describeFile({ role: 'summary', filePath: summaryPath, displayPath: summaryDisplayPath, fsImpl })
   const errors = []
   const warnings = []
   let format = ''
 
   if (!file.exists) {
-    errors.push(`missing archive summary file: ${summaryPath}`)
+    errors.push(`missing archive summary file: ${summaryDisplayPath}`)
     return { file, format, matchesComputedSummary: false, errors, warnings }
   }
 
@@ -196,10 +235,50 @@ const createWindowsSmokeArchiveManifest = ({
   fsImpl = fs
 } = {}) => {
   const paths = resolveArchivePaths({ archiveDir, reportPath, evidenceDir, runbookPath, collectorPath, summaryPath, outputPath, fsImpl })
+  const safeArchiveDir = createSafeArchiveDirPath(paths.archiveDir)
+  const safeReportPath = createSafeArchiveFilePath({
+    filePath: paths.reportPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_REPORT_NAME
+  })
+  const safeEvidenceDir = createSafeArchiveFilePath({
+    filePath: paths.evidenceDir,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_EVIDENCE_DIR_NAME
+  })
+  const safeRunbookPath = createSafeArchiveFilePath({
+    filePath: paths.runbookPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_RUNBOOK_NAME
+  })
+  const safeCollectorPath = createSafeArchiveFilePath({
+    filePath: paths.collectorPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_COLLECTOR_NAME
+  })
+  const safeSummaryPath = createSafeArchiveFilePath({
+    filePath: paths.summaryPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_SUMMARY_MARKDOWN_NAME
+  })
+  const safeOutputPath = createSafeArchiveOutputPath({
+    outputPath: paths.outputPath,
+    archiveDir: paths.archiveDir,
+    safeArchiveDir
+  })
+  const messagePathReplacements = [
+    [paths.outputPath, safeOutputPath],
+    [paths.summaryPath, safeSummaryPath],
+    [paths.collectorPath, safeCollectorPath],
+    [paths.runbookPath, safeRunbookPath],
+    [paths.evidenceDir, safeEvidenceDir],
+    [paths.reportPath, safeReportPath],
+    [paths.archiveDir, safeArchiveDir]
+  ].sort((left, right) => String(right[0]).length - String(left[0]).length)
   const files = [
-    describeFile({ role: 'report', filePath: paths.reportPath, fsImpl }),
-    describeFile({ role: 'runbook', filePath: paths.runbookPath, fsImpl }),
-    describeFile({ role: 'collector', filePath: paths.collectorPath, fsImpl })
+    describeFile({ role: 'report', filePath: paths.reportPath, displayPath: safeReportPath, fsImpl }),
+    describeFile({ role: 'runbook', filePath: paths.runbookPath, displayPath: safeRunbookPath, fsImpl }),
+    describeFile({ role: 'collector', filePath: paths.collectorPath, displayPath: safeCollectorPath, fsImpl })
   ]
   const errors = []
   const warnings = []
@@ -224,8 +303,8 @@ const createWindowsSmokeArchiveManifest = ({
   }
 
   const evidenceValidation = validateEvidenceBundle({ evidenceDir: paths.evidenceDir, reportPath: paths.reportPath, requireSigned })
-  errors.push(...evidenceValidation.errors.map((error) => `evidence: ${error}`))
-  warnings.push(...evidenceValidation.warnings.map((warning) => `evidence: ${warning}`))
+  errors.push(...evidenceValidation.errors.map((error) => `evidence: ${sanitizeMessage(error, messagePathReplacements)}`))
+  warnings.push(...evidenceValidation.warnings.map((warning) => `evidence: ${sanitizeMessage(warning, messagePathReplacements)}`))
 
   const computedSummary = createWindowsSmokeEvidenceSummary({
     evidenceDir: paths.evidenceDir,
@@ -233,9 +312,15 @@ const createWindowsSmokeArchiveManifest = ({
     requireSigned,
     now
   })
-  const summary = summarizeSummaryFile({ summaryPath: paths.summaryPath, computedSummary, requireSigned, fsImpl })
-  errors.push(...summary.errors.map((error) => `summary: ${error}`))
-  warnings.push(...summary.warnings.map((warning) => `summary: ${warning}`))
+  const summary = summarizeSummaryFile({
+    summaryPath: paths.summaryPath,
+    summaryDisplayPath: safeSummaryPath,
+    computedSummary,
+    requireSigned,
+    fsImpl
+  })
+  errors.push(...summary.errors.map((error) => `summary: ${sanitizeMessage(error, messagePathReplacements)}`))
+  warnings.push(...summary.warnings.map((warning) => `summary: ${sanitizeMessage(warning, messagePathReplacements)}`))
 
   const manifest = {
     generatedAt: now().toISOString(),
@@ -243,23 +328,23 @@ const createWindowsSmokeArchiveManifest = ({
     ok: false,
     releaseReady: Boolean(evidenceValidation.ok && readinessValidation.ok),
     archive: {
-      archiveDir: paths.archiveDir,
-      outputPath: paths.outputPath
+      archiveDir: safeArchiveDir,
+      outputPath: safeOutputPath
     },
     files: [...files, summary.file],
     evidence: {
-      evidenceDir: paths.evidenceDir,
+      evidenceDir: safeEvidenceDir,
       ok: evidenceValidation.ok,
       files: evidenceValidation.summary.files,
       signed: evidenceValidation.summary.signed === true
     },
     summary: {
-      path: paths.summaryPath,
+      path: safeSummaryPath,
       format: summary.format,
       matchesComputedSummary: summary.matchesComputedSummary
     },
     report: {
-      path: paths.reportPath,
+      path: safeReportPath,
       platform: report?.platform || '',
       arch: report?.arch || '',
       generatedAt: report?.generatedAt || '',

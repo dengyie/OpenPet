@@ -146,6 +146,27 @@ test('createWindowsSmokeArchiveManifest records a complete pending archive witho
   assert.match(manifest.warnings.join('\n'), /cannot prove signed official readiness/)
 })
 
+test('createWindowsSmokeArchiveManifest stores archive-safe relative paths in its contract', () => {
+  const { archiveDir } = createArchive()
+
+  const manifest = createWindowsSmokeArchiveManifest({ archiveDir, now: fixedNow })
+
+  assert.equal(path.isAbsolute(manifest.archive.archiveDir), false)
+  assert.equal(path.isAbsolute(manifest.archive.outputPath), false)
+  assert.equal(path.isAbsolute(manifest.report.path), false)
+  assert.equal(path.isAbsolute(manifest.summary.path), false)
+  assert.equal(path.isAbsolute(manifest.evidence.evidenceDir), false)
+  assert.deepEqual(
+    manifest.files.map((file) => file.path),
+    [
+      'windows-smoke-report.json',
+      'windows-smoke-runbook.md',
+      'windows-smoke-collector.ps1',
+      'windows-smoke-evidence-summary.md'
+    ]
+  )
+})
+
 test('createWindowsSmokeArchiveManifest validates JSON summaries too', () => {
   const { archiveDir } = createArchive({ summaryFormat: 'json' })
 
@@ -213,5 +234,7 @@ test('writeManifest writes a pretty JSON archive manifest', () => {
   const manifest = createWindowsSmokeArchiveManifest({ archiveDir, outputPath, now: fixedNow })
 
   assert.equal(writeManifest({ manifest, outputPath }), outputPath)
-  assert.equal(JSON.parse(fs.readFileSync(outputPath, 'utf-8')).releaseReady, false)
+  const written = JSON.parse(fs.readFileSync(outputPath, 'utf-8'))
+  assert.equal(written.releaseReady, false)
+  assert.equal(written.archive.outputPath, 'windows-smoke-archive/manifest/archive-manifest.json')
 })

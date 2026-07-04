@@ -14,6 +14,7 @@ const ARTIFACT_KEYS = new Set([
   'authenticodeStatus',
   'authenticodeEvidence'
 ])
+const ARTIFACT_PATH_KEYS = new Set(['installer', 'zip', 'latestYml'])
 
 const usage = () => [
   'Usage: node scripts/update-windows-smoke-report.js <report.json> [options]',
@@ -53,9 +54,39 @@ const parseBoolean = (value, key) => {
   throw new Error(`${key} must be a boolean value`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const isWebUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())
+
+const sanitizePathLikeValue = (value, fallback = '') => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (isWebUrl(text)) return text
+  const normalized = toPosixPath(text)
+  if (isSafeRelativePath(normalized)) return normalized
+  const safeFallback = toPosixPath(String(fallback || '').trim())
+  return isSafeRelativePath(safeFallback) ? safeFallback : path.posix.basename(normalized) || ''
+}
+
 const normalizeArtifactValue = (key, value) => {
   if (key === 'signed') return parseBoolean(value, key)
+  if (ARTIFACT_PATH_KEYS.has(key)) return sanitizePathLikeValue(value, path.basename(String(value || '').trim()))
   return value
+}
+
+const sanitizeReportPaths = (report) => {
+  for (const key of ARTIFACT_PATH_KEYS) {
+    if (typeof report.artifact[key] === 'string') {
+      report.artifact[key] = sanitizePathLikeValue(report.artifact[key], path.basename(report.artifact[key]))
+    }
+  }
 }
 
 const parseArgs = (argv) => {
@@ -200,6 +231,7 @@ const updateReport = (report, options, fsImpl = fs) => {
     if (options.notes !== undefined) check.notes = options.notes
   }
 
+  sanitizeReportPaths(report)
   return report
 }
 
