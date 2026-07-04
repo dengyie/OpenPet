@@ -408,32 +408,15 @@ button {
   border-bottom: 0;
 }
 
-.provider-card-header {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #dde2e8;
-}
-
-.provider-card-header h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 17px;
-  line-height: 1.25;
-}
-
-.provider-card-header p {
-  margin: 5px 0 0;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 .provider-card-actions {
   display: grid;
   justify-items: end;
   gap: 10px;
+}
+
+.provider-card-actions-inline {
+  padding: 16px 0 12px;
+  border-bottom: 1px solid #dde2e8;
 }
 
 .provider-card-secondary-actions {
@@ -441,14 +424,6 @@ button {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
-}
-
-.provider-status-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 16px 0 14px;
-  border-bottom: 1px solid #dde2e8;
 }
 
 .provider-diagnostics {
