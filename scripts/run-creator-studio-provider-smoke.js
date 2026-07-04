@@ -19,6 +19,9 @@ const DEFAULT_ACTION_NAME = '开心挥手'
 const DEFAULT_FRAME_COUNT = 16
 const DEFAULT_IMAGE_WIDTH = 1024
 const DEFAULT_IMAGE_HEIGHT = 1024
+const DEFAULT_SESSION_DIR_LABEL = 'creator-studio-provider-smoke'
+const DEFAULT_RESULT_PATH_LABEL = 'creator-studio-provider-smoke-result.json'
+const DEFAULT_LOG_PATH_LABEL = 'openpet-app.jsonl'
 
 const usage = () => [
   'Usage: node scripts/run-creator-studio-provider-smoke.js [options]',
@@ -114,6 +117,31 @@ const toRelativeSessionPath = ({ sessionDir, targetPath }) => {
   const relative = path.relative(root, target)
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return ''
   return relative.split(path.sep).join('/')
+}
+
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  if (!targetPath) return fallback || ''
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeSessionPath = ({ sessionDir, targetPath, fallback }) => {
+  const normalizedTargetPath = String(targetPath || '').trim()
+  if (!normalizedTargetPath) return fallback || ''
+  if (isSafeRelativePath(normalizedTargetPath)) return toPosixPath(normalizedTargetPath)
+  const relative = toRelativeSessionPath({ sessionDir, targetPath })
+  if (relative) return relative
+  const absolutePath = path.resolve(normalizedTargetPath)
+  return createSafeProjectPath(absolutePath, path.basename(absolutePath) || fallback)
 }
 
 const parsePositiveInt = (value, flag) => {
@@ -334,8 +362,12 @@ const runCreatorStudioProviderSmoke = async ({
     claimBoundary: 'Creator Studio host-owned provider-path validation only; generated image and action-frame artifacts still require human review before any production asset-quality claim.',
     source: 'scripts/run-creator-studio-provider-smoke.js',
     sessionId: sessionPaths.sessionId,
-    sessionDir: sessionPaths.sessionDir,
-    logPath: appLogService.logPath,
+    sessionDir: createSafeProjectPath(sessionPaths.sessionDir, `${DEFAULT_SESSION_DIR_LABEL}/${sessionPaths.sessionId}`),
+    logPath: createSafeSessionPath({
+      sessionDir: sessionPaths.sessionDir,
+      targetPath: appLogService.logPath,
+      fallback: DEFAULT_LOG_PATH_LABEL
+    }),
     config: {
       provider: sanitizeText(config.provider || '', 80),
       baseUrl: sanitizeText(config.baseUrl || '', 200),
@@ -449,9 +481,21 @@ const runCreatorStudioProviderSmoke = async ({
       frameCount: Number(actionFrameResult.frameCount) || 0,
       frameWidth: Number(actionFrameResult.frameWidth) || 0,
       frameHeight: Number(actionFrameResult.frameHeight) || 0,
-      framesDir: toRelativeSessionPath({ sessionDir: sessionPaths.sessionDir, targetPath: actionFrameResult.framesDir }),
-      qaPath: toRelativeSessionPath({ sessionDir: sessionPaths.sessionDir, targetPath: actionFrameResult.qaPath }),
-      contactSheetPath: toRelativeSessionPath({ sessionDir: sessionPaths.sessionDir, targetPath: actionFrameResult.contactSheetPath }),
+      framesDir: createSafeSessionPath({
+        sessionDir: sessionPaths.sessionDir,
+        targetPath: actionFrameResult.framesDir,
+        fallback: action.actionId || 'frames'
+      }),
+      qaPath: createSafeSessionPath({
+        sessionDir: sessionPaths.sessionDir,
+        targetPath: actionFrameResult.qaPath,
+        fallback: 'action-frame-validation.json'
+      }),
+      contactSheetPath: createSafeSessionPath({
+        sessionDir: sessionPaths.sessionDir,
+        targetPath: actionFrameResult.contactSheetPath,
+        fallback: 'action-frame-contact-sheet.png'
+      }),
       visibleFrameCount: Array.isArray(qa.frames) ? qa.frames.filter((frame) => Number(frame?.visiblePixels) > 0).length : 0,
       warningCount: Array.isArray(qa.warnings) ? qa.warnings.length : 0,
       warnings: Array.isArray(qa.warnings) ? qa.warnings.map((warning) => sanitizeText(warning, 160)) : []
@@ -463,8 +507,12 @@ const runCreatorStudioProviderSmoke = async ({
     summary.ok = false
   } finally {
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
+    summary.resultPath = createSafeSessionPath({
+      sessionDir: sessionPaths.sessionDir,
+      targetPath: sessionPaths.resultPath,
+      fallback: DEFAULT_RESULT_PATH_LABEL
+    })
     fs.writeFileSync(sessionPaths.resultPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf-8')
-    summary.resultPath = sessionPaths.resultPath
   }
 
   return summary

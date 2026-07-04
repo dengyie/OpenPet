@@ -22,6 +22,9 @@ const {
 } = require('../../scripts/run-creator-workflow-host-smoke')
 
 const createTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 test('default user data path follows desktop conventions for creator workflow host smoke', () => {
   assert.equal(defaultUserDataDir({ appDataDir: '/Users/mango/Library/Application Support' }), '/Users/mango/Library/Application Support/ibot')
@@ -306,7 +309,7 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
         ok: true,
         state: 'completed',
         code: 'smoke_completed',
-        message: `completed ${scenario}`,
+        message: `completed ${scenario} with source ${referenceImagePath} and key sk-real-secret-value`,
         run: {
           state: 'completed',
           mode: scenario,
@@ -316,6 +319,25 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
           importedActionId: scenario === 'existing-action' ? 'smoke-wave' : '',
           importedPackId: scenario === 'new-character' ? 'smoke-mango-cat' : '',
           activatedPackId: scenario === 'new-character' ? 'smoke-mango-cat' : ''
+        },
+        reference: {
+          targetType: 'editable-action-host',
+          targetId: 'legacy-editable-host',
+          assetPath: path.join(scenarioDir, 'user-data', 'creator-references', 'reference.png'),
+          assetUrl: `file://${path.join(scenarioDir, 'user-data', 'creator-references', 'reference.png')}`,
+          fileName: 'reference.png',
+          width: 512,
+          height: 512
+        },
+        activePet: scenario === 'new-character'
+          ? {
+              id: 'smoke-mango-cat',
+              displayName: 'Smoke Mango Cat',
+              rootPath: path.join(scenarioDir, 'user-data', 'pet-packs', 'smoke-mango-cat')
+            }
+          : null,
+        diagnostics: {
+          failureReason: `local issue at ${path.join(scenarioDir, 'private.txt')}`
         }
       },
       verification: {
@@ -343,8 +365,8 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
         provider: 'openai-compatible',
         model: 'gpt-image-2'
       },
-      appLogs: [{ scope: 'creator-workflow', message: 'ok' }],
-      pluginLogs: [{ pluginId: 'openpet.creator-studio', message: 'ok' }]
+      appLogs: [{ scope: 'creator-workflow', message: `ok ${referenceImagePath}` }],
+      pluginLogs: [{ pluginId: 'openpet.creator-studio', message: `ok file://${path.join(scenarioDir, 'plugin-log.txt')}` }]
     })
   })
 
@@ -358,8 +380,20 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
   assert.equal(report.scenarios[0].conditioningVerification.ok, true)
   assert.match(report.scenarios[0].conditioningVerification.message, /conditioning verified/)
   assert.equal(report.scenarios[0].conditioningVerification.artifactPaths.referenceInput, path.join('scenarios', 'new-character', 'run-reference.png'))
-  assert.equal(fs.existsSync(report.reportPath), true)
-  const persisted = fs.readFileSync(report.reportPath, 'utf-8')
+  assert.equal(report.scenarios[0].result.reference.assetPath, 'scenarios/new-character/user-data/creator-references/reference.png')
+  assert.equal(report.scenarios[0].result.reference.assetUrl, undefined)
+  assert.equal(report.scenarios[0].result.activePet.rootPath, 'scenarios/new-character/user-data/pet-packs/smoke-mango-cat')
+  assert.equal(report.scenarios[0].result.message.includes('[redacted-path]'), true)
+  assert.equal(report.scenarios[0].result.message.includes('sk-real-secret-value'), false)
+  assert.equal(report.scenarios[0].result.diagnostics.failureReason.includes('[redacted-path]'), true)
+  assert.equal(report.scenarios[0].appLogs[0].message.includes('[redacted-path]'), true)
+  assert.equal(report.scenarios[0].pluginLogs[0].message.includes('[redacted-local-url]'), true)
+  assert.equal(report.sessionDir, 'creator-workflow-host-smoke/2026-07-02T12-34-56-789Z')
+  assert.equal(report.sourceUserDataDir, '[redacted-local-user-data]')
+  assert.equal(report.referenceImagePath, 'reference.png')
+  assert.equal(fs.existsSync(resolveOutputPath(path.join(outputDir, report.sessionId), report.reportPath)), true)
+  const persisted = fs.readFileSync(resolveOutputPath(path.join(outputDir, report.sessionId), report.reportPath), 'utf-8')
   assert.match(persisted, /creator-workflow-host-smoke/)
   assert.doesNotMatch(persisted, /sk-real-secret-value/)
+  assert.doesNotMatch(persisted, new RegExp(sourceUserDataDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
