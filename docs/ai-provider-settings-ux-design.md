@@ -9,6 +9,17 @@
 
 This document now also covers the next Provider UX redesign pass that was confirmed after the first unified Provider hub landed.
 
+It also records the confirmed direction for a future `vision / 多模态文本模型` capability:
+
+- default:
+  - `vision` follows the saved `聊天模型` configuration;
+- optional:
+  - operators may enable a host-owned `vision` override and save a separate endpoint/key/model tuple;
+- runtime rule:
+  - when the override is disabled, host-owned multimodal text tasks resolve to `聊天模型`;
+- boundary rule:
+  - `vision` must not become a separate side-channel settings surface outside the Provider hub.
+
 The current implemented baseline remains true:
 
 - one default-open `模型 Provider` section;
@@ -34,6 +45,7 @@ The newly confirmed next-phase goals are:
    - `手动输入`
 5. Persist discovered model lists locally with bounded cache rules instead of keeping them only in page memory.
 6. Preserve OpenAI-compatible flexibility: model selection must never depend on `/models` being available.
+7. Extend the Provider model so a future `vision` capability can inherit `聊天模型` by default while still supporting explicit override.
 
 This next phase is a product and interaction redesign on top of the already-landed host-owned security boundary. It is not a rollback to multiple provider pages, and it does not reintroduce `local` versus `cloud` form splits.
 
@@ -139,6 +151,22 @@ The Provider redesign is not only a UI consolidation. It is also a hard architec
 
 This means “one Provider page” is only considered complete when it is also “one persisted source of model truth”.
 
+### 0C.1 Vision inheritance rule
+
+`vision / 多模态文本模型` is the first confirmed extension that should not immediately become a third equal-weight top-level provider card.
+
+OpenPet should treat vision as:
+
+1. a text-side capability by default;
+2. a host-owned optional override only when the operator explicitly enables it;
+3. a runtime resolver, not a third unmanaged settings island.
+
+Required rule:
+
+- if `vision` override is disabled, all host-owned vision tasks resolve to the saved `聊天模型` provider;
+- if `vision` override is enabled, host-owned vision tasks resolve to the saved `vision` override config only;
+- no workflow, renderer pane, plugin, or task payload may persist a separate vision provider/model setting outside this provider ownership model.
+
 ## 0D. Model Consumer Ownership Matrix
 
 Every current and future model-consuming path must map back to one of the two Provider capability owners.
@@ -152,7 +180,21 @@ Every current and future model-consuming path must map back to one of the two Pr
 - pet-pack persona draft generation;
 - memory extraction and other text-side background AI tasks;
 - behavior or tool-orchestration text reasoning that depends on the host chat model;
+- host-owned vision tasks when `vision` override is disabled;
 - any future text, conversation, summarization, classification, drafting, or reasoning feature.
+
+### Optional `vision` override owns
+
+This is the confirmed future extension path.
+
+When enabled, it owns:
+
+- reference-image understanding for creator workflows;
+- prompt-from-image or image-to-text helper tasks;
+- asset review, image QA, or visual reasoning that should not consume the default chat model;
+- future host-owned multimodal text reasoning tasks.
+
+When disabled, all of the above fall back to `聊天模型`.
 
 ### `图片模型` Provider owns
 
@@ -168,6 +210,7 @@ Every current and future model-consuming path must map back to one of the two Pr
 - renderer-owned persisted provider or model settings;
 - plugin-owned persisted provider, API key, or model settings for host-managed chat or image capabilities;
 - workflow or task payloads becoming the next-run persisted model override;
+- workflow or task payloads becoming the next-run persisted vision override;
 - separate “Creator model setting”, “memory model setting”, or “chat window model setting” storage paths that bypass Provider management.
 
 ## 0A. Current Code Boundaries
@@ -212,6 +255,9 @@ Every current and future model-consuming path must map back to one of the two Pr
 - `AiService` is the persisted owner for chat-model configuration and chat-model discovery cache.
 - `ImageGenerationModelService` is the persisted owner for image-model configuration and image-model discovery cache.
 - `AiTalkService`, creator workflows, plugin bridges, and renderer hooks are consumers of those saved views, not owners of parallel model settings.
+- future `vision` resolution must stay host-owned and either:
+  - resolve to `AiService` chat config by default; or
+  - resolve to a host-owned vision override stored under the same Provider hub boundary.
 
 ### Regression boundaries
 
@@ -271,6 +317,7 @@ For the next phase specifically:
 10. Let users choose models from cached/provider-discovered lists instead of always typing exact model ids manually.
 11. Preserve compatibility with providers that do not expose `/models`.
 12. Guarantee that all host-managed model configuration and model discovery flows converge on the current Provider management boundary.
+13. Allow a future vision capability to inherit `聊天模型` by default without cloning or duplicating runtime truth.
 
 ## 3. Non-Goals
 
@@ -285,6 +332,8 @@ For the next phase specifically:
 - Do not create separate AI settings pages for chat and image generation.
 - Do not let non-Provider features persist their own model config for host-managed chat or image capabilities.
 - Do not introduce generic cache-write IPC that allows renderer or plugins to mutate provider discovery cache directly.
+- Do not implement `vision` by copying the current chat config once and then letting the two drift silently.
+- Do not let `vision` introduce a third unmanaged Provider page before there is a real operator need for separate endpoint/key/model routing.
 
 ## 4. Current Implementation Snapshot
 
@@ -397,6 +446,26 @@ That is sufficient for diagnostics, but not sufficient for a selection-first Pro
 ### 5.9 Cache ownership is too implicit
 
 The redesign already assumes persisted model discovery cache, but without a hard ownership rule it is too easy for renderer code, Creator workflows, or plugin-facing adapters to grow their own cache-write paths. That would recreate the same configuration drift this Provider unification is trying to remove.
+
+### 5.10 Vision needs inheritance, not duplication
+
+If vision is added naively, the easiest implementation mistake is:
+
+- copy `聊天模型` values into a new `vision` config once;
+- let users optionally edit that copy later;
+- accidentally create two independent text-side provider truths.
+
+That would make debugging extremely difficult:
+
+- operators would not know whether a visual reasoning task used the current chat model or a stale copied model;
+- future UI edits to chat would not consistently affect vision;
+- workflow runs could appear non-deterministic when they silently depend on old copied values.
+
+The design must therefore model vision as:
+
+- inherited from chat by default;
+- explicitly overridden only when enabled;
+- resolved at runtime by host logic, not by renderer guesswork.
 
 ## 6. Current User Flow
 
@@ -593,6 +662,41 @@ type AiPaneStatusState = {
 ```
 
 This prevents a chat send error from overwriting provider test feedback.
+
+### 7.6 Vision UI strategy
+
+Do not introduce a third top-level provider card in the first vision phase.
+
+Recommended UX:
+
+1. Keep one `聊天模型` card.
+2. Inside that card, add a collapsed subsection:
+   - `多模态 / Vision`
+3. The subsection exposes a mode selector:
+   - `跟随聊天模型`
+   - `单独配置`
+4. Only when `单独配置` is selected should the extra Base URL / API Key / Model fields appear.
+
+Why this is preferred:
+
+- most operators do not need a separate vision model;
+- the page stays short;
+- the ownership model stays visually tied to the text-side provider family;
+- future expansion remains possible if vision later becomes operationally distinct enough to deserve its own card.
+
+Required copy:
+
+- in `跟随聊天模型` mode:
+
+```text
+当前多模态任务将直接使用已保存的聊天模型配置。
+```
+
+- in `单独配置` mode:
+
+```text
+当前多模态任务将使用单独保存的 Vision 配置，不再继承聊天模型。
+```
 
 ## 7B. Next-Phase UI Layout
 
@@ -835,7 +939,13 @@ For example:
 This key should be separated by capability:
 
 - `chat` cache is distinct from `image` cache;
+- `vision` cache, if introduced, is distinct from `chat` and `image`;
 - even when host and provider are the same, the two capability caches may differ.
+
+Important nuance for future vision support:
+
+- when `vision` is in `跟随聊天模型` mode, it should not create a redundant second cache entry if the runtime owner is exactly the chat config;
+- when `vision` is in `单独配置` mode, it may own a distinct `vision` cache namespace because the effective endpoint/model may differ from chat.
 
 ### 8.5 Persistence boundary
 
@@ -874,6 +984,11 @@ Write ownership rules:
 3. Renderer code, `useAiPane`, `AiPane`, `AiTalkService`, Creator workflows, preload adapters, and plugin bridges are read-only consumers of persisted discovery cache.
 4. There must be no generic “save provider cache” IPC exposed to renderer or plugins.
 5. If a future shared cache utility is introduced, it must remain host-internal and preserve the same single-writer ownership by capability.
+
+Future vision rule:
+
+6. If vision override is disabled, vision model discovery should reuse chat ownership semantics and must not create a second independent write path.
+7. If vision override is enabled, the future host-owned vision resolver may write a `vision` discovery cache entry, but only through a dedicated host owner.
 
 Operationally, this means:
 
@@ -948,6 +1063,225 @@ Cached discovery data is allowed to persist because it is not a secret by itself
 - cache should be easy to clear automatically by replacement or expiry.
 
 ## 10. Next-Phase Implementation Plan
+
+## 10A. Vision Extension Plan
+
+This section defines the confirmed design for the future `vision / 多模态文本模型` extension.
+
+It is intentionally written before implementation so later work does not accidentally break the Provider ownership model.
+
+### 10A.1 Product goal
+
+Support host-owned multimodal text tasks without forcing every operator to manage a third provider config.
+
+The product goal is:
+
+1. make vision work out of the box by inheriting `聊天模型`;
+2. allow advanced operators to switch vision to a different endpoint/model when needed;
+3. keep one Provider hub and one host-owned source of truth model.
+
+### 10A.2 When OpenPet should use vision
+
+Likely host-owned vision tasks include:
+
+- reference image description for Creator Studio;
+- prompt improvement from image context;
+- image asset inspection or QA summaries;
+- future “look at this image and tell me what is wrong” workflows;
+- future image-conditioned reasoning that returns text rather than generated pixels.
+
+These are not image-generation tasks. They are multimodal text tasks.
+
+### 10A.3 Data model
+
+Recommended persisted view shape:
+
+```ts
+type VisionProviderConfigViewState = {
+  enabledOverride: boolean
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  hasApiKey: boolean
+  modelCatalog: ProviderModelCatalogViewState
+}
+```
+
+Recommended persisted host shape:
+
+```ts
+type VisionProviderStoredConfig = {
+  enabledOverride: boolean
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  modelCatalog?: ProviderModelCatalogStoredState
+}
+```
+
+Notes:
+
+- `enabledOverride` is the key control flag.
+- When `enabledOverride = false`, the stored `provider/baseUrl/model/apiKeyRef` values are inert drafts, not runtime truth.
+- Runtime truth must be resolved by host code from:
+  - chat config, or
+  - enabled vision override.
+
+### 10A.4 Runtime resolution contract
+
+Host code should not ask “what is the raw saved vision config?” when it needs to run a task.
+
+It should ask for:
+
+```ts
+type EffectiveVisionProviderConfig = {
+  source: 'chat' | 'vision-override'
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+}
+```
+
+Runtime rules:
+
+1. If `enabledOverride = false`:
+   - return the current saved `聊天模型` provider config;
+   - mark `source = 'chat'`.
+2. If `enabledOverride = true`:
+   - validate the saved vision override;
+   - return the vision override config;
+   - mark `source = 'vision-override'`.
+3. If `enabledOverride = true` but required fields are incomplete:
+   - fail validation and block save or execution;
+   - do not silently half-fallback to chat.
+
+### 10A.5 Save rules
+
+Save rules must preserve inheritance semantics.
+
+1. Saving the `聊天模型` card must not copy values into the saved vision override.
+2. Saving the vision subsection in `跟随聊天模型` mode should only persist:
+   - `enabledOverride = false`
+   - and any safe retained draft fields only if product intentionally wants to keep them.
+3. Saving the vision subsection in `单独配置` mode should persist only owner-managed fields.
+4. Renderer-only fields such as:
+   - `hasApiKey`
+   - `apiKeyPreview`
+   - transient discovery diagnostics
+   - source badges
+   must never be persisted.
+
+### 10A.6 API key behavior
+
+Recommended operator behavior:
+
+- if `vision` follows chat:
+  - no separate vision key is required;
+  - runtime uses the chat key ref.
+- if `vision` override is enabled:
+  - vision may save its own API key;
+  - that key must remain host-owned and secret-stored exactly like chat/image keys.
+
+Important:
+
+- do not auto-copy the chat key into a separate vision secret ref;
+- do not expose any secret material to renderer;
+- do not let plugins read or set the vision key directly.
+
+### 10A.7 Model discovery behavior
+
+Recommended discovery rules:
+
+1. In `跟随聊天模型` mode:
+   - vision selector may reuse chat recommended models and chat cached models;
+   - do not create a redundant second discover button unless product needs it.
+2. In `单独配置` mode:
+   - vision may expose its own `刷新 Vision 模型`;
+   - discovery cache should be scoped to `vision`.
+3. Manual model entry must remain allowed in both modes.
+
+### 10A.8 Validation rules
+
+Validation should be simple and explicit.
+
+When `enabledOverride = false`:
+
+- vision subsection is valid without additional required fields because runtime inherits chat.
+
+When `enabledOverride = true`:
+
+- `provider` must be supported;
+- `baseUrl` must be a valid normalized `http` or `https` URL;
+- `model` must be non-empty;
+- health/test actions should require a saved key when the provider needs one.
+
+### 10A.9 UI flow
+
+Recommended interaction:
+
+1. User opens `聊天模型` card.
+2. User opens `多模态 / Vision` disclosure.
+3. User chooses:
+   - `跟随聊天模型`
+   - or `单独配置`
+4. If `跟随聊天模型`:
+   - show effective host/model summary from chat;
+   - no extra config fields are required.
+5. If `单独配置`:
+   - show separate editable Base URL / Model / API Key controls;
+   - show source label:
+     - `当前来源：Vision override`
+6. Diagnostics should always state the effective source:
+   - `当前 Vision 来源：聊天模型`
+   - or `当前 Vision 来源：独立 Vision 配置`
+
+### 10A.10 Why not make vision a third primary card yet
+
+At this stage, a third top-level card is probably too much UI weight.
+
+Reasons:
+
+- most users will not need a different multimodal model;
+- vision is conceptually closer to chat than to image generation;
+- inheritance is the important operator concept, not equal visual status;
+- a third card would likely make the Provider page longer before there is enough real usage to justify it.
+
+### 10A.11 Testing requirements
+
+Required test coverage when implemented:
+
+1. renderer state:
+   - `vision` follows chat by default;
+   - switching chat config changes the effective resolved vision config when override is off.
+2. save boundary:
+   - vision save payload persists only owner-managed fields.
+3. fallback correctness:
+   - effective vision source resolves to `chat` when override is disabled.
+4. override correctness:
+   - effective vision source resolves to `vision-override` when enabled and valid.
+5. validation:
+   - invalid override cannot be saved silently.
+6. API key security:
+   - no vision key leaks to renderer or logs.
+7. discovery:
+   - follow-chat mode reuses chat discovery behavior;
+   - override mode isolates its own discovery cache if that path exists.
+
+### 10A.12 Migration strategy
+
+If vision is added after the current chat/image provider baseline:
+
+1. existing installs should default to:
+   - `enabledOverride = false`
+2. no migration should duplicate current chat provider values into vision storage.
+3. UI should therefore show:
+   - `跟随聊天模型`
+   as the default mode immediately after upgrade.
+
+This keeps rollout safe and avoids creating stale copied config on day one.
 
 ### 10.1 Scope
 
