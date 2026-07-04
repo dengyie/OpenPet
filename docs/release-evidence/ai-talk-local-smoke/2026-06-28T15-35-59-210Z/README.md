@@ -20,7 +20,7 @@ This evidence records a sanitized real-provider AI Talk smoke run against the sa
 | --- | --- | --- |
 | Connection test | pass | Saved chat Provider configuration completed a connection test in `2656ms`. |
 | AI Talk chat | pass | `gpt-5.5` returned `你好呀，我在这儿陪你～🐾` with `providerLatencyMs = 2141`. |
-| Bubble dispatch | pass | `bubbleAcceptance.requestId = chat-mqxyb5gj-6tvex3h5`, `bubbleDispatch.petSayReceived = true`, and `bubbleDispatch.bubbleStateVisible = true`. |
+| Bubble dispatch | pass | `bubbleAcceptance.requestId = chat-mqxyb5gj-6tvex3h5`, `bubbleDispatch.petSayReceived = true`, `bubbleDispatch.bubbleStateVisible = true`, and `ttlMs = 9835`. |
 | Bubble telemetry | pass | Correlated logs include `ai-talk.chat.started`, `ai-talk.chat.completed`, `pet-bubble-chat.message.displayed`, `pet-bubble-chat.items.updated`; the displayed bubble recorded popup telemetry in `logs/openpet-app.jsonl`. |
 
 ## Artifacts
