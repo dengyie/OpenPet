@@ -1921,7 +1921,7 @@ test('plugin service lifecycle handlers delegate to plugin service', async () =>
       },
       pluginService: {
         listPlugins: () => [],
-        startService: (pluginId, serviceId) => {
+        startService: async (pluginId, serviceId) => {
           calls.push(['start', pluginId, serviceId])
           return { ok: true, pluginId, serviceId, runtime: { status: 'running', pid: 4321 } }
         },

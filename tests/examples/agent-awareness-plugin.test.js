@@ -130,6 +130,36 @@ test('codex rollout poller maps safe tool-end lifecycle records without exposing
   assert.equal(JSON.stringify(events).includes('secret result'), false)
 })
 
+test('codex rollout poller does not collapse distinct tool calls that share the same timestamp', async () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-duplicate-tools-'))
+  const sessionsDir = path.join(codexHome, 'sessions')
+  fs.mkdirSync(sessionsDir, { recursive: true })
+  const filePath = path.join(sessionsDir, 'rollout-2026-07-03T00-00-00-duplicate-tools.jsonl')
+  fs.writeFileSync(filePath, [
+    JSON.stringify({ type: 'session_meta', timestamp: '2026-07-03T00:00:00.000Z', payload: { id: 'raw-session-dup', cwd: '/Users/mango/private/project/OpenPet' } }),
+    JSON.stringify({ type: 'response_item', timestamp: '2026-07-03T00:00:01.000Z', payload: { type: 'function_call', name: 'exec_command', arguments: '{"cmd":"pwd"}' } }),
+    JSON.stringify({ type: 'response_item', timestamp: '2026-07-03T00:00:01.000Z', payload: { type: 'function_call', name: 'exec_command', arguments: '{"cmd":"ls"}' } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-07-03T00:00:02.000Z', payload: { type: 'task_complete' } })
+  ].join('\n'))
+
+  const emitted = []
+  const poller = createCodexRolloutPoller({
+    codexHome,
+    onEvent: async (event) => emitted.push(event),
+    now: () => new Date('2026-07-03T00:00:05.000Z').getTime()
+  })
+
+  await poller.scanOnce()
+
+  assert.deepEqual(emitted.map((event) => event.type), [
+    'session.discovered',
+    'tool.started',
+    'tool.started',
+    'turn.completed'
+  ])
+  assert.equal(poller.getStatus().seenCount, 4)
+})
+
 test('codex rollout poller maps safe thread lifecycle records and ignores content-bearing goal/tool-search records', async () => {
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-thread-lifecycle-'))
   const sessionsDir = path.join(codexHome, 'sessions')
