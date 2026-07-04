@@ -14,6 +14,7 @@ const createStore = () => createAiTalkStore({
 
 const createPetPackService = (pack) => ({
   getActivePetPack: () => ({
+    rootPath: pack?.rootPath,
     manifest: {
       id: 'legacy-cat',
       displayName: 'Legacy Cat',
@@ -23,6 +24,13 @@ const createPetPackService = (pack) => ({
     }
   })
 })
+
+const createTempPackAsset = ({ fileName = 'spritesheet.png', content = 'fake-image-binary' } = {}) => {
+  const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-ai-talk-pack-'))
+  const assetPath = path.join(rootPath, fileName)
+  fs.writeFileSync(assetPath, content)
+  return { rootPath, assetPath, relativePath: fileName }
+}
 
 const waitForRequestCount = async (requests, count) => {
   for (let index = 0; index < 20; index += 1) {
@@ -854,6 +862,84 @@ test('ai talk service generates persona draft without persisting override', asyn
   assert.equal(completedLog.details.petPackId, 'mochi-cat')
   assert.equal(completedLog.details.overrideFieldCount, 3)
   assert.equal(JSON.stringify(completedLog).includes('strict JSON'), false)
+})
+
+test('ai talk service routes persona draft through vision config when an active pack reference image exists', async () => {
+  const requests = []
+  const logs = []
+  const packAsset = createTempPackAsset()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      getEffectiveVisionConfig: () => ({
+        provider: 'openai-compatible',
+        baseUrl: 'https://vision.example.test/v1',
+        model: 'vision-model',
+        apiKeyRef: 'ai.vision'
+      }),
+      complete: async (request) => {
+        requests.push(request)
+        return {
+          reply: '{"persona":{"identity":"A visually grounded desk companion.","tone":"focused"}}'
+        }
+      }
+    },
+    aiTalkStore: createStore(),
+    appLogService: { record: (entry) => logs.push(entry) },
+    petPackService: createPetPackService({
+      id: 'mochi-cat',
+      displayName: 'Mochi Cat',
+      rootPath: packAsset.rootPath,
+      spritesheetPath: packAsset.relativePath,
+      persona: {
+        name: 'Mochi',
+        identity: 'A tiny desktop cat.'
+      }
+    })
+  })
+
+  const draft = await service.generatePersonaDraft({ instruction: '根据形象增强角色设定' })
+
+  assert.equal(draft.draftPersona.tone, 'focused')
+  assert.equal(requests[0].configOverride.model, 'vision-model')
+  assert.equal(requests[0].messages[1].role, 'user')
+  assert.equal(requests[0].messages[1].content[0].type, 'text')
+  assert.equal(requests[0].messages[1].content[1].type, 'image_url')
+  assert.match(requests[0].messages[1].content[1].image_url.url, /^data:image\/png;base64,/)
+  const completedLog = logs.find((entry) => entry.event === 'ai-talk.persona.draft.completed')
+  assert.equal(completedLog.details.usesVisionConfig, true)
+  assert.equal(completedLog.details.referenceImageSource, 'spritesheet')
+  assert.equal(JSON.stringify(completedLog).includes('data:image/'), false)
+})
+
+test('ai talk service falls back to chat config for persona draft when no usable reference image exists', async () => {
+  const requests = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      getEffectiveVisionConfig: () => {
+        throw new Error('should not resolve vision config without image')
+      },
+      complete: async (request) => {
+        requests.push(request)
+        return {
+          reply: '{"persona":{"tone":"gentle"}}'
+        }
+      }
+    },
+    aiTalkStore: createStore(),
+    petPackService: createPetPackService({
+      id: 'mochi-cat',
+      displayName: 'Mochi Cat',
+      spritesheetPath: 'missing.png'
+    })
+  })
+
+  const draft = await service.generatePersonaDraft({ instruction: '保持温柔' })
+
+  assert.equal(draft.draftPersona.tone, 'gentle')
+  assert.equal(Object.hasOwn(requests[0], 'configOverride'), false)
+  assert.equal(typeof requests[0].messages[1].content, 'string')
 })
 
 test('ai talk service logs persona draft failure without leaking provider reply', async () => {
