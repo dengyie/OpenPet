@@ -198,7 +198,11 @@ test('menu blur leaves the current action viewport intact', async () => {
 test('double-click opens the lightweight bubble chat window', async () => {
   const { elements, openBubbleChatRequests } = await createRendererHarness()
 
-  await dispatch(elements.pet, 'dblclick')
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'dblclick', { clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
 
   assert.equal(openBubbleChatRequests.length, 1)
 })
@@ -232,7 +236,11 @@ test('walking keeps mouse handling enabled so the context menu remains reachable
 test('double-click opens the floating bubble chat instead of toggling walk', async () => {
   const { elements, logs, openBubbleChatRequests } = await createRendererHarness()
 
-  await dispatch(elements.pet, 'dblclick')
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'dblclick', { clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
 
   assert.equal(openBubbleChatRequests.length, 1)
   assert.equal(logs.some((entry) => entry.event === 'pet.walk.toggled'), false)
@@ -245,11 +253,33 @@ test('real double-click sequence opens bubble chat without running the single-cl
   await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
   await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
   await dispatch(elements.pet, 'pointerup', { pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
-  await dispatch(elements.pet, 'dblclick')
+  await dispatch(elements.pet, 'dblclick', { clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
   await new Promise((resolve) => setImmediate(resolve))
 
   assert.equal(openBubbleChatRequests.length, 1)
   assert.equal(bubbleChatMessages.some((payload) => payload.text === 'Feed'), false)
+})
+
+test('two quick pointer clicks alone do not open bubble chat before a dblclick event arrives', async () => {
+  const { elements, openBubbleChatRequests, timers } = await createRendererHarness()
+
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 2, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+
+  assert.equal(openBubbleChatRequests.length, 0)
+  assert.equal(timers.some((timer) => timer.delay === 220 && !timer.cleared), true)
+})
+
+test('single-click does not open bubble chat before the click-action timer fires', async () => {
+  const { elements, openBubbleChatRequests, timers } = await createRendererHarness()
+
+  await dispatch(elements.pet, 'pointerdown', { button: 0, pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+  await dispatch(elements.pet, 'pointerup', { pointerId: 1, clientX: 24, clientY: 30, screenX: 1024, screenY: 768 })
+
+  assert.equal(openBubbleChatRequests.length, 0)
+  assert.equal(timers.some((timer) => timer.delay === 220 && !timer.cleared), true)
 })
 
 test('single-click still runs the click action after the double-click window expires', async () => {
