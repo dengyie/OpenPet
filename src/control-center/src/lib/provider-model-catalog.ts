@@ -10,6 +10,13 @@ const uniqueModelOptions = (items: string[]) => {
   return models
 }
 
+export type ProviderModelOptionSource = 'recommended' | 'cached' | 'manual'
+
+export type ProviderModelOption = {
+  id: string
+  source: ProviderModelOptionSource
+}
+
 export const mergeRecommendedAndCachedModels = ({
   currentModel,
   recommendedModels = [],
@@ -23,6 +30,65 @@ export const mergeRecommendedAndCachedModels = ({
   ...recommendedModels,
   String(currentModel || '').trim()
 ])
+
+export const buildProviderModelOptions = ({
+  currentModel,
+  recommendedModels = [],
+  cachedModels = []
+}: {
+  currentModel: string
+  recommendedModels?: string[]
+  cachedModels?: string[]
+}): ProviderModelOption[] => {
+  const normalizedCurrentModel = String(currentModel || '').trim()
+  const recommended = uniqueModelOptions(recommendedModels)
+  const cached = uniqueModelOptions(cachedModels)
+  const all = mergeRecommendedAndCachedModels({
+    currentModel: normalizedCurrentModel,
+    recommendedModels: recommended,
+    cachedModels: cached
+  })
+
+  return all.map((id) => {
+    if (recommended.includes(id)) return { id, source: 'recommended' }
+    if (cached.includes(id)) return { id, source: 'cached' }
+    return { id, source: 'manual' }
+  })
+}
+
+export const describeCurrentModelSource = ({
+  currentModel,
+  recommendedModels = [],
+  cachedModels = []
+}: {
+  currentModel: string
+  recommendedModels?: string[]
+  cachedModels?: string[]
+}) => {
+  const normalizedCurrentModel = String(currentModel || '').trim()
+  if (!normalizedCurrentModel) {
+    return {
+      source: 'manual' as const,
+      label: '当前来源：未设置'
+    }
+  }
+  if (uniqueModelOptions(recommendedModels).includes(normalizedCurrentModel)) {
+    return {
+      source: 'recommended' as const,
+      label: '当前来源：推荐模型'
+    }
+  }
+  if (uniqueModelOptions(cachedModels).includes(normalizedCurrentModel)) {
+    return {
+      source: 'cached' as const,
+      label: '当前来源：缓存模型'
+    }
+  }
+  return {
+    source: 'manual' as const,
+    label: '当前来源：手动输入'
+  }
+}
 
 export const formatProviderModelCatalogMeta = (catalog: ProviderModelCatalogViewState) => {
   if (!Array.isArray(catalog.models) || !catalog.models.length) {

@@ -19,7 +19,11 @@ import type {
 } from '../../../shared/openpet-contracts'
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
-import { formatProviderModelCatalogMeta, mergeRecommendedAndCachedModels } from '../lib/provider-model-catalog'
+import {
+  buildProviderModelOptions,
+  describeCurrentModelSource,
+  formatProviderModelCatalogMeta
+} from '../lib/provider-model-catalog'
 
 type ImageProviderPreset = {
   id: string
@@ -71,37 +75,83 @@ function ProviderModelPicker({
   recommendedModels = [],
   onSelectModel
 }: ProviderModelPickerProps) {
-  const options = mergeRecommendedAndCachedModels({
+  const options = buildProviderModelOptions({
     currentModel,
     recommendedModels,
     cachedModels: cachedCatalog.models
   })
-  if (!options.length) {
-    return (
-      <div className="provider-model-picker">
-        <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
-      </div>
-    )
-  }
-
+  const recommendedOptions = options.filter((option) => option.source === 'recommended')
+  const cachedOptions = options.filter((option) => option.source === 'cached')
   const normalizedCurrentModel = String(currentModel || '').trim()
-  const selectValue = options.includes(normalizedCurrentModel) ? normalizedCurrentModel : ''
+  const currentSource = describeCurrentModelSource({
+    currentModel,
+    recommendedModels,
+    cachedModels: cachedCatalog.models
+  })
+  const datalistId = `${ariaLabel.replace(/\s+/g, '-')}-options`
+  const getSourceLabel = (source: 'recommended' | 'cached' | 'manual') => {
+    if (source === 'recommended') return '推荐模型'
+    if (source === 'cached') return '缓存模型'
+    return '手动输入'
+  }
 
   return (
     <div className="provider-model-picker">
-      <select
+      <input
         aria-label={ariaLabel}
         className="text-input"
-        value={selectValue}
-        onChange={(event) => {
-          if (event.target.value) onSelectModel(event.target.value)
-        }}
-      >
-        <option value="">从缓存模型中选择</option>
-        {options.map((modelName) => (
-          <option key={modelName} value={modelName}>{modelName}</option>
+        list={datalistId}
+        value={normalizedCurrentModel}
+        placeholder="输入以搜索模型，也可直接手填"
+        onChange={(event) => onSelectModel(event.target.value)}
+      />
+      <datalist id={datalistId}>
+        {options.map((option) => (
+          <option key={`${option.source}:${option.id}`} value={option.id} label={getSourceLabel(option.source)} />
         ))}
-      </select>
+      </datalist>
+      {options.length ? (
+        <div className="provider-model-option-groups" data-testid={`${ariaLabel}-sources`}>
+          <div className="provider-model-option-group">
+            <strong>推荐模型</strong>
+            <div className="provider-model-pill-row">
+              {recommendedOptions.length
+                ? recommendedOptions.map((option) => (
+                  <button
+                    key={`recommended:${option.id}`}
+                    type="button"
+                    className={`provider-model-pill${normalizedCurrentModel === option.id ? ' active' : ''}`}
+                    onClick={() => onSelectModel(option.id)}
+                  >
+                    {option.id}
+                  </button>
+                ))
+                : <span className="field-note">暂无推荐模型</span>}
+            </div>
+          </div>
+          <div className="provider-model-option-group">
+            <strong>缓存模型</strong>
+            <div className="provider-model-pill-row">
+              {cachedOptions.length
+                ? cachedOptions.map((option) => (
+                  <button
+                    key={`cached:${option.id}`}
+                    type="button"
+                    className={`provider-model-pill provider-model-pill-muted${normalizedCurrentModel === option.id ? ' active' : ''}`}
+                    onClick={() => onSelectModel(option.id)}
+                  >
+                    {option.id}
+                  </button>
+                ))
+                : <span className="field-note">暂无缓存模型</span>}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <div className="provider-model-picker-meta">
+        <span className={`provider-model-source-badge provider-model-source-${currentSource.source}`}>{currentSource.label}</span>
+        {normalizedCurrentModel && currentSource.source === 'manual' ? <span className="field-note">当前值不依赖 /models，可直接保存使用。</span> : null}
+      </div>
       <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
     </div>
   )
@@ -909,26 +959,15 @@ export function AiPane({
                 </label>
 
                 <div className="field-row">
-                  <span className="field-label">缓存模型</span>
+                  <span className="field-label">Model</span>
                   <ProviderModelPicker
-                    ariaLabel="聊天缓存模型选择"
+                    ariaLabel="聊天 Model"
                     currentModel={config.model}
                     cachedCatalog={activeConfig.modelCatalog}
                     recommendedModels={chatRecommendedModels}
                     onSelectModel={(model) => onChange({ model })}
                   />
                 </div>
-
-                <label className="field-row">
-                  <span className="field-label">Model</span>
-                  <input
-                    aria-label="聊天 Model"
-                    className="text-input"
-                    value={config.model}
-                    placeholder="可从上方缓存列表选择，也可直接手填"
-                    onChange={(event) => onChange({ model: event.target.value })}
-                  />
-                </label>
 
                 <div className="field-row">
                   <div>
@@ -1138,26 +1177,15 @@ export function AiPane({
                 </label>
 
                 <div className="field-row">
-                  <span className="field-label">缓存模型</span>
+                  <span className="field-label">图片 Model</span>
                   <ProviderModelPicker
-                    ariaLabel="图片缓存模型选择"
+                    ariaLabel="图片 Model"
                     currentModel={imageGenerationConfig.model}
                     cachedCatalog={activeImageGenerationConfig.modelCatalog}
                     recommendedModels={imageRecommendedModels}
                     onSelectModel={(model) => onChangeImageGeneration({ model })}
                   />
                 </div>
-
-                <label className="field-row">
-                  <span className="field-label">图片 Model</span>
-                  <input
-                    aria-label="图片 Model"
-                    className="text-input"
-                    value={imageGenerationConfig.model}
-                    placeholder="可从上方缓存列表选择，也可直接手填"
-                    onChange={(event) => onChangeImageGeneration({ model: event.target.value })}
-                  />
-                </label>
 
                 <div className="field-row">
                   <div>
