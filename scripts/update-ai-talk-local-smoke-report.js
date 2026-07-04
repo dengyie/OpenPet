@@ -207,11 +207,18 @@ const writeJson = ({ filePath, value, fsImpl = fs }) => {
 
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
-const createFileSummary = ({ filePath, role, fsImpl = fs }) => {
+const createSafeArchiveFilePath = ({ filePath, archiveDir, fallback }) => {
+  const relative = path.relative(archiveDir, filePath)
+  const normalized = String(relative || '').split(path.sep).join('/')
+  if (normalized && !normalized.startsWith('..') && !path.isAbsolute(normalized)) return normalized
+  return fallback
+}
+
+const createFileSummary = ({ filePath, archiveDir, role, fallbackPath, fsImpl = fs }) => {
   const content = fsImpl.readFileSync(filePath)
   return {
     role,
-    path: filePath,
+    path: createSafeArchiveFilePath({ filePath, archiveDir, fallback: fallbackPath }),
     bytes: content.length,
     sha256: sha256(content)
   }
@@ -236,22 +243,33 @@ const maybeWriteArchiveResult = ({
   const existing = fsImpl.existsSync(archiveResultPath)
     ? JSON.parse(fsImpl.readFileSync(archiveResultPath, 'utf-8'))
     : null
-  const sourceSessionDir = existing?.source?.sessionDir || path.resolve(String(report?.sessionDir || archiveDir))
-  const sourceResultPath = existing?.source?.resultPath || path.resolve(String(report?.resultPath || reportOutputPath))
-  const sourceLogPath = existing?.source?.logPath || path.resolve(String(report?.logPath || path.join(archiveDir, DEFAULT_LOG_NAME)))
 
   const archiveResult = createArchiveResultValue({
     report,
-    absoluteSessionDir: sourceSessionDir,
-    sourceResultPath,
-    sourceLogPath,
-    absoluteArchiveDir: existing?.archive?.archiveDir || archiveDir,
-    absoluteOutputPath: existing?.archive?.outputPath || archiveResultPath,
+    absoluteArchiveDir: archiveDir,
     sessionId: existing?.archive?.sessionId || path.basename(archiveDir),
     files: [
-      createFileSummary({ filePath: reportOutputPath, role: 'aiTalkLocalSmokeResult', fsImpl }),
-      createFileSummary({ filePath: path.join(archiveDir, DEFAULT_LOG_NAME), role: 'aiTalkLocalSmokeLog', fsImpl }),
-      createFileSummary({ filePath: readmeOutputPath, role: 'archiveReadme', fsImpl })
+      createFileSummary({
+        filePath: reportOutputPath,
+        archiveDir,
+        role: 'aiTalkLocalSmokeResult',
+        fallbackPath: DEFAULT_RESULT_NAME,
+        fsImpl
+      }),
+      createFileSummary({
+        filePath: path.join(archiveDir, DEFAULT_LOG_NAME),
+        archiveDir,
+        role: 'aiTalkLocalSmokeLog',
+        fallbackPath: DEFAULT_LOG_NAME.split(path.sep).join('/'),
+        fsImpl
+      }),
+      createFileSummary({
+        filePath: readmeOutputPath,
+        archiveDir,
+        role: 'archiveReadme',
+        fallbackPath: DEFAULT_README_NAME,
+        fsImpl
+      })
     ]
   })
 

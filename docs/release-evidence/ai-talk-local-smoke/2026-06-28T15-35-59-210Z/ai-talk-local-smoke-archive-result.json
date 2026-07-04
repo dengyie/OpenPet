@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-07-04T08:12:53.480Z",
+  "generatedAt": "2026-07-04T08:27:05.219Z",
   "ok": true,
   "source": {
-    "sessionDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z",
-    "resultPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json",
-    "logPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl"
+    "sessionDir": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z",
+    "resultPath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json",
+    "logPath": "tmp/real-provider-chat-acceptance/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl"
   },
   "archive": {
-    "archiveDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
-    "outputPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json",
+    "archiveDir": "docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
+    "outputPath": "docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json",
     "sessionId": "2026-06-28T15-35-59-210Z"
   },
   "smoke": {
@@ -31,19 +31,19 @@
   "files": [
     {
       "role": "aiTalkLocalSmokeResult",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json",
+      "path": "ai-talk-local-smoke-result.json",
       "bytes": 11789,
       "sha256": "414664b9c6467580de1c484124f3367de947bd983fedef19b24cdce28ef683c1"
     },
     {
       "role": "aiTalkLocalSmokeLog",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl",
+      "path": "logs/openpet-app.jsonl",
       "bytes": 5529,
       "sha256": "38422e928f072f63f9909907dff68baadff795efa68c3b1841eeef93f805d314"
     },
     {
       "role": "archiveReadme",
-      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/README.md",
+      "path": "README.md",
       "bytes": 2693,
       "sha256": "ead27a882ff8f783ab11a56473a2f654b32ed01856477bae2882b1c3a00fe347"
     }
