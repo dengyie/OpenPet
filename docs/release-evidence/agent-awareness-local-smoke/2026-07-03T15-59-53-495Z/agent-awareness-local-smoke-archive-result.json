@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-07-03T16:00:19.163Z",
+  "ok": true,
+  "source": {
+    "sessionDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance-rerun2/2026-07-03T15-59-53-495Z",
+    "resultPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/tmp/agent-awareness-real-codex-acceptance-rerun2/2026-07-03T15-59-53-495Z/agent-awareness-local-smoke-result.json"
+  },
+  "archive": {
+    "archiveDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z",
+    "outputPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z/agent-awareness-local-smoke-archive-result.json"
+  },
+  "smoke": {
+    "sanitizedSignalDetected": true,
+    "sessionCount": 20,
+    "activeSessionCount": 3,
+    "totalEvents": 1000,
+    "unsupportedLifecycleRecordCount": 0,
+    "manualAcceptanceTemplatePresent": true
+  },
+  "files": [
+    {
+      "role": "agentAwarenessLocalSmokeResult",
+      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z/agent-awareness-local-smoke-result.json",
+      "bytes": 3545,
+      "sha256": "d08637b4a525c7d1b1994de61fd3b26d23b5e92f079fa1de266239a2eec28a4f"
+    },
+    {
+      "role": "archiveReadme",
+      "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-59-53-495Z/README.md",
+      "bytes": 2273,
+      "sha256": "a752511ac76ba2bfed00b17efd41ffa82328837834c4d776e8a958f978869091"
+    }
+  ]
+}

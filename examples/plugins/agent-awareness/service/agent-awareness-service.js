@@ -1,28 +1,29 @@
-const http = require('http')
 const fs = require('fs')
+const http = require('http')
 const path = require('path')
-const crypto = require('crypto')
-const { normalizeCodexEvent } = require('./adapters/codex')
+const { createBridgeClient } = require('./bridge-client')
+const { normalizeCodexEvent, sanitizeText } = require('./adapters/codex')
 const { createCodexRolloutPoller } = require('./adapters/codex-rollout-poller')
-const { createServiceBridgeClient } = require('./bridge-client')
-const { createSessionStore } = require('./session-store')
 const { createAgentStateMapper } = require('./state-mapper')
+const { createSessionStore } = require('./session-store')
+const { PLAN_FILE, TOKEN_FILE } = require('../commands/codex-hook-plan')
 
 const DEFAULT_PORT = 8795
-const MAX_BODY_BYTES = 64 * 1024
-const INGEST_TOKEN_FILE = 'ingest-token.txt'
 
 const sendJson = (response, statusCode, body) => {
-  response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+  response.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  })
   response.end(JSON.stringify(body))
 }
 
-const sendText = (response, statusCode, text, contentType) => {
-  response.writeHead(statusCode, { 'Content-Type': contentType, 'Cache-Control': 'no-store' })
-  response.end(text)
+const sendEmpty = (response, statusCode = 204) => {
+  response.writeHead(statusCode, { 'Cache-Control': 'no-store' })
+  response.end()
 }
 
-const readJsonBody = (request, maxBytes = MAX_BODY_BYTES) => new Promise((resolve, reject) => {
+const readJsonBody = (request, maxBytes = 64 * 1024) => new Promise((resolve, reject) => {
   let body = ''
   request.on('data', (chunk) => {
     body += chunk
@@ -32,8 +33,9 @@ const readJsonBody = (request, maxBytes = MAX_BODY_BYTES) => new Promise((resolv
     }
   })
   request.on('end', () => {
+    if (!body.trim()) return resolve({})
     try {
-      resolve(body.trim() ? JSON.parse(body) : {})
+      resolve(JSON.parse(body))
     } catch (_) {
       reject(new Error('Request body must be valid JSON'))
     }
@@ -41,142 +43,192 @@ const readJsonBody = (request, maxBytes = MAX_BODY_BYTES) => new Promise((resolv
   request.on('error', reject)
 })
 
-const getDashboardAsset = (dashboardDir, requestPath) => {
-  const assetName = requestPath === '/' ? 'index.html' : requestPath.replace(/^\//, '')
-  if (!['index.html', 'dashboard.js', 'styles.css'].includes(assetName)) return null
-  return path.join(dashboardDir, assetName)
+const sendFile = (response, filePath, contentType) => {
+  response.writeHead(200, {
+    'Content-Type': contentType,
+    'Cache-Control': 'no-store'
+  })
+  response.end(fs.readFileSync(filePath))
 }
 
-const extractBearerToken = (header = '') => {
-  const match = String(header || '').match(/^Bearer\s+(.+)$/i)
-  return match ? match[1] : ''
-}
-
-const readIngestToken = (dataDir) => {
-  const tokenPath = path.join(dataDir || '', INGEST_TOKEN_FILE)
+const readOptionalIngestToken = (dataDir) => {
+  const tokenPath = path.join(dataDir, TOKEN_FILE)
   try {
-    return fs.readFileSync(tokenPath, 'utf-8').trim()
+    const token = fs.readFileSync(tokenPath, 'utf-8').trim()
+    return token || ''
   } catch (_) {
     return ''
   }
 }
 
-const assertIngestAuthorized = ({ request, dataDir }) => {
-  const expected = readIngestToken(dataDir)
-  if (!expected) throw new Error('Agent Awareness ingest token is not configured. Run Prepare Codex Hook Instructions first.')
-  const actual = extractBearerToken(request.headers.authorization)
-  const actualBuffer = Buffer.from(String(actual || ''))
-  const expectedBuffer = Buffer.from(String(expected || ''))
-  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
-    throw new Error('Unauthorized agent event')
+const isAuthorized = ({ request, token }) => {
+  if (!token) return true
+  const header = String(request.headers.authorization || '')
+  return header === `Bearer ${token}`
+}
+
+const readHookMode = (dataDir) => {
+  const tokenPresent = fs.existsSync(path.join(dataDir, TOKEN_FILE))
+  const planPresent = fs.existsSync(path.join(dataDir, PLAN_FILE))
+  return {
+    installed: false,
+    mode: 'not-installed',
+    planAvailable: planPresent,
+    tokenConfigured: tokenPresent,
+    ingestAuthRequired: tokenPresent
+  }
+}
+
+const sanitizePollerStatus = (status = {}) => ({
+  ...status,
+  lastError: sanitizeText(status.lastError || '', 160)
+})
+
+const buildDiagnostics = ({ store, rolloutPoller }) => {
+  const sessions = store.getStatus()
+  const trackedSessions = store.listSessions()
+  const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
+  return {
+    sessionCount: sessions.sessions || 0,
+    activeSessionCount: trackedSessions.filter((session) => !['idle', 'completed', 'failed'].includes(String(session.status || '').toLowerCase())).length,
+    totalEvents: sessions.totalEvents || 0,
+    seenCount: codexPoller.seenCount || 0,
+    ignoredContentRecordCount: codexPoller.ignoredContentRecordCount || 0,
+    ignoredMetadataRecordCount: codexPoller.ignoredMetadataRecordCount || 0,
+    unknownRecordCount: codexPoller.unknownRecordCount || 0,
+    malformedRecordCount: codexPoller.malformedRecordCount || 0,
+    unsupportedLifecycleRecordCount: codexPoller.unsupportedLifecycleRecordCount || 0,
+    lastEventAt: sessions.lastEventAt || '',
+    lastScanAt: codexPoller.lastScanAt || '',
+    lastError: codexPoller.lastError || ''
   }
 }
 
 const createAgentAwarenessServer = ({
-  dataDir = process.env.OPENPET_DATA_DIR,
-  dashboardDir = path.join(__dirname, '..', 'web', 'dashboard'),
-  bridgeClient = createServiceBridgeClient(),
-  store = createSessionStore({ dataDir }),
-  mapper = createAgentStateMapper(),
-  rolloutPoller = null,
-  autoStartRolloutPoller = process.env.OPENPET_AGENT_AWARENESS_CODEX_POLL !== '0',
-  createRolloutPoller = createCodexRolloutPoller,
-  createServer = http.createServer,
+  dataDir = process.env.OPENPET_DATA_DIR || path.join(process.cwd(), '.agent-awareness-data'),
+  bridgeClient = createBridgeClient(),
+  createRolloutPoller = (options) => createCodexRolloutPoller(options),
   now = () => new Date().toISOString()
 } = {}) => {
-  const handleEvent = async (payload, { notifyPet = true } = {}) => {
-    const event = normalizeCodexEvent(payload, { now })
-    const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId)
-    const update = mapper.mapEvent({ event, previousSession })
+  const dashboardDir = path.resolve(__dirname, '..', 'web', 'dashboard')
+  const store = createSessionStore({ dataDir })
+  const mapper = createAgentStateMapper()
+  let server = null
+  let rolloutPoller = null
+
+  const handleEvent = async (rawEvent, { initial = false } = {}) => {
+    const event = normalizeCodexEvent(rawEvent, { now })
+    const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId) || null
     const session = store.upsertEvent(event)
-    if (notifyPet) {
-      await bridgeClient.event(update.petEvent)
-      if (update.speech) await bridgeClient.say(update.speech)
+    if (!initial) {
+      const mapped = mapper.mapEvent({ event, previousSession })
+      if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
+      if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
     }
     return { event, session }
   }
 
-  const poller = rolloutPoller || (autoStartRolloutPoller
-    ? createRolloutPoller({
-        onEvent: (event, metadata = {}) => handleEvent(event, { notifyPet: !metadata.initial })
-      })
-    : null)
-
   const handleRequest = async (request, response) => {
-    try {
-      const url = new URL(request.url, 'http://127.0.0.1')
-      if (request.method === 'GET' && url.pathname === '/health') {
-        sendJson(response, 200, {
-          ok: true,
-          service: 'agent-awareness',
-          codexPoller: poller?.getStatus?.() || { enabled: false }
-        })
-        return
-      }
-      if (request.method === 'GET' && url.pathname === '/api/sessions') {
-        sendJson(response, 200, { ok: true, sessions: store.listSessions() })
-        return
-      }
-      if (request.method === 'POST' && url.pathname === '/api/events') {
-        assertIngestAuthorized({ request, dataDir })
-        const result = await handleEvent(await readJsonBody(request))
-        sendJson(response, 200, { ok: true, session: result.session, event: result.event })
-        return
-      }
-      if (request.method === 'GET') {
-        const assetPath = getDashboardAsset(dashboardDir, url.pathname)
-        if (assetPath && fs.existsSync(assetPath)) {
-          const ext = path.extname(assetPath)
-          const type = ext === '.js' ? 'application/javascript; charset=utf-8' : ext === '.css' ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8'
-          sendText(response, 200, fs.readFileSync(assetPath, 'utf-8'), type)
+    const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
+    if (request.method === 'GET' && url.pathname === '/health') {
+      const sessions = store.getStatus()
+      const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
+      sendJson(response, 200, {
+        ok: true,
+        service: 'agent-awareness',
+        sessions,
+        codexPoller,
+        hookMode: readHookMode(dataDir),
+        diagnostics: buildDiagnostics({ store, rolloutPoller })
+      })
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/api/sessions') {
+      sendJson(response, 200, {
+        ok: true,
+        sessions: store.listSessions()
+      })
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/dashboard.js') {
+      sendFile(response, path.join(dashboardDir, 'dashboard.js'), 'application/javascript; charset=utf-8')
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/styles.css') {
+      sendFile(response, path.join(dashboardDir, 'styles.css'), 'text/css; charset=utf-8')
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/favicon.ico') {
+      sendEmpty(response, 204)
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/') {
+      sendFile(response, path.join(dashboardDir, 'index.html'), 'text/html; charset=utf-8')
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      try {
+        const ingestToken = readOptionalIngestToken(dataDir)
+        if (!isAuthorized({ request, token: ingestToken })) {
+          sendJson(response, 401, { ok: false, error: 'Unauthorized' })
           return
         }
+        const body = await readJsonBody(request)
+        const result = await handleEvent(body)
+        sendJson(response, 200, { ok: true, event: result.event, session: result.session })
+      } catch (error) {
+        sendJson(response, 400, { ok: false, error: error?.message || 'Event ingestion failed' })
       }
-      sendJson(response, 404, { ok: false, error: 'Not found' })
-    } catch (error) {
-      const statusCode = /Unauthorized|token is not configured/i.test(error.message || '')
-        ? 401
-        : (/too large|valid JSON/i.test(error.message || '') ? 400 : 500)
-      sendJson(response, statusCode, {
-        ok: false,
-        error: error.message || 'Agent Awareness service failed'
-      })
+      return
     }
+    sendJson(response, 404, { ok: false, error: 'Not found' })
   }
 
-  const server = createServer(handleRequest)
+  const start = async (port = DEFAULT_PORT) => {
+    if (server) return server
+    rolloutPoller = createRolloutPoller({
+      onEvent: (event, meta) => handleEvent(event, meta)
+    })
+    server = http.createServer((request, response) => {
+      handleRequest(request, response).catch((error) => {
+        sendJson(response, 500, { ok: false, error: error?.message || 'Agent Awareness service failed' })
+      })
+    })
+    await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
+    rolloutPoller.start()
+    return server
+  }
+
+  const close = async () => {
+    rolloutPoller?.stop?.()
+    rolloutPoller = null
+    if (!server) return
+    const currentServer = server
+    server = null
+    await new Promise((resolve, reject) => currentServer.close((error) => error ? reject(error) : resolve()))
+  }
+
   return {
+    close,
+    get server() {
+      return server
+    },
     handleEvent,
-    poller,
-    server,
-    start: (port = DEFAULT_PORT, host = '127.0.0.1') => new Promise((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(port, host, () => {
-        server.off?.('error', reject)
-        poller?.start?.()
-        resolve(server.address())
-      })
-    }),
-    close: () => {
-      poller?.stop?.()
-      return new Promise((resolve) => server.close(() => resolve()))
-    }
+    start,
+    store
   }
-}
-
-const parsePort = (argv = process.argv) => {
-  const index = argv.indexOf('--port')
-  const raw = index >= 0 ? argv[index + 1] : process.env.OPENPET_AGENT_AWARENESS_PORT
-  const value = Number(raw || DEFAULT_PORT)
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_PORT
 }
 
 if (require.main === module) {
   const service = createAgentAwarenessServer()
-  service.start(parsePort()).catch((error) => {
-    process.stderr.write(`${error.message || 'Agent Awareness service failed'}\n`)
-    process.exitCode = 1
+  service.start(Number(process.env.PORT) || DEFAULT_PORT).catch((error) => {
+    console.error(error?.message || 'Failed to start Agent Awareness service')
+    process.exit(1)
   })
 }
 
-module.exports = { createAgentAwarenessServer, parsePort }
+module.exports = {
+  DEFAULT_PORT,
+  buildDiagnostics,
+  createAgentAwarenessServer
+}

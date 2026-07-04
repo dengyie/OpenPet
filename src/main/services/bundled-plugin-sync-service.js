@@ -113,6 +113,23 @@ const saveBundledPluginMetadata = ({ settingsService, manifest, pluginId, packag
   })
 }
 
+const needsBundledMetadataRefresh = ({ settingsService, pluginId, manifest, packageHash }) => {
+  const plugins = settingsService.get().plugins || {}
+  const enabled = plugins.enabled || {}
+  const installed = plugins.installed || {}
+  const existing = installed[pluginId] || {}
+
+  if (!Object.prototype.hasOwnProperty.call(enabled, pluginId)) return true
+  if (existing.id !== pluginId) return true
+  if (existing.name !== manifest.name) return true
+  if (existing.version !== manifest.version) return true
+  if (existing.packageHash !== packageHash) return true
+  if (existing.signatureStatus !== 'bundled') return true
+  if (existing.signer !== 'openpet') return true
+  if (existing.managedBy !== 'bundled') return true
+  return false
+}
+
 const syncBundledPlugins = ({ pluginDir, bundledPluginDirs = [], settingsService }) => {
   if (!pluginDir) throw new Error('pluginDir is required')
   if (!settingsService) throw new Error('settingsService is required')
@@ -126,11 +143,19 @@ const syncBundledPlugins = ({ pluginDir, bundledPluginDirs = [], settingsService
     const sourceHash = getDirectoryPackageHash(bundledPluginDir)
     const targetHash = fs.existsSync(targetDir) ? getDirectoryPackageHash(targetDir) : ''
     const removed = removeStaleCopies({ pluginDir, pluginId: manifest.id, targetDir })
+    const metadataRefreshNeeded = needsBundledMetadataRefresh({
+      settingsService,
+      pluginId: manifest.id,
+      manifest,
+      packageHash: sourceHash
+    })
 
     if (sourceHash !== targetHash || removed.length) {
       copyDirectory(bundledPluginDir, targetDir)
-      saveBundledPluginMetadata({ settingsService, manifest, pluginId: manifest.id, packageHash: sourceHash })
       synced.push({ pluginId: manifest.id, targetDir, packageHash: sourceHash, removed })
+    }
+    if (sourceHash !== targetHash || removed.length || metadataRefreshNeeded) {
+      saveBundledPluginMetadata({ settingsService, manifest, pluginId: manifest.id, packageHash: sourceHash })
     }
   }
 
@@ -139,5 +164,6 @@ const syncBundledPlugins = ({ pluginDir, bundledPluginDirs = [], settingsService
 
 module.exports = {
   getDirectoryPackageHash,
+  needsBundledMetadataRefresh,
   syncBundledPlugins
 }

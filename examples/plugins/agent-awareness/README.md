@@ -1,74 +1,78 @@
 # Agent Awareness
 
-Agent Awareness is an official bundled OpenPet extension that lets a local AI
-coding agent report sanitized activity into OpenPet.
+Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI coding-agent activity through bounded pet events, low-frequency pet speech, and a local dashboard.
 
-The extension is intentionally service-based. OpenPet core only starts/stops the
-service and provides a small service bridge for pet speech/events. Codex-specific
-hook guidance, event normalization, session storage, and dashboard state live in
-this extension.
+## MVP Scope
+
+- Zero-config polling of local Codex session metadata under `~/.codex/sessions` and `~/.codex/archived_sessions`.
+- Sanitized session storage under `OPENPET_DATA_DIR/sessions.json`.
+- Explicit service start and stop through OpenPet's existing plugin lifecycle.
+- A local dashboard and a read-only `codex-hook-plan` command for future hook setup guidance.
+
+The MVP does not install Codex hooks, does not modify `~/.codex`, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
 ## Privacy Boundary
 
-By default, the service works in zero-config mode: it scans local Codex rollout
-JSONL metadata under `~/.codex/sessions` and `~/.codex/archived_sessions`.
-This does not require Codex hook trust. It only derives session status, cwd
-basename/hash, and timestamps; raw prompts, tool inputs, terminal transcripts,
-stdout, and stderr are ignored.
+Stored and displayed data is intentionally narrow:
 
-The optional HTTP hook path accepts only a small event shape:
+- session id hash;
+- bounded status;
+- bounded event type;
+- project basename plus short hash;
+- short sanitized status text when one exists;
+- timestamp.
 
-```json
-{
-  "adapter": "codex",
-  "sessionId": "local-session-id",
-  "type": "turn.completed",
-  "status": "completed",
-  "message": "Tests passed",
-  "cwd": "/path/to/project"
-}
-```
+The plugin ignores raw content-bearing fields and only uses safe top-level lifecycle hints to derive pet-visible status.
 
-Stored and displayed data is sanitized. The extension does not store raw prompts,
-tool input, terminal transcripts, stdout, stderr, API keys, or full local paths.
+Additional hardening in the current MVP:
 
-## Codex Setup
+- raw session ids are hashed before persistence or display;
+- project paths are reduced to `basename + short hash`;
+- `GET /health` does not expose plugin store paths or `codexHome`;
+- poller `lastError` is sanitized before it leaves the service;
+- the dashboard applies display-time redaction as defense in depth;
+- command outputs avoid raw plugin-data paths and loopback URLs.
 
-No Codex setup is required for basic status awareness. Start the `Agent
-Awareness Service` entry and open the dashboard.
+## Runtime
 
-For richer real-time hook events, run:
-
-```sh
-npm run configure-agent-awareness:codex
-```
-
-The script creates or updates `~/.codex/hooks.json`, installs a best-effort
-sender at `~/.codex/hooks/openpet-agent-awareness.js`, and creates an ingestion
-token at `OPENPET_DATA_DIR/ingest-token.txt`. It preserves unrelated Codex
-hooks and backs up an existing `hooks.json` before changing it.
-
-Preview changes without writing files:
-
-```sh
-npm run configure-agent-awareness:codex -- --dry-run
-```
-
-Codex requires reviewing and trusting new command hooks before they run. After
-configuration, open a new Codex session and run `/hooks` once to trust the
-OpenPet hook. This step is only for the hook-enhanced path, not for the default
-zero-config scanner.
-
-For manual setup instead, run the `Prepare Codex Hook Instructions` command from
-Control Center. It writes manual setup notes into
-`OPENPET_DATA_DIR/codex-hooks.manual.md` and creates an ingestion token at
-`OPENPET_DATA_DIR/ingest-token.txt`. The command does not modify `~/.codex` or
-any external agent config.
-
-Start the `Agent Awareness Service` entry before sending hook events. The service
-listens on `http://127.0.0.1:8795` and exposes:
+When the `agent-awareness` service is started, it exposes:
 
 - `GET /health`
 - `GET /api/sessions`
-- `POST /api/events` with `Authorization: Bearer <ingest token>`
 - dashboard at `/`
+
+This bundled plugin is normally synchronized into OpenPet's plugin directory and enabled by default. Start the `agent-awareness` service explicitly from Control Center -> Plugins; the service does not auto-start.
+
+## Commands
+
+### `doctor`
+
+Reports a sanitized snapshot of:
+
+- plugin data-dir availability;
+- Codex polling directory availability;
+- hook-plan/token-file presence;
+- service health;
+- aggregate diagnostics such as session count, event count, ignored-content count, malformed count, and last scan time.
+
+Safety rules:
+
+- check values are reduced to safe labels such as `plugin-data-dir`, `codex:sessions`, `codex:archived_sessions`, `codex-hook-plan.md`, and `plugin-auth-file`;
+- `serviceHealth` is reduced to `ok`, `url`, `statusCode`, and optional `error`;
+- loopback URLs are redacted to `[local-url]`;
+- no raw `serviceHealth.body` is returned.
+
+### `codex-hook-plan`
+
+Creates a review-only future-hook plan inside the plugin data directory:
+
+- `agent-awareness-token.txt`
+- `codex-hook-plan.md`
+
+It does not modify `~/.codex`, install hooks, or write outside plugin-owned storage. Command-mode output intentionally returns safe labels such as `plugin-auth-file` and `codex-hook-plan.md` instead of raw local paths.
+
+## Control Center Notes
+
+- The Plugins pane can show a compact health note for the real bundled `openpet.agent-awareness` service in the form `X active · Y sessions · Z events`.
+- That summary is reserved for `pluginId === openpet.agent-awareness` and `serviceId === agent-awareness`; other plugins do not inherit it by returning similarly shaped JSON.
+- The first dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, and diagnostics.
