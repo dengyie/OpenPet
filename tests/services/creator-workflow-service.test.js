@@ -950,6 +950,124 @@ test('creator workflow service returns preview-ready for new-character output wi
   }])
 })
 
+test('creator workflow service forwards official row coverage without leaking absolute row paths', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-official-full-pet-'))
+  const writeAtlasQa = () => {
+    const qaDir = path.join(pluginDataDir, 'runs', 'run-003', 'qa')
+    fs.mkdirSync(qaDir, { recursive: true })
+    fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+      ok: true,
+      basicActions: {
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: OFFICIAL_FULL_PET_ACTION_IDS,
+        fallbackActionIds: [],
+        missingRequiredActionIds: [],
+        requiredOfficialActionIds: OFFICIAL_FULL_PET_ACTION_IDS,
+        previewFallbackActionIds: [],
+        missingRequiredOfficialActionIds: [],
+        rows: OFFICIAL_FULL_PET_ACTION_IDS.map((actionId) => ({
+          actionId,
+          sourceActionId: actionId === 'running-left' ? 'running-right' : actionId,
+          sourceRelativePath: actionId === 'idle'
+            ? '/Users/mango/private/idle-strip.png'
+            : `runs/run-003/rows/${actionId}/strip.png`,
+          fallback: false,
+          quality: actionId === 'running-left' ? 'approved-mirror' : 'row-real'
+        }))
+      }
+    }, null, 2)}\n`)
+  }
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async (_pluginId, commandId) => {
+        if (commandId === 'draft-task') {
+          return {
+            commandId,
+            result: { ok: true, message: 'drafted', run: { runId: 'run-003', taskStatus: 'ready_for_confirmation' } }
+          }
+        }
+        if (commandId === 'confirm-task') {
+          return {
+            commandId,
+            result: { ok: true, message: 'confirmed', run: { runId: 'run-003', taskStatus: 'confirmed' } }
+          }
+        }
+        if (commandId === 'run-step') {
+          return {
+            commandId,
+            result: { ok: true, message: 'generated', run: { runId: 'run-003', status: 'ready_for_review' } }
+          }
+        }
+        if (commandId === 'approve-run') {
+          return {
+            commandId,
+            result: { ok: true, message: 'approved', run: { runId: 'run-003', status: 'approved' } }
+          }
+        }
+        if (commandId === 'import-approved-pet') {
+          writeAtlasQa()
+          return {
+            commandId,
+            result: {
+              ok: true,
+              message: 'imported',
+              run: {
+                runId: 'run-003',
+                status: 'imported',
+                importedPackId: 'official-cat',
+                activatedPackId: 'official-cat'
+              },
+              imported: {
+                pack: {
+                  id: 'official-cat',
+                  displayName: 'Official Cat',
+                  version: '1.0.0',
+                  source: 'creator-studio',
+                  actionCount: 9,
+                  defaultAction: 'idle',
+                  clickAction: 'waving'
+                }
+              },
+              activated: { activePackId: 'official-cat' }
+            }
+          }
+        }
+        throw new Error(`Unexpected command: ${commandId}`)
+      }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: { targetType: 'pet-pack', targetId: 'official-cat' } }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const result = await service.generateNewCharacter({
+    characterName: 'Official Cat',
+    stylePrompt: 'complete official rows',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.basicActions.realActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
+  assert.deepEqual(result.basicActions.fallbackActionIds, [])
+  assert.deepEqual(result.basicActions.missingRequiredOfficialActionIds, [])
+  assert.equal(result.basicActions.rows.find((row) => row.actionId === 'running-left').quality, 'approved-mirror')
+  assert.equal(result.basicActions.rows.find((row) => row.actionId === 'idle').sourceRelativePath, '')
+  assert.equal(JSON.stringify(result.basicActions).includes('/Users/mango'), false)
+})
+
 test('creator workflow service blocks new-character default flow when the approved reference looks like a multi-view collage', async () => {
   const service = createCreatorWorkflowService({
     pluginService: {

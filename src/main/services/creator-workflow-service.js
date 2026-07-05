@@ -278,7 +278,7 @@ const createWorkflowResult = ({
           ? basicActions.rows.map((row) => ({
               actionId: normalizeText(row?.actionId),
               sourceActionId: normalizeText(row?.sourceActionId),
-              sourceRelativePath: normalizeText(row?.sourceRelativePath),
+              sourceRelativePath: normalizeSafeRelativePath(row?.sourceRelativePath),
               fallback: Boolean(row?.fallback),
               quality: normalizeText(row?.quality)
             })).filter((row) => row.actionId)

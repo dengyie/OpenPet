@@ -295,6 +295,75 @@ test('real atlas builder composes official row package into complete Codex actio
   assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
 })
 
+test('real atlas builder rejects official row frame paths outside data directory', async () => {
+  const dataDir = makeTempDataDir()
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-real-atlas-row-outside-'))
+  const outsideFramePath = path.join(outsideDir, 'outside-frame.png')
+  const { relativePath } = await writeSourcePng({ dataDir })
+  await writeOfficialFrame({
+    outputPath: outsideFramePath,
+    rowIndex: 0,
+    frameIndex: 0
+  })
+  const officialRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+  officialRows.rows.find((row) => row.actionId === 'idle').frames[0].path = outsideFramePath
+
+  await assert.rejects(
+    buildRealAtlasFromGeneratedImage({
+      dataDir,
+      generationResult: createGenerationResult(relativePath),
+      outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
+      qaDir: path.join(dataDir, 'runs', 'run-1', 'qa'),
+      officialRows
+    }),
+    /Official full-pet row frame path escaped/
+  )
+})
+
+test('real atlas builder rejects approved-mirror quality for non-running-left official rows', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const officialRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+  officialRows.rows.find((row) => row.actionId === 'waving').quality = FULL_PET_ROW_QUALITY.APPROVED_MIRROR
+
+  await assert.rejects(
+    buildRealAtlasFromGeneratedImage({
+      dataDir,
+      generationResult: createGenerationResult(relativePath),
+      outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
+      qaDir: path.join(dataDir, 'runs', 'run-1', 'qa'),
+      officialRows
+    }),
+    /Only running-left may use approved-mirror/
+  )
+})
+
+test('real atlas builder strips unsafe official row source paths from qa artifacts', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+  const officialRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+  officialRows.rows.find((row) => row.actionId === 'idle').sourceRelativePath = '/Users/mango/private/idle-strip.png'
+
+  await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
+    qaDir,
+    officialRows
+  })
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').sourceRelativePath, '')
+  assert.equal(JSON.stringify(atlasQa).includes('/Users/mango'), false)
+})
+
 test('real atlas builder does not count action-specific single images as official row-strip actions', async () => {
   const dataDir = makeTempDataDir()
   const base = await writeSourcePng({

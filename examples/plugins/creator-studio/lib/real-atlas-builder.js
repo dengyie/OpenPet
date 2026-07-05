@@ -256,7 +256,47 @@ const sanitizeRowQa = (qa) => ({
   }))
 })
 
+const getOfficialFramePath = (frame) => String(frame?.path || frame || '').trim()
+
+const resolveOfficialRowFramePath = ({ dataDir, actionId, frame }) => {
+  const framePath = getOfficialFramePath(frame)
+  if (!framePath) {
+    throw new Error(`Official full-pet row ${actionId} has a missing frame path`)
+  }
+  const root = path.resolve(dataDir)
+  const absoluteFramePath = path.resolve(framePath)
+  const relativeToRoot = path.relative(root, absoluteFramePath)
+  if (relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+    throw new Error('Official full-pet row frame path escaped the Creator Studio data directory')
+  }
+  if (!fs.existsSync(absoluteFramePath)) {
+    throw new Error(`Official full-pet row ${actionId} frame is missing`)
+  }
+  const realRoot = fs.realpathSync.native(root)
+  const realFramePath = fs.realpathSync.native(absoluteFramePath)
+  const realRelativeToRoot = path.relative(realRoot, realFramePath)
+  if (realRelativeToRoot.startsWith('..') || path.isAbsolute(realRelativeToRoot)) {
+    throw new Error('Official full-pet row frame path escaped the Creator Studio data directory')
+  }
+  return realFramePath
+}
+
+const normalizeOfficialRowFrames = ({ dataDir, actionId, frames }) => (
+  Array.isArray(frames)
+    ? frames.map((frame, index) => ({
+        ...(
+          frame && typeof frame === 'object' && !Array.isArray(frame)
+            ? frame
+            : {}
+        ),
+        index: Number.isInteger(frame?.index) ? frame.index : index,
+        path: resolveOfficialRowFramePath({ dataDir, actionId, frame })
+      }))
+    : []
+)
+
 const buildOfficialAtlasFromRows = async ({
+  dataDir,
   officialRows,
   spritesheetPath,
   qaDir,
@@ -275,25 +315,34 @@ const buildOfficialAtlasFromRows = async ({
     if (!input) {
       throw new Error(`Official full-pet row package is missing ${row.id}`)
     }
-    const sourceKind = input.quality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
+    const frames = normalizeOfficialRowFrames({
+      dataDir,
+      actionId: row.id,
+      frames: input.frames
+    })
+    const requestedQuality = String(input.quality || '').trim()
+    if (requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR && row.id !== 'running-left') {
+      throw new Error('Only running-left may use approved-mirror official row quality')
+    }
+    const sourceKind = requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
       ? 'approved-mirror'
       : 'row-strip'
     const qa = await analyzeRowFrames({
       actionId: row.id,
-      frames: input.frames,
+      frames,
       sourceKind
     })
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
       throw new Error(`Official full-pet row ${row.id} failed QA: ${qa.errors.join(', ')}`)
     }
-    rowFramesByActionId.set(row.id, input.frames)
+    rowFramesByActionId.set(row.id, frames)
     rowQas.push(qa)
     basicActionRows.push({
       actionId: row.id,
       sourceActionId: row.id === 'running-left' && qa.quality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
         ? 'running-right'
         : row.id,
-      sourceRelativePath: String(input.sourceRelativePath || '').trim(),
+      sourceRelativePath: normalizeSafePosixRelativePath(input.sourceRelativePath),
       fallback: false,
       quality: qa.quality
     })
@@ -394,6 +443,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
   const spritesheetPath = path.join(outputDir, 'spritesheet.webp')
   if (officialRows) {
     const official = await buildOfficialAtlasFromRows({
+      dataDir,
       officialRows,
       spritesheetPath,
       qaDir,
