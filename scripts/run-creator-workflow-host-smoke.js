@@ -57,7 +57,6 @@ const usage = () => [
   '  --existing-action-name <text> Action id/name for the existing-action scenario.',
   '  --existing-action-prompt <text>',
   '                               Motion prompt for the existing-action scenario.',
-  '  --provider-timeout-ms <ms>   Override image provider timeout only inside isolated smoke userData.',
   '  --json                        Print the final report as JSON.',
   '  --help',
   '',
@@ -145,7 +144,6 @@ const parseArgs = (argv) => {
     newCharacterStylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
     existingActionName: DEFAULT_EXISTING_ACTION_NAME,
     existingActionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
-    providerTimeoutMs: 0,
     json: false,
     help: false
   }
@@ -184,9 +182,6 @@ const parseArgs = (argv) => {
     } else if (arg === '--existing-action-prompt') {
       options.existingActionPrompt = readValue(index, arg)
       index += 1
-    } else if (arg === '--provider-timeout-ms') {
-      options.providerTimeoutMs = readValue(index, arg)
-      index += 1
     } else if (arg === '--json') {
       options.json = true
     } else {
@@ -205,7 +200,6 @@ const parseArgs = (argv) => {
   options.newCharacterStylePrompt = String(options.newCharacterStylePrompt || DEFAULT_NEW_CHARACTER_STYLE_PROMPT).trim() || DEFAULT_NEW_CHARACTER_STYLE_PROMPT
   options.existingActionName = String(options.existingActionName || DEFAULT_EXISTING_ACTION_NAME).trim() || DEFAULT_EXISTING_ACTION_NAME
   options.existingActionPrompt = String(options.existingActionPrompt || DEFAULT_EXISTING_ACTION_PROMPT).trim() || DEFAULT_EXISTING_ACTION_PROMPT
-  options.providerTimeoutMs = normalizeOptionalPositiveInt(options.providerTimeoutMs, 'Provider timeout MS')
   createScenarioList(options.scenario)
   return options
 }
@@ -882,7 +876,6 @@ const runScenarioWorkflow = async ({
   newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
   existingActionName = DEFAULT_EXISTING_ACTION_NAME,
   existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
-  providerTimeoutMs = 0,
   logLimit = DEFAULT_LOG_LIMIT,
   createSmokeRuntimeImpl = createSmokeRuntime
 } = {}) => {
@@ -1002,7 +995,6 @@ const runCreatorWorkflowHostSmoke = async ({
   newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
   existingActionName = DEFAULT_EXISTING_ACTION_NAME,
   existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
-  providerTimeoutMs = 0,
   now = () => new Date(),
   runScenarioImpl = runScenarioWorkflow,
   repoRoot = path.join(__dirname, '..')
@@ -1031,8 +1023,7 @@ const runCreatorWorkflowHostSmoke = async ({
         newCharacterName,
         newCharacterStylePrompt,
         existingActionName,
-        existingActionPrompt,
-        providerTimeoutMs
+        existingActionPrompt
       })
       scenarioResults.push(scenarioResult)
       if (!scenarioResult.ok) {
@@ -1087,8 +1078,7 @@ const runCreatorWorkflowHostSmoke = async ({
       newCharacterName,
       newCharacterStylePrompt,
       existingActionName,
-      existingActionPrompt,
-      providerTimeoutMs
+      existingActionPrompt
     }, { sessionDir: sessionPaths.sessionDir }),
     referenceImagePath: createSafeProjectPath(
       path.resolve(resolvedReferenceImagePath),
@@ -1117,8 +1107,7 @@ const main = async () => {
     newCharacterName: options.newCharacterName,
     newCharacterStylePrompt: options.newCharacterStylePrompt,
     existingActionName: options.existingActionName,
-    existingActionPrompt: options.existingActionPrompt,
-    providerTimeoutMs: options.providerTimeoutMs
+    existingActionPrompt: options.existingActionPrompt
   })
 
   if (options.json) {

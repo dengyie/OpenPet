@@ -44,7 +44,6 @@ test('parseArgs accepts creator workflow host smoke options', () => {
     '--new-character-style-prompt', 'Cartoon golden shaded cat pet.',
     '--existing-action-name', 'golden-wave',
     '--existing-action-prompt', 'Cartoon golden cat waving.',
-    '--provider-timeout-ms', '600000',
     '--json'
   ])
 
@@ -56,7 +55,6 @@ test('parseArgs accepts creator workflow host smoke options', () => {
   assert.equal(options.newCharacterStylePrompt, 'Cartoon golden shaded cat pet.')
   assert.equal(options.existingActionName, 'golden-wave')
   assert.equal(options.existingActionPrompt, 'Cartoon golden cat waving.')
-  assert.equal(options.providerTimeoutMs, 600000)
   assert.equal(options.json, true)
 })
 

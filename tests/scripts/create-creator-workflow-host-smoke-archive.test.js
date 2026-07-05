@@ -32,6 +32,13 @@ const createSessionFixture = ({
     sessionDir: `/Users/mango/.codex/worktrees/3c34/OpenPet/release/creator-workflow-host-smoke/${sessionId}`,
     reportPath: `/Users/mango/.codex/worktrees/3c34/OpenPet/release/creator-workflow-host-smoke/${sessionId}/creator-workflow-host-smoke-report.json`,
     sourceUserDataDir: '/Users/mango/Library/Application Support/ibot',
+    request: {
+      scenario: 'both',
+      newCharacterName: 'Golden Cartoon Cat',
+      newCharacterStylePrompt: 'Cute cartoon golden shaded cat with round green eyes.',
+      existingActionName: 'golden-cartoon-wave',
+      existingActionPrompt: 'Friendly waving action for the same cartoon golden cat.'
+    },
     referenceImagePath: '/Users/mango/Downloads/正面.png',
     scenarios: [
       {
@@ -215,6 +222,8 @@ test('createCreatorWorkflowHostSmokeArchive writes a sanitized archive result an
   assert.equal(result.ok, true)
   assert.equal(result.acceptanceScope, 'branch')
   assert.equal(result.archive.sessionId, '2026-07-04T21-38-29-834Z')
+  assert.equal(result.request.newCharacterName, 'Golden Cartoon Cat')
+  assert.equal(result.request.existingActionName, 'golden-cartoon-wave')
   assert.equal(result.referenceImage.fileName, '正面.png')
   assert.equal(result.scenarios.length, 2)
   assert.equal(result.scenarios[0].provider.model, 'gpt-image-2')
@@ -229,12 +238,15 @@ test('createCreatorWorkflowHostSmokeArchive writes a sanitized archive result an
 
   const archivedReport = JSON.parse(fs.readFileSync(archivedReportPath, 'utf-8'))
   assert.equal(archivedReport.sourceSummary.sessionDir, 'release/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z')
+  assert.equal(archivedReport.request.newCharacterStylePrompt, 'Cute cartoon golden shaded cat with round green eyes.')
   assert.equal(archivedReport.referenceImage.path, '[redacted-local-reference]/正面.png')
   assert.doesNotMatch(JSON.stringify(archivedReport), /\/Users\//)
   assert.doesNotMatch(JSON.stringify(archivedReport), /\.codex\/worktrees\//)
 
   const archivedReadme = fs.readFileSync(archivedReadmePath, 'utf-8')
   assert.match(archivedReadme, /host-side one-click Creator Workflow smoke run/i)
+  assert.match(archivedReadme, /Golden Cartoon Cat/)
+  assert.match(archivedReadme, /golden-cartoon-wave/)
   assert.match(archivedReadme, /does not by itself prove/i)
   assert.match(archivedReport.warnings[1], /branch acceptance run is sufficient/i)
 })
