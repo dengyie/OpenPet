@@ -9,6 +9,7 @@ const {
   OFFICIAL_FULL_PET_ROWS
 } = require('./full-pet-row-contract')
 const { analyzeRowFrames } = require('./full-pet-row-qa')
+const { createOfficialRowPreviewArtifacts } = require('./full-pet-row-preview-artifacts')
 
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const CODEX_ATLAS = {
@@ -337,6 +338,11 @@ const buildOfficialAtlasFromRows = async ({
     outputPath: spritesheetPath,
     rowFramesByActionId
   })
+  const visualReviewArtifacts = await createOfficialRowPreviewArtifacts({
+    dataDir,
+    rowFramesByActionId,
+    outputDir: qaDir
+  })
   const basicActions = createBasicActionCoverage(basicActionRows)
   const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
   const rowQaPath = path.join(qaDir, 'full-pet-row-validation.json')
@@ -370,6 +376,15 @@ const buildOfficialAtlasFromRows = async ({
       rows: composed.frameRows.map((frameRow) => ({
         ...frameRow,
         sourceQuality: basicActionRows.find((candidate) => candidate.actionId === frameRow.id)?.quality || 'unknown'
+      }))
+    },
+    visualReview: {
+      contactSheet: visualReviewArtifacts.contactSheetRelativePath,
+      previews: visualReviewArtifacts.previews.map((preview) => ({
+        actionId: preview.actionId,
+        path: preview.relativePath,
+        frameCount: preview.frameCount,
+        durations: preview.durations
       }))
     },
     warnings: []

@@ -285,6 +285,26 @@ test('real atlas builder composes official row package into complete Codex actio
   const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
   const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
   assert.equal(atlasQa.ok, true)
+  assert.equal(atlasQa.visualReview.contactSheet, 'runs/run-1/qa/full-pet-contact-sheet.png')
+  assert.equal(fs.existsSync(path.join(dataDir, atlasQa.visualReview.contactSheet)), true)
+  const contactSheetMetadata = await sharp(path.join(dataDir, atlasQa.visualReview.contactSheet)).metadata()
+  assert.equal(contactSheetMetadata.width, CODEX_ATLAS.width)
+  assert.equal(contactSheetMetadata.height, CODEX_ATLAS.height)
+  assert.deepEqual(
+    atlasQa.visualReview.previews.map((preview) => [preview.actionId, preview.path, preview.frameCount]),
+    CODEX_ROWS.map((row) => [
+      row.id,
+      `runs/run-1/qa/previews/${row.id}.gif`,
+      row.durations.length
+    ])
+  )
+  for (const preview of atlasQa.visualReview.previews) {
+    const previewPath = path.join(dataDir, preview.path)
+    const metadata = await sharp(previewPath, { animated: true }).metadata()
+    assert.equal(metadata.width, CODEX_ATLAS.cellWidth)
+    assert.equal(metadata.pageHeight, CODEX_ATLAS.cellHeight)
+    assert.equal(metadata.pages, preview.frameCount)
+  }
   assert.deepEqual(atlasQa.basicActions.realActionIds, CODEX_ROWS.map((row) => row.id))
   assert.deepEqual(atlasQa.basicActions.fallbackActionIds, [])
   assert.deepEqual(atlasQa.basicActions.missingRequiredOfficialActionIds, [])
