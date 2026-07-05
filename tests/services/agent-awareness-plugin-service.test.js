@@ -291,6 +291,55 @@ test('plugin service runCommand keeps agent-awareness command results free of ra
   assert.equal(serialized.includes('/tmp/'), false)
 })
 
+test('plugin service runCommand executes agent-awareness hook install and uninstall commands through the shipped manifest surface', async () => {
+  const pluginRoot = createPluginCopyRoot()
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-hooks-'))
+  const previousCodexHome = process.env.OPENPET_CODEX_HOME
+  fs.writeFileSync(path.join(codexHome, 'hooks.json'), JSON.stringify({
+    hooks: {
+      Stop: [{ hooks: [{ type: 'command', command: 'echo existing-stop' }] }]
+    }
+  }, null, 2))
+
+  const settingsService = createBareSettingsService({
+    plugins: { enabled: { 'openpet.agent-awareness': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [pluginRoot]
+  })
+
+  process.env.OPENPET_CODEX_HOME = codexHome
+  service.setNativeExecutionApproved('openpet.agent-awareness', true)
+
+  try {
+    const install = await service.runCommand('openpet.agent-awareness', 'install-codex-hooks')
+    const uninstall = await service.runCommand('openpet.agent-awareness', 'uninstall-codex-hooks')
+    const serialized = JSON.stringify({ install, uninstall })
+    const hooksConfig = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf-8'))
+
+    assert.equal(install.ok, true)
+    assert.equal(install.result.installed, true)
+    assert.equal(install.result.stateFile, 'hook-install-state.json')
+    assert.equal(uninstall.ok, true)
+    assert.equal(uninstall.result.removed, true)
+    assert.equal(uninstall.result.stateFile, 'hook-install-state.json')
+    assert.equal(hooksConfig.hooks.Stop[0].hooks[0].command, 'echo existing-stop')
+    assert.equal(JSON.stringify(hooksConfig).includes('openpet-agent-awareness.js'), false)
+    assert.equal(serialized.includes(pluginRoot), false)
+    assert.equal(serialized.includes(codexHome), false)
+    assert.equal(serialized.includes('/tmp/'), false)
+  } finally {
+    if (previousCodexHome === undefined) {
+      delete process.env.OPENPET_CODEX_HOME
+    } else {
+      process.env.OPENPET_CODEX_HOME = previousCodexHome
+    }
+  }
+})
+
 test('plugin service runCommand keeps doctor results free of raw local paths and local URLs', async () => {
   const pluginRoot = createPluginCopyRoot()
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-doctor-command-'))

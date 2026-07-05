@@ -5,17 +5,19 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 ## Documentation Guide
 
 - Canonical development overview: [`../../../docs/agent-awareness-development-design.md`](../../../docs/agent-awareness-development-design.md)
+- ClaudePet parity expansion roadmap: [`../../../docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](../../../docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md)
 - Implementation reference: [`../../../docs/agent-awareness-plugin-design.md`](../../../docs/agent-awareness-plugin-design.md)
 - Real-session acceptance runbook: [`../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md)
 
 ## MVP Scope
 
 - Zero-config polling of local Codex session metadata under `~/.codex/sessions` and `~/.codex/archived_sessions`.
+- Explicit `install-codex-hooks` / `uninstall-codex-hooks` commands for reversible, backup-safe Codex hook management.
 - Sanitized session storage under `OPENPET_DATA_DIR/sessions.json`.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle.
 - A local dashboard and a read-only `codex-hook-plan` command for future hook setup guidance.
 
-The MVP does not install Codex hooks, does not modify `~/.codex`, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
+The MVP does not auto-install hooks during discovery or app boot, does not trust the hook inside Codex on the user's behalf, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
 ## Privacy Boundary
 
@@ -76,6 +78,28 @@ Creates a review-only future-hook plan inside the plugin data directory:
 - `codex-hook-plan.md`
 
 It does not modify `~/.codex`, install hooks, or write outside plugin-owned storage. Command-mode output intentionally returns safe labels such as `plugin-auth-file` and `codex-hook-plan.md` instead of raw local paths.
+
+### `install-codex-hooks`
+
+Installs the OpenPet-owned bounded Codex hook handlers into `~/.codex/hooks.json`.
+
+Behavior:
+
+- creates a timestamped backup before hook-file mutation;
+- preserves unrelated existing Codex hooks;
+- writes `hook-install-state.json` under plugin-owned storage;
+- writes or refreshes `agent-awareness-token.txt` and `codex-hook-plan.md`;
+- does not start the service automatically and does not trust the hook in Codex for you.
+
+### `uninstall-codex-hooks`
+
+Removes only the OpenPet-owned bounded Codex hook handlers and hook sender script.
+
+Behavior:
+
+- preserves unrelated existing Codex hooks;
+- clears `hook-install-state.json`;
+- keeps plugin-owned planning assets available for a future reinstall.
 
 ## Control Center Notes
 

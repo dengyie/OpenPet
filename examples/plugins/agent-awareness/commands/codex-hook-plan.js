@@ -36,12 +36,36 @@ const ensureToken = ({ dataDir }) => {
   return { tokenPath, token }
 }
 
-const writeCodexHookPlan = ({ dataDir, port = DEFAULT_PORT } = {}) => {
-  ensureDirectory(dataDir)
-  const { tokenPath } = ensureToken({ dataDir })
-  const instructionsPath = path.join(dataDir, PLAN_FILE)
-  const serviceUrl = `http://127.0.0.1:${Number(port) || DEFAULT_PORT}/api/events`
-  const content = [
+const createPlanContent = ({ serviceUrl, mode = 'plan' } = {}) => {
+  if (mode === 'installed') {
+    return [
+      '# Codex Hook Plan',
+      '',
+      'OpenPet installed bounded Codex hooks for Agent Awareness.',
+      '',
+      'The installed hooks send bounded JSON events to:',
+      '',
+      `- ${serviceUrl}`,
+      `- Authorization: Bearer <contents of ${TOKEN_FILE} in the plugin data dir>`,
+      '',
+      'Review and trust the hook once inside Codex with `/hooks` before it runs.'
+    ].join('\n')
+  }
+  if (mode === 'removed') {
+    return [
+      '# Codex Hook Plan',
+      '',
+      'OpenPet removed its bounded Codex hook handlers for Agent Awareness.',
+      '',
+      'Future hook installation would send bounded JSON events to:',
+      '',
+      `- ${serviceUrl}`,
+      `- Authorization: Bearer <contents of ${TOKEN_FILE} in the plugin data dir>`,
+      '',
+      'Re-run the install command if you want OpenPet to receive live hook events again.'
+    ].join('\n')
+  }
+  return [
     '# Codex Hook Plan',
     '',
     'This file is a review-only plan. The Agent Awareness MVP does not modify `~/.codex` automatically.',
@@ -53,13 +77,21 @@ const writeCodexHookPlan = ({ dataDir, port = DEFAULT_PORT } = {}) => {
     '',
     'The bundled MVP plugin currently prefers zero-config polling and keeps hook installation as a follow-up milestone.'
   ].join('\n')
+}
+
+const writeCodexHookPlan = ({ dataDir, port = DEFAULT_PORT, mode = 'plan' } = {}) => {
+  ensureDirectory(dataDir)
+  const { tokenPath } = ensureToken({ dataDir })
+  const instructionsPath = path.join(dataDir, PLAN_FILE)
+  const serviceUrl = `http://127.0.0.1:${Number(port) || DEFAULT_PORT}/api/events`
+  const content = createPlanContent({ serviceUrl, mode })
   fs.writeFileSync(instructionsPath, `${content}\n`)
   return {
     ok: true,
     serviceUrl,
     tokenPath,
     instructionsPath,
-    externalWrites: false
+    externalWrites: mode !== 'plan'
   }
 }
 
@@ -77,6 +109,7 @@ module.exports = {
   DEFAULT_PORT,
   PLAN_FILE,
   TOKEN_FILE,
+  ensureToken,
   getDataDir,
   toCommandOutput,
   writeCodexHookPlan

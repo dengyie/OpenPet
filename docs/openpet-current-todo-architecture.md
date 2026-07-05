@@ -35,7 +35,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 | Control Center | `src/control-center/src/api/control-center-api.ts`, `src/control-center/src/hooks/`, `src/control-center/src/panes/` | all user-facing configuration surfaces | new config must be operable here |
 | Plugin host | `src/main/services/plugin-service.js`, `src/main/services/plugin-install-service.js`, `src/main/plugins/` | manifest policy, command/service bridge, creator-tools routes | permission-gated, token-gated, no unrestricted plugin access |
 | Creator Studio plugin | `examples/plugins/creator-studio/` | prompt/task workflow, run state, QA, preview, import requests | provider secrets, final imports, and trigger persistence stay host-owned |
-| Agent awareness plugin | `examples/plugins/agent-awareness/`, `src/main/bootstrap/create-plugin-services.js` | Codex rollout polling, sanitized session store, state-to-pet mapping, local dashboard, future hook planning guidance | keep agent-specific parsing and redaction in the bundled plugin; no raw prompts/transcripts/full paths in stored or rendered state |
+| Agent awareness plugin | `examples/plugins/agent-awareness/`, `src/main/bootstrap/create-plugin-services.js` | Codex rollout polling, optional reversible hook install/uninstall, sanitized session store, state-to-pet mapping, local dashboard | keep agent-specific parsing and redaction in the bundled plugin; no raw prompts/transcripts/full paths in stored or rendered state |
 | Contracts/tests | `src/shared/openpet-contracts.ts`, `src/shared/ipc-channels.*`, `tests/` | IPC/view contracts and regression boundaries | keep JS and TS channel files synchronized |
 
 ## Current Landed Facts
@@ -74,9 +74,10 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 - Image generation Provider IPC payloads now normalize renderer-facing config, API key result, and health-check result shapes through the main-process Control Center adapter: `image-generation:*` settings responses no longer forward legacy backend fields, secret values, or service-only health details.
 - AI Talk persona and memory IPC payloads now normalize renderer-facing profile/draft/memory shapes through the main-process Control Center adapter: persona profile/draft/save and memory profile/delete/clear responses no longer forward provider raw replies, secret-like fields, raw memory evidence, or service-only job details.
 - `PLUGINS_LIST` now normalizes renderer-facing `PluginViewState[]` through the main-process Control Center adapter, so plugin list reads reuse the same safe shape already used by plugin mutation results.
+- Plugin lifecycle/runtime IPC payloads now normalize renderer-facing plugin result shapes through the main-process Control Center adapter: enable/native-approval/config-save/service-health-policy/storage-clear responses reuse the safe `PluginViewState` contract, while command/setup/service start-stop-health responses no longer forward raw runtime/service objects to the renderer.
 - A bundled `openpet.agent-awareness` plugin now syncs beside Creator Studio, stays enabled-by-default but stopped-by-default, and requires native execution approval before its `agent-awareness` service can start.
 - Agent awareness currently uses privacy-first Codex polling under `~/.codex/sessions` and `~/.codex/archived_sessions`, hashes session ids before persistence/display, reduces project paths to `basename + short hash`, stores only bounded lifecycle/status metadata, and never stores prompts, tool args, stdout/stderr, transcripts, or full paths.
-- Agent awareness command and dashboard boundaries are now hardened: `doctor` returns safe labels instead of raw paths, `codex-hook-plan` writes only plugin-owned token/plan files without touching `~/.codex`, `/health` sanitizes poller `lastError`, dashboard rendering redacts again at display time, and the Plugins pane reserves the `X active · Y sessions · Z events` health note for the real bundled `openpet.agent-awareness` target.
+- Agent awareness command and dashboard boundaries are now hardened: `doctor` returns safe labels instead of raw paths, `codex-hook-plan` stays plugin-owned and read-only, `install-codex-hooks` / `uninstall-codex-hooks` mutate only OpenPet-owned Codex hook handlers with backup-safe writes, `/health` sanitizes poller `lastError`, and the Plugins pane reserves the `X active · Y sessions · Z events` health note for the real bundled `openpet.agent-awareness` target.
 - Agent awareness now also has a repeatable real-session smoke path through `npm run run-agent-awareness-local-smoke -- --codex-home <dir>` plus the runbook `docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`; the smoke result records sanitized session samples, hook-plan readiness, diagnostics, redaction checks, and a `manualAcceptanceTemplate` placeholder for dashboard usefulness and pet-speech review.
 - Agent awareness smoke sessions can also be copied into release evidence with `npm run create-agent-awareness-local-smoke-archive -- --session-dir <session-dir>`; the archive helper accepts only redacted reports and keeps its README explicit about the remaining human-acceptance boundary.
 - Archived agent-awareness smoke evidence can now be reviewed in place through `npm run update-agent-awareness-local-smoke-report -- <report.json> ...`, which updates `manualAcceptanceTemplate`, rewrites the companion README, refreshes any existing archive summary JSON, and still rejects raw local paths, loopback URLs, or secret-like text from being written back into the archive.
@@ -94,14 +95,14 @@ Current state:
 - The Codex rollout poller reads only bounded top-level lifecycle hints from `~/.codex/sessions` and `~/.codex/archived_sessions`, derives sanitized status events, and ignores content-bearing records.
 - Session ids are hashed, project paths are reduced to `basename + short hash`, and persisted session history is intentionally narrow.
 - The plugin currently uses only `pet:say` and `pet:event`; semantic pet action mapping is still future work.
-- `doctor` and `codex-hook-plan` now return safe labels rather than raw local paths, and `/health` plus dashboard rendering sanitize poller error text.
+- `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks` now avoid raw local paths in their operator-visible outputs, and `/health` plus dashboard rendering sanitize poller error text.
 - The Plugins pane can show a compact health note for the real bundled `agent-awareness` service using `X active · Y sessions · Z events`.
 
 P1 work:
 
 - Keep the new real-session smoke path green against fresh local Codex evidence and archive follow-up notes when a live run exposes new rollout record shapes.
 - Complete the remaining human desktop acceptance for dashboard usefulness and speech-noise expectations.
-- Decide whether the next product increment is richer Control Center summary, semantic pet behavior mapping, or explicit Phase 2 hook install/uninstall.
+- Continue Phase 2 with hook-plus-polling reconciliation, richer runtime state, trusted auto-start, and first-class detail entry surfaces.
 
 P2/P3:
 
@@ -381,7 +382,7 @@ Choose one of these when starting the next development milestone:
 1. TypeScript Adapter Boundary Migration
    - User value: high-drift main-process payloads stay safer as Control Center, AI settings, Creator Studio review snapshots, and evidence tooling keep growing.
    - Main files: `src/main/control-center-adapters.js`, `src/shared/openpet-contracts.ts`, `tests/main/control-center-adapters.test.js`, representative contract fixtures.
-   - Scope rule: migrate or type-check one adapter boundary at a time; do not rewrite the main process or change runtime behavior. The plugin view config/storage/signature slice, action-frame `inspectionResult` slice, pet-pack mutation view slice, catalog state view slice, AI config view slice, image generation Provider settings slice, AI Talk persona/memory view slice, and `PLUGINS_LIST` slice are complete, so choose a different high-drift payload next.
+   - Scope rule: migrate or type-check one adapter boundary at a time; do not rewrite the main process or change runtime behavior. The plugin view config/storage/signature slice, plugin lifecycle/runtime IPC result slice, action-frame `inspectionResult` slice, pet-pack mutation view slice, catalog state view slice, AI config view slice, image generation Provider settings slice, AI Talk persona/memory view slice, and `PLUGINS_LIST` slice are complete, so choose a different high-drift payload next.
 
 2. Release Evidence Closure
    - User value: release readiness claims can be upgraded only when real evidence exists.

@@ -48,7 +48,12 @@ test('agent awareness manifest declares bounded runtime entries', () => {
   assert.equal(manifest.id, 'openpet.agent-awareness')
   assert.equal(manifest.profile, 'runtime')
   assert.deepEqual(manifest.permissions, ['pet:say', 'pet:event'])
-  assert.deepEqual(manifest.entries.commands.map((entry) => entry.id), ['doctor', 'codex-hook-plan'])
+  assert.deepEqual(manifest.entries.commands.map((entry) => entry.id), [
+    'doctor',
+    'codex-hook-plan',
+    'install-codex-hooks',
+    'uninstall-codex-hooks'
+  ])
   assert.equal(manifest.entries.services[0].id, 'agent-awareness')
   assert.equal(manifest.entries.dashboards[0].url, 'http://127.0.0.1:8795')
 })
@@ -422,6 +427,54 @@ test('codex hook plan command output avoids raw local paths', () => {
   assert.equal(JSON.stringify(output).includes(dataDir), false)
   assert.equal(JSON.stringify(output).includes(rawResult.tokenPath), false)
   assert.equal(JSON.stringify(output).includes(rawResult.instructionsPath), false)
+})
+
+test('agent awareness install and uninstall hook commands manage only OpenPet-owned Codex hook handlers', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-hook-command-'))
+  const codexHome = path.join(root, 'codex-home')
+  const dataDir = path.join(root, 'agent-data')
+  fs.mkdirSync(codexHome, { recursive: true })
+  fs.writeFileSync(path.join(codexHome, 'hooks.json'), JSON.stringify({
+    hooks: {
+      Stop: [{ hooks: [{ type: 'command', command: 'echo existing-stop' }] }]
+    }
+  }, null, 2))
+
+  const install = runCommand('install-codex-hooks.js', {
+    paths: { dataDir, codexHome },
+    port: 8795
+  }, {
+    OPENPET_DATA_DIR: dataDir,
+    OPENPET_CODEX_HOME: codexHome
+  })
+  const installedBody = JSON.parse(install.stdout)
+  const installedHooks = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf-8'))
+
+  assert.equal(install.status, 0)
+  assert.equal(installedBody.ok, true)
+  assert.equal(installedBody.installed, true)
+  assert.equal(installedBody.stateFile, 'hook-install-state.json')
+  assert.equal(installedBody.instructionsFile, PLAN_FILE)
+  assert.equal(installedBody.authFile, 'plugin-auth-file')
+  assert.equal(installedHooks.hooks.Stop[0].hooks[0].command, 'echo existing-stop')
+  assert.equal(fs.existsSync(path.join(dataDir, 'hook-install-state.json')), true)
+
+  const uninstall = runCommand('uninstall-codex-hooks.js', {
+    paths: { dataDir, codexHome }
+  }, {
+    OPENPET_DATA_DIR: dataDir,
+    OPENPET_CODEX_HOME: codexHome
+  })
+  const uninstalledBody = JSON.parse(uninstall.stdout)
+  const uninstalledHooks = JSON.parse(fs.readFileSync(path.join(codexHome, 'hooks.json'), 'utf-8'))
+
+  assert.equal(uninstall.status, 0)
+  assert.equal(uninstalledBody.ok, true)
+  assert.equal(uninstalledBody.removed, true)
+  assert.equal(uninstalledBody.stateFile, 'hook-install-state.json')
+  assert.equal(uninstalledHooks.hooks.Stop[0].hooks[0].command, 'echo existing-stop')
+  assert.equal(JSON.stringify(uninstalledHooks).includes('openpet-agent-awareness.js'), false)
+  assert.equal(fs.existsSync(path.join(dataDir, 'hook-install-state.json')), false)
 })
 
 test('doctor reports service health and local plan status', () => {

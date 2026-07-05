@@ -10,6 +10,7 @@ This document is the maintainer-facing implementation companion for Agent Awaren
 | Doc | Role |
 | --- | --- |
 | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md) | Canonical overview and current development route. |
+| [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md) | Forward-looking parity roadmap for the next major milestone set. |
 | [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md) | Shipped plugin runtime contract and operator-facing behavior. |
 | [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) | Real-session smoke and manual desktop acceptance. |
 
@@ -29,6 +30,7 @@ examples/plugins/agent-awareness/
   README.md
   commands/
     command-io.js
+    codex-hook-config.js
     codex-hook-plan.js
     doctor.js
     install-codex-hooks.js
@@ -56,7 +58,7 @@ That means the active contract today is:
 
 - plugin id `openpet.agent-awareness`
 - permissions `pet:say`, `pet:event`
-- commands `doctor`, `codex-hook-plan`
+- commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, `uninstall-codex-hooks`
 - service `agent-awareness`
 - dashboard `main`
 
@@ -70,8 +72,11 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | --- | --- |
 | `examples/plugins/agent-awareness/plugin.json` | Defines the authoritative manifest surface. |
 | `examples/plugins/agent-awareness/README.md` | Documents the shipped plugin behavior, privacy boundary, and operator notes. |
+| `examples/plugins/agent-awareness/commands/codex-hook-config.js` | Owns reversible hook install/uninstall logic shared by plugin commands and the repo helper script. |
 | `examples/plugins/agent-awareness/commands/doctor.js` | Produces sanitized setup and health diagnostics. |
 | `examples/plugins/agent-awareness/commands/codex-hook-plan.js` | Writes the read-only future hook plan and plugin-owned token file. |
+| `examples/plugins/agent-awareness/commands/install-codex-hooks.js` | Installs bounded OpenPet-owned Codex hook handlers and writes hook install state. |
+| `examples/plugins/agent-awareness/commands/uninstall-codex-hooks.js` | Removes only the OpenPet-owned Codex hook handlers and clears hook install state. |
 | `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Hosts `/health`, `/api/sessions`, `/api/events`, and dashboard assets. |
 | `examples/plugins/agent-awareness/service/adapters/codex-rollout-poller.js` | Reads bounded Codex rollout JSONL signal and counts ignored/unknown/malformed records. |
 | `examples/plugins/agent-awareness/service/adapters/codex.js` | Sanitizes messages, hashes session ids, and redacts project paths. |
@@ -91,21 +96,18 @@ Anything not exposed from `plugin.json` should not be treated as current product
 
 ## Non-Canonical Helper Paths
 
-There are a few files that exist for experimentation or future hook-enabled evolution but are not part of the current official plugin contract.
+There are a few files that exist for development convenience or for future roadmap work but are not part of the current manifest-declared runtime surface.
 
 ### Repository Helper Script
 
-`scripts/configure-agent-awareness-codex.js` can write Codex hook files for a local setup flow. That makes it useful for development and exploratory operator work, but it is still a repository helper, not part of the manifest-declared plugin surface and not part of the current acceptance baseline.
-
-### Dormant Plugin Command Files
-
-`examples/plugins/agent-awareness/commands/install-codex-hooks.js` and `uninstall-codex-hooks.js` still exist on disk. They are not exposed in `plugin.json`, so maintainers should treat them as implementation background rather than shipped behavior.
+`scripts/configure-agent-awareness-codex.js` now reuses the same shared hook-config library as the shipped plugin commands. That keeps local operator scripting aligned with the manifest contract without making the repo helper itself part of the plugin runtime surface.
 
 Before reviving any of these paths as official surface area, update all of the following together:
 
 - `plugin.json`
 - `examples/plugins/agent-awareness/README.md`
 - `docs/agent-awareness-development-design.md`
+- `docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`
 - acceptance runbook and evidence expectations
 - relevant runtime and docs-drift tests
 
@@ -113,7 +115,7 @@ Before reviving any of these paths as official surface area, update all of the f
 
 | Test file | What it protects |
 | --- | --- |
-| `tests/examples/agent-awareness-plugin.test.js` | Manifest contract, sanitization, rollout polling, session store, state mapper, service behavior, `doctor`, and `codex-hook-plan`. |
+| `tests/examples/agent-awareness-plugin.test.js` | Manifest contract, sanitization, rollout polling, session store, service behavior, and the full hook command surface. |
 | `tests/services/agent-awareness-plugin-service.test.js` | Plugin discovery, native execution approval, health-note formatting, command redaction, and command results. |
 | `tests/services/agent-awareness-bundled-integration.test.js` | Bundled sync behavior, enabled-by-default discovery, stopped-by-default service state, and start/stop lifecycle. |
 | `tests/examples/agent-awareness-dashboard.test.js` | Dashboard state rendering and redaction logic. |
@@ -127,7 +129,7 @@ When touching Agent Awareness behavior, walk this checklist before calling the w
 
 1. Does `plugin.json` still match the README and the tests?
 2. Does the change preserve the privacy boundary described in the canonical development doc?
-3. If the command or service surface changed, did you update `doctor` / `codex-hook-plan` documentation and tests together?
+3. If the command or service surface changed, did you update `doctor` / `codex-hook-plan` / hook install-uninstall documentation and tests together?
 4. If helper scripts became official, did you promote them into the manifest and acceptance runbook instead of leaving them half-documented?
 5. Did you rerun `npm run check:docs-drift` after editing live docs?
 

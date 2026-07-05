@@ -11,6 +11,7 @@ Use this doc as the single overview, then drop into the narrower documents only 
 | Need | Read |
 | --- | --- |
 | Product goal, current baseline, architecture, roadmap | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md) |
+| ClaudePet parity expansion route and phased design | [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md) |
 | Shipped plugin runtime contract and operator-facing behavior | [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md) |
 | Concrete package layout, core touchpoints, and maintenance checklist | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md) |
 | Real-session smoke and desktop acceptance procedure | [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
@@ -35,13 +36,14 @@ Today Agent Awareness provides:
 
 - bundled plugin `openpet.agent-awareness`, synchronized into the user's plugin directory;
 - enabled-by-default discovery, but stopped-by-default runtime behavior;
+- explicit `install-codex-hooks` and `uninstall-codex-hooks` commands for reversible Codex hook management;
 - explicit service start through the Plugins pane, gated by `native execution approval`;
-- zero-config polling of `~/.codex/sessions` and `~/.codex/archived_sessions`;
+- zero-config polling of `~/.codex/sessions` and `~/.codex/archived_sessions`, with optional hook-assisted freshness;
 - a local service with `GET /health`, `GET /api/sessions`, dashboard `/`, and bearer-token-gated `POST /api/events`;
 - bounded pet events for accepted safe lifecycle signals;
 - low-frequency pet speech for selected status changes;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
-- operator commands `doctor` and `codex-hook-plan`;
+- operator commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks`;
 - repeatable real-session smoke via `npm run run-agent-awareness-local-smoke`;
 - archived smoke review write-back through `npm run update-agent-awareness-local-smoke-report`.
 
@@ -67,7 +69,7 @@ Agent Awareness is a privacy-bounded companion layer for local coding-agent acti
 
 Agent Awareness is not yet "complete Codex awareness." The current milestone does not:
 
-- auto-install Codex hooks;
+- auto-install Codex hooks during discovery or app boot;
 - auto-start the service;
 - capture raw prompts, model responses, tool arguments, tool results, terminal transcript, stdout, stderr, or full local paths;
 - expose multi-session pinning/focus controls as a finished product feature;
@@ -165,7 +167,7 @@ The shipped manifest contract is:
 - plugin id: `openpet.agent-awareness`
 - profile: `runtime`
 - permissions: `pet:say`, `pet:event`
-- commands: `doctor`, `codex-hook-plan`
+- commands: `doctor`, `codex-hook-plan`, `install-codex-hooks`, `uninstall-codex-hooks`
 - service id: `agent-awareness`
 - service health URL: `http://127.0.0.1:8795/health`
 - dashboard URL: `http://127.0.0.1:8795`
@@ -175,11 +177,13 @@ Current operator flow:
 1. Open `Control Center -> Plugins`.
 2. Find the synchronized `openpet.agent-awareness` plugin.
 3. Ensure it is enabled if local settings previously disabled it.
-4. Grant `native execution approval`.
-5. Start the `agent-awareness` service explicitly.
-6. Open the dashboard.
-7. Run `doctor` if no Codex polling signal is visible.
-8. Run `codex-hook-plan` if a future hook-assisted path needs to be reviewed.
+4. Run `codex-hook-plan` if you want to review the hook wiring before any external write.
+5. Grant `native execution approval`.
+6. Run `install-codex-hooks` if you want hook-assisted freshness in addition to polling.
+7. Review and trust the new hook once inside Codex with `/hooks`.
+8. Start the `agent-awareness` service explicitly.
+9. Open the dashboard.
+10. Run `doctor` if no Codex polling or hook signal is visible.
 
 The plugin must not auto-start during discovery or app boot.
 
@@ -238,23 +242,39 @@ The current tests explicitly prove the incremental-notification rule and the com
 
 It does not modify `~/.codex`, install hooks, or write outside plugin-owned storage.
 
+### `install-codex-hooks`
+
+`install-codex-hooks` is the explicit, shipped hook-management entrypoint. It:
+
+- writes only bounded OpenPet-owned handlers into `~/.codex/hooks.json`;
+- preserves unrelated existing Codex hooks;
+- creates a timestamped backup before hook-file mutation;
+- writes a companion `hook-install-state.json` file under plugin-owned storage;
+- keeps the service ingress bearer-token gated.
+
+It does not enable service auto-start, does not bypass `native execution approval`, and does not trust the hook inside Codex on the user's behalf.
+
+### `uninstall-codex-hooks`
+
+`uninstall-codex-hooks` removes only the OpenPet-owned handlers and hook sender script. It preserves unrelated Codex hooks and clears the plugin-owned install-state file.
+
 ## Codex Integration Strategy
 
-The first-class path is zero-config local polling from:
+The first-class baseline is zero-config local polling from:
 
 - `~/.codex/sessions`
 - `~/.codex/archived_sessions`
 
 Only safe top-level lifecycle hints are used. Content-bearing records are ignored and counted, not stored. This is why the plugin can be meaningfully useful now without crossing the privacy boundary.
 
-There is also repository helper code for hook-assisted flows, including `scripts/configure-agent-awareness-codex.js`. That helper can be useful for manual local setup experiments, but it is not the current shipped plugin manifest contract and it is not required for acceptance of the baseline milestone. The canonical plugin user contract remains:
+There is also an official optional hook-assisted path. The shipped install flow reuses the repository helper implementation from `scripts/configure-agent-awareness-codex.js`, but the helper script itself remains a repo/operator convenience wrapper rather than the primary user-facing surface. The canonical plugin user contract now includes:
 
-- explicit service start;
 - `doctor`;
 - `codex-hook-plan`;
+- `install-codex-hooks`;
+- `uninstall-codex-hooks`;
+- explicit service start;
 - real-session smoke and manual acceptance.
-
-Related on-disk hook helper command files under `examples/plugins/agent-awareness/commands/` should be treated as non-canonical implementation background until they are deliberately re-exposed in `plugin.json` and re-accepted as part of the shipped surface.
 
 ## Validation And Evidence
 
@@ -311,41 +331,46 @@ That is the honest line: the current system already provides real sanitized awar
 
 ## Development Route
 
-### Milestone A: Finish The Current Acceptance Story
+The baseline above remains the current shipped truth. The next expansion route is now the ClaudePet parity program documented in:
 
-Definition:
+- [`docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md)
 
-- keep the current privacy boundary;
-- keep `doctor` and `codex-hook-plan` as the official command surface;
-- keep `native execution approval` and explicit service start as trust boundaries;
-- continue real-session smoke runs until the dashboard usefulness and pet-speech noise fields are consistently filled in archived evidence.
+That program replaces the older "finish acceptance, then defer hook decisions until later" sequence with a clearer product roadmap:
 
-### Milestone B: Decide The Hook Story
+### Phase A: Product Skeleton Parity
 
-Make an explicit product choice between:
+- officially ship `install-codex-hooks` and `uninstall-codex-hooks`;
+- support hook plus polling dual ingestion;
+- allow trusted auto-start after approval and opt-in;
+- promote runtime state from simple status to `session`, `turn`, `tool`, `approval`, and `progress`;
+- add a first-class detail entry in Control Center and from the pet-facing surface.
 
-- staying polling-first with hook plan as guidance only; or
-- promoting a blessed hook-assist flow and documenting rollback/trust UX as part of the official contract.
+### Phase B: Core Visible Information
 
-This milestone should not land half-way. If hooks become official, the manifest surface, tests, README, runbook, and evidence expectations all need to change together.
+- token, context, and cost aggregation;
+- git status;
+- current project and current session summary;
+- recent task progress and hints;
+- per-session detail views.
 
-### Milestone C: Richer Pet Presence
+### Phase C: Desktop Companion Completeness
 
-Only after the trust and data boundary are stable should we add:
+- multi-session independent pet windows or strongly isolated session slots;
+- richer pet presentation such as mood, status bar, and action mapping;
+- usage stats page;
+- dedicated companion persona and settings surfaces.
 
-- semantic pet behaviors beyond `pet:say` and `pet:event`;
-- session focus/pinning policy;
-- persistent noise controls;
-- richer dashboard controls.
+The parity route still preserves the core trust boundary: richer metadata comes before any content mirroring, and raw prompts/transcripts/tool payloads remain out of scope by default.
 
 ## Maintainer Rule Of Thumb
 
 When Agent Awareness changes, update facts in this order:
 
 1. `docs/agent-awareness-development-design.md`
-2. `examples/plugins/agent-awareness/README.md`
-3. `docs/agent-awareness-plugin-design.md`
-4. `docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md` when acceptance procedure changes
-5. related tests and evidence helpers
+2. `docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md` when the future route changes
+3. `examples/plugins/agent-awareness/README.md`
+4. `docs/agent-awareness-plugin-design.md`
+5. `docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md` when acceptance procedure changes
+6. related tests and evidence helpers
 
 If a new change cannot be explained cleanly inside this document, the design is probably drifting again.

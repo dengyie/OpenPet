@@ -8,7 +8,9 @@
   "entries": {
     "commands": [
       { "id": "doctor", "title": "Check Agent Awareness Setup", "command": "node ./commands/doctor.js", "cwd": "." },
-      { "id": "codex-hook-plan", "title": "Preview Codex Hook Plan", "command": "node ./commands/codex-hook-plan.js", "cwd": "." }
+      { "id": "codex-hook-plan", "title": "Preview Codex Hook Plan", "command": "node ./commands/codex-hook-plan.js", "cwd": "." },
+      { "id": "install-codex-hooks", "title": "Install Codex Hooks", "command": "node ./commands/install-codex-hooks.js", "cwd": "." },
+      { "id": "uninstall-codex-hooks", "title": "Uninstall Codex Hooks", "command": "node ./commands/uninstall-codex-hooks.js", "cwd": "." }
     ],
     "services": [
       {
