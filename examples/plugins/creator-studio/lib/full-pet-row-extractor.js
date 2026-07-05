@@ -24,10 +24,44 @@ const createFramePath = ({ outputDir, index }) => (
   path.join(outputDir, `${padFrameNumber(index)}.png`)
 )
 
-const extractRowStripFrames = async ({ stripPath, actionId, outputDir }) => {
+const resolveInsideDataDir = ({ dataDir, filePath, message, mustExist = true }) => {
+  if (!dataDir) return path.resolve(filePath)
+  const root = path.resolve(dataDir)
+  const resolved = path.resolve(filePath)
+  const relativeToRoot = path.relative(root, resolved)
+  if (relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+    throw new Error(message)
+  }
+  if (mustExist) {
+    if (!fs.existsSync(resolved)) {
+      throw new Error(message)
+    }
+    const realRoot = fs.realpathSync.native(root)
+    const realResolved = fs.realpathSync.native(resolved)
+    const realRelativeToRoot = path.relative(realRoot, realResolved)
+    if (realRelativeToRoot.startsWith('..') || path.isAbsolute(realRelativeToRoot)) {
+      throw new Error(message)
+    }
+    return realResolved
+  }
+  return resolved
+}
+
+const extractRowStripFrames = async ({ stripPath, actionId, outputDir, dataDir = '' }) => {
   const row = ensureOfficialRow(actionId)
-  ensureOutputDir(outputDir)
-  const metadata = await sharp(stripPath).metadata()
+  const safeStripPath = resolveInsideDataDir({
+    dataDir,
+    filePath: stripPath,
+    message: 'Official row strip path escaped the Creator Studio data directory'
+  })
+  const safeOutputDir = resolveInsideDataDir({
+    dataDir,
+    filePath: outputDir,
+    message: 'Official row frame output path escaped the Creator Studio data directory',
+    mustExist: false
+  })
+  ensureOutputDir(safeOutputDir)
+  const metadata = await sharp(safeStripPath).metadata()
   if (!metadata.width || !metadata.height) {
     throw new Error('Official row strip could not be decoded')
   }
@@ -39,8 +73,8 @@ const extractRowStripFrames = async ({ stripPath, actionId, outputDir }) => {
       ? metadata.width
       : Math.round((index + 1) * slotWidth)
     const width = Math.max(1, right - left)
-    const framePath = createFramePath({ outputDir, index })
-    await sharp(stripPath)
+    const framePath = createFramePath({ outputDir: safeOutputDir, index })
+    await sharp(safeStripPath)
       .extract({ left, top: 0, width, height: metadata.height })
       .ensureAlpha()
       .resize({
@@ -72,16 +106,26 @@ const extractRowStripFrames = async ({ stripPath, actionId, outputDir }) => {
   }
 }
 
-const mirrorRowFrames = async ({ frames, actionId, outputDir }) => {
+const mirrorRowFrames = async ({ frames, actionId, outputDir, dataDir = '' }) => {
   const row = ensureOfficialRow(actionId)
   if (row.id !== 'running-left') {
     throw new Error('Only running-left may be derived by mirroring row frames')
   }
-  ensureOutputDir(outputDir)
+  const safeOutputDir = resolveInsideDataDir({
+    dataDir,
+    filePath: outputDir,
+    message: 'Official row frame output path escaped the Creator Studio data directory',
+    mustExist: false
+  })
+  ensureOutputDir(safeOutputDir)
   const mirroredFrames = []
   for (const [index, frame] of frames.entries()) {
-    const sourcePath = frame.path || frame
-    const framePath = createFramePath({ outputDir, index })
+    const sourcePath = resolveInsideDataDir({
+      dataDir,
+      filePath: frame.path || frame,
+      message: 'Official row frame path escaped the Creator Studio data directory'
+    })
+    const framePath = createFramePath({ outputDir: safeOutputDir, index })
     await sharp(sourcePath)
       .ensureAlpha()
       .flop()

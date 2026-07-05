@@ -10,6 +10,8 @@ const { CODEX_ATLAS, CODEX_ROWS } = require('../../src/main/pet-pack/codex-pet')
 const { loadPetPackFromDirectory } = require('../../src/main/pet-pack/loader')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 const { FULL_PET_ROW_QUALITY } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
+const { extractRowStripFrames } = require('../../examples/plugins/creator-studio/lib/full-pet-row-extractor')
+const { createFullPetRowJobManifest } = require('../../examples/plugins/creator-studio/lib/full-pet-row-jobs')
 const { buildRealAtlasFromGeneratedImage } = require('../../examples/plugins/creator-studio/lib/real-atlas-builder')
 
 const makeTempDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-real-atlas-'))
@@ -95,6 +97,34 @@ const writeOfficialFrame = async ({ outputPath, rowIndex, frameIndex }) => {
     </svg>`
   ))
     .ensureAlpha()
+    .png()
+    .toFile(outputPath)
+}
+
+const createOfficialFrameSvgBuffer = ({ rowIndex, frameIndex }) => Buffer.from(
+  `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3)}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
+    <rect x="${78 + frameIndex * 3}" y="${74 + (rowIndex % 4)}" width="12" height="${26 + (frameIndex % 5)}" fill="#1c7ed6"/>
+    <rect x="${90 - (frameIndex % 2)}" y="150" width="${20 + (rowIndex % 3)}" height="8" fill="#2f9e44"/>
+  </svg>`
+)
+
+const writeOfficialRowStrip = async ({ outputPath, row }) => {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  const composites = row.durations.map((_duration, frameIndex) => ({
+    input: createOfficialFrameSvgBuffer({ rowIndex: row.row, frameIndex }),
+    left: frameIndex * CODEX_ATLAS.cellWidth,
+    top: 0
+  }))
+  await sharp({
+    create: {
+      width: row.durations.length * CODEX_ATLAS.cellWidth,
+      height: CODEX_ATLAS.cellHeight,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite(composites)
     .png()
     .toFile(outputPath)
 }
@@ -273,6 +303,57 @@ test('real atlas builder composes official row package into complete Codex actio
       row.id === 'running-left' ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR : FULL_PET_ROW_QUALITY.ROW_REAL
     ])
   )
+  assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
+  assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
+})
+
+test('real atlas builder accepts row frames extracted from official row job manifest outputs', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const manifest = createFullPetRowJobManifest({
+    runId: 'run-1',
+    baseSourceRelativePath: relativePath,
+    canonicalReferenceRelativePath: 'runs/run-1/references/canonical-base.png'
+  })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+  const officialRows = []
+
+  for (const row of CODEX_ROWS) {
+    const job = manifest.jobs.find((candidate) => candidate.actionId === row.id)
+    const stripPath = path.join(dataDir, job.outputRelativePath)
+    const frameDir = path.join(dataDir, 'runs', 'run-1', 'rows', row.id, 'frames')
+    await writeOfficialRowStrip({ outputPath: stripPath, row })
+    const extracted = await extractRowStripFrames({
+      dataDir,
+      stripPath,
+      actionId: row.id,
+      outputDir: frameDir
+    })
+    officialRows.push({
+      actionId: row.id,
+      sourceRelativePath: job.outputRelativePath,
+      quality: row.id === 'running-left'
+        ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR
+        : FULL_PET_ROW_QUALITY.ROW_REAL,
+      frames: extracted.frames
+    })
+  }
+
+  await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir,
+    officialRows: { rows: officialRows }
+  })
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
+  assert.deepEqual(atlasQa.basicActions.realActionIds, CODEX_ROWS.map((row) => row.id))
+  assert.deepEqual(atlasQa.basicActions.missingRequiredOfficialActionIds, [])
+  assert.equal(rowQa.rows.length, CODEX_ROWS.length)
+  assert.equal(rowQa.rows.every((row) => row.quality === FULL_PET_ROW_QUALITY.ROW_REAL || row.quality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR), true)
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
   assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
 })
