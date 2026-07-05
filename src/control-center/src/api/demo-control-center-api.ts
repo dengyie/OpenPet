@@ -114,6 +114,7 @@ interface DemoState {
     commandId: string
     message: string
   }>
+  creatorReferencePickerPath: string
 }
 
 let demoApi: ControlCenterApi
@@ -198,6 +199,7 @@ const createDemoImportedAction = (actionId = 'wave', label = actionId): ActionsC
 
 const demoStorageKey = 'openpet.controlCenter.demoState'
 const demoActivePetPackChangedEvent = 'openpet:active-pet-pack-changed'
+const defaultDemoCreatorReferencePickerPath = '/demo/creator/reference.png'
 
 const demoCatalogHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 const demoLoopbackHealthHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
@@ -1589,7 +1591,8 @@ const createDefaultDemoState = (): DemoState => {
     serviceStatus: createDemoServiceStatus(),
     catalog: createDemoCatalog(),
     plugins: [],
-    pluginLogs: []
+    pluginLogs: [],
+    creatorReferencePickerPath: defaultDemoCreatorReferencePickerPath
   }
 }
 
@@ -1647,7 +1650,10 @@ const readDemoState = (): DemoState => {
       plugins: Array.isArray(state.plugins)
         ? state.plugins.map((plugin: Partial<PluginViewState>) => normalizeDemoPluginViewState(plugin))
         : [],
-      pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : []
+      pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : [],
+      creatorReferencePickerPath: typeof state.creatorReferencePickerPath === 'string' && state.creatorReferencePickerPath.trim()
+        ? state.creatorReferencePickerPath.trim()
+        : defaultDemoCreatorReferencePickerPath
     }
   } catch {
     return createDefaultDemoState()
@@ -1740,6 +1746,54 @@ let demoCreatorReferenceTokenSeq = 0
 
 const getDemoCreatorReferenceKey = (targetType: CreatorReferenceTargetType, targetId: string) => `${targetType}:${targetId}`
 const createDemoCreatorReferenceToken = () => `demo-reference-token-${Date.now()}-${++demoCreatorReferenceTokenSeq}`
+const createDemoCreatorReferenceFromSourcePath = ({
+  targetType,
+  targetId,
+  sourcePath
+}: {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  sourcePath: string
+}) => {
+  const key = getDemoCreatorReferenceKey(targetType, targetId)
+  const previous = demoCreatorReferences.get(key) || null
+  const now = new Date().toISOString()
+  return cloneCreatorReference({
+    targetType,
+    targetId,
+    assetPath: sourcePath,
+    assetUrl: sourcePath,
+    fileName: sourcePath.split('/').pop() || 'reference.png',
+    width: 1024,
+    height: 1024,
+    contentHash: `demo-${targetType}-${targetId}`,
+    createdAt: previous?.createdAt || now,
+    updatedAt: now
+  })
+}
+
+const isUnsupportedDemoDefaultPathReference = (referencePath: string) => (
+  /(全面|多视图|三视图|拼图|multi-view|three-view|collage)/i.test(String(referencePath || '').trim())
+)
+
+const createUnsupportedDemoCreatorWorkflowResult = ({
+  reference = null
+}: {
+  reference?: CreatorReferenceViewState | null
+} = {}): CreatorWorkflowResult => ({
+  ok: true,
+  state: 'missing-input',
+  code: 'unsupported_reference_image',
+  message: '默认一键生成暂只支持单张干净正面图，请改用一张清晰的正面图，不要使用拼图、三视图或多视图合成图。',
+  run: null,
+  reference,
+  activePet: null,
+  importedAction: null,
+  clickAction: '',
+  clickActionChange: null,
+  basicActions: null,
+  diagnostics: null
+})
 
 const getDemoEditableCreatorTarget = () => {
   const activePack = demoState.petPacks.packs.find((pack) => pack.id === demoState.petPacks.activePackId) || demoState.petPacks.packs[0]
@@ -1808,19 +1862,7 @@ const bindDemoCreatorReference = ({
   const sourcePath = consumeDemoCreatorReferenceSourcePath(referenceToken)
   const key = getDemoCreatorReferenceKey(targetType, targetId)
   const previous = demoCreatorReferences.get(key) || null
-  const now = new Date().toISOString()
-  const reference = cloneCreatorReference({
-    targetType,
-    targetId,
-    assetPath: sourcePath,
-    assetUrl: sourcePath,
-    fileName: sourcePath.split('/').pop() || 'reference.png',
-    width: 1024,
-    height: 1024,
-    contentHash: `demo-${targetType}-${targetId}`,
-    createdAt: previous?.createdAt || now,
-    updatedAt: now
-  })
+  const reference = createDemoCreatorReferenceFromSourcePath({ targetType, targetId, sourcePath })
   demoCreatorReferences.set(key, reference)
   return {
     ok: true,
@@ -1868,6 +1910,7 @@ const syncDemoStateFromStorage = () => {
   demoState.catalog = nextState.catalog
   demoState.plugins = nextState.plugins
   demoState.pluginLogs = nextState.pluginLogs
+  demoState.creatorReferencePickerPath = nextState.creatorReferencePickerPath
 }
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
@@ -3739,15 +3782,20 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return updatedPlugin
   },
   getCreatorState: async () => createDemoCreatorState(),
-  pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference('/demo/creator/reference.png'),
+  pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference(demoState.creatorReferencePickerPath || defaultDemoCreatorReferencePickerPath),
   bindCreatorReference: async ({ targetType, targetId, referenceToken }) => bindDemoCreatorReference({ targetType, targetId, referenceToken }),
   generateCreatorNewCharacter: async (payload: CreatorGenerateNewCharacterRequest): Promise<CreatorWorkflowResult> => {
     const targetId = `demo-pack:${String(payload.characterName || 'new-character').trim() || 'new-character'}`
-    const reference = bindDemoCreatorReference({
+    const sourcePath = consumeDemoCreatorReferenceSourcePath(payload.referenceImageToken)
+    const reference = createDemoCreatorReferenceFromSourcePath({
       targetType: 'pet-pack',
       targetId,
-      referenceToken: payload.referenceImageToken
-    }).reference
+      sourcePath
+    })
+    if (isUnsupportedDemoDefaultPathReference(sourcePath) || isUnsupportedDemoDefaultPathReference(reference.fileName)) {
+      return createUnsupportedDemoCreatorWorkflowResult({ reference })
+    }
+    demoCreatorReferences.set(getDemoCreatorReferenceKey('pet-pack', targetId), reference)
     const run = completeDemoCreatorRun({
       state: 'completed',
       mode: 'new-character',
@@ -3784,12 +3832,23 @@ export const demoControlCenterAPI: ControlCenterApi = {
   generateCreatorExistingAction: async (payload: CreatorGenerateExistingActionRequest): Promise<CreatorWorkflowResult> => {
     const editableTarget = getDemoEditableCreatorTarget()
     const reference = payload.referenceImageToken
-      ? bindDemoCreatorReference({
-          targetType: editableTarget.targetType,
-          targetId: editableTarget.targetId,
-          referenceToken: payload.referenceImageToken
-        }).reference
+      ? (() => {
+          const sourcePath = consumeDemoCreatorReferenceSourcePath(payload.referenceImageToken)
+          const nextReference = createDemoCreatorReferenceFromSourcePath({
+            targetType: editableTarget.targetType,
+            targetId: editableTarget.targetId,
+            sourcePath
+          })
+          if (isUnsupportedDemoDefaultPathReference(sourcePath) || isUnsupportedDemoDefaultPathReference(nextReference.fileName)) {
+            return nextReference
+          }
+          demoCreatorReferences.set(getDemoCreatorReferenceKey(editableTarget.targetType, editableTarget.targetId), nextReference)
+          return nextReference
+        })()
       : demoCreatorReferences.get(getDemoCreatorReferenceKey(editableTarget.targetType, editableTarget.targetId)) || null
+    if (reference && isUnsupportedDemoDefaultPathReference(reference.fileName)) {
+      return createUnsupportedDemoCreatorWorkflowResult({ reference })
+    }
     const actionId = String(payload.actionName || 'custom-action').trim() || 'custom-action'
     const previousClickAction = demoState.actionsConfig.clickAction
     demoState.actionsConfig = cloneActionsConfig({

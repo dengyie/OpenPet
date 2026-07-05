@@ -217,7 +217,7 @@ export function CreatorPane({
       <header className="pane-header">
         <div>
           <h1>Create</h1>
-          <p>普通用户默认主路径：给一张图，然后直接生成并导入。</p>
+          <p>普通用户默认主路径：给一张单张清晰的正面图，然后直接生成并导入。不要使用拼图、三视图或多视图合成图。</p>
         </div>
         <div className="segmented" role="group" aria-label="创建模式">
           <button
@@ -289,8 +289,8 @@ export function CreatorPane({
               </button>
               <p className="field-note">
                 {newCharacterDraft.referenceFileName
-                  ? `Selected: ${newCharacterDraft.referenceFileName}`
-                  : '上传一张参考图作为这个角色的 canonical reference。'}
+                  ? `Selected: ${newCharacterDraft.referenceFileName} · 默认一键路径只支持单张清晰的正面图。`
+                  : '上传一张单张清晰的正面图作为这个角色的 canonical reference。不要使用拼图、三视图或多视图合成图。'}
               </p>
             </div>
           </div>
@@ -362,11 +362,11 @@ export function CreatorPane({
               <p className="field-note">
                 {existingActionDraft.referenceFileName
                   ? hasEditableReference
-                    ? `Selected: ${existingActionDraft.referenceFileName} · 可随时改回已保存 reference。`
+                    ? `Selected: ${existingActionDraft.referenceFileName} · 可随时改回已保存 reference；默认一键路径只支持单张清晰的正面图。`
                     : `Selected: ${existingActionDraft.referenceFileName}`
                   : hasEditableReference
-                    ? '留空会复用已保存 reference；选新图则会替换并继续生成。'
-                    : '首次生成动作必须选择一张参考图。'}
+                    ? '留空会复用已保存 reference；选新图则会替换并继续生成。默认一键路径只支持单张清晰的正面图。'
+                    : '首次生成动作必须选择一张单张清晰的正面图，不要使用拼图、三视图或多视图合成图。'}
               </p>
             </div>
           </div>

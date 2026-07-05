@@ -269,6 +269,32 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '更新状态' })).toContainText('Update feed is not configured.')
   })
 
+  test('explains the supported single-image material shape in the Create pane', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Create' })).toBeVisible()
+    await expect(page.locator('.creator-pane')).toContainText('单张清晰的正面图')
+    await expect(page.locator('.creator-pane')).toContainText('不要使用拼图、三视图或多视图合成图')
+  })
+
+  test('blocks multi-view reference material in the demo Create flow with explicit guidance', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        creatorReferencePickerPath: '/demo/creator/全面.png'
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await page.getByLabel('Character name').fill('Front Gate Cat')
+    await page.getByTestId('creator-new-reference-input').click()
+    await page.getByTestId('creator-generate-new-character').click()
+
+    await expect(page.getByTestId('creator-status-line')).toContainText('单张干净正面图')
+    await expect(page.getByTestId('creator-status-line')).toContainText('不要使用拼图、三视图或多视图合成图')
+  })
+
   test('refreshes AI persona and memory sections when the active pet pack changes', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()

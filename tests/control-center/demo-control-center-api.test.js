@@ -114,6 +114,15 @@ const ensureDemoCreatorStudioInstalled = async () => {
   })
 }
 
+const setDemoCreatorReferencePickerPath = async (pickerPath) => {
+  const rawState = global.window.sessionStorage.getItem(demoStorageKey)
+  assert.ok(rawState)
+  const nextState = JSON.parse(rawState)
+  nextState.creatorReferencePickerPath = pickerPath
+  global.window.sessionStorage.setItem(demoStorageKey, JSON.stringify(nextState))
+  await demoControlCenterAPI.getPetChatState()
+}
+
 test('control center API entrypoint lazy-loads demo fallback without installing it globally', async () => {
   delete global.window.controlCenterAPI
   const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
@@ -306,6 +315,41 @@ test('demo API creator picker returns an opaque reference token', async () => {
   assert.equal(typeof picked.referenceToken, 'string')
   assert.ok(picked.referenceToken.length > 10)
   assert.equal('sourcePath' in picked, false)
+})
+
+test('demo API creator picker follows synced demo storage and blocks unsupported multi-view input', async () => {
+  await setDemoCreatorReferencePickerPath('/demo/creator/全面.png')
+
+  const picked = await demoControlCenterAPI.pickCreatorReferenceImage()
+  assert.equal(picked.fileName, '全面.png')
+
+  const result = await demoControlCenterAPI.generateCreatorNewCharacter({
+    characterName: 'Blocked Multi View Cat',
+    referenceImageToken: picked.referenceToken
+  })
+
+  assert.equal(result.state, 'missing-input')
+  assert.equal(result.code, 'unsupported_reference_image')
+  assert.match(result.message, /单张干净正面图/)
+  assert.match(result.message, /不要使用拼图、三视图或多视图合成图/)
+  assert.equal(result.reference?.fileName, '全面.png')
+})
+
+test('demo API existing-action flow blocks unsupported multi-view references from the picker', async () => {
+  await setDemoCreatorReferencePickerPath('/demo/creator/全面.png')
+
+  const picked = await demoControlCenterAPI.pickCreatorReferenceImage()
+  assert.equal(picked.fileName, '全面.png')
+
+  const result = await demoControlCenterAPI.generateCreatorExistingAction({
+    actionName: 'wave',
+    referenceImageToken: picked.referenceToken
+  })
+
+  assert.equal(result.state, 'missing-input')
+  assert.equal(result.code, 'unsupported_reference_image')
+  assert.match(result.message, /单张干净正面图/)
+  assert.equal(result.reference?.fileName, '全面.png')
 })
 
 test('demo API plugin mutations return full plugin snapshots for renderer state replacement', async () => {
