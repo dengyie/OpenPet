@@ -6,16 +6,27 @@ const FULL_PET_ACTION_SUPPORT = Object.freeze({
 
 const createActionPolicyEntry = (value) => Object.freeze(value)
 
+const OFFICIAL_FULL_PET_ACTION_IDS = Object.freeze([
+  'idle',
+  'running-right',
+  'running-left',
+  'waving',
+  'jumping',
+  'failed',
+  'waiting',
+  'running',
+  'review'
+])
+
 const FULL_PET_ACTION_POLICY = Object.freeze([
-  createActionPolicyEntry({ actionId: 'idle', support: FULL_PET_ACTION_SUPPORT.REQUIRED_REAL, attemptGeneratedPose: false, expansionRank: 0 }),
-  createActionPolicyEntry({ actionId: 'waving', support: FULL_PET_ACTION_SUPPORT.REQUIRED_REAL, attemptGeneratedPose: true, expansionRank: 0 }),
-  createActionPolicyEntry({ actionId: 'waiting', support: FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL, attemptGeneratedPose: false, expansionRank: 1 }),
-  createActionPolicyEntry({ actionId: 'running-right', support: FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL, attemptGeneratedPose: false, expansionRank: 2 }),
-  createActionPolicyEntry({ actionId: 'running-left', support: FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL, attemptGeneratedPose: false, expansionRank: 3 }),
-  createActionPolicyEntry({ actionId: 'jumping', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null }),
-  createActionPolicyEntry({ actionId: 'failed', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null }),
-  createActionPolicyEntry({ actionId: 'running', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null }),
-  createActionPolicyEntry({ actionId: 'review', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null })
+  ...OFFICIAL_FULL_PET_ACTION_IDS.map((actionId) => (
+    createActionPolicyEntry({
+      actionId,
+      support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY,
+      attemptGeneratedPose: false,
+      expansionRank: null
+    })
+  ))
 ])
 
 const REQUIRED_REAL_FULL_PET_ACTION_IDS = Object.freeze(
@@ -63,9 +74,16 @@ const normalizeBasicActionRows = (rows) => (
         actionId: normalizeActionId(row?.actionId),
         sourceActionId: normalizeActionId(row?.sourceActionId),
         sourceRelativePath: normalizeActionId(row?.sourceRelativePath),
-        fallback: Boolean(row?.fallback)
+        fallback: Boolean(row?.fallback),
+        quality: normalizeActionId(row?.quality)
       })).filter((row) => row.actionId)
     : []
+)
+
+const isOfficialRealRow = (row) => (
+  row &&
+  row.fallback !== true &&
+  (row.quality === 'row-real' || row.quality === 'approved-mirror')
 )
 
 const getMissingRequiredRealActionIds = (basicActions, { defaultRequiredActionIds = [] } = {}) => {
@@ -83,12 +101,16 @@ const getMissingRequiredRealActionIds = (basicActions, { defaultRequiredActionId
 const createBasicActionCoverage = (rows) => {
   const normalizedRows = normalizeBasicActionRows(rows)
   const realActionIds = createUniqueActionIdList(
-    normalizedRows.filter((row) => !row.fallback).map((row) => row.actionId)
+    normalizedRows.filter(isOfficialRealRow).map((row) => row.actionId)
   )
   const fallbackActionIds = createUniqueActionIdList(
     normalizedRows.filter((row) => row.fallback).map((row) => row.actionId)
   )
+  const previewFallbackActionIds = fallbackActionIds.slice()
+  const requiredOfficialActionIds = OFFICIAL_FULL_PET_ACTION_IDS.slice()
+  const missingRequiredOfficialActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.includes(actionId))
   return {
+    baseIdentityCoverage: normalizedRows.some((row) => row.actionId === 'idle' && row.sourceRelativePath),
     requiredRealActionIds: REQUIRED_REAL_FULL_PET_ACTION_IDS.slice(),
     realActionIds,
     fallbackActionIds,
@@ -96,6 +118,9 @@ const createBasicActionCoverage = (rows) => {
       requiredRealActionIds: REQUIRED_REAL_FULL_PET_ACTION_IDS,
       realActionIds
     }),
+    requiredOfficialActionIds,
+    previewFallbackActionIds,
+    missingRequiredOfficialActionIds,
     rows: normalizedRows
   }
 }
@@ -104,6 +129,7 @@ module.exports = {
   FALLBACK_ONLY_FULL_PET_ACTION_IDS,
   FULL_PET_ACTION_POLICY,
   FULL_PET_ACTION_SUPPORT,
+  OFFICIAL_FULL_PET_ACTION_IDS,
   OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
   REQUIRED_REAL_FULL_PET_ACTION_IDS,
   GENERATED_FULL_PET_ACTION_IDS,

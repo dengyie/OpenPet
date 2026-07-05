@@ -9,8 +9,9 @@
 - the phase-6 one-click chain is already merged;
 - `npm run test:core` is green on the merged baseline;
 - the stable shortest path is one clean front-facing reference image on the saved `gpt-image-2` gateway path;
-- full-pet QA/import currently requires real `idle` and `waving`;
-- host-side extra pose generation is intentionally limited to `waving`;
+- full-pet QA/import currently requires real `idle` base coverage;
+- default full-pet generation does not spend provider calls on extra action poses;
+- base-only local fallback rows are preview compatibility only and must not be described as official-quality action generation;
 - multi-view collage input is not yet a default supported path.
 
 This plan exists to keep the next round honest. It is not permission to reopen architecture, widen support claims, or reintroduce fuzzy fallback behavior.
@@ -26,7 +27,7 @@ Target outcome:
 - `main` has a freshly revalidated one-click path for both new-pet and existing-action flows using the currently recommended material shape.
 - verified image-model eligibility is enforced from one host-owned source of truth instead of scattered heuristics.
 - multi-view collage input has one explicit product contract for the default path: detect and block with guidance.
-- any future full-pet quality expansion has explicit per-action acceptance gates before code lands.
+- any future full-pet quality expansion follows the official Codex/hatch-pet row-strip contract before code lands.
 - user and operator docs say exactly what the product currently supports and where failures belong.
 
 P0/P1 scope:
@@ -34,7 +35,7 @@ P0/P1 scope:
 - P0: re-run the complete one-click path on `main` and archive the result in one canonical evidence location.
 - P0: harden verified-model truth and `/images/edits` failure classification at the host boundary.
 - P1: add one bounded multi-view contract for the default path: detect unsupported collage or multi-view input and route users to the supported front-image path.
-- P1: define the next optional full-pet action-expansion slice with explicit quality gates before implementation starts.
+- P1: define the official-quality full-pet row-strip generation slice with explicit quality gates before implementation starts.
 - P1: publish one user-facing material guide and one maintainer-facing triage guide at fixed live-doc locations.
 
 Out of scope:
@@ -256,47 +257,63 @@ Do not implement "best effort" dominant-view extraction in the same round. If th
 
 ---
 
-## Workstream D: Full-Pet Quality Expansion Spec Gate
+## Workstream D: Official-Quality Full-Pet Row Pipeline
 
-**Why now as a spec gate, not immediate code:** the previous draft jumped too quickly from "optional action expansion exists" to "we can go build it." This workstream defines the rules first.
+**Why this replaces the previous optional-action plan:** the previous draft treated one-by-one row expansion from a base pose as acceptable. That is not accurate. The official hatch-pet contract requires generated state-specific row strips for normal rows; local base-image transforms are preview compatibility only.
 
-### Current required gate
+### Current default gate
 
 Keep this unchanged until a later spec explicitly changes it:
 
-- required real basic actions: `idle`, `waving`
-- optional rows may fall back from the base pose
+- base identity coverage is allowed for the economical default path
+- legacy required/real basic action arrays remain empty for base-only output
+- all rows may exist only as explicitly labeled preview/fallback compatibility rows
+- fallback rows must not be presented as official-quality `idle`, `waving`, `running`, `jumping`, `waiting`, `failed`, or `review`
 
-### Next expansion order
+### Official row contract
 
-Future optional real-action expansion should be attempted one action at a time in this order unless evidence suggests a better order:
+Official-quality full-pet output requires row-specific generation for:
 
-1. `waiting`
+1. `idle`
 2. `running-right`
 3. `running-left`
+4. `waving`
+5. `jumping`
+6. `failed`
+7. `waiting`
+8. `running`
+9. `review`
 
-No later action should start before the earlier one has a stable evaluation result.
+Only `running-left` may be derived deterministically, and only by framewise mirroring of an approved `running-right` row while preserving frame order and timing semantics.
 
-### Per-action acceptance gate
+### Row acceptance gate
 
-Before any optional action is considered landed, it must satisfy all of:
+Before any row is considered official-quality, it must satisfy all of:
 
-- the action-specific source image decodes successfully;
+- the row-specific source strip decodes successfully;
 - visible-pixel validation passes;
-- atlas row QA records it as a real row rather than a base-pose fallback;
-- import eligibility for the current `idle` / `waving` gate is not weakened;
+- atlas row QA records it as a real row rather than a base-pose fallback or transform preview;
+- row extraction uses connected components, valid slots, or explicit `stable-slots` only as a QA-driven correction;
+- contact sheet and preview GIFs show stable baseline and no unintended size popping;
+- row semantics match the official state contract;
+- the row is not merely the base/reference image with translate, scale, crop, or other local geometric transforms;
+- import eligibility for the current `idle` gate is not weakened;
 - timeout budget and retry behavior are explicitly documented;
-- failure degrades to fallback without turning the whole full-pet run into a fatal error.
+- failure either blocks official-quality claims or degrades to an explicitly labeled preview/fallback row without turning the whole economical run into a fatal error.
 
 ### Implementation checklist
 
-- [ ] codify the per-action acceptance gate in tests before expanding generation logic;
-- [ ] add the next optional action one at a time;
-- [ ] document each action as one of:
-  - required real,
-  - optional attempted real,
-  - fallback-only;
-- [ ] stop expansion immediately if one new action destabilizes the baseline path.
+- [ ] codify anchor/centroid/baseline stability metrics in tests before changing generation logic;
+- [ ] codify a regression that rejects rows made only from local base-image transforms;
+- [ ] add a row-strip generation manifest shaped after the official hatch-pet flow;
+- [ ] generate `running-right` before deciding whether `running-left` can be mirrored;
+- [ ] add deterministic extraction, `stable-slots` correction, atlas composition, validation, contact sheet, and preview GIF artifacts;
+- [ ] document rows as one of:
+  - `base-real`,
+  - `row-real`,
+  - `approved-mirror`,
+  - `preview-fallback`;
+- [ ] stop immediately if a generated row destabilizes identity, style, baseline, or row semantics.
 
 ### Files likely involved
 
@@ -304,8 +321,10 @@ Before any optional action is considered landed, it must satisfy all of:
 - `examples/plugins/creator-studio/lib/host-model-bridge.js`
 - `examples/plugins/creator-studio/lib/real-atlas-builder.js`
 - `examples/plugins/creator-studio/lib/full-pet-qa.js`
+- new or adapted row extraction/composition/QA helpers under `examples/plugins/creator-studio/lib/`
 - `tests/examples/creator-studio-full-pet-basic-actions.test.js`
 - `tests/examples/creator-studio-host-model-bridge.test.js`
+- `tests/examples/creator-studio-real-atlas-builder.test.js`
 
 ---
 
@@ -414,6 +433,6 @@ This follow-up plan is complete only when all of the following are true:
 - verified-model truth is centralized and enforced consistently across runtime, UI, host bridge, and probe tooling;
 - the default path explicitly blocks unsupported multi-view/collage input with guidance;
 - user-facing and maintainer-facing docs point to fixed locations and say the same thing;
-- any future optional full-pet action expansion must satisfy the per-action acceptance gate before it can ship.
+- any future official-quality full-pet action expansion must satisfy the row-strip generation and visual QA gate before it can ship.
 
 If those conditions are not met, the work is still active stabilization rather than optional polish.

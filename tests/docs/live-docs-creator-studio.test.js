@@ -16,7 +16,7 @@ const readPngDimensions = (relativePath) => {
   }
 }
 
-test('live docs describe real-atlas full-pet packaging as landed Creator Studio behavior', () => {
+test('live docs describe technical full-pet atlas packaging without overclaiming official action quality', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const developmentSummary = readText('docs/development-summary.md')
   const handoff = readText('docs/HANDOFF.md')
@@ -24,8 +24,8 @@ test('live docs describe real-atlas full-pet packaging as landed Creator Studio 
 
   assert.match(
     todoArchitecture,
-    /provider-backed full-pet runs now package a real generated atlas/i,
-    'openpet-current-todo-architecture.md should list real-atlas full-pet packaging as a landed fact'
+    /provider-backed full-pet runs now package a generated technical atlas/i,
+    'openpet-current-todo-architecture.md should list technical full-pet atlas packaging as a landed fact'
   )
   assert.doesNotMatch(
     todoArchitecture,
@@ -33,22 +33,35 @@ test('live docs describe real-atlas full-pet packaging as landed Creator Studio 
     'openpet-current-todo-architecture.md should not keep real-atlas packaging as the next recommended milestone once it has landed'
   )
 
-  const currentRealAtlasPattern = /real generated atlas|real-atlas packaging|source-image-validation\.json|atlas-validation\.json/i
+  const currentRealAtlasPattern = /technical (?:full-pet )?atlas|source-image-validation\.json|atlas-validation\.json/i
   assert.match(
     developmentSummary,
     currentRealAtlasPattern,
-    'development-summary.md should mention the landed real-atlas QA/import path'
+    'development-summary.md should mention the landed technical atlas QA/import path'
   )
   assert.match(
     handoff,
     currentRealAtlasPattern,
-    'HANDOFF.md should preserve the landed real-atlas QA/import path'
+    'HANDOFF.md should preserve the landed technical atlas QA/import path'
   )
   assert.match(
     projectStatusReview,
     currentRealAtlasPattern,
-    'project-status-review.md should mention the landed real-atlas packaging and QA evidence path'
+    'project-status-review.md should mention the landed technical atlas packaging and QA evidence path'
   )
+
+  for (const [name, content] of [
+    ['openpet-current-todo-architecture.md', todoArchitecture],
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
+  ]) {
+    assert.match(
+      content,
+      /not (?:yet )?proof of official-quality|not yet satisfy the official hatch-pet\/Codex|not official(?: hatch-pet)? action quality|not official-quality action rows|official-quality full-pet output (?:still )?requires/i,
+      `${name} should keep the technical atlas claim separate from official-quality generated action rows`
+    )
+  }
 })
 
 test('live docs mention the AI provider smoke CLI as the current verification entrypoint', () => {
@@ -238,7 +251,7 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
   assert.equal(fileExists(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`), true, 'main host smoke evidence report should be archived')
 })
 
-test('creator studio live docs keep the bounded full-pet action policy truthful', () => {
+test('creator studio live docs keep the official hatch-pet full-action policy truthful', () => {
   const creatorReadme = readText('examples/plugins/creator-studio/README.md')
   const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
 
@@ -246,10 +259,12 @@ test('creator studio live docs keep the bounded full-pet action policy truthful'
     ['examples/plugins/creator-studio/README.md', creatorReadme],
     ['docs/one-click-action-generation-complete-chain.md', oneClickDoc]
   ]) {
-    assert.match(content, /required real:[\s\S]*idle[\s\S]*waving/i, `${name} should keep idle and waving as required real actions`)
-    assert.match(content, /waiting[\s\S]*running-right[\s\S]*running-left/i, `${name} should keep the queued optional action expansion order explicit`)
-    assert.match(content, /disabled in the default path|not yet active in the default path/i, `${name} should not overclaim the optional queue as active by default`)
-    assert.match(content, /fallback-only today:[\s\S]*jumping[\s\S]*failed[\s\S]*running[\s\S]*review/i, `${name} should keep fallback-only action classes explicit`)
+    assert.match(content, /official-quality[\s\S]*base generation[\s\S]*state-specific row-strip generation/i, `${name} should describe official-quality output as base plus row-strip generation`)
+    assert.match(content, /idle[\s\S]*running-right[\s\S]*running-left[\s\S]*waving[\s\S]*jumping[\s\S]*failed[\s\S]*waiting[\s\S]*running[\s\S]*review/i, `${name} should list all nine official Codex rows`)
+    assert.match(content, /running-left[\s\S]*framewise-mirrored[\s\S]*approved `?running-right`?/i, `${name} should keep running-left as the only approved deterministic derivation`)
+    assert.match(content, /base-(?:pet\/)?preview|preview\/compatibility|preview\/fallback|compatibility previews/i, `${name} should label base-only fallback rows as preview or compatibility output`)
+    assert.match(content, /local (?:geometric )?transform|base-image transform|transformed|code-generated row strips/i, `${name} should reject local transform rows as real action generation`)
+    assert.doesNotMatch(content, /required real:[\s\S]*idle/i, `${name} should not describe base-only idle coverage as an official real action`)
   }
 })
 

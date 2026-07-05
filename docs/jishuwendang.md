@@ -1,6 +1,6 @@
 # OpenPet 开发文档
 
-> 最后更新：2026-06-28
+> 最后更新：2026-07-05
 > 当前版本：`v1.0.1-rc.3`
 > 角色：OpenPet 的中文主开发文档，负责解释代码结构、开发流程、测试策略和当前工程边界。
 
@@ -195,10 +195,11 @@ docs/
   - 输出写盘
   - action / pet-pack 导入
   - trigger proposal 入队和最终审核
-- 当前 full-pet 一键链路的真实门槛是：
-  - `idle` / `waving` 必须通过真实动作覆盖门禁
-  - 宿主额外补生成只做 `waving`
-  - 其余行允许从 base pose 回退
+- 当前 full-pet 一键链路的真实边界是：
+  - 已落地的是 base identity 生成、技术 atlas QA、pet-pack 导入和激活闭环
+  - 默认 full-pet 不额外消耗 provider 生成官方动作 row strip
+  - 从 base pose 本地平移、缩放、镜像或合成出来的行只能作为 preview/compatibility fallback，不能算真实动作生成
+  - 官方质量 Codex pet 必须按 hatch-pet 契约生成 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review` 九条状态 row；唯一允许的确定性派生是已验收的 `running-right` 逐帧镜像成 `running-left`
 - 当前最稳定的真实素材路径是单张干净正面图；多视图拼图输入不是当前默认成功路径。
 
 ### 6.4 插件系统
@@ -240,8 +241,9 @@ docs/
 
 1. `random` / `state` / `event` 触发规则还没有宿主持久化 schema 与编辑器。
 2. Windows 仍未达到真实签名与真实 smoke evidence 意义上的 release-ready。
-3. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
-4. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
+3. Creator Studio full-pet 还缺官方质量 row-strip 生成、稳定锚点 QA、transform fallback 拒收和 contact sheet/GIF 人工验收闭环。
+4. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
+5. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
 
 这份文档不维护长期愿景列表；更完整的待办请看 `docs/openpet-current-todo-architecture.md`。
 

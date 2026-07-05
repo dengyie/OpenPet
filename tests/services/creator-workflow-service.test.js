@@ -590,14 +590,18 @@ test('creator workflow service binds a new character reference and completes a f
     fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
       ok: true,
       basicActions: {
-        requiredRealActionIds: ['idle', 'waving'],
-        realActionIds: ['idle', 'waving'],
-        fallbackActionIds: ['waiting'],
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: [],
+        fallbackActionIds: ['idle', 'waving', 'waiting'],
         missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
+        previewFallbackActionIds: ['idle', 'waving', 'waiting'],
+        missingRequiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
         rows: [
-          { actionId: 'idle', sourceActionId: 'idle', sourceRelativePath: 'runs/run-002/frames/base/idle/0001.png', fallback: false },
-          { actionId: 'waving', sourceActionId: 'waving', sourceRelativePath: 'runs/run-002/frames/base/waving/0001.png', fallback: false },
-          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true }
+          { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'base-preview' },
+          { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'synthesized-preview' },
+          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'synthesized-preview' }
         ]
       }
     }, null, 2)}\n`)
@@ -742,9 +746,15 @@ test('creator workflow service binds a new character reference and completes a f
   assert.equal(result.code, 'pet_imported')
   assert.equal(result.activePet.id, 'mango-cat')
   assert.equal(result.run.activatedPackId, 'mango-cat')
-  assert.deepEqual(result.basicActions.realActionIds, ['idle', 'waving'])
-  assert.deepEqual(result.basicActions.fallbackActionIds, ['waiting'])
+  assert.equal(result.basicActions.baseIdentityCoverage, true)
+  assert.deepEqual(result.basicActions.realActionIds, [])
+  assert.deepEqual(result.basicActions.fallbackActionIds, ['idle', 'waving', 'waiting'])
   assert.deepEqual(result.basicActions.missingRequiredActionIds, [])
+  assert.deepEqual(
+    result.basicActions.missingRequiredOfficialActionIds,
+    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+  )
+  assert.equal(result.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
   assert.deepEqual(bindCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',

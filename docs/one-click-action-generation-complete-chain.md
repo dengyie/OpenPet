@@ -2,205 +2,312 @@
 
 > Date: 2026-07-05
 > Owner: dev8
-> Status: implemented in `codex/dev8`
-> Scope: complete the ordinary-user one-click generation chain while preserving advanced Creator Studio and Actions workflows
+> Status: implemented orchestration with a known full-pet animation-quality gap
+> Scope: ordinary-user one-click creation plus advanced Creator Studio/Actions workflows
 
-## Goal
+## Source Of Truth
 
-Make OpenPet creation feel like one primary path:
+OpenPet's Codex pet output must follow the official `hatch-pet` contract from `openai/skills`:
 
-```text
-reference image -> generate -> import -> immediately verify in OpenPet
-```
+- Official skill: https://github.com/openai/skills/tree/main/skills/.curated/hatch-pet
+- Contract reference: `skills/.curated/hatch-pet/references/codex-pet-contract.md`
+- Row semantics: `skills/.curated/hatch-pet/references/animation-rows.md`
+- QA rubric: `skills/.curated/hatch-pet/references/qa-rubric.md`
 
-The ordinary path must support:
+The official contract is stricter than "make an atlas with non-identical cells." A compliant full pet requires state-specific animation rows, stable extraction, contact-sheet/preview review, and row semantics that match the Codex app states.
 
-- one-click generation of a custom action for the current editable pet
-- one-click creation of a new pet with a usable base action set
-- automatic import and activation/binding after technical QA succeeds
-- advanced inspection, repair, manual import, and trigger editing through Creator Studio and Actions
+## Current Truth
 
-## Confirmed Decisions
-
-- Default generation is automatic: draft, confirm, generate, approve, import, then verify.
-- Failed QA or import falls back to Creator Studio details instead of blocking the happy path up front.
-- Existing-action generation automatically replaces `clickAction`.
-- The previous `clickAction` must be visible and recoverable from the Create result surface.
-- New-pet generation should prefer real basic actions where available, while allowing honest fallback rows.
-- Minimum useful new-pet gate: `idle` and `waving` are the required real basic actions; other rows may fall back in the first implementation.
-- The next optional real-action expansion queue is fixed, but not yet active in the default path: `waiting`, then `running-right`, then `running-left`.
-- The first implementation stays inside the existing Creator Studio, ActionService, and PetPackService architecture.
-- No new pet/action package format is introduced.
-- The Create tab stays simple; advanced customization remains in Creator Studio and Actions.
-
-## Architecture
-
-### Existing-Action Chain
+The host-owned one-click orchestration exists:
 
 ```text
-Create tab
-  -> CreatorWorkflowService.generateExistingAction()
-  -> Creator Studio command flow
-  -> action-frame-builder QA
-  -> import-approved-action bridge
-  -> ActionImportService.importActionFrames()
-  -> ActionService trigger proposal acceptance
-  -> clickAction update
-  -> Create result shows previous/current clickAction
+reference image -> generate -> review/QA -> import -> activate in OpenPet
 ```
 
-### New-Pet Chain
+The current OpenPet implementation can package a technical `pet.json + spritesheet.webp` output, import it, and play the atlas at runtime. However, the current base-only full-pet path is **not** a complete official-quality action generator.
+
+Current limitations:
+
+- The default full-pet path only generates a base source image.
+- Local geometric transforms of the base source are not valid substitutes for real row-strip generation.
+- `uniqueFrameCount` proves cells differ, but it does not prove animation quality.
+- `idle`, `running`, `running-right`, `jumping`, `waving`, `waiting`, `failed`, and `review` cannot be honestly accepted as generated semantic actions unless each row has its own generated row strip or approved row source.
+- Existing golden-cat evidence proves technical import/playback, not final production action quality.
+
+Archived Creator Workflow host-smoke evidence exists for this narrowed chain:
+
+- `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`
+- `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`
+
+Those archives prove host orchestration, reference conditioning, technical pet-pack import, and existing-action import for the scoped scenarios. They do not by themselves prove production art quality or official-quality full-pet action rows.
+
+## Official Codex Pet Contract
+
+The atlas contract is fixed:
 
 ```text
-Create tab
-  -> CreatorWorkflowService.generateNewCharacter()
-  -> Creator Studio command flow
-  -> provider image generation
-  -> real-atlas-builder
-  -> pet.json + spritesheet.webp
-  -> PetPackService import and activation
-  -> Create result shows active pet and basic action coverage
+spritesheet.webp or spritesheet.png
+1536 x 1872
+8 columns x 9 rows
+192 x 208 per cell
+transparent background
+unused cells fully transparent
 ```
 
-### Advanced Layer
+Rows and frame counts:
 
-Advanced workflows remain available:
+| Row | Action | Frames | Meaning |
+| --- | --- | ---: | --- |
+| 0 | `idle` | 6 | calm breathing/blinking loop |
+| 1 | `running-right` | 8 | directional movement to the right |
+| 2 | `running-left` | 8 | directional movement to the left |
+| 3 | `waving` | 4 | greeting or attention gesture |
+| 4 | `jumping` | 5 | anticipation, lift, peak, descent, settle |
+| 5 | `failed` | 8 | error/sad/deflated reaction |
+| 6 | `waiting` | 6 | blocked-on-user-input or approval pose |
+| 7 | `running` | 6 | active task work, processing, thinking, scanning, or focused effort |
+| 8 | `review` | 6 | focused inspection/thinking loop |
 
-- Creator Studio dashboard for run details, QA artifacts, retry, frame repair, and manual handoff.
-- Actions pane for manual frame folder import, trigger proposal inbox review, trigger rules, and pet pack management.
-- Plugin command bridge for explicit creator tools with permission-gated access.
+Important semantic rule: non-directional `running` is not foot-running. It represents active task work. Directional locomotion belongs to `running-right` and `running-left`.
 
-## Data Contract Changes
+## Official Generation Model
 
-### `CreatorWorkflowResult.clickActionChange`
+A normal full-pet run should be planned as up to 10 visual jobs:
 
-Returned for existing-action generation when `clickAction` changes:
+1. Generate the canonical base pet.
+2. Generate row strips for the nine states:
+   - `idle`
+   - `running-right`
+   - `running-left`
+   - `waving`
+   - `jumping`
+   - `failed`
+   - `waiting`
+   - `running`
+   - `review`
+
+Only one deterministic visual derivation is allowed:
+
+- `running-left` is the only approved deterministic derivation: it may be framewise-mirrored from an approved `running-right` row.
+- `running-left` may be derived by framewise mirroring `running-right`.
+- This is allowed only after `running-right` has been generated, visually inspected, and explicitly approved as safe to mirror.
+- The mirror must preserve frame order and timing.
+
+Forbidden substitutions:
+
+- Do not derive `waving`, `jumping`, `failed`, `waiting`, `running`, or `review` from `idle` or the base image.
+- Do not use locally drawn, tiled, transformed, or code-generated row strips to replace missing visual generation.
+- Do not accept a contact sheet where every used frame is only the reference image with small geometric transforms.
+
+## Stable Animation And Anchoring
+
+Runtime playback is simple atlas playback: the renderer switches background positions by row and column. It does not solve bad frame anchoring.
+
+Therefore the generation pipeline must stabilize frames before import:
+
+- Row strips should contain complete sprite poses in consistent slots.
+- Extraction should produce `192x208` cells with a stable visual baseline.
+- If preview GIFs show size popping or baseline jumps caused by extraction, rerun extraction with a row-stability method like official `stable-slots`.
+- `stable-slots` is a correction for extracting already-generated row strips. It is not a way to manufacture actions from one base image.
+
+OpenPet must add QA metrics that catch:
+
+- excessive centroid drift for rows that should be anchored;
+- unintended size popping;
+- baseline jumps;
+- repeated or near-static rows;
+- rows made only from local transforms;
+- wrong row semantics.
+
+## User-Facing Modes
+
+### Base-Only Economical Mode
+
+Purpose: cheap new-pet creation and identity preview.
+
+Allowed claims:
+
+- creates/imports a new pet identity;
+- provides a technical atlas preview;
+- can use fallback rows for compatibility.
+
+Forbidden claims:
+
+- do not claim it generated complete high-quality actions;
+- do not claim `running` or `jumping` is production-quality when sourced only from the base pose;
+- do not hide that fallback rows are synthesized or low-fidelity.
+
+This mode should either hide fallback-only rows from ordinary-user success copy or label them as preview/fallback rows.
+
+### Official-Quality Full-Pet Mode
+
+Purpose: complete Codex-compatible animated pet generation.
+
+Official-quality full-pet output means base generation plus state-specific row-strip generation for every official row, except the approved `running-left` mirror case.
+
+Requirements:
+
+- generate base plus every required row strip, except approved `running-left` mirroring;
+- attach the canonical base/reference images to row generation;
+- run deterministic extraction, composition, validation, contact sheet, and preview GIF generation;
+- perform visual QA before import/activation claims;
+- repair the smallest failing scope: frame, row, then full atlas only if needed.
+
+This mode costs more image-generation budget because real action quality requires real row images.
+
+### Single-Action Advanced Mode
+
+Purpose: generate or repair one explicit action for an existing pet.
+
+This path remains separate from full-pet generation. It can use an action sheet or frame sequence, then import through the host-owned action bridge.
+
+## Data Contract
+
+`CreatorWorkflowResult.basicActions` should report coverage honestly. A base-only preview run has base identity coverage, but no official real action rows:
 
 ```json
 {
-  "previousActionId": "eat_no_bg",
-  "currentActionId": "shy-spin",
-  "importedActionId": "shy-spin",
-  "canRestore": true
-}
-```
-
-This is renderer-safe and does not expose filesystem paths or provider secrets.
-
-### `CreatorWorkflowResult.basicActions`
-
-Returned for new-pet generation when atlas QA reports action row coverage:
-
-```json
-{
-  "requiredRealActionIds": ["idle", "waving"],
-  "realActionIds": ["idle"],
-  "fallbackActionIds": ["waving", "waiting"],
-  "missingRequiredActionIds": ["waving"],
+  "baseIdentityCoverage": true,
+  "requiredOfficialActionIds": ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"],
+  "realActionIds": [],
+  "previewFallbackActionIds": ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"],
+  "missingRequiredOfficialActionIds": ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"],
   "rows": [
     {
       "actionId": "idle",
-      "sourceActionId": "idle",
+      "sourceActionId": "base-pose",
       "sourceRelativePath": "runs/run-1/frames/base/0001.png",
-      "fallback": false
+      "fallback": true,
+      "quality": "base-preview"
+    },
+    {
+      "actionId": "running",
+      "sourceActionId": "base-pose",
+      "sourceRelativePath": "runs/run-1/frames/base/0001.png",
+      "fallback": true,
+      "quality": "synthesized-preview"
     }
   ]
 }
 ```
 
-## Implementation Record
+The current implementation keeps legacy `requiredRealActionIds`, `realActionIds`, and `missingRequiredActionIds` arrays for compatibility, but the default base-only path must leave legacy required/real coverage empty. Future official-quality rows should be reported as `real` only when they are generated row strips or approved row sources that pass row QA.
 
-- `src/shared/openpet-contracts.ts`
-  - Added renderer-safe `clickActionChange` and `basicActions` workflow result contracts.
-- `src/main/services/creator-workflow-service.js`
-  - Existing-action generation captures the previous `clickAction`, accepts the generated trigger proposal, and returns a reversible change summary.
-  - New-pet generation reads `runs/<runId>/qa/atlas-validation.json` and returns basic action coverage to the Create result surface.
-- `examples/plugins/creator-studio/lib/host-model-bridge.js`
-  - Full-pet provider runs now attempt only the required extra action-specific source image: `waving`.
-  - `idle` remains the validated base source, while optional rows continue to fall back from the base pose unless a usable action-specific image is already present in the generation outputs.
-  - Basic action source generation runs with a bounded per-action timeout, so the required extra pose can fail honestly without expanding the whole full-pet generation budget.
-  - Action pose prompts reuse the existing sanitized prompt rules before reaching the host image model bridge.
-  - Missing per-action outputs are recorded as failed attempts and left for atlas fallback instead of failing the whole pet generation.
-- `examples/plugins/creator-studio/lib/real-atlas-builder.js`
-  - Atlas rows can use action-specific generated outputs by `actionId`, `rowId`, or `action`.
-  - Action-specific outputs must decode with visible pixels before they can count as real rows; invalid transparent rows fall back to the base source and are reported in QA.
-  - `idle` and `waving` are marked as required real basic actions.
-  - `atlas-validation.json` records real, fallback, and missing required coverage without absolute paths.
-- `examples/plugins/creator-studio/lib/full-pet-qa.js`
-  - When `atlas-validation.json` includes required basic action coverage, approval/import rejects missing required real actions instead of silently importing misleading QA.
-- `examples/plugins/creator-studio/lib/full-pet-basic-actions.js`
-  - The action policy now explicitly classifies `idle`/`waving` as required real, `waiting`/`running-right`/`running-left` as the queued optional-attempted-real expansion order, and `jumping`/`failed`/`running`/`review` as fallback-only today.
-  - The default generation set still only attempts the bounded extra pose `waving`; adding queued optional actions remains a future slice behind separate per-action acceptance proof.
-- `src/control-center/src/hooks/useCreatorPane.ts`
-  - Create can restore the previous `clickAction` after an existing-action generation.
-- `src/control-center/src/panes/CreatorPane.tsx`
-  - Create result cards show previous/current click action and basic action coverage.
-- `src/control-center/src/api/demo-control-center-api.ts`
-  - Demo workflow results now include the new optional result fields.
-- `tests/services/creator-workflow-service.test.js`
-  - Covers click action replacement and basic action coverage return.
-- `tests/examples/creator-studio-real-atlas-builder.test.js`
-  - Covers fallback metadata and action-specific atlas row source selection.
-- `tests/examples/creator-studio-host-model-bridge.test.js`
-  - Covers sanitization of full-pet action pose prompts.
+## Implementation Requirements
 
-## Validation
+### Replace The Current Base-Transform Atlas Builder
 
-Run the focused spine:
+The current local motion-variant implementation must not be the acceptance path for official full-pet generation.
 
-```sh
-node --test tests/services/creator-workflow-service.test.js \
-  tests/examples/creator-studio-real-atlas-builder.test.js \
-  tests/examples/creator-studio-plugin.test.js \
-  tests/services/image-generation-model-service.test.js
+Required changes:
+
+- remove or quarantine transform-based row synthesis from official-quality flows;
+- keep base-only fallback rows explicitly marked as low-fidelity preview rows if retained for compatibility;
+- add stable anchor/centroid/baseline QA so heavy jitter fails tests;
+- add transform-detection QA so a row made only from one base image plus scale/translate cannot pass as a real action.
+
+### Add Hatch-Pet Style Row Pipeline
+
+Creator Studio should add a full-pet row pipeline with these stages:
+
+```text
+base image
+  -> row-strip generation jobs
+  -> optional approved running-left mirror
+  -> strip extraction
+  -> stable-slots correction when needed
+  -> frame inspection
+  -> atlas composition
+  -> atlas validation
+  -> contact sheet + preview GIFs
+  -> visual QA
+  -> import
 ```
 
-If local dependencies such as `sharp` are missing, run the subset that can execute and record the dependency blocker.
+The row pipeline should be able to reuse the official script ideas:
 
-Current local validation notes:
+- connected component extraction;
+- equal slot fallback only when visually acceptable;
+- stable slot extraction for baseline/size popping caused by extraction;
+- framewise mirror for `running-left`;
+- atlas validation for dimensions, alpha, unused cells, and transparent RGB residue.
 
-- `node --test tests/services/creator-workflow-service.test.js tests/examples/creator-studio-host-model-bridge.test.js tests/examples/creator-studio-real-atlas-builder.test.js` passed.
-- `node --test tests/examples/creator-studio-plugin.test.js` passed.
-- `node --test tests/control-center/demo-control-center-api.test.js` passed.
-- `npm run smoke:creator-workflow-host -- --source-user-data-dir "/Users/mango/Library/Application Support/ibot" --reference-image "/Users/mango/Downloads/正面.png" --scenario both` passed on `codex/dev8`, and its sanitized archive now lives at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
-- `npm run smoke:creator-workflow-host -- --source-user-data-dir "/Users/mango/Library/Application Support/ibot" --reference-image "/Users/mango/Downloads/正面.png" --scenario both` also passed on a clean `main` acceptance worktree, and its sanitized archive now lives at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`.
-- `npm run typecheck` passed.
-- `npm run check:syntax` passed, including Control Center production build.
+### QA Gates
 
-## Risks
+Technical QA must include:
 
-- Provider outputs may not include action-specific metadata yet. The builder treats optional rows as fallback, while required coverage is surfaced through QA for review/import gating.
-- Future optional action expansion must clear a per-action gate before landing: decodable source, visible pixels, real atlas row QA, no weakening of the `idle` / `waving` import gate, documented timeout/retry behavior, and fallback-on-failure instead of fatal full-pet abort.
-- Provider-backed full-pet generation is still sensitive to gateway/model stability. The current implementation intentionally minimizes action-specific follow-up generation so base generation remains the critical path.
-- Auto-replacing `clickAction` is intentionally opinionated. The Create result must make the replacement explicit and reversible.
+- exact atlas dimensions;
+- exact row/frame counts;
+- non-empty used cells;
+- transparent unused cells;
+- no transparent RGB residue;
+- visible-pixel validation;
+- no unsafe filesystem paths;
+- stable anchor metrics for rows that should not travel;
+- row-level `uniqueFrameCount`;
+- explicit source classification per row.
+
+Visual QA must include:
+
+- same pet identity across rows;
+- no guide marks, text, UI, borders, scene backgrounds, or floating effects;
+- no obvious size popping or baseline jumps;
+- correct row semantics;
+- directional rows face the correct direction;
+- directional gait alternates rather than repeating an inert pose;
+- `running` reads as active work/focus, not directional running;
+- contact sheet is not merely base-image geometric transforms.
 
 ## Failure Triage
 
-| Symptom | Likely owner | Current meaning |
+| Symptom | Likely owner | Meaning |
 | --- | --- | --- |
-| `请先到 AI -> 模型 Provider -> 图片模型 配置...` | Host/provider config | Saved image provider is not ready yet |
-| `unsupported_reference_image` or `单张干净正面图` guidance | Input contract | Default one-click path detected a collage or multi-view reference and blocked before generation |
-| `/images/edits` timeout, multipart failure, empty output, or provider business error | Gateway/provider path | Request reached the image provider path but failed before usable asset output |
-| Missing required `idle` / `waving` coverage in full-pet QA | Full-pet generation / QA | Technical chain ran, but the imported pet is not honest enough to pass the current basic-action gate |
-| Import handoff failure after approval | Host import/action binding path | Generated output exists, but OpenPet import or trigger handoff still needs advanced follow-up |
+| Pet jitters or shakes | Atlas generation / extraction QA | Frames lack a stable anchor or were created by translate/scale transforms |
+| `running` looks static | Generation policy | Row was not generated as a semantic row strip |
+| `waving` has only tiny whole-body motion | Generation policy | Gesture was not generated through paw/limb pose changes |
+| Preview GIF size pops | Extraction pipeline | Use stable row extraction if the source strip is otherwise stable |
+| Directional row faces wrong way | Row generation or mirror decision | Regenerate or mirror framewise with explicit approval |
+| All rows look like the same pose | Product/QA gate | Base-only preview is being overclaimed as full action generation |
+| `/images/edits` timeout or multipart failure | Provider/gateway | Request did not produce usable row images |
+| Missing real row coverage | Full-pet generation | The pet may import for preview, but cannot be called official-quality full action output |
+
+## Verification Spine
+
+Run local deterministic verification for code/doc changes:
+
+```sh
+node --test tests/docs/live-docs-creator-studio.test.js
+npm run check:docs-drift
+npm run check:syntax
+npm test
+```
+
+When provider behavior or row generation changes, add targeted tests before implementation:
+
+```sh
+node --test tests/examples/creator-studio-real-atlas-builder.test.js \
+  tests/examples/creator-studio-host-model-bridge.test.js \
+  tests/examples/creator-studio-full-pet-basic-actions.test.js
+```
+
+Real provider smoke is required only when support claims or provider-path behavior changes.
 
 ## Current Stable Path
 
-- The current stable shortest path is one clean front-facing reference image.
-- On the active dev8 branch, the verified real-user chain is:
-  - one-click new pet generation from `正面.png`
-  - one-click existing-pet action generation from `正面.png`
-- That branch-level verification is archived at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
-- The same narrowed path is now archived on `main` at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`.
-- Default one-click generation now explicitly blocks collage or multi-view references such as `全面.png` and asks for one clean front-facing image instead.
-- The full-pet action policy is currently:
-  - required real: `idle`, `waving`
-  - queued optional attempted real, still disabled in the default path: `waiting`, `running-right`, `running-left`
-  - fallback-only today: `jumping`, `failed`, `running`, `review`
+Current verified path:
+
+- one clean front-facing reference image;
+- host-owned provider generation;
+- technical import of a generated pet pack;
+- existing-action generation and import for explicit single-action flows.
+
+Current known gap:
+
+- full-pet action rows are not yet official-quality unless they come from real row-specific generated sources and pass visual QA.
 
 ## Non-Goals
 
-- New atlas dimensions or row semantics.
-- Rich prompt matrix editing inside the Create tab.
-- Versioned action history or complete asset gallery.
-- Custom actions for arbitrary installed Codex pet packs beyond the current editable action host.
+- Changing Codex atlas dimensions or row semantics.
+- Claiming full action quality from a base-only economical run.
+- Treating smoke success as art-quality proof.
+- Hiding provider cost from users when official-quality row generation is requested.

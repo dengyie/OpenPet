@@ -3823,15 +3823,19 @@ export const demoControlCenterAPI: ControlCenterApi = {
       activePet: getDemoActivePetSummary(),
       clickActionChange: null,
       basicActions: {
-        requiredRealActionIds: ['idle', 'waving'],
-        realActionIds: ['idle', 'waving'],
-        fallbackActionIds: ['waiting', 'failed'],
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: [],
+        fallbackActionIds: ['idle', 'waving', 'waiting', 'failed'],
         missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
+        previewFallbackActionIds: ['idle', 'waving', 'waiting', 'failed'],
+        missingRequiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
         rows: [
-          { actionId: 'idle', sourceActionId: 'idle', sourceRelativePath: 'demo/idle.png', fallback: false },
-          { actionId: 'waving', sourceActionId: 'waving', sourceRelativePath: 'demo/waving.png', fallback: false },
-          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true },
-          { actionId: 'failed', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true }
+          { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'base-preview' },
+          { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'synthesized-preview' },
+          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'synthesized-preview' },
+          { actionId: 'failed', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'synthesized-preview' }
         ]
       },
       diagnostics: null

@@ -62,19 +62,25 @@ test('full-pet qa rejects missing required real basic actions when coverage is p
   )
 })
 
-test('full-pet qa accepts complete required real basic action coverage', () => {
+test('full-pet qa accepts the default one-image atlas policy only as preview fallback coverage', () => {
   const fixture = makeQaFixture({
     atlasQa: {
       basicActions: {
-        requiredRealActionIds: ['idle', 'waving'],
-        realActionIds: ['idle', 'waving'],
-        fallbackActionIds: [],
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: [],
+        fallbackActionIds: ['idle', 'waving'],
         missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle', 'waving'],
+        previewFallbackActionIds: ['idle', 'waving'],
+        missingRequiredOfficialActionIds: ['idle', 'waving'],
         rows: []
       }
     }
   })
 
   const result = assertFullPetQaPassed({ ...fixture, operation: 'import' })
-  assert.equal(result.atlasQa.basicActions.realActionIds.includes('waving'), true)
+  assert.deepEqual(result.atlasQa.basicActions.realActionIds, [])
+  assert.deepEqual(result.atlasQa.basicActions.fallbackActionIds, ['idle', 'waving'])
+  assert.deepEqual(result.atlasQa.basicActions.missingRequiredOfficialActionIds, ['idle', 'waving'])
 })

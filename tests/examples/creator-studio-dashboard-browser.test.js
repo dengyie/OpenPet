@@ -2342,6 +2342,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
 test('creator studio dashboard shows full-pet validation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-retry-'))
   let baseGenerationAttempts = 0
+  let actionRowGenerationAttempts = 0
   let totalGenerationAttempts = 0
   const bridgeServer = http.createServer((request, response) => {
     let body = ''
@@ -2365,6 +2366,7 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
         const outputDir = String(payload.output?.dataRelativeDir || '')
         const isActionRow = /\/frames\/base\/[^/]+$/.test(outputDir)
         if (!isActionRow) baseGenerationAttempts += 1
+        else actionRowGenerationAttempts += 1
         const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
@@ -2439,7 +2441,8 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
     assert.equal(baseGenerationAttempts, 2)
-    assert.equal(totalGenerationAttempts, 4)
+    assert.equal(actionRowGenerationAttempts, 0)
+    assert.equal(totalGenerationAttempts, 2)
     assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
     assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {

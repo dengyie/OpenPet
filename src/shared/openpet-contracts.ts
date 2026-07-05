@@ -1706,13 +1706,18 @@ export interface CreatorBasicActionRowViewState {
   sourceActionId: string
   sourceRelativePath: string
   fallback: boolean
+  quality?: string
 }
 
 export interface CreatorBasicActionCoverageViewState {
+  baseIdentityCoverage?: boolean
   requiredRealActionIds: string[]
   realActionIds: string[]
   fallbackActionIds: string[]
   missingRequiredActionIds: string[]
+  requiredOfficialActionIds?: string[]
+  previewFallbackActionIds?: string[]
+  missingRequiredOfficialActionIds?: string[]
   rows: CreatorBasicActionRowViewState[]
 }
 

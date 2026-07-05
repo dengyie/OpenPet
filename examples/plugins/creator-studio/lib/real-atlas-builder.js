@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const sharp = require('sharp')
 const { createBasicActionCoverage } = require('./full-pet-basic-actions')
 
@@ -121,9 +122,14 @@ const countVisiblePixels = async (imagePath) => {
   return visiblePixels
 }
 
-const createNormalizedCellBuffer = async (sourcePath) => {
-  const maxWidth = Math.floor(CODEX_ATLAS.cellWidth * 0.82)
-  const maxHeight = Math.floor(CODEX_ATLAS.cellHeight * 0.82)
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+
+const createNormalizedCellBuffer = async (sourcePath, variant = {}) => {
+  const baseMaxWidth = Math.floor(CODEX_ATLAS.cellWidth * 0.82)
+  const baseMaxHeight = Math.floor(CODEX_ATLAS.cellHeight * 0.82)
+  const scale = clamp(Number(variant.scale) || 1, 0.92, 1.08)
+  const maxWidth = Math.max(1, Math.round(baseMaxWidth * scale))
+  const maxHeight = Math.max(1, Math.round(baseMaxHeight * scale))
   const resized = await sharp(sourcePath)
     .ensureAlpha()
     .resize({
@@ -136,8 +142,10 @@ const createNormalizedCellBuffer = async (sourcePath) => {
     .png()
     .toBuffer()
   const resizedMetadata = await sharp(resized).metadata()
-  const left = Math.max(0, Math.floor((CODEX_ATLAS.cellWidth - resizedMetadata.width) / 2))
-  const top = Math.max(0, Math.floor((CODEX_ATLAS.cellHeight - resizedMetadata.height) * 0.58))
+  const centeredLeft = Math.floor((CODEX_ATLAS.cellWidth - resizedMetadata.width) / 2)
+  const groundedTop = Math.floor((CODEX_ATLAS.cellHeight - resizedMetadata.height) * 0.58)
+  const left = clamp(centeredLeft + Math.round(Number(variant.translateX) || 0), 0, CODEX_ATLAS.cellWidth - resizedMetadata.width)
+  const top = clamp(groundedTop + Math.round(Number(variant.translateY) || 0), 0, CODEX_ATLAS.cellHeight - resizedMetadata.height)
 
   return sharp({
     create: {
@@ -152,20 +160,36 @@ const createNormalizedCellBuffer = async (sourcePath) => {
     .toBuffer()
 }
 
+const createPreviewCellBuffers = async ({ sourcePath, row }) => {
+  const stableCell = await createNormalizedCellBuffer(sourcePath)
+  return row.durations.map(() => stableCell)
+}
+
 const findEntryForAction = ({ entries, actionId, fallbackEntry }) => {
   const exact = entries.find((entry) => entry.actionId === actionId)
-  if (exact) return { entry: exact, fallback: false, sourceActionId: actionId }
-  if (actionId === 'idle') return { entry: fallbackEntry, fallback: false, sourceActionId: fallbackEntry.actionId || 'base-pose' }
-  return { entry: fallbackEntry, fallback: true, sourceActionId: fallbackEntry.actionId || 'base-pose' }
+  if (exact) {
+    return {
+      entry: exact,
+      fallback: true,
+      sourceActionId: actionId,
+      quality: 'single-image-preview'
+    }
+  }
+  return {
+    entry: fallbackEntry,
+    fallback: true,
+    sourceActionId: fallbackEntry.actionId || 'base-pose',
+    quality: actionId === 'idle' ? 'base-preview' : 'synthesized-preview'
+  }
 }
 
 const createCellComposites = (rowCellBuffers) => {
   const composites = []
   for (const row of CODEX_ROWS) {
-    const cellBuffer = rowCellBuffers.get(row.id)
+    const cellBuffers = rowCellBuffers.get(row.id) || []
     for (let column = 0; column < row.durations.length; column += 1) {
       composites.push({
-        input: cellBuffer,
+        input: cellBuffers[column] || cellBuffers[0],
         left: column * CODEX_ATLAS.cellWidth,
         top: row.row * CODEX_ATLAS.cellHeight
       })
@@ -177,6 +201,24 @@ const createCellComposites = (rowCellBuffers) => {
 const writeJson = (filePath, value) => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+const countUniqueRowFrames = async ({ spritesheetPath, row }) => {
+  const hashes = new Set()
+  for (let column = 0; column < row.durations.length; column += 1) {
+    const { data } = await sharp(spritesheetPath)
+      .extract({
+        left: column * CODEX_ATLAS.cellWidth,
+        top: row.row * CODEX_ATLAS.cellHeight,
+        width: CODEX_ATLAS.cellWidth,
+        height: CODEX_ATLAS.cellHeight
+      })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    hashes.add(crypto.createHash('sha256').update(data).digest('hex'))
+  }
+  return hashes.size
 }
 
 const createEntryVisibilityInspector = ({ fallbackEntry, fallbackValidation, warnings }) => {
@@ -223,16 +265,21 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     if (!validation) {
       resolved = {
         entry: fallbackEntry,
-        fallback: row.id === 'idle' ? false : true,
-        sourceActionId: fallbackEntry.actionId || 'base-pose'
+        fallback: true,
+        sourceActionId: fallbackEntry.actionId || 'base-pose',
+        quality: row.id === 'idle' ? 'base-preview' : 'synthesized-preview'
       }
     }
-    rowCellBuffers.set(row.id, await createNormalizedCellBuffer(resolved.entry.sourcePath))
+    rowCellBuffers.set(row.id, await createPreviewCellBuffers({
+      sourcePath: resolved.entry.sourcePath,
+      row
+    }))
     basicActionRows.push({
       actionId: row.id,
       sourceActionId: resolved.sourceActionId,
       sourceRelativePath: resolved.entry.sourceRelativePath,
-      fallback: resolved.fallback
+      fallback: resolved.fallback,
+      quality: resolved.quality
     })
   }
   const basicActions = createBasicActionCoverage(basicActionRows)
@@ -249,6 +296,16 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     .toFile(spritesheetPath)
 
   const atlasVisiblePixels = await countVisiblePixels(spritesheetPath)
+  const frameRows = []
+  for (const row of CODEX_ROWS) {
+    frameRows.push({
+      id: row.id,
+      row: row.row,
+      frameCount: row.durations.length,
+      uniqueFrameCount: await countUniqueRowFrames({ spritesheetPath, row }),
+      sourceQuality: basicActionRows.find((candidate) => candidate.actionId === row.id)?.quality || 'unknown'
+    })
+  }
   const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
   const atlasQaPath = path.join(qaDir, 'atlas-validation.json')
   writeJson(sourceQaPath, {
@@ -273,11 +330,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     frame: {
       width: CODEX_ATLAS.cellWidth,
       height: CODEX_ATLAS.cellHeight,
-      rows: CODEX_ROWS.map((row) => ({
-        id: row.id,
-        row: row.row,
-        frameCount: row.durations.length
-      }))
+      rows: frameRows
     },
     warnings
   })

@@ -34,7 +34,7 @@ test('host model bridge sanitizes full-pet action pose prompts', () => {
   assert.doesNotMatch(prompt, /C:\\Users\\mango/)
 })
 
-test('host model bridge only generates the required extra full-pet basic action source with bounded timeout', async () => {
+test('host model bridge does not spend provider calls on default full-pet action poses', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-'))
   const actionRequests = []
   const server = http.createServer((request, response) => {
@@ -120,13 +120,10 @@ test('host model bridge only generates the required extra full-pet basic action 
       }
     })
 
-    assert.equal(result.outputs.length, 2)
-    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, ['waving'])
-    assert.equal(result.basicActionGeneration.attempts.length, 1)
-    assert.deepEqual(actionRequests, [{
-      dataRelativeDir: 'runs/run-bridge-concurrency/frames/base/waving',
-      timeoutMs: 300000
-    }])
+    assert.equal(result.outputs.length, 1)
+    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, [])
+    assert.equal(result.basicActionGeneration.attempts.length, 0)
+    assert.deepEqual(actionRequests, [])
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -137,7 +134,7 @@ test('host model bridge only generates the required extra full-pet basic action 
   }
 })
 
-test('host model bridge falls back to a discovered working model for full-pet generation and action poses', async () => {
+test('host model bridge falls back to a discovered working model for full-pet generation without action pose calls', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-fallback-'))
   const requests = []
   const server = http.createServer((request, response) => {
@@ -229,8 +226,8 @@ test('host model bridge falls back to a discovered working model for full-pet ge
 
     assert.equal(result.model, 'gpt-image-1.5')
     assert.deepEqual(result.modelAttempts.map((entry) => entry.model), ['gpt-image-2', 'gpt-image-1.5'])
-    assert.equal(result.basicActionGeneration.attempts.every((entry) => entry.model === 'gpt-image-1.5'), true)
-    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, ['waving'])
+    assert.deepEqual(result.basicActionGeneration.attempts, [])
+    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, [])
     assert.equal(requests.some((entry) => entry.model === 'gpt-image-2'), true)
     assert.equal(requests.some((entry) => entry.model === 'gpt-image-1.5'), true)
   } finally {

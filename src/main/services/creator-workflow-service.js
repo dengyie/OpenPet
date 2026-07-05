@@ -200,6 +200,7 @@ const createWorkflowResult = ({
     : null,
   basicActions: basicActions && typeof basicActions === 'object'
     ? {
+        baseIdentityCoverage: Boolean(basicActions.baseIdentityCoverage),
         requiredRealActionIds: Array.isArray(basicActions.requiredRealActionIds)
           ? basicActions.requiredRealActionIds.map(normalizeText).filter(Boolean)
           : [],
@@ -212,12 +213,22 @@ const createWorkflowResult = ({
         missingRequiredActionIds: Array.isArray(basicActions.missingRequiredActionIds)
           ? basicActions.missingRequiredActionIds.map(normalizeText).filter(Boolean)
           : [],
+        requiredOfficialActionIds: Array.isArray(basicActions.requiredOfficialActionIds)
+          ? basicActions.requiredOfficialActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        previewFallbackActionIds: Array.isArray(basicActions.previewFallbackActionIds)
+          ? basicActions.previewFallbackActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        missingRequiredOfficialActionIds: Array.isArray(basicActions.missingRequiredOfficialActionIds)
+          ? basicActions.missingRequiredOfficialActionIds.map(normalizeText).filter(Boolean)
+          : [],
         rows: Array.isArray(basicActions.rows)
           ? basicActions.rows.map((row) => ({
               actionId: normalizeText(row?.actionId),
               sourceActionId: normalizeText(row?.sourceActionId),
               sourceRelativePath: normalizeText(row?.sourceRelativePath),
-              fallback: Boolean(row?.fallback)
+              fallback: Boolean(row?.fallback),
+              quality: normalizeText(row?.quality)
             })).filter((row) => row.actionId)
           : []
       }

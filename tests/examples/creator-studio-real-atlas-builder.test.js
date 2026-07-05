@@ -49,6 +49,24 @@ const countVisiblePixels = async (imagePath) => {
   return visible
 }
 
+const getRowCellHashes = async (spritesheetPath, row) => {
+  const hashes = []
+  for (let column = 0; column < row.durations.length; column += 1) {
+    const { data } = await sharp(spritesheetPath)
+      .extract({
+        left: column * CODEX_ATLAS.cellWidth,
+        top: row.row * CODEX_ATLAS.cellHeight,
+        width: CODEX_ATLAS.cellWidth,
+        height: CODEX_ATLAS.cellHeight
+      })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    hashes.push(crypto.createHash('sha256').update(data).digest('hex'))
+  }
+  return hashes
+}
+
 test('real atlas builder creates a Codex atlas from generated image pixels', async () => {
   const dataDir = makeTempDataDir()
   const { relativePath } = await writeSourcePng({ dataDir })
@@ -101,18 +119,50 @@ test('real atlas builder creates a Codex atlas from generated image pixels', asy
   assert.equal(atlasQa.width, CODEX_ATLAS.width)
   assert.equal(atlasQa.height, CODEX_ATLAS.height)
   assert.equal(atlasQa.sourceRelativePath, relativePath)
-  assert.deepEqual(atlasQa.basicActions.requiredRealActionIds, ['idle', 'waving'])
-  assert.deepEqual(atlasQa.basicActions.realActionIds, ['idle'])
+  assert.equal(atlasQa.basicActions.baseIdentityCoverage, true)
+  assert.deepEqual(atlasQa.basicActions.requiredRealActionIds, [])
+  assert.deepEqual(atlasQa.basicActions.realActionIds, [])
   assert.equal(atlasQa.basicActions.fallbackActionIds.includes('waving'), true)
-  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['waving'])
-  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').fallback, false)
+  assert.equal(atlasQa.basicActions.fallbackActionIds.includes('idle'), true)
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
+  assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('idle'), true)
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').fallback, true)
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').fallback, true)
   assert.equal(atlasQa.visiblePixels, await countVisiblePixels(result.spritesheetPath))
   assert.equal(JSON.stringify(sourceQa).includes(dataDir), false)
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
 })
 
-test('real atlas builder uses action-specific generated outputs for basic action rows', async () => {
+test('real atlas builder keeps preview fallback rows visually stable instead of manufacturing motion variants', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir
+  })
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  for (const row of CODEX_ROWS) {
+    const uniqueFrameCount = new Set(await getRowCellHashes(result.spritesheetPath, row)).size
+    assert.equal(uniqueFrameCount, 1, `${row.id} preview fallback should not manufacture motion`)
+    assert.equal(
+      atlasQa.frame.rows.find((candidate) => candidate.id === row.id)?.uniqueFrameCount,
+      uniqueFrameCount
+    )
+    assert.equal(
+      atlasQa.frame.rows.find((candidate) => candidate.id === row.id)?.sourceQuality,
+      row.id === 'idle' ? 'base-preview' : 'synthesized-preview'
+    )
+  }
+})
+
+test('real atlas builder does not count action-specific single images as official row-strip actions', async () => {
   const dataDir = makeTempDataDir()
   const base = await writeSourcePng({
     dataDir,
@@ -147,10 +197,14 @@ test('real atlas builder uses action-specific generated outputs for basic action
   })
 
   const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
-  assert.deepEqual(atlasQa.basicActions.realActionIds.slice(0, 2), ['idle', 'waving'])
+  assert.deepEqual(atlasQa.basicActions.realActionIds, [])
   assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
+  assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('idle'), true)
+  assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('waving'), true)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').sourceRelativePath, idle.relativePath)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').sourceRelativePath, waving.relativePath)
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'single-image-preview')
+  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').quality, 'single-image-preview')
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waiting').fallback, true)
 })
 
@@ -194,9 +248,9 @@ test('real atlas builder does not count transparent action-specific outputs as r
     .raw()
     .stats()
 
-  assert.deepEqual(atlasQa.basicActions.realActionIds, ['idle'])
+  assert.deepEqual(atlasQa.basicActions.realActionIds, [])
   assert.equal(atlasQa.basicActions.fallbackActionIds.includes('waving'), true)
-  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['waving'])
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').fallback, true)
   assert.equal(wavingCell.channels[3].max > 0, true)
 })

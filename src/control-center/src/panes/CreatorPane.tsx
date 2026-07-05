@@ -127,9 +127,10 @@ const ResultCard = ({
       ) : null}
       {basicActions ? (
         <div className="creator-result-grid">
-          <span><strong>真实基础动作</strong> {basicActions.realActionIds.length ? basicActions.realActionIds.join(', ') : 'none'}</span>
-          <span><strong>复用基础图动作</strong> {basicActions.fallbackActionIds.length ? basicActions.fallbackActionIds.join(', ') : 'none'}</span>
+          <span><strong>官方动作覆盖</strong> {basicActions.realActionIds.length ? basicActions.realActionIds.join(', ') : 'none'}</span>
+          <span><strong>预览复用动作</strong> {basicActions.previewFallbackActionIds?.length ? basicActions.previewFallbackActionIds.join(', ') : (basicActions.fallbackActionIds.length ? basicActions.fallbackActionIds.join(', ') : 'none')}</span>
           {basicActions.missingRequiredActionIds.length ? <span><strong>需要复查</strong> {basicActions.missingRequiredActionIds.join(', ')}</span> : null}
+          {basicActions.missingRequiredOfficialActionIds?.length ? <span><strong>官方质量缺口</strong> {basicActions.missingRequiredOfficialActionIds.join(', ')}</span> : null}
         </div>
       ) : null}
       {result.run ? (
