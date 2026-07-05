@@ -466,6 +466,8 @@ test('pet bubble chat IPC delegates state, open, local message, hide, pin and in
       text: '本地轻量消息',
       ttlMs: 800,
       source: 'pet-renderer',
+      kind: 'dialogue',
+      role: 'pet',
       petPackId: 'legacy-cat'
     }],
     ['refreshItems', {

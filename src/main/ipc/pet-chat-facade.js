@@ -153,6 +153,8 @@ const createPetChatFacade = ({
     captureBubble(bubble)
     petBubbleChatWindowService?.showMessage?.({
       ...bubble,
+      kind: 'dialogue',
+      role: 'pet',
       petPackId: getActivePetPackId()
     })
     refreshBubbleChatItems({ reason: 'pet-event' })

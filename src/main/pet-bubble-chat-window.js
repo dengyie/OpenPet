@@ -200,9 +200,19 @@ const normalizeMessagePayload = (payload = {}) => {
   }
 }
 
-const classifyBubbleChatKind = ({ source } = {}) => (
-  String(source || '').trim() === 'ai' ? 'dialogue' : 'notice'
-)
+const classifyBubbleChatKind = ({ source } = {}) => {
+  const normalizedSource = String(source || '').trim()
+  if (
+    normalizedSource === 'ai' ||
+    normalizedSource.startsWith('ai:') ||
+    normalizedSource === 'pet' ||
+    normalizedSource.startsWith('pet-') ||
+    normalizedSource.startsWith('pet:')
+  ) {
+    return 'dialogue'
+  }
+  return 'notice'
+}
 
 const createBubbleItemId = ({ kind, source, createdAt, text }) => {
   const seed = `${kind}:${source || ''}:${createdAt || ''}:${text || ''}`
