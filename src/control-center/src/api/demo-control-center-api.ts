@@ -1527,7 +1527,15 @@ const createDefaultDemoState = (): DemoState => {
             actionId: 'wave',
             intent: 'greeting',
             inputSummary: 'reply:12 chars · intent:greeting',
-            replay: { reply: 'hello there', behaviorIntent: { intent: 'greeting', actionId: 'wave', confidence: 0.9 } }
+            replay: {
+              reply: 'hello there',
+              behaviorIntent: {
+                intent: 'greeting',
+                actionId: 'wave',
+                confidence: 0.9,
+                reason: 'demo replay matched'
+              }
+            }
           }
         ]
       }

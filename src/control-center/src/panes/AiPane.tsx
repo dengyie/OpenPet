@@ -1838,6 +1838,8 @@ export function AiPane({
                 <div className="behavior-result">
                   <strong>{replayResult.matched ? 'Replay matched' : 'Replay no match'}</strong>
                   <span>{replayResult.reason}</span>
+                  {replayResult.providerReason ? <span>{replayResult.providerReason}</span> : null}
+                  {replayResult.displayMode ? <span>{replayResult.displayMode}</span> : null}
                   {replayResult.actionId ? <span>{replayResult.actionId}</span> : null}
                 </div>
               ) : null}
