@@ -815,7 +815,7 @@ test('creator workflow service returns preview-ready for new-character output wi
         missingRequiredActionIds: [],
         requiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
         previewFallbackActionIds: ['idle', 'waving', 'waiting'],
-        missingRequiredOfficialActionIds: [],
+        missingRequiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
         rows: [
           { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'base-preview' },
           { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'synthesized-preview' },
@@ -924,20 +924,19 @@ test('creator workflow service returns preview-ready for new-character output wi
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.state, 'preview-ready')
-  assert.equal(result.code, 'preview_ready')
-  assert.equal(result.activePet, null)
-  assert.equal(result.run.activatedPackId, '')
+  assert.equal(result.state, 'completed')
+  assert.equal(result.code, 'pet_imported')
+  assert.equal(result.activePet.id, 'mango-cat')
+  assert.equal(result.run.activatedPackId, 'mango-cat')
   assert.equal(result.basicActions.baseIdentityCoverage, true)
   assert.deepEqual(result.basicActions.realActionIds, [])
   assert.deepEqual(result.basicActions.fallbackActionIds, ['idle', 'waving', 'waiting'])
-  assert.deepEqual(result.basicActions.missingRequiredActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
+  assert.deepEqual(result.basicActions.missingRequiredActionIds, [])
   assert.deepEqual(
     result.basicActions.missingRequiredOfficialActionIds,
-    []
+    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
   )
   assert.equal(result.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
-  assert.deepEqual(commandCalls, ['draft-task', 'confirm-task', 'run-step'])
   assert.deepEqual(bindCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',

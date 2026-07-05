@@ -2508,7 +2508,6 @@ test('creator studio dashboard shows failed generation recovery and retries the 
 test('creator studio dashboard shows full-pet validation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-retry-'))
   let baseGenerationAttempts = 0
-  let keyframeGenerationAttempts = 0
   let actionRowGenerationAttempts = 0
   let totalGenerationAttempts = 0
   const bridgeServer = http.createServer((request, response) => {
@@ -2531,13 +2530,9 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
       if (request.url.endsWith('/creator/model-image-generate')) {
         totalGenerationAttempts += 1
         const outputDir = String(payload.output?.dataRelativeDir || '')
-        const actionRowMatch = outputDir.match(/\/frames\/base\/([^/]+)-keyframe-row$/)
-        const isActionRow = Boolean(actionRowMatch)
-        const isActionKeyframe = /\/keyframes\/actions\/[^/]+-(?:start|peak)-keyframe$/.test(outputDir)
-        const isBaseImage = /\/frames\/base$/.test(outputDir)
-        if (isBaseImage) baseGenerationAttempts += 1
-        else if (isActionKeyframe) keyframeGenerationAttempts += 1
-        else if (isActionRow) actionRowGenerationAttempts += 1
+        const isActionRow = /\/frames\/base\/[^/]+$/.test(outputDir)
+        if (!isActionRow) baseGenerationAttempts += 1
+        else actionRowGenerationAttempts += 1
         const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
@@ -2621,9 +2616,8 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
     assert.equal(baseGenerationAttempts, 2)
-    assert.equal(keyframeGenerationAttempts, 16)
-    assert.equal(actionRowGenerationAttempts, 8)
-    assert.equal(totalGenerationAttempts, 26)
+    assert.equal(actionRowGenerationAttempts, 0)
+    assert.equal(totalGenerationAttempts, 2)
     assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
     assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {

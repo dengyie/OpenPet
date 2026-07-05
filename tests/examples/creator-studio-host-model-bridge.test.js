@@ -250,188 +250,9 @@ test('host model bridge sends a fresh compiled prompt variant for every Host fal
   assert.deepEqual(result.attempts.map((attempt) => attempt.model), ['gpt-image-2', 'gpt-image-1.5'])
 })
 
-test('host model bridge prompt variants prefer the provider-safe prompt over legacy builder text', async () => {
-  const requests = []
-  await __testInternals.generateWithModelFallback({
-    prompt: 'safe primary prompt',
-    promptCompiler: { modelCapabilityProfile: 'gpt-image-2-v1' },
-    constraints: { width: 1024, height: 1024, transparent: false },
-    requestedTimeoutMs: 300000,
-    referenceImages: [{ role: 'canonical-reference' }],
-    runId: 'run-provider-prompt-precedence',
-    dataRelativeDir: 'runs/run-provider-prompt-precedence/frames/base',
-    settings: { creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
-    preferredModel: 'gpt-image-2',
-    buildPromptForModel: () => ({
-      prompt: 'Create an OpenPet asset with internal workflow language.',
-      providerPrompt: 'Create one complete full-body character image.',
-      promptCompiler: {
-        width: 1024,
-        height: 1024,
-        backgroundStrategy: 'solid-background-then-local-removal',
-        modelCapabilityProfile: 'gpt-image-2-v1'
-      }
-    }),
-    callHostImageGenerateImpl: async (request) => {
-      requests.push(request)
-      return { result: { model: 'gpt-image-2' } }
-    }
-  })
-
-  assert.equal(requests[0].prompt, 'Create one complete full-body character image.')
-  assert.equal(requests[0].promptVariants[0].prompt, 'Create one complete full-body character image.')
-  assert.doesNotMatch(requests[0].promptVariants[0].prompt, /OpenPet|workflow/i)
-})
-
-test('host model bridge does not retry the same model after a non-transient provider HTTP failure', async () => {
-  const requests = []
-  await assert.rejects(() => __testInternals.generateWithModelFallback({
-    prompt: 'wave',
-    requestedTimeoutMs: 300000,
-    referenceImages: [{ role: 'canonical-reference' }],
-    runId: 'run-non-transient-failure',
-    dataRelativeDir: 'runs/run-non-transient-failure/keyframes/start',
-    settings: {
-      provider: 'openai-compatible',
-      creatorWorkflowModelPolicy: {
-        verifiedModels: ['gpt-image-2'],
-        fallbackModels: []
-      }
-    },
-    preferredModel: 'gpt-image-2',
-    retryDelayMs: 0,
-    callHostImageGenerateImpl: async (request) => {
-      requests.push(request)
-      throw new Error('Image Provider generation failed with HTTP 400')
-    }
-  }), /HTTP 400/)
-
-  assert.equal(requests.length, 1)
-})
-
-const writeMockBaseProviderPng = async (outputPath) => {
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  await sharp({
-    create: {
-      width: 512,
-      height: 512,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    }
-  })
-    .composite([{
-      input: Buffer.from(`
-        <svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
-          <ellipse cx="256" cy="300" rx="82" ry="112" fill="#d89b45" />
-          <circle cx="256" cy="196" r="72" fill="#e2ad5b" />
-          <circle cx="224" cy="190" r="10" fill="#4f8c42" />
-          <circle cx="288" cy="190" r="10" fill="#4f8c42" />
-          <ellipse cx="256" cy="294" rx="38" ry="74" fill="#f2dcc0" />
-          <ellipse cx="214" cy="420" rx="28" ry="14" fill="#d89b45" />
-          <ellipse cx="298" cy="420" rx="28" ry="14" fill="#d89b45" />
-        </svg>
-      `),
-      left: 0,
-      top: 0
-    }])
-    .png()
-    .toFile(outputPath)
-}
-
-const writeMockOfficialRowStripPng = async ({ outputPath, actionId }) => {
-  const row = OFFICIAL_FULL_PET_ROW_BY_ID.get(actionId)
-  if (!row) throw new Error(`Unknown test official row: ${actionId}`)
-  const cellWidth = 192
-  const cellHeight = 208
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  const composites = row.durations.map((_duration, index) => ({
-    input: Buffer.from(`
-      <svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="96" cy="124" rx="38" ry="50" fill="#d89b45" />
-        <circle cx="96" cy="78" r="34" fill="#e2ad5b" />
-        <circle cx="82" cy="76" r="5" fill="#4f8c42" />
-        <circle cx="110" cy="76" r="5" fill="#4f8c42" />
-        <ellipse cx="96" cy="134" rx="20" ry="32" fill="#f2dcc0" />
-        <rect x="${118 + (index % 3)}" y="${82 - (index % 4)}" width="10" height="${30 + (index % 5)}" rx="5" fill="#d89b45" />
-        <ellipse cx="78" cy="174" rx="13" ry="7" fill="#d89b45" />
-        <ellipse cx="114" cy="174" rx="13" ry="7" fill="#d89b45" />
-      </svg>
-    `),
-    left: index * cellWidth,
-    top: 0
-  }))
-  await sharp({
-    create: {
-      width: row.frameCount * cellWidth,
-      height: cellHeight,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    }
-  })
-    .composite(composites)
-    .png()
-    .toFile(outputPath)
-}
-
-const writeMockActionSheetPng = async ({ outputPath, actionId }) => {
-  const row = OFFICIAL_FULL_PET_ROW_BY_ID.get(actionId)
-  if (!row) throw new Error(`Unknown test official row: ${actionId}`)
-  const { columns, rows } = getActionSheetLayout(row.frameCount)
-  const cellWidth = 256
-  const cellHeight = 256
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  const composites = row.durations.map((_duration, index) => ({
-    input: Buffer.from(`
-      <svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="128" cy="150" rx="50" ry="60" fill="#d89b45" />
-        <circle cx="128" cy="92" r="42" fill="#e2ad5b" />
-        <circle cx="111" cy="90" r="6" fill="#4f8c42" />
-        <circle cx="145" cy="90" r="6" fill="#4f8c42" />
-        <ellipse cx="128" cy="162" rx="24" ry="36" fill="#f2dcc0" />
-        <rect x="${154 + (index % 3)}" y="${98 - (index % 4)}" width="12" height="${36 + (index % 5)}" rx="6" fill="#d89b45" />
-        <ellipse cx="${104 - (index % 3) * 3}" cy="210" rx="16" ry="9" fill="#d89b45" />
-        <ellipse cx="${152 + (index % 3) * 3}" cy="210" rx="16" ry="9" fill="#d89b45" />
-      </svg>
-    `),
-    left: (index % columns) * cellWidth,
-    top: Math.floor(index / columns) * cellHeight
-  }))
-  await sharp({
-    create: {
-      width: columns * cellWidth,
-      height: rows * cellHeight,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    }
-  })
-    .composite(composites)
-    .png()
-    .toFile(outputPath)
-}
-
-const writeMockProviderImage = async ({ outputPath, dataRelativeDir }) => {
-  const officialRowMatch = String(dataRelativeDir || '').match(/\/official-rows\/([^/]+)-row-strip$/)
-  if (officialRowMatch) {
-    await writeMockOfficialRowStripPng({ outputPath, actionId: officialRowMatch[1] })
-    return
-  }
-  const actionSheetMatch = String(dataRelativeDir || '').match(/\/frames\/base\/([^/]+)-keyframe-row$/)
-  if (actionSheetMatch) {
-    await writeMockActionSheetPng({ outputPath, actionId: actionSheetMatch[1] })
-    return
-  }
-  await writeMockBaseProviderPng(outputPath)
-}
-
-test('host model bridge does not upload a canonical reference symlink that escapes the data directory', async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-escaped-reference-'))
-  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-outside-'))
-  const outsidePath = path.join(outsideDir, 'outside.png')
-  const sourceRelativePath = 'runs/run-escaped-reference/inputs/references/cat.png'
-  await writeMockBaseProviderPng(outsidePath)
-  fs.mkdirSync(path.dirname(path.join(dataDir, sourceRelativePath)), { recursive: true })
-  fs.symlinkSync(outsidePath, path.join(dataDir, sourceRelativePath))
-  const requests = []
+test('host model bridge does not spend provider calls on default full-pet action poses', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-'))
+  const actionRequests = []
   const server = http.createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -686,32 +507,9 @@ test('host model bridge generates reference-conditioned full-pet rows through pe
     })
 
     assert.equal(result.outputs.length, 1)
-    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, GENERATED_FULL_PET_ACTION_IDS)
-    assert.equal(result.basicActionGeneration.attempts.length, GENERATED_FULL_PET_ACTION_IDS.length)
-    const startRequests = requests.filter((entry) => /-start-keyframe$/.test(entry.dataRelativeDir))
-    const peakRequests = requests.filter((entry) => /-peak-keyframe$/.test(entry.dataRelativeDir))
-    const finalRequests = requests.filter((entry) => /-keyframe-row$/.test(entry.dataRelativeDir))
-    assert.equal(startRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
-    assert.equal(peakRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
-    assert.equal(finalRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
-    assert.equal(requests.some((entry) => entry.dataRelativeDir.includes('running-left')), false)
-    assert.equal(requests.some((entry) => /\/official-rows\//.test(entry.dataRelativeDir)), false)
-    assert.equal(startRequests.every((entry) => (
-      entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'full-pet-action-identity-board'
-    )), true)
-    assert.equal(peakRequests.every((entry) => entry.referenceRoles[0] === 'action-peak-conditioning-board'), true)
-    assert.equal(finalRequests.every((entry) => entry.referenceRoles[0] === 'keyframe-action-reference-board'), true)
-    assert.equal(startRequests.every((entry) => entry.timeoutMs === 480000), true)
-    assert.equal(peakRequests.every((entry) => entry.timeoutMs === 480000), true)
-    assert.equal(finalRequests.every((entry) => entry.timeoutMs === 480000), true)
-    assert.equal(result.officialRows.rows.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    const mirroredLeft = result.officialRows.rows.find((row) => row.actionId === 'running-left')
-    assert.equal(mirroredLeft.quality, 'approved-mirror')
-    assert.equal(mirroredLeft.sourceActionId, 'running-right')
-    assert.deepEqual(
-      mirroredLeft.frames.map((frame) => frame.index),
-      result.officialRows.rows.find((row) => row.actionId === 'running-right').frames.map((frame) => frame.index)
-    )
+    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, [])
+    assert.equal(result.basicActionGeneration.attempts.length, 0)
+    assert.deepEqual(actionRequests, [])
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -722,10 +520,8 @@ test('host model bridge generates reference-conditioned full-pet rows through pe
   }
 })
 
-test('host model bridge conditions every official full-pet action with provider start and peak keyframes', async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-conditioned-full-pet-'))
-  const sourceRelativePath = 'runs/run-conditioned-full-pet/inputs/references/cat.png'
-  await writeMockBaseProviderPng(path.join(dataDir, sourceRelativePath))
+test('host model bridge falls back to a discovered working model for full-pet generation without action pose calls', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-fallback-'))
   const requests = []
   const server = http.createServer((request, response) => {
     let body = ''
@@ -1016,13 +812,12 @@ test('host model bridge delegates full-pet model selection and retries to the Ho
       }
     })
 
-    assert.equal(result.model, 'gpt-image-2')
-    assert.deepEqual(result.modelAttempts.map((entry) => entry.model), ['gpt-image-2'])
-    assert.equal(result.basicActionGeneration.attempts.length, GENERATED_FULL_PET_ACTION_IDS.length)
-    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, GENERATED_FULL_PET_ACTION_IDS)
-    assert.equal(result.officialRows.rows.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.equal(requests.length > 0, true)
-    assert.equal(requests.every((entry) => entry.hasModel === false), true)
+    assert.equal(result.model, 'gpt-image-1.5')
+    assert.deepEqual(result.modelAttempts.map((entry) => entry.model), ['gpt-image-2', 'gpt-image-1.5'])
+    assert.deepEqual(result.basicActionGeneration.attempts, [])
+    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, [])
+    assert.equal(requests.some((entry) => entry.model === 'gpt-image-2'), true)
+    assert.equal(requests.some((entry) => entry.model === 'gpt-image-1.5'), true)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl

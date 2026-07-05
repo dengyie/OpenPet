@@ -253,9 +253,6 @@ const createWorkflowResult = ({
   basicActions: basicActions && typeof basicActions === 'object'
     ? {
         baseIdentityCoverage: Boolean(basicActions.baseIdentityCoverage),
-        requiredActionIds: Array.isArray(basicActions.requiredActionIds)
-          ? basicActions.requiredActionIds.map(normalizeText).filter(Boolean)
-          : [],
         requiredRealActionIds: Array.isArray(basicActions.requiredRealActionIds)
           ? basicActions.requiredRealActionIds.map(normalizeText).filter(Boolean)
           : [],
@@ -277,18 +274,11 @@ const createWorkflowResult = ({
         missingRequiredOfficialActionIds: Array.isArray(basicActions.missingRequiredOfficialActionIds)
           ? basicActions.missingRequiredOfficialActionIds.map(normalizeText).filter(Boolean)
           : [],
-        availableActionIds: Array.isArray(basicActions.availableActionIds)
-          ? basicActions.availableActionIds.map(normalizeText).filter(Boolean)
-          : [],
-        omittedActionIds: Array.isArray(basicActions.omittedActionIds)
-          ? basicActions.omittedActionIds.map(normalizeText).filter(Boolean)
-          : [],
-        actionAvailability: createActionAvailabilityView(basicActions.actionAvailability),
         rows: Array.isArray(basicActions.rows)
           ? basicActions.rows.map((row) => ({
               actionId: normalizeText(row?.actionId),
               sourceActionId: normalizeText(row?.sourceActionId),
-              sourceRelativePath: normalizeSafeRelativePath(row?.sourceRelativePath),
+              sourceRelativePath: normalizeText(row?.sourceRelativePath),
               fallback: Boolean(row?.fallback),
               quality: normalizeText(row?.quality)
             })).filter((row) => row.actionId)

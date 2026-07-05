@@ -62,9 +62,9 @@ const createSessionFixture = ({
             activatedPackId: 'smoke-mango-cat'
           },
           basicActions: {
-            requiredRealActionIds: ['idle', 'waving'],
-            realActionIds: ['idle', 'waving'],
-            fallbackActionIds: ['waiting'],
+            requiredRealActionIds: ['idle'],
+            realActionIds: ['idle'],
+            fallbackActionIds: ['waving', 'waiting'],
             missingRequiredActionIds: []
           },
           diagnostics: {

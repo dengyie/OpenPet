@@ -1953,7 +1953,6 @@ export interface CreatorBasicActionRowViewState {
 
 export interface CreatorBasicActionCoverageViewState {
   baseIdentityCoverage?: boolean
-  requiredActionIds?: string[]
   requiredRealActionIds: string[]
   realActionIds: string[]
   fallbackActionIds: string[]
@@ -1961,13 +1960,6 @@ export interface CreatorBasicActionCoverageViewState {
   requiredOfficialActionIds?: string[]
   previewFallbackActionIds?: string[]
   missingRequiredOfficialActionIds?: string[]
-  availableActionIds?: string[]
-  omittedActionIds?: string[]
-  actionAvailability?: Record<string, {
-    available: boolean
-    quality: string
-    reason: string
-  }>
   rows: CreatorBasicActionRowViewState[]
 }
 

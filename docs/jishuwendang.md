@@ -188,8 +188,19 @@ docs/
 ### 6.3 Creator Studio
 
 - Creator Studio 不是宿主内建页面，而是当前插件体系上的一条能力链。
-- 插件负责任务、提示词、素材、QA 和 review；宿主负责 Provider 密钥、模型调用、输出写盘、导入、激活和 trigger proposal 持久化。
-- 当前英文权威规范是 [`pet-character-generation.md`](./pet-character-generation.md)，其中统一维护单参考图、每次 Provider 最多一张附件、内部复合参考板、Codex Pet 九行动作、`running-left` 镜像策略和质量门禁；本中文架构文档不再重复这些生成协议。
+- 插件负责任务编排、提示词构造、QA 和导入决策。
+- 宿主负责：
+  - Provider 密钥
+  - 图像生成请求
+  - 输出写盘
+  - action / pet-pack 导入
+  - trigger proposal 入队和最终审核
+- 当前 full-pet 一键链路的真实边界是：
+  - 已落地的是 base identity 生成、技术 atlas QA、pet-pack 导入和激活闭环
+  - 默认 full-pet 不额外消耗 provider 生成官方动作 row strip
+  - 从 base pose 本地平移、缩放、镜像或合成出来的行只能作为 preview/compatibility fallback，不能算真实动作生成
+  - 官方质量 Codex pet 必须按 hatch-pet 契约生成 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review` 九条状态 row；唯一允许的确定性派生是已验收的 `running-right` 逐帧镜像成 `running-left`
+- 当前最稳定的真实素材路径是单张干净正面图；多视图拼图输入不是当前默认成功路径。
 
 ### 6.4 插件系统
 
@@ -230,7 +241,7 @@ docs/
 
 1. `random` / `state` / `event` 触发规则还没有宿主持久化 schema 与编辑器。
 2. Windows 仍未达到真实签名与真实 smoke evidence 意义上的 release-ready。
-3. Creator Studio 的生成现状和剩余质量工作统一维护在 [`pet-character-generation.md`](./pet-character-generation.md)。
+3. Creator Studio full-pet 还缺官方质量 row-strip 生成、稳定锚点 QA、transform fallback 拒收和 contact sheet/GIF 人工验收闭环。
 4. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
 5. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
 

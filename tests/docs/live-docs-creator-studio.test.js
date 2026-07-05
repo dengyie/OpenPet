@@ -24,8 +24,8 @@ test('live docs describe technical full-pet atlas packaging without overclaiming
 
   assert.match(
     todoArchitecture,
-    /pet-character-generation\.md[\s\S]*technical atlas/i,
-    'openpet-current-todo-architecture.md should link the canonical contract and retain the technical atlas boundary'
+    /provider-backed full-pet runs now package a generated technical atlas/i,
+    'openpet-current-todo-architecture.md should list technical full-pet atlas packaging as a landed fact'
   )
   assert.doesNotMatch(
     todoArchitecture,
@@ -251,7 +251,7 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
   assert.equal(fileExists(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`), true, 'main host smoke evidence report should be archived')
 })
 
-test('creator studio live docs keep the bounded full-pet action policy truthful', () => {
+test('creator studio live docs keep the official hatch-pet full-action policy truthful', () => {
   const creatorReadme = readText('examples/plugins/creator-studio/README.md')
   const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
 
@@ -259,10 +259,12 @@ test('creator studio live docs keep the bounded full-pet action policy truthful'
     ['examples/plugins/creator-studio/README.md', creatorReadme],
     ['docs/one-click-action-generation-complete-chain.md', oneClickDoc]
   ]) {
-    assert.match(content, /required real:[\s\S]*idle[\s\S]*waving/i, `${name} should keep idle and waving as required real actions`)
-    assert.match(content, /waiting[\s\S]*running-right[\s\S]*running-left/i, `${name} should keep the queued optional action expansion order explicit`)
-    assert.match(content, /disabled in the default path|not yet active in the default path/i, `${name} should not overclaim the optional queue as active by default`)
-    assert.match(content, /fallback-only today:[\s\S]*jumping[\s\S]*failed[\s\S]*running[\s\S]*review/i, `${name} should keep fallback-only action classes explicit`)
+    assert.match(content, /official-quality[\s\S]*base generation[\s\S]*state-specific row-strip generation/i, `${name} should describe official-quality output as base plus row-strip generation`)
+    assert.match(content, /idle[\s\S]*running-right[\s\S]*running-left[\s\S]*waving[\s\S]*jumping[\s\S]*failed[\s\S]*waiting[\s\S]*running[\s\S]*review/i, `${name} should list all nine official Codex rows`)
+    assert.match(content, /running-left[\s\S]*framewise-mirrored[\s\S]*approved `?running-right`?/i, `${name} should keep running-left as the only approved deterministic derivation`)
+    assert.match(content, /base-(?:pet\/)?preview|preview\/compatibility|preview\/fallback|compatibility previews/i, `${name} should label base-only fallback rows as preview or compatibility output`)
+    assert.match(content, /local (?:geometric )?transform|base-image transform|transformed|code-generated row strips/i, `${name} should reject local transform rows as real action generation`)
+    assert.doesNotMatch(content, /required real:[\s\S]*idle/i, `${name} should not describe base-only idle coverage as an official real action`)
   }
 })
 

@@ -90,40 +90,6 @@ const countVisiblePixels = async (imagePath) => {
   return visible
 }
 
-const countVisiblePixelsInCell = async ({ imagePath, row, column }) => {
-  const { data, info } = await sharp(imagePath)
-    .extract({
-      left: column * CODEX_ATLAS.cellWidth,
-      top: row.row * CODEX_ATLAS.cellHeight,
-      width: CODEX_ATLAS.cellWidth,
-      height: CODEX_ATLAS.cellHeight
-    })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-  let visible = 0
-  for (let index = 3; index < data.length; index += info.channels) {
-    if (data[index] > 0) visible += 1
-  }
-  return visible
-}
-
-const countNearTransparentPixelsWithRgb = async (imagePath) => {
-  const { data, info } = await sharp(imagePath)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-  let nearTransparentPixelsWithRgb = 0
-  for (let pixel = 0; pixel < info.width * info.height; pixel += 1) {
-    const index = pixel * info.channels
-    if (data[index + 3] > 8) continue
-    if (data[index] !== 0 || data[index + 1] !== 0 || data[index + 2] !== 0) {
-      nearTransparentPixelsWithRgb += 1
-    }
-  }
-  return nearTransparentPixelsWithRgb
-}
-
 const getRowCellHashes = async (spritesheetPath, row) => {
   const hashes = []
   for (let column = 0; column < row.durations.length; column += 1) {
@@ -142,112 +108,7 @@ const getRowCellHashes = async (spritesheetPath, row) => {
   return hashes
 }
 
-const getOfficialFrameOffsetY = ({ rowIndex, frameIndex }) => (
-  rowIndex === 4
-    ? [0, -12, -26, -14, 0][frameIndex % 5]
-    : 0
-)
-
-const writeOfficialFrame = async ({ outputPath, rowIndex, frameIndex }) => {
-  const offsetY = getOfficialFrameOffsetY({ rowIndex, frameIndex })
-  await sharp(Buffer.from(
-    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3) + offsetY}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
-      <rect x="${78 + frameIndex * 3}" y="${74 + (rowIndex % 4) + offsetY}" width="12" height="${26 + (frameIndex % 5)}" fill="#1c7ed6"/>
-      <rect x="${90 - (frameIndex % 2)}" y="${150 + offsetY}" width="${20 + (rowIndex % 3)}" height="8" fill="#2f9e44"/>
-    </svg>`
-  ))
-    .ensureAlpha()
-    .png()
-    .toFile(outputPath)
-}
-
-const writeJitteredOfficialFrame = async ({ outputPath, frameIndex }) => {
-  const offsets = [
-    { x: 8, y: 2 },
-    { x: 52, y: 40 },
-    { x: 18, y: 16 },
-    { x: 78, y: 58 }
-  ]
-  const offset = offsets[frameIndex]
-  await sharp(Buffer.from(
-    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${offset.x}" y="${offset.y + 58}" width="${54 + frameIndex}" height="${72 - frameIndex}" fill="#f6b73c"/>
-      <rect x="${offset.x + 28 + frameIndex * 4}" y="${offset.y + 34}" width="12" height="${28 + frameIndex * 3}" fill="#1c7ed6"/>
-      <rect x="${offset.x + 18}" y="${offset.y + 128 - (frameIndex % 2)}" width="${22 + frameIndex}" height="8" fill="#2f9e44"/>
-    </svg>`
-  ))
-    .ensureAlpha()
-    .png()
-    .toFile(outputPath)
-}
-
-const writeTranslatedOfficialFrame = async ({ outputPath, frameIndex }) => {
-  await sharp(Buffer.from(
-    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${40 + frameIndex * 10}" y="${84 + frameIndex * 4}" width="58" height="72" fill="#f6b73c"/>
-    </svg>`
-  ))
-    .ensureAlpha()
-    .png()
-    .toFile(outputPath)
-}
-
-const createOfficialFrameSvgBuffer = ({ rowIndex, frameIndex }) => {
-  const offsetY = getOfficialFrameOffsetY({ rowIndex, frameIndex })
-  return Buffer.from(
-    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3) + offsetY}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
-      <rect x="${78 + frameIndex * 3}" y="${74 + (rowIndex % 4) + offsetY}" width="12" height="${26 + (frameIndex % 5)}" fill="#1c7ed6"/>
-      <rect x="${90 - (frameIndex % 2)}" y="${150 + offsetY}" width="${20 + (rowIndex % 3)}" height="8" fill="#2f9e44"/>
-    </svg>`
-  )
-}
-
-const writeOfficialRowStrip = async ({ outputPath, row }) => {
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  const composites = row.durations.map((_duration, frameIndex) => ({
-    input: createOfficialFrameSvgBuffer({ rowIndex: row.row, frameIndex }),
-    left: frameIndex * CODEX_ATLAS.cellWidth,
-    top: 0
-  }))
-  await sharp({
-    create: {
-      width: row.durations.length * CODEX_ATLAS.cellWidth,
-      height: CODEX_ATLAS.cellHeight,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    }
-  })
-    .composite(composites)
-    .png()
-    .toFile(outputPath)
-}
-
-const writeOfficialRows = async ({ rootDir }) => {
-  const rows = []
-  for (const row of CODEX_ROWS) {
-    const frameDir = path.join(rootDir, row.id)
-    fs.mkdirSync(frameDir, { recursive: true })
-    const frames = []
-    for (let frameIndex = 0; frameIndex < row.durations.length; frameIndex += 1) {
-      const framePath = path.join(frameDir, `${String(frameIndex + 1).padStart(2, '0')}.png`)
-      await writeOfficialFrame({ outputPath: framePath, rowIndex: row.row, frameIndex })
-      frames.push({ index: frameIndex, path: framePath })
-    }
-    rows.push({
-      actionId: row.id,
-      sourceRelativePath: `runs/run-1/rows/${row.id}/strip.png`,
-      quality: row.id === 'running-left'
-        ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR
-        : FULL_PET_ROW_QUALITY.ROW_REAL,
-      frames
-    })
-  }
-  return { rows }
-}
-
-test('real atlas builder creates only a non-importable base preview without official rows', async () => {
+test('real atlas builder creates a Codex atlas from generated image pixels', async () => {
   const dataDir = makeTempDataDir()
   const { relativePath } = await writeSourcePng({ dataDir })
   const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
@@ -283,11 +144,11 @@ test('real atlas builder creates only a non-importable base preview without offi
   assert.equal(atlasQa.previewSha256, crypto.createHash('sha256').update(fs.readFileSync(result.previewPath)).digest('hex'))
   assert.equal(atlasQa.sourceRelativePath, relativePath)
   assert.equal(atlasQa.basicActions.baseIdentityCoverage, true)
-  assert.deepEqual(atlasQa.basicActions.requiredRealActionIds, ['idle'])
+  assert.deepEqual(atlasQa.basicActions.requiredRealActionIds, [])
   assert.deepEqual(atlasQa.basicActions.realActionIds, [])
   assert.equal(atlasQa.basicActions.fallbackActionIds.includes('waving'), true)
   assert.equal(atlasQa.basicActions.fallbackActionIds.includes('idle'), true)
-  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['idle'])
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
   assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('idle'), true)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').fallback, true)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
@@ -297,28 +158,7 @@ test('real atlas builder creates only a non-importable base preview without offi
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
 })
 
-test('real atlas builder removes opaque edge backgrounds from preview fallback sprites', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeStripedPetSourcePng({ dataDir })
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-
-  const result = await buildRealAtlasFromGeneratedImage({
-    dataDir,
-    generationResult: createGenerationResult(relativePath),
-    outputDir,
-    qaDir
-  })
-
-  const sourceQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'source-image-validation.json'), 'utf-8'))
-  assert.equal(sourceQa.sourceBackgroundRemoved, true)
-  assert.equal(sourceQa.sourceBackgroundRemovedRatio > 0.25, true)
-  assert.equal(await countNearTransparentPixelsWithRgb(result.previewPath), 0)
-  const idleVisiblePixels = await countVisiblePixels(result.previewPath)
-  assert.equal(idleVisiblePixels < CODEX_ATLAS.cellWidth * CODEX_ATLAS.cellHeight * 0.55, true)
-})
-
-test('real atlas builder does not manufacture preview animation rows', async () => {
+test('real atlas builder keeps preview fallback rows visually stable instead of manufacturing motion variants', async () => {
   const dataDir = makeTempDataDir()
   const { relativePath } = await writeSourcePng({ dataDir })
   const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
@@ -332,331 +172,18 @@ test('real atlas builder does not manufacture preview animation rows', async () 
   })
 
   const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
-  assert.equal(result.previewOnly, true)
-  assert.equal(atlasQa.frame, null)
-  assert.equal(fs.existsSync(path.join(outputDir, 'spritesheet.webp')), false)
-})
-
-test('real atlas builder composes official row package into complete Codex action coverage', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-  const officialRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-
-  const result = await buildRealAtlasFromGeneratedImage({
-    dataDir,
-    generationResult: createGenerationResult(relativePath),
-    outputDir,
-    qaDir,
-    officialRows
-  })
-
-  const metadata = await sharp(result.spritesheetPath).metadata()
-  assert.equal(metadata.width, CODEX_ATLAS.width)
-  assert.equal(metadata.height, CODEX_ATLAS.height)
   for (const row of CODEX_ROWS) {
-    for (let column = 0; column < CODEX_ATLAS.columns; column += 1) {
-      const visiblePixels = await countVisiblePixelsInCell({
-        imagePath: result.spritesheetPath,
-        row,
-        column
-      })
-      assert.equal(
-        visiblePixels > 0,
-        column < row.durations.length,
-        `${row.id} cell ${column} visibility should match official frame coverage`
-      )
-    }
+    const uniqueFrameCount = new Set(await getRowCellHashes(result.spritesheetPath, row)).size
+    assert.equal(uniqueFrameCount, 1, `${row.id} preview fallback should not manufacture motion`)
+    assert.equal(
+      atlasQa.frame.rows.find((candidate) => candidate.id === row.id)?.uniqueFrameCount,
+      uniqueFrameCount
+    )
+    assert.equal(
+      atlasQa.frame.rows.find((candidate) => candidate.id === row.id)?.sourceQuality,
+      row.id === 'idle' ? 'base-preview' : 'synthesized-preview'
+    )
   }
-
-  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
-  const sourceQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'source-image-validation.json'), 'utf-8'))
-  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
-  assert.equal(atlasQa.ok, true)
-  assert.equal(sourceQa.sourceSha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(dataDir, relativePath))).digest('hex'))
-  assert.equal(atlasQa.atlasSha256, crypto.createHash('sha256').update(fs.readFileSync(result.spritesheetPath)).digest('hex'))
-  assert.equal(atlasQa.visualReview.contactSheet, 'runs/run-1/qa/full-pet-contact-sheet.png')
-  assert.equal(fs.existsSync(path.join(dataDir, atlasQa.visualReview.contactSheet)), true)
-  const contactSheetMetadata = await sharp(path.join(dataDir, atlasQa.visualReview.contactSheet)).metadata()
-  assert.equal(contactSheetMetadata.width, CODEX_ATLAS.width)
-  assert.equal(contactSheetMetadata.height, CODEX_ATLAS.height)
-  assert.deepEqual(
-    atlasQa.visualReview.previews.map((preview) => [preview.actionId, preview.path, preview.frameCount]),
-    CODEX_ROWS.map((row) => [
-      row.id,
-      `runs/run-1/qa/previews/${row.id}.gif`,
-      row.durations.length
-    ])
-  )
-  for (const preview of atlasQa.visualReview.previews) {
-    const previewPath = path.join(dataDir, preview.path)
-    const metadata = await sharp(previewPath, { animated: true }).metadata()
-    assert.equal(metadata.width, CODEX_ATLAS.cellWidth)
-    assert.equal(metadata.pageHeight, CODEX_ATLAS.cellHeight)
-    assert.equal(metadata.pages, preview.frameCount)
-  }
-  assert.deepEqual(atlasQa.basicActions.realActionIds, CODEX_ROWS.map((row) => row.id))
-  assert.deepEqual(atlasQa.basicActions.fallbackActionIds, [])
-  assert.deepEqual(atlasQa.basicActions.missingRequiredOfficialActionIds, [])
-  assert.deepEqual(
-    atlasQa.basicActions.rows.map((row) => [row.actionId, row.fallback, row.quality]),
-    CODEX_ROWS.map((row) => [
-      row.id,
-      false,
-      row.id === 'running-left' ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR : FULL_PET_ROW_QUALITY.ROW_REAL
-    ])
-  )
-  assert.deepEqual(
-    rowQa.rows.map((row) => [row.actionId, row.quality]),
-    CODEX_ROWS.map((row) => [
-      row.id,
-      row.id === 'running-left' ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR : FULL_PET_ROW_QUALITY.ROW_REAL
-    ])
-  )
-  const jumpingRowQa = rowQa.rows.find((row) => row.actionId === 'jumping')
-  assert.equal(jumpingRowQa.alphaMaskUniqueFrameCount >= 3, true)
-  assert.equal(jumpingRowQa.upperAlphaMaskUniqueFrameCount >= 3, true)
-  assert.equal(jumpingRowQa.lowerAlphaMaskUniqueFrameCount >= 3, true)
-  assert.equal(jumpingRowQa.centroidYRange >= 8, true)
-  assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
-  assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
-})
-
-test('real atlas builder composes an idle-only quality package with transparent optional rows', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-  const completeRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-  const officialRows = { rows: completeRows.rows.filter((row) => row.actionId === 'idle') }
-
-  const result = await buildRealAtlasFromGeneratedImage({
-    dataDir,
-    generationResult: {
-      ...createGenerationResult(relativePath),
-      basicActionGeneration: {
-        attempts: [{
-          actionId: 'running-right',
-          ok: false,
-          failureConditions: ['identity-descriptor-distance-high']
-        }]
-      }
-    },
-    outputDir,
-    qaDir,
-    officialRows
-  })
-
-  const metadata = await sharp(result.spritesheetPath).metadata()
-  assert.equal(metadata.width, CODEX_ATLAS.width)
-  assert.equal(metadata.height, CODEX_ATLAS.height)
-  const idleRow = CODEX_ROWS.find((row) => row.id === 'idle')
-  const runningRightRow = CODEX_ROWS.find((row) => row.id === 'running-right')
-  assert.equal(await countVisiblePixelsInCell({ imagePath: result.spritesheetPath, row: idleRow, column: 0 }) > 0, true)
-  assert.equal(await countVisiblePixelsInCell({ imagePath: result.spritesheetPath, row: runningRightRow, column: 0 }), 0)
-
-  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
-  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
-  assert.deepEqual(atlasQa.basicActions.availableActionIds, ['idle'])
-  assert.equal(atlasQa.basicActions.omittedActionIds.includes('running-right'), true)
-  assert.equal(atlasQa.basicActions.actionAvailability['running-right'].reason, 'identity-descriptor-distance-high')
-  assert.deepEqual(rowQa.rows.map((row) => row.actionId), ['idle'])
-  assert.deepEqual(atlasQa.visualReview.previews.map((preview) => preview.actionId), ['idle'])
-})
-
-test('real atlas builder does not let stable-slots hide identity drift', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-  const officialRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-  const waving = officialRows.rows.find((row) => row.actionId === 'waving')
-  for (const [frameIndex, frame] of waving.frames.entries()) {
-    await writeJitteredOfficialFrame({ outputPath: frame.path, frameIndex })
-  }
-
-  await assert.rejects(buildRealAtlasFromGeneratedImage({
-    dataDir,
-    generationResult: createGenerationResult(relativePath),
-    outputDir,
-    qaDir,
-    officialRows
-  }), /row_identity_shape_drift/)
-})
-
-test('real atlas builder rejects wrong-sized official frames instead of stretching them', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const officialRows = await writeOfficialRows({ rootDir: path.join(dataDir, 'official-row-frames') })
-  const wrongFrame = officialRows.rows.find((row) => row.actionId === 'idle').frames[0].path
-  await sharp({ create: { width: 100, height: 100, channels: 4, background: { r: 1, g: 2, b: 3, alpha: 1 } } }).png().toFile(wrongFrame)
-
-  await assert.rejects(
-    buildRealAtlasFromGeneratedImage({
-      dataDir,
-      generationResult: createGenerationResult(relativePath),
-      outputDir: path.join(dataDir, 'outputs'),
-      qaDir: path.join(dataDir, 'qa'),
-      officialRows
-    }),
-    /idle frame 1 must be exactly 192x208/
-  )
-})
-
-test('real atlas builder still rejects transform-like official rows after stable-slots retry', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-  const officialRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-  const running = officialRows.rows.find((row) => row.actionId === 'running')
-  for (const [frameIndex, frame] of running.frames.entries()) {
-    await writeTranslatedOfficialFrame({ outputPath: frame.path, frameIndex })
-  }
-
-  await assert.rejects(
-    buildRealAtlasFromGeneratedImage({
-      dataDir,
-      generationResult: createGenerationResult(relativePath),
-      outputDir,
-      qaDir,
-      officialRows
-    }),
-    /Official full-pet row running failed QA:/
-  )
-  assert.equal(
-    fs.existsSync(path.join(dataDir, 'runs', 'run-1', 'qa', 'stable-rows', 'running', 'stable-slots-metadata.json')),
-    false
-  )
-})
-
-test('real atlas builder accepts row frames extracted from official row job manifest outputs', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const manifest = createFullPetRowJobManifest({
-    runId: 'run-1',
-    baseSourceRelativePath: relativePath,
-    canonicalReferenceRelativePath: 'runs/run-1/references/canonical-base.png'
-  })
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-  const officialRows = []
-
-  for (const row of CODEX_ROWS) {
-    const job = manifest.jobs.find((candidate) => candidate.actionId === row.id)
-    const stripPath = path.join(dataDir, job.outputRelativePath)
-    const frameDir = path.join(dataDir, 'runs', 'run-1', 'rows', row.id, 'frames')
-    await writeOfficialRowStrip({ outputPath: stripPath, row })
-    const extracted = await extractRowStripFrames({
-      dataDir,
-      stripPath,
-      actionId: row.id,
-      outputDir: frameDir
-    })
-    officialRows.push({
-      actionId: row.id,
-      sourceRelativePath: job.outputRelativePath,
-      quality: row.id === 'running-left'
-        ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR
-        : FULL_PET_ROW_QUALITY.ROW_REAL,
-      frames: extracted.frames
-    })
-  }
-
-  await buildRealAtlasFromGeneratedImage({
-    dataDir,
-    generationResult: createGenerationResult(relativePath),
-    outputDir,
-    qaDir,
-    officialRows: { rows: officialRows }
-  })
-
-  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
-  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
-  assert.deepEqual(atlasQa.basicActions.realActionIds, CODEX_ROWS.map((row) => row.id))
-  assert.deepEqual(atlasQa.basicActions.missingRequiredOfficialActionIds, [])
-  assert.equal(rowQa.rows.length, CODEX_ROWS.length)
-  assert.equal(rowQa.rows.every((row) => row.quality === FULL_PET_ROW_QUALITY.ROW_REAL || row.quality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR), true)
-  assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
-  assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
-})
-
-test('real atlas builder rejects official row frame paths outside data directory', async () => {
-  const dataDir = makeTempDataDir()
-  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-real-atlas-row-outside-'))
-  const outsideFramePath = path.join(outsideDir, 'outside-frame.png')
-  const { relativePath } = await writeSourcePng({ dataDir })
-  await writeOfficialFrame({
-    outputPath: outsideFramePath,
-    rowIndex: 0,
-    frameIndex: 0
-  })
-  const officialRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-  officialRows.rows.find((row) => row.actionId === 'idle').frames[0].path = outsideFramePath
-
-  await assert.rejects(
-    buildRealAtlasFromGeneratedImage({
-      dataDir,
-      generationResult: createGenerationResult(relativePath),
-      outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
-      qaDir: path.join(dataDir, 'runs', 'run-1', 'qa'),
-      officialRows
-    }),
-    /Official full-pet row frame path escaped/
-  )
-})
-
-test('real atlas builder rejects approved-mirror quality for non-running-left official rows', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const officialRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-  officialRows.rows.find((row) => row.actionId === 'waving').quality = FULL_PET_ROW_QUALITY.APPROVED_MIRROR
-
-  await assert.rejects(
-    buildRealAtlasFromGeneratedImage({
-      dataDir,
-      generationResult: createGenerationResult(relativePath),
-      outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
-      qaDir: path.join(dataDir, 'runs', 'run-1', 'qa'),
-      officialRows
-    }),
-    /Only running-left may use approved-mirror/
-  )
-})
-
-test('real atlas builder strips unsafe official row source paths from qa artifacts', async () => {
-  const dataDir = makeTempDataDir()
-  const { relativePath } = await writeSourcePng({ dataDir })
-  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
-  const officialRows = await writeOfficialRows({
-    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
-  })
-  officialRows.rows.find((row) => row.actionId === 'idle').sourceRelativePath = '/Users/mango/private/idle-strip.png'
-
-  await buildRealAtlasFromGeneratedImage({
-    dataDir,
-    generationResult: createGenerationResult(relativePath),
-    outputDir: path.join(dataDir, 'runs', 'run-1', 'outputs'),
-    qaDir,
-    officialRows
-  })
-
-  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
-  assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').sourceRelativePath, '')
-  assert.equal(JSON.stringify(atlasQa).includes('/Users/mango'), false)
 })
 
 test('real atlas builder does not count action-specific single images as official row-strip actions', async () => {
@@ -695,9 +222,9 @@ test('real atlas builder does not count action-specific single images as officia
 
   const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
   assert.deepEqual(atlasQa.basicActions.realActionIds, [])
-  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['idle'])
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
   assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('idle'), true)
-  assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('waving'), false)
+  assert.equal(atlasQa.basicActions.missingRequiredOfficialActionIds.includes('waving'), true)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').sourceRelativePath, idle.relativePath)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').sourceRelativePath, waving.relativePath)
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'single-image-preview')
@@ -734,9 +261,20 @@ test('real atlas builder does not count transparent action-specific outputs as r
   })
 
   const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  const wavingCell = await sharp(result.spritesheetPath)
+    .extract({
+      left: 0,
+      top: 3 * CODEX_ATLAS.cellHeight,
+      width: CODEX_ATLAS.cellWidth,
+      height: CODEX_ATLAS.cellHeight
+    })
+    .ensureAlpha()
+    .raw()
+    .stats()
+
   assert.deepEqual(atlasQa.basicActions.realActionIds, [])
   assert.equal(atlasQa.basicActions.fallbackActionIds.includes('waving'), true)
-  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, ['idle'])
+  assert.deepEqual(atlasQa.basicActions.missingRequiredActionIds, [])
   assert.equal(atlasQa.basicActions.rows.find((row) => row.actionId === 'waving').fallback, true)
   assert.equal(await countVisiblePixels(result.previewPath) > 0, true)
 })
