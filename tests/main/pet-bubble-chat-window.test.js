@@ -95,7 +95,7 @@ test('calculateBubbleTtlMs scales with message length and clamps explicit ttl va
   assert.equal(clampedHigh, 30000)
 })
 
-test('bubble chat item helpers classify ai as dialogue and other sources as notices', () => {
+test('bubble chat item helpers classify pet-side speech as dialogue and only system notices as notices', () => {
   const {
     buildBubbleChatItems,
     classifyBubbleChatKind,
@@ -104,10 +104,14 @@ test('bubble chat item helpers classify ai as dialogue and other sources as noti
   } = loadModuleWithElectron({ app: { on: () => {} } })
 
   assert.equal(classifyBubbleChatKind({ source: 'ai' }), 'dialogue')
+  assert.equal(classifyBubbleChatKind({ source: 'ai:behavior' }), 'dialogue')
+  assert.equal(classifyBubbleChatKind({ source: 'pet:event' }), 'dialogue')
+  assert.equal(classifyBubbleChatKind({ source: 'pet-renderer' }), 'dialogue')
   assert.equal(classifyBubbleChatKind({ source: 'plugin:weather' }), 'notice')
-  assert.equal(classifyBubbleChatKind({ source: 'ai:behavior' }), 'notice')
 
   const aiItem = normalizeBubbleChatItem({ text: '正式回复', source: 'ai', intent: 'notice' })
+  const behaviorItem = normalizeBubbleChatItem({ text: '行为编排说话', source: 'ai:behavior' })
+  const petRendererItem = normalizeBubbleChatItem({ text: 'Pet 自己说话', source: 'pet-renderer' })
   const noticeItem = normalizeBubbleChatItem({ text: '插件提示', source: 'plugin:weather', intent: 'dialogue' })
   const dialogueItems = createDialogueItemsFromMessages([
     { id: 'u1', role: 'user', content: '你好', createdAt: '2026-06-24T00:00:00.000Z' },
@@ -123,6 +127,10 @@ test('bubble chat item helpers classify ai as dialogue and other sources as noti
 
   assert.equal(aiItem.kind, 'dialogue')
   assert.equal(aiItem.role, 'pet')
+  assert.equal(behaviorItem.kind, 'dialogue')
+  assert.equal(behaviorItem.role, 'pet')
+  assert.equal(petRendererItem.kind, 'dialogue')
+  assert.equal(petRendererItem.role, 'pet')
   assert.equal(noticeItem.kind, 'notice')
   assert.equal(noticeItem.role, 'system')
   assert.deepEqual(dialogueItems.map((item) => [item.kind, item.role, item.source, item.text]), [
@@ -430,7 +438,7 @@ test('pet bubble chat showMessage appends notices without dropping dialogue item
   assert.equal(state.noticeItems.length, 1)
 })
 
-test('pet bubble chat manager keeps only the latest dialogue slice while preserving a small notice overlay', () => {
+test('pet bubble chat manager keeps pet speech in the dialogue lane while preserving only true notice overlays', () => {
   const { FakeBrowserWindow } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -468,13 +476,45 @@ test('pet bubble chat manager keeps only the latest dialogue slice while preserv
 
   assert.deepEqual(
     state.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
-    ['第1句', '第2句', '第3句', '第4句', '第5句', '第6句', '第7句', '第8句']
+    ['第2句', '第3句', '第4句', '第5句', '第6句', '第7句', '第8句', '提示3']
   )
   assert.deepEqual(
     state.items.filter((item) => item.kind === 'notice').map((item) => item.text),
     ['提示1', '提示2']
   )
-  assert.equal(state.noticeItems.length, 3)
+  assert.equal(state.noticeItems.length, 2)
+})
+
+test('pet bubble chat showMessage treats pet-renderer and ai behavior copy as left-side pet dialogue', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.showMessage({ text: '思考提示', source: 'pet-renderer', createdAt: '2026-06-24T00:00:08.000Z' })
+  const state = manager.showMessage({ text: '行为回复', source: 'ai:behavior', createdAt: '2026-06-24T00:00:09.000Z' })
+
+  assert.deepEqual(
+    state.items.map((item) => [item.kind, item.role, item.text]),
+    [
+      ['dialogue', 'pet', '思考提示'],
+      ['dialogue', 'pet', '行为回复']
+    ]
+  )
+  assert.equal(state.noticeItems.length, 0)
 })
 
 test('pet bubble chat showMessage compatibility path treats ai source as pet dialogue', () => {
@@ -1067,7 +1107,7 @@ test('pet bubble chat manager preserves recent visible dialogue history across r
 
   assert.deepEqual(
     completed.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
-    ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答']
+    ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答', '思考提示']
   )
 })
 

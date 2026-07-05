@@ -49,10 +49,13 @@ const createPetBubbleChatCoordinator = ({
   const showLocalBubbleChatMessage = (payload = {}) => {
     const text = normalizeMessageText(payload?.text)
     if (!text) return getBubbleChatState()
+    const source = normalizeMessageText(payload?.source) || 'pet-renderer'
     const state = petBubbleChatWindowService?.showMessage?.({
       text,
       ttlMs: payload?.ttlMs,
-      source: normalizeMessageText(payload?.source) || 'pet-renderer',
+      source,
+      kind: source === 'pet-renderer' ? 'dialogue' : undefined,
+      role: source === 'pet-renderer' ? 'pet' : undefined,
       petPackId: getActivePetPackId()
     }) || { visible: false, hasWindow: false }
     return refreshBubbleChatItems({ reason: 'local-show-message' }) || state
