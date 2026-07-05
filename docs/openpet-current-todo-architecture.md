@@ -75,8 +75,8 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 - AI Talk persona and memory IPC payloads now normalize renderer-facing profile/draft/memory shapes through the main-process Control Center adapter: persona profile/draft/save and memory profile/delete/clear responses no longer forward provider raw replies, secret-like fields, raw memory evidence, or service-only job details.
 - `PLUGINS_LIST` now normalizes renderer-facing `PluginViewState[]` through the main-process Control Center adapter, so plugin list reads reuse the same safe shape already used by plugin mutation results.
 - Plugin lifecycle/runtime IPC payloads now normalize renderer-facing plugin result shapes through the main-process Control Center adapter: enable/native-approval/config-save/service-health-policy/storage-clear responses reuse the safe `PluginViewState` contract, while command/setup/service start-stop-health responses no longer forward raw runtime/service objects to the renderer.
-- A bundled `openpet.agent-awareness` plugin now syncs beside Creator Studio, stays enabled-by-default but stopped-by-default, and requires native execution approval before its `agent-awareness` service can start.
-- Agent awareness currently uses privacy-first Codex polling under `~/.codex/sessions` and `~/.codex/archived_sessions`, hashes session ids before persistence/display, reduces project paths to `basename + short hash`, stores only bounded lifecycle/status metadata, and never stores prompts, tool args, stdout/stderr, transcripts, or full paths.
+- A bundled `openpet.agent-awareness` plugin now syncs beside Creator Studio, stays enabled-by-default, and can start either manually or through trusted Codex-signal auto-start once native execution approval and explicit opt-in are both present.
+- Agent awareness now reconciles privacy-bounded Codex polling plus optional shipped hook events, hashes session ids before persistence/display, reduces project paths to `basename + short hash`, stores only bounded lifecycle/runtime metadata, and never stores prompts, tool args, stdout/stderr, transcripts, or full paths.
 - Agent awareness command and dashboard boundaries are now hardened: `doctor` returns safe labels instead of raw paths, `codex-hook-plan` stays plugin-owned and read-only, `install-codex-hooks` / `uninstall-codex-hooks` mutate only OpenPet-owned Codex hook handlers with backup-safe writes, `/health` sanitizes poller `lastError`, and the Plugins pane reserves the `X active · Y sessions · Z events` health note for the real bundled `openpet.agent-awareness` target.
 - Agent awareness now also has a repeatable real-session smoke path through `npm run run-agent-awareness-local-smoke -- --codex-home <dir>` plus the runbook `docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`; the smoke result records sanitized session samples, hook-plan readiness, diagnostics, redaction checks, and a `manualAcceptanceTemplate` placeholder for dashboard usefulness and pet-speech review.
 - Agent awareness smoke sessions can also be copied into release evidence with `npm run create-agent-awareness-local-smoke-archive -- --session-dir <session-dir>`; the archive helper accepts only redacted reports and keeps its README explicit about the remaining human-acceptance boundary.
@@ -90,10 +90,10 @@ Owner boundary: `examples/plugins/agent-awareness/`, `PluginService`, Control Ce
 Current state:
 
 - The bundled plugin is synchronized through `syncBundledPlugins` and discovered through the normal local plugin directory path.
-- The plugin is enabled by default unless a saved setting disables it, but its service remains stopped until explicit user start.
+- The plugin is enabled by default unless a saved setting disables it, and its service stays stopped until explicit user start or trusted auto-start conditions are met.
 - Service start is gated by the same native-execution approval path as other local plugin services.
-- The Codex rollout poller reads only bounded top-level lifecycle hints from `~/.codex/sessions` and `~/.codex/archived_sessions`, derives sanitized status events, and ignores content-bearing records.
-- Session ids are hashed, project paths are reduced to `basename + short hash`, and persisted session history is intentionally narrow.
+- The Codex rollout poller reads only bounded top-level lifecycle hints from `~/.codex/sessions` and `~/.codex/archived_sessions`, optional shipped hooks add bounded freshness metadata, and both paths reconcile into one shared runtime session model.
+- Session ids are hashed, project paths are reduced to `basename + short hash`, and persisted session history is intentionally narrow even after richer `phase` / `tool` / `approval` / `progress` metadata was added.
 - The plugin currently uses only `pet:say` and `pet:event`; semantic pet action mapping is still future work.
 - `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks` now avoid raw local paths in their operator-visible outputs, and `/health` plus dashboard rendering sanitize poller error text.
 - The Plugins pane can show a compact health note for the real bundled `agent-awareness` service using `X active · Y sessions · Z events`.
@@ -102,12 +102,12 @@ P1 work:
 
 - Keep the new real-session smoke path green against fresh local Codex evidence and archive follow-up notes when a live run exposes new rollout record shapes.
 - Complete the remaining human desktop acceptance for dashboard usefulness and speech-noise expectations.
-- Continue Phase 2 with hook-plus-polling reconciliation, richer runtime state, trusted auto-start, and first-class detail entry surfaces.
+- Ship the remaining Phase A detail entry surfaces in Control Center and from the pet-facing window.
 
 P2/P3:
 
 - Host-owned semantic pet behavior contract for `idle` / `thinking` / `working` / `waiting` / `completed` / `failed`.
-- Optional hook install/uninstall with backup-safe, reversible writes outside plugin-owned storage.
+- Token/context/cost aggregation, git status, current project summary, and per-session detail views.
 - Session focus/pinning and richer multi-session arbitration.
 
 Manual-required:

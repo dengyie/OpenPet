@@ -35,11 +35,14 @@ The current shipped baseline is stronger than a paper prototype and narrower tha
 Today Agent Awareness provides:
 
 - bundled plugin `openpet.agent-awareness`, synchronized into the user's plugin directory;
-- enabled-by-default discovery, but stopped-by-default runtime behavior;
+- enabled-by-default discovery with stopped-by-default runtime behavior until manual start or trusted auto-start conditions are met;
+- schema-backed plugin config with `autoStartOnCodexSignal` as an explicit, reversible opt-in;
 - explicit `install-codex-hooks` and `uninstall-codex-hooks` commands for reversible Codex hook management;
-- explicit service start through the Plugins pane, gated by `native execution approval`;
-- zero-config polling of `~/.codex/sessions` and `~/.codex/archived_sessions`, with optional hook-assisted freshness;
+- explicit manual service start through the Plugins pane, still gated by `native execution approval`;
+- dual-channel Codex ingestion: rollout polling from `~/.codex/sessions` / `~/.codex/archived_sessions` plus optional hook-assisted freshness;
+- trusted host-side auto-start after `native execution approval`, explicit opt-in, and recent Codex activity detection;
 - a local service with `GET /health`, `GET /api/sessions`, dashboard `/`, and bearer-token-gated `POST /api/events`;
+- richer sanitized runtime session state covering `session`, `turn`, `tool`, `approval`, and `progress` metadata;
 - bounded pet events for accepted safe lifecycle signals;
 - low-frequency pet speech for selected status changes;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
@@ -70,7 +73,6 @@ Agent Awareness is a privacy-bounded companion layer for local coding-agent acti
 Agent Awareness is not yet "complete Codex awareness." The current milestone does not:
 
 - auto-install Codex hooks during discovery or app boot;
-- auto-start the service;
 - capture raw prompts, model responses, tool arguments, tool results, terminal transcript, stdout, stderr, or full local paths;
 - expose multi-session pinning/focus controls as a finished product feature;
 - provide persistent noise controls;
@@ -85,9 +87,14 @@ Stored and displayed fields are limited to:
 
 - session id hash;
 - bounded status;
+- bounded runtime phase;
 - bounded event type;
 - project basename plus short hash;
+- bounded tool name;
+- bounded approval state;
+- bounded progress label, step, and counts;
 - short sanitized status text when one exists;
+- bounded source marker (`hook` or `poller`);
 - timestamp.
 
 The current implementation intentionally does not store:
@@ -113,16 +120,24 @@ Additional hardening that is part of the live contract:
 ## Architecture
 
 ```text
+Codex hooks
+  -> token-gated POST /api/events
+  -> codex-hook normalizer
 Local Codex rollout JSONL
   -> codex-rollout-poller
   -> safe lifecycle event derivation
   -> codex normalizer/redaction
-  -> agent-awareness service
+  -> runtime-session reconciler
   -> session store + diagnostics
   -> state mapper
   -> service-scoped bridge client
   -> PetService.say / PetService.setEvent
   -> Plugins pane health note + dashboard
+
+PluginService host probe
+  -> recent Codex activity detection
+  -> explicit auto-start opt-in + native approval gate
+  -> bundled agent-awareness service start
 ```
 
 OpenPet core owns:
@@ -138,8 +153,9 @@ OpenPet core owns:
 The plugin owns:
 
 - Codex polling and normalization;
+- Codex hook-event normalization;
 - redaction and session hashing;
-- session persistence and diagnostics;
+- session reconciliation, persistence, and diagnostics;
 - state-to-pet mapping;
 - dashboard rendering;
 - hook-planning guidance.
@@ -149,11 +165,15 @@ The plugin owns:
 | Path | Responsibility |
 | --- | --- |
 | `src/main/bootstrap/create-plugin-services.js` | Adds Agent Awareness to bundled plugin sync. |
-| `src/main/services/plugin-service.js` | Enforces native execution approval and formats the reserved `X active · Y sessions · Z events` summary for the real bundled service. |
+| `src/main/services/plugin-service.js` | Enforces native execution approval, owns explicit auto-start gating, and formats the reserved `X active · Y sessions · Z events` summary for the real bundled service. |
 | `examples/plugins/agent-awareness/plugin.json` | Declares the shipped manifest surface. |
+| `examples/plugins/agent-awareness/config.schema.json` | Declares the explicit auto-start opt-in config field. |
+| `examples/plugins/agent-awareness/commands/codex-hook-config.js` | Owns reversible Codex hook install/uninstall plus the bounded hook sender script. |
 | `examples/plugins/agent-awareness/service/adapters/codex-rollout-poller.js` | Reads safe local Codex rollout signal and counts ignored/unknown/malformed records. |
-| `examples/plugins/agent-awareness/service/adapters/codex.js` | Normalizes and sanitizes accepted events. |
-| `examples/plugins/agent-awareness/service/session-store.js` | Persists sanitized session state in plugin-owned storage. |
+| `examples/plugins/agent-awareness/service/adapters/codex.js` | Normalizes and sanitizes accepted rollout events. |
+| `examples/plugins/agent-awareness/service/adapters/codex-hook.js` | Normalizes bounded Codex hook events into the shared runtime shape. |
+| `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session shape. |
+| `examples/plugins/agent-awareness/service/session-store.js` | Persists sanitized runtime session state in plugin-owned storage. |
 | `examples/plugins/agent-awareness/service/state-mapper.js` | Maps canonical agent states into `pet:event` and rate-limited `pet:say`. |
 | `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Exposes `/health`, `/api/sessions`, dashboard assets, and token-gated `/api/events`. |
 | `examples/plugins/agent-awareness/commands/doctor.js` | Reports sanitized setup and diagnostics. |
@@ -167,6 +187,7 @@ The shipped manifest contract is:
 - plugin id: `openpet.agent-awareness`
 - profile: `runtime`
 - permissions: `pet:say`, `pet:event`
+- config field: `autoStartOnCodexSignal` (default `false`)
 - commands: `doctor`, `codex-hook-plan`, `install-codex-hooks`, `uninstall-codex-hooks`
 - service id: `agent-awareness`
 - service health URL: `http://127.0.0.1:8795/health`
@@ -181,11 +202,17 @@ Current operator flow:
 5. Grant `native execution approval`.
 6. Run `install-codex-hooks` if you want hook-assisted freshness in addition to polling.
 7. Review and trust the new hook once inside Codex with `/hooks`.
-8. Start the `agent-awareness` service explicitly.
-9. Open the dashboard.
-10. Run `doctor` if no Codex polling or hook signal is visible.
+8. Decide whether to keep manual start only, or enable `autoStartOnCodexSignal`.
+9. If auto-start stays off, start the `agent-awareness` service explicitly. If auto-start is on, let recent Codex activity bring it up after the trust gates are satisfied.
+10. Open the dashboard.
+11. Run `doctor` if no Codex polling or hook signal is visible.
 
-The plugin must not auto-start during discovery or app boot.
+The plugin still must not auto-start during discovery alone or app boot alone. Auto-start requires all of the following together:
+
+- the bundled plugin is enabled;
+- `native execution approval` is granted;
+- `autoStartOnCodexSignal` is enabled;
+- recent Codex activity is detected.
 
 ## Event And Notification Contract
 
@@ -273,7 +300,7 @@ There is also an official optional hook-assisted path. The shipped install flow 
 - `codex-hook-plan`;
 - `install-codex-hooks`;
 - `uninstall-codex-hooks`;
-- explicit service start;
+- explicit manual service start plus opt-in trusted auto-start;
 - real-session smoke and manual acceptance.
 
 ## Validation And Evidence
@@ -286,6 +313,7 @@ The core runtime and documentation baseline should be protected by:
 node --test tests/examples/agent-awareness-plugin.test.js
 node --test tests/services/agent-awareness-plugin-service.test.js
 node --test tests/services/agent-awareness-bundled-integration.test.js
+node --test tests/services/plugin-service.test.js
 node --test tests/scripts/run-agent-awareness-local-smoke.test.js
 npm run check:docs-drift
 ```

@@ -3,6 +3,7 @@
   "name": "Agent Awareness",
   "version": "0.1.0",
   "profile": "runtime",
+  "configSchema": "config.schema.json",
   "description": "Reflect local AI coding-agent activity through OpenPet pet status, speech, and a local dashboard.",
   "permissions": ["pet:say", "pet:event"],
   "entries": {
@@ -32,7 +33,7 @@
       { "path": "OPENPET_DATA_DIR/codex-hook-plan.md", "description": "Read-only future Codex hook setup instructions." }
     ],
     "privacy": {
-      "captures": ["session id hash", "status", "event type", "project basename hash", "timestamp"],
+      "captures": ["session id hash", "status", "event type", "project basename hash", "tool name", "phase", "approval state", "progress metadata", "timestamp"],
       "doesNotCapture": ["raw prompt bodies", "model responses", "tool arguments", "terminal transcript", "stdout", "stderr", "API keys", "full local paths"]
     }
   },

@@ -375,6 +375,89 @@ test('plugin service runCommand keeps doctor results free of raw local paths and
   assert.equal(serialized.includes('/tmp/'), false)
 })
 
+test('plugin service auto-starts bundled agent-awareness only after explicit opt-in and approval', async () => {
+  const pluginRoot = createPluginCopyRoot()
+  const settingsService = createBareSettingsService({
+    plugins: {
+      enabled: { 'openpet.agent-awareness': true },
+      config: { 'openpet.agent-awareness': { autoStartOnCodexSignal: true } }
+    }
+  })
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [pluginRoot],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const beforeApproval = await service.maybeAutostartAgentAwareness({
+    pluginId: 'openpet.agent-awareness',
+    serviceId: 'agent-awareness',
+    signalSource: 'codex-rollout'
+  })
+  assert.equal(beforeApproval.started, false)
+  assert.equal(beforeApproval.reason, 'native-execution-not-approved')
+  assert.equal(spawned.length, 0)
+
+  service.setNativeExecutionApproved('openpet.agent-awareness', true)
+  const started = await service.maybeAutostartAgentAwareness({
+    pluginId: 'openpet.agent-awareness',
+    serviceId: 'agent-awareness',
+    signalSource: 'codex-rollout'
+  })
+  assert.equal(started.started, true)
+  assert.equal(started.reason, 'started')
+  assert.equal(spawned.length, 1)
+
+  const secondAttempt = await service.maybeAutostartAgentAwareness({
+    pluginId: 'openpet.agent-awareness',
+    serviceId: 'agent-awareness',
+    signalSource: 'codex-rollout'
+  })
+  assert.equal(secondAttempt.started, false)
+  assert.equal(secondAttempt.reason, 'already-active')
+})
+
+test('plugin service polling can detect Codex activity and auto-start bundled agent-awareness', async () => {
+  const pluginRoot = createPluginCopyRoot()
+  const settingsService = createBareSettingsService({
+    plugins: {
+      enabled: { 'openpet.agent-awareness': true },
+      config: { 'openpet.agent-awareness': { autoStartOnCodexSignal: true } },
+      nativeExecutionApproved: { 'openpet.agent-awareness': true }
+    }
+  })
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [pluginRoot],
+    probeAgentAwarenessActivity: () => ({
+      active: true,
+      signalSource: 'codex-rollout',
+      observedAt: '2026-07-05T10:00:00.000Z'
+    }),
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const result = await service.pollAgentAwarenessAutostart()
+
+  assert.equal(result.started, true)
+  assert.equal(result.signalSource, 'codex-rollout')
+  assert.equal(spawned.length, 1)
+})
+
 test('plugin service command logs redact agent-awareness local paths and loopback URLs', async () => {
   const pluginRoot = createPluginCopyRoot()
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-doctor-logs-'))

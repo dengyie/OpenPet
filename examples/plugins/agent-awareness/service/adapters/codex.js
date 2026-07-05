@@ -47,6 +47,12 @@ const normalizeStatus = ({ type = '', status = '' } = {}) => {
   return TYPE_STATUS_MAP.get(safeType) || 'working'
 }
 
+const toNullableNumber = (value) => {
+  if (value == null || value === '') return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
 const normalizeCodexEvent = (payload = {}, { now = () => new Date().toISOString() } = {}) => {
   const rawSessionId = payload.sessionId || payload.session_id || payload.conversationId || payload.filePath || 'unknown-session'
   const type = sanitizeText(payload.type || payload.event || payload.name || 'session.updated', 64)
@@ -59,6 +65,14 @@ const normalizeCodexEvent = (payload = {}, { now = () => new Date().toISOString(
     message: sanitizeText(payload.message || payload.summary || payload.statusText || '', 160),
     project,
     toolName: sanitizeText(payload.toolName || payload.tool || '', 64),
+    phase: sanitizeText(payload.phase || '', 32),
+    progressLabel: sanitizeText(payload.progressLabel || '', 120),
+    progressStep: sanitizeText(payload.progressStep || '', 64),
+    progressCurrent: toNullableNumber(payload.progressCurrent),
+    progressTotal: toNullableNumber(payload.progressTotal),
+    approvalState: sanitizeText(payload.approvalState || '', 32).toLowerCase(),
+    lastSource: sanitizeText(payload.lastSource || payload.source || '', 32).toLowerCase(),
+    active: payload.active === false ? false : undefined,
     timestamp: sanitizeText(payload.timestamp, 40) || now()
   }
 }
@@ -66,6 +80,7 @@ const normalizeCodexEvent = (payload = {}, { now = () => new Date().toISOString(
 module.exports = {
   hashSessionId,
   normalizeCodexEvent,
+  normalizeStatus,
   sanitizeText,
   toProjectLabel
 }

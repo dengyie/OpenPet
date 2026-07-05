@@ -88,6 +88,14 @@ const messageForEvent = (input) => {
   return \`Codex event: \${eventName}.\`
 }
 
+const progressLabelForEvent = (eventName, toolName) => {
+  if (eventName === 'PreToolUse' && toolName) return \`Running \${toolName}\`
+  if (eventName === 'PermissionRequest' && toolName) return \`Waiting for \${toolName} approval\`
+  if (eventName === 'PostToolUse' && toolName) return \`Completed \${toolName}\`
+  if (eventName === 'Stop') return 'Turn completed'
+  return ''
+}
+
 const main = async () => {
   const input = readStdinJson()
   const dataDir = process.env.OPENPET_AGENT_AWARENESS_DATA_DIR || DEFAULT_DATA_DIR
@@ -98,12 +106,20 @@ const main = async () => {
   const eventName = sanitize(input.hook_event_name, 64) || 'codex.hook'
   const payload = {
     adapter: 'codex',
+    source: 'hook',
     sessionId: sanitize(input.session_id || input.turn_id || 'codex-session', 96),
+    session_id: sanitize(input.session_id || input.turn_id || 'codex-session', 96),
+    turn_id: sanitize(input.turn_id || '', 96),
     type: eventName,
+    hook_event_name: eventName,
     status: statusForEvent(eventName),
     message: messageForEvent(input),
     cwd: sanitize(input.cwd, 512),
     toolName: sanitize(input.tool_name, 64),
+    tool_name: sanitize(input.tool_name, 64),
+    progress_label: progressLabelForEvent(eventName, sanitize(input.tool_name, 64)),
+    progress_step: sanitize(input.tool_name, 64),
+    approval_state: eventName === 'PermissionRequest' ? 'requested' : '',
     timestamp: new Date().toISOString()
   }
 

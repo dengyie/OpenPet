@@ -1,4 +1,5 @@
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
@@ -65,6 +66,12 @@ const parsePluginServiceKey = (key) => {
 const ACTIVE_SERVICE_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 const ACTIVE_SETUP_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 const ACTIVE_COMMAND_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+const AGENT_AWARENESS_PLUGIN_ID = 'openpet.agent-awareness'
+const AGENT_AWARENESS_SERVICE_ID = 'agent-awareness'
+const DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS = 5000
+const DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS = 15 * 60 * 1000
+const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES = 24
+const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_DEPTH = 5
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const defaultServiceProcessTree = createServiceProcessTree()
@@ -147,8 +154,8 @@ const formatCompactInteger = (value) => {
 }
 
 const isAgentAwarenessHealthTarget = ({ pluginId = '', serviceId = '' } = {}) => (
-  pluginId === 'openpet.agent-awareness' &&
-  serviceId === 'agent-awareness'
+  pluginId === AGENT_AWARENESS_PLUGIN_ID &&
+  serviceId === AGENT_AWARENESS_SERVICE_ID
 )
 
 const isAgentAwarenessHealthBody = (body) => (
@@ -165,6 +172,61 @@ const summarizeAgentAwarenessHealthBody = (body) => {
   const sessionCount = formatCompactInteger(diagnostics.sessionCount)
   const totalEvents = formatCompactInteger(diagnostics.totalEvents)
   return `${activeSessionCount} active · ${sessionCount} sessions · ${totalEvents} events`
+}
+
+const resolveCodexSignalHome = ({
+  codexHome = process.env.OPENPET_CODEX_HOME || process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+} = {}) => codexHome
+
+const listLatestCodexSignalFiles = ({
+  codexHome = resolveCodexSignalHome(),
+  maxFiles = DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES,
+  maxDepth = DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_DEPTH
+} = {}) => {
+  const roots = [
+    path.join(codexHome, 'sessions'),
+    path.join(codexHome, 'archived_sessions')
+  ]
+  const files = []
+  const walk = (dirPath, depth) => {
+    let entries = []
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    } catch (_) {
+      return
+    }
+    for (const entry of entries) {
+      const target = path.join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        if (depth < maxDepth) walk(target, depth + 1)
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
+      try {
+        const stat = fs.statSync(target)
+        files.push({ filePath: target, mtimeMs: stat.mtimeMs })
+      } catch (_) {}
+    }
+  }
+  for (const root of roots) walk(root, 0)
+  return files.sort((left, right) => right.mtimeMs - left.mtimeMs).slice(0, maxFiles)
+}
+
+const defaultProbeAgentAwarenessActivity = ({
+  codexHome = resolveCodexSignalHome(),
+  nowMs = () => Date.now(),
+  recentWindowMs = DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS
+} = {}) => {
+  const [latestFile] = listLatestCodexSignalFiles({ codexHome })
+  if (!latestFile || !Number.isFinite(latestFile.mtimeMs)) {
+    return { active: false, signalSource: 'codex-rollout', observedAt: '' }
+  }
+  const ageMs = Math.max(0, Number(nowMs()) - latestFile.mtimeMs)
+  return {
+    active: ageMs <= recentWindowMs,
+    signalSource: 'codex-rollout',
+    observedAt: new Date(latestFile.mtimeMs).toISOString()
+  }
 }
 
 const readServiceHealthResponseMessage = async (response, { pluginId = '', serviceId = '' } = {}) => {
@@ -240,12 +302,14 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, resolveAddress, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, resolveAddress, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const commandBridgeRuntimes = new Map()
   const serviceBridgeRuntimes = new Map()
   const pendingServiceStarts = new Set()
+  let agentAwarenessAutostartTimer = null
+  let lastAgentAwarenessSignalKey = ''
   const runtimeStopSupport = createPluginRuntimeStopSupport({
     killProcess: killServiceProcess,
     signalProcessTree: signalServiceProcessTree
@@ -1104,6 +1168,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       level: 'info',
       message: approved ? 'Plugin native execution approved' : 'Plugin native execution revoked'
     })
+    if (approved && pluginId === AGENT_AWARENESS_PLUGIN_ID) {
+      Promise.resolve().then(() => pollAgentAwarenessAutostart()).catch(() => {})
+    }
     return listPlugins().find((plugin) => plugin.id === pluginId)
   }
 
@@ -1124,6 +1191,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       }
     })
     appendLog({ pluginId, level: 'info', message: 'Plugin config saved' })
+    if (pluginId === AGENT_AWARENESS_PLUGIN_ID && normalizedConfig.autoStartOnCodexSignal === true) {
+      Promise.resolve().then(() => pollAgentAwarenessAutostart()).catch(() => {})
+    }
     return listPlugins().find((candidate) => candidate.id === pluginId)
   }
 
@@ -1728,6 +1798,79 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     }
   }
 
+  const maybeAutostartAgentAwareness = async ({
+    pluginId = AGENT_AWARENESS_PLUGIN_ID,
+    serviceId = AGENT_AWARENESS_SERVICE_ID,
+    signalSource = 'codex-rollout',
+    observedAt = ''
+  } = {}) => {
+    if (pluginId !== AGENT_AWARENESS_PLUGIN_ID || serviceId !== AGENT_AWARENESS_SERVICE_ID) {
+      return { started: false, reason: 'not-agent-awareness', signalSource, observedAt }
+    }
+    const plugin = getPluginDefinition(pluginId)
+    if (!plugin) return { started: false, reason: 'plugin-not-found', signalSource, observedAt }
+    if (!getEnabledMap()[pluginId]) return { started: false, reason: 'plugin-disabled', signalSource, observedAt }
+    if (!isNativeExecutionApproved(pluginId)) {
+      return { started: false, reason: 'native-execution-not-approved', signalSource, observedAt }
+    }
+    const config = getPluginConfig(pluginId, plugin.configSchema)
+    if (config.autoStartOnCodexSignal !== true) {
+      return { started: false, reason: 'opt-in-disabled', signalSource, observedAt }
+    }
+    if (ACTIVE_SERVICE_STATUSES.has(getPluginServiceRuntime(pluginId, serviceId)?.status)) {
+      return { started: false, reason: 'already-active', signalSource, observedAt }
+    }
+    await startService(pluginId, serviceId)
+    appendLog({
+      pluginId,
+      commandId: `service:${serviceId}`,
+      level: 'info',
+      message: `Agent Awareness auto-started from ${signalSource}`
+    })
+    return { started: true, reason: 'started', signalSource, observedAt }
+  }
+
+  const pollAgentAwarenessAutostart = async () => {
+    const signal = await Promise.resolve(probeAgentAwarenessActivity({
+      codexHome: resolveCodexSignalHome(),
+      nowMs: () => Date.now()
+    }))
+    if (!signal?.active) {
+      return { started: false, reason: 'no-signal', signalSource: signal?.signalSource || 'codex-rollout', observedAt: signal?.observedAt || '' }
+    }
+    const signalSource = String(signal.signalSource || 'codex-rollout')
+    const observedAt = String(signal.observedAt || '')
+    const signalKey = `${signalSource}:${observedAt}`
+    if (signalKey && signalKey === lastAgentAwarenessSignalKey) {
+      return { started: false, reason: 'signal-already-handled', signalSource, observedAt }
+    }
+    const result = await maybeAutostartAgentAwareness({
+      pluginId: AGENT_AWARENESS_PLUGIN_ID,
+      serviceId: AGENT_AWARENESS_SERVICE_ID,
+      signalSource,
+      observedAt
+    })
+    if (signalKey && (result.started || result.reason === 'already-active')) {
+      lastAgentAwarenessSignalKey = signalKey
+    }
+    return result
+  }
+
+  const ensureAgentAwarenessAutostartMonitor = () => {
+    if (agentAwarenessAutostartTimer || typeof setAgentAwarenessAutostartTimer !== 'function') return
+    agentAwarenessAutostartTimer = setAgentAwarenessAutostartTimer(() => {
+      pollAgentAwarenessAutostart().catch((error) => {
+        appendLog({
+          pluginId: AGENT_AWARENESS_PLUGIN_ID,
+          commandId: `service:${AGENT_AWARENESS_SERVICE_ID}`,
+          level: 'error',
+          message: sanitizePluginCommandText(error?.message || 'Agent Awareness auto-start check failed')
+        })
+      })
+    }, Math.max(1000, Number(agentAwarenessAutostartIntervalMs) || DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS))
+    agentAwarenessAutostartTimer?.unref?.()
+  }
+
   const checkServiceHealth = async (pluginId, serviceId, { reschedule = true } = {}) => {
     const commandId = `service:${serviceId || ''}`
     try {
@@ -1818,6 +1961,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   }
 
   const stopAllServices = async () => {
+    if (agentAwarenessAutostartTimer) {
+      clearAgentAwarenessAutostartTimer(agentAwarenessAutostartTimer)
+      agentAwarenessAutostartTimer = null
+    }
     const setupWaiters = setupRuntimeRegistry.listRuntimes()
       .filter((runtime) => runtime?.status === 'running')
       .map((runtime) => ensureStopWaiter(runtime))
@@ -1870,6 +2017,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return ensurePluginCreatorDirs(plugin.manifest).dataDir
   }
 
+  ensureAgentAwarenessAutostartMonitor()
+
   return {
     listPlugins,
     setEnabled,
@@ -1888,6 +2037,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     exportLogs: exportLogEntries,
     clearLogs,
     setNativeExecutionApproved,
+    maybeAutostartAgentAwareness,
+    pollAgentAwarenessAutostart,
     getPluginDefinition,
     getPluginCreatorDataDir
   }

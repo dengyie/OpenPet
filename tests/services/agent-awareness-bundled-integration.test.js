@@ -88,6 +88,8 @@ test('bundled agent-awareness sync stays enabled-by-default, remains stopped on 
   assert.equal(plugin.enabled, true)
   assert.equal(plugin.requiresNativeExecution, true)
   assert.equal(plugin.nativeExecutionApproved, false)
+  assert.equal(plugin.configSchema.title, 'Agent Awareness')
+  assert.deepEqual(plugin.config, { autoStartOnCodexSignal: false })
   assert.equal(plugin.entries.services[0].id, 'agent-awareness')
   assert.equal(plugin.entries.services[0].runtime.status, 'stopped')
   assert.equal(spawned.length, 0)
@@ -113,6 +115,45 @@ test('bundled agent-awareness sync stays enabled-by-default, remains stopped on 
   assert.equal(stopped.runtime.status, 'stopping')
   child.emit('exit', 0, 'SIGTERM')
   assert.equal(service.listPlugins().find((entry) => entry.id === pluginId).entries.services[0].runtime.status, 'stopped')
+})
+
+test('bundled agent-awareness can opt into Codex-signal auto-start through plugin config', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-bundled-autostart-'))
+  const pluginDir = path.join(root, 'plugins')
+  const settingsService = createSettingsService()
+  const spawned = []
+  const child = createFakeServiceProcess()
+
+  syncBundledPlugins({
+    pluginDir,
+    bundledPluginDirs: [pluginRoot],
+    settingsService
+  })
+
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [pluginDir],
+    probeAgentAwarenessActivity: () => ({
+      active: true,
+      signalSource: 'codex-rollout',
+      observedAt: '2026-07-05T10:00:00.000Z'
+    }),
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  service.setNativeExecutionApproved(pluginId, true)
+  service.saveConfig(pluginId, { autoStartOnCodexSignal: true })
+
+  const result = await service.pollAgentAwarenessAutostart()
+
+  assert.equal(result.started, true)
+  assert.equal(result.signalSource, 'codex-rollout')
+  assert.equal(spawned.length, 1)
 })
 
 test('bundled agent-awareness sync restores metadata when the bundled copy already exists unchanged', () => {

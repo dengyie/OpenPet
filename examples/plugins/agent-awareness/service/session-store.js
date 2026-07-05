@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { createRuntimeHistoryEntry, createRuntimeSession } = require('./runtime-session')
 
 const STORE_FILE = 'sessions.json'
 const DEFAULT_MAX_SESSIONS = 100
@@ -88,34 +89,12 @@ const createSessionStore = ({
       if (!sessionId) throw new Error('sessionId is required')
       let session = state.sessions.find((candidate) => candidate.sessionId === sessionId)
       if (!session) {
-        session = {
-          adapter: event.adapter || 'codex',
-          sessionId,
-          project: event.project || '',
-          status: event.status || 'working',
-          type: event.type || 'session.updated',
-          message: event.message || '',
-          toolName: event.toolName || '',
-          timestamp: event.timestamp || new Date().toISOString(),
-          history: []
-        }
+        session = { ...createRuntimeSession(null, event), history: [] }
         state.sessions.push(session)
+      } else {
+        Object.assign(session, createRuntimeSession(session, event))
       }
-      session.adapter = event.adapter || session.adapter
-      session.project = event.project || session.project
-      session.status = event.status || session.status
-      session.type = event.type || session.type
-      session.message = event.message || session.message
-      session.toolName = event.toolName || ''
-      session.timestamp = event.timestamp || session.timestamp
-      session.history.push({
-        type: session.type,
-        status: session.status,
-        message: session.message,
-        project: session.project,
-        toolName: session.toolName,
-        timestamp: session.timestamp
-      })
+      session.history.push(createRuntimeHistoryEntry(session))
       evict()
       save()
       return session

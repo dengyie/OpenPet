@@ -3,6 +3,7 @@ const http = require('http')
 const path = require('path')
 const { createBridgeClient } = require('./bridge-client')
 const { normalizeCodexEvent, sanitizeText } = require('./adapters/codex')
+const { isCodexHookPayload, normalizeCodexHookEvent } = require('./adapters/codex-hook')
 const { createCodexRolloutPoller } = require('./adapters/codex-rollout-poller')
 const { createAgentStateMapper } = require('./state-mapper')
 const { createSessionStore } = require('./session-store')
@@ -116,8 +117,14 @@ const createAgentAwarenessServer = ({
   let server = null
   let rolloutPoller = null
 
+  const normalizeIncomingEvent = (rawEvent) => (
+    isCodexHookPayload(rawEvent)
+      ? normalizeCodexHookEvent(rawEvent, { now })
+      : normalizeCodexEvent(rawEvent, { now })
+  )
+
   const handleEvent = async (rawEvent, { initial = false } = {}) => {
-    const event = normalizeCodexEvent(rawEvent, { now })
+    const event = normalizeIncomingEvent(rawEvent)
     const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId) || null
     const session = store.upsertEvent(event)
     if (!initial) {

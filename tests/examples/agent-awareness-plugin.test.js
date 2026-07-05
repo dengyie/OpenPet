@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process')
 
 const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
 const { normalizeCodexEvent } = require('../../examples/plugins/agent-awareness/service/adapters/codex')
+const { normalizeCodexHookEvent } = require('../../examples/plugins/agent-awareness/service/adapters/codex-hook')
 const {
   classifyIgnoredRecord,
   createCodexRolloutPoller,
@@ -54,6 +55,7 @@ test('agent awareness manifest declares bounded runtime entries', () => {
     'install-codex-hooks',
     'uninstall-codex-hooks'
   ])
+  assert.equal(manifest.configSchema, 'config.schema.json')
   assert.equal(manifest.entries.services[0].id, 'agent-awareness')
   assert.equal(manifest.entries.dashboards[0].url, 'http://127.0.0.1:8795')
 })
@@ -72,6 +74,35 @@ test('codex adapter hashes session ids and redacts project paths', () => {
   assert.match(event.project, /^OpenPet #[a-f0-9]{6}$/)
   assert.equal(event.message.includes('/Users/mango/private'), false)
   assert.equal(event.message.includes('sk-test123'), false)
+})
+
+test('codex hook adapter maps bounded tool and approval progress without storing raw local details', () => {
+  const event = normalizeCodexHookEvent({
+    session_id: 'codex-session-raw',
+    turn_id: 'turn-42',
+    hook_event_name: 'PermissionRequest',
+    tool_name: 'exec_command',
+    cwd: '/Users/mango/private/project/OpenPet',
+    progress_label: 'Waiting for approval',
+    progress_step: 'exec_command',
+    progress_current: 1,
+    progress_total: 3,
+    approval_state: 'requested',
+    message: 'Need approval Bearer secret-token sk-test123 /Users/mango/private/OpenPet'
+  }, { now: () => '2026-07-03T00:00:00.000Z' })
+
+  assert.equal(event.phase, 'approval')
+  assert.equal(event.status, 'waiting')
+  assert.equal(event.toolName, 'exec_command')
+  assert.equal(event.progressLabel, 'Waiting for approval')
+  assert.equal(event.progressStep, 'exec_command')
+  assert.equal(event.progressCurrent, 1)
+  assert.equal(event.progressTotal, 3)
+  assert.equal(event.approvalState, 'requested')
+  assert.equal(event.lastSource, 'hook')
+  assert.match(event.project, /^OpenPet #[a-f0-9]{6}$/)
+  assert.equal(JSON.stringify(event).includes('/Users/mango/private'), false)
+  assert.equal(JSON.stringify(event).includes('sk-test123'), false)
 })
 
 test('codex rollout poller derives only safe lifecycle events from JSONL', async () => {
@@ -310,6 +341,83 @@ test('session store retains bounded latest sessions and events', () => {
   assert.equal(store.getStatus().lastEventAt, '2026-07-03T00:00:03.000Z')
 })
 
+test('session store preserves richer runtime metadata across hook and poller updates', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-rich-'))
+  const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 6 })
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'working',
+    type: 'PreToolUse',
+    phase: 'tool',
+    message: 'Codex is starting exec_command.',
+    project: 'A #111111',
+    toolName: 'exec_command',
+    progressLabel: 'Running tool',
+    progressStep: 'exec_command',
+    progressCurrent: 1,
+    progressTotal: 3,
+    lastSource: 'hook',
+    timestamp: '2026-07-03T00:00:00.000Z'
+  })
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'waiting',
+    type: 'approval.requested',
+    phase: 'approval',
+    message: 'Codex needs approval.',
+    project: 'A #111111',
+    toolName: 'exec_command',
+    approvalState: 'requested',
+    lastSource: 'poller',
+    timestamp: '2026-07-03T00:00:01.000Z'
+  })
+
+  const session = store.listSessions()[0]
+  assert.equal(session.phase, 'approval')
+  assert.equal(session.toolName, 'exec_command')
+  assert.equal(session.progressLabel, 'Running tool')
+  assert.equal(session.progressStep, 'exec_command')
+  assert.equal(session.progressCurrent, 1)
+  assert.equal(session.progressTotal, 3)
+  assert.equal(session.approvalState, 'requested')
+  assert.equal(session.lastSource, 'poller')
+  assert.equal(session.history[0].phase, 'tool')
+  assert.equal(session.history[1].approvalState, 'requested')
+})
+
+test('session store clears approval state after the session leaves the approval phase', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-approval-clear-'))
+  const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 6 })
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'waiting',
+    type: 'approval.requested',
+    phase: 'approval',
+    message: 'Codex needs approval.',
+    project: 'A #111111',
+    toolName: 'exec_command',
+    approvalState: 'requested',
+    timestamp: '2026-07-03T00:00:00.000Z'
+  })
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'completed',
+    type: 'turn.completed',
+    phase: 'turn',
+    message: 'Codex completed a turn.',
+    project: 'A #111111',
+    timestamp: '2026-07-03T00:00:01.000Z'
+  })
+
+  const session = store.listSessions()[0]
+  assert.equal(session.phase, 'turn')
+  assert.equal(session.status, 'completed')
+  assert.equal(session.approvalState, '')
+  assert.equal(session.history[1].approvalState, '')
+})
+
 test('state mapper rate-limits repeat speech for the same session and status', () => {
   let currentNowMs = 1000
   const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })
@@ -399,6 +507,51 @@ test('agent awareness server serves health and notifies pet only for incremental
     ['event', { type: 'agent:completed', message: 'Codex completed a turn.', ttlMs: 8000 }],
     ['say', { text: '我刚完成：Codex completed a turn.', ttlMs: 6000 }]
   ])
+})
+
+test('agent awareness server merges hook and poller events into one richer runtime session shape', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-merge-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => {},
+      say: async () => {}
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true, seenCount: 0 }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.handleEvent({
+    session_id: 'raw-session-merge',
+    hook_event_name: 'PreToolUse',
+    tool_name: 'exec_command',
+    cwd: '/Users/mango/private/project/OpenPet',
+    progress_label: 'Running tool',
+    progress_step: 'exec_command',
+    progress_current: 1,
+    progress_total: 3,
+    timestamp: '2026-07-03T00:00:00.000Z'
+  }, { initial: false })
+  await service.handleEvent({
+    sessionId: 'raw-session-merge',
+    type: 'approval.requested',
+    status: 'waiting',
+    message: 'Codex needs approval.',
+    cwd: '/Users/mango/private/project/OpenPet',
+    timestamp: '2026-07-03T00:00:01.000Z'
+  }, { initial: false })
+
+  const session = service.store.listSessions()[0]
+  assert.equal(session.phase, 'approval')
+  assert.equal(session.toolName, 'exec_command')
+  assert.equal(session.progressLabel, 'Running tool')
+  assert.equal(session.progressCurrent, 1)
+  assert.equal(session.progressTotal, 3)
+  assert.equal(session.approvalState, 'requested')
+  assert.equal(session.lastSource, 'poller')
 })
 
 test('codex hook plan writes only plugin-owned planning files', () => {
