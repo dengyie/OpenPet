@@ -5,9 +5,7 @@ const {
   FALLBACK_ONLY_FULL_PET_ACTION_IDS,
   FULL_PET_ACTION_POLICY,
   FULL_PET_ACTION_SUPPORT,
-  DIRECTIONAL_FULL_PET_ACTION_PAIRS,
   GENERATED_FULL_PET_ACTION_IDS,
-  OPTIONAL_REAL_FULL_PET_ACTION_IDS,
   OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
   REQUIRED_REAL_FULL_PET_ACTION_IDS,
   createBasicActionCoverage,
@@ -31,28 +29,27 @@ test('full-pet basic action policy keeps generation and qa requirements intentio
   assert.equal(GENERATED_FULL_PET_ACTION_IDS.includes('running-left'), false)
 })
 
-test('full-pet basic action policy generates eight provider rows and derives running-left', () => {
+test('full-pet basic action policy keeps optional expansion order explicit without widening the default generation set', () => {
   assert.deepEqual(
     OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
-    ['running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+    ['waiting', 'running-right', 'running-left']
   )
   assert.deepEqual(
     FALLBACK_ONLY_FULL_PET_ACTION_IDS,
-    []
+    ['jumping', 'failed', 'running', 'review']
   )
 
   const waitingPolicy = FULL_PET_ACTION_POLICY.find((entry) => entry.actionId === 'waiting')
   const wavingPolicy = FULL_PET_ACTION_POLICY.find((entry) => entry.actionId === 'waving')
   assert.equal(waitingPolicy.support, FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL)
-  assert.equal(waitingPolicy.attemptGeneratedPose, true)
-  assert.equal(waitingPolicy.expansionRank, 7)
-  assert.equal(wavingPolicy.support, FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL)
+  assert.equal(waitingPolicy.attemptGeneratedPose, false)
+  assert.equal(waitingPolicy.expansionRank, 1)
+  assert.equal(wavingPolicy.support, FULL_PET_ACTION_SUPPORT.REQUIRED_REAL)
   assert.equal(wavingPolicy.attemptGeneratedPose, true)
-  assert.equal(wavingPolicy.expansionRank, 4)
-  assert.equal(GENERATED_FULL_PET_ACTION_IDS.includes('waiting'), true)
+  assert.equal(GENERATED_FULL_PET_ACTION_IDS.includes('waiting'), false)
 })
 
-test('full-pet basic action coverage reports base-only rows as preview fallback, not official real actions', () => {
+test('full-pet basic action coverage normalizes duplicate rows and computes missing required actions', () => {
   const coverage = createBasicActionCoverage([
     { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-1/frames/base/0001.png', fallback: true, quality: 'base-preview' },
     { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-1/frames/base/0001.png', fallback: true },

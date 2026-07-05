@@ -251,6 +251,21 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
   assert.equal(fileExists(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`), true, 'main host smoke evidence report should be archived')
 })
 
+test('creator studio live docs keep the bounded full-pet action policy truthful', () => {
+  const creatorReadme = readText('examples/plugins/creator-studio/README.md')
+  const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
+
+  for (const [name, content] of [
+    ['examples/plugins/creator-studio/README.md', creatorReadme],
+    ['docs/one-click-action-generation-complete-chain.md', oneClickDoc]
+  ]) {
+    assert.match(content, /required real:[\s\S]*idle[\s\S]*waving/i, `${name} should keep idle and waving as required real actions`)
+    assert.match(content, /waiting[\s\S]*running-right[\s\S]*running-left/i, `${name} should keep the queued optional action expansion order explicit`)
+    assert.match(content, /disabled in the default path|not yet active in the default path/i, `${name} should not overclaim the optional queue as active by default`)
+    assert.match(content, /fallback-only today:[\s\S]*jumping[\s\S]*failed[\s\S]*running[\s\S]*review/i, `${name} should keep fallback-only action classes explicit`)
+  }
+})
+
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const developmentSummary = readText('docs/development-summary.md')

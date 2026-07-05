@@ -13,6 +13,11 @@ Phase 1 adds host-owned Hatch Pet Agent settings and text-only shadow decisions 
 - Other atlas rows may fall back from the validated base pose.
 - The currently verified shortest real-user path is one clean front-facing reference image on the saved `gpt-image-2` gateway path.
 - The default one-click path now blocks collage or multi-view references and asks for one clean front-facing image instead.
+- Future optional real-action expansion is queued, not active by default, in this order: `waiting`, `running-right`, `running-left`.
+- Current action classes are explicit:
+  - required real: `idle`, `waving`
+  - queued optional attempted real, still disabled in the default path: `waiting`, `running-right`, `running-left`
+  - fallback-only today: `jumping`, `failed`, `running`, `review`
 
 Phase 1 does not change image Provider selection, prompts, retries, QA, approval, import, activation, or Provider art-readiness rules. Its budget and identity-checkpoint settings are future bounded-execution inputs, not Phase 1 execution controls. The implementation remains **implemented but unverified** pending [`docs/superpowers/plans/2026-07-15-hatch-pet-agent-phase1-test-handoff.md`](../../../docs/superpowers/plans/2026-07-15-hatch-pet-agent-phase1-test-handoff.md); it adds no Provider approval or `production-art-ready` claim.
 
