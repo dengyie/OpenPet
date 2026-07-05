@@ -143,6 +143,25 @@ const summarizeClickActionChange = (value = {}) => {
   }
 }
 
+const summarizeRequest = (value = {}) => {
+  if (!value || typeof value !== 'object') {
+    return {
+      scenario: '',
+      newCharacterName: '',
+      newCharacterStylePrompt: '',
+      existingActionName: '',
+      existingActionPrompt: ''
+    }
+  }
+  return {
+    scenario: sanitizeText(value.scenario || '', 80),
+    newCharacterName: sanitizeText(value.newCharacterName || '', 160),
+    newCharacterStylePrompt: sanitizeText(value.newCharacterStylePrompt || '', 1000),
+    existingActionName: sanitizeText(value.existingActionName || '', 160),
+    existingActionPrompt: sanitizeText(value.existingActionPrompt || '', 1000)
+  }
+}
+
 const summarizeScenario = (scenario = {}) => {
   const result = scenario.result && typeof scenario.result === 'object' ? scenario.result : {}
   const run = result.run && typeof result.run === 'object' ? result.run : {}
@@ -224,6 +243,7 @@ const createArchiveResultValue = ({
       sessionDir: sanitizeSourceSessionDir(report.sessionDir || sessionDir),
       reportPath: `${sanitizeSourceSessionDir(report.sessionDir || sessionDir)}/${DEFAULT_REPORT_NAME}`
     },
+    request: summarizeRequest(report.request),
     referenceImage,
     scenarios: Array.isArray(report.scenarios) ? report.scenarios.map(summarizeScenario) : [],
     warnings: createWarnings(acceptanceScope)
@@ -243,6 +263,14 @@ const createReadme = ({ report, archiveResult, archiveDir }) => {
   const claimBoundaryLine = archiveResult.acceptanceScope === 'main'
     ? 'It does not by itself prove production art quality or broad multi-view support. Human review is still required before broadening support claims.'
     : 'It does not by itself prove production art quality, broad multi-view support, or main-branch acceptance. Human review is still required, and main-branch acceptance remains required before broadening support claims.'
+  const request = summarizeRequest(archiveResult.request || report.request)
+  const requestLines = [
+    request.scenario ? `- Scenario request: \`${request.scenario}\`` : '',
+    request.newCharacterName ? `- New character: \`${request.newCharacterName}\`` : '',
+    request.newCharacterStylePrompt ? `- New character style prompt: ${request.newCharacterStylePrompt}` : '',
+    request.existingActionName ? `- Existing action: \`${request.existingActionName}\`` : '',
+    request.existingActionPrompt ? `- Existing action prompt: ${request.existingActionPrompt}` : ''
+  ].filter(Boolean)
 
   return [
     '# Creator Workflow Host Smoke Evidence',
@@ -259,6 +287,14 @@ const createReadme = ({ report, archiveResult, archiveDir }) => {
     '- Raw API key: not recorded',
     '- Local user-data path: redacted',
     '',
+    ...(requestLines.length > 0
+      ? [
+          '## Request',
+          '',
+          ...requestLines,
+          ''
+        ]
+      : []),
     '## Result',
     '',
     '| Scenario | Status | Evidence |',

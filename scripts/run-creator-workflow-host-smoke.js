@@ -50,6 +50,12 @@ const usage = () => [
   '  --output-dir <dir>            Directory for smoke artifacts. Default: release/creator-workflow-host-smoke',
   '  --scenario <both|new-character|existing-action>',
   '                               Which real workflow scenarios to run. Default: both',
+  '  --new-character-name <text>   Character name for the new-character scenario.',
+  '  --new-character-style-prompt <text>',
+  '                               Style prompt for the new-character scenario.',
+  '  --existing-action-name <text> Action id/name for the existing-action scenario.',
+  '  --existing-action-prompt <text>',
+  '                               Motion prompt for the existing-action scenario.',
   '  --json                        Print the final report as JSON.',
   '  --help',
   '',
@@ -120,6 +126,10 @@ const parseArgs = (argv) => {
     referenceImagePath: '',
     outputDir: DEFAULT_OUTPUT_DIR,
     scenario: DEFAULT_SCENARIO,
+    newCharacterName: DEFAULT_NEW_CHARACTER_NAME,
+    newCharacterStylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+    existingActionName: DEFAULT_EXISTING_ACTION_NAME,
+    existingActionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
     json: false,
     help: false
   }
@@ -146,6 +156,18 @@ const parseArgs = (argv) => {
     } else if (arg === '--scenario') {
       options.scenario = readValue(index, arg)
       index += 1
+    } else if (arg === '--new-character-name') {
+      options.newCharacterName = readValue(index, arg)
+      index += 1
+    } else if (arg === '--new-character-style-prompt') {
+      options.newCharacterStylePrompt = readValue(index, arg)
+      index += 1
+    } else if (arg === '--existing-action-name') {
+      options.existingActionName = readValue(index, arg)
+      index += 1
+    } else if (arg === '--existing-action-prompt') {
+      options.existingActionPrompt = readValue(index, arg)
+      index += 1
     } else if (arg === '--json') {
       options.json = true
     } else {
@@ -160,6 +182,10 @@ const parseArgs = (argv) => {
     ? path.resolve(String(options.referenceImagePath || '').trim())
     : ''
   options.scenario = sanitizeScenarioName(options.scenario || DEFAULT_SCENARIO)
+  options.newCharacterName = String(options.newCharacterName || DEFAULT_NEW_CHARACTER_NAME).trim() || DEFAULT_NEW_CHARACTER_NAME
+  options.newCharacterStylePrompt = String(options.newCharacterStylePrompt || DEFAULT_NEW_CHARACTER_STYLE_PROMPT).trim() || DEFAULT_NEW_CHARACTER_STYLE_PROMPT
+  options.existingActionName = String(options.existingActionName || DEFAULT_EXISTING_ACTION_NAME).trim() || DEFAULT_EXISTING_ACTION_NAME
+  options.existingActionPrompt = String(options.existingActionPrompt || DEFAULT_EXISTING_ACTION_PROMPT).trim() || DEFAULT_EXISTING_ACTION_PROMPT
   createScenarioList(options.scenario)
   return options
 }
@@ -620,6 +646,10 @@ const runScenarioWorkflow = async ({
   repoRoot,
   sourceUserDataDir,
   referenceImagePath,
+  newCharacterName = DEFAULT_NEW_CHARACTER_NAME,
+  newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+  existingActionName = DEFAULT_EXISTING_ACTION_NAME,
+  existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
   logLimit = DEFAULT_LOG_LIMIT,
   createSmokeRuntimeImpl = createSmokeRuntime
 } = {}) => {
@@ -638,13 +668,13 @@ const runScenarioWorkflow = async ({
     const referenceImageToken = approveScenarioReferenceImage({ runtime, referenceImagePath })
     const result = scenario === 'new-character'
       ? await runtime.creatorWorkflowService.generateNewCharacter({
-          characterName: DEFAULT_NEW_CHARACTER_NAME,
-          stylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+          characterName: newCharacterName,
+          stylePrompt: newCharacterStylePrompt,
           referenceImageToken
         })
       : await runtime.creatorWorkflowService.generateExistingAction({
-          actionName: DEFAULT_EXISTING_ACTION_NAME,
-          motionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
+          actionName: existingActionName,
+          motionPrompt: existingActionPrompt,
           referenceImageToken
         })
     const stateAfter = await runtime.creatorWorkflowService.getState()
@@ -730,6 +760,10 @@ const runCreatorWorkflowHostSmoke = async ({
   referenceImagePath = '',
   outputDir = DEFAULT_OUTPUT_DIR,
   scenario = DEFAULT_SCENARIO,
+  newCharacterName = DEFAULT_NEW_CHARACTER_NAME,
+  newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+  existingActionName = DEFAULT_EXISTING_ACTION_NAME,
+  existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
   now = () => new Date(),
   runScenarioImpl = runScenarioWorkflow,
   repoRoot = path.join(__dirname, '..')
@@ -754,7 +788,11 @@ const runCreatorWorkflowHostSmoke = async ({
         scenarioDir,
         repoRoot,
         sourceUserDataDir,
-        referenceImagePath: resolvedReferenceImagePath
+        referenceImagePath: resolvedReferenceImagePath,
+        newCharacterName,
+        newCharacterStylePrompt,
+        existingActionName,
+        existingActionPrompt
       })
       scenarioResults.push(scenarioResult)
       if (!scenarioResult.ok) {
@@ -804,6 +842,13 @@ const runCreatorWorkflowHostSmoke = async ({
       fallback: 'creator-workflow-host-smoke-report.json'
     }),
     sourceUserDataDir: DEFAULT_SOURCE_USER_DATA_LABEL,
+    request: sanitizeReportValue({
+      scenario,
+      newCharacterName,
+      newCharacterStylePrompt,
+      existingActionName,
+      existingActionPrompt
+    }, { sessionDir: sessionPaths.sessionDir }),
     referenceImagePath: createSafeProjectPath(
       path.resolve(resolvedReferenceImagePath),
       path.basename(path.resolve(resolvedReferenceImagePath)) || DEFAULT_REFERENCE_IMAGE_LABEL
@@ -827,7 +872,11 @@ const main = async () => {
     sourceUserDataDir: options.sourceUserDataDir,
     referenceImagePath: options.referenceImagePath,
     outputDir: options.outputDir,
-    scenario: options.scenario
+    scenario: options.scenario,
+    newCharacterName: options.newCharacterName,
+    newCharacterStylePrompt: options.newCharacterStylePrompt,
+    existingActionName: options.existingActionName,
+    existingActionPrompt: options.existingActionPrompt
   })
 
   if (options.json) {

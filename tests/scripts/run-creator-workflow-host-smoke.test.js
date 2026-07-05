@@ -37,6 +37,10 @@ test('parseArgs accepts creator workflow host smoke options', () => {
     '--reference-image', '/tmp/reference.png',
     '--output-dir', '/tmp/output',
     '--scenario', 'existing-action',
+    '--new-character-name', 'Golden Cartoon Cat',
+    '--new-character-style-prompt', 'Cartoon golden shaded cat pet.',
+    '--existing-action-name', 'golden-wave',
+    '--existing-action-prompt', 'Cartoon golden cat waving.',
     '--json'
   ])
 
@@ -44,6 +48,10 @@ test('parseArgs accepts creator workflow host smoke options', () => {
   assert.equal(options.referenceImagePath, path.resolve('/tmp/reference.png'))
   assert.equal(options.outputDir, path.resolve('/tmp/output'))
   assert.equal(options.scenario, 'existing-action')
+  assert.equal(options.newCharacterName, 'Golden Cartoon Cat')
+  assert.equal(options.newCharacterStylePrompt, 'Cartoon golden shaded cat pet.')
+  assert.equal(options.existingActionName, 'golden-wave')
+  assert.equal(options.existingActionPrompt, 'Cartoon golden cat waving.')
   assert.equal(options.json, true)
 })
 
@@ -200,6 +208,8 @@ test('runScenarioWorkflow approves the reference image before generating a new c
     repoRoot,
     sourceUserDataDir,
     referenceImagePath,
+    newCharacterName: 'Golden Cartoon Cat',
+    newCharacterStylePrompt: 'Cartoon golden shaded cat pet.',
     createSmokeRuntimeImpl: ({ userDataDir }) => {
       const pluginDataDir = path.join(userDataDir, 'plugins', 'openpet.creator-studio', '.openpet', 'openpet.creator-studio', 'data')
       return {
@@ -260,6 +270,8 @@ test('runScenarioWorkflow approves the reference image before generating a new c
   assert.equal(result.ok, true)
   assert.deepEqual(calls[0], ['approve', referenceImagePath])
   assert.equal(calls[1][0], 'generateNewCharacter')
+  assert.equal(calls[1][1].characterName, 'Golden Cartoon Cat')
+  assert.equal(calls[1][1].stylePrompt, 'Cartoon golden shaded cat pet.')
   assert.equal(calls[1][1].referenceImageToken, 'token-reference')
   assert.equal(calls[1][1].referenceImagePath, undefined)
 })
