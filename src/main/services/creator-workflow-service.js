@@ -23,6 +23,20 @@ const DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS = 3000
 
 const normalizeText = (value) => String(value || '').trim()
 
+const normalizeSafeRelativePath = (value) => {
+  const normalized = normalizeText(value).replace(/\\/g, '/')
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[a-zA-Z]:\//.test(normalized) ||
+    normalized.includes('\0') ||
+    normalized.split('/').includes('..')
+  ) {
+    return ''
+  }
+  return normalized
+}
+
 const withTimeout = async (promise, timeoutMs, message) => {
   const effectiveTimeoutMs = Math.max(1, Number(timeoutMs) || DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS)
   let timeoutHandle = null
@@ -226,7 +240,7 @@ const createWorkflowResult = ({
           ? basicActions.rows.map((row) => ({
               actionId: normalizeText(row?.actionId),
               sourceActionId: normalizeText(row?.sourceActionId),
-              sourceRelativePath: normalizeText(row?.sourceRelativePath),
+              sourceRelativePath: normalizeSafeRelativePath(row?.sourceRelativePath),
               fallback: Boolean(row?.fallback),
               quality: normalizeText(row?.quality)
             })).filter((row) => row.actionId)

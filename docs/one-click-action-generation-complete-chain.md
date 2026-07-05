@@ -26,6 +26,8 @@ reference image -> generate -> review/QA -> import -> activate in OpenPet
 
 The current OpenPet implementation can package a technical `pet.json + spritesheet.webp` output, import it, and play the atlas at runtime. However, the current base-only full-pet path is **not** a complete official-quality action generator.
 
+Landed deterministic support now exists for an **official full-pet row package**: when Creator Studio receives extracted official row frames for all nine Codex rows, OpenPet can compose the fixed atlas, leave unused cells transparent, run row QA, and report official coverage only for `row-real` or `approved-mirror` rows. This is infrastructure support for approved row inputs, not proof that the local image provider has generated production-ready rows.
+
 Current limitations:
 
 - The default full-pet path only generates a base source image.
@@ -33,6 +35,7 @@ Current limitations:
 - `uniqueFrameCount` proves cells differ, but it does not prove animation quality.
 - `idle`, `running`, `running-right`, `jumping`, `waving`, `waiting`, `failed`, and `review` cannot be honestly accepted as generated semantic actions unless each row has its own generated row strip or approved row source.
 - Existing golden-cat evidence proves technical import/playback, not final production action quality.
+- Real provider row generation, contact-sheet/GIF review, and human visual review remain Manual-required before claiming production art approval.
 
 Archived Creator Workflow host-smoke evidence exists for this narrowed chain:
 
@@ -191,7 +194,7 @@ This path remains separate from full-pet generation. It can use an action sheet 
 }
 ```
 
-The current implementation keeps legacy `requiredRealActionIds`, `realActionIds`, and `missingRequiredActionIds` arrays for compatibility, but the default base-only path must leave legacy required/real coverage empty. Future official-quality rows should be reported as `real` only when they are generated row strips or approved row sources that pass row QA.
+The current implementation keeps legacy `requiredRealActionIds`, `realActionIds`, and `missingRequiredActionIds` arrays for compatibility, but the default base-only path must leave legacy required/real coverage empty. Official row package coverage is reported as `real` only when rows pass row QA as `row-real` or the special `running-left` case passes as `approved-mirror`.
 
 ## Implementation Requirements
 

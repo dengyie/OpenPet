@@ -268,6 +268,32 @@ test('creator studio live docs keep the official hatch-pet full-action policy tr
   }
 })
 
+test('live docs describe landed official row package support without claiming provider art approval', () => {
+  const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
+  const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
+
+  for (const [name, content] of [
+    ['docs/openpet-current-todo-architecture.md', todoArchitecture],
+    ['docs/one-click-action-generation-complete-chain.md', oneClickDoc]
+  ]) {
+    assert.match(
+      content,
+      /official (?:full-pet )?row package|deterministic official row/i,
+      `${name} should mention landed official row package support`
+    )
+    assert.match(
+      content,
+      /row-real[\s\S]*approved-mirror|approved-mirror[\s\S]*row-real/i,
+      `${name} should name the only qualities that count as official real row coverage`
+    )
+    assert.match(
+      content,
+      /provider row generation|real provider|human (?:visual )?review|Manual-required/i,
+      `${name} should keep provider generation or human art approval outside the landed deterministic claim`
+    )
+  }
+})
+
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const developmentSummary = readText('docs/development-summary.md')
