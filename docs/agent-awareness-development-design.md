@@ -11,11 +11,44 @@ Use this doc as the single overview, then drop into the narrower documents only 
 | Need | Read |
 | --- | --- |
 | Product goal, current baseline, architecture, roadmap | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md) |
+| Current executable Phase A implementation plan | [`superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](./superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md) |
 | ClaudePet parity expansion route and phased design | [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md) |
 | Shipped plugin runtime contract and operator-facing behavior | [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md) |
 | Concrete package layout, core touchpoints, and maintenance checklist | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md) |
 | Real-session smoke and desktop acceptance procedure | [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
 | Archived smoke evidence and manual acceptance write-back | [`release-evidence/agent-awareness-local-smoke/`](./release-evidence/agent-awareness-local-smoke/) |
+
+## Program Snapshot
+
+This document is the single live entry for the whole Agent Awareness program. Use it first, then drill into the narrower docs only when you need execution detail.
+
+| Layer | Status | Use this when you need |
+| --- | --- | --- |
+| Current shipped baseline | live | the exact product truth today |
+| Phase A: product skeleton parity | code complete, manual acceptance pending | the current implementation milestone |
+| Phase B: core visible information | designed, not started | the next major information layer after Phase A |
+| Phase C: desktop companion completeness | designed, not started | the later companion-product completeness layer |
+
+## Current Delivery Status
+
+The current branch baseline is no longer "paper design only." It now has the full planned Phase A code surface, with only Manual-required desktop acceptance still open.
+
+### Already Landed
+
+- shipped `install-codex-hooks` and `uninstall-codex-hooks` as official plugin commands;
+- shipped hook + polling dual ingestion with one canonical runtime session model;
+- shipped trusted auto-start gating behind native approval plus explicit opt-in;
+- shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
+- shipped a first-class Agent Awareness detail entry from Control Center;
+- shipped a pet-side quick-open detail entry from Bubble Chat;
+- kept the privacy boundary intact while adding the richer runtime shape.
+
+### Manual-Required Boundaries
+
+These are intentionally outside automated completion:
+
+- the user still must trust the installed hook inside Codex with `/hooks`;
+- final desktop product acceptance still needs human review of dashboard usefulness and pet speech frequency.
 
 ## Goal And Positioning
 
@@ -46,6 +79,8 @@ Today Agent Awareness provides:
 - bounded pet events for accepted safe lifecycle signals;
 - low-frequency pet speech for selected status changes;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
+- a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
+- a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
 - operator commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks`;
 - repeatable real-session smoke via `npm run run-agent-awareness-local-smoke`;
 - archived smoke review write-back through `npm run update-agent-awareness-local-smoke-report`.
@@ -78,6 +113,91 @@ Agent Awareness is not yet "complete Codex awareness." The current milestone doe
 - provide persistent noise controls;
 - drive semantic pet actions beyond `pet:event` and `pet:say`;
 - claim final desktop-feel sign-off without manual acceptance.
+
+## ClaudePet Parity Program
+
+The parity program is intentionally split into three bounded product phases. Only Phase A has an active execution plan today. Phase B and Phase C stay at design level until the current phase closes.
+
+| Phase | Product objective | Scope boundary | Primary owners | Exit signal |
+| --- | --- | --- | --- | --- |
+| Phase A | stop feeling prototype-narrow | hook management, dual ingestion, trusted auto-start, richer runtime state, Control Center and pet-side detail entry | bundled plugin, `PluginService`, Plugins pane, pet-facing window | OpenPet can install hooks, auto-start safely, and open a useful current-session detail surface |
+| Phase B | make the companion broadly informative | token/context/cost, git state, project and session summary, recent progress hints, per-session views | bundled plugin store and dashboard, Plugins pane detail UI, shared session model | users can see what work is happening, where it belongs, and roughly how much it is costing |
+| Phase C | make it feel like a real desktop companion product | multi-session presentation, richer pet mood and action mapping, usage stats page, persona/settings | host presentation contract, pet windows, Control Center settings | multiple active sessions remain understandable, configurable, and visually expressive |
+
+## Phase Delivery Matrix
+
+### Phase A: Product Skeleton Parity
+
+Phase A is the only active implementation milestone right now.
+
+**Scope**
+
+- official `install-codex-hooks` / `uninstall-codex-hooks`;
+- hook + polling dual ingestion;
+- trusted auto-start after approval plus opt-in;
+- richer runtime state for `session`, `turn`, `tool`, `approval`, and `progress`;
+- Control Center detail entry and pet-side detail entry.
+
+**Architecture owners**
+
+- plugin commands and service under `examples/plugins/agent-awareness/`;
+- lifecycle and auto-start orchestration under `src/main/services/plugin-service.js`;
+- Operator entry and detail UI under `src/control-center/src/hooks/usePluginsPane.ts` and `src/control-center/src/panes/PluginsPane.tsx`;
+- fast pet entry under the pet-facing window and IPC bridge.
+
+**Definition of done**
+
+- Commands, README, tests, and smoke procedures all treat hook install/uninstall as official shipped surface.
+- Hook and poller events reconcile into one canonical runtime session model.
+- Auto-start never bypasses native approval or explicit opt-in.
+- Both desktop entry surfaces can open a useful current-session detail view.
+
+### Phase B: Core Visible Information
+
+Phase B begins only after Phase A detail entry surfaces and manual acceptance are closed.
+
+**Scope**
+
+- token/context/cost aggregation;
+- git branch and dirty-state summary;
+- current project and current session summary;
+- recent task progress and hints;
+- per-session independent detail views.
+
+**Architecture owners**
+
+- plugin-owned usage rollups and session summary model;
+- dashboard and Control Center detail UI that both read the same canonical runtime and usage shapes;
+- best-effort git metadata capture kept outside the renderer trust boundary.
+
+**Definition of done**
+
+- the active session surface shows usage and git metadata without exposing raw prompts, transcripts, tool payloads, or full paths;
+- multi-session detail switching works from one canonical model;
+- the pet-side peek stays bounded and low-noise while the richer detail remains inspectable.
+
+### Phase C: Desktop Companion Completeness
+
+Phase C is a product-completion phase, not a quick follow-up patch.
+
+**Scope**
+
+- multi-session independent pet windows or strongly isolated session slots;
+- richer pet presentation such as status bar, mood, progress, and action mapping;
+- usage stats page;
+- dedicated companion persona and settings surfaces.
+
+**Architecture owners**
+
+- host-owned presentation contract consumed by `PetService` and pet-facing windows;
+- Control Center settings and stats pages;
+- session-focus policy shared between plugin state and host presentation.
+
+**Definition of done**
+
+- multi-session attention has an explicit policy instead of whichever event arrived last;
+- the pet can express urgency and progress visually as well as through text;
+- usage and companion preferences become stable user-facing product surfaces rather than hard-coded behavior.
 
 ## Privacy And Trust Boundary
 
@@ -343,6 +463,17 @@ npm run update-agent-awareness-local-smoke-report -- \
 ```
 
 This write-back step is part of the current process, not clerical cleanup. It is how the repository records the remaining Manual-required acceptance truth.
+
+## Execution Rule
+
+Keep the implementation flow phase-gated:
+
+1. finish Phase A first;
+2. run the phase review and acceptance checks;
+3. only then open a dedicated Phase B implementation plan;
+4. do not write one monolithic A+B+C execution plan.
+
+That rule keeps the product honest. Phase B and Phase C are already designed, but they should still be implemented as separate milestones with their own test gates and review passes.
 
 ## What Still Needs To Happen Before We Can Say "Fully Aware"
 

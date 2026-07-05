@@ -132,6 +132,17 @@ button[aria-pressed="true"] {
   line-height: 1;
 }
 
+.bubble-detail-button {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 2;
+  padding: 6px 10px;
+  font-size: 10px;
+  line-height: 1;
+  background: rgba(86, 53, 33, 0.14);
+}
+
 .bubble-stream {
   flex: 1 1 auto;
   min-height: 0;

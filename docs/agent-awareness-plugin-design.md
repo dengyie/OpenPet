@@ -99,6 +99,8 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `src/main/services/bundled-plugin-sync-service.js` | Copies the bundled plugin into the user's plugin directory while preserving user plugins. |
 | `src/main/services/plugin-service.js` | Requires native execution approval before service start, owns explicit Codex-signal auto-start gating, and formats the reserved `X active · Y sessions · Z events` health note for the real bundled service. |
 | `src/main/services/plugin-command-runner.js` | Applies command-output redaction rules used by Agent Awareness command responses. |
+| `src/control-center/src/hooks/usePluginsPane.ts` + `src/control-center/src/panes/PluginsPane.tsx` | Provide the first-class `查看 Codex 详情` Control Center entry and reuse the shared dashboard deep-link path. |
+| `src/main/pet-bubble-chat-preload.js` + `src/main/pet-bubble-chat/renderer.js` | Provide the pet-side `Codex 详情` quick-open entry from Bubble Chat using the same bounded dashboard route. |
 | `package.json` | Preserves the runtime bundle inclusion and helper script entrypoints. |
 
 ## Non-Canonical Helper Paths
@@ -127,6 +129,8 @@ Before reviving any of these paths as official surface area, update all of the f
 | `tests/services/agent-awareness-bundled-integration.test.js` | Bundled sync behavior, enabled-by-default discovery, config-backed auto-start opt-in, stopped-by-default service state, and start/stop lifecycle. |
 | `tests/examples/agent-awareness-dashboard.test.js` | Dashboard state rendering and redaction logic. |
 | `tests/examples/agent-awareness-dashboard-browser.test.js` | Browser-level dashboard smoke against the real local service. |
+| `tests/control-center/control-center-smoke.spec.js` | Control Center Agent Awareness approval gating and the first-class detail entry surface. |
+| `tests/main/pet-bubble-chat-renderer.test.js` | Pet-side quick-open button behavior for the Bubble Chat detail entry. |
 | `tests/scripts/run-agent-awareness-local-smoke.test.js` | Real-session smoke runner output shape and redaction checks. |
 | `tests/scripts/check-docs-drift.test.js` | Live-doc truth baseline for Agent Awareness terminology and indexed docs. |
 

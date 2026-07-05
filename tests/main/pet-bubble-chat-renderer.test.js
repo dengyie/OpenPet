@@ -104,6 +104,7 @@ const dispatchDocument = async (documentListeners, eventName, event = {}) => {
 const createHarness = async ({ initialState, deferAnimationFrames = false } = {}) => {
   const apiCalls = {
     hide: [],
+    openAgentAwarenessDetails: [],
     setInteracting: [],
     setHitTestMode: [],
     dragWindowTo: [],
@@ -130,6 +131,7 @@ const createHarness = async ({ initialState, deferAnimationFrames = false } = {}
     'bubble-shell': createElement('bubble-shell'),
     'bubble-card': createElement('bubble-card'),
     'close-button': createElement('close-button'),
+    'codex-details-button': createElement('codex-details-button'),
     'bubble-stream': createElement('bubble-stream'),
     'bubble-items': createElement('bubble-items'),
     'new-message-button': createElement('new-message-button'),
@@ -143,6 +145,7 @@ const createHarness = async ({ initialState, deferAnimationFrames = false } = {}
   const focusState = { activeElement: null }
   elements['bubble-card'].className = 'bubble-card'
   elements['close-button'].tagName = 'button'
+  elements['codex-details-button'].tagName = 'button'
   elements['new-message-button'].tagName = 'button'
   elements['mini-input'].tagName = 'textarea'
   elements['mini-input-form'].tagName = 'form'
@@ -169,6 +172,10 @@ const createHarness = async ({ initialState, deferAnimationFrames = false } = {}
         getState: async () => latestState,
         hide: (payload) => {
           apiCalls.hide.push(payload || true)
+        },
+        openAgentAwarenessDetails: async () => {
+          apiCalls.openAgentAwarenessDetails.push(true)
+          return { ok: true, url: 'http://127.0.0.1:8795/?view=details' }
         },
         setPinned: async () => {
           latestState = { ...latestState, pinned: true }
@@ -347,6 +354,18 @@ test('bubble chat renderer close button hides the popup with a close-button sour
 
   assert.equal(apiCalls.hide.length, 1)
   assert.equal(apiCalls.hide[0].source, 'bubble-close-button')
+})
+
+test('bubble chat renderer opens agent-awareness details from the pet-side button', async () => {
+  const harness = await createHarness()
+  const { apiCalls, elements } = harness
+
+  await dispatch(elements['codex-details-button'], 'click', {
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.deepEqual(apiCalls.openAgentAwarenessDetails, [true])
 })
 
 test('bubble chat renderer keeps interaction while text is selected and releases active interaction after selection clears', async () => {

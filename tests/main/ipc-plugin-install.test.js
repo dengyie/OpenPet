@@ -1963,9 +1963,9 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
       },
       pluginService: {
         listPlugins: () => [],
-        openDashboard: async (pluginId, dashboardId) => {
-          calls.push([pluginId, dashboardId])
-          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/' }
+        openDashboard: async (pluginId, dashboardId, options) => {
+          calls.push([pluginId, dashboardId, options])
+          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/?sessionId=abc123&view=details' }
         }
       },
       dialogService: {
@@ -1977,16 +1977,31 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
 
   const result = await ipcMain.handlers.get(IPC.PLUGINS_OPEN_DASHBOARD)(null, {
     pluginId: 'weather-declaration',
-    dashboardId: 'main'
+    dashboardId: 'main',
+    options: {
+      query: {
+        sessionId: 'abc123',
+        view: 'details'
+      }
+    }
   })
 
   assert.deepEqual(result, {
     ok: true,
     pluginId: 'weather-declaration',
     dashboardId: 'main',
-    url: 'http://127.0.0.1:8787/'
+    url: 'http://127.0.0.1:8787/?sessionId=abc123&view=details'
   })
-  assert.deepEqual(calls, [['weather-declaration', 'main']])
+  assert.deepEqual(calls, [[
+    'weather-declaration',
+    'main',
+    {
+      query: {
+        sessionId: 'abc123',
+        view: 'details'
+      }
+    }
+  ]])
 })
 
 test('creator studio default flow handler delegates to the host runtime service', async () => {

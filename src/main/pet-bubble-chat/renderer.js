@@ -1,6 +1,7 @@
 const shell = document.getElementById('bubble-shell')
 const bubbleCard = document.querySelector('.bubble-card')
 const closeButton = document.getElementById('close-button')
+const codexDetailsButton = document.getElementById('codex-details-button')
 const bubbleStream = document.getElementById('bubble-stream')
 const bubbleItems = document.getElementById('bubble-items')
 const newMessageButton = document.getElementById('new-message-button')
@@ -373,6 +374,25 @@ closeButton?.addEventListener('click', (event) => {
   event.preventDefault?.()
   event.stopPropagation?.()
   window.petBubbleChatAPI.hide({ source: 'bubble-close-button' })
+})
+
+codexDetailsButton?.addEventListener('click', async (event) => {
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  expanded = true
+  setInteracting(true)
+  setHitTestMode(true, 'renderer-codex-details')
+  try {
+    await window.petBubbleChatAPI.openAgentAwarenessDetails?.()
+    if (currentState.error) renderState({ ...currentState, error: '' })
+  } catch (error) {
+    renderState({
+      ...currentState,
+      error: error?.message || 'Codex 详情暂时不可用。'
+    })
+  } finally {
+    syncUiInteractionState()
+  }
 })
 
 bubbleCard?.addEventListener('pointerdown', (event) => {

@@ -7,6 +7,7 @@ import type {
   JsonObject,
   JsonValue,
   PaginatedLogsViewState,
+  PluginDashboardOpenOptions,
   PluginLogEntry,
   PluginLogFilters,
   PluginPackageReviewViewState,
@@ -36,6 +37,7 @@ const parseCommandPayload = (draft: string): JsonObject | undefined => {
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
+const AGENT_AWARENESS_PLUGIN_ID = 'openpet.agent-awareness'
 
 const findPluginById = (plugins: PluginViewState[], pluginId: string) => (
   plugins.find((plugin) => plugin.id === pluginId) || null
@@ -350,7 +352,7 @@ export function usePluginsPane() {
     }
   }
 
-  const onOpenDashboard = async (pluginId: string, dashboardId: string) => {
+  const onOpenDashboard = async (pluginId: string, dashboardId: string, options?: PluginDashboardOpenOptions) => {
     if (pluginId === CREATOR_STUDIO_PLUGIN_ID) {
       const plugin = findPluginById(plugins, pluginId)
       const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
@@ -366,13 +368,29 @@ export function usePluginsPane() {
       const shouldOpenCreatorStudioRun = pluginId === CREATOR_STUDIO_PLUGIN_ID &&
         dashboardId === 'main' &&
         Boolean(creatorStudioLastRunId)
+      const mergedOptions = shouldOpenCreatorStudioRun
+        ? {
+            ...(options || {}),
+            query: {
+              ...(options?.query || {}),
+              ...(creatorStudioLastRunId ? { runId: creatorStudioLastRunId } : {})
+            }
+          }
+        : options
+      const opensAgentAwarenessDetails = pluginId === AGENT_AWARENESS_PLUGIN_ID &&
+        dashboardId === 'main' &&
+        mergedOptions?.query?.view === 'details'
       await api.openPluginDashboard(
         pluginId,
         dashboardId,
-        shouldOpenCreatorStudioRun ? { query: { runId: creatorStudioLastRunId } } : undefined
+        mergedOptions
       )
       await refreshLogs()
-      setStatus(shouldOpenCreatorStudioRun ? `Dashboard 已打开 · run ${creatorStudioLastRunId}` : 'Dashboard 已打开')
+      setStatus(
+        opensAgentAwarenessDetails
+          ? 'Codex 详情已打开'
+          : (shouldOpenCreatorStudioRun ? `Dashboard 已打开 · run ${creatorStudioLastRunId}` : 'Dashboard 已打开')
+      )
     } catch (error) {
       setStatus(messageFromError(error, 'Dashboard 打开失败'))
       await refreshLogs()

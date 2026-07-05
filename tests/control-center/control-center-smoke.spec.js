@@ -1921,6 +1921,100 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow.getByRole('button', { name: 'Start Agent Awareness Service' })).toBeEnabled()
   })
 
+  test('opens agent-awareness Codex details from the Plugins pane with the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.agent-awareness',
+            name: 'Agent Awareness',
+            version: '0.1.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: true,
+            permissions: ['pet:say', 'pet:event'],
+            commands: [
+              { id: 'doctor', title: 'Check Agent Awareness Setup' }
+            ],
+            entries: {
+              commands: [
+                { id: 'doctor', title: 'Check Agent Awareness Setup', command: 'node ./commands/doctor.js', cwd: '.' }
+              ],
+              setup: [],
+              services: [
+                {
+                  id: 'agent-awareness',
+                  title: 'Agent Awareness Service',
+                  command: 'node ./service/agent-awareness-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8795/health' },
+                  runtime: {
+                    status: 'running',
+                    pid: 4321,
+                    startedAt: '2026-07-05T10:00:00.000Z',
+                    health: {
+                      status: 'healthy',
+                      checkedAt: '2026-07-05T10:00:00.000Z',
+                      url: 'http://127.0.0.1:8795/health',
+                      statusCode: 200,
+                      message: '1 active · 8 sessions · 320 events'
+                    }
+                  },
+                  healthPolicy: {
+                    enabled: false,
+                    intervalMs: 30000
+                  }
+                }
+              ],
+              dashboards: [
+                { id: 'main', title: 'Agent Awareness', url: 'http://127.0.0.1:8795' }
+              ]
+            },
+            configSchema: {
+              title: 'Agent Awareness',
+              properties: [
+                {
+                  key: 'autoStartOnCodexSignal',
+                  title: 'Auto-start on Codex signal',
+                  type: 'boolean',
+                  required: false
+                }
+              ]
+            },
+            config: {
+              autoStartOnCodexSignal: true
+            },
+            storage: { keyCount: 1, byteSize: 256, valid: true },
+            signatureStatus: {
+              status: 'bundled',
+              label: 'Bundled plugin',
+              signer: 'openpet',
+              algorithm: '',
+              verified: true,
+              errors: []
+            },
+            blockStatus: { blocked: false, reasons: [] }
+          }
+        ],
+        pluginLogs: []
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Agent Awareness' })
+    await expect(pluginRow.getByRole('button', { name: '查看 Codex 详情' })).toBeEnabled()
+
+    await pluginRow.getByRole('button', { name: '查看 Codex 详情' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Codex 详情已打开')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('openpet.agent-awareness')
+  })
+
   test('opens the Creator Studio dashboard entry from the Plugins pane with the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({

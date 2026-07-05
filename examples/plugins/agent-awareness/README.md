@@ -4,7 +4,8 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 
 ## Documentation Guide
 
-- Canonical development overview: [`../../../docs/agent-awareness-development-design.md`](../../../docs/agent-awareness-development-design.md)
+- Start here for the full live program overview: [`../../../docs/agent-awareness-development-design.md`](../../../docs/agent-awareness-development-design.md)
+- Current executable Phase A plan: [`../../../docs/superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](../../../docs/superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md)
 - ClaudePet parity expansion roadmap: [`../../../docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](../../../docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md)
 - Implementation reference: [`../../../docs/agent-awareness-plugin-design.md`](../../../docs/agent-awareness-plugin-design.md)
 - Real-session acceptance runbook: [`../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md)
@@ -15,7 +16,7 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 - Explicit `install-codex-hooks` / `uninstall-codex-hooks` commands for reversible, backup-safe Codex hook management.
 - Sanitized runtime session storage under `OPENPET_DATA_DIR/sessions.json`.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
-- A local dashboard and a read-only `codex-hook-plan` command for future hook setup guidance.
+- A local dashboard, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
 
 The current shipped scope does not auto-install hooks during discovery or app boot, does not trust the hook inside Codex on the user's behalf, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
@@ -111,4 +112,6 @@ Behavior:
 - The Plugins pane can show a compact health note for the real bundled `openpet.agent-awareness` service in the form `X active · Y sessions · Z events`.
 - That summary is reserved for `pluginId === openpet.agent-awareness` and `serviceId === agent-awareness`; other plugins do not inherit it by returning similarly shaped JSON.
 - The plugin exposes one config field today: `autoStartOnCodexSignal`, which is off by default and must be enabled explicitly.
+- The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness dashboard with `view=details`.
+- Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
 - The first dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, and diagnostics.

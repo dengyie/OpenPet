@@ -97,12 +97,12 @@ Current state:
 - The plugin currently uses only `pet:say` and `pet:event`; semantic pet action mapping is still future work.
 - `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks` now avoid raw local paths in their operator-visible outputs, and `/health` plus dashboard rendering sanitize poller error text.
 - The Plugins pane can show a compact health note for the real bundled `agent-awareness` service using `X active · Y sessions · Z events`.
+- Control Center now has a first-class `查看 Codex 详情` entry for the real bundled plugin, and Bubble Chat exposes a pet-side `Codex 详情` quick-open entry that reuses the same bounded dashboard route.
 
 P1 work:
 
 - Keep the new real-session smoke path green against fresh local Codex evidence and archive follow-up notes when a live run exposes new rollout record shapes.
 - Complete the remaining human desktop acceptance for dashboard usefulness and speech-noise expectations.
-- Ship the remaining Phase A detail entry surfaces in Control Center and from the pet-facing window.
 
 P2/P3:
 
