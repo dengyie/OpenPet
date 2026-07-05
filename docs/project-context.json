@@ -2,7 +2,7 @@
   "project": "OpenPet",
   "releaseTrack": "1.0.1-rc.3",
   "updated": "2026-07-05",
-  "branch": "codex/dev8",
+  "branch": "main",
   "scope": {
     "platform": [
       "macOS",

@@ -88,7 +88,7 @@ test('project-context indexes the archived provider smoke evidence and current s
   assert.equal(context.updated, '2026-07-05', 'project-context.json should carry the current live-doc update date')
   assert.equal(
     context.branch,
-    'codex/dev8',
+    'main',
     'project-context.json should describe the current live-doc branch context'
   )
 
@@ -307,8 +307,8 @@ test('live docs keep branch metadata aligned with project-context', () => {
 
   assert.equal(
     context.branch,
-    'codex/dev8',
-    'project-context.json should keep live-doc metadata on the current development baseline'
+    'main',
+    'project-context.json should keep live-doc metadata on the current main baseline'
   )
 
   for (const [name, content] of [
@@ -318,7 +318,7 @@ test('live docs keep branch metadata aligned with project-context', () => {
   ]) {
     assert.match(
       content,
-      /Branch:\s*`codex\/dev8`/i,
+      /Branch:\s*`main`/i,
       `${name} should keep the same branch header as project-context.json`
     )
   }
