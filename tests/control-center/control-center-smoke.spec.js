@@ -329,13 +329,13 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.readonly-row', { hasText: '更新状态' })).toContainText('Update feed is not configured.')
   })
 
-  test('explains internal anchor preparation in the Create pane', async ({ page }) => {
+  test('explains the supported single-image material shape in the Create pane', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Create' }).click()
 
     await expect(page.getByRole('heading', { name: 'Create' })).toBeVisible()
-    await expect(page.locator('.creator-pane')).toContainText('OpenPet 会在内部准备角色锚定视图和动作锚定视图')
-    await expect(page.locator('.creator-pane')).toContainText('上传的图片仍是身份最高优先级')
+    await expect(page.locator('.creator-pane')).toContainText('单张清晰的正面图')
+    await expect(page.locator('.creator-pane')).toContainText('不要使用拼图、三视图或多视图合成图')
   })
 
   test('blocks multi-view reference material in the demo Create flow with explicit guidance', async ({ page }) => {

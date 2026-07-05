@@ -1599,9 +1599,6 @@ const createDefaultDemoState = (): DemoState => {
     serviceStatus: createDemoServiceStatus(),
     catalog: createDemoCatalog(),
     plugins: [],
-    secrets: {
-      imGatewayTelegramBotToken: false
-    },
     pluginLogs: [],
     creatorReferencePickerPath: defaultDemoCreatorReferencePickerPath
   }
@@ -1672,9 +1669,6 @@ const readDemoState = (): DemoState => {
       plugins: Array.isArray(state.plugins)
         ? state.plugins.map((plugin: Partial<PluginViewState>) => normalizeDemoPluginViewState(plugin))
         : [],
-      secrets: {
-        imGatewayTelegramBotToken: Boolean(state.secrets?.imGatewayTelegramBotToken)
-      },
       pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : [],
       creatorReferencePickerPath: typeof state.creatorReferencePickerPath === 'string' && state.creatorReferencePickerPath.trim()
         ? state.creatorReferencePickerPath.trim()
