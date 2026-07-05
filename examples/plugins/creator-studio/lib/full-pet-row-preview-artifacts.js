@@ -51,11 +51,10 @@ const toDataRelativePath = ({ dataDir, targetPath }) => (
   path.relative(path.resolve(dataDir), path.resolve(targetPath)).replace(/\\/g, '/')
 )
 
-const getFramesForRow = ({ rowFramesByActionId, row, optional = false }) => {
+const getFramesForRow = ({ rowFramesByActionId, row }) => {
   const frames = rowFramesByActionId instanceof Map
     ? rowFramesByActionId.get(row.id)
     : rowFramesByActionId?.[row.id]
-  if (optional && frames == null) return null
   if (!Array.isArray(frames) || frames.length !== row.frameCount) {
     throw new Error(`Official full-pet row ${row.id} requires ${row.frameCount} preview frames`)
   }
@@ -86,8 +85,7 @@ const createCellBuffer = async (framePath) => (
 const writeContactSheet = async ({ dataDir, rowFramesByActionId, outputPath }) => {
   const composites = []
   for (const row of OFFICIAL_FULL_PET_ROWS) {
-    const frames = getFramesForRow({ rowFramesByActionId, row, optional: true })
-    if (!frames) continue
+    const frames = getFramesForRow({ rowFramesByActionId, row })
     for (let index = 0; index < row.frameCount; index += 1) {
       composites.push({
         input: await createCellBuffer(normalizeFramePath({ dataDir, frame: frames[index] })),
@@ -154,8 +152,7 @@ const createOfficialRowPreviewArtifacts = async ({ dataDir, rowFramesByActionId,
 
   const previews = []
   for (const row of OFFICIAL_FULL_PET_ROWS) {
-    const frames = getFramesForRow({ rowFramesByActionId, row, optional: true })
-    if (!frames) continue
+    const frames = getFramesForRow({ rowFramesByActionId, row })
     const previewPath = resolveInsideDataDir({
       dataDir,
       targetPath: path.join(previewDir, `${row.id}.gif`),

@@ -83,20 +83,6 @@ test('creates contact sheet and gif previews for official row frames', async () 
   assert.equal(JSON.stringify(result.previews.map((preview) => preview.relativePath)).includes(dataDir), false)
 })
 
-test('creates a full-size contact sheet but previews only available rows', async () => {
-  const dataDir = makeTempDataDir()
-  const allRows = await writeOfficialRowFrames({ dataDir })
-  const rowFramesByActionId = new Map([['idle', allRows.get('idle')]])
-  const outputDir = path.join(dataDir, 'runs', 'run-1', 'qa-partial')
-
-  const result = await createOfficialRowPreviewArtifacts({ dataDir, rowFramesByActionId, outputDir })
-
-  const metadata = await sharp(result.contactSheetPath).metadata()
-  assert.equal(metadata.width, ATLAS_WIDTH)
-  assert.equal(metadata.height, ATLAS_HEIGHT)
-  assert.deepEqual(result.previews.map((preview) => preview.actionId), ['idle'])
-})
-
 test('rejects preview artifact output directories outside dataDir', async () => {
   const dataDir = makeTempDataDir()
   const outsideDir = makeTempDataDir()
