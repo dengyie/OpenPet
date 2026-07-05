@@ -44,6 +44,18 @@ const resolveInsideDataDir = ({ dataDir, filePath, message, mustExist = true }) 
     }
     return realResolved
   }
+  const realRoot = fs.realpathSync.native(root)
+  let existingAncestor = resolved
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor)
+    if (parent === existingAncestor) break
+    existingAncestor = parent
+  }
+  const realAncestor = fs.realpathSync.native(existingAncestor)
+  const realRelativeToRoot = path.relative(realRoot, realAncestor)
+  if (realRelativeToRoot.startsWith('..') || path.isAbsolute(realRelativeToRoot)) {
+    throw new Error(message)
+  }
   return resolved
 }
 
