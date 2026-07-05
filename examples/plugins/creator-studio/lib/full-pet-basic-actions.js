@@ -1,3 +1,5 @@
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('./full-pet-row-contract')
+
 const FULL_PET_ACTION_SUPPORT = Object.freeze({
   REQUIRED_REAL: 'required-real',
   OPTIONAL_ATTEMPTED_REAL: 'optional-attempted-real',
@@ -5,18 +7,6 @@ const FULL_PET_ACTION_SUPPORT = Object.freeze({
 })
 
 const createActionPolicyEntry = (value) => Object.freeze(value)
-
-const OFFICIAL_FULL_PET_ACTION_IDS = Object.freeze([
-  'idle',
-  'running-right',
-  'running-left',
-  'waving',
-  'jumping',
-  'failed',
-  'waiting',
-  'running',
-  'review'
-])
 
 const FULL_PET_ACTION_POLICY = Object.freeze([
   ...OFFICIAL_FULL_PET_ACTION_IDS.map((actionId) => (
