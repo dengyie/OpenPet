@@ -190,6 +190,40 @@ test('rejects official row frame output paths outside data directory', async () 
   )
 })
 
+test('rejects official row frame output paths through symlinks escaping data directory', async (t) => {
+  const dataDir = createTempDir()
+  const outsideDir = createTempDir()
+  const linkPath = path.join(dataDir, 'linked-outside')
+  const stripPath = path.join(dataDir, 'runs', 'run-1', 'rows', 'waving', 'strip.png')
+  fs.mkdirSync(path.dirname(stripPath), { recursive: true })
+  await createSyntheticStrip({
+    outputPath: stripPath,
+    frameCount: 4,
+    blocks: [
+      { x: 20, y: 90, width: 24, height: 36, color: '#ff0000' },
+      { x: 42, y: 88, width: 24, height: 36, color: '#00ff00' },
+      { x: 64, y: 86, width: 24, height: 36, color: '#0000ff' },
+      { x: 86, y: 84, width: 24, height: 36, color: '#ff00ff' }
+    ]
+  })
+  try {
+    fs.symlinkSync(outsideDir, linkPath)
+  } catch (error) {
+    t.skip(`Directory symlinks are unavailable: ${error.message}`)
+    return
+  }
+
+  await assert.rejects(
+    extractRowStripFrames({
+      dataDir,
+      stripPath,
+      actionId: 'waving',
+      outputDir: path.join(linkPath, 'waving-frames')
+    }),
+    /Official row frame output path escaped/
+  )
+})
+
 test('rejects mirror source frame paths outside data directory', async () => {
   const dataDir = createTempDir()
   const outsideDir = createTempDir()
