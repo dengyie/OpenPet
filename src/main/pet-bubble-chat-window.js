@@ -362,6 +362,7 @@ const createPetBubbleChatWindowManager = ({
     visible: false,
     hasWindow: false,
     pinned: false,
+    autoPinned: false,
     interacting: false,
     message: null,
     items: [],
@@ -391,6 +392,8 @@ const createPetBubbleChatWindowManager = ({
     }
   }
 
+  const isPinned = () => Boolean(state.pinned || state.autoPinned)
+
   const sanitizeLogText = (value, maxLength = 120) => String(value || '').slice(0, maxLength)
 
   const getStateLogDetails = (extra = {}) => {
@@ -404,7 +407,8 @@ const createPetBubbleChatWindowManager = ({
       source: sanitizeLogText(extra.source || message.source || ''),
       sourceSurface: sanitizeLogText(extra.sourceSurface || message.sourceSurface || extra.source || message.source || ''),
       interactive: Boolean(state.hitTestInteractive),
-      pinned: Boolean(state.pinned),
+      pinned: isPinned(),
+      autoPinned: Boolean(state.autoPinned),
       interacting: Boolean(state.interacting),
       visible: Boolean(state.visible),
       awaitingReply: Boolean(state.awaitingReply),
@@ -483,13 +487,13 @@ const createPetBubbleChatWindowManager = ({
 
   const shouldHoldVisible = () => {
     const settings = getSettings()
-    return state.pinned || state.interacting || state.awaitingReply || Boolean(state.error) || settings.autoHide === false
+    return isPinned() || state.interacting || state.awaitingReply || Boolean(state.error) || settings.autoHide === false
   }
 
   const getHoldVisibleReason = () => {
     const settings = getSettings()
     if (settings.autoHide === false) return 'auto-hide-disabled'
-    if (state.pinned) return 'pinned'
+    if (isPinned()) return state.autoPinned && !state.pinned ? 'auto-pinned' : 'pinned'
     if (state.interacting) return 'interacting'
     if (state.awaitingReply) return 'awaiting-reply'
     if (state.error) return 'error'
@@ -1082,7 +1086,7 @@ const createPetBubbleChatWindowManager = ({
   }
 
   const setPinned = (pinned, { source = 'pet-bubble-chat-renderer' } = {}) => {
-    patchState({ pinned: Boolean(pinned) })
+    patchState({ pinned: Boolean(pinned), autoPinned: false })
     syncToPetWindow()
     recordLog({
       level: 'info',
@@ -1096,13 +1100,24 @@ const createPetBubbleChatWindowManager = ({
   }
 
   const setInteracting = (interacting, { source = 'pet-bubble-chat-renderer' } = {}) => {
-    patchState({ interacting: Boolean(interacting) })
+    const nextInteracting = Boolean(interacting)
+    const settings = getSettings()
+    const shouldAutoPin = settings.pinOnInteraction !== false && nextInteracting && !state.pinned
+    const shouldReleaseAutoPin = !nextInteracting && state.autoPinned
+    patchState({
+      interacting: nextInteracting,
+      autoPinned: shouldAutoPin ? true : (shouldReleaseAutoPin ? false : state.autoPinned)
+    })
     syncToPetWindow()
     recordLog({
       level: 'debug',
       event: 'pet-bubble-chat.interaction.changed',
       message: 'Pet bubble chat interaction state changed',
-      details: getStateLogDetails({ source, interacting: Boolean(interacting), reason: Boolean(interacting) ? 'interaction-started' : 'interaction-ended' })
+      details: getStateLogDetails({
+        source,
+        interacting: nextInteracting,
+        reason: nextInteracting ? (shouldAutoPin ? 'interaction-started-auto-pinned' : 'interaction-started') : (shouldReleaseAutoPin ? 'interaction-ended-auto-unpinned' : 'interaction-ended')
+      })
     })
     scheduleAutoHide('interaction-changed')
     scheduleHistoryPrune()
@@ -1299,6 +1314,7 @@ const createPetBubbleChatWindowManager = ({
 
   const getState = () => ({
     ...state,
+    pinned: isPinned(),
     hasWindow: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.()),
     visible: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.() && bubbleWindow.isVisible?.() !== false && state.visible)
   })

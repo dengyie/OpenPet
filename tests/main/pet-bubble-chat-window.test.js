@@ -636,6 +636,101 @@ test('pet bubble chat manager does not show when disabled and holds visible whil
   }
 })
 
+test('pet bubble chat manager auto-pins on interaction when pinOnInteraction is enabled and releases after idle', () => {
+  const logs = []
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  manager.showMessage({ text: '可交互提示', source: 'plugin:test', ttlMs: 6000 })
+  const activeState = manager.setInteracting(true, { source: 'renderer-hover' })
+  const idleState = manager.setInteracting(false, { source: 'renderer-leave' })
+
+  assert.equal(activeState.interacting, true)
+  assert.equal(activeState.pinned, true)
+  assert.equal(activeState.autoPinned, true)
+  assert.equal(idleState.interacting, false)
+  assert.equal(idleState.pinned, false)
+  assert.equal(idleState.autoPinned, false)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.interaction.changed' &&
+    entry.details.reason === 'interaction-started-auto-pinned'
+  )), true)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.interaction.changed' &&
+    entry.details.reason === 'interaction-ended-auto-unpinned'
+  )), true)
+})
+
+test('pet bubble chat manager does not auto-pin on interaction when pinOnInteraction is disabled', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: false } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.showMessage({ text: '仅交互，不自动 pin', source: 'plugin:test', ttlMs: 6000 })
+  const activeState = manager.setInteracting(true, { source: 'renderer-hover' })
+
+  assert.equal(activeState.interacting, true)
+  assert.equal(activeState.pinned, false)
+  assert.equal(activeState.autoPinned, false)
+})
+
+test('pet bubble chat manager clears auto-pin when explicitly unpinned', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.showMessage({ text: '可交互提示', source: 'plugin:test', ttlMs: 6000 })
+  manager.setInteracting(true, { source: 'renderer-hover' })
+  const state = manager.setPinned(false, { source: 'renderer-manual-unpin' })
+
+  assert.equal(state.pinned, false)
+  assert.equal(state.autoPinned, false)
+})
+
 test('pet bubble chat manager toggles window-level hit-test passthrough', () => {
   const logs = []
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()

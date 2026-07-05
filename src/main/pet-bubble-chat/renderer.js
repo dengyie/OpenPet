@@ -112,6 +112,16 @@ const scrollToLatest = () => {
   bubbleStream.scrollTop = bubbleStream.scrollHeight || 0
 }
 
+const isNearLatest = () => {
+  if (!bubbleStream) return true
+  const scrollHeight = Number(bubbleStream.scrollHeight) || 0
+  const scrollTop = Math.max(0, Number(bubbleStream.scrollTop) || 0)
+  const clientHeight = Math.max(0, Number(bubbleStream.clientHeight) || 0)
+  if (scrollHeight <= 0) return true
+  const remaining = scrollHeight - clientHeight - scrollTop
+  return remaining <= 28
+}
+
 const isComposerTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
   return Boolean(target.closest('#mini-input-form'))
@@ -250,6 +260,7 @@ const renderBubbleItems = (items = []) => {
 }
 
 const renderState = (state = {}) => {
+  const wasNearLatest = isNearLatest()
   const nextAwaitingReply = Object.prototype.hasOwnProperty.call(state, 'awaitingReply')
     ? Boolean(state.awaitingReply)
     : (state.sending === false ? false : currentState.awaitingReply)
@@ -265,7 +276,11 @@ const renderState = (state = {}) => {
   let itemsChanged = false
   if (signature !== lastItemSignature) {
     itemsChanged = true
-    localUnseenCount = 0
+    if (holdScroll && !wasNearLatest) {
+      localUnseenCount += Math.max(1, items.length - lastItemCount)
+    } else {
+      localUnseenCount = 0
+    }
     lastItemSignature = signature
     lastItemCount = items.length
   } else if (!holdScroll) {
@@ -285,7 +300,7 @@ const renderState = (state = {}) => {
   sendButton.disabled = !miniInput.value.trim()
   sendButton.textContent = currentState.awaitingReply ? '继续发送' : '发送'
   shell.hidden = !items.length && !currentState.error && !currentState.sending && !currentState.awaitingReply
-  if (itemsChanged || !holdScroll) scrollToLatest()
+  if ((itemsChanged && (!holdScroll || wasNearLatest)) || !holdScroll) scrollToLatest()
   updateUnseenButton()
 }
 
@@ -443,7 +458,9 @@ document.addEventListener('dblclick', () => {
 newMessageButton?.addEventListener('click', (event) => {
   event.stopPropagation()
   localUnseenCount = 0
+  scrollingHistory = false
   scrollToLatest()
+  syncUiInteractionState()
   updateUnseenButton()
 })
 

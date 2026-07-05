@@ -34,6 +34,7 @@ const createElement = (id = '') => ({
   children: [],
   scrollTop: 0,
   scrollHeight: 0,
+  clientHeight: 120,
   classList: createClassList(),
   attributes: {},
   listeners: {},
@@ -379,6 +380,68 @@ test('bubble chat renderer auto-scrolls on new messages instead of relying on th
     sending: false,
     error: '',
     pinned: false
+  })
+
+  assert.equal(elements['new-message-button'].hidden, true)
+  assert.equal(elements['bubble-stream'].scrollTop, elements['bubble-stream'].scrollHeight)
+})
+
+test('bubble chat renderer shows a new-message prompt when fresh items arrive while history is intentionally scrolled away from the bottom', async () => {
+  const harness = await createHarness()
+  const { apiStateListeners, elements } = harness
+
+  elements['bubble-stream'].scrollHeight = 280
+  elements['bubble-stream'].clientHeight = 120
+  elements['bubble-stream'].scrollTop = 12
+  await dispatch(elements['bubble-stream'], 'wheel', {
+    deltaY: -24,
+    stopPropagation() {}
+  })
+
+  apiStateListeners[0]({
+    message: { id: 'a2', kind: 'dialogue', role: 'pet', text: '新的回复', source: 'ai', createdAt: '2026-06-24T00:00:03.000Z' },
+    items: [
+      { id: 'u1', kind: 'dialogue', role: 'user', text: '你好', source: 'user', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', kind: 'dialogue', role: 'pet', text: '我在', source: 'ai', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'n1', kind: 'notice', role: 'system', text: '天气提醒', source: 'plugin:weather', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', kind: 'dialogue', role: 'pet', text: '新的回复', source: 'ai', createdAt: '2026-06-24T00:00:03.000Z' }
+    ],
+    sending: false,
+    error: '',
+    pinned: false
+  })
+
+  assert.equal(elements['new-message-button'].hidden, false)
+  assert.match(elements['new-message-button'].textContent, /有新消息/)
+  assert.equal(elements['bubble-stream'].scrollTop, 0)
+})
+
+test('bubble chat renderer jumps back to latest and clears the prompt after clicking the new-message button', async () => {
+  const harness = await createHarness()
+  const { apiStateListeners, elements } = harness
+
+  elements['bubble-stream'].scrollHeight = 280
+  elements['bubble-stream'].clientHeight = 120
+  elements['bubble-stream'].scrollTop = 0
+  await dispatch(elements['bubble-stream'], 'wheel', {
+    deltaY: -24,
+    stopPropagation() {}
+  })
+
+  apiStateListeners[0]({
+    message: { id: 'a2', kind: 'dialogue', role: 'pet', text: '新的回复', source: 'ai', createdAt: '2026-06-24T00:00:03.000Z' },
+    items: [
+      { id: 'u1', kind: 'dialogue', role: 'user', text: '你好', source: 'user', createdAt: '2026-06-24T00:00:00.000Z' },
+      { id: 'a1', kind: 'dialogue', role: 'pet', text: '我在', source: 'ai', createdAt: '2026-06-24T00:00:01.000Z' },
+      { id: 'n1', kind: 'notice', role: 'system', text: '天气提醒', source: 'plugin:weather', createdAt: '2026-06-24T00:00:02.000Z' },
+      { id: 'a2', kind: 'dialogue', role: 'pet', text: '新的回复', source: 'ai', createdAt: '2026-06-24T00:00:03.000Z' }
+    ],
+    sending: false,
+    error: '',
+    pinned: false
+  })
+  await dispatch(elements['new-message-button'], 'click', {
+    stopPropagation() {}
   })
 
   assert.equal(elements['new-message-button'].hidden, true)
