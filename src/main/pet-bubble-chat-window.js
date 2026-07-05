@@ -959,10 +959,7 @@ const createPetBubbleChatWindowManager = ({
       .map((item) => normalizePendingUserMessage(item))
       .filter(Boolean)
       .map((item) => createPendingBubbleItem(item))
-    const dialoguePresent = visibleDialogueItems.length > 0 || pendingItems.length > 0
-    const displayNotices = normalizedNotices
-      .filter((item) => !(dialoguePresent && item.source === 'pet-renderer'))
-      .slice(-MAX_NOTICE_ITEMS)
+    const displayNotices = normalizedNotices.slice(-MAX_NOTICE_ITEMS)
     const items = sortBubbleItems([
       ...visibleDialogueItems,
       ...pendingItems,
