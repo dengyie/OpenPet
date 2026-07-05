@@ -2,6 +2,12 @@
 
 Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI coding-agent activity through bounded pet events, low-frequency pet speech, and a local dashboard.
 
+## Documentation Guide
+
+- Canonical development overview: [`../../../docs/agent-awareness-development-design.md`](../../../docs/agent-awareness-development-design.md)
+- Implementation reference: [`../../../docs/agent-awareness-plugin-design.md`](../../../docs/agent-awareness-plugin-design.md)
+- Real-session acceptance runbook: [`../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md)
+
 ## MVP Scope
 
 - Zero-config polling of local Codex session metadata under `~/.codex/sessions` and `~/.codex/archived_sessions`.
