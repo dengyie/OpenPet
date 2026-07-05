@@ -1,6 +1,5 @@
 const crypto = require('crypto')
 const sharp = require('sharp')
-const { sanitizeNearTransparentPixels } = require('./edge-background-cutout')
 const { OFFICIAL_FULL_PET_ROWS } = require('./full-pet-row-contract')
 
 const CODEX_ATLAS = Object.freeze({
@@ -50,19 +49,19 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
     const frames = rowFramesByActionId instanceof Map
       ? rowFramesByActionId.get(row.id)
       : rowFramesByActionId?.[row.id]
-    if (frames == null) continue
     if (!Array.isArray(frames) || frames.length !== row.frameCount) {
       throw new Error(`Official full-pet row ${row.id} requires ${row.frameCount} frames`)
     }
     for (let column = 0; column < row.frameCount; column += 1) {
-      const framePath = getFramePath(frames[column])
-      const metadata = await sharp(framePath).metadata()
-      if (metadata.width !== CODEX_ATLAS.cellWidth || metadata.height !== CODEX_ATLAS.cellHeight) {
-        throw new Error(`Official full-pet row ${row.id} frame ${column + 1} must be exactly ${CODEX_ATLAS.cellWidth}x${CODEX_ATLAS.cellHeight}`)
-      }
       composites.push({
-        input: await sharp(framePath)
+        input: await sharp(getFramePath(frames[column]))
           .ensureAlpha()
+          .resize({
+            width: CODEX_ATLAS.cellWidth,
+            height: CODEX_ATLAS.cellHeight,
+            fit: 'fill',
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          })
           .png()
           .toBuffer(),
         left: column * CODEX_ATLAS.cellWidth,
@@ -71,7 +70,7 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
     }
   }
 
-  const atlasBuffer = await sharp({
+  await sharp({
     create: {
       width: CODEX_ATLAS.width,
       height: CODEX_ATLAS.height,
@@ -80,22 +79,15 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
     }
   })
     .composite(composites)
-    .png()
-    .toBuffer()
-  await sharp(await sanitizeNearTransparentPixels(atlasBuffer))
     .webp({ lossless: true })
     .toFile(outputPath)
 
   const frameRows = []
   for (const row of OFFICIAL_FULL_PET_ROWS) {
-    const frames = rowFramesByActionId instanceof Map
-      ? rowFramesByActionId.get(row.id)
-      : rowFramesByActionId?.[row.id]
     frameRows.push({
       id: row.id,
       row: row.row,
       frameCount: row.frameCount,
-      available: Array.isArray(frames),
       uniqueFrameCount: await countUniqueRowFrames({ spritesheetPath: outputPath, row })
     })
   }

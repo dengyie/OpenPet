@@ -10,12 +10,6 @@ const {
   OFFICIAL_FULL_PET_ROWS
 } = require('./full-pet-row-contract')
 const { analyzeRowFrames } = require('./full-pet-row-qa')
-const { createOfficialRowPreviewArtifacts } = require('./full-pet-row-preview-artifacts')
-const { stabilizeRowFrames } = require('./full-pet-row-stable-slots')
-const {
-  createQualityProfileEvidence,
-  getDefaultQualityProfile
-} = require('./pet-generation-quality-profile')
 
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const CODEX_ATLAS = {
@@ -234,6 +228,126 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+const normalizeOfficialRowsInput = (officialRows) => (
+  Array.isArray(officialRows)
+    ? officialRows
+    : Array.isArray(officialRows?.rows)
+      ? officialRows.rows
+      : []
+)
+
+const sanitizeRowQa = (qa) => ({
+  actionId: qa.actionId,
+  quality: qa.quality,
+  frameCount: qa.frameCount,
+  expectedFrameCount: qa.expectedFrameCount,
+  uniqueFrameCount: qa.uniqueFrameCount,
+  centroidDrift: qa.centroidDrift,
+  baselineDrift: qa.baselineDrift,
+  sizeDrift: qa.sizeDrift,
+  errors: qa.errors,
+  warnings: qa.warnings,
+  frames: qa.frames.map((frame) => ({
+    index: frame.index,
+    visiblePixels: frame.visiblePixels,
+    bbox: frame.bbox,
+    centroid: frame.centroid,
+    baseline: frame.baseline
+  }))
+})
+
+const buildOfficialAtlasFromRows = async ({
+  officialRows,
+  spritesheetPath,
+  qaDir,
+  sourceRelativePath,
+  sourceValidation,
+  size,
+  entries
+}) => {
+  const rowInputs = normalizeOfficialRowsInput(officialRows)
+  const rowInputsByActionId = new Map(rowInputs.map((row) => [String(row?.actionId || '').trim(), row]))
+  const rowFramesByActionId = new Map()
+  const rowQas = []
+  const basicActionRows = []
+  for (const row of OFFICIAL_FULL_PET_ROWS) {
+    const input = rowInputsByActionId.get(row.id)
+    if (!input) {
+      throw new Error(`Official full-pet row package is missing ${row.id}`)
+    }
+    const sourceKind = input.quality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
+      ? 'approved-mirror'
+      : 'row-strip'
+    const qa = await analyzeRowFrames({
+      actionId: row.id,
+      frames: input.frames,
+      sourceKind
+    })
+    if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
+      throw new Error(`Official full-pet row ${row.id} failed QA: ${qa.errors.join(', ')}`)
+    }
+    rowFramesByActionId.set(row.id, input.frames)
+    rowQas.push(qa)
+    basicActionRows.push({
+      actionId: row.id,
+      sourceActionId: row.id === 'running-left' && qa.quality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
+        ? 'running-right'
+        : row.id,
+      sourceRelativePath: String(input.sourceRelativePath || '').trim(),
+      fallback: false,
+      quality: qa.quality
+    })
+  }
+
+  const composed = await composeOfficialFullPetAtlas({
+    outputPath: spritesheetPath,
+    rowFramesByActionId
+  })
+  const basicActions = createBasicActionCoverage(basicActionRows)
+  const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
+  const rowQaPath = path.join(qaDir, 'full-pet-row-validation.json')
+  const atlasQaPath = path.join(qaDir, 'atlas-validation.json')
+  writeJson(sourceQaPath, {
+    ok: true,
+    sourceRelativePath,
+    width: sourceValidation.width,
+    height: sourceValidation.height,
+    channels: sourceValidation.channels,
+    hasAlpha: sourceValidation.hasAlpha,
+    visiblePixels: sourceValidation.visiblePixels,
+    byteSize: size,
+    warnings: []
+  })
+  writeJson(rowQaPath, {
+    ok: true,
+    rows: rowQas.map(sanitizeRowQa)
+  })
+  writeJson(atlasQaPath, {
+    ok: true,
+    width: CODEX_ATLAS.width,
+    height: CODEX_ATLAS.height,
+    visiblePixels: composed.visiblePixels,
+    sourceRelativePath,
+    sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
+    basicActions,
+    frame: {
+      width: CODEX_ATLAS.cellWidth,
+      height: CODEX_ATLAS.cellHeight,
+      rows: composed.frameRows.map((frameRow) => ({
+        ...frameRow,
+        sourceQuality: basicActionRows.find((candidate) => candidate.actionId === frameRow.id)?.quality || 'unknown'
+      }))
+    },
+    warnings: []
+  })
+
+  return {
+    sourceQaPath,
+    atlasQaPath,
+    visiblePixels: composed.visiblePixels
+  }
+}
+
 const countUniqueRowFrames = async ({ spritesheetPath, row }) => {
   const hashes = new Set()
   for (let column = 0; column < row.durations.length; column += 1) {
@@ -268,31 +382,7 @@ const createEntryVisibilityInspector = ({ fallbackEntry, fallbackValidation, war
   }
 }
 
-const createPreviewSourcePreparer = () => {
-  const cache = new Map()
-  return async (entry) => {
-    const sourcePath = entry?.sourcePath
-    if (!sourcePath) return { sourceInput: sourcePath, sourceBackgroundRemoved: false, sourceBackgroundRemovedRatio: 0 }
-    if (cache.has(sourcePath)) return cache.get(sourcePath)
-    const backgroundRemoval = await removeOpaqueEdgeBackground(sourcePath)
-    const prepared = {
-      sourceInput: backgroundRemoval.buffer,
-      sourceBackgroundRemoved: Boolean(backgroundRemoval.removed),
-      sourceBackgroundRemovedRatio: Number(backgroundRemoval.removedPixelRatio || 0)
-    }
-    cache.set(sourcePath, prepared)
-    return prepared
-  }
-}
-
-const buildRealAtlasFromGeneratedImage = async ({
-  dataDir,
-  generationResult,
-  outputDir,
-  qaDir,
-  officialRows = null,
-  qualityProfile = getDefaultQualityProfile()
-}) => {
+const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, outputDir, qaDir, officialRows = null }) => {
   const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
   const fallbackEntry = entries[0]
   const { sourcePath, sourceRelativePath, size } = fallbackEntry
@@ -304,29 +394,24 @@ const buildRealAtlasFromGeneratedImage = async ({
   const spritesheetPath = path.join(outputDir, 'spritesheet.webp')
   if (officialRows) {
     const official = await buildOfficialAtlasFromRows({
-      dataDir,
       officialRows,
       spritesheetPath,
       qaDir,
       sourceRelativePath,
       sourceValidation,
       size,
-      entries,
-      qualityProfile,
-      basicActionAttempts: Array.isArray(generationResult?.basicActionGeneration?.attempts)
-        ? generationResult.basicActionGeneration.attempts
-        : []
+      entries
     })
     return {
       spritesheetPath,
       sourceQaPath: official.sourceQaPath,
       atlasQaPath: official.atlasQaPath,
       sourceRelativePath,
-      visiblePixels: official.visiblePixels,
-      basicActions: official.basicActions
+      visiblePixels: official.visiblePixels
     }
   }
 
+  const rowCellBuffers = new Map()
   const basicActionRows = []
   const warnings = []
   const inspectEntryVisibility = createEntryVisibilityInspector({
