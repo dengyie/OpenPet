@@ -1,6 +1,46 @@
-const REQUIRED_REAL_FULL_PET_ACTION_IDS = Object.freeze(['idle', 'waving'])
+const FULL_PET_ACTION_SUPPORT = Object.freeze({
+  REQUIRED_REAL: 'required-real',
+  OPTIONAL_ATTEMPTED_REAL: 'optional-attempted-real',
+  FALLBACK_ONLY: 'fallback-only'
+})
+
+const createActionPolicyEntry = (value) => Object.freeze(value)
+
+const FULL_PET_ACTION_POLICY = Object.freeze([
+  createActionPolicyEntry({ actionId: 'idle', support: FULL_PET_ACTION_SUPPORT.REQUIRED_REAL, attemptGeneratedPose: false, expansionRank: 0 }),
+  createActionPolicyEntry({ actionId: 'waving', support: FULL_PET_ACTION_SUPPORT.REQUIRED_REAL, attemptGeneratedPose: true, expansionRank: 0 }),
+  createActionPolicyEntry({ actionId: 'waiting', support: FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL, attemptGeneratedPose: false, expansionRank: 1 }),
+  createActionPolicyEntry({ actionId: 'running-right', support: FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL, attemptGeneratedPose: false, expansionRank: 2 }),
+  createActionPolicyEntry({ actionId: 'running-left', support: FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL, attemptGeneratedPose: false, expansionRank: 3 }),
+  createActionPolicyEntry({ actionId: 'jumping', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null }),
+  createActionPolicyEntry({ actionId: 'failed', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null }),
+  createActionPolicyEntry({ actionId: 'running', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null }),
+  createActionPolicyEntry({ actionId: 'review', support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY, attemptGeneratedPose: false, expansionRank: null })
+])
+
+const REQUIRED_REAL_FULL_PET_ACTION_IDS = Object.freeze(
+  FULL_PET_ACTION_POLICY
+    .filter((entry) => entry.support === FULL_PET_ACTION_SUPPORT.REQUIRED_REAL)
+    .map((entry) => entry.actionId)
+)
+
+const OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS = Object.freeze(
+  FULL_PET_ACTION_POLICY
+    .filter((entry) => entry.support === FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL)
+    .sort((left, right) => left.expansionRank - right.expansionRank)
+    .map((entry) => entry.actionId)
+)
+
+const FALLBACK_ONLY_FULL_PET_ACTION_IDS = Object.freeze(
+  FULL_PET_ACTION_POLICY
+    .filter((entry) => entry.support === FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY)
+    .map((entry) => entry.actionId)
+)
+
 const GENERATED_FULL_PET_ACTION_IDS = Object.freeze(
-  REQUIRED_REAL_FULL_PET_ACTION_IDS.filter((actionId) => actionId !== 'idle')
+  FULL_PET_ACTION_POLICY
+    .filter((entry) => entry.attemptGeneratedPose)
+    .map((entry) => entry.actionId)
 )
 
 const normalizeActionId = (value) => String(value || '').trim()
@@ -61,6 +101,10 @@ const createBasicActionCoverage = (rows) => {
 }
 
 module.exports = {
+  FALLBACK_ONLY_FULL_PET_ACTION_IDS,
+  FULL_PET_ACTION_POLICY,
+  FULL_PET_ACTION_SUPPORT,
+  OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
   REQUIRED_REAL_FULL_PET_ACTION_IDS,
   GENERATED_FULL_PET_ACTION_IDS,
   createBasicActionCoverage,

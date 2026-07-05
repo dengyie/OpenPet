@@ -13,6 +13,11 @@ Current full-pet policy:
 - Other atlas rows may fall back from the validated base pose.
 - The currently verified shortest real-user path is one clean front-facing reference image on the saved `gpt-image-2` gateway path.
 - The default one-click path now blocks collage or multi-view references and asks for one clean front-facing image instead.
+- Future optional real-action expansion is queued, not active by default, in this order: `waiting`, `running-right`, `running-left`.
+- Current action classes are explicit:
+  - required real: `idle`, `waving`
+  - queued optional attempted real, still disabled in the default path: `waiting`, `running-right`, `running-left`
+  - fallback-only today: `jumping`, `failed`, `running`, `review`
 
 Current commands:
 

@@ -28,6 +28,7 @@ The ordinary path must support:
 - The previous `clickAction` must be visible and recoverable from the Create result surface.
 - New-pet generation should prefer real basic actions where available, while allowing honest fallback rows.
 - Minimum useful new-pet gate: `idle` and `waving` are the required real basic actions; other rows may fall back in the first implementation.
+- The next optional real-action expansion queue is fixed, but not yet active in the default path: `waiting`, then `running-right`, then `running-left`.
 - The first implementation stays inside the existing Creator Studio, ActionService, and PetPackService architecture.
 - No new pet/action package format is introduced.
 - The Create tab stays simple; advanced customization remains in Creator Studio and Actions.
@@ -127,6 +128,9 @@ Returned for new-pet generation when atlas QA reports action row coverage:
   - `atlas-validation.json` records real, fallback, and missing required coverage without absolute paths.
 - `examples/plugins/creator-studio/lib/full-pet-qa.js`
   - When `atlas-validation.json` includes required basic action coverage, approval/import rejects missing required real actions instead of silently importing misleading QA.
+- `examples/plugins/creator-studio/lib/full-pet-basic-actions.js`
+  - The action policy now explicitly classifies `idle`/`waving` as required real, `waiting`/`running-right`/`running-left` as the queued optional-attempted-real expansion order, and `jumping`/`failed`/`running`/`review` as fallback-only today.
+  - The default generation set still only attempts the bounded extra pose `waving`; adding queued optional actions remains a future slice behind separate per-action acceptance proof.
 - `src/control-center/src/hooks/useCreatorPane.ts`
   - Create can restore the previous `clickAction` after an existing-action generation.
 - `src/control-center/src/panes/CreatorPane.tsx`
@@ -166,6 +170,7 @@ Current local validation notes:
 ## Risks
 
 - Provider outputs may not include action-specific metadata yet. The builder treats optional rows as fallback, while required coverage is surfaced through QA for review/import gating.
+- Future optional action expansion must clear a per-action gate before landing: decodable source, visible pixels, real atlas row QA, no weakening of the `idle` / `waving` import gate, documented timeout/retry behavior, and fallback-on-failure instead of fatal full-pet abort.
 - Provider-backed full-pet generation is still sensitive to gateway/model stability. The current implementation intentionally minimizes action-specific follow-up generation so base generation remains the critical path.
 - Auto-replacing `clickAction` is intentionally opinionated. The Create result must make the replacement explicit and reversible.
 
@@ -188,6 +193,10 @@ Current local validation notes:
 - That branch-level verification is archived at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/`.
 - The same narrowed path is now archived on `main` at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`.
 - Default one-click generation now explicitly blocks collage or multi-view references such as `全面.png` and asks for one clean front-facing image instead.
+- The full-pet action policy is currently:
+  - required real: `idle`, `waving`
+  - queued optional attempted real, still disabled in the default path: `waiting`, `running-right`, `running-left`
+  - fallback-only today: `jumping`, `failed`, `running`, `review`
 
 ## Non-Goals
 
