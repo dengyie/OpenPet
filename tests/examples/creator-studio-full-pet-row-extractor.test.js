@@ -136,3 +136,89 @@ test('mirrors running-left frames horizontally without reversing frame order', a
     '08.png'
   ])
 })
+
+test('rejects official row strip paths outside data directory', async () => {
+  const dataDir = createTempDir()
+  const outsideDir = createTempDir()
+  const stripPath = path.join(outsideDir, 'waving-strip.png')
+  await createSyntheticStrip({
+    outputPath: stripPath,
+    frameCount: 4,
+    blocks: [
+      { x: 20, y: 90, width: 24, height: 36, color: '#ff0000' },
+      { x: 42, y: 88, width: 24, height: 36, color: '#00ff00' },
+      { x: 64, y: 86, width: 24, height: 36, color: '#0000ff' },
+      { x: 86, y: 84, width: 24, height: 36, color: '#ff00ff' }
+    ]
+  })
+
+  await assert.rejects(
+    extractRowStripFrames({
+      dataDir,
+      stripPath,
+      actionId: 'waving',
+      outputDir: path.join(dataDir, 'runs', 'run-1', 'rows', 'waving', 'frames')
+    }),
+    /Official row strip path escaped/
+  )
+})
+
+test('rejects official row frame output paths outside data directory', async () => {
+  const dataDir = createTempDir()
+  const outsideDir = createTempDir()
+  const stripPath = path.join(dataDir, 'runs', 'run-1', 'rows', 'waving', 'strip.png')
+  fs.mkdirSync(path.dirname(stripPath), { recursive: true })
+  await createSyntheticStrip({
+    outputPath: stripPath,
+    frameCount: 4,
+    blocks: [
+      { x: 20, y: 90, width: 24, height: 36, color: '#ff0000' },
+      { x: 42, y: 88, width: 24, height: 36, color: '#00ff00' },
+      { x: 64, y: 86, width: 24, height: 36, color: '#0000ff' },
+      { x: 86, y: 84, width: 24, height: 36, color: '#ff00ff' }
+    ]
+  })
+
+  await assert.rejects(
+    extractRowStripFrames({
+      dataDir,
+      stripPath,
+      actionId: 'waving',
+      outputDir: path.join(outsideDir, 'waving-frames')
+    }),
+    /Official row frame output path escaped/
+  )
+})
+
+test('rejects mirror source frame paths outside data directory', async () => {
+  const dataDir = createTempDir()
+  const outsideDir = createTempDir()
+  const stripPath = path.join(outsideDir, 'running-right-strip.png')
+  const sourceDir = path.join(outsideDir, 'running-right')
+  await createSyntheticStrip({
+    outputPath: stripPath,
+    frameCount: 8,
+    blocks: Array.from({ length: 8 }, (_, index) => ({
+      x: 10 + index,
+      y: 80,
+      width: 18,
+      height: 30,
+      color: '#0000ff'
+    }))
+  })
+  const source = await extractRowStripFrames({
+    stripPath,
+    actionId: 'running-right',
+    outputDir: sourceDir
+  })
+
+  await assert.rejects(
+    mirrorRowFrames({
+      dataDir,
+      frames: source.frames,
+      actionId: 'running-left',
+      outputDir: path.join(dataDir, 'runs', 'run-1', 'rows', 'running-left', 'frames')
+    }),
+    /Official row frame path escaped/
+  )
+})
