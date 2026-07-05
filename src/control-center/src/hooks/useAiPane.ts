@@ -155,6 +155,14 @@ const formatConnectionStatus = ({
     const unavailable = '聊天 Provider 可达，但模型列表探测不可用；请手动确认模型名称。'
     return notice ? `${notice} ${unavailable}` : unavailable
   }
+  if (result.ok && result.modelsProbe === 'timed_out') {
+    const timedOut = '聊天 Provider 可达，但模型列表探测超时。'
+    return notice ? `${notice} ${timedOut}` : timedOut
+  }
+  if (result.ok && result.modelsProbe === 'failed') {
+    const failed = '聊天 Provider 可达，但模型列表探测失败。'
+    return notice ? `${notice} ${failed}` : failed
+  }
   const details = result.ok
     ? `连接正常：${context}${result.reply ? ` · ${result.reply}` : ''}`
     : `连接失败：${localizedMessage || result.code || 'Unknown error'} · ${context}`
@@ -197,6 +205,7 @@ const formatImageGenerationHealthStatus = (result: ImageGenerationHealthCheckRes
 }
 
 const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscoveryResult) => {
+  const code = String(result.code || '').trim().toLowerCase()
   if (result.ok) {
     if (result.code === 'provider_reachable_models_unavailable') {
       return `${label} 可达，但模型列表探测不可用；请手动填写模型名。`
@@ -206,11 +215,14 @@ const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscover
     }
     return `${label} 探测完成，但 provider 没有返回可用模型。`
   }
+  if (code.includes('timeout')) {
+    return `${label} 模型探测超时：${result.message || result.code || 'unknown error'}`
+  }
   return `${label} 模型探测失败：${result.message || result.code || 'unknown error'}`
 }
 
 const createChatModelDiscoveryFromConnectionTest = (result: AiConnectionTestResult): ProviderModelDiscoveryResult => ({
-  ok: result.modelsProbe !== 'failed' && result.ok,
+  ok: result.modelsProbe === 'ok' || result.modelsProbe === 'unavailable',
   provider: String(result.provider || '').trim(),
   baseUrl: String(result.baseUrl || '').trim(),
   model: String(result.model || '').trim(),
@@ -218,15 +230,23 @@ const createChatModelDiscoveryFromConnectionTest = (result: AiConnectionTestResu
   models: Array.isArray(result.availableModels) ? result.availableModels : [],
   code: result.modelsProbe === 'unavailable'
     ? 'provider_reachable_models_unavailable'
-    : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
-  message: String(result.message || '').trim()
+    : result.modelsProbe === 'timed_out'
+      ? 'timeout'
+      : result.modelsProbe === 'failed'
+        ? 'probe_failed'
+        : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
+  message: result.modelsProbe === 'timed_out'
+    ? 'AI provider model discovery timed out'
+    : result.modelsProbe === 'failed'
+      ? 'AI provider model discovery failed'
+      : String(result.message || '').trim()
 })
 
 const createImageModelDiscoveryFromHealth = (
   result: ImageGenerationHealthCheckResult,
   activeConfig: ImageGenerationConfigViewState
 ): ProviderModelDiscoveryResult => ({
-  ok: result.modelsProbe !== 'failed' && result.ok,
+  ok: result.modelsProbe === 'ok' || result.modelsProbe === 'unavailable',
   provider: String(activeConfig.provider || '').trim(),
   baseUrl: String(activeConfig.baseUrl || '').trim(),
   model: String(activeConfig.model || '').trim(),
@@ -234,8 +254,16 @@ const createImageModelDiscoveryFromHealth = (
   models: Array.isArray(result.availableModels) ? result.availableModels : [],
   code: result.modelsProbe === 'unavailable'
     ? 'provider_reachable_models_unavailable'
-    : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
-  message: String(result.message || '').trim()
+    : result.modelsProbe === 'timed_out'
+      ? 'timeout'
+      : result.modelsProbe === 'failed'
+        ? 'probe_failed'
+        : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
+  message: result.modelsProbe === 'timed_out'
+    ? 'Image Provider model discovery timed out after 25000ms'
+    : result.modelsProbe === 'failed'
+      ? 'Image Provider model discovery failed'
+      : String(result.message || '').trim()
 })
 
 const getImageTransparencyCompatibilityHint = (model: string) => {
@@ -1082,7 +1110,7 @@ export function useAiPane(activeTab = 'ai') {
         conversationId: String(traceDiagnosticsFilters.conversationId || '').trim()
       })
       downloadTextFile('openpet-ai-talk-trace-diagnostics.json', content, 'application/json;charset=utf-8')
-      setStatus('AI Talk trace 已导出')
+      setStatus('AI Talk Trace 已导出')
     } catch (error) {
       setStatus(messageFromError(error, 'AI Talk Trace 导出失败'))
     }

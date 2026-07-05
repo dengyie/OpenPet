@@ -453,9 +453,12 @@ const renderImageModelDiscovery = (
     )
   }
 
+  const normalizedCode = String(result.code || '').trim().toLowerCase()
+  const failureTitle = normalizedCode.includes('timeout') ? '模型列表探测超时' : '模型列表探测失败'
+
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="image-model-discovery">
-      <strong>模型列表探测未返回结果</strong>
+      <strong>{failureTitle}</strong>
       {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的探测状态仍对应已保存配置。</span> : null}
       <span>{result.message || '本次健康检查没有拿到模型列表。'}</span>
     </div>
@@ -536,9 +539,12 @@ const renderChatModelDiscovery = (
     )
   }
 
+  const normalizedCode = String(result.code || '').trim().toLowerCase()
+  const failureTitle = normalizedCode.includes('timeout') ? '模型列表探测超时' : '模型列表探测失败'
+
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="chat-model-discovery">
-      <strong>模型列表探测未返回结果</strong>
+      <strong>{failureTitle}</strong>
       {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的探测状态仍对应已保存配置。</span> : null}
       <span>{result.message || '本次连接测试没有拿到模型列表。'}</span>
     </div>
@@ -857,11 +863,25 @@ export function AiPane({
   const hasUnsavedChatProbeInputs = hasUnsavedConfigChanges || hasUnsavedApiKeyDraft
   const hasUnsavedVisionProbeInputs = hasUnsavedConfigChanges || hasUnsavedVisionApiKeyDraft
   const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
+  const chatConnectionHasPartialProbeIssue = Boolean(
+    connectionTestResult?.ok
+    && ['timed_out', 'failed'].includes(String(connectionTestResult.modelsProbe || ''))
+  )
+  const chatModelDiscoverySummary = [
+    chatModelDiscoveryStatus,
+    chatModelDiscovery?.models?.length ? `models: ${chatModelDiscovery.models.join(', ')}` : '',
+    hasUnsavedChatProbeInputs && (chatModelDiscoveryStatus || chatModelDiscovery) ? '仍对应已保存配置' : ''
+  ].filter(Boolean).join(' · ')
+  const imageModelDiscoverySummary = [
+    imageModelDiscoveryStatus,
+    imageModelDiscovery?.models?.length ? `models: ${imageModelDiscovery.models.join(', ')}` : '',
+    hasUnsavedImageProbeInputs && (imageModelDiscoveryStatus || imageModelDiscovery) ? '仍对应已保存配置' : ''
+  ].filter(Boolean).join(' · ')
   const activeChatHostSummary = getProviderHostSummary(activeConfig.baseUrl)
   const activeVisionHostSummary = getProviderHostSummary(activeConfig.vision.effectiveBaseUrl)
   const activeImageHostSummary = getProviderHostSummary(activeImageGenerationConfig.baseUrl)
   const chatConnectionSummary = connectionTestResult
-    ? (connectionTestResult.ok ? '最近测试通过' : '最近测试失败')
+    ? ((connectionTestResult.ok && !chatConnectionHasPartialProbeIssue) ? '最近测试通过' : '最近测试失败')
     : (connectionStatus || '尚未测试')
   const imageHealthSummary = imageHealthResult
     ? (imageHealthResult.ok ? '最近健康检查通过' : '最近健康检查失败')
@@ -902,7 +922,11 @@ export function AiPane({
             <div className="provider-hub-badges" aria-label="Provider capability summary">
               <ProviderStatusItem label="聊天模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
               <ProviderStatusItem label="图片模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
-              <ProviderStatusItem label="聊天连接" value={chatConnectionSummary} tone={connectionTestResult?.ok ? 'ok' : 'default'} />
+              <ProviderStatusItem
+                label="聊天连接"
+                value={chatConnectionSummary}
+                tone={(connectionTestResult?.ok && !chatConnectionHasPartialProbeIssue) ? 'ok' : 'warn'}
+              />
               <ProviderStatusItem label="图片健康" value={imageHealthSummary} tone={imageHealthResult?.ok ? 'ok' : 'default'} />
             </div>
           </div>
@@ -1202,7 +1226,7 @@ export function AiPane({
                 <div className="provider-diagnostics-heading">诊断与兼容性</div>
                 {(connectionStatus || connectionTestResult) ? (
                   <div
-                    className={`provider-feedback ${connectionTestResult ? (connectionTestResult.ok ? 'ok' : 'error') : ''}`}
+                    className={`provider-feedback ${connectionTestResult ? ((connectionTestResult.ok && !chatConnectionHasPartialProbeIssue) ? 'ok' : 'error') : ''}`}
                     data-testid="ai-provider-feedback"
                     aria-live="polite"
                   >
@@ -1210,7 +1234,7 @@ export function AiPane({
                     {connectionStatus ? <span>{connectionStatus}</span> : null}
                     {connectionTestResult ? (
                       <div className="connection-result" data-testid="ai-connection-result">
-                        <strong>{connectionTestResult.ok ? '连接测试通过' : '连接测试失败'}</strong>
+                        <strong>{connectionTestResult.ok ? (chatConnectionHasPartialProbeIssue ? '连接测试部分通过' : '连接测试通过') : '连接测试失败'}</strong>
                         <span>Provider: {connectionTestResult.provider}</span>
                         <span>Base URL: {connectionTestResult.baseUrl}</span>
                         <span>Model: {connectionTestResult.model}</span>
@@ -1226,11 +1250,7 @@ export function AiPane({
                 {(chatModelDiscoveryStatus || chatModelDiscovery) ? (
                   <div className="readonly-row" data-testid="ai-chat-model-discovery">
                     <strong>聊天模型探测</strong>
-                    <span>
-                      {[chatModelDiscoveryStatus, chatModelDiscovery?.models?.length ? `models: ${chatModelDiscovery.models.join(', ')}` : '']
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
+                    <span>{chatModelDiscoverySummary}</span>
                   </div>
                 ) : null}
 
@@ -1461,11 +1481,7 @@ export function AiPane({
                 {(imageModelDiscoveryStatus || imageModelDiscovery) ? (
                   <div className="readonly-row" data-testid="ai-image-model-discovery">
                     <strong>图片模型探测</strong>
-                    <span>
-                      {[imageModelDiscoveryStatus, imageModelDiscovery?.models?.length ? `models: ${imageModelDiscovery.models.join(', ')}` : '']
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
+                    <span>{imageModelDiscoverySummary}</span>
                   </div>
                 ) : null}
 

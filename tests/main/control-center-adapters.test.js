@@ -322,6 +322,24 @@ test('image generation adapters normalize provider payloads for Control Center',
     currentModelDiscovered: true,
     usage: { estimatedCostUsd: 0.02 }
   })
+
+  assert.deepEqual(createImageGenerationHealthCheckResult({
+    ok: false,
+    provider: 'openai-compatible',
+    code: 'provider_unhealthy',
+    message: 'Image Provider health check timed out after 25000ms',
+    modelsProbe: 'timed_out',
+    availableModels: [],
+    currentModelDiscovered: false
+  }), {
+    ok: false,
+    provider: 'openai-compatible',
+    code: 'provider_unhealthy',
+    message: 'Image Provider health check timed out after 25000ms',
+    modelsProbe: 'timed_out',
+    availableModels: [],
+    currentModelDiscovered: false
+  })
 })
 
 test('createServiceStatusView normalizes local HTTP config and runtime for Control Center', () => {
