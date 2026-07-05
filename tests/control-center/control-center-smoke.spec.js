@@ -21,6 +21,10 @@ const providerStatusItem = (section, label) => (
   section.locator('.provider-status-item').filter({ hasText: new RegExp(`^${escapeRegExp(label)}\\s*`) })
 )
 
+const providerHubStatusItem = (page, label) => (
+  page.locator('.provider-hub-badges .provider-status-item').filter({ hasText: new RegExp(`^${escapeRegExp(label)}\\s*`) })
+)
+
 const providerDisclosure = (section, title) => (
   section.locator('details.provider-disclosure').filter({ hasText: new RegExp(`^${escapeRegExp(title)}`) })
 )
@@ -1201,6 +1205,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('聊天 Provider 可达，但模型列表探测超时')
     await expect(page.getByTestId('ai-provider-feedback')).toHaveClass(/error/)
     await expect(page.getByTestId('ai-connection-result')).toContainText('连接测试部分通过')
+    await expect(providerHubStatusItem(page, '聊天连接')).toContainText('最近测试失败')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('模型列表探测超时')
   })
 
@@ -1221,6 +1226,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByTestId('ai-provider-feedback')).toContainText('聊天 Provider 可达，但模型列表探测失败')
     await expect(page.getByTestId('ai-provider-feedback')).toHaveClass(/error/)
     await expect(page.getByTestId('ai-connection-result')).toContainText('连接测试部分通过')
+    await expect(providerHubStatusItem(page, '聊天连接')).toContainText('最近测试失败')
     await expect(page.getByTestId('chat-model-discovery')).toContainText('模型列表探测失败')
   })
 

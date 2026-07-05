@@ -32,7 +32,7 @@ const TRIGGER_RULE_STATUSES = new Set(['active', 'disabled'])
 const MAX_TRIGGER_RULE_SPEC_TEXT_LENGTH = 240
 const PLUGIN_PROFILES = new Set(['runtime', 'creator-tools', 'hybrid'])
 const PLUGIN_CONFIG_FIELD_TYPES = new Set(['string', 'number', 'boolean'])
-const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed'])
+const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed', 'timed_out'])
 
 /**
  * @param {unknown} value
@@ -476,7 +476,7 @@ const createImageGenerationApiKeyResult = (result = {}) => {
 const createImageGenerationHealthCheckResult = (result = {}) => {
   const input = toRecord(result)
   const modelsProbe = typeof input.modelsProbe === 'string' && IMAGE_HEALTH_MODEL_PROBE_STATUSES.has(input.modelsProbe)
-    ? /** @type {'ok' | 'unavailable' | 'failed'} */ (input.modelsProbe)
+    ? /** @type {'ok' | 'unavailable' | 'failed' | 'timed_out'} */ (input.modelsProbe)
     : undefined
   const usage = toRecord(input.usage)
   const estimatedCostUsd = Number(usage.estimatedCostUsd)
