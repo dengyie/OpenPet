@@ -9,6 +9,7 @@ const sharp = require('sharp')
 const { CODEX_ATLAS, CODEX_ROWS } = require('../../src/main/pet-pack/codex-pet')
 const { loadPetPackFromDirectory } = require('../../src/main/pet-pack/loader')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
+const { FULL_PET_ROW_QUALITY } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
 const { buildRealAtlasFromGeneratedImage } = require('../../examples/plugins/creator-studio/lib/real-atlas-builder')
 
 const makeTempDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-real-atlas-'))
@@ -49,6 +50,24 @@ const countVisiblePixels = async (imagePath) => {
   return visible
 }
 
+const countVisiblePixelsInCell = async ({ imagePath, row, column }) => {
+  const { data, info } = await sharp(imagePath)
+    .extract({
+      left: column * CODEX_ATLAS.cellWidth,
+      top: row.row * CODEX_ATLAS.cellHeight,
+      width: CODEX_ATLAS.cellWidth,
+      height: CODEX_ATLAS.cellHeight
+    })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  let visible = 0
+  for (let index = 3; index < data.length; index += info.channels) {
+    if (data[index] > 0) visible += 1
+  }
+  return visible
+}
+
 const getRowCellHashes = async (spritesheetPath, row) => {
   const hashes = []
   for (let column = 0; column < row.durations.length; column += 1) {
@@ -65,6 +84,42 @@ const getRowCellHashes = async (spritesheetPath, row) => {
     hashes.push(crypto.createHash('sha256').update(data).digest('hex'))
   }
   return hashes
+}
+
+const writeOfficialFrame = async ({ outputPath, rowIndex, frameIndex }) => {
+  await sharp(Buffer.from(
+    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3)}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
+      <rect x="${78 + frameIndex * 3}" y="${74 + (rowIndex % 4)}" width="12" height="${26 + (frameIndex % 5)}" fill="#1c7ed6"/>
+      <rect x="${90 - (frameIndex % 2)}" y="150" width="${20 + (rowIndex % 3)}" height="8" fill="#2f9e44"/>
+    </svg>`
+  ))
+    .ensureAlpha()
+    .png()
+    .toFile(outputPath)
+}
+
+const writeOfficialRows = async ({ rootDir }) => {
+  const rows = []
+  for (const row of CODEX_ROWS) {
+    const frameDir = path.join(rootDir, row.id)
+    fs.mkdirSync(frameDir, { recursive: true })
+    const frames = []
+    for (let frameIndex = 0; frameIndex < row.durations.length; frameIndex += 1) {
+      const framePath = path.join(frameDir, `${String(frameIndex + 1).padStart(2, '0')}.png`)
+      await writeOfficialFrame({ outputPath: framePath, rowIndex: row.row, frameIndex })
+      frames.push({ index: frameIndex, path: framePath })
+    }
+    rows.push({
+      actionId: row.id,
+      sourceRelativePath: `runs/run-1/rows/${row.id}/strip.png`,
+      quality: row.id === 'running-left'
+        ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR
+        : FULL_PET_ROW_QUALITY.ROW_REAL,
+      frames
+    })
+  }
+  return { rows }
 }
 
 test('real atlas builder creates a Codex atlas from generated image pixels', async () => {
@@ -160,6 +215,66 @@ test('real atlas builder keeps preview fallback rows visually stable instead of 
       row.id === 'idle' ? 'base-preview' : 'synthesized-preview'
     )
   }
+})
+
+test('real atlas builder composes official row package into complete Codex action coverage', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+  const officialRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir,
+    officialRows
+  })
+
+  const metadata = await sharp(result.spritesheetPath).metadata()
+  assert.equal(metadata.width, CODEX_ATLAS.width)
+  assert.equal(metadata.height, CODEX_ATLAS.height)
+  for (const row of CODEX_ROWS) {
+    for (let column = 0; column < CODEX_ATLAS.columns; column += 1) {
+      const visiblePixels = await countVisiblePixelsInCell({
+        imagePath: result.spritesheetPath,
+        row,
+        column
+      })
+      assert.equal(
+        visiblePixels > 0,
+        column < row.durations.length,
+        `${row.id} cell ${column} visibility should match official frame coverage`
+      )
+    }
+  }
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
+  assert.equal(atlasQa.ok, true)
+  assert.deepEqual(atlasQa.basicActions.realActionIds, CODEX_ROWS.map((row) => row.id))
+  assert.deepEqual(atlasQa.basicActions.fallbackActionIds, [])
+  assert.deepEqual(atlasQa.basicActions.missingRequiredOfficialActionIds, [])
+  assert.deepEqual(
+    atlasQa.basicActions.rows.map((row) => [row.actionId, row.fallback, row.quality]),
+    CODEX_ROWS.map((row) => [
+      row.id,
+      false,
+      row.id === 'running-left' ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR : FULL_PET_ROW_QUALITY.ROW_REAL
+    ])
+  )
+  assert.deepEqual(
+    rowQa.rows.map((row) => [row.actionId, row.quality]),
+    CODEX_ROWS.map((row) => [
+      row.id,
+      row.id === 'running-left' ? FULL_PET_ROW_QUALITY.APPROVED_MIRROR : FULL_PET_ROW_QUALITY.ROW_REAL
+    ])
+  )
+  assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
+  assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
 })
 
 test('real atlas builder does not count action-specific single images as official row-strip actions', async () => {
