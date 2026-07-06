@@ -10,6 +10,7 @@ const {
 } = require('./full-pet-row-contract')
 const { analyzeRowFrames } = require('./full-pet-row-qa')
 const { createOfficialRowPreviewArtifacts } = require('./full-pet-row-preview-artifacts')
+const { stabilizeRowFrames } = require('./full-pet-row-stable-slots')
 
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const CODEX_ATLAS = {
@@ -233,6 +234,36 @@ const sanitizeRowQa = (qa) => ({
   sizeDrift: qa.sizeDrift,
   errors: qa.errors,
   warnings: qa.warnings,
+  ...(qa.stabilization ? {
+    stabilization: {
+      method: qa.stabilization.method,
+      frameWidth: qa.stabilization.frameWidth,
+      frameHeight: qa.stabilization.frameHeight,
+      frameCount: qa.stabilization.frameCount,
+      slotWidth: qa.stabilization.slotWidth,
+      slotHeight: qa.stabilization.slotHeight,
+      baseline: qa.stabilization.baseline,
+      padding: qa.stabilization.padding,
+      placements: Array.isArray(qa.stabilization.placements)
+        ? qa.stabilization.placements.map((placement) => ({
+            index: placement.index,
+            slotLeft: placement.slotLeft,
+            slotTop: placement.slotTop,
+            cropLeft: placement.cropLeft,
+            cropTop: placement.cropTop
+          }))
+        : []
+    }
+  } : {}),
+  ...(qa.preStabilization ? {
+    preStabilization: {
+      quality: qa.preStabilization.quality,
+      errors: Array.isArray(qa.preStabilization.errors) ? qa.preStabilization.errors : [],
+      centroidDrift: qa.preStabilization.centroidDrift,
+      baselineDrift: qa.preStabilization.baselineDrift,
+      sizeDrift: qa.preStabilization.sizeDrift
+    }
+  } : {}),
   frames: qa.frames.map((frame) => ({
     index: frame.index,
     visiblePixels: frame.visiblePixels,
@@ -281,6 +312,70 @@ const normalizeOfficialRowFrames = ({ dataDir, actionId, frames }) => (
     : []
 )
 
+const CORRECTABLE_ROW_STABILITY_ERRORS = new Set([
+  'row_centroid_drift',
+  'row_baseline_drift',
+  'row_size_drift'
+])
+
+const hasOnlyCorrectableStabilityErrors = (qa) => (
+  Array.isArray(qa.errors) &&
+  qa.errors.length > 0 &&
+  qa.errors.every((error) => CORRECTABLE_ROW_STABILITY_ERRORS.has(error))
+)
+
+const analyzeOfficialRowWithStableSlots = async ({
+  dataDir,
+  qaDir,
+  row,
+  frames,
+  sourceKind
+}) => {
+  const initialQa = await analyzeRowFrames({
+    actionId: row.id,
+    frames,
+    sourceKind
+  })
+  if (initialQa.quality !== FULL_PET_ROW_QUALITY.FAILED) {
+    return {
+      frames,
+      qa: initialQa
+    }
+  }
+  if (!hasOnlyCorrectableStabilityErrors(initialQa)) {
+    return {
+      frames,
+      qa: initialQa
+    }
+  }
+
+  const stabilized = await stabilizeRowFrames({
+    dataDir,
+    actionId: row.id,
+    frames,
+    outputDir: path.join(qaDir, 'stable-rows', row.id)
+  })
+  const stabilizedQa = await analyzeRowFrames({
+    actionId: row.id,
+    frames: stabilized.frames,
+    sourceKind
+  })
+  return {
+    frames: stabilized.frames,
+    qa: {
+      ...stabilizedQa,
+      stabilization: stabilized.stabilization,
+      preStabilization: {
+        quality: initialQa.quality,
+        errors: initialQa.errors,
+        centroidDrift: initialQa.centroidDrift,
+        baselineDrift: initialQa.baselineDrift,
+        sizeDrift: initialQa.sizeDrift
+      }
+    }
+  }
+}
+
 const buildOfficialAtlasFromRows = async ({
   dataDir,
   officialRows,
@@ -313,15 +408,18 @@ const buildOfficialAtlasFromRows = async ({
     const sourceKind = requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
       ? 'approved-mirror'
       : 'row-strip'
-    const qa = await analyzeRowFrames({
-      actionId: row.id,
+    const rowAnalysis = await analyzeOfficialRowWithStableSlots({
+      dataDir,
+      qaDir,
+      row,
       frames,
       sourceKind
     })
+    const qa = rowAnalysis.qa
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
       throw new Error(`Official full-pet row ${row.id} failed QA: ${qa.errors.join(', ')}`)
     }
-    rowFramesByActionId.set(row.id, frames)
+    rowFramesByActionId.set(row.id, rowAnalysis.frames)
     rowQas.push(qa)
     basicActionRows.push({
       actionId: row.id,

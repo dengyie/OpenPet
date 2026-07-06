@@ -470,6 +470,30 @@ const seedImportedFullPetRun = async (dataDir) => {
     visiblePixels: 6400,
     warnings: []
   }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'full-pet-row-validation.json'), `${JSON.stringify({
+    ok: true,
+    rows: [{
+      actionId: 'idle',
+      quality: 'row-real',
+      frameCount: 6,
+      expectedFrameCount: 6,
+      uniqueFrameCount: 6,
+      centroidDrift: 4.5,
+      baselineDrift: 2,
+      sizeDrift: 0.04,
+      errors: [],
+      warnings: [],
+      stabilization: { method: 'stable-slots' },
+      preStabilization: {
+        quality: 'failed',
+        errors: ['row_centroid_drift', 'row_baseline_drift'],
+        centroidDrift: 55,
+        baselineDrift: 42,
+        sizeDrift: 0.08
+      },
+      frames: []
+    }]
+  }, null, 2)}\n`)
   updateRunStatus({
     dataDir,
     runId: run.runId,
@@ -1393,6 +1417,11 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(reviewText, /Visual review/i)
     assert.match(reviewText, /full-pet-contact-sheet\.png/i)
     assert.match(reviewText, /idle\.gif/i)
+    assert.match(reviewText, /Row stability/i)
+    assert.match(reviewText, /idle: row-real/i)
+    assert.match(reviewText, /Centroid drift: 4\.5/i)
+    assert.match(reviewText, /Baseline drift: 2/i)
+    assert.match(reviewText, /stable-slots/i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
 

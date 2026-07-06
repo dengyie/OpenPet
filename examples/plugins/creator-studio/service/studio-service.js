@@ -1558,6 +1558,25 @@ const readFullPetAtlasValidation = ({ dataDir, run }) => readJsonArtifact({
   label: 'Full-pet atlas QA'
 })
 
+const readFullPetRowValidation = ({ dataDir, run }) => {
+  const atlasQaPath = run.artifacts?.qa
+  if (!atlasQaPath) return null
+  try {
+    const safeAtlasQaPath = assertPathInsideDataDir({
+      dataDir,
+      targetPath: atlasQaPath,
+      label: 'Full-pet atlas QA'
+    })
+    return readJsonArtifact({
+      dataDir,
+      targetPath: path.join(path.dirname(safeAtlasQaPath), 'full-pet-row-validation.json'),
+      label: 'Full-pet row QA'
+    })
+  } catch (_) {
+    return null
+  }
+}
+
 const createFullPetVisualReview = ({ dataDir, run, atlasValidation }) => {
   const visualReview = atlasValidation?.visualReview
   if (!visualReview || typeof visualReview !== 'object') return null
@@ -1713,6 +1732,7 @@ const createFullPetReview = ({ dataDir, run }) => {
   const reviewState = createFullPetReviewGate({ dataDir, run })
   const importedPhase = run.status === 'imported'
   const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const rowValidation = readFullPetRowValidation({ dataDir, run })
   const visualReview = createFullPetVisualReview({ dataDir, run, atlasValidation })
   const publicSourceImageValidation = importedPhase && reviewState.sourceImageValidation
     ? {
@@ -1754,6 +1774,7 @@ const createFullPetReview = ({ dataDir, run }) => {
     reviewGate: publicReviewState.reviewGate,
     sourceImageValidation: createPublicLogValue({ dataDir, value: publicSourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
+    rowValidation: createPublicLogValue({ dataDir, value: rowValidation }),
     visualReview,
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`

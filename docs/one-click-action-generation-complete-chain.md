@@ -26,7 +26,7 @@ reference image -> generate -> review/QA -> import -> activate in OpenPet
 
 The current OpenPet implementation can package a technical `pet.json + spritesheet.webp` output, import it, and play the atlas at runtime. However, the current base-only full-pet path is **not** a complete official-quality action generator.
 
-Landed deterministic support now exists for an **official full-pet row package**: when Creator Studio receives extracted official row frames for all nine Codex rows, OpenPet can compose the fixed atlas, leave unused cells transparent, run row QA, and report official coverage only for `row-real` or `approved-mirror` rows. This is infrastructure support for approved row inputs, not proof that the local image provider has generated production-ready rows.
+Landed deterministic support now exists for an **official full-pet row package**: when Creator Studio receives extracted official row frames for all nine Codex rows, OpenPet can compose the fixed atlas, leave unused cells transparent, run row QA, auto-apply `stable-slots` for correctable extraction jitter, and report official coverage only for `row-real` or `approved-mirror` rows. This is infrastructure support for approved row inputs, not proof that the local image provider has generated production-ready rows.
 
 Current limitations:
 
@@ -110,8 +110,9 @@ Therefore the generation pipeline must stabilize frames before import:
 
 - Row strips should contain complete sprite poses in consistent slots.
 - Extraction should produce `192x208` cells with a stable visual baseline.
-- If preview GIFs show size popping or baseline jumps caused by extraction, rerun extraction with a row-stability method like official `stable-slots`.
+- If preview GIFs show size popping or baseline jumps caused by extraction, official row-package import retries QA through `stable-slots` before composing the atlas.
 - `stable-slots` is a correction for extracting already-generated row strips. It is not a way to manufacture actions from one base image.
+- Rows that still fail centroid, baseline, size, static-frame, or transform-like checks after `stable-slots` are rejected instead of being imported.
 
 OpenPet must add QA metrics that catch:
 
@@ -152,7 +153,7 @@ Requirements:
 
 - generate base plus every required row strip, except approved `running-left` mirroring;
 - attach the canonical base/reference images to row generation;
-- run deterministic extraction, composition, validation, contact sheet, and preview GIF generation;
+- run deterministic extraction, `stable-slots` correction, composition, validation, contact sheet, and preview GIF generation;
 - perform visual QA before import/activation claims;
 - repair the smallest failing scope: frame, row, then full atlas only if needed.
 

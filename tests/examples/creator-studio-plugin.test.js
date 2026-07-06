@@ -3230,6 +3230,40 @@ test('creator studio service exposes full-pet review details for dashboard clien
     visiblePixels: 1000,
     warnings: []
   }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'full-pet-row-validation.json'), `${JSON.stringify({
+    ok: true,
+    rows: [{
+      actionId: 'idle',
+      quality: 'row-real',
+      frameCount: 6,
+      expectedFrameCount: 6,
+      uniqueFrameCount: 6,
+      centroidDrift: 4.5,
+      baselineDrift: 2,
+      sizeDrift: 0.04,
+      errors: [],
+      warnings: [],
+      stabilization: {
+        method: 'stable-slots',
+        frameWidth: 192,
+        frameHeight: 208,
+        frameCount: 6,
+        slotWidth: 84,
+        slotHeight: 100,
+        baseline: 168,
+        padding: 4,
+        placements: [{ index: 0, slotLeft: 54, slotTop: 72, cropLeft: 16, cropTop: 12 }]
+      },
+      preStabilization: {
+        quality: 'failed',
+        errors: ['row_centroid_drift', 'row_baseline_drift'],
+        centroidDrift: 55,
+        baselineDrift: 42,
+        sizeDrift: 0.08
+      },
+      frames: []
+    }]
+  }, null, 2)}\n`)
   fs.writeFileSync(path.join(qaDir, 'action-generation-task.json'), `${JSON.stringify({
     ok: true,
     mode: 'full-pet',
@@ -3332,6 +3366,21 @@ test('creator studio service exposes full-pet review details for dashboard clien
         durations: [280, 110, 110, 140, 140, 320]
       }]
     })
+    assert.deepEqual(detail.fullPetReview.rowValidation.rows.map((row) => ({
+      actionId: row.actionId,
+      quality: row.quality,
+      centroidDrift: row.centroidDrift,
+      baselineDrift: row.baselineDrift,
+      stabilizationMethod: row.stabilization?.method,
+      preErrors: row.preStabilization?.errors
+    })), [{
+      actionId: 'idle',
+      quality: 'row-real',
+      centroidDrift: 4.5,
+      baselineDrift: 2,
+      stabilizationMethod: 'stable-slots',
+      preErrors: ['row_centroid_drift', 'row_baseline_drift']
+    }])
     assert.equal(spritesheetResponse.status, 200)
     assert.equal(spritesheetResponse.headers.get('content-type'), 'image/webp')
     assert.equal(spritesheetBytes.slice(0, 4).toString('utf-8'), 'RIFF')

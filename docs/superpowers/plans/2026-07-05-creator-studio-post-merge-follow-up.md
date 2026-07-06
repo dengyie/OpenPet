@@ -303,17 +303,17 @@ Before any row is considered official-quality, it must satisfy all of:
 
 ### Implementation checklist
 
-- [ ] codify anchor/centroid/baseline stability metrics in tests before changing generation logic;
-- [ ] codify a regression that rejects rows made only from local base-image transforms;
-- [ ] add a row-strip generation manifest shaped after the official hatch-pet flow;
-- [ ] generate `running-right` before deciding whether `running-left` can be mirrored;
-- [ ] add deterministic extraction, `stable-slots` correction, atlas composition, validation, contact sheet, and preview GIF artifacts;
-- [ ] document rows as one of:
+- [x] codify anchor/centroid/baseline stability metrics in tests before changing generation logic;
+- [x] codify a regression that rejects rows made only from local base-image transforms;
+- [x] add a row-strip generation manifest shaped after the official hatch-pet flow;
+- [x] generate `running-right` before deciding whether `running-left` can be mirrored;
+- [x] add deterministic extraction, `stable-slots` correction, atlas composition, validation, contact sheet, and preview GIF artifacts;
+- [x] document rows as one of:
   - `base-real`,
   - `row-real`,
   - `approved-mirror`,
   - `preview-fallback`;
-- [ ] stop immediately if a generated row destabilizes identity, style, baseline, or row semantics.
+- [x] stop immediately if a generated row destabilizes identity, style, baseline, or row semantics.
 
 ### Files likely involved
 
