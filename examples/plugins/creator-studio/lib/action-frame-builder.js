@@ -183,6 +183,48 @@ const inspectVisibleImage = async (imagePath) => {
   }
 }
 
+const hydrateFrameEvidenceFromDisk = async ({ frames, framesDir }) => {
+  const hydratedFrames = []
+  for (const [index, frame] of frames.entries()) {
+    if (!frame) {
+      hydratedFrames.push(frame)
+      continue
+    }
+    const fileName = String(frame.fileName || '')
+    const expectedFileName = `${String(index + 1).padStart(4, '0')}.png`
+    const framePath = path.join(framesDir, fileName)
+    if (fileName !== expectedFileName || !fs.existsSync(framePath)) {
+      hydratedFrames.push(frame)
+      continue
+    }
+    const needsVisibleEvidence = Number(frame.width) !== FRAME_WIDTH ||
+      Number(frame.height) !== FRAME_HEIGHT ||
+      !Number.isFinite(Number(frame.visiblePixels)) ||
+      Number(frame.visiblePixels) < 1 ||
+      !frame.frameBounds
+    const needsRawHash = typeof frame.sha256 !== 'string' || !frame.sha256.trim()
+    const needsFileHash = typeof frame.fileSha256 !== 'string' || !frame.fileSha256.trim()
+    if (!needsVisibleEvidence && !needsRawHash && !needsFileHash) {
+      hydratedFrames.push(frame)
+      continue
+    }
+
+    const frameInspection = await inspectVisibleImage(framePath)
+    hydratedFrames.push({
+      ...frame,
+      width: needsVisibleEvidence ? FRAME_WIDTH : frame.width,
+      height: needsVisibleEvidence ? FRAME_HEIGHT : frame.height,
+      visiblePixels: needsVisibleEvidence ? frameInspection.visiblePixels : frame.visiblePixels,
+      frameBounds: needsVisibleEvidence ? frameInspection.bounds : frame.frameBounds,
+      sha256: needsRawHash ? frameInspection.sha256 : frame.sha256,
+      fileSha256: needsFileHash
+        ? crypto.createHash('sha256').update(fs.readFileSync(framePath)).digest('hex')
+        : frame.fileSha256
+    })
+  }
+  return hydratedFrames
+}
+
 const decodeFramePixels = async (imagePath) => sharp(imagePath)
   .ensureAlpha()
   .raw()
@@ -858,7 +900,11 @@ const repairActionFrameFromGeneratedImage = async ({
   }
   const frames = Array.isArray(currentQa.frames) ? currentQa.frames.slice() : []
   frames[frameIndex] = frame
-  const qaComplete = isCompleteFrameEvidence({ frames, frameCount })
+  const hydratedFrames = await hydrateFrameEvidenceFromDisk({
+    frames,
+    framesDir: safeOutputFramesDir
+  })
+  const qaComplete = isCompleteFrameEvidence({ frames: hydratedFrames, frameCount })
   const warnings = Array.isArray(currentQa.warnings) ? currentQa.warnings.slice() : []
   const incompleteWarning = 'Action frame QA is incomplete after repair.'
   const nextWarnings = qaComplete
@@ -868,7 +914,7 @@ const repairActionFrameFromGeneratedImage = async ({
     dataDir,
     framesDir: safeOutputFramesDir,
     qaDir: safeQaDir,
-    frames
+    frames: hydratedFrames
   })
   const playback = createPlaybackDiagnostics({
     frameCount,
@@ -878,7 +924,7 @@ const repairActionFrameFromGeneratedImage = async ({
   const extraction = currentQa.extraction || frameSource.extraction
   const quality = qaComplete
     ? await createActionFrameQuality({
-        frames,
+        frames: hydratedFrames,
         frameCount,
         extraction,
         framesDir: safeOutputFramesDir
@@ -903,7 +949,7 @@ const repairActionFrameFromGeneratedImage = async ({
     playback,
     extraction,
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
-    frames,
+    frames: hydratedFrames,
     errors: quality.errors,
     warnings: [...nextWarnings, ...quality.warnings],
     quality,

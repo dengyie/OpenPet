@@ -401,6 +401,58 @@ test('action frame builder repairs one frame and updates QA evidence', async () 
   assert.equal(JSON.stringify(qa).includes(dataDir), false)
 })
 
+test('action frame builder repairs legacy QA by backfilling missing frame hashes', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  const outputFramesDir = path.join(dataDir, 'runs/demo/frames/actions/legacy-wave')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await writeGoodSubtleWaveSheet({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 6
+  })
+  const action = {
+    actionId: 'legacy-wave',
+    name: 'Legacy Wave',
+    frameCount: 6,
+    loop: true
+  }
+  const generationResult = {
+    outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+  }
+  const built = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult,
+    action,
+    outputFramesDir,
+    qaDir
+  })
+  const legacyQa = JSON.parse(fs.readFileSync(built.qaPath, 'utf-8'))
+  legacyQa.frames = legacyQa.frames.map((frame) => {
+    const { sha256, fileSha256, ...legacyFrame } = frame
+    return legacyFrame
+  })
+  fs.writeFileSync(built.qaPath, `${JSON.stringify(legacyQa, null, 2)}\n`)
+
+  const repaired = await repairActionFrameFromGeneratedImage({
+    dataDir,
+    generationResult,
+    action,
+    outputFramesDir,
+    qaDir,
+    fileName: '0004.png',
+    now: () => '2026-07-06T00:00:00.000Z'
+  })
+  const qa = JSON.parse(fs.readFileSync(repaired.qaPath, 'utf-8'))
+
+  assert.equal(qa.ok, true)
+  assert.equal(qa.frames.length, 6)
+  assert.equal(qa.frames.every((frame) => typeof frame.sha256 === 'string' && frame.sha256.length === 64), true)
+  assert.equal(qa.frames.every((frame) => typeof frame.fileSha256 === 'string' && frame.fileSha256.length === 64), true)
+  assert.equal(qa.quality.metrics.uniqueFrameCount >= 4, true)
+  assert.doesNotMatch(qa.errors.join('\n'), /action_repeated_static|action_insufficient_unique_frames/)
+})
+
 test('action frame builder rejects repair frame names outside the action range', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
