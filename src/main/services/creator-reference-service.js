@@ -85,18 +85,120 @@ const createView = (record) => {
 
 const writeJson = (filePath, value) => fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 
-const createDefaultPathReferenceInspection = ({ fileName, width, height }) => {
+const isBlankLikePixel = ({ data, offset }) => {
+  const alpha = data[offset + 3]
+  if (alpha <= 8) return true
+  const red = data[offset]
+  const green = data[offset + 1]
+  const blue = data[offset + 2]
+  return red >= 245 && green >= 245 && blue >= 245 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 10
+}
+
+const countNonBlankPixels = ({ data, info, left, top, width, height }) => {
+  let count = 0
+  const xEnd = Math.min(info.width, left + width)
+  const yEnd = Math.min(info.height, top + height)
+  for (let y = Math.max(0, top); y < yEnd; y += 1) {
+    for (let x = Math.max(0, left); x < xEnd; x += 1) {
+      const offset = (y * info.width + x) * info.channels
+      if (!isBlankLikePixel({ data, offset })) count += 1
+    }
+  }
+  return count
+}
+
+const hasContentOnBothSides = ({ data, info, orientation, index }) => {
+  if (orientation === 'vertical') {
+    const leftWidth = Math.max(1, index - 2)
+    const rightLeft = Math.min(info.width - 1, index + 3)
+    const rightWidth = Math.max(1, info.width - rightLeft)
+    const leftPixels = leftWidth * info.height
+    const rightPixels = rightWidth * info.height
+    return (
+      countNonBlankPixels({ data, info, left: 0, top: 0, width: leftWidth, height: info.height }) / leftPixels > 0.08 &&
+      countNonBlankPixels({ data, info, left: rightLeft, top: 0, width: rightWidth, height: info.height }) / rightPixels > 0.08
+    )
+  }
+  const topHeight = Math.max(1, index - 2)
+  const bottomTop = Math.min(info.height - 1, index + 3)
+  const bottomHeight = Math.max(1, info.height - bottomTop)
+  const topPixels = info.width * topHeight
+  const bottomPixels = info.width * bottomHeight
+  return (
+    countNonBlankPixels({ data, info, left: 0, top: 0, width: info.width, height: topHeight }) / topPixels > 0.08 &&
+    countNonBlankPixels({ data, info, left: 0, top: bottomTop, width: info.width, height: bottomHeight }) / bottomPixels > 0.08
+  )
+}
+
+const hasCentralBlankSeparator = ({ data, info, orientation }) => {
+  const length = orientation === 'vertical' ? info.width : info.height
+  const span = orientation === 'vertical' ? info.height : info.width
+  const minIndex = Math.floor(length * 0.28)
+  const maxIndex = Math.ceil(length * 0.72)
+  let runLength = 0
+  let runStart = 0
+  for (let index = 0; index < length; index += 1) {
+    let blankPixels = 0
+    for (let cross = 0; cross < span; cross += 1) {
+      const x = orientation === 'vertical' ? index : cross
+      const y = orientation === 'vertical' ? cross : index
+      const offset = (y * info.width + x) * info.channels
+      if (isBlankLikePixel({ data, offset })) blankPixels += 1
+    }
+    const blankRatio = blankPixels / span
+    const inCentralBand = index >= minIndex && index <= maxIndex
+    if (blankRatio >= 0.92 && inCentralBand) {
+      if (runLength === 0) runStart = index
+      runLength += 1
+      continue
+    }
+    if (runLength >= 3) {
+      const center = Math.floor(runStart + runLength / 2)
+      return hasContentOnBothSides({ data, info, orientation, index: center })
+    }
+    runLength = 0
+  }
+  if (runLength >= 3) {
+    const center = Math.floor(runStart + runLength / 2)
+    return hasContentOnBothSides({ data, info, orientation, index: center })
+  }
+  return false
+}
+
+const inspectLikelyGridCollage = async (sourcePath) => {
+  const { data, info } = await sharp(sourcePath)
+    .ensureAlpha()
+    .resize({
+      width: 192,
+      height: 192,
+      fit: 'inside',
+      withoutEnlargement: true
+    })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  if (!info.width || !info.height) return false
+  return (
+    hasCentralBlankSeparator({ data, info, orientation: 'vertical' }) &&
+    hasCentralBlankSeparator({ data, info, orientation: 'horizontal' })
+  )
+}
+
+const createDefaultPathReferenceInspection = ({ fileName, width, height, likelyGridCollage = false }) => {
   const normalizedWidth = Number(width) || 0
   const normalizedHeight = Number(height) || 0
   const aspectRatio = normalizedWidth > 0 && normalizedHeight > 0
     ? Number((normalizedWidth / normalizedHeight).toFixed(4))
     : 0
-  const likelyMultiView = aspectRatio >= DEFAULT_PATH_MAX_ASPECT_RATIO || aspectRatio <= DEFAULT_PATH_MIN_ASPECT_RATIO
+  const likelyMultiView = aspectRatio >= DEFAULT_PATH_MAX_ASPECT_RATIO ||
+    aspectRatio <= DEFAULT_PATH_MIN_ASPECT_RATIO ||
+    Boolean(likelyGridCollage)
   return {
     fileName: String(fileName || '').trim(),
     width: normalizedWidth,
     height: normalizedHeight,
     aspectRatio,
+    likelyMultiView,
+    likelyGridCollage: Boolean(likelyGridCollage),
     defaultPathEligible: !likelyMultiView,
     code: likelyMultiView ? UNSUPPORTED_DEFAULT_PATH_REFERENCE_CODE : '',
     message: likelyMultiView ? UNSUPPORTED_DEFAULT_PATH_REFERENCE_MESSAGE : ''
@@ -150,10 +252,12 @@ const createCreatorReferenceService = ({
     if (width <= 0 || height <= 0) {
       throw new Error('Creator reference image dimensions are invalid')
     }
+    const likelyGridCollage = await inspectLikelyGridCollage(resolvedSourcePath)
     return createDefaultPathReferenceInspection({
       fileName: fileName || path.basename(resolvedSourcePath),
       width,
-      height
+      height,
+      likelyGridCollage
     })
   }
 

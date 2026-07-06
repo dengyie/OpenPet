@@ -29,6 +29,33 @@ const createReferenceImage = async (filePath, { width = 24, height = 24 } = {}) 
   }).png().toFile(filePath)
 }
 
+const createReferenceCollageImage = async (filePath) => {
+  const tile = async (color) => sharp({
+    create: {
+      width: 44,
+      height: 44,
+      channels: 4,
+      background: color
+    }
+  }).png().toBuffer()
+  await sharp({
+    create: {
+      width: 96,
+      height: 96,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    }
+  })
+    .composite([
+      { input: await tile({ r: 255, g: 170, b: 0, alpha: 1 }), left: 0, top: 0 },
+      { input: await tile({ r: 255, g: 190, b: 40, alpha: 1 }), left: 52, top: 0 },
+      { input: await tile({ r: 245, g: 150, b: 20, alpha: 1 }), left: 0, top: 52 },
+      { input: await tile({ r: 255, g: 210, b: 80, alpha: 1 }), left: 52, top: 52 }
+    ])
+    .png()
+    .toFile(filePath)
+}
+
 test('creator reference service binds a canonical reference and persists metadata', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-'))
   const sourcePath = path.join(tempRoot, 'source.png')
@@ -268,4 +295,25 @@ test('creator reference service flags likely collage or multi-view inputs as uns
   assert.match(inspection.message, /单张干净正面图/)
   assert.equal(inspection.width, 240)
   assert.equal(inspection.height, 80)
+})
+
+test('creator reference service flags square collage inputs as unsupported for the default path', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-square-collage-'))
+  const sourcePath = path.join(tempRoot, 'square-collage.png')
+  await createReferenceCollageImage(sourcePath)
+
+  const settingsService = createSettingsService()
+  const service = createCreatorReferenceService({
+    settingsService,
+    referenceRoot: path.join(tempRoot, 'references'),
+    now: () => '2026-07-05T09:05:00.000Z'
+  })
+
+  const approval = service.approveSourcePath(sourcePath)
+  const inspection = await service.inspectApprovedSource({ referenceToken: approval.referenceToken })
+
+  assert.equal(inspection.defaultPathEligible, false)
+  assert.equal(inspection.code, 'unsupported_multi_view_reference')
+  assert.match(inspection.message, /拼图/)
+  assert.equal(inspection.likelyMultiView, true)
 })

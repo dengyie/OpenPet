@@ -130,13 +130,45 @@ const createEditableTargetView = (actionsConfig = {}) => ({
   actionCount: Array.isArray(actionsConfig.actions) ? actionsConfig.actions.length : 0
 })
 
-const createProviderView = ({ config = {}, health = {} }) => ({
-  ready: health?.ok === true,
-  code: normalizeText(health?.code),
-  message: normalizeText(health?.message),
-  provider: normalizeText(config.provider),
-  model: normalizeText(config.model)
-})
+const createProviderView = ({ config = {}, health = {} }) => {
+  const readiness = createCreatorProviderReadiness({ config, health })
+  return {
+    ready: readiness.ok === true,
+    code: normalizeText(readiness.code),
+    message: normalizeText(readiness.message),
+    provider: normalizeText(config.provider),
+    model: normalizeText(config.model)
+  }
+}
+
+const getCreatorVerifiedModels = (config = {}) => {
+  const policy = config?.creatorWorkflowModelPolicy
+  if (!policy || !Array.isArray(policy.verifiedModels)) return null
+  return policy.verifiedModels.map(normalizeText).filter(Boolean)
+}
+
+const createCreatorProviderReadiness = ({ config = {}, health = {} }) => {
+  if (health?.ok !== true) {
+    return {
+      ok: false,
+      code: normalizeText(health?.code) || 'provider_not_ready',
+      message: normalizeText(health?.message) || 'Image Provider is not ready'
+    }
+  }
+  const verifiedModels = getCreatorVerifiedModels(config)
+  if (verifiedModels && verifiedModels.length === 0) {
+    return {
+      ok: false,
+      code: 'no_verified_creator_image_model',
+      message: '图片 Provider 可达，但 Create 一键默认链路没有已确认可用模型。请到 AI -> 模型 Provider -> 图片模型选择并保存 gpt-image-2，或完成模型发现后再生成。'
+    }
+  }
+  return {
+    ok: true,
+    code: normalizeText(health?.code) || 'provider_healthy',
+    message: normalizeText(health?.message) || 'Image Provider is reachable'
+  }
+}
 
 const createRunView = ({
   state,
@@ -419,10 +451,11 @@ const createCreatorWorkflowService = ({
   const getState = async () => {
     const plugin = getPluginState()
     const health = await getProviderHealth()
+    const config = imageGenerationModelService.getConfig()
     return {
       ok: true,
       provider: createProviderView({
-        config: imageGenerationModelService.getConfig(),
+        config,
         health
       }),
       editableTarget: createEditableTargetView(actionService.getConfig()),
@@ -550,6 +583,11 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     const startedAt = Date.now()
     const plugin = assertPluginReady()
     const health = await getProviderHealth()
+    const providerConfig = imageGenerationModelService.getConfig()
+    const providerReadiness = createCreatorProviderReadiness({
+      config: providerConfig,
+      health
+    })
     recordLog({
       level: 'info',
       event: 'creator.workflow.started',
@@ -558,11 +596,11 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         requestId,
         mode,
         importCommandId,
-        providerModel: normalizeText(imageGenerationModelService.getConfig()?.model),
+        providerModel: normalizeText(providerConfig?.model),
         serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
       }
     })
-    if (!health?.ok) {
+    if (!providerReadiness.ok) {
       recordLog({
         level: 'error',
         event: 'creator.workflow.blocked',
@@ -570,14 +608,16 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         details: {
           requestId,
           mode,
-          providerCode: normalizeText(health?.code),
-          providerMessage: sanitizeLogText(health?.message || '', { maxChars: 240 })
+          providerCode: normalizeText(providerReadiness.code),
+          providerMessage: sanitizeLogText(providerReadiness.message || '', { maxChars: 240 })
         }
       })
       const result = createWorkflowResult({
         state: 'provider-not-ready',
-        code: normalizeText(health?.code) || 'provider_not_ready',
-        message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
+        code: normalizeText(providerReadiness.code) || 'provider_not_ready',
+        message: providerReadiness.code === 'no_verified_creator_image_model'
+          ? providerReadiness.message
+          : '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
       })
       setLastRun(result.run)
       return result

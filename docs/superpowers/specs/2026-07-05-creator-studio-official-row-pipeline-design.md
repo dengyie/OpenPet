@@ -367,4 +367,3 @@ The milestone is complete when:
 - Human visual QA of contact sheets and GIF previews.
 - Human approval before claiming generated pet art is production quality.
 - Product decision before promoting official-quality mode as the default one-click path.
-

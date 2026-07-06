@@ -96,6 +96,78 @@ test('creator workflow service blocks before drafting runs when provider health 
   assert.equal(commandCalls.length, 0)
 })
 
+test('creator workflow service blocks before drafting when no verified creator image model is available', async () => {
+  const commandCalls = []
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      runCommand: async (...args) => {
+        commandCalls.push(args)
+        throw new Error('should not draft without a verified creator workflow image model')
+      },
+      getPluginCreatorDataDir: () => '/tmp/openpet-plugin-data'
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({
+        ok: true,
+        code: 'provider_reachable_models_unavailable',
+        message: 'Image Provider is reachable, but the optional /models probe is unavailable'
+      }),
+      getConfig: () => ({
+        provider: 'openai-compatible',
+        model: 'gpt-image-legacy',
+        creatorWorkflowModelPolicy: {
+          evidenceScope: 'creator-one-click-default',
+          preferredModel: 'gpt-image-legacy',
+          verifiedModels: [],
+          fallbackModels: [],
+          discoveredModels: [],
+          preferredModelVerified: false
+        }
+      })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({
+        replaced: false,
+        reference: {
+          targetType: EDITABLE_TARGET_TYPE,
+          targetId: EDITABLE_TARGET_ID,
+          assetPath: '/tmp/reference.png',
+          assetUrl: 'file:///tmp/reference.png',
+          fileName: 'reference.png',
+          width: 256,
+          height: 256,
+          contentHash: 'hash',
+          createdAt: '2026-07-02T10:00:00.000Z',
+          updatedAt: '2026-07-02T10:00:00.000Z'
+        }
+      }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const state = await service.getState()
+  assert.equal(state.provider.ready, false)
+  assert.equal(state.provider.code, 'no_verified_creator_image_model')
+
+  const result = await service.generateExistingAction({
+    actionName: 'spin',
+    motionPrompt: 'spin quickly',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.state, 'provider-not-ready')
+  assert.equal(result.code, 'no_verified_creator_image_model')
+  assert.match(result.message, /可用模型/)
+  assert.equal(commandCalls.length, 0)
+})
+
 test('creator workflow service getState falls back quickly when provider health stalls', async () => {
   const service = createCreatorWorkflowService({
     pluginService: {
