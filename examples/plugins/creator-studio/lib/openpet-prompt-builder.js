@@ -1,18 +1,16 @@
 const { normalizeGenerationTask } = require('./generation-task')
 
-const PROMPT_BUILDER_VERSION = 1
+const PROMPT_BUILDER_VERSION = 2
 
 const SECTION_ORDER = [
-  'Intent',
-  'OpenPet Runtime Contract',
-  'Canvas And Boundary Rules',
-  'Background And Transparency Policy',
-  'Character Shape Language',
-  'Generation Mode',
-  'Action Requirements',
-  'Style Consistency',
-  'Output Requirements',
-  'Negative Constraints',
+  'Asset Goal',
+  'Character Identity Contract',
+  'Sprite Sheet Contract',
+  'Programmatic Slicing Contract',
+  'Animation Contract',
+  'Root And Anchor Rules',
+  'Style And Quality Contract',
+  'Negative Contract',
   'User Creative Brief'
 ]
 
@@ -70,7 +68,7 @@ const describeTrigger = (action) => {
 
 const getActionSheetLayout = (action) => {
   const frameCount = Math.max(1, Number(action?.frameCount) || 1)
-  const columns = Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
+  const columns = frameCount === 6 ? 3 : Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
   const rows = Math.max(1, Math.ceil(frameCount / columns))
   return { frameCount, columns, rows }
 }
@@ -85,21 +83,155 @@ const toSentence = (value = '') => {
 
 const isWavingAction = (value = '') => /wave|waving|挥手|招手|挥爪|paw\s*wave/i.test(String(value || ''))
 
+const isLocomotionAction = (value = '') => /walk|run|running|crawl|fly|flying|走|跑|奔跑|爬行|飞/i.test(String(value || ''))
+
+const isVerticalBounceAction = (value = '') => /jump|hop|bounce|cheer|蹦|跳|弹跳|欢呼/i.test(String(value || ''))
+
+const isPoseTransitionAction = (value = '') => /sit|lie|sleep|wake|stand|fall|坐|躺|睡|醒|站|摔|倒/i.test(String(value || ''))
+
+const isEmoteAction = (value = '') => /emote|emoji|sparkle|heart|expression|face\s*change|表情|爱心|星星/i.test(String(value || ''))
+
+const isReactionAction = (value = '') => /reaction|react|clicked|tap|touch|surprised|startled|hit|被点|点击|触摸|摸|反应|惊讶|吓/i.test(String(value || ''))
+
+const inferAnimationType = (action = {}) => {
+  if (action.animationType) return String(action.animationType)
+  const text = `${action.name || ''} ${action.motionPrompt || ''}`
+  if (isLocomotionAction(text)) return 'locomotion_loop'
+  if (isVerticalBounceAction(text)) return 'vertical_bounce'
+  if (isPoseTransitionAction(text)) return 'pose_transition'
+  if (isWavingAction(text)) return 'stationary_loop'
+  if (isReactionAction(text)) return 'reaction'
+  if (isEmoteAction(text)) return 'emote'
+  if (action.loop) return 'stationary_loop'
+  return 'reaction'
+}
+
+const formatSpecList = (items, fallback) => {
+  const values = Array.isArray(items)
+    ? items.map((item) => sanitizeCreativeBrief(item)).filter(Boolean)
+    : []
+  const normalized = values.length > 0 ? values : fallback
+  return normalized.map((item) => `- ${item}`).join('\n')
+}
+
+const getActionSpec = ({ action = {}, frameCount }) => {
+  const motionText = `${action.name || ''} ${action.motionPrompt || ''}`
+  const animationType = inferAnimationType(action)
+  const waving = isWavingAction(motionText)
+  const viewDirection = sanitizeCreativeBrief(action.viewDirection || (animationType === 'locomotion_loop' ? 'side-facing or requested view' : 'front-facing'))
+  const loopType = sanitizeCreativeBrief(action.loopType || (action.loop ? 'looping animation' : 'one-shot animation'))
+  const customAnimatedParts = Array.isArray(action.animatedParts) && action.animatedParts.length > 0
+    ? action.animatedParts
+    : []
+  const defaultAnimatedParts = waving
+    ? ['viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage']
+    : animationType === 'locomotion_loop'
+      ? ['legs, arms, wings, or locomotion parts']
+      : animationType === 'vertical_bounce'
+        ? ['whole character vertical position according to the frame plan', 'small limb follow-through']
+        : animationType === 'pose_transition'
+          ? ['parts needed for the requested pose transition']
+          : animationType === 'reaction'
+            ? ['facial expression, head, ears, limbs, or equivalent reaction parts']
+            : animationType === 'emote'
+              ? ['facial expression, eyes, mouth, cheeks, small limbs, or equivalent emote parts']
+              : ['the intended moving parts described by the action']
+  const animatedParts = waving
+    ? [...new Set([...defaultAnimatedParts, ...customAnimatedParts])]
+    : (customAnimatedParts.length > 0 ? customAnimatedParts : defaultAnimatedParts)
+  const lockedParts = Array.isArray(action.lockedParts) && action.lockedParts.length > 0
+    ? action.lockedParts
+    : animationType === 'locomotion_loop'
+      ? ['face', 'identity-defining features', 'body scale', 'camera angle', 'color palette', 'accessories and markings']
+      : ['head', 'face', 'torso', 'body center', 'feet/base position', 'body proportions', 'outfit', 'accessories', 'markings', 'overall silhouette']
+  const secondaryMotion = Array.isArray(action.secondaryMotion) && action.secondaryMotion.length > 0
+    ? action.secondaryMotion
+    : animationType === 'stationary_loop'
+      ? ['very subtle shoulder, ear, cheek, tail, or cute bounce motion only if it does not change identity or anchor stability']
+      : animationType === 'locomotion_loop'
+        ? ['subtle body bob that keeps the character centered in each cell']
+        : animationType === 'reaction'
+          ? ['brief squash, stretch, head bob, or limb follow-through only if the character returns to a stable readable pose']
+          : animationType === 'emote'
+            ? ['tiny head, cheek, ear, or shoulder motion only if it stays local and preserves the root anchor']
+            : ['small controlled follow-through that preserves identity, scale, and frame alignment']
+  const forbiddenMotion = Array.isArray(action.forbiddenMotion) && action.forbiddenMotion.length > 0
+    ? action.forbiddenMotion
+    : [
+        'body drifting between cells',
+        'identity changes',
+        'face changes that redesign the character',
+        'scale changes',
+        'camera angle changes',
+        'new limbs',
+        'new props',
+        'body parts crossing cell boundaries',
+        ...(animationType === 'emote' ? ['No extra symbols, props, stickers, speech bubbles, or floating decorative effects unless explicitly requested'] : [])
+      ]
+  return {
+    animationType,
+    viewDirection,
+    loopType,
+    animatedParts,
+    lockedParts,
+    secondaryMotion,
+    forbiddenMotion
+  }
+}
+
 const buildActionFramePlan = ({ action, frameCount }) => {
   const motionPrompt = `${action?.name || ''} ${action?.motionPrompt || ''}`
+  if (Array.isArray(action?.framePlan) && action.framePlan.length > 0) {
+    return action.framePlan.map((frame) => sanitizeCreativeBrief(frame)).filter(Boolean)
+  }
   if (isWavingAction(motionPrompt)) {
     const frames = [
-      'Frame 1: neutral front-facing sitting pose, both front paws down.',
-      'Frame 2: the waving front paw begins to lift while the body stays still.',
-      'Frame 3: the waving front paw is fully raised beside the face.',
-      'Frame 4: the raised paw tilts slightly outward as the wave.',
-      'Frame 5: the raised paw tilts slightly inward as the wave.',
-      'Frame 6: the paw returns close to the original sitting pose.'
+      'Frame 1: neutral front-facing idle pose, both front limbs down.',
+      'Frame 2: viewer-right front limb begins to lift.',
+      'Frame 3: viewer-right front limb is fully raised beside the face.',
+      'Frame 4: raised limb tilts slightly outward in a wave.',
+      'Frame 5: raised limb tilts slightly inward in a wave.',
+      'Frame 6: raised limb returns close to the neutral pose.'
     ]
     if (frameCount <= frames.length) return frames.slice(0, frameCount)
     return [
       ...frames,
-      `Frames 7-${frameCount}: add small in-between paw-only motion, then settle back to the same anchored neutral pose.`
+      `Frames 7-${frameCount}: add small in-between motion only to the waving appendage, then settle back to the same anchored neutral pose.`
+    ]
+  }
+  if (isLocomotionAction(motionPrompt)) {
+    return [
+      'Frame 1: in-place contact pose, full body visible and centered.',
+      'Middle frames: cycle the locomotion parts while the character stays centered in its own cell.',
+      `Frame ${frameCount}: loop-compatible contact pose with the same scale and camera angle as frame 1.`
+    ]
+  }
+  if (isVerticalBounceAction(motionPrompt)) {
+    return [
+      'Frame 1: grounded anticipation pose at the original baseline.',
+      'Middle frames: controlled upward motion and peak pose while preserving identity, scale, and horizontal center.',
+      `Frame ${frameCount}: landing or recovery pose returning to the original baseline.`
+    ]
+  }
+  if (isPoseTransitionAction(motionPrompt)) {
+    return [
+      'Frame 1: clear start pose with the character fully visible.',
+      'Middle frames: readable transition poses with stable identity, colors, accessories, and proportions.',
+      `Frame ${frameCount}: clear end pose with the character centered and aligned.`
+    ]
+  }
+  if (isReactionAction(motionPrompt) || action?.animationType === 'reaction') {
+    return [
+      'Frame 1: neutral or anticipation pose with the character fully visible and anchored.',
+      'Middle frames: quick readable reaction poses using only the listed reaction parts.',
+      `Frame ${frameCount}: return to a stable readable pose with the same root anchor, scale, and identity.`
+    ]
+  }
+  if (isEmoteAction(motionPrompt) || action?.animationType === 'emote') {
+    return [
+      'Frame 1: neutral expression with the character fully visible and anchored.',
+      'Middle frames: small local expression or emote change while the body center and base stay stable.',
+      `Frame ${frameCount}: loop-compatible expression pose with the same scale, camera angle, and character identity.`
     ]
   }
   return [
@@ -109,60 +241,212 @@ const buildActionFramePlan = ({ action, frameCount }) => {
   ]
 }
 
+const createAnchorRule = (animationType) => {
+  if (animationType === 'locomotion_loop') {
+    return 'Keep the character centered in each cell for an in-place looping animation. The legs, arms, wings, or locomotion parts may cycle, but the body scale, camera angle, identity, and silhouette must remain consistent. Do not draw a background path or ground.'
+  }
+  if (animationType === 'vertical_bounce') {
+    return 'The character may move vertically according to the frame plan, but must keep the same scale, same view, same proportions, and same identity. Keep the character centered horizontally in every cell. The landing frame must return to the original baseline.'
+  }
+  if (animationType === 'pose_transition') {
+    return 'Create a clear transition from the start pose to the end pose. The character identity, style, colors, proportions, and accessories must remain stable. The root position should stay visually consistent unless the action naturally changes height.'
+  }
+  if (animationType === 'reaction') {
+    return 'Reaction poses may be expressive, but the root anchor, body scale, character identity, and camera angle must remain consistent. The action should return to a stable readable pose without drifting across cells.'
+  }
+  if (animationType === 'emote') {
+    return 'Keep emote motion mostly local to the face, head, or small expressive parts. Keep the body center, feet/base, scale, camera angle, outfit, accessories, and identity-defining markings aligned across frames.'
+  }
+  return 'Keep the root, body center, head center, feet/base, and overall silhouette aligned across frames. Only the listed animated parts may move.'
+}
+
+const createNegativePrompt = ({ mode, actionName }) => {
+  const generic = [
+    'different character',
+    'redesigned character',
+    'inconsistent identity',
+    'changing species',
+    'changing face',
+    'changing eye color',
+    'changing body shape',
+    'changing proportions',
+    'changing head size',
+    'changing outfit',
+    'missing accessories',
+    'extra accessories',
+    'extra limbs',
+    'missing limbs',
+    'duplicated limbs',
+    'malformed hands',
+    'malformed paws',
+    'disconnected body parts',
+    'broken anatomy',
+    'side view when front view is requested',
+    'back view',
+    'different camera angle',
+    'inconsistent scale',
+    'inconsistent line art',
+    'inconsistent lighting',
+    'inconsistent color palette',
+    'cropped character',
+    'cut off ears',
+    'cut off tail',
+    'cut off feet',
+    'body parts crossing cell boundaries',
+    'multiple characters in one cell',
+    'duplicate characters',
+    'background scene',
+    'floor',
+    'furniture',
+    'props',
+    'text',
+    'labels',
+    'watermark',
+    'visible grid lines',
+    'borders',
+    'checkerboard background',
+    'cast shadow',
+    'ground shadow',
+    'motion blur',
+    'messy layout',
+    'uneven cells',
+    'non-transparent background',
+    'realistic photo style',
+    '3D render unless requested',
+    'low quality',
+    'blurry',
+    'noisy'
+  ]
+  if (mode === 'single-action') return generic.join(', ')
+  return [...generic, 'multiple poses in one image', `unrelated ${sanitizeCreativeBrief(actionName || 'action')} props`].join(', ')
+}
+
 const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetContext }) => {
   const mode = task.mode
   const styleSource = task.styleSource
   const actionName = sanitizeCreativeBrief(action?.name || 'pose')
   const visibleStyleContext = sanitizeCreativeBrief(currentPetContext)
   const actionSheet = getActionSheetLayout(action)
+  const actionSpec = getActionSpec({ action, frameCount: actionSheet.frameCount })
   const framePlan = buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
-  const sentences = [
-    mode === 'full-pet'
-      ? `Create one full-body OpenPet desktop pet sprite: ${sanitizeCreativeBrief(creativeBrief || task.characterBrief || actionName || 'cute desktop pet')}.`
-      : `Create one OpenPet action sheet of the current character doing this action: ${actionName}.`,
-    mode === 'single-action'
-      ? 'Keep the same character identity, proportions, face, palette, and overall style.'
-      : 'Use cute compact proportions, a clear face, and simple readable shapes.',
-    mode === 'single-action'
-      ? `Arrange exactly ${actionSheet.frameCount} sequential poses in a ${actionSheet.columns} column by ${actionSheet.rows} row grid.`
-      : 'One character only. Fully visible and centered.',
-    mode === 'single-action'
-      ? 'Every grid cell is an independent full-body sprite frame of the same character, fully visible and centered.'
-      : 'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, or accessories.',
-    mode === 'single-action'
-      ? 'Do not draw one large character spanning multiple grid cells; do not create a poster, collage, character sheet, or sticker sheet.'
-      : '',
-    mode === 'single-action'
-      ? 'Use equal-sized cells and keep the same foot baseline and body anchor in every frame.'
-      : '',
-    'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, or accessories.',
-    'Readable at small desktop size with a clean silhouette and stable body center.',
-    'Use a plain clean background that is easy to cut out. No scene background.',
-    mode === 'single-action'
-      ? 'No text, logo, watermark, UI, labels, panel borders, extra characters, or extra bonus poses outside the required grid.'
-      : 'No text, logo, watermark, UI, border, extra characters, sticker sheet, or extra poses.',
-    mode === 'single-action'
-      ? action?.loop
-        ? 'Show clear motion progression from anticipation to action to recovery, with the first and last pose compatible for a seamless loop.'
-        : 'Show clear motion progression from neutral to action to recovery, with readable pose changes across the grid.'
-      : action?.loop
-        ? 'Make the pose balanced and loop-friendly.'
-        : 'Make the pose clear, balanced, and easy to read.',
-    mode === 'single-action' ? framePlan.join(' ') : '',
-    mode === 'single-action'
-      ? 'Motion rule: keep the body, head, torso, feet, scale, lighting, outline, silhouette, and proportions consistent; only the acting limb or intended moving part should move noticeably.'
-      : '',
-    styleSource === 'currentPet' || styleSource === 'referenceImage'
-      ? 'Match the current character style as closely as possible.'
-      : '',
+  const negativePrompt = createNegativePrompt({ mode, actionName })
+  if (mode !== 'single-action') {
+    return [
+      `Create one full-body OpenPet desktop pet sprite: ${sanitizeCreativeBrief(creativeBrief || task.characterBrief || actionName || 'cute desktop pet')}.`,
+      'Create a transparent-background OpenPet source image for a future animation asset.',
+      'One character only. Fully visible and centered.',
+      'Use a plain clean background that is easy to cut out.',
+      'Priority order: 1. Same character identity. 2. Clean transparent sprite source. 3. Stable root anchor, scale, and alignment. 4. Cute polished rendering.',
+      'Preserve identity-defining features: character type, head and face shape, eye shape and color, facial markings, body silhouette, proportions, main colors, material texture, patterns, markings, clothes, accessories, and overall cute OpenPet style.',
+      'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, accessories, or body parts.',
+      'Use soft internal shading and clean cartoon lighting; no cast shadow or ground shadow, no floor, no scene background, no checkerboard background.',
+      'no text, logo, watermark, UI, border, extra characters, sticker sheet, or extra poses.',
+      `Negative prompt: ${negativePrompt}.`,
+      toSentence(creativeBrief)
+    ].filter(Boolean).join(' ')
+  }
+
+  return [
+    'Create a transparent-background animation sprite sheet for OpenPet.',
+    `Create one OpenPet action sheet of the current character doing this action: ${actionName}.`,
+    'This is a game-ready character animation asset that will be sliced programmatically into separate frames. It is not a standalone illustration.',
+    '',
+    'REFERENCE CHARACTER LOCK:',
+    'Use the provided reference image or current pet as the identity source. Render the same single character in every frame. Do not redesign, reinterpret, replace, simplify, or create a different variant of the character.',
+    'Keep the same character identity, proportions, face, palette, and overall style.',
+    'Preserve identity-defining features from the source:',
+    '- character type: same species, object type, or creature type as the source',
+    '- head and face shape: same head silhouette and facial structure',
+    '- eye shape and eye color: same eyes from the source',
+    '- mouth / muzzle / facial markings: same source facial details',
+    '- body silhouette and proportions: same body shape',
+    '- head-to-body ratio: same cute OpenPet proportions',
+    '- main colors: same palette',
+    '- fur / skin / material texture: same material feel',
+    '- patterns, markings, clothes, accessories: preserve all identity-defining details',
+    '- overall cute OpenPet style: same line weight, rendering detail, and style complexity',
+    'The character must remain recognizable as exactly the same character in every frame.',
     visibleStyleContext ? `Current pet style context: ${visibleStyleContext}.` : '',
-    mode === 'single-action' ? `Action sheet label: ${actionName}.` : '',
-    mode === 'single-action'
-      ? 'Negative prompt: different character, different face, different eye color, different fur color, extra limbs, multiple characters, changing body shape, changing head size, cropped body, side view, back view, realistic photo style, background scene, furniture, text, labels, watermark, borders, shadows, motion blur, messy grid, inconsistent frame size.'
-      : '',
-    mode === 'single-action' ? toSentence(creativeBrief) : ''
-  ].filter(Boolean)
-  return sentences.join(' ')
+    styleSource === 'currentPet' || styleSource === 'referenceImage' ? 'Match the current character style as closely as possible.' : '',
+    '',
+    'Priority order:',
+    '1. Same character identity in every frame.',
+    '2. Clean transparent sprite sheet layout.',
+    '3. Stable root anchor, scale, and alignment.',
+    '4. Clear readable action.',
+    '5. Cute polished OpenPet rendering.',
+    '',
+    'SPRITE SHEET FORMAT:',
+    `- ${actionSheet.frameCount} animation frames`,
+    `- arranged in a clean ${actionSheet.columns} columns x ${actionSheet.rows} rows grid`,
+    `Arrange exactly ${actionSheet.frameCount} sequential poses in a ${actionSheet.columns} column by ${actionSheet.rows} row grid.`,
+    '- equal-sized cells',
+    '- one full-body character per cell',
+    '- transparent background',
+    'Use a plain clean background that is easy to cut out.',
+    '- transparent empty padding inside every cell',
+    '- no visible grid lines',
+    '- no text',
+    '- no labels',
+    '- no borders',
+    '- no watermark',
+    '- no props',
+    '- no scene background',
+    '- no floor',
+    '- no cast shadow or ground shadow',
+    '- no cropped ears, limbs, tail, accessories, or body parts',
+    '- no body part may cross into another cell',
+    'Every grid cell is an independent full-body sprite frame of the same character, fully visible and centered.',
+    'Do not draw one large character spanning multiple grid cells; do not create a poster, collage, character sheet, or sticker sheet.',
+    '',
+    'PROGRAMMATIC SLICING REQUIREMENTS:',
+    'This sheet is programmatically sliced into equal cells by OpenPet.',
+    'The sheet will be cut into equal cells by code, so each frame must be centered inside its own cell.',
+    'Keep the same character scale across all frames.',
+    'Keep the same camera angle across all frames.',
+    'Keep the same visual style, outline thickness, color palette, lighting, and rendering detail across all frames.',
+    'Use consistent transparent padding around the character in every cell.',
+    'Use equal-sized cells and keep the same foot baseline and body anchor in every frame.',
+    '',
+    'ANIMATION:',
+    `Action name: ${actionName}`,
+    `Action sheet label: ${actionName}.`,
+    `Motion intent: ${sanitizeCreativeBrief(action?.motionPrompt || actionName)}`,
+    `Animation type: ${actionSpec.animationType}`,
+    `View direction: ${actionSpec.viewDirection}`,
+    `Loop type: ${actionSpec.loopType}`,
+    '',
+    'Animated parts:',
+    formatSpecList(actionSpec.animatedParts, ['the intended moving parts described by the action']),
+    '',
+    'Locked or mostly stable parts:',
+    formatSpecList(actionSpec.lockedParts, ['identity-defining body parts and markings']),
+    '',
+    'Allowed secondary motion:',
+    formatSpecList(actionSpec.secondaryMotion, ['small controlled follow-through only when it preserves alignment']),
+    '',
+    'Forbidden motion:',
+    formatSpecList(actionSpec.forbiddenMotion, ['identity changes', 'scale changes', 'body drifting']),
+    '',
+    'ROOT AND ANCHOR RULES:',
+    'Use a stable root anchor at the lower center of the character in every frame.',
+    createAnchorRule(actionSpec.animationType),
+    'Do not let the character drift, rotate, shrink, grow, or change identity between frames.',
+    '',
+    'FRAME-BY-FRAME MOTION PLAN:',
+    ...framePlan,
+    '',
+    'ANIMATION QUALITY:',
+    'Use smooth cartoon animation spacing.',
+    'Use clear readable poses.',
+    'Use small controlled changes between adjacent frames.',
+    'The frames should feel like they belong to one continuous animation drawn by the same animator.',
+    'The character should look cute, polished, clean, and suitable for a desktop pet or game companion.',
+    'Use soft internal shading, subtle material or fur shading when appropriate, and clean cartoon lighting.',
+    '',
+    `Negative prompt: ${negativePrompt}.`,
+    toSentence(creativeBrief)
+  ].filter((line) => line !== '').join('\n')
 }
 
 const buildSections = ({ task, action, creativeBrief, backend, model, currentPetContext }) => {
@@ -173,103 +457,106 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
   const actionId = sanitizeCreativeBrief(action?.actionId || 'base-pose')
   const motionPrompt = sanitizeCreativeBrief(action?.motionPrompt || actionName)
   const actionSheet = getActionSheetLayout(action)
+  const actionSpec = getActionSpec({ action, frameCount: actionSheet.frameCount })
+  const framePlan = buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
+  const negativePrompt = createNegativePrompt({ mode, actionName })
   const providerWording = model === 'gpt-image-2'
     ? 'Use transparent-friendly, easy cutout silhouette wording; do not depend on a provider alpha-channel parameter.'
     : 'Prefer transparent-background output when available, with a clean cutout silhouette.'
 
   return {
-    Intent: [
-      'You are generating an OpenPet desktop pet sprite asset.',
-      'This image is for a small floating desktop pet window, not a poster, wallpaper, avatar, scene illustration, sticker sheet, UI mockup, or character sheet.'
-    ],
-    'OpenPet Runtime Contract': [
+    'Asset Goal': [
+      mode === 'single-action'
+        ? 'Create a transparent-background animation sprite sheet for OpenPet.'
+        : 'Create one full-body OpenPet desktop pet sprite source image.',
+      'This is an OpenPet animation asset for a small floating desktop pet window, not a poster, wallpaper, avatar, scene illustration, sticker sheet, UI mockup, or character sheet.',
       'Create exactly one pet character.',
       'The pet must remain readable at 128px to 256px.',
-      'Use a clean sprite-like silhouette suitable for later action-frame generation and packaging.',
+      'Use a clean sprite-like silhouette suitable for action-frame generation and packaging.',
       `Backend: ${backend || 'unknown'}. Model: ${model || 'unknown'}.`
     ],
-    'Canvas And Boundary Rules': [
+    'Character Identity Contract': [
+      styleSource === 'referenceImage'
+        ? 'Use the provided reference image as the identity source.'
+        : styleSource === 'currentPet'
+          ? 'Use the current pet as the identity source.'
+          : 'Derive the identity from the creative brief.',
+      'Render the same single character in every frame. Do not redesign, reinterpret, replace, simplify, or create a different variant of the character.',
+      'Keep the same character identity, proportions, face, palette, and overall style.',
+      'Preserve character type, head and face shape, eye shape and eye color, mouth, muzzle, facial markings, body silhouette, proportions, head-to-body ratio, main colors, material texture, patterns, markings, clothes, accessories, and overall cute OpenPet style.',
+      styleSource === 'currentPet'
+        ? "Keep the current pet's style, proportions, palette, facial design, and line work."
+        : 'Keep a distinctive but simple identity that remains reusable for future OpenPet actions.',
+      currentPetContext ? `Current pet context: ${sanitizeCreativeBrief(currentPetContext)}` : ''
+    ].filter(Boolean),
+    'Sprite Sheet Contract': [
+      mode === 'full-pet'
+        ? 'Output one centered pet sprite source image.'
+        : `Output one action sheet containing exactly ${actionSheet.frameCount} readable poses in a ${actionSheet.columns} x ${actionSheet.rows} grid.`,
+      mode === 'single-action'
+        ? `Action sheet layout: ${actionSheet.columns} columns x ${actionSheet.rows} rows.`
+        : 'Action sheet layout: single pose source.',
+      mode === 'single-action'
+        ? 'Each grid cell must contain one independent full-body sequential frame of the same character with no empty required cells.'
+        : 'Do not create a multi-pose sheet.',
       'The complete pet character must be fully visible and centered.',
       'Keep 8-12% safe padding on all sides.',
       'Use no cropped ears, tail, paws, limbs, accessories, props, or motion arcs.',
-      'No body part may touch the image edge.',
-      'Use a stable body center, simple orthographic or mild 3/4 view, and avoid extreme perspective, close-up framing, half-body framing, or dynamic camera angles.'
-    ],
-    'Background And Transparency Policy': [
-      'Make a clean PNG-friendly sprite source.',
+      mode === 'single-action' ? 'No body part may cross into another cell.' : 'No body part may touch the image edge.',
       'Use a plain clean background or transparent-friendly, easy cutout silhouette.',
-      'No scene background.',
-      providerWording
-    ],
-    'Character Shape Language': [
-      'Use a compact desktop-pet body with a slightly oversized head for readability.',
-      'Keep a clear face, simple readable expression, simple limbs, visible paws, ears, tail, or equivalent identity features.',
-      'Prefer large readable shapes instead of tiny details.',
-      'Keep stable ground contact or a stable floating posture.',
-      'Avoid extra limbs, duplicate heads, merged paws, malformed tail, or unclear face.'
-    ],
-    'Generation Mode': [
+      'Transparent background, no visible grid lines, no text, no labels, no borders, no watermark, no props, no scene background, no floor, no cast shadow or ground shadow, and no checkerboard background.',
+      'no text, logo, watermark, UI, frame, or border.',
+      providerWording,
       `Mode: ${mode}`,
       `Target: ${target}`,
-      `Style source: ${styleSource}`,
-      mode === 'full-pet'
-        ? 'Create a coherent new pet identity with a body structure that can support multiple future actions.'
-        : 'Create a sequential action sheet that stays readable as an OpenPet sprite animation source.',
-      mode === 'full-pet'
-        ? 'Use a neutral base pose unless the creative brief explicitly asks otherwise.'
-        : 'Do not redesign the pet; only change the required pose/action and preserve identity across all frames.'
+      `Style source: ${styleSource}`
     ],
-    'Action Requirements': [
+    'Programmatic Slicing Contract': [
+      'The sheet will be cut into equal cells by code, so each frame must be centered inside its own cell.',
+      mode === 'single-action'
+        ? 'Do not draw a single oversized character across the whole sheet; every required cell must be independently usable after slicing.'
+        : 'The source image will be normalized into OpenPet frames later.',
+      'Keep the same character scale, camera angle, visual style, outline thickness, color palette, lighting, and rendering detail across all frames.',
+      'Use consistent transparent padding around the character in every cell.',
+      mode === 'single-action'
+        ? 'Keep equal cell sizes, stable foot baseline, stable body anchor, stable scale, and safe padding in every frame.'
+        : 'Keep a stable body center, simple orthographic or mild 3/4 view, and avoid extreme perspective, close-up framing, half-body framing, or dynamic camera angles.'
+    ],
+    'Animation Contract': [
       `Action ID: ${actionId}`,
       `Action name: ${actionName}`,
       `Motion intent: ${motionPrompt}`,
+      `Animation type: ${actionSpec.animationType}`,
+      `View direction: ${actionSpec.viewDirection}`,
+      `Loop type: ${actionSpec.loopType}`,
       `Loop policy: ${describeLoop(action)}`,
       `Frame count intent: ${action?.frameCount || 12}`,
-      mode === 'single-action'
-        ? `Action sheet layout: ${actionSheet.columns} columns x ${actionSheet.rows} rows`
-        : 'Action sheet layout: single pose source',
       `Trigger: ${describeTrigger(action)}`,
-      mode === 'single-action'
-        ? `Per-frame plan: ${buildActionFramePlan({ action, frameCount: actionSheet.frameCount }).join(' ')}`
-        : 'Key pose plan: anticipation, primary action pose, readable exaggeration, and recovery or loop return.',
+      `Animated parts: ${actionSpec.animatedParts.map(sanitizeCreativeBrief).join(', ')}`,
+      `Locked or mostly stable parts: ${actionSpec.lockedParts.map(sanitizeCreativeBrief).join(', ')}`,
+      `Allowed secondary motion: ${actionSpec.secondaryMotion.map(sanitizeCreativeBrief).join(', ')}`,
+      `Forbidden motion: ${actionSpec.forbiddenMotion.map(sanitizeCreativeBrief).join(', ')}`,
+      mode === 'single-action' ? `Per-frame plan: ${framePlan.join(' ')}` : 'Key pose plan: neutral source pose suitable for future animation.',
       action?.loop
         ? 'For looping actions, start and end pose should be compatible, motion should not drift across the canvas, and body center should remain stable.'
         : 'For one-shot actions, start from neutral, perform the action clearly, then return to neutral or end in a clear final pose.'
     ],
-    'Style Consistency': [
-      styleSource === 'currentPet'
-        ? "Keep the current pet's style, proportions, palette, facial design, and line work."
-        : 'Define a new pet style that remains simple, readable, and reusable for future OpenPet actions.',
-      styleSource === 'currentPet'
-        ? 'Preserve the same character identity, same proportions, same line weight, same palette, same camera angle, and same visual complexity.'
-        : 'Use a distinctive but simple palette and avoid single-use details that prevent future animation.',
-      currentPetContext ? `Current pet context: ${sanitizeCreativeBrief(currentPetContext)}` : ''
-    ].filter(Boolean),
-    'Output Requirements': [
-      mode === 'full-pet'
-        ? 'Output one centered pet sprite source image.'
-        : `Output one action sheet containing exactly ${actionSheet.frameCount} readable poses in a ${actionSheet.columns} x ${actionSheet.rows} grid.`,
-      mode === 'full-pet'
-        ? 'Do not create a multi-pose sheet.'
-        : 'Each grid cell must contain one independent full-body sequential frame of the same character with no empty required cells.',
-      mode === 'single-action'
-        ? 'Do not draw a single oversized character across the whole sheet; every required cell must be independently usable after slicing.'
-        : '',
-      mode === 'single-action'
-        ? 'Keep equal cell sizes, stable foot baseline, stable body anchor, stable scale, and safe padding in every frame.'
-        : '',
-      'Do not add labels, annotations, UI chrome, or borders.',
-      mode === 'full-pet'
-        ? 'The result should be suitable for OpenPet action frame generation.'
-        : 'The result should be suitable for direct OpenPet action frame slicing.'
-    ].filter(Boolean),
-    'Negative Constraints': [
-      'No background scene, floor, furniture, room, landscape, or unrelated props.',
-      'no text, logo, watermark, signature, UI, frame, or border.',
-      mode === 'full-pet'
-        ? 'No extra characters, no sticker sheet, no multiple poses in one image.'
-        : 'No extra characters, no decorative sticker sheet layout, no empty required cells, and no extra bonus poses beyond the required action grid.',
-      'No cropped body parts, close-up portrait, realistic noisy fur, tiny unreadable ornamentation, heavy shadow, complex lighting, strong perspective, malformed limbs, duplicate limbs, extra tails, or merged facial features.'
+    'Root And Anchor Rules': [
+      'Use a stable root anchor at the lower center of the character in every frame.',
+      createAnchorRule(actionSpec.animationType),
+      'Do not let the character drift, rotate, shrink, grow, or change identity between frames.'
+    ],
+    'Style And Quality Contract': [
+      'Use smooth cartoon animation spacing.',
+      'Use clear readable poses and small controlled changes between adjacent frames.',
+      'The frames should feel like they belong to one continuous animation drawn by the same animator.',
+      'Use a compact desktop-pet body with a slightly oversized head for readability unless the source identity requires otherwise.',
+      'Keep a clear face, simple readable expression, simple limbs, visible paws, ears, tail, or equivalent identity features.',
+      'Use soft internal shading, subtle material or fur shading when appropriate, and clean cartoon lighting.',
+      'Avoid heavy shadow, complex lighting, malformed limbs, duplicate heads, merged paws, malformed tail, or unclear face.'
+    ],
+    'Negative Contract': [
+      `Negative prompt: ${negativePrompt}.`
     ],
     'User Creative Brief': [
       creativeBrief || sanitizeCreativeBrief(task.characterBrief) || actionName || 'Create an OpenPet desktop pet.'

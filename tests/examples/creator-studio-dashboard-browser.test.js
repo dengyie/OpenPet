@@ -2270,7 +2270,7 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
     assert.match(provenanceText, /openai-compatible/i)
     assert.match(provenanceText, /127\.0\.0\.1:7860/i)
     assert.match(provenanceText, /creative_brief_sanitized/i)
-    assert.match(provenanceText, /OpenPet Runtime Contract/i)
+    assert.match(provenanceText, /Character Identity Contract/i)
     assert.doesNotMatch(provenanceText, /sk-test-secret/i)
     assert.doesNotMatch(provenanceText, /\/Users\/mango\/private\/ref\.png/i)
     assert.doesNotMatch(provenanceText, /127\.0\.0\.1:8317/i)

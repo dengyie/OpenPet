@@ -102,7 +102,7 @@ const countVisiblePixels = async (imagePath) => {
 }
 
 const getActionSheetLayout = (frameCount) => {
-  const columns = Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
+  const columns = frameCount === 6 ? 3 : Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
   const rows = Math.max(1, Math.ceil(frameCount / columns))
   return { columns, rows }
 }

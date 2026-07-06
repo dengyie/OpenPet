@@ -232,6 +232,65 @@ test('creator studio generation task validation rejects unsafe trigger proposals
   )
 })
 
+test('creator studio generation task preserves sanitized action asset protocol fields', () => {
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  const task = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'sparkle',
+      name: 'Sparkle',
+      motionPrompt: 'tiny sparkle emote',
+      animationType: 'emote',
+      viewDirection: 'front-facing with token=secret',
+      loopType: 'short loop',
+      animatedParts: ['eyes', 'small facial expression change', ''],
+      lockedParts: ['body center', 'feet/base', 'http://127.0.0.1:8317/private'],
+      secondaryMotion: ['tiny head bob only'],
+      forbiddenMotion: ['body drifting', '/Users/mango/private/ref.png'],
+      framePlan: [
+        'Frame 1: neutral expression.',
+        'Frame 2: tiny sparkle expression appears.'
+      ],
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+
+  const action = task.actions[0]
+  assert.equal(action.animationType, 'emote')
+  assert.equal(action.viewDirection, 'front-facing with [redacted-token]=[redacted-secret]')
+  assert.deepEqual(action.animatedParts, ['eyes', 'small facial expression change'])
+  assert.deepEqual(action.lockedParts, ['body center', 'feet/base', '[redacted-local-url]'])
+  assert.deepEqual(action.secondaryMotion, ['tiny head bob only'])
+  assert.deepEqual(action.forbiddenMotion, ['body drifting', '[redacted-path]'])
+  assert.deepEqual(action.framePlan, [
+    'Frame 1: neutral expression.',
+    'Frame 2: tiny sparkle expression appears.'
+  ])
+})
+
+test('creator studio generation task rejects unsupported animation types', () => {
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  assert.throws(
+    () => normalizeGenerationTask({
+      mode: 'single-action',
+      targetPet: 'current',
+      styleSource: 'referenceImage',
+      actions: [{
+        actionId: 'teleport',
+        name: 'Teleport',
+        motionPrompt: 'teleport around the screen',
+        animationType: 'teleport_loop',
+        triggerProposal: { type: 'manual' }
+      }]
+    }),
+    /Creator Studio animationType is invalid: teleport_loop/
+  )
+})
+
 test('creator studio generation task normalizes structured trigger rule specs', () => {
   const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
 
@@ -320,19 +379,17 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.equal(built.mode, 'full-pet')
   assert.equal(built.actionId, 'idle')
   assert.deepEqual(built.sections, [
-    'Intent',
-    'OpenPet Runtime Contract',
-    'Canvas And Boundary Rules',
-    'Background And Transparency Policy',
-    'Character Shape Language',
-    'Generation Mode',
-    'Action Requirements',
-    'Style Consistency',
-    'Output Requirements',
-    'Negative Constraints',
+    'Asset Goal',
+    'Character Identity Contract',
+    'Sprite Sheet Contract',
+    'Programmatic Slicing Contract',
+    'Animation Contract',
+    'Root And Anchor Rules',
+    'Style And Quality Contract',
+    'Negative Contract',
     'User Creative Brief'
   ])
-  assert.match(built.prompt, /OpenPet desktop pet sprite asset/)
+  assert.match(built.prompt, /OpenPet animation asset/)
   assert.match(built.prompt, /small floating desktop pet window/)
   assert.match(built.prompt, /exactly one pet character/)
   assert.match(built.prompt, /8-12% safe padding/)
@@ -345,7 +402,10 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.equal(built.prompt.includes('response_format'), false)
   assert.match(built.providerPrompt, /Create one full-body OpenPet desktop pet sprite/)
   assert.match(built.providerPrompt, /One character only\. Fully visible and centered\./)
-  assert.match(built.providerPrompt, /Use a plain clean background that is easy to cut out\./)
+  assert.match(built.providerPrompt, /Priority order:/)
+  assert.match(built.providerPrompt, /same character identity/i)
+  assert.match(built.providerPrompt, /checkerboard background/)
+  assert.doesNotMatch(built.providerPrompt, /ground shadow, shadows/)
 })
 
 test('creator studio prompt builder preserves custom action semantics and current-pet style consistency', () => {
@@ -385,7 +445,227 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.providerPrompt, /Every grid cell is an independent full-body sprite frame/)
   assert.match(built.providerPrompt, /Do not draw one large character spanning multiple grid cells/)
   assert.match(built.providerPrompt, /same foot baseline and body anchor/)
+  assert.match(built.providerPrompt, /Animation type: stationary_loop/)
+  assert.match(built.providerPrompt, /Animated parts:/)
+  assert.match(built.providerPrompt, /Locked or mostly stable parts:/)
+  assert.match(built.providerPrompt, /Forbidden motion:/)
   assert.match(built.providerPrompt, /Match the current character style as closely as possible\./)
+  assert.match(built.providerPrompt, /programmatically sliced/i)
+})
+
+test('creator studio prompt builder emits a generic OpenPet action asset protocol for wave actions', () => {
+  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const generationTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    characterBrief: 'Keep the reference character identity exactly, whether it is an animal, robot, slime, plush toy, or small monster.',
+    actions: [{
+      actionId: 'wave',
+      name: 'wave',
+      motionPrompt: 'friendly wave',
+      frameCount: 6,
+      loop: true,
+      animationType: 'stationary_loop',
+      viewDirection: 'front-facing',
+      loopType: 'short loop',
+      animatedParts: ['viewer-right front limb or equivalent waving appendage'],
+      lockedParts: ['head', 'face', 'torso', 'body center', 'feet/base', 'accessories'],
+      secondaryMotion: ['very subtle shoulder movement'],
+      forbiddenMotion: ['body drifting', 'head turning', 'face changing', 'scale changing', 'new props'],
+      framePlan: [
+        'Frame 1: neutral front-facing idle pose, both front limbs down.',
+        'Frame 2: viewer-right front limb begins to lift.',
+        'Frame 3: viewer-right front limb is fully raised beside the face.',
+        'Frame 4: raised limb tilts slightly outward in a wave.',
+        'Frame 5: raised limb tilts slightly inward in a wave.',
+        'Frame 6: raised limb returns close to the neutral pose.'
+      ],
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+
+  const built = buildOpenPetImagePrompt({
+    run: {
+      petId: 'reference-character',
+      input: {
+        prompt: 'Make this character wave.',
+        originalPrompt: 'Make this character wave.',
+        generationTask
+      }
+    },
+    backend: 'provider',
+    model: 'gpt-image-2'
+  })
+
+  assert.equal(built.promptBuilderVersion, 2)
+  assert.match(built.providerPrompt, /Create a transparent-background animation sprite sheet for OpenPet/)
+  assert.match(built.providerPrompt, /game-ready character animation asset that will be sliced programmatically/)
+  assert.match(built.providerPrompt, /REFERENCE CHARACTER LOCK:/)
+  assert.match(built.providerPrompt, /character type:/)
+  assert.match(built.providerPrompt, /head and face shape:/)
+  assert.match(built.providerPrompt, /patterns, markings, clothes, accessories:/)
+  assert.match(built.providerPrompt, /Priority order:/)
+  assert.match(built.providerPrompt, /1\. Same character identity in every frame/)
+  assert.match(built.providerPrompt, /2\. Clean transparent sprite sheet layout/)
+  assert.match(built.providerPrompt, /3\. Stable root anchor, scale, and alignment/)
+  assert.match(built.providerPrompt, /6 animation frames/)
+  assert.match(built.providerPrompt, /3 columns x 2 rows grid/)
+  assert.match(built.providerPrompt, /no visible grid lines/)
+  assert.match(built.providerPrompt, /no cast shadow or ground shadow/)
+  assert.match(built.providerPrompt, /no body part may cross into another cell/)
+  assert.match(built.providerPrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/)
+  assert.match(built.providerPrompt, /Frame 2: viewer-right front limb begins to lift/)
+  assert.match(built.providerPrompt, /checkerboard background/)
+  assert.doesNotMatch(built.providerPrompt, /golden British Shorthair/)
+  assert.doesNotMatch(built.providerPrompt, /right front paw/)
+  assert.doesNotMatch(built.providerPrompt, /only the paw/i)
+})
+
+test('creator studio prompt builder changes anchor rules for locomotion actions', () => {
+  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const generationTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    characterBrief: 'Keep the same tiny desktop pet identity.',
+    actions: [{
+      actionId: 'run',
+      name: 'run',
+      motionPrompt: 'in-place running loop',
+      frameCount: 8,
+      loop: true,
+      animationType: 'locomotion_loop',
+      viewDirection: 'side-facing',
+      animatedParts: ['legs', 'arms', 'tail or equivalent locomotion parts'],
+      triggerProposal: { type: 'state', binding: 'running' }
+    }]
+  })
+
+  const built = buildOpenPetImagePrompt({
+    run: {
+      petId: 'runner',
+      input: {
+        prompt: 'Make the current pet run in place.',
+        originalPrompt: 'Make the current pet run in place.',
+        generationTask
+      }
+    },
+    backend: 'provider',
+    model: 'local-pet-sprite'
+  })
+
+  assert.match(built.providerPrompt, /Animation type: locomotion_loop/)
+  assert.match(built.providerPrompt, /in-place looping animation/)
+  assert.match(built.providerPrompt, /legs, arms, wings, or locomotion parts may cycle/)
+  assert.match(built.providerPrompt, /Do not draw a background path or ground/)
+  assert.doesNotMatch(built.providerPrompt, /Only the waving appendage should move/)
+})
+
+test('creator studio prompt builder emits dedicated reaction and emote rules', () => {
+  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  const reactionTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'surprised',
+      name: 'surprised reaction',
+      motionPrompt: 'surprised reaction after being clicked',
+      frameCount: 6,
+      loop: false,
+      animationType: 'reaction',
+      triggerProposal: { type: 'click' }
+    }]
+  })
+  const emoteTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'happy-emote',
+      name: 'happy emote',
+      motionPrompt: 'happy sparkle emote',
+      frameCount: 6,
+      loop: true,
+      animationType: 'emote',
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+
+  const reactionPrompt = buildOpenPetImagePrompt({
+    run: { input: { prompt: 'Make a surprised click reaction.', generationTask: reactionTask } },
+    backend: 'provider',
+    model: 'local-pet-sprite'
+  }).providerPrompt
+  const emotePrompt = buildOpenPetImagePrompt({
+    run: { input: { prompt: 'Make a happy sparkle emote.', generationTask: emoteTask } },
+    backend: 'provider',
+    model: 'local-pet-sprite'
+  }).providerPrompt
+
+  assert.match(reactionPrompt, /Animation type: reaction/)
+  assert.match(reactionPrompt, /facial expression, head, ears, limbs, or equivalent reaction parts/)
+  assert.match(reactionPrompt, /Reaction poses may be expressive, but the root anchor, body scale, character identity, and camera angle must remain consistent/)
+  assert.match(reactionPrompt, /return to a stable readable pose/)
+  assert.match(emotePrompt, /Animation type: emote/)
+  assert.match(emotePrompt, /facial expression, eyes, mouth, cheeks, small limbs, or equivalent emote parts/)
+  assert.match(emotePrompt, /Keep emote motion mostly local to the face, head, or small expressive parts/)
+  assert.match(emotePrompt, /No extra symbols, props, stickers, speech bubbles, or floating decorative effects unless explicitly requested/)
+})
+
+test('creator studio prompt builder keeps wave and reaction inference ahead of broad emote words', () => {
+  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  const waveTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'happy-wave',
+      name: 'happy wave',
+      motionPrompt: 'happy wave loop',
+      frameCount: 6,
+      loop: true,
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+  const reactionTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'surprised-click',
+      name: 'surprised reaction',
+      motionPrompt: 'surprised reaction after click',
+      frameCount: 6,
+      loop: false,
+      triggerProposal: { type: 'click' }
+    }]
+  })
+
+  const wavePrompt = buildOpenPetImagePrompt({
+    run: { input: { prompt: 'Make a happy wave loop.', generationTask: waveTask } },
+    backend: 'provider',
+    model: 'local-pet-sprite'
+  }).providerPrompt
+  const reactionPrompt = buildOpenPetImagePrompt({
+    run: { input: { prompt: 'Make a surprised click reaction.', generationTask: reactionTask } },
+    backend: 'provider',
+    model: 'local-pet-sprite'
+  }).providerPrompt
+
+  assert.match(wavePrompt, /Animation type: stationary_loop/)
+  assert.match(wavePrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/)
+  assert.doesNotMatch(wavePrompt, /Animation type: emote/)
+  assert.match(reactionPrompt, /Animation type: reaction/)
+  assert.match(reactionPrompt, /facial expression, head, ears, limbs, or equivalent reaction parts/)
+  assert.doesNotMatch(reactionPrompt, /Animation type: emote/)
 })
 
 test('creator studio prompt builder filters secrets paths and bridge details from prompts', () => {
@@ -403,7 +683,7 @@ test('creator studio prompt builder filters secrets paths and bridge details fro
     model: 'gpt-image-2'
   })
 
-  assert.match(built.prompt, /OpenPet desktop pet sprite asset/)
+  assert.match(built.prompt, /OpenPet animation asset/)
   assert.equal(built.prompt.includes('sk-test-secret'), false)
   assert.equal(built.prompt.includes('/Users/mango/private/ref.png'), false)
   assert.equal(built.prompt.includes('127.0.0.1:8317'), false)
@@ -1152,7 +1432,7 @@ test('creator studio run-step command uses host bridge for provider generation w
       baseUrlHost: '127.0.0.1:7860'
     })
     assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
-    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 1)
+    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 2)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.equal(run.artifacts.generatedImage.promptBuilder.promptPreview.truncated, false)
     assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
@@ -4273,7 +4553,7 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.status, 'ready_for_review')
     assert.equal(detail.run.developerPrompt.available, true)
     assert.equal(detail.run.developerPrompt.source, 'host-model-bridge')
-    assert.equal(detail.run.developerPrompt.promptBuilder.version, 1)
+    assert.equal(detail.run.developerPrompt.promptBuilder.version, 2)
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
