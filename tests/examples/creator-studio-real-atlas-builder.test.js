@@ -231,9 +231,11 @@ test('real atlas builder creates a Codex atlas from generated image pixels', asy
   assert.equal(sourceQa.ok, true)
   assert.equal(sourceQa.sourceRelativePath, relativePath)
   assert.equal(sourceQa.visiblePixels > 0, true)
+  assert.equal(sourceQa.sourceSha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(dataDir, relativePath))).digest('hex'))
   assert.equal(atlasQa.ok, true)
   assert.equal(atlasQa.width, CODEX_ATLAS.width)
   assert.equal(atlasQa.height, CODEX_ATLAS.height)
+  assert.equal(atlasQa.atlasSha256, crypto.createHash('sha256').update(fs.readFileSync(result.spritesheetPath)).digest('hex'))
   assert.equal(atlasQa.sourceRelativePath, relativePath)
   assert.equal(atlasQa.basicActions.baseIdentityCoverage, true)
   assert.deepEqual(atlasQa.basicActions.requiredRealActionIds, [])
@@ -314,8 +316,11 @@ test('real atlas builder composes official row package into complete Codex actio
   }
 
   const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  const sourceQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'source-image-validation.json'), 'utf-8'))
   const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
   assert.equal(atlasQa.ok, true)
+  assert.equal(sourceQa.sourceSha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(dataDir, relativePath))).digest('hex'))
+  assert.equal(atlasQa.atlasSha256, crypto.createHash('sha256').update(fs.readFileSync(result.spritesheetPath)).digest('hex'))
   assert.equal(atlasQa.visualReview.contactSheet, 'runs/run-1/qa/full-pet-contact-sheet.png')
   assert.equal(fs.existsSync(path.join(dataDir, atlasQa.visualReview.contactSheet)), true)
   const contactSheetMetadata = await sharp(path.join(dataDir, atlasQa.visualReview.contactSheet)).metadata()

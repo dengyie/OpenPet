@@ -59,13 +59,21 @@ const writeTransparentActionSheetPng = async (targetPath, {
     for (let column = 0; column < columns; column += 1) {
       const left = column * cellWidth
       const top = row * cellHeight
-      const sway = ((row * columns) + column) % 3 - 1
+      const frameIndex = (row * columns) + column
+      const sway = frameIndex % 3 - 1
+      const pawLift = [0, 7, 15, 11, 4, 10][frameIndex % 6]
+      const pawAngle = [-8, -18, -28, 18, 28, 10][frameIndex % 6]
+      const eyeOpen = frameIndex % 6 === 3 ? 0.45 : 1
       const cx = left + (cellWidth / 2) + sway
       poses.push(`
         <ellipse cx="${cx}" cy="${top + (cellHeight * 0.58)}" rx="${cellWidth * 0.24}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
         <circle cx="${cx}" cy="${top + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
-        <circle cx="${cx - (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" r="${cellWidth * 0.022}" fill="#273f43"/>
-        <circle cx="${cx + (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" r="${cellWidth * 0.022}" fill="#273f43"/>
+        <ellipse cx="${cx - (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <ellipse cx="${cx + (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <g transform="rotate(${pawAngle} ${cx + (cellWidth * 0.19)} ${top + (cellHeight * 0.54) - pawLift})">
+          <ellipse cx="${cx + (cellWidth * 0.19)}" cy="${top + (cellHeight * 0.54) - pawLift}" rx="${cellWidth * 0.055}" ry="${cellHeight * 0.18}" fill="#f19042"/>
+          <circle cx="${cx + (cellWidth * 0.19)}" cy="${top + (cellHeight * 0.39) - pawLift}" r="${cellWidth * 0.055}" fill="#ffaa5a"/>
+        </g>
       `)
     }
   }

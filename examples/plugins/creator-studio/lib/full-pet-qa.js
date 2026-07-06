@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const {
   OFFICIAL_FULL_PET_ACTION_IDS,
   getMissingRequiredRealActionIds
@@ -30,6 +31,11 @@ const readQaJson = (qaPath, operation) => {
     throw new Error(`Full-pet QA must be valid JSON before ${operation}`)
   }
 }
+
+const sha256File = (filePath) => crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(filePath))
+  .digest('hex')
 
 const assertPositiveInteger = ({ value, label, operation }) => {
   if (!Number.isInteger(Number(value)) || Number(value) < 1) {
@@ -105,7 +111,7 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
     targetPath: artifacts.sourceImageQa,
     label: 'Full-pet source image QA'
   })
-  assertExistingPathInsideDataDir({
+  const spritesheetPath = assertExistingPathInsideDataDir({
     dataDir,
     targetPath: artifacts.spritesheet,
     label: 'Full-pet spritesheet'
@@ -130,6 +136,23 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
   assertPositiveInteger({ value: sourceQa.visiblePixels, label: 'source visible pixels', operation })
   if (typeof sourceQa.sourceRelativePath !== 'string' || !sourceQa.sourceRelativePath.trim()) {
     throw new Error(`Full-pet QA source path must be valid before ${operation}`)
+  }
+  if (typeof atlasQa.atlasSha256 === 'string' && atlasQa.atlasSha256.trim()) {
+    const actualAtlasHash = sha256File(spritesheetPath)
+    if (actualAtlasHash !== atlasQa.atlasSha256) {
+      throw new Error(`Full-pet spritesheet hash must match QA before ${operation}`)
+    }
+  }
+  if (typeof sourceQa.sourceSha256 === 'string' && sourceQa.sourceSha256.trim()) {
+    const sourceImagePath = assertExistingPathInsideDataDir({
+      dataDir,
+      targetPath: path.join(dataDir, sourceQa.sourceRelativePath),
+      label: 'Full-pet source image'
+    })
+    const actualSourceHash = sha256File(sourceImagePath)
+    if (actualSourceHash !== sourceQa.sourceSha256) {
+      throw new Error(`Full-pet source image hash must match QA before ${operation}`)
+    }
   }
   const missingRequiredBasicActions = getMissingRequiredBasicActions(atlasQa.basicActions)
   if (missingRequiredBasicActions.length > 0) {

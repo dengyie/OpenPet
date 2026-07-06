@@ -215,6 +215,11 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+const sha256File = (filePath) => crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(filePath))
+  .digest('hex')
+
 const normalizeOfficialRowsInput = (officialRows) => (
   Array.isArray(officialRows)
     ? officialRows
@@ -442,6 +447,8 @@ const buildOfficialAtlasFromRows = async ({
     outputDir: qaDir
   })
   const basicActions = createBasicActionCoverage(basicActionRows)
+  const atlasSha256 = sha256File(spritesheetPath)
+  const sourceSha256 = sha256File(entries[0].sourcePath)
   const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
   const rowQaPath = path.join(qaDir, 'full-pet-row-validation.json')
   const atlasQaPath = path.join(qaDir, 'atlas-validation.json')
@@ -454,6 +461,7 @@ const buildOfficialAtlasFromRows = async ({
     hasAlpha: sourceValidation.hasAlpha,
     visiblePixels: sourceValidation.visiblePixels,
     byteSize: size,
+    sourceSha256,
     warnings: []
   })
   writeJson(rowQaPath, {
@@ -465,6 +473,7 @@ const buildOfficialAtlasFromRows = async ({
     width: CODEX_ATLAS.width,
     height: CODEX_ATLAS.height,
     visiblePixels: composed.visiblePixels,
+    atlasSha256,
     sourceRelativePath,
     sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
     basicActions,
@@ -620,6 +629,8 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
   }
   const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
   const atlasQaPath = path.join(qaDir, 'atlas-validation.json')
+  const atlasSha256 = sha256File(spritesheetPath)
+  const sourceSha256 = sha256File(sourcePath)
   writeJson(sourceQaPath, {
     ok: true,
     sourceRelativePath,
@@ -629,6 +640,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     hasAlpha: sourceValidation.hasAlpha,
     visiblePixels: sourceValidation.visiblePixels,
     byteSize: size,
+    sourceSha256,
     warnings: []
   })
   writeJson(atlasQaPath, {
@@ -636,6 +648,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     width: CODEX_ATLAS.width,
     height: CODEX_ATLAS.height,
     visiblePixels: atlasVisiblePixels,
+    atlasSha256,
     sourceRelativePath,
     sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
     basicActions,

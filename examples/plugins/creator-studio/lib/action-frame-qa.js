@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 
 const assertExistingPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   if (!targetPath) throw new Error(`${label} must stay inside the Creator Studio data directory`)
@@ -26,6 +27,11 @@ const readQaJson = (qaPath) => {
     throw new Error('Action frame QA must be valid JSON before approval/import')
   }
 }
+
+const sha256File = (filePath) => crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(filePath))
+  .digest('hex')
 
 const assertActionFrameQaPassed = ({ dataDir, actionFrames, operation = 'approval/import' }) => {
   if (!actionFrames?.qa) throw new Error(`Action frame QA must pass before ${operation}`)
@@ -70,11 +76,17 @@ const assertActionFrameQaPassed = ({ dataDir, actionFrames, operation = 'approva
     ) {
       throw new Error(`Action frame QA frames must be complete before ${operation}`)
     }
-    assertExistingPathInsideDataDir({
+    const framePath = assertExistingPathInsideDataDir({
       dataDir,
       targetPath: path.join(framesDir, expectedFileName),
       label: 'Action frame file'
     })
+    if (typeof frame.fileSha256 === 'string' && frame.fileSha256.trim()) {
+      const actualHash = sha256File(framePath)
+      if (actualHash !== frame.fileSha256) {
+        throw new Error(`Action frame file hash must match QA before ${operation}`)
+      }
+    }
   })
   return qa
 }

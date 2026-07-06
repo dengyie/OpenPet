@@ -1,10 +1,13 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
 const { assertFullPetQaPassed } = require('../../examples/plugins/creator-studio/lib/full-pet-qa')
+
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex')
 
 const makeQaFixture = ({ atlasQa }) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-full-pet-qa-'))
@@ -108,4 +111,34 @@ test('full-pet qa accepts complete official action row coverage', () => {
   const result = assertFullPetQaPassed({ ...fixture, operation: 'import' })
   assert.deepEqual(result.atlasQa.basicActions.realActionIds, ['idle', 'waving'])
   assert.deepEqual(result.atlasQa.basicActions.missingRequiredOfficialActionIds, [])
+})
+
+test('full-pet qa rejects spritesheets modified after atlas validation', () => {
+  const fixture = makeQaFixture({
+    atlasQa: {
+      atlasSha256: sha256('placeholder'),
+      basicActions: {
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: ['idle', 'waving'],
+        fallbackActionIds: [],
+        missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle', 'waving'],
+        previewFallbackActionIds: [],
+        missingRequiredOfficialActionIds: [],
+        rows: [
+          { actionId: 'idle', fallback: false, quality: 'row-real' },
+          { actionId: 'waving', fallback: false, quality: 'row-real' }
+        ]
+      }
+    }
+  })
+
+  assertFullPetQaPassed({ ...fixture, operation: 'import' })
+  fs.writeFileSync(fixture.artifacts.spritesheet, 'tampered')
+
+  assert.throws(
+    () => assertFullPetQaPassed({ ...fixture, operation: 'import' }),
+    /Full-pet spritesheet hash must match QA before import/
+  )
 })

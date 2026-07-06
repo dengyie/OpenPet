@@ -711,6 +711,7 @@ const buildActionFramesFromGeneratedImage = async ({
     sourceRelativePath = sourceRelativePath || frameSource.sourceRelativePath
     sourceRelativePaths = frameSource.sourceRelativePaths
     extraction = frameSource.extraction
+    const fileSha256 = crypto.createHash('sha256').update(frameSource.normalized.frameBuffer).digest('hex')
     fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
     const frameInspection = await inspectVisibleImage(framePath)
     frames.push({
@@ -718,6 +719,7 @@ const buildActionFramesFromGeneratedImage = async ({
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
       sha256: frameInspection.sha256,
+      fileSha256,
       visiblePixels: frameInspection.visiblePixels,
       frameBounds: frameInspection.bounds,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
@@ -818,6 +820,7 @@ const repairActionFrameFromGeneratedImage = async ({
     frameIndex
   })
   const framePath = path.join(safeOutputFramesDir, fileName)
+  const fileSha256 = crypto.createHash('sha256').update(frameSource.normalized.frameBuffer).digest('hex')
   fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
   const frameInspection = await inspectVisibleImage(framePath)
   const frame = {
@@ -825,6 +828,7 @@ const repairActionFrameFromGeneratedImage = async ({
     width: FRAME_WIDTH,
     height: FRAME_HEIGHT,
     sha256: frameInspection.sha256,
+    fileSha256,
     visiblePixels: frameInspection.visiblePixels,
     frameBounds: frameInspection.bounds,
     sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
