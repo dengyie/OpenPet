@@ -683,7 +683,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       details: {
         requestId,
         mode,
-        isFullPet,
+        importCommandId,
         providerModel: normalizeText(providerConfig?.model),
         serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
       }
