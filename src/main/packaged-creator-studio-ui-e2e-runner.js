@@ -7,6 +7,7 @@ const DEFAULT_SERVICE_ID = 'studio'
 const DEFAULT_DASHBOARD_ID = 'main'
 const DEFAULT_IMPORT_COMMAND_ID = 'import-approved-action'
 const DEFAULT_TIMEOUT_MS = 15000
+const VALID_BACKENDS = new Set(['fixture', 'provider'])
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -31,6 +32,7 @@ const findEntryById = (entries = [], entryId) => (
 )
 
 const normalizeDashboardText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim()
+const normalizeBackend = (value) => (VALID_BACKENDS.has(value) ? value : 'fixture')
 
 const parseDashboardCompletionSnapshot = ({
   approvalStatusText = '',
@@ -71,6 +73,7 @@ const createEmptyArtifact = ({ pluginId, hostApp }) => ({
   dashboard: {
     loaded: false,
     title: '',
+    backend: 'fixture',
     draftOk: false,
     questionAnswered: false,
     confirmed: false,
@@ -239,6 +242,7 @@ const defaultDriveControlCenterBootstrap = async ({
 
 const defaultDriveDashboard = async ({
   dashboardUrl,
+  backend = 'fixture',
   createDashboardWindow = defaultCreateDashboardWindow
 } = {}) => {
   if (!dashboardUrl) throw new Error('Dashboard URL is required for packaged Creator Studio UI E2E')
@@ -255,7 +259,7 @@ const defaultDriveDashboard = async ({
   await dashboardWindow.webContents.executeJavaScript(`(() => {
     const backend = document.getElementById('backend-select')
     if (backend) {
-      backend.value = 'fixture'
+      backend.value = ${JSON.stringify(normalizeBackend(backend))}
       backend.dispatchEvent(new Event('change', { bubbles: true }))
     }
     const prompt = document.getElementById('prompt-input')
@@ -363,6 +367,7 @@ const defaultDriveDashboard = async ({
     dashboardWindow,
     loaded: true,
     title: await dashboardWindow.webContents.getTitle(),
+    backend: normalizeBackend(backend),
     draftOk: true,
     questionAnswered: Boolean(answerResult.answer),
     confirmed: true,
@@ -445,6 +450,7 @@ const runPackagedCreatorStudioUiE2e = async ({
   const serviceId = env.OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_SERVICE_ID || DEFAULT_SERVICE_ID
   const dashboardId = env.OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_DASHBOARD_ID || DEFAULT_DASHBOARD_ID
   const hostApp = env.OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_APP_PATH || app?.getAppPath?.() || 'OpenPet packaged app'
+  const backend = normalizeBackend(env.OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_BACKEND || 'fixture')
   const stdout = []
   const stderr = []
   const artifact = createEmptyArtifact({ pluginId, hostApp })
@@ -479,6 +485,7 @@ const runPackagedCreatorStudioUiE2e = async ({
 
     const dashboardResult = await driveDashboardImpl({
       dashboardUrl: artifact.controlCenter.dashboardUrl,
+      backend,
       createDashboardWindow,
       pluginId
     })
@@ -486,6 +493,7 @@ const runPackagedCreatorStudioUiE2e = async ({
     artifact.dashboard = {
       loaded: Boolean(dashboardResult?.loaded),
       title: String(dashboardResult?.title || ''),
+      backend: String(dashboardResult?.backend || backend),
       draftOk: Boolean(dashboardResult?.draftOk),
       questionAnswered: Boolean(dashboardResult?.questionAnswered),
       confirmed: Boolean(dashboardResult?.confirmed),

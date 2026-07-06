@@ -1,0 +1,2 @@
+Imported workflow artifact did not include a live Windows process snapshot.
+This placeholder preserves archive structure only and must not be treated as observed launch/runtime evidence.

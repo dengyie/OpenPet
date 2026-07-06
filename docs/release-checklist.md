@@ -2,11 +2,15 @@
 
 > Purpose: keep local test builds, signed releases, and public artifacts reproducible without exposing signing credentials.
 
-Current desktop scope: macOS and Windows. macOS has a validated release baseline, repeatable codesign/notarization/Gatekeeper evidence capture, and release workflow evidence artifact upload; Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines, both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates that require reviewed Windows smoke and desktop picker archive manifests. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
+Current desktop scope: macOS and Windows. macOS has repeatable codesign/notarization/Gatekeeper evidence capture and release workflow evidence artifact upload baselines, while Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines. Both desktop platforms have packaged native picker/runtime smoke evidence tooling, desktop picker evidence summary/archive manifest tooling, and release-level evidence archive gates that require reviewed Windows smoke and desktop picker archive manifests. Windows must not be called release-ready until signed release evidence and real smoke tests are complete.
+
+Current public macOS caution: the archived public release-asset check at `docs/release-evidence/macos-release-evidence/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-asset-check/`, the authenticated workflow-artifact import at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/`, and the companion current-parser rerun at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun/` all show the current `v1.0.1-rc.3` macOS evidence failing signed readiness. Treat that as live release-truth evidence until the public assets and workflow evidence are fixed and republished with passing results.
+
+Current packaged-runtime caution: the pending `rc.3` packaged-runtime report at `docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/` was generated from the current macOS release assets without launching the app, records `artifact.signed=false` plus the same broken signature text under `artifact.signatureEvidence`, and keeps every runtime check pending. Treat it as a ready-to-fill operator packet, not as runtime validation evidence.
 
 | Platform | Status | Public Claim |
 |----------|--------|--------------|
-| macOS | Baseline implemented with evidence capture tooling and workflow artifact upload | Release candidate path exists; official artifacts should be signed/notarized and archived with passing evidence |
+| macOS | Public assets and imported workflow evidence currently fail signed readiness | macOS-first release track; official artifacts still need passing signed/notarized evidence |
 | Windows | Packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest and desktop picker/runtime smoke evidence tooling baselines implemented | Do not publish as supported until the Windows checklist passes |
 | Linux | Deferred | Out of current release scope |
 | Mobile | Out of scope | Not part of this desktop release track |
@@ -101,7 +105,7 @@ npm run create-desktop-picker-smoke-runbook -- release/desktop-picker-smoke-repo
 npm run update-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --list-checks
 ```
 
-Current RC target: `v1.0.1-rc.2`.
+Current RC target: `v1.0.1-rc.3`.
 
 ## 5. macOS Verification
 
@@ -301,7 +305,7 @@ npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-e
 npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The first manifest command can archive pending review material. The signed manifest command is required before an official desktop release claim and must produce `releaseReady: true`. It verifies that the reviewed Windows smoke archive manifest matches the archived Windows smoke report, and that the reviewed desktop picker archive manifest matches the archived desktop picker report. The closure command turns the manifest into explicit release wording and should fail official release CI when any signed evidence remains missing, pending, or mismatched.
+The first manifest command can archive pending review material. The signed manifest command is required before an official desktop release claim and must produce `releaseReady: true`. It verifies that the reviewed Windows smoke archive manifest matches the archived Windows smoke report, that the reviewed desktop picker archive manifest matches the archived desktop picker report, and when `macos-release-evidence-artifact-manifest.json` is present it verifies that the imported macOS workflow artifact still matches the archived macOS evidence files. The closure command turns the manifest into explicit release wording and should fail official release CI when any signed evidence remains missing, pending, or mismatched.
 
 Windows smoke checks:
 

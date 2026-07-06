@@ -1,0 +1,4 @@
+status: Unverified
+source: Public GitHub release asset verification for v1.0.1-rc.3
+note: GitHub Actions artifact openpet-macos-release-evidence-v1.0.1-rc.3 exists on run 28060966745 and is not expired, but archive_download_url returned HTTP 401 in this environment so direct artifact contents could not be imported here.
+note: Public macOS zip and DMG assets both failed local codesign and spctl verification with "code has no resources but signature indicates they must be present".

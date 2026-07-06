@@ -1,0 +1,2 @@
+No manual packaged native-picker evidence was captured in this rerun.
+This archive exists to preserve the pending report shape and corrected win32 x64 artifact metadata only.

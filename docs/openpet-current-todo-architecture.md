@@ -1,7 +1,7 @@
 # OpenPet Current TODO Architecture
 
-> Date: 2026-07-03
-> Baseline: `codex/dev7@19b2728c`
+> Date: 2026-07-07
+> Baseline: `codex/dev7@7bf0be2e`
 > Status: live TODO entry point
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
 
@@ -343,7 +343,8 @@ Current state:
 
 - Evidence tooling exists for packaged runtime, picker, Windows smoke, macOS signing/notarization/Gatekeeper, release archive, and plugin cleanup.
 - Packaged runtime smoke evidence is archived under `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/`; it proves an unsigned macOS packaged runtime launch, transparent rendering, built-in pack switching, and stable-state restoration, but still records `plugin-picker-evidence-linked` and `pet-picker-evidence-linked` as pending and `invalid-package-feedback` as blocked until a reviewed desktop picker smoke report is linked.
-- Signed release closure evidence is archived under `docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/`; `officialDesktopRelease`, `macos`, and `windows` all remain `not-ready`, with blockers including missing signed macOS evidence, missing desktop picker evidence, unsigned packaged runtime evidence, and missing signed Windows smoke evidence.
+- A current packaged-runtime pending report also exists under `docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/`; it preserves the current broken macOS signature text, keeps `artifact.signed=false`, and leaves every runtime check pending until a real launched packaged-app run is observed.
+- Signed release closure evidence is now anchored at `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/`; `officialDesktopRelease`, `macos`, and `windows` all remain `not-ready`, with blockers now expressed as current archive truth rather than older missing-file gaps: macOS codesign/notarization/Gatekeeper classify as `fail`, Windows smoke remains unsigned/pending, and the reconstructed Windows smoke and desktop-picker archives remain archived but not signed-ready.
 - Official desktop/macOS/Windows readiness claims remain conservative and must stay aligned with those archived `not-ready` facts until new reviewed evidence replaces them.
 
 P1 work:

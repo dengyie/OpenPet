@@ -104,11 +104,17 @@ test('createPluginCommunitySourceDiscoveryReport writes compatible-source-not-fo
   assert.equal(summary.outputDir, 'plugin-community-source-discovery-report')
   assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
   assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'README.md')), true)
 
   const readme = fs.readFileSync(resolveOutputPath(outputDir, summary.files.readme), 'utf-8')
   assert.match(readme, /does not approve, install, run, sign, publish, or trust/i)
   assert.match(readme, /compatible-source-not-found/)
   assert.match(readme, /alvinunreal\/openpets/)
+
+  const directoryReadme = fs.readFileSync(path.join(outputDir, 'README.md'), 'utf-8')
+  assert.match(directoryReadme, /README-community-source-discovery\.md/)
+  assert.match(directoryReadme, /compatible-source-not-found/)
+  assert.match(directoryReadme, /does not prove OpenPet plugin compatibility/i)
 })
 
 test('createPluginCommunitySourceDiscoveryReport marks ready candidate without Phase 99 evidence as found', () => {

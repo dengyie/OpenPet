@@ -1,0 +1,1 @@
+/tmp/openpet-macos-dmg-YcIpzl/mount/OpenPet.app: code has no resources but signature indicates they must be present

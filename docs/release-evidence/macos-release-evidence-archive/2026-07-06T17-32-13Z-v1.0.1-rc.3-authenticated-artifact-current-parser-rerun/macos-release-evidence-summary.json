@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-07-06T17:32:35.084Z",
+  "ok": true,
+  "releaseReady": false,
+  "appPath": "",
+  "outputDir": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun",
+  "statuses": {
+    "codesign": "fail",
+    "notarization": "fail",
+    "gatekeeper": "fail"
+  },
+  "files": {
+    "codesign": "macos-codesign.txt",
+    "notarization": "macos-notarization.txt",
+    "gatekeeper": "macos-gatekeeper.txt",
+    "markdownSummary": "macos-release-evidence-summary.md",
+    "jsonSummary": "macos-release-evidence-summary.json"
+  },
+  "evidenceFiles": [
+    {
+      "role": "macosCodesignEvidence",
+      "path": "macos-codesign.txt",
+      "exists": true,
+      "bytes": 188,
+      "sha256": "492c09b399e781e8031a5286cf97c15844071c74784c61113a73ff6bfba3b3e2"
+    },
+    {
+      "role": "macosNotarizationEvidence",
+      "path": "macos-notarization.txt",
+      "exists": true,
+      "bytes": 61,
+      "sha256": "8294db73d918a516f74a724d7b10097ea9b8c07396a292553e12f086b739e182"
+    },
+    {
+      "role": "macosGatekeeperEvidence",
+      "path": "macos-gatekeeper.txt",
+      "exists": true,
+      "bytes": 184,
+      "sha256": "3bee4fb55bd1f63600058fb6fea7257c9c6652fae4901615bcf14c0f1980eb82"
+    }
+  ],
+  "commands": [],
+  "warnings": [
+    "macOS evidence is archived but does not prove official signed release readiness"
+  ]
+}

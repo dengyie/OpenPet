@@ -21,14 +21,43 @@ Run `npm run test:core:all` before merging user-facing runtime changes. It runs
 ## Auxiliary Tool Tests
 
 Run `npm run test:tools` when touching release tooling, report generators,
-plugin submission tooling, smoke evidence helpers, or maintenance CLIs. These
-tests are important, but they do not need to block every tight runtime iteration.
+plugin submission tooling, smoke evidence helpers, maintenance CLIs, or live
+documentation truth surfaces. These tests are important, but they do not need
+to block every tight runtime iteration.
 
 Auxiliary tests currently include:
 
 - `tests/scripts/*.test.js`: plugin scaffolding, validation, submission, and rehearsal CLIs;
+- `tests/docs/*.test.js`: live-doc truth checks that keep the active backlog,
+  maintainer snapshots, archived release blocker wording, smoke evidence
+  entrypoints, synthetic-versus-real acceptance boundaries, and current archive
+  paths aligned with the current repository facts rather than older closure
+  snapshots;
+- `tests/scripts/mock-agent-awareness-flow.test.js`: synthetic end-to-end
+  rehearsal that drives mock Codex rollout data through
+  `run-agent-awareness-local-smoke`, archive creation, and manual-acceptance
+  write-back so the smoke/archive/update chain stays covered without launching
+  OpenPet; this proves tooling/data flow only and does not replace real desktop
+  acceptance;
+- `tests/scripts/mock-plugin-community-source-flow.test.js`: synthetic end-to-end
+  rehearsal that drives a compatible community-source archive through Phase 100
+  intake, Phase 103 bridge, Phase 99 evidence, and discovery status rollup,
+  plus the incompatible foreign `plugin.json` downgrade path. It now also runs
+  the shipped intake, bridge, and discovery CLIs end to end against a synthetic
+  compatible archive by faking the HTTPS download boundary without touching real
+  network state;
+- `tests/release/mock-packaged-provider-flow.test.js`: synthetic packaged
+  provider-path rehearsal that records provider-ready Create gating plus
+  provider-backed packaged Creator Studio runtime and packaged UI archives. It
+  now also runs the shipped packaged Create, Creator Studio runtime, and
+  Creator Studio UI CLIs end to end against a synthetic provider-ready app shim
+  without launching a real packaged desktop session;
 - `tests/release/*.test.js`: release evidence, Windows/macOS smoke reports,
-  packaged runtime reports, cleanup evidence, and signed release closure tools.
+  packaged runtime reports, cleanup evidence, signed release closure tools, and
+  synthetic dual-platform picker/runtime and release-closure rehearsals such as
+  `tests/release/mock-picker-runtime-flow.test.js`, which now also runs the
+  shipped macOS evidence/archive, release-manifest, and signed-closure CLI
+  chain against synthetic signed fixtures without claiming real host evidence.
 
 ## Full Regression
 

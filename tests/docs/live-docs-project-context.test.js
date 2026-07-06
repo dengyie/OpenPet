@@ -75,7 +75,7 @@ test('project-context indexes the archived provider smoke evidence and current s
     )
   )
 
-  assert.equal(context.updated, '2026-07-03', 'project-context.json should carry the current live-doc update date')
+  assert.equal(context.updated, '2026-07-07', 'project-context.json should carry the current live-doc update date')
   assert.equal(
     context.branch,
     'codex/dev7',
@@ -259,12 +259,12 @@ test('project-context indexes archived release-truth evidence and blockers truth
   )
   assert.match(
     facts,
-    /docs\/release-evidence\/signed-release-closure\/2026-06-16T15-00-00Z\//i,
+    /docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i,
     'project-context.json should point to the archived signed release closure path'
   )
   assert.match(
     facts,
-    /releaseReady is false[\s\S]*official desktop[\s\S]*macOS[\s\S]*Windows[\s\S]*not-ready[\s\S]*missing signed macOS[\s\S]*missing desktop picker evidence[\s\S]*missing signed Windows smoke evidence/i,
+    /releaseReady is false[\s\S]*macOS codesign\/notarization\/Gatekeeper now classify as fail[\s\S]*Windows smoke remains unsigned\/pending[\s\S]*desktop-picker archives remain archived but not signed-ready/i,
     'project-context.json should capture the signed release closure not-ready state and core blockers'
   )
   assert.match(

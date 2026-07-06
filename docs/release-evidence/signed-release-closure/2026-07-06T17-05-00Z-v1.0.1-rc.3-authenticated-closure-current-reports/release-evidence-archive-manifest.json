@@ -1,0 +1,517 @@
+{
+  "generatedAt": "2026-07-06T16:35:04.774Z",
+  "requireSigned": true,
+  "ok": false,
+  "releaseReady": false,
+  "archive": {
+    "archiveDir": "docs/release-evidence/signed-release-closure/2026-07-06T17-05-00Z-v1.0.1-rc.3-authenticated-closure-current-reports",
+    "outputPath": "docs/release-evidence/signed-release-closure/2026-07-06T17-05-00Z-v1.0.1-rc.3-authenticated-closure-current-reports/release-evidence-archive-manifest.json"
+  },
+  "files": [
+    {
+      "role": "windowsSmokeReport",
+      "path": "docs/release-evidence/windows-smoke/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/windows-smoke-report.json",
+      "exists": true,
+      "bytes": 4841,
+      "sha256": "df973e7ba662abdc0d8aa1a29e97fa556a97d5b413b7f85b8cb76de1fe486892"
+    },
+    {
+      "role": "windowsSmokeArchiveManifest",
+      "path": "windows-smoke-archive-manifest.json",
+      "exists": false,
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "role": "desktopPickerReport",
+      "path": "docs/release-evidence/desktop-picker/2026-07-06T17-00-00Z-win32-x64-authenticated-artifact/desktop-picker-smoke-report.json",
+      "exists": true,
+      "bytes": 3713,
+      "sha256": "25320c475235b6a8a45f924db1879e561c284652c3dedf7d89da05ece296e59f"
+    },
+    {
+      "role": "desktopPickerArchiveManifest",
+      "path": "desktop-picker-archive-manifest.json",
+      "exists": false,
+      "bytes": 0,
+      "sha256": ""
+    },
+    {
+      "role": "packagedRuntimeReport",
+      "path": "docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/packaged-runtime-smoke-report.json",
+      "exists": true,
+      "bytes": 5155,
+      "sha256": "6fc140cdb76a3f42203203c3e92d8db1edeb2a0cbb9e4df4b1fe33de2dd7527c"
+    },
+    {
+      "role": "macosCodesignEvidence",
+      "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-codesign.txt",
+      "exists": true,
+      "bytes": 188,
+      "sha256": "492c09b399e781e8031a5286cf97c15844071c74784c61113a73ff6bfba3b3e2"
+    },
+    {
+      "role": "macosNotarizationEvidence",
+      "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-notarization.txt",
+      "exists": true,
+      "bytes": 61,
+      "sha256": "8294db73d918a516f74a724d7b10097ea9b8c07396a292553e12f086b739e182"
+    },
+    {
+      "role": "macosGatekeeperEvidence",
+      "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-gatekeeper.txt",
+      "exists": true,
+      "bytes": 184,
+      "sha256": "3bee4fb55bd1f63600058fb6fea7257c9c6652fae4901615bcf14c0f1980eb82"
+    },
+    {
+      "role": "macosReleaseEvidenceArtifactManifest",
+      "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+      "exists": true,
+      "bytes": 2518,
+      "sha256": "806483d69c83a2fab485cd49de383b83b9b001aa1cce2f227c0a0cd4c72aa279"
+    }
+  ],
+  "macos": {
+    "releaseReady": false,
+    "codesign": {
+      "status": "pending",
+      "file": {
+        "role": "macosCodesignEvidence",
+        "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-codesign.txt",
+        "exists": true,
+        "bytes": 188,
+        "sha256": "492c09b399e781e8031a5286cf97c15844071c74784c61113a73ff6bfba3b3e2"
+      }
+    },
+    "notarization": {
+      "status": "pending",
+      "file": {
+        "role": "macosNotarizationEvidence",
+        "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-notarization.txt",
+        "exists": true,
+        "bytes": 61,
+        "sha256": "8294db73d918a516f74a724d7b10097ea9b8c07396a292553e12f086b739e182"
+      }
+    },
+    "gatekeeper": {
+      "status": "pending",
+      "file": {
+        "role": "macosGatekeeperEvidence",
+        "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-gatekeeper.txt",
+        "exists": true,
+        "bytes": 184,
+        "sha256": "3bee4fb55bd1f63600058fb6fea7257c9c6652fae4901615bcf14c0f1980eb82"
+      }
+    },
+    "artifactArchive": {
+      "file": {
+        "role": "macosReleaseEvidenceArtifactManifest",
+        "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+        "exists": true,
+        "bytes": 2518,
+        "sha256": "806483d69c83a2fab485cd49de383b83b9b001aa1cce2f227c0a0cd4c72aa279"
+      },
+      "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+      "archiveDir": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import",
+      "outputPath": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+      "artifactName": "openpet-macos-release-evidence-v1.0.1-rc.3",
+      "releaseTag": "v1.0.1-rc.3",
+      "workflowRunUrl": "https://github.com/dengyie/OpenPet/actions/runs/28060966745",
+      "ok": true,
+      "releaseReady": false,
+      "macosEvidenceReady": false,
+      "matchesMacosEvidence": true,
+      "errors": [],
+      "warnings": [
+        "macosReleaseEvidenceArtifactManifest is archived but its imported macOS evidence is not ready"
+      ]
+    }
+  },
+  "reports": {
+    "releaseReady": false,
+    "windowsSmoke": {
+      "file": {
+        "role": "windowsSmokeReport",
+        "path": "docs/release-evidence/windows-smoke/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/windows-smoke-report.json",
+        "exists": true,
+        "bytes": 4841,
+        "sha256": "df973e7ba662abdc0d8aa1a29e97fa556a97d5b413b7f85b8cb76de1fe486892"
+      },
+      "report": {
+        "platform": "win32",
+        "arch": "x64",
+        "generatedAt": "2026-06-23T22:22:30.455Z",
+        "artifact": {
+          "version": "1.0.1-rc.3",
+          "installer": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+          "zip": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+          "latestYml": "latest.yml",
+          "blockmaps": [
+            "OpenPet-1.0.1-rc.3-win-x64.exe-unsigned.blockmap"
+          ],
+          "files": [
+            {
+              "name": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+              "size": 124200495
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+              "size": 167394556
+            },
+            {
+              "name": "latest.yml",
+              "size": 380
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.3-win-x64.exe-unsigned.blockmap",
+              "size": 131396
+            }
+          ],
+          "signed": false,
+          "authenticodeStatus": "Unknown",
+          "authenticodeEvidence": "Get-AuthenticodeSignature failed: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command Get-AuthenticodeSignature -LiteralPath \"D:\\\\a\\\\OpenPet\\\\OpenPet\\\\release\\\\OpenPet-1.0.1-rc.3-win-x64-unsigned.exe\" | Format-List\nGet-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module \r\n'Microsoft.PowerShell.Security', but the module could not be loaded. For more information, run 'Import-Module \r\nMicrosoft.PowerShell.Security'.\r\nAt line:1 char:1\r\n+ Get-AuthenticodeSignature -LiteralPath \"D:\\\\a\\\\OpenPet\\\\OpenPet\\\\rele ...\r\n+ ~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CouldNotAutoloadMatchingModule\r\n \r\n"
+        },
+        "linkedEvidence": {}
+      },
+      "structuralValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 13,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "readinessValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+          "install must pass before Windows release readiness can be claimed",
+          "launch must pass before Windows release readiness can be claimed",
+          "transparent-window must pass before Windows release readiness can be claimed",
+          "drag-bounds must pass before Windows release readiness can be claimed",
+          "control-center-tabs must pass before Windows release readiness can be claimed",
+          "pet-actions must pass before Windows release readiness can be claimed",
+          "pet-pack-import must pass before Windows release readiness can be claimed",
+          "plugin-runner must pass before Windows release readiness can be claimed",
+          "local-http-default-off must pass before Windows release readiness can be claimed",
+          "local-http-token-gated must pass before Windows release readiness can be claimed",
+          "api-key-isolation must pass before Windows release readiness can be claimed",
+          "about-update-assets must pass before Windows release readiness can be claimed",
+          "uninstall must pass before Windows release readiness can be claimed"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 13,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "releaseReady": false,
+      "errors": [
+        "windowsSmokeReport: artifact.signed must be true when --require-signed is used",
+        "windowsSmokeReport: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used"
+      ],
+      "warnings": [
+        "windowsSmokeReport is archived but not release-ready"
+      ]
+    },
+    "desktopPicker": {
+      "file": {
+        "role": "desktopPickerReport",
+        "path": "docs/release-evidence/desktop-picker/2026-07-06T17-00-00Z-win32-x64-authenticated-artifact/desktop-picker-smoke-report.json",
+        "exists": true,
+        "bytes": 3713,
+        "sha256": "25320c475235b6a8a45f924db1879e561c284652c3dedf7d89da05ece296e59f"
+      },
+      "report": {
+        "platform": "win32",
+        "arch": "arm64",
+        "generatedAt": "2026-07-06T16:34:37.852Z",
+        "artifact": {
+          "version": "1.0.1-rc.3",
+          "releaseDir": "release",
+          "appPath": "",
+          "installer": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+          "zip": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+          "latestYml": "latest.yml",
+          "blockmaps": [
+            "OpenPet-1.0.1-rc.3-win-x64.exe-unsigned.blockmap"
+          ],
+          "files": [
+            {
+              "name": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+              "size": 124200495
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+              "size": 167394556
+            },
+            {
+              "name": "latest.yml",
+              "size": 380
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.3-win-x64.exe-unsigned.blockmap",
+              "size": 131396
+            }
+          ],
+          "signed": false,
+          "authenticodeStatus": "NotChecked",
+          "signatureEvidence": "",
+          "authenticodeEvidence": ""
+        },
+        "linkedEvidence": {}
+      },
+      "structuralValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+          "artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 9,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "readinessValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+          "artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness",
+          "packaged-launch must pass before desktop picker smoke readiness can be claimed",
+          "control-center-open must pass before desktop picker smoke readiness can be claimed",
+          "plugin-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+          "plugin-picker-zip-review must pass before desktop picker smoke readiness can be claimed",
+          "plugin-install-disabled must pass before desktop picker smoke readiness can be claimed",
+          "invalid-package-feedback must pass before desktop picker smoke readiness can be claimed",
+          "action-frame-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+          "pet-pack-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+          "state-after-picker-smoke must pass before desktop picker smoke readiness can be claimed"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 9,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "releaseReady": false,
+      "errors": [
+        "desktopPickerReport: artifact.signed must be true when --require-signed is used",
+        "desktopPickerReport: artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+        "desktopPickerReport: artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness"
+      ],
+      "warnings": [
+        "desktopPickerReport is archived but not release-ready"
+      ]
+    },
+    "packagedRuntime": {
+      "file": {
+        "role": "packagedRuntimeReport",
+        "path": "docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/packaged-runtime-smoke-report.json",
+        "exists": true,
+        "bytes": 5155,
+        "sha256": "6fc140cdb76a3f42203203c3e92d8db1edeb2a0cbb9e4df4b1fe33de2dd7527c"
+      },
+      "report": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "generatedAt": "2026-07-06T16:34:37.749Z",
+        "artifact": {
+          "version": "1.0.1-rc.3",
+          "releaseDir": "release",
+          "appPath": "OpenPet.app",
+          "installer": "OpenPet-1.0.1-rc.3-mac-arm64.dmg",
+          "zip": "OpenPet-1.0.1-rc.3-mac-arm64.zip",
+          "latestYml": "latest-mac.yml",
+          "files": [
+            {
+              "name": "OpenPet.app",
+              "size": 96
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.3-mac-arm64.dmg",
+              "size": 142561691
+            },
+            {
+              "name": "OpenPet-1.0.1-rc.3-mac-arm64.zip",
+              "size": 142009235
+            },
+            {
+              "name": "latest-mac.yml",
+              "size": 529
+            }
+          ],
+          "signed": false,
+          "signatureStatus": "Unknown",
+          "signatureEvidence": "/tmp/openpet-macos-rc3-release-dir/OpenPet.app: code has no resources but signature indicates they must be present"
+        },
+        "linkedEvidence": {
+          "desktopPickerSmokeReport": "",
+          "desktopPickerSmokeRunbook": "",
+          "screenshots": [],
+          "recordings": []
+        }
+      },
+      "structuralValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 14,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "readinessValidation": {
+        "ok": false,
+        "errors": [
+          "artifact.signed must be true when --require-signed is used",
+          "artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness",
+          "packaged-launch must pass before packaged runtime smoke readiness can be claimed",
+          "pet-window-created must pass before packaged runtime smoke readiness can be claimed",
+          "transparent-background must pass before packaged runtime smoke readiness can be claimed",
+          "sprite-visible must pass before packaged runtime smoke readiness can be claimed",
+          "speech-bubble-rendered must pass before packaged runtime smoke readiness can be claimed",
+          "default-action-playback must pass before packaged runtime smoke readiness can be claimed",
+          "pack-switch-legacy-cat must pass before packaged runtime smoke readiness can be claimed",
+          "pack-switch-doro must pass before packaged runtime smoke readiness can be claimed",
+          "pack-switch-duodong must pass before packaged runtime smoke readiness can be claimed",
+          "pack-switch-chispa must pass before packaged runtime smoke readiness can be claimed",
+          "plugin-picker-evidence-linked must pass before packaged runtime smoke readiness can be claimed",
+          "pet-picker-evidence-linked must pass before packaged runtime smoke readiness can be claimed",
+          "invalid-package-feedback must pass before packaged runtime smoke readiness can be claimed",
+          "state-after-runtime-smoke must pass before packaged runtime smoke readiness can be claimed",
+          "linkedEvidence.desktopPickerSmokeReport is required for packaged runtime smoke readiness"
+        ],
+        "warnings": [],
+        "summary": {
+          "passed": 0,
+          "total": 14,
+          "smokeReady": false,
+          "officialReady": false
+        }
+      },
+      "releaseReady": false,
+      "errors": [
+        "packagedRuntimeReport: artifact.signed must be true when --require-signed is used",
+        "packagedRuntimeReport: artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness"
+      ],
+      "warnings": [
+        "packagedRuntimeReport is archived but not release-ready"
+      ]
+    }
+  },
+  "archives": {
+    "releaseReady": false,
+    "windowsSmoke": {
+      "file": {
+        "role": "windowsSmokeArchiveManifest",
+        "path": "windows-smoke-archive-manifest.json",
+        "exists": false,
+        "bytes": 0,
+        "sha256": ""
+      },
+      "path": "",
+      "archiveDir": "",
+      "outputPath": "",
+      "ok": false,
+      "releaseReady": false,
+      "reportPath": "",
+      "reportSha256": "",
+      "summaryPath": "",
+      "matchesReport": false,
+      "matchesDesktopPickerReport": false,
+      "errors": [
+        "missing windowsSmokeArchiveManifest: windows-smoke-archive-manifest.json"
+      ],
+      "warnings": []
+    },
+    "desktopPicker": {
+      "file": {
+        "role": "desktopPickerArchiveManifest",
+        "path": "desktop-picker-archive-manifest.json",
+        "exists": false,
+        "bytes": 0,
+        "sha256": ""
+      },
+      "path": "",
+      "archiveDir": "",
+      "outputPath": "",
+      "ok": false,
+      "releaseReady": false,
+      "reportPath": "",
+      "reportSha256": "",
+      "summaryPath": "",
+      "matchesReport": false,
+      "matchesDesktopPickerReport": false,
+      "errors": [
+        "missing desktopPickerArchiveManifest: desktop-picker-archive-manifest.json"
+      ],
+      "warnings": []
+    },
+    "macosArtifact": {
+      "file": {
+        "role": "macosReleaseEvidenceArtifactManifest",
+        "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+        "exists": true,
+        "bytes": 2518,
+        "sha256": "806483d69c83a2fab485cd49de383b83b9b001aa1cce2f227c0a0cd4c72aa279"
+      },
+      "path": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+      "archiveDir": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import",
+      "outputPath": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json",
+      "artifactName": "openpet-macos-release-evidence-v1.0.1-rc.3",
+      "releaseTag": "v1.0.1-rc.3",
+      "workflowRunUrl": "https://github.com/dengyie/OpenPet/actions/runs/28060966745",
+      "ok": true,
+      "releaseReady": false,
+      "macosEvidenceReady": false,
+      "matchesMacosEvidence": true,
+      "errors": [],
+      "warnings": [
+        "macosReleaseEvidenceArtifactManifest is archived but its imported macOS evidence is not ready"
+      ]
+    }
+  },
+  "errors": [
+    "windowsSmokeReport: artifact.signed must be true when --require-signed is used",
+    "windowsSmokeReport: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+    "desktopPickerReport: artifact.signed must be true when --require-signed is used",
+    "desktopPickerReport: artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+    "desktopPickerReport: artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness",
+    "packagedRuntimeReport: artifact.signed must be true when --require-signed is used",
+    "packagedRuntimeReport: artifact.signatureStatus must be \"Valid\" for signed macOS runtime smoke readiness",
+    "macosCodesignEvidence does not prove codesign success",
+    "macosNotarizationEvidence does not prove notarization success",
+    "macosGatekeeperEvidence does not prove gatekeeper success",
+    "missing windowsSmokeArchiveManifest: windows-smoke-archive-manifest.json",
+    "missing desktopPickerArchiveManifest: desktop-picker-archive-manifest.json"
+  ],
+  "warnings": [
+    "windowsSmokeReport is archived but not release-ready",
+    "desktopPickerReport is archived but not release-ready",
+    "packagedRuntimeReport is archived but not release-ready",
+    "macosReleaseEvidenceArtifactManifest is archived but its imported macOS evidence is not ready",
+    "macosReleaseEvidenceArtifactManifest is archived but its imported macOS evidence is not ready"
+  ]
+}

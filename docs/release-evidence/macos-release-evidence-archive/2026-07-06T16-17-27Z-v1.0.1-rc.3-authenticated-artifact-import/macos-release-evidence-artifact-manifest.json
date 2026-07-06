@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-07-06T16:18:09.171Z",
+  "ok": true,
+  "macosEvidenceReady": false,
+  "archive": {
+    "archiveDir": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import",
+    "outputPath": "docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/macos-release-evidence-artifact-manifest.json"
+  },
+  "source": {
+    "artifactDir": "downloaded-artifact",
+    "artifactName": "openpet-macos-release-evidence-v1.0.1-rc.3",
+    "releaseTag": "v1.0.1-rc.3",
+    "workflowRunUrl": "https://github.com/dengyie/OpenPet/actions/runs/28060966745"
+  },
+  "files": [
+    {
+      "role": "macosCodesignEvidence",
+      "fileName": "macos-codesign.txt",
+      "sourcePath": "macos-codesign.txt",
+      "archivedPath": "macos-codesign.txt",
+      "bytes": 188,
+      "sha256": "492c09b399e781e8031a5286cf97c15844071c74784c61113a73ff6bfba3b3e2",
+      "status": "pending",
+      "releaseReady": false
+    },
+    {
+      "role": "macosNotarizationEvidence",
+      "fileName": "macos-notarization.txt",
+      "sourcePath": "macos-notarization.txt",
+      "archivedPath": "macos-notarization.txt",
+      "bytes": 61,
+      "sha256": "8294db73d918a516f74a724d7b10097ea9b8c07396a292553e12f086b739e182",
+      "status": "pending",
+      "releaseReady": false
+    },
+    {
+      "role": "macosGatekeeperEvidence",
+      "fileName": "macos-gatekeeper.txt",
+      "sourcePath": "macos-gatekeeper.txt",
+      "archivedPath": "macos-gatekeeper.txt",
+      "bytes": 184,
+      "sha256": "3bee4fb55bd1f63600058fb6fea7257c9c6652fae4901615bcf14c0f1980eb82",
+      "status": "pending",
+      "releaseReady": false
+    },
+    {
+      "role": "macosReleaseEvidenceMarkdownSummary",
+      "fileName": "macos-release-evidence-summary.md",
+      "sourcePath": "macos-release-evidence-summary.md",
+      "archivedPath": "macos-release-evidence-summary.md",
+      "bytes": 1502,
+      "sha256": "a96cc751627a2ff84147ae1d54d82ada8850dae09307b27b1bdeec9d8e5a4dc1"
+    },
+    {
+      "role": "macosReleaseEvidenceJsonSummary",
+      "fileName": "macos-release-evidence-summary.json",
+      "sourcePath": "macos-release-evidence-summary.json",
+      "archivedPath": "macos-release-evidence-summary.json",
+      "bytes": 3098,
+      "sha256": "60d79f661a15a5eb7431cc1053771481d91ba4e661fd86640d949dc48e12197c"
+    }
+  ],
+  "warnings": [
+    "macOS evidence is archived but does not prove official signed release readiness"
+  ]
+}

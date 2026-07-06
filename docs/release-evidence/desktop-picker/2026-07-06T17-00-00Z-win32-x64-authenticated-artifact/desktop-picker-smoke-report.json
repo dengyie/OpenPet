@@ -1,0 +1,106 @@
+{
+  "platform": "win32",
+  "arch": "arm64",
+  "generatedAt": "2026-07-06T16:34:37.852Z",
+  "source": "scripts/create-desktop-picker-smoke-report.js",
+  "environment": {
+    "osRelease": "25.5.0",
+    "machine": "mangodeMacBook-Air.local",
+    "runner": "",
+    "evidence": ""
+  },
+  "artifact": {
+    "version": "1.0.1-rc.3",
+    "releaseDir": "release",
+    "appPath": "",
+    "installer": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+    "zip": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+    "latestYml": "latest.yml",
+    "blockmaps": [
+      "OpenPet-1.0.1-rc.3-win-x64.exe-unsigned.blockmap"
+    ],
+    "files": [
+      {
+        "name": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+        "size": 124200495
+      },
+      {
+        "name": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+        "size": 167394556
+      },
+      {
+        "name": "latest.yml",
+        "size": 380
+      },
+      {
+        "name": "OpenPet-1.0.1-rc.3-win-x64.exe-unsigned.blockmap",
+        "size": 131396
+      }
+    ],
+    "signed": false,
+    "authenticodeStatus": "NotChecked",
+    "signatureEvidence": "",
+    "authenticodeEvidence": ""
+  },
+  "fixture": {
+    "pluginPackage": "Use a valid .openpet-plugin.zip fixture with a signature.json hash metadata file.",
+    "frameFolder": "Use a folder containing ordered transparent PNG frames.",
+    "petPack": "Use a valid pet pack directory with pet.json and sprite assets."
+  },
+  "checks": [
+    {
+      "id": "packaged-launch",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Launch packaged OpenPet and keep it running. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "control-center-open",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Open Control Center from the packaged app. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "plugin-picker-cancel",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Plugin package native picker cancel path is safe. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "plugin-picker-zip-review",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Plugin package native picker reviews a real zip package. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "plugin-install-disabled",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Plugin selected from the native picker installs disabled by default. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "invalid-package-feedback",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Invalid plugin or pet package shows a visible error from the packaged app. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "action-frame-picker-cancel",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Action frame folder native picker cancel path is safe. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "pet-pack-picker-cancel",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Pet pack folder native picker cancel path is safe. Fill with evidence from a real packaged-app native picker smoke validation run."
+    },
+    {
+      "id": "state-after-picker-smoke",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Application state remains consistent after picker smoke checks. Fill with evidence from a real packaged-app native picker smoke validation run."
+    }
+  ]
+}

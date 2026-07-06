@@ -92,9 +92,9 @@ test('createMacosReleaseEvidence imports unsigned evidence without readiness cla
 
   assert.equal(summary.ok, true)
   assert.equal(summary.releaseReady, false)
-  assert.equal(summary.statuses.codesign, 'pending')
-  assert.equal(summary.statuses.notarization, 'pending')
-  assert.equal(summary.statuses.gatekeeper, 'pending')
+  assert.equal(summary.statuses.codesign, 'fail')
+  assert.equal(summary.statuses.notarization, 'fail')
+  assert.equal(summary.statuses.gatekeeper, 'fail')
   assert.equal(summary.appPath, 'release/mac-arm64/OpenPet.app')
   assert.equal(summary.outputDir, 'docs/release-evidence/macos-release-evidence')
   assert.deepEqual(summary.files, {

@@ -1,0 +1,10 @@
+{
+  "commands": [
+    "curl -L --fail --output <archive.zip> 'https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master'",
+    "unzip -qq <archive.zip> -d <extract-dir>",
+    "npm run validate:plugin -- <extract-dir>/'.'",
+    "npm run create-plugin-community-source-intake-report -- --archive-url 'https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master' --plugin-path '.' --community-source-url 'https://github.com/alvinunreal/opencode-pets' --submitter 'alvinunreal/opencode-pets' --notes '2026-07-06 intake: public OpenCode-adjacent repo exposes installer/template sources but no current OpenPet plugin.json package root.' --output-dir 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets'",
+    "Review the intake output. If status is ready-for-community-evidence, continue into Phase 99 with a separate submission-evidence archive:",
+    "npm run create-plugin-community-source-submission-evidence -- --archive-url 'https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master' --plugin-path '.' --community-source-url 'https://github.com/alvinunreal/opencode-pets' --submitter 'alvinunreal/opencode-pets' --independence-notes '2026-07-06 intake: public OpenCode-adjacent repo exposes installer/template sources but no current OpenPet plugin.json package root.' --output-dir docs/release-evidence/plugin-community-source-submission-evidence/<session>"
+  ]
+}

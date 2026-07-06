@@ -1,0 +1,44 @@
+{
+  "generatedAt": "2026-07-06T14:09:02.173Z",
+  "outputDir": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter",
+  "communitySource": {
+    "kind": "community-source",
+    "url": "https://github.com/alvinunreal/openpets-plugin-starter",
+    "submitter": "alvinunreal/openpets-plugin-starter"
+  },
+  "archive": {
+    "kind": "https-archive",
+    "archiveUrl": "https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main",
+    "finalUrl": "https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main",
+    "archiveSha256": "4b1817db54b5ca2ce8965bc47ac616aa372f213a0ee192f11b1635db1c80a9f5",
+    "archiveByteSize": 6567,
+    "pluginPath": ".",
+    "archivePluginPath": ".",
+    "extractedFileHashes": {
+      "openpets-plugin-starter-main/.gitignore": "1192f6042ff9d2b031b6e6cdb628e0f0096c1aa2363a09ddcc65eb0387280380",
+      "openpets-plugin-starter-main/README.md": "2d3fc282d100a873e5c162e5b88dd000402c7eba0f9eb73393ac724aec8dcb08",
+      "openpets-plugin-starter-main/assets/icon.svg": "27500d20cdda54a76db25d3006f8ac4acfe8bc5e628139429083b9684e6157bd",
+      "openpets-plugin-starter-main/index.js": "5b420afc6aa4474b87c1ce0d42755b53c769fb3ea3b6cf9b3b1c1e7274d4c7f6",
+      "openpets-plugin-starter-main/locales/en.json": "9bc84b6fa94050b5e18ce2276d4b6fe7b464594ee3c0f26670f6445929476c6f",
+      "openpets-plugin-starter-main/openpets.plugin.json": "2b4448b0065ab812799441e07980906a5ba522d1f70bd129c2ccae1958cf5258",
+      "openpets-plugin-starter-main/package-lock.json": "0e3a8a6598722d13ccae89f6ff55456a86c864996fb783e3505e723c17d418db",
+      "openpets-plugin-starter-main/package.json": "4c3989473ef1090b6a8f4dd76f5729e0e10ea41acae89db3dfd743f6315b2771",
+      "openpets-plugin-starter-main/test.js": "5a8e61c01566460a4300bc201e63618b9225709c5d629c6a22352e85af44b5f5"
+    }
+  },
+  "plugin": null,
+  "compatibility": {
+    "ok": false,
+    "reasonCode": "plugin-json-missing",
+    "summary": "Candidate archive is incompatible with the current OpenPet plugin model because it requires a package rooted by plugin.json."
+  },
+  "status": "incompatible-package-model",
+  "notes": "2026-07-06 intake: public starter repo uses openpets.plugin.json at the archive root rather than the current OpenPet plugin.json package model.",
+  "files": {
+    "readme": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/README-community-intake.md",
+    "checklist": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/community-intake-checklist.md",
+    "commands": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/community-intake-commands.json",
+    "intake": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/community-source-intake.json",
+    "summary": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/plugin-community-source-intake-report-summary.json"
+  }
+}

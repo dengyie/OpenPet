@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-07-06T14:09:02.260Z",
+  "outputDir": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets",
+  "communitySource": {
+    "kind": "community-source",
+    "url": "https://github.com/alvinunreal/opencode-pets",
+    "submitter": "alvinunreal/opencode-pets"
+  },
+  "archive": {
+    "kind": "https-archive",
+    "archiveUrl": "https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master",
+    "finalUrl": "https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master",
+    "archiveSha256": "3532a32749a39e261c7ac7923146e5c0b2d864fc871c5f1573ecb93717f4c3f4",
+    "archiveByteSize": 1464222,
+    "pluginPath": ".",
+    "archivePluginPath": ".",
+    "extractedFileHashes": {
+      "opencode-pets-master/.gitignore": "3ec111906cdc623fdc065e96604ed4ed336569e0fa49df13bc0cef5d78d1bf73",
+      "opencode-pets-master/.slim/codemap.json": "b816609d8f4b38da7b0a1bfb92aa908ce770dd2be7e25b8834b36562af516657",
+      "opencode-pets-master/AGENTS.md": "f309e1a3436862870468552e805fc8cd32b441a6bb568ef2cd0006efe61ad812",
+      "opencode-pets-master/LICENSE": "64fe16a7823f955302cba2736147d232687a70f753c6484a132e6c0d0b579181",
+      "opencode-pets-master/README.md": "2b33cd94d8fb985d1942fffba7ee89c638e3ab21f21838861b88a7e4d727ff9d",
+      "opencode-pets-master/assets/opencode-pets.png": "d7b4b7ef0c72a575059fa3f3a83082a7833dd9318c2d160f10cbdb9c3f229aea",
+      "opencode-pets-master/bun.lock": "d552f7bd4516e8fd625fe93ffd84e4d10b83bb1136dd6af5f9a59c122b0ba4f9",
+      "opencode-pets-master/codemap.md": "ca97d49e93dc25d89a15ff6a7b68636aaaee3f27a3b39b9c8f27b3d931eabf4c",
+      "opencode-pets-master/package.json": "3b6342353f980b7c00cdebbabd866b80d4cc5c3197b571b61978bb8a2865da20",
+      "opencode-pets-master/src/cli.ts": "c6b4406f67f2da00bb40aa13d236aff0ade229ee7d72347f7a45aa322bd404e6",
+      "opencode-pets-master/src/codemap.md": "e7454d8ae4129219e7c076542677038a7e47e802853666e878033e9b9529b96e",
+      "opencode-pets-master/src/install.ts": "6ece93f576c01cc84de67a26b8295b0eb0897164ed0da11c657da20bc97d6287",
+      "opencode-pets-master/src/map-opencode-event.test.ts": "e73f8b93aab6058c14b8ebfe0aa47323afd307bdb03ccfc351449a8678917807",
+      "opencode-pets-master/src/map-opencode-event.ts": "bf383afa109787def33ac04e18d69a02e4b96b53340a628b4f79a8eddec2e9a8",
+      "opencode-pets-master/src/plugin-template.ts": "89a6e7b8191ed46d7468d6fd67470269e5496c2e3781643e1f0742432180c876",
+      "opencode-pets-master/tsconfig.json": "f1a3d00c1fff471e92b739f55bc64e59a8fe5efb80fe92c2bb63684077548046"
+    }
+  },
+  "plugin": null,
+  "compatibility": {
+    "ok": false,
+    "reasonCode": "plugin-json-missing",
+    "summary": "Candidate archive is incompatible with the current OpenPet plugin model because it requires a package rooted by plugin.json."
+  },
+  "status": "incompatible-package-model",
+  "notes": "2026-07-06 intake: public OpenCode-adjacent repo exposes installer/template sources but no current OpenPet plugin.json package root.",
+  "files": {
+    "readme": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets/README-community-intake.md",
+    "checklist": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets/community-intake-checklist.md",
+    "commands": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets/community-intake-commands.json",
+    "intake": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets/community-source-intake.json",
+    "summary": "docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets/plugin-community-source-intake-report-summary.json"
+  }
+}

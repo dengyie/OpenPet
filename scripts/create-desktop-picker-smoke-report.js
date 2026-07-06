@@ -44,6 +44,36 @@ const hasPlatformToken = (fileName, tokens) => {
 
 const hasMacToken = (fileName) => hasPlatformToken(fileName, ['darwin', 'mac', 'macos'])
 const hasWindowsToken = (fileName) => hasPlatformToken(fileName, ['win', 'win32', 'windows'])
+const normalizeArchToken = (value) => {
+  const token = String(value || '').toLowerCase()
+  if (token === 'x86_64') return 'x64'
+  if (token === 'aarch64') return 'arm64'
+  return token
+}
+
+const inferArchFromFileName = (fileName) => {
+  const match = String(fileName || '').toLowerCase().match(/(^|[-_.\/\s])(x64|arm64|aarch64|x86_64|ia32)(?=$|[-_.\/\s])/)
+  return match ? normalizeArchToken(match[2]) : ''
+}
+
+const inferArtifactArch = ({ artifact, files }) => {
+  const candidates = [
+    artifact?.appPath,
+    artifact?.installer,
+    artifact?.zip,
+    artifact?.latestYml,
+    ...(artifact?.blockmaps || []),
+    ...(artifact?.files || []).map((file) => file?.name),
+    ...(files || [])
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    const inferred = inferArchFromFileName(candidate)
+    if (inferred) return inferred
+  }
+
+  return ''
+}
 
 const listReleaseFiles = (releaseDir, fsImpl = fs) => {
   if (!fsImpl.existsSync(releaseDir)) return []
@@ -192,10 +222,11 @@ const createDesktopPickerSmokeReport = ({
   const artifact = pickArtifacts({ releaseDir: absoluteReleaseDir, platform, files, fsImpl })
   const packageJson = JSON.parse(fsImpl.readFileSync(packageJsonPath, 'utf-8'))
   const signature = getSignatureEvidence({ releaseDir: absoluteReleaseDir, platform, artifact, execFile })
+  const resolvedArch = inferArtifactArch({ artifact, files }) || arch
 
   return {
     platform,
-    arch,
+    arch: resolvedArch,
     generatedAt: now().toISOString(),
     source: 'scripts/create-desktop-picker-smoke-report.js',
     environment: {

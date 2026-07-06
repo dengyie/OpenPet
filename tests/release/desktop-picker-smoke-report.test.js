@@ -160,6 +160,29 @@ test('validateReport accepts a signed all-pass Windows picker smoke report', () 
   assert.equal(result.summary.officialReady, true)
 })
 
+test('createDesktopPickerSmokeReport infers Windows artifact arch from release files during cross-platform structure checks', () => {
+  const releaseDir = createReleaseDir()
+  const originalArchDescriptor = Object.getOwnPropertyDescriptor(process, 'arch')
+
+  Object.defineProperty(process, 'arch', {
+    ...originalArchDescriptor,
+    value: 'arm64'
+  })
+
+  try {
+    const report = createDesktopPickerSmokeReport({
+      releaseDir,
+      platform: 'win32',
+      allowAnyPlatform: true,
+      now: () => new Date('2026-07-06T00:00:00.000Z')
+    })
+
+    assert.equal(report.arch, 'x64')
+  } finally {
+    Object.defineProperty(process, 'arch', originalArchDescriptor)
+  }
+})
+
 test('createDesktopPickerSmokeReport rejects unsupported platforms', () => {
   assert.throws(
     () => createDesktopPickerSmokeReport({ platform: 'linux', allowAnyPlatform: true }),

@@ -74,6 +74,7 @@ test('createPluginCommunitySourceInvitationKit writes conservative invitation ar
   assert.equal(summary.outputDir, 'plugin-community-source-invitation-kit')
   assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
   assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'README.md')), true)
   assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.message)), true)
   assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.checklist)), true)
 
@@ -93,6 +94,11 @@ test('createPluginCommunitySourceInvitationKit writes conservative invitation ar
   assert.match(checklist, /Invitation sent/)
   assert.match(checklist, /Compatible `plugin.json` package received/)
   assert.match(checklist, /Phase 104 discovery report updated or linked/)
+
+  const directoryReadme = fs.readFileSync(path.join(outputDir, 'README.md'), 'utf-8')
+  assert.match(directoryReadme, /README-community-source-invitation\.md/)
+  assert.match(directoryReadme, /invitation-draft-ready/)
+  assert.match(directoryReadme, /not-sent/)
 })
 
 test('createPluginCommunitySourceInvitationKit can omit target URL without claiming contact', () => {

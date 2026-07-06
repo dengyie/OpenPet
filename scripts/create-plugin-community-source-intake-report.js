@@ -269,6 +269,20 @@ const renderReadme = ({ generatedAt, summary, commands }) => [
   ''
 ].join('\n')
 
+const renderDirectoryReadme = ({ summary }) => [
+  '# OpenPet Plugin Community-Source Intake Directory',
+  '',
+  'Start with `README-community-intake.md` for the generated intake narrative.',
+  'The structured machine-readable snapshot is `plugin-community-source-intake-report-summary.json`.',
+  '',
+  `- Status: ${summary.status}`,
+  `- Compatibility reason: ${summary.compatibility.reasonCode}`,
+  '',
+  '- This directory records package-model compatibility and archive provenance only.',
+  '- It does not install, enable, run, sign, publish, or trust a plugin.',
+  ''
+].join('\n')
+
 const renderChecklist = ({ summary }) => [
   '# Community-Source Intake Checklist',
   '',
@@ -365,21 +379,26 @@ const createPluginCommunitySourceIntakeReport = async ({
         compatibility.reasonCode = 'plugin-json-missing'
         compatibility.summary = 'Candidate archive is incompatible with the current OpenPet plugin model because it requires a package rooted by plugin.json.'
       } else {
-        const validation = validatePluginPackage(archivePluginCandidate.absoluteCandidate)
-        if (validation.ok) {
-          plugin = {
-            id: validation.review.plugin.id,
-            name: validation.review.plugin.name,
-            version: validation.review.plugin.version,
-            permissions: validation.review.plugin.permissions,
-            networkAllowlist: validation.review.plugin.network.allowlist
+        try {
+          const validation = validatePluginPackage(archivePluginCandidate.absoluteCandidate)
+          if (validation.ok) {
+            plugin = {
+              id: validation.review.plugin.id,
+              name: validation.review.plugin.name,
+              version: validation.review.plugin.version,
+              permissions: validation.review.plugin.permissions,
+              networkAllowlist: validation.review.plugin.network.allowlist
+            }
+            compatibility.ok = true
+            compatibility.reasonCode = 'openpet-plugin-package'
+            compatibility.summary = 'Candidate archive contains a valid OpenPet plugin package rooted by plugin.json.'
+          } else {
+            compatibility.reasonCode = 'plugin-json-invalid'
+            compatibility.summary = `Candidate package is structurally incompatible with the current OpenPet plugin model: ${validation.errors.join('; ')}`
           }
-          compatibility.ok = true
-          compatibility.reasonCode = 'openpet-plugin-package'
-          compatibility.summary = 'Candidate archive contains a valid OpenPet plugin package rooted by plugin.json.'
-        } else {
+        } catch (error) {
           compatibility.reasonCode = 'plugin-json-invalid'
-          compatibility.summary = `Candidate package is structurally incompatible with the current OpenPet plugin model: ${validation.errors.join('; ')}`
+          compatibility.summary = `Candidate package is structurally incompatible with the current OpenPet plugin model: ${error.message || error}`
         }
       }
     } else {
@@ -389,6 +408,7 @@ const createPluginCommunitySourceIntakeReport = async ({
 
     const status = compatibility.ok ? 'ready-for-community-evidence' : 'incompatible-package-model'
     const files = {
+      directoryReadme: path.join(absoluteOutputDir, 'README.md'),
       readme: path.join(absoluteOutputDir, 'README-community-intake.md'),
       checklist: path.join(absoluteOutputDir, 'community-intake-checklist.md'),
       commands: path.join(absoluteOutputDir, 'community-intake-commands.json'),
@@ -435,6 +455,7 @@ const createPluginCommunitySourceIntakeReport = async ({
       outputDir: safeOutputDir
     })
 
+    writeText(files.directoryReadme, renderDirectoryReadme({ summary }), fsImpl)
     writeText(files.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
     writeText(files.checklist, renderChecklist({ summary }), fsImpl)
     writeJson(files.commands, { commands }, fsImpl)
@@ -475,6 +496,7 @@ if (require.main === module) {
 module.exports = {
   createPluginCommunitySourceIntakeReport,
   parseArgs,
+  renderDirectoryReadme,
   renderChecklist,
   renderReadme,
   resolvePluginCandidate

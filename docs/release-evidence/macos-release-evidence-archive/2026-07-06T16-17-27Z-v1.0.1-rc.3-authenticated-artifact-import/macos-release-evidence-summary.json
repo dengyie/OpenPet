@@ -1,0 +1,77 @@
+{
+  "generatedAt": "2026-06-23T22:21:21.394Z",
+  "ok": true,
+  "releaseReady": false,
+  "appPath": "/Users/runner/work/OpenPet/OpenPet/release/mac-arm64/OpenPet.app",
+  "outputDir": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence",
+  "statuses": {
+    "codesign": "pending",
+    "notarization": "pending",
+    "gatekeeper": "pending"
+  },
+  "files": {
+    "codesign": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-codesign.txt",
+    "notarization": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-notarization.txt",
+    "gatekeeper": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-gatekeeper.txt",
+    "markdownSummary": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-release-evidence-summary.md",
+    "jsonSummary": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-release-evidence-summary.json"
+  },
+  "evidenceFiles": [
+    {
+      "role": "macosCodesignEvidence",
+      "path": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-codesign.txt",
+      "exists": true,
+      "bytes": 188,
+      "sha256": "492c09b399e781e8031a5286cf97c15844071c74784c61113a73ff6bfba3b3e2"
+    },
+    {
+      "role": "macosNotarizationEvidence",
+      "path": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-notarization.txt",
+      "exists": true,
+      "bytes": 61,
+      "sha256": "8294db73d918a516f74a724d7b10097ea9b8c07396a292553e12f086b739e182"
+    },
+    {
+      "role": "macosGatekeeperEvidence",
+      "path": "/Users/runner/work/OpenPet/OpenPet/release/macos-release-evidence/macos-gatekeeper.txt",
+      "exists": true,
+      "bytes": 184,
+      "sha256": "3bee4fb55bd1f63600058fb6fea7257c9c6652fae4901615bcf14c0f1980eb82"
+    }
+  ],
+  "commands": [
+    {
+      "command": "codesign",
+      "args": [
+        "--verify",
+        "--deep",
+        "--strict",
+        "--verbose=2",
+        "release/mac-arm64/OpenPet.app"
+      ],
+      "exitCode": 1,
+      "ok": false,
+      "stdout": "",
+      "stderr": "release/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present\n",
+      "content": "$ codesign --verify --deep --strict --verbose=2 release/mac-arm64/OpenPet.app\nrelease/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present\nexitCode: 1\n"
+    },
+    {
+      "command": "spctl",
+      "args": [
+        "--assess",
+        "--type",
+        "execute",
+        "--verbose=4",
+        "release/mac-arm64/OpenPet.app"
+      ],
+      "exitCode": 1,
+      "ok": false,
+      "stdout": "",
+      "stderr": "release/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present\n",
+      "content": "$ spctl --assess --type execute --verbose=4 release/mac-arm64/OpenPet.app\nrelease/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present\nexitCode: 1\n"
+    }
+  ],
+  "warnings": [
+    "macOS evidence is archived but does not prove official signed release readiness"
+  ]
+}

@@ -255,6 +255,20 @@ const renderReadme = ({ generatedAt, summary }) => [
   ''
 ].join('\n')
 
+const renderDirectoryReadme = ({ summary }) => [
+  '# OpenPet Plugin Community-Source Discovery Directory',
+  '',
+  'Start with `README-community-source-discovery.md` for the generated discovery narrative.',
+  'The structured machine-readable snapshot is `plugin-community-source-discovery-summary.json`.',
+  '',
+  `- Status: ${summary.status}`,
+  `- Next action: ${summary.nextAction}`,
+  '',
+  '- This directory records discovery observations only.',
+  '- It does not prove OpenPet plugin compatibility, signing trust, catalog publication, runtime safety, or release readiness.',
+  ''
+].join('\n')
+
 const createPluginCommunitySourceDiscoveryReport = ({
   searchResults = [],
   candidates = [],
@@ -274,7 +288,8 @@ const createPluginCommunitySourceDiscoveryReport = ({
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
   const outputFiles = {
     summary: path.join(absoluteOutputDir, 'plugin-community-source-discovery-summary.json'),
-    readme: path.join(absoluteOutputDir, 'README-community-source-discovery.md')
+    readme: path.join(absoluteOutputDir, 'README-community-source-discovery.md'),
+    directoryReadme: path.join(absoluteOutputDir, 'README.md')
   }
   const files = {
     summary: createSafeOutputFilePath({
@@ -308,6 +323,7 @@ const createPluginCommunitySourceDiscoveryReport = ({
   }
 
   writeText(outputFiles.readme, renderReadme({ generatedAt, summary }), fsImpl)
+  writeText(outputFiles.directoryReadme, renderDirectoryReadme({ summary }), fsImpl)
   writeJson(outputFiles.summary, summary, fsImpl)
 
   return summary
@@ -342,5 +358,6 @@ module.exports = {
   VALID_CANDIDATE_STATUSES,
   createPluginCommunitySourceDiscoveryReport,
   parseArgs,
+  renderDirectoryReadme,
   renderReadme
 }

@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-07-06T15:46:14.000Z",
+  "outputDir": "docs/release-evidence/plugin-community-source-invitation-kit/2026-07-06T15-46-14Z-openpets-plugin-starter-outreach",
+  "status": "invitation-draft-ready",
+  "nextAction": "send-invitation-and-wait-for-compatible-plugin-json-package",
+  "contactState": "not-sent",
+  "target": {
+    "author": "alvinunreal/openpets-plugin-starter maintainers",
+    "url": "https://github.com/alvinunreal/openpets-plugin-starter"
+  },
+  "candidateContext": "2026-07-06 discovery shows the current public starter and official OpenPets docs are centered on openpets.plugin.json plus SDK v3. OpenPet is still looking for a small compatible package rooted by plugin.json so maintainers can run Phase 100 intake and, only if compatible, continue through Phase 103 and Phase 99.",
+  "requestedCapabilities": [
+    "weather",
+    "pet-action",
+    "pet-dialogue"
+  ],
+  "maintainer": "OpenPet Maintainer",
+  "boundaries": [
+    "Invitation kits are draft outreach materials only.",
+    "Invitation kits do not prove an invitation was sent or accepted.",
+    "Invitation kits do not prove OpenPet plugin compatibility.",
+    "Invitation kits do not prove signing trust, catalog publication, runtime safety, or release readiness.",
+    "A received package must still pass Phase 104 discovery, Phase 100 intake, Phase 103 bridge, Phase 99 evidence, and maintainer review."
+  ],
+  "files": {
+    "summary": "plugin-community-source-invitation-summary.json",
+    "readme": "README-community-source-invitation.md",
+    "message": "invitation-message.md",
+    "checklist": "invitation-checklist.md"
+  }
+}

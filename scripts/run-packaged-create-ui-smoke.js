@@ -161,15 +161,20 @@ const summarizeRuntimeArtifact = (runtimeArtifact, now = () => new Date()) => ({
   ),
   initialGatingOk: Boolean(
     runtimeArtifact?.initialCreate?.visible &&
-    runtimeArtifact?.initialCreate?.providerReady === false &&
-    runtimeArtifact?.initialCreate?.creatorStudioReady === false
+    runtimeArtifact?.initialCreate?.creatorStudioReady === false &&
+    runtimeArtifact?.initialCreate?.generateButtonDisabled === true
   ),
   studioActivationOk: Boolean(
     runtimeArtifact?.afterStudioStart?.pluginEnabled &&
     runtimeArtifact?.afterStudioStart?.serviceStarted &&
     runtimeArtifact?.afterStudioStart?.visible &&
-    runtimeArtifact?.afterStudioStart?.creatorStudioReady &&
-    runtimeArtifact?.afterStudioStart?.providerReady === false
+    runtimeArtifact?.afterStudioStart?.creatorStudioReady
+  ),
+  providerReadyAfterStudioStart: Boolean(runtimeArtifact?.afterStudioStart?.providerReady),
+  providerStateTruthful: Boolean(
+    runtimeArtifact?.afterStudioStart?.providerReady
+      ? runtimeArtifact?.afterStudioStart?.generateButtonDisabled === false
+      : runtimeArtifact?.afterStudioStart?.generateButtonDisabled === true
   ),
   providerModel: String(
     runtimeArtifact?.afterStudioStart?.providerModel ||
@@ -235,6 +240,7 @@ const createPackagedCreateUiSmokeRun = async ({
     if (!summary.controlCenterReady) errors.push('Create packaged UI Control Center path did not complete')
     if (!summary.initialGatingOk) errors.push('Create packaged UI initial readiness gating was not truthful')
     if (!summary.studioActivationOk) errors.push('Create packaged UI studio activation path did not complete')
+    if (!summary.providerStateTruthful) errors.push('Create packaged UI provider readiness state was not truthful after Creator Studio activation')
   }
 
   const result = {

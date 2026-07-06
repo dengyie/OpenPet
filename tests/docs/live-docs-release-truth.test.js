@@ -48,7 +48,7 @@ test('live docs keep packaged runtime archive truth aligned with release evidenc
 })
 
 test('live docs keep signed release closure truth aligned with archived not-ready claims', () => {
-  const archiveDir = 'docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z'
+  const archiveDir = 'docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun'
   const report = readJson(`${archiveDir}/signed-release-closure-report.json`)
   const handoff = readText('docs/HANDOFF.md')
   const developmentSummary = readText('docs/development-summary.md')
@@ -56,9 +56,9 @@ test('live docs keep signed release closure truth aligned with archived not-read
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const projectContextFacts = readJson('docs/project-context.json').currentFacts.join('\n')
 
-  const archivePathPattern = /docs\/release-evidence\/signed-release-closure\/2026-06-16T15-00-00Z\//i
+  const archivePathPattern = /docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i
   const notReadyPattern = /official desktop[\s\S]*not-ready|macOS[\s\S]*not-ready|Windows[\s\S]*not-ready/i
-  const blockerPattern = /missing signed macOS evidence|missing desktop picker evidence|missing signed Windows smoke evidence/i
+  const blockerPattern = /macOS codesign.*fail|Windows smoke remains unsigned|desktop-picker archives remain archived but not signed-ready/i
   const manualRequiredPattern = /Apple signing|notarization|Windows signed artifact|human review/i
 
   assert.equal(report.releaseReady, false)
@@ -67,8 +67,14 @@ test('live docs keep signed release closure truth aligned with archived not-read
   assert.equal(report.claims.officialDesktopRelease.status, 'not-ready')
   assert.equal(report.claims.macos.status, 'not-ready')
   assert.equal(report.claims.windows.status, 'not-ready')
-  assert.match(JSON.stringify(report.claims.officialDesktopRelease.blockers), /missing desktopPickerReport|missing macosCodesignEvidence/i)
-  assert.match(JSON.stringify(report.claims.windows.blockers), /Windows desktop picker evidence is missing|Windows smoke evidence: artifact\.signed must be true/i)
+  assert.match(
+    JSON.stringify(report.claims.officialDesktopRelease.blockers),
+    /Archive manifest releaseReady is false|macOS codesign evidence status is fail|Windows smoke evidence: artifact\.signed must be true/i
+  )
+  assert.match(
+    JSON.stringify(report.claims.windows.blockers),
+    /Windows smoke archive evidence: windowsSmokeArchiveManifest is not valid|Windows desktop picker archive evidence: desktopPickerArchiveManifest is not valid/i
+  )
 
   for (const [name, content] of [
     ['HANDOFF.md', handoff],

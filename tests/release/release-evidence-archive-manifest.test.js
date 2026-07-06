@@ -22,6 +22,9 @@ const {
   writeManifest: writeDesktopPickerArchiveManifest
 } = require('../../scripts/create-desktop-picker-archive-manifest')
 const {
+  createMacosReleaseEvidenceArchive
+} = require('../../scripts/create-macos-release-evidence-archive')
+const {
   createWindowsSmokeArchiveManifest,
   writeManifest: writeWindowsSmokeArchiveManifest
 } = require('../../scripts/create-windows-smoke-archive-manifest')
@@ -300,6 +303,7 @@ test('resolveArchivePaths defaults to the standard release evidence archive shap
   assert.equal(paths.macosCodesignPath, path.resolve('archive/macos-codesign.txt'))
   assert.equal(paths.macosNotarizationPath, path.resolve('archive/macos-notarization.txt'))
   assert.equal(paths.macosGatekeeperPath, path.resolve('archive/macos-gatekeeper.txt'))
+  assert.equal(paths.macosArtifactManifestPath, path.resolve('archive/macos-release-evidence-artifact-manifest.json'))
   assert.equal(paths.outputPath, path.resolve('archive/release-evidence-archive-manifest.json'))
 })
 
@@ -308,9 +312,12 @@ test('macosEvidenceStatus detects signing, notarization, and Gatekeeper success 
   assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: Accepted' }), 'pass')
   assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'accepted\nsource=Notarized Developer ID' }), 'pass')
   assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'release/mac-arm64/OpenPet.app: accepted\nsource=Notarized Developer ID' }), 'pass')
-  assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: Invalid\nnot accepted' }), 'pending')
-  assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'not accepted\nsource=Unnotarized Developer ID' }), 'pending')
-  assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'rejected' }), 'pending')
+  assert.equal(macosEvidenceStatus({ kind: 'codesign', content: 'code has no resources but signature indicates they must be present\nexitCode: 1' }), 'fail')
+  assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: Invalid\nnot accepted' }), 'fail')
+  assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: NotSubmitted\nsource: unsigned macOS release workflow' }), 'fail')
+  assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'not accepted\nsource=Unnotarized Developer ID' }), 'fail')
+  assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'rejected' }), 'fail')
+  assert.equal(macosEvidenceStatus({ kind: 'codesign', content: 'codesign evidence pending. Provide --app or --codesign-source.' }), 'pending')
 })
 
 test('createReleaseEvidenceArchiveManifest archives pending evidence without readiness claim', () => {
@@ -322,13 +329,14 @@ test('createReleaseEvidenceArchiveManifest archives pending evidence without rea
   assert.equal(manifest.releaseReady, false)
   assert.equal(manifest.macos.releaseReady, false)
   assert.equal(manifest.reports.releaseReady, false)
-  assert.equal(manifest.files.length, 8)
+  assert.equal(manifest.files.length, 9)
   assert.equal(manifest.reports.windowsSmoke.structuralValidation.ok, true)
   assert.equal(manifest.reports.windowsSmoke.readinessValidation.ok, false)
   assert.equal(manifest.archives.windowsSmoke.ok, true)
   assert.equal(manifest.archives.windowsSmoke.releaseReady, false)
   assert.equal(manifest.archives.desktopPicker.ok, true)
   assert.equal(manifest.archives.desktopPicker.releaseReady, false)
+  assert.equal(manifest.archives.macosArtifact.file.exists, false)
   assert.match(manifest.warnings.join('\n'), /windowsSmokeArchiveManifest is archived but not release-ready/)
   assert.match(manifest.warnings.join('\n'), /windowsSmokeReport is archived but not release-ready/)
   assert.match(manifest.warnings.join('\n'), /desktopPickerArchiveManifest is archived but not release-ready/)
@@ -358,11 +366,12 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
       ['packagedRuntimeReport', 'string', 'boolean', 'number', 'string'],
       ['macosCodesignEvidence', 'string', 'boolean', 'number', 'string'],
       ['macosNotarizationEvidence', 'string', 'boolean', 'number', 'string'],
-      ['macosGatekeeperEvidence', 'string', 'boolean', 'number', 'string']
+      ['macosGatekeeperEvidence', 'string', 'boolean', 'number', 'string'],
+      ['macosReleaseEvidenceArtifactManifest', 'string', 'boolean', 'number', 'string']
     ]
   )
-  assert.deepEqual(Object.keys(manifest.macos), ['releaseReady', 'codesign', 'notarization', 'gatekeeper'])
-  assert.ok(['missing', 'pending', 'pass'].includes(manifest.macos.codesign.status))
+  assert.deepEqual(Object.keys(manifest.macos), ['releaseReady', 'codesign', 'notarization', 'gatekeeper', 'artifactArchive'])
+  assert.ok(['missing', 'pending', 'fail', 'pass'].includes(manifest.macos.codesign.status))
   assert.equal(manifest.reports.windowsSmoke.file.role, 'windowsSmokeReport')
   assert.equal(manifest.reports.windowsSmoke.report.platform, 'win32')
   assert.equal(typeof manifest.reports.windowsSmoke.structuralValidation.ok, 'boolean')
@@ -375,6 +384,10 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
   assert.equal(typeof manifest.archives.desktopPicker.ok, 'boolean')
   assert.equal(typeof manifest.archives.desktopPicker.releaseReady, 'boolean')
   assert.equal(typeof manifest.archives.desktopPicker.matchesReport, 'boolean')
+  assert.equal(manifest.archives.macosArtifact.file.role, 'macosReleaseEvidenceArtifactManifest')
+  assert.equal(typeof manifest.archives.macosArtifact.ok, 'boolean')
+  assert.equal(typeof manifest.archives.macosArtifact.matchesMacosEvidence, 'boolean')
+  assert.equal(typeof manifest.archives.macosArtifact.macosEvidenceReady, 'boolean')
   assert.deepEqual(
     manifest.files.map((file) => file.path),
     [
@@ -385,7 +398,8 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
       'packaged-runtime-smoke-report.json',
       'macos-codesign.txt',
       'macos-notarization.txt',
-      'macos-gatekeeper.txt'
+      'macos-gatekeeper.txt',
+      'macos-release-evidence-artifact-manifest.json'
     ]
   )
   assert.ok(Array.isArray(manifest.errors))
@@ -418,6 +432,61 @@ test('createReleaseEvidenceArchiveManifest marks signed all-pass archives as rel
   assert.equal(manifest.reports.desktopPicker.readinessValidation.summary.officialReady, true)
   assert.equal(manifest.reports.packagedRuntime.readinessValidation.summary.officialReady, true)
   assert.equal(manifest.archives.desktopPicker.releaseReady, true)
+})
+
+test('createReleaseEvidenceArchiveManifest validates imported macOS artifact provenance when present', () => {
+  const archiveDir = createArchive({ signed: true, status: 'pass', includeMacosEvidence: false })
+  const downloadedArtifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-macos-artifact-'))
+  fs.writeFileSync(path.join(downloadedArtifactDir, 'macos-codesign.txt'), 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n')
+  fs.writeFileSync(path.join(downloadedArtifactDir, 'macos-notarization.txt'), 'status: Accepted\nid: notarization-request\n')
+  fs.writeFileSync(path.join(downloadedArtifactDir, 'macos-gatekeeper.txt'), 'release/mac-arm64/OpenPet.app: accepted\nsource=Notarized Developer ID\n')
+
+  createMacosReleaseEvidenceArchive({
+    artifactDir: downloadedArtifactDir,
+    archiveDir,
+    artifactName: 'openpet-macos-release-evidence-v1.0.1',
+    releaseTag: 'v1.0.1',
+    workflowRunUrl: 'https://github.com/dengyie/OpenPet/actions/runs/100',
+    now: fixedNow
+  })
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+
+  assert.equal(manifest.ok, true)
+  assert.equal(manifest.releaseReady, true)
+  assert.equal(manifest.archives.macosArtifact.file.exists, true)
+  assert.equal(manifest.archives.macosArtifact.ok, true)
+  assert.equal(manifest.archives.macosArtifact.matchesMacosEvidence, true)
+  assert.equal(manifest.archives.macosArtifact.macosEvidenceReady, true)
+  assert.equal(manifest.archives.macosArtifact.artifactName, 'openpet-macos-release-evidence-v1.0.1')
+  assert.equal(manifest.archives.macosArtifact.releaseTag, 'v1.0.1')
+})
+
+test('createReleaseEvidenceArchiveManifest rejects stale imported macOS artifact provenance', () => {
+  const archiveDir = createArchive({ signed: true, status: 'pass', includeMacosEvidence: false })
+  const downloadedArtifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-macos-artifact-'))
+  fs.writeFileSync(path.join(downloadedArtifactDir, 'macos-codesign.txt'), 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n')
+  fs.writeFileSync(path.join(downloadedArtifactDir, 'macos-notarization.txt'), 'status: Accepted\nid: notarization-request\n')
+  fs.writeFileSync(path.join(downloadedArtifactDir, 'macos-gatekeeper.txt'), 'release/mac-arm64/OpenPet.app: accepted\nsource=Notarized Developer ID\n')
+
+  createMacosReleaseEvidenceArchive({
+    artifactDir: downloadedArtifactDir,
+    archiveDir,
+    artifactName: 'openpet-macos-release-evidence-v1.0.1',
+    releaseTag: 'v1.0.1',
+    workflowRunUrl: 'https://github.com/dengyie/OpenPet/actions/runs/100',
+    now: fixedNow
+  })
+
+  fs.writeFileSync(path.join(archiveDir, 'macos-codesign.txt'), 'tampered after import\n')
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+
+  assert.equal(manifest.ok, false)
+  assert.equal(manifest.releaseReady, false)
+  assert.equal(manifest.archives.macosArtifact.ok, false)
+  assert.equal(manifest.archives.macosArtifact.matchesMacosEvidence, false)
+  assert.match(manifest.errors.join('\n'), /macosReleaseEvidenceArtifactManifest records a stale macosCodesignEvidence hash/)
 })
 
 test('createReleaseEvidenceArchiveManifest requires a Windows smoke archive manifest', () => {

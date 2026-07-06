@@ -14,11 +14,13 @@ test('packaged creator studio runner parseArgs accepts app, archive dir, and jso
   const options = parseArgs([
     '--app', '/Applications/OpenPet.app',
     '--archive-dir', 'docs/release-evidence/creator-studio-packaged/session',
+    '--backend', 'provider',
     '--json'
   ])
 
   assert.equal(options.appPath, '/Applications/OpenPet.app')
   assert.equal(options.archiveDir, 'docs/release-evidence/creator-studio-packaged/session')
+  assert.equal(options.backend, 'provider')
   assert.equal(options.json, true)
 })
 
@@ -106,6 +108,7 @@ test('createPackagedCreatorStudioEvidenceRun persists runtime artifact and summa
   assert.equal(result.runtimeArtifact.pluginFound, true)
   assert.equal(result.summary.commandOk, true)
   assert.equal(result.summary.serviceHealthOk, true)
+  assert.equal(result.summary.backendRequested, 'fixture')
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-creator-studio-runtime.json')), true)
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-creator-studio-stdout.txt')), true)
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-creator-studio-stderr.txt')), true)
@@ -135,4 +138,69 @@ test('createPackagedCreatorStudioEvidenceRun preserves orchestration failures in
   assert.equal(result.ok, false)
   assert.match(result.errors.join('\n'), /timed out waiting for packaged creator studio evidence/)
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-creator-studio-evidence-summary.json')), true)
+})
+
+test('createPackagedCreatorStudioEvidenceRun records provider backend requests in runtime and summary output', async () => {
+  const archiveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-creator-studio-provider-'))
+
+  const result = await createPackagedCreatorStudioEvidenceRun({
+    appPath: '/Applications/OpenPet.app',
+    archiveDir,
+    backend: 'provider',
+    now: () => new Date('2026-07-06T13:10:00.000Z'),
+    orchestratePackagedAppImpl: ({ archiveDir: runArchiveDir, backend }) => {
+      const runtimeArtifactPath = path.join(runArchiveDir, 'packaged-creator-studio-runtime.json')
+      const stdoutPath = path.join(runArchiveDir, 'packaged-creator-studio-stdout.txt')
+      const stderrPath = path.join(runArchiveDir, 'packaged-creator-studio-stderr.txt')
+      const runtimeArtifact = {
+        schemaVersion: 1,
+        generatedAt: '2026-07-06T13:10:00.000Z',
+        pluginId: 'openpet.creator-studio',
+        pluginFound: true,
+        pluginEnabledBefore: false,
+        dashboard: {
+          present: true,
+          id: 'main',
+          title: 'Creator Studio',
+          url: 'http://127.0.0.1:8794'
+        },
+        service: {
+          present: true,
+          id: 'studio',
+          title: 'Creator Studio Service',
+          startRequested: true,
+          stopRequested: true,
+          healthOk: true,
+          healthStatus: 'healthy',
+          statusBeforeStart: 'stopped',
+          statusAfterStart: 'running',
+          statusAfterStop: 'stopped'
+        },
+        command: {
+          requested: true,
+          commandId: 'draft-task',
+          backend,
+          ok: true,
+          runId: 'run-packaged-creator-provider-1',
+          status: 'draft',
+          taskStatus: 'ready_for_confirmation',
+          mode: 'single-action'
+        }
+      }
+      fs.writeFileSync(runtimeArtifactPath, `${JSON.stringify(runtimeArtifact, null, 2)}\n`)
+      fs.writeFileSync(stdoutPath, 'discovered openpet.creator-studio\n')
+      fs.writeFileSync(stderrPath, '')
+      return {
+        runtimeArtifact,
+        runtimeArtifactPath,
+        stdoutPath,
+        stderrPath,
+        errors: []
+      }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.runtimeArtifact.command.backend, 'provider')
+  assert.equal(result.summary.backendRequested, 'provider')
 })

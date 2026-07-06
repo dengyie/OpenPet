@@ -1,0 +1,3 @@
+$ codesign --verify --deep --strict --verbose=2 release/mac-arm64/OpenPet.app
+release/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present
+exitCode: 1

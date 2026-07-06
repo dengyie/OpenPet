@@ -208,6 +208,21 @@ const renderReadme = ({ generatedAt, summary }) => [
   ''
 ].join('\n')
 
+const renderDirectoryReadme = ({ summary }) => [
+  '# OpenPet Community Source Invitation Directory',
+  '',
+  'Start with `README-community-source-invitation.md` for the generated invitation overview.',
+  'The structured machine-readable snapshot is `plugin-community-source-invitation-summary.json`.',
+  '',
+  `- Status: ${summary.status}`,
+  `- Contact state: ${summary.contactState}`,
+  `- Next action: ${summary.nextAction}`,
+  '',
+  '- This directory is draft outreach material only.',
+  '- It does not prove OpenPet plugin compatibility, signing trust, catalog publication, runtime safety, or release readiness.',
+  ''
+].join('\n')
+
 const createPluginCommunitySourceInvitationKit = ({
   targetAuthor = '',
   targetUrl = '',
@@ -235,6 +250,7 @@ const createPluginCommunitySourceInvitationKit = ({
   const outputFiles = {
     summary: path.join(absoluteOutputDir, 'plugin-community-source-invitation-summary.json'),
     readme: path.join(absoluteOutputDir, 'README-community-source-invitation.md'),
+    directoryReadme: path.join(absoluteOutputDir, 'README.md'),
     message: path.join(absoluteOutputDir, 'invitation-message.md'),
     checklist: path.join(absoluteOutputDir, 'invitation-checklist.md')
   }
@@ -284,6 +300,7 @@ const createPluginCommunitySourceInvitationKit = ({
   }
 
   writeText(outputFiles.readme, renderReadme({ generatedAt, summary }), fsImpl)
+  writeText(outputFiles.directoryReadme, renderDirectoryReadme({ summary }), fsImpl)
   writeText(outputFiles.message, renderInvitationMessage({ summary }), fsImpl)
   writeText(outputFiles.checklist, renderChecklist(), fsImpl)
   writeJson(outputFiles.summary, summary, fsImpl)
@@ -319,6 +336,7 @@ if (require.main === module) {
 module.exports = {
   createPluginCommunitySourceInvitationKit,
   parseArgs,
+  renderDirectoryReadme,
   renderChecklist,
   renderInvitationMessage,
   renderReadme

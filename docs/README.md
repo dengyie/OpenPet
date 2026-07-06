@@ -11,6 +11,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 | Single active work queue | [`TODO.md`](./TODO.md) |
 | Local development workflow | [`development-workflow.md`](./development-workflow.md) |
 | Test scope and merge-time validation | [`testing-strategy.md`](./testing-strategy.md) |
+| Release evidence index | [`release-evidence/README.md`](./release-evidence/README.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
 | Compact product and release snapshot | [`project-status-review.md`](./project-status-review.md) |
@@ -20,7 +21,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 | Area | Canonical docs |
 | --- | --- |
 | Agent Awareness program entry | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](./superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md) |
-| Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
+| Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md), [`phases/phase-104-plugin-community-source-discovery-report.md`](./phases/phase-104-plugin-community-source-discovery-report.md), [`phases/phase-105-plugin-community-source-invitation-kit.md`](./phases/phase-105-plugin-community-source-invitation-kit.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
 | Agent awareness and ClaudePet-inspired development route | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md), [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md), [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
 | Agent awareness implementation reference | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md), [`phases/phase-107-agent-awareness-bundled-plugin.md`](./phases/phase-107-agent-awareness-bundled-plugin.md), [`reviews/phase-107-agent-awareness-bundled-plugin-review.md`](./reviews/phase-107-agent-awareness-bundled-plugin-review.md) |
@@ -47,7 +48,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 - [`archive/`](./archive/) stores superseded one-off root-level reports and status snapshots.
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
-- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, `agent-awareness-local-smoke/`, and `creator-studio-provider-smoke/`, plus packaged runtime smoke archives under `packaged-runtime/` and release-claim closure archives under `signed-release-closure/`.
+- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, `agent-awareness-local-smoke/`, and `creator-studio-provider-smoke/`, public release metadata snapshots under `release-public-assets/`, macOS public-asset checks under `macos-release-evidence/`, authenticated macOS workflow-artifact imports under `macos-release-evidence-archive/`, Windows smoke artifact imports under `windows-smoke/`, community-source discovery archives under `plugin-community-source-discovery-report/`, invitation drafts under `plugin-community-source-invitation-kit/`, packaged runtime smoke archives under `packaged-runtime/`, and release-claim closure archives under `signed-release-closure/`.
 - [`release-notes/`](./release-notes/) stores GitHub Release body drafts.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 
