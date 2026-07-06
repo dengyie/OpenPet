@@ -10,8 +10,10 @@ const { sanitizeCreativeBrief } = require('../lib/openpet-prompt-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun, updateTaskDraft } = require('../lib/task-workflow')
 const { FIXTURE_BACKEND, normalizeCreatorBackend, usesHostProviderBackend } = require('../lib/backend-mode')
 const { createPlaybackDiagnostics } = require('../lib/action-frame-playback')
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('../lib/full-pet-row-contract')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
+const OFFICIAL_FULL_PET_ACTION_ID_SET = new Set(OFFICIAL_FULL_PET_ACTION_IDS)
 
 const sendJson = (response, statusCode, body) => {
   response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -25,6 +27,11 @@ const sendPng = (response, filePath) => {
 
 const sendWebp = (response, filePath) => {
   response.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'no-store' })
+  fs.createReadStream(filePath).pipe(response)
+}
+
+const sendGif = (response, filePath) => {
+  response.writeHead(200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store' })
   fs.createReadStream(filePath).pipe(response)
 }
 
@@ -132,6 +139,24 @@ const createPublicLogEntry = ({ dataDir, entry }) => createPublicLogValue({ data
 const normalizeRelativeArtifactPath = (value) => {
   if (typeof value !== 'string') return ''
   return value.trim().replace(/\\/g, '/')
+}
+
+const resolveDataRelativeArtifactPath = ({ dataDir, relativePath, label, expectedExtension = '' }) => {
+  const normalizedPath = normalizeRelativeArtifactPath(relativePath)
+  if (
+    !normalizedPath ||
+    path.isAbsolute(normalizedPath) ||
+    normalizedPath.split('/').includes('..')
+  ) {
+    throw new Error(`${label} must be a data-relative path`)
+  }
+  if (expectedExtension && path.extname(normalizedPath).toLowerCase() !== expectedExtension) {
+    throw new Error(`${label} must use ${expectedExtension} output`)
+  }
+  const targetPath = path.join(dataDir, ...normalizedPath.split('/'))
+  const absolutePath = assertPathInsideDataDir({ dataDir, targetPath, label })
+  if (!fs.existsSync(absolutePath)) throw new Error(`${label} is missing`)
+  return absolutePath
 }
 
 const normalizeEstimatedCostUsd = (value) => {
@@ -1527,6 +1552,93 @@ const getFullPetSourceImagePath = ({ dataDir, run }) => {
   return absolutePath
 }
 
+const readFullPetAtlasValidation = ({ dataDir, run }) => readJsonArtifact({
+  dataDir,
+  targetPath: run.artifacts?.qa,
+  label: 'Full-pet atlas QA'
+})
+
+const createFullPetVisualReview = ({ dataDir, run, atlasValidation }) => {
+  const visualReview = atlasValidation?.visualReview
+  if (!visualReview || typeof visualReview !== 'object') return null
+  const contactSheet = normalizeRelativeArtifactPath(visualReview.contactSheet)
+  if (!contactSheet) return null
+
+  try {
+    resolveDataRelativeArtifactPath({
+      dataDir,
+      relativePath: contactSheet,
+      label: 'Full-pet visual review contact sheet',
+      expectedExtension: '.png'
+    })
+  } catch (_) {
+    return null
+  }
+
+  const previews = Array.isArray(visualReview.previews)
+    ? visualReview.previews.flatMap((preview) => {
+      const actionId = String(preview?.actionId || '').trim()
+      const previewPath = normalizeRelativeArtifactPath(preview?.path)
+      if (!OFFICIAL_FULL_PET_ACTION_ID_SET.has(actionId) || !previewPath) return []
+      try {
+        resolveDataRelativeArtifactPath({
+          dataDir,
+          relativePath: previewPath,
+          label: 'Full-pet visual review preview',
+          expectedExtension: '.gif'
+        })
+      } catch (_) {
+        return []
+      }
+      return [{
+        actionId,
+        path: previewPath,
+        previewUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/previews/${encodeURIComponent(actionId)}.gif`,
+        frameCount: Number.isFinite(Number(preview?.frameCount)) ? Number(preview.frameCount) : 0,
+        durations: Array.isArray(preview?.durations)
+          ? preview.durations.map((duration) => Number(duration)).filter((duration) => Number.isFinite(duration) && duration > 0)
+          : []
+      }]
+    })
+    : []
+
+  return {
+    contactSheet,
+    contactSheetUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/contact-sheet.png`,
+    previews
+  }
+}
+
+const getFullPetVisualReviewContactSheetPath = ({ dataDir, run }) => {
+  const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const visualReview = atlasValidation?.visualReview
+  if (!visualReview?.contactSheet) throw new Error('Full-pet visual review contact sheet is not available')
+  return resolveDataRelativeArtifactPath({
+    dataDir,
+    relativePath: visualReview.contactSheet,
+    label: 'Full-pet visual review contact sheet',
+    expectedExtension: '.png'
+  })
+}
+
+const getFullPetVisualReviewPreviewPath = ({ dataDir, run, actionId }) => {
+  const safeActionId = String(actionId || '').trim()
+  if (!OFFICIAL_FULL_PET_ACTION_ID_SET.has(safeActionId)) {
+    throw new Error('Full-pet visual review action id is invalid')
+  }
+  const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const preview = Array.isArray(atlasValidation?.visualReview?.previews)
+    ? atlasValidation.visualReview.previews.find((entry) => String(entry?.actionId || '').trim() === safeActionId)
+    : null
+  if (!preview?.path) throw new Error('Full-pet visual review preview is not available')
+  return resolveDataRelativeArtifactPath({
+    dataDir,
+    relativePath: preview.path,
+    label: 'Full-pet visual review preview',
+    expectedExtension: '.gif'
+  })
+}
+
 const readActionFrameQa = ({ dataDir, actionFrames }) => {
   if (!actionFrames?.qa) return null
   try {
@@ -1600,11 +1712,8 @@ const createFullPetReview = ({ dataDir, run }) => {
   const artifacts = run.artifacts || {}
   const reviewState = createFullPetReviewGate({ dataDir, run })
   const importedPhase = run.status === 'imported'
-  const atlasValidation = readJsonArtifact({
-    dataDir,
-    targetPath: artifacts.qa,
-    label: 'Full-pet atlas QA'
-  })
+  const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const visualReview = createFullPetVisualReview({ dataDir, run, atlasValidation })
   const publicSourceImageValidation = importedPhase && reviewState.sourceImageValidation
     ? {
         ...reviewState.sourceImageValidation,
@@ -1645,6 +1754,7 @@ const createFullPetReview = ({ dataDir, run }) => {
     reviewGate: publicReviewState.reviewGate,
     sourceImageValidation: createPublicLogValue({ dataDir, value: publicSourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
+    visualReview,
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`
       : '',
@@ -1918,6 +2028,36 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Action frame preview not found' })
+      return
+    }
+  }
+
+  const fullPetContactSheetMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/full-pet\/contact-sheet\.png$/)
+  if (fullPetContactSheetMatch) {
+    try {
+      const run = readRun({ dataDir, runId: decodeURIComponent(fullPetContactSheetMatch[1]) })
+      const contactSheetPath = getFullPetVisualReviewContactSheetPath({ dataDir, run })
+      sendPng(response, contactSheetPath)
+      return
+    } catch (error) {
+      sendJson(response, 404, { ok: false, error: error.message || 'Full-pet visual review contact sheet not found' })
+      return
+    }
+  }
+
+  const fullPetPreviewMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/full-pet\/previews\/([^/]+)\.gif$/)
+  if (fullPetPreviewMatch) {
+    try {
+      const run = readRun({ dataDir, runId: decodeURIComponent(fullPetPreviewMatch[1]) })
+      const previewPath = getFullPetVisualReviewPreviewPath({
+        dataDir,
+        run,
+        actionId: decodeURIComponent(fullPetPreviewMatch[2])
+      })
+      sendGif(response, previewPath)
+      return
+    } catch (error) {
+      sendJson(response, 404, { ok: false, error: error.message || 'Full-pet visual review preview not found' })
       return
     }
   }

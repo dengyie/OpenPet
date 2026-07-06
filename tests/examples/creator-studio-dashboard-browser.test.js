@@ -426,6 +426,20 @@ const seedImportedFullPetRun = async (dataDir) => {
   })
   fs.mkdirSync(outputDir, { recursive: true })
   fs.mkdirSync(qaDir, { recursive: true })
+  await writeSolidPng(path.join(qaDir, 'full-pet-contact-sheet.png'), {
+    width: 1536,
+    height: 1872,
+    background: { r: 255, g: 222, b: 172, alpha: 1 }
+  })
+  fs.mkdirSync(path.join(qaDir, 'previews'), { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 244, g: 160, b: 90, alpha: 1 }
+    }
+  }).gif().toFile(path.join(qaDir, 'previews', 'idle.gif'))
   fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: 'imported-review-cat',
@@ -437,7 +451,16 @@ const seedImportedFullPetRun = async (dataDir) => {
     width: 1536,
     height: 1872,
     visiblePixels: 8200,
-    warnings: []
+    warnings: [],
+    visualReview: {
+      contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
+      previews: [{
+        actionId: 'idle',
+        path: `runs/${run.runId}/qa/previews/idle.gif`,
+        frameCount: 6,
+        durations: [280, 110, 110, 140, 140, 320]
+      }]
+    }
   }, null, 2)}\n`)
   fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
     ok: true,
@@ -1367,8 +1390,25 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(reviewText, /Follow-up: Review imported result/i)
     assert.match(reviewText, /Review the imported result inside OpenPet/i)
     assert.match(reviewText, /Continue in OpenPet\./i)
+    assert.match(reviewText, /Visual review/i)
+    assert.match(reviewText, /full-pet-contact-sheet\.png/i)
+    assert.match(reviewText, /idle\.gif/i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
+
+    const visualImages = page.locator('#full-pet-review-panel img[alt*="visual review" i]')
+    const visualImageCount = await visualImages.count()
+    assert.equal(visualImageCount, 2)
+    for (let index = 0; index < visualImageCount; index += 1) {
+      await visualImages.nth(index).evaluate((img) => new Promise((resolve, reject) => {
+        if (img.complete && img.naturalWidth > 0) {
+          resolve()
+          return
+        }
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('visual review image failed to load'))
+      }))
+    }
 
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review imported result/i)

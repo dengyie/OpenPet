@@ -416,6 +416,23 @@
         height: auto;
       }
 
+      .full-pet-preview-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+
+      .full-pet-preview-grid img {
+        width: 100%;
+        image-rendering: pixelated;
+        background: #f8fafc;
+      }
+
+      .full-pet-row-preview img {
+        aspect-ratio: 192 / 208;
+        object-fit: contain;
+      }
+
       .review-grid {
         display: grid;
         gap: 12px;
@@ -860,6 +877,8 @@
         const sourceValidation = review?.sourceImageValidation || {}
         const atlasValidation = review?.atlasValidation || {}
         const reviewGate = review?.reviewGate || {}
+        const visualReview = review?.visualReview || null
+        const visualPreviews = Array.isArray(visualReview?.previews) ? visualReview.previews : []
         const showsMismatch = run?.status === 'ready_for_review' && review?.sourceImageMatchesCurrent === false
         return [
           renderImportedReviewNotice(run),
@@ -900,6 +919,36 @@
           `<img alt="Full pet spritesheet preview" src="${escapeHtml(assetSrc(review.spritesheetUrl))}">`,
           '</div>',
           '</div>',
+          visualReview
+            ? [
+                '<div class="review-card">',
+                '<strong>Visual review</strong>',
+                visualReview.contactSheetUrl
+                  ? [
+                      `<p>Contact sheet: ${escapeHtml(visualReview.contactSheet || 'full-pet-contact-sheet.png')}</p>`,
+                      '<div class="contact-sheet-preview">',
+                      `<img alt="Full pet visual review contact sheet" src="${escapeHtml(assetSrc(visualReview.contactSheetUrl))}">`,
+                      '</div>'
+                    ].join('')
+                  : '<p>No full-pet contact sheet available.</p>',
+                visualPreviews.length
+                  ? [
+                      '<div class="full-pet-preview-grid">',
+                      ...visualPreviews.map((preview) => [
+                        '<div class="full-pet-row-preview">',
+                        `<strong>${escapeHtml(preview.actionId || 'row')}</strong>`,
+                        `<p>${escapeHtml(preview.path || '')}</p>`,
+                        preview.previewUrl
+                          ? `<img alt="Full pet visual review ${escapeHtml(preview.actionId || 'row')} preview" src="${escapeHtml(assetSrc(preview.previewUrl))}">`
+                          : '<p>No preview GIF available.</p>',
+                        '</div>'
+                      ].join('')),
+                      '</div>'
+                    ].join('')
+                  : '<p>No row GIF previews available.</p>',
+                '</div>'
+              ].join('')
+            : '',
           '<div class="review-grid two-up">',
           '<div class="review-card review-summary">',
           '<strong>Source QA summary:</strong>',

@@ -3182,6 +3182,23 @@ test('creator studio service exposes full-pet review details for dashboard clien
       background: { r: 240, g: 140, b: 80, alpha: 1 }
     }
   }).png().toFile(path.join(sourceDir, '0001.png'))
+  await sharp({
+    create: {
+      width: 1536,
+      height: 1872,
+      channels: 4,
+      background: { r: 250, g: 210, b: 160, alpha: 1 }
+    }
+  }).png().toFile(path.join(qaDir, 'full-pet-contact-sheet.png'))
+  fs.mkdirSync(path.join(qaDir, 'previews'), { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 245, g: 165, b: 90, alpha: 1 }
+    }
+  }).gif().toFile(path.join(qaDir, 'previews', 'idle.gif'))
   fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: 'review-pet-cat',
@@ -3194,7 +3211,16 @@ test('creator studio service exposes full-pet review details for dashboard clien
     width: 1536,
     height: 1872,
     visiblePixels: 6400,
-    warnings: []
+    warnings: [],
+    visualReview: {
+      contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
+      previews: [{
+        actionId: 'idle',
+        path: `runs/${run.runId}/qa/previews/idle.gif`,
+        frameCount: 6,
+        durations: [280, 110, 110, 140, 140, 320]
+      }]
+    }
   }, null, 2)}\n`)
   fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
     ok: true,
@@ -3237,7 +3263,11 @@ test('creator studio service exposes full-pet review details for dashboard clien
   try {
     const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}`).then((response) => response.json())
     const spritesheetResponse = await fetch(`http://127.0.0.1:${port}${detail.fullPetReview.spritesheetUrl}`)
+    const contactSheetResponse = await fetch(`http://127.0.0.1:${port}${detail.fullPetReview.visualReview.contactSheetUrl}`)
+    const previewResponse = await fetch(`http://127.0.0.1:${port}${detail.fullPetReview.visualReview.previews[0].previewUrl}`)
     const spritesheetBytes = Buffer.from(await spritesheetResponse.arrayBuffer())
+    const contactSheetBytes = Buffer.from(await contactSheetResponse.arrayBuffer())
+    const previewBytes = Buffer.from(await previewResponse.arrayBuffer())
     const serialized = JSON.stringify(detail)
 
     assert.equal(detail.ok, true)
@@ -3280,11 +3310,37 @@ test('creator studio service exposes full-pet review details for dashboard clien
       width: 1536,
       height: 1872,
       visiblePixels: 6400,
-      warnings: []
+      warnings: [],
+      visualReview: {
+        contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
+        previews: [{
+          actionId: 'idle',
+          path: `runs/${run.runId}/qa/previews/idle.gif`,
+          frameCount: 6,
+          durations: [280, 110, 110, 140, 140, 320]
+        }]
+      }
+    })
+    assert.deepEqual(detail.fullPetReview.visualReview, {
+      contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
+      contactSheetUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/contact-sheet.png`,
+      previews: [{
+        actionId: 'idle',
+        path: `runs/${run.runId}/qa/previews/idle.gif`,
+        previewUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/previews/idle.gif`,
+        frameCount: 6,
+        durations: [280, 110, 110, 140, 140, 320]
+      }]
     })
     assert.equal(spritesheetResponse.status, 200)
     assert.equal(spritesheetResponse.headers.get('content-type'), 'image/webp')
     assert.equal(spritesheetBytes.slice(0, 4).toString('utf-8'), 'RIFF')
+    assert.equal(contactSheetResponse.status, 200)
+    assert.equal(contactSheetResponse.headers.get('content-type'), 'image/png')
+    assert.equal(contactSheetBytes.slice(1, 4).toString('utf-8'), 'PNG')
+    assert.equal(previewResponse.status, 200)
+    assert.equal(previewResponse.headers.get('content-type'), 'image/gif')
+    assert.match(previewBytes.slice(0, 6).toString('utf-8'), /^GIF8[79]a$/)
     assert.equal(serialized.includes(dataDir), false)
   } finally {
     await new Promise((resolve) => server.close(resolve))
