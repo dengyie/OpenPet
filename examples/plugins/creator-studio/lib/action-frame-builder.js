@@ -22,19 +22,10 @@ const CONTACT_SHEET_THUMB_HEIGHT = 104
 const CONTACT_SHEET_LABEL_HEIGHT = 20
 const CONTACT_SHEET_GAP = 12
 const CONTACT_SHEET_COLUMNS = 4
+const ACTION_SHEET_MAX_COLUMNS = 4
 const VISIBLE_ALPHA_THRESHOLD = 8
 const COLOR_DIFF_THRESHOLD = 18
 const MIN_AVERAGE_CHANGED_PIXEL_RATIO = 0.003
-const MAX_AVERAGE_CHANGED_PIXEL_RATIO = 0.65
-const MAX_PAIR_CHANGED_PIXEL_RATIO = 0.86
-const MAX_IDENTITY_CORE_AVERAGE_CHANGED_PIXEL_RATIO = 0.52
-const MAX_IDENTITY_CORE_PAIR_CHANGED_PIXEL_RATIO = 0.72
-const IDENTITY_CORE_REGION = Object.freeze({
-  left: 0.28,
-  top: 0.16,
-  right: 0.72,
-  bottom: 0.78
-})
 
 const assertSafeActionId = (actionId) => {
   if (!SAFE_ACTION_ID_PATTERN.test(actionId || '')) {
@@ -227,8 +218,95 @@ const inspectVisibleImage = async (imagePath) => {
   return {
     width: decoded.info.width,
     height: decoded.info.height,
+    sha256: crypto.createHash('sha256').update(decoded.data).digest('hex'),
     visiblePixels: bounds?.visiblePixels || 0,
     bounds
+  }
+}
+
+const decodeFramePixels = async (imagePath) => sharp(imagePath)
+  .ensureAlpha()
+  .raw()
+  .toBuffer({ resolveWithObject: true })
+
+const getFrameFilePath = ({ framesDir, frame }) => path.join(framesDir, frame.fileName || '')
+
+const getVisibleRgbDistance = ({ dataA, dataB, index }) => (
+  Math.abs(dataA[index] - dataB[index]) +
+  Math.abs(dataA[index + 1] - dataB[index + 1]) +
+  Math.abs(dataA[index + 2] - dataB[index + 2])
+)
+
+const compareAdjacentFramePixels = (previous, next) => {
+  if (
+    previous.info.width !== next.info.width ||
+    previous.info.height !== next.info.height ||
+    previous.info.channels !== next.info.channels
+  ) {
+    return { changedPixels: 0, visibleUnionPixels: 0, changedPixelRatio: 0 }
+  }
+
+  let changedPixels = 0
+  let visibleUnionPixels = 0
+  const channels = previous.info.channels
+  for (let index = 0; index < previous.data.length; index += channels) {
+    const alphaA = previous.data[index + 3]
+    const alphaB = next.data[index + 3]
+    const visibleA = alphaA > VISIBLE_ALPHA_THRESHOLD
+    const visibleB = alphaB > VISIBLE_ALPHA_THRESHOLD
+    if (!visibleA && !visibleB) continue
+    visibleUnionPixels += 1
+    if (
+      Math.abs(alphaA - alphaB) > VISIBLE_ALPHA_THRESHOLD ||
+      getVisibleRgbDistance({ dataA: previous.data, dataB: next.data, index }) > COLOR_DIFF_THRESHOLD
+    ) {
+      changedPixels += 1
+    }
+  }
+
+  return {
+    changedPixels,
+    visibleUnionPixels,
+    changedPixelRatio: visibleUnionPixels > 0
+      ? Number((changedPixels / visibleUnionPixels).toFixed(6))
+      : 0
+  }
+}
+
+const createAdjacentFrameDiffMetrics = async ({ frames, framesDir }) => {
+  if (!framesDir || frames.length < 2) {
+    return {
+      minChangedPixelRatio: 0,
+      maxChangedPixelRatio: 0,
+      averageChangedPixelRatio: 0,
+      pairs: []
+    }
+  }
+
+  const decodedFrames = []
+  for (const frame of frames) {
+    decodedFrames.push(await decodeFramePixels(getFrameFilePath({ framesDir, frame })))
+  }
+
+  const pairs = []
+  for (let index = 1; index < decodedFrames.length; index += 1) {
+    const diff = compareAdjacentFramePixels(decodedFrames[index - 1], decodedFrames[index])
+    pairs.push({
+      from: frames[index - 1].fileName,
+      to: frames[index].fileName,
+      ...diff
+    })
+  }
+
+  const ratios = pairs.map((pair) => pair.changedPixelRatio)
+  const average = ratios.length > 0
+    ? ratios.reduce((total, value) => total + value, 0) / ratios.length
+    : 0
+  return {
+    minChangedPixelRatio: ratios.length > 0 ? Number(Math.min(...ratios).toFixed(6)) : 0,
+    maxChangedPixelRatio: ratios.length > 0 ? Number(Math.max(...ratios).toFixed(6)) : 0,
+    averageChangedPixelRatio: Number(average.toFixed(6)),
+    pairs
   }
 }
 
@@ -523,7 +601,7 @@ const sourceBoundsTouchCellEdge = (frame) => {
     bottom >= Number(cell.height || 0) - 1 - tolerance
 }
 
-const createActionFrameQuality = ({ frames, frameCount, extraction }) => {
+const createActionFrameQuality = async ({ frames, frameCount, extraction, framesDir }) => {
   const complete = isCompleteFrameEvidence({ frames, frameCount })
   const frameBounds = frames.map((frame) => frame?.frameBounds).filter(Boolean)
   const heights = numericRange(frameBounds.map((bounds) => bounds.height))
@@ -536,6 +614,17 @@ const createActionFrameQuality = ({ frames, frameCount, extraction }) => {
   const sourceCellEdgeTouchRatio = frames.length > 0
     ? Number((sourceCellEdgeTouchCount / frames.length).toFixed(3))
     : 0
+  const uniqueFrameCount = new Set(frames.map((frame) => frame?.sha256).filter(Boolean)).size
+  const duplicateFrameCount = Math.max(0, frames.length - uniqueFrameCount)
+  const reusedFrameCount = frames.filter((frame) => frame?.reusedPreviousFrame).length
+  const adjacentFrameDiff = complete
+    ? await createAdjacentFrameDiffMetrics({ frames, framesDir })
+    : {
+        minChangedPixelRatio: 0,
+        maxChangedPixelRatio: 0,
+        averageChangedPixelRatio: 0,
+        pairs: []
+      }
   const mode = String(extraction?.mode || '')
   const actionSheetMode = mode === 'action-sheet' || mode === 'action-sheet-fallback'
   const errors = []
@@ -546,6 +635,20 @@ const createActionFrameQuality = ({ frames, frameCount, extraction }) => {
   }
   if (complete && actionSheetMode && sourceCellEdgeTouchCount >= Math.max(3, Math.ceil(frameCount * 0.5))) {
     errors.push('Generated action sheet appears cropped or sliced: too many source cells touch grid boundaries.')
+  }
+  if (complete && reusedFrameCount > 0) {
+    errors.push('action_reused_frames')
+  }
+  if (complete && uniqueFrameCount <= 1) {
+    errors.push('action_repeated_static')
+  }
+  if (complete && frameCount >= 12 && uniqueFrameCount < 6) {
+    errors.push('action_insufficient_unique_frames')
+  } else if (complete && frameCount >= 6 && uniqueFrameCount < 4) {
+    errors.push('action_insufficient_unique_frames')
+  }
+  if (complete && adjacentFrameDiff.averageChangedPixelRatio < MIN_AVERAGE_CHANGED_PIXEL_RATIO) {
+    errors.push('action_motion_below_minimum')
   }
   if (complete && heights.range > 52 && heights.ratio > 1.45) {
     errors.push('Generated action frames have unstable sprite height; this usually indicates cropped body fragments.')
@@ -565,6 +668,10 @@ const createActionFrameQuality = ({ frames, frameCount, extraction }) => {
     warnings,
     metrics: {
       frameCount: frames.length,
+      uniqueFrameCount,
+      duplicateFrameCount,
+      reusedFrameCount,
+      adjacentFrameDiff,
       sourceCellEdgeTouchCount,
       sourceCellEdgeTouchRatio,
       visiblePixels,
@@ -720,6 +827,7 @@ const buildActionFramesFromGeneratedImage = async ({
       fileName,
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
+      sha256: frameInspection.sha256,
       visiblePixels: frameInspection.visiblePixels,
       frameBounds: frameInspection.bounds,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
@@ -742,9 +850,10 @@ const buildActionFramesFromGeneratedImage = async ({
     frameCount,
     loop: Boolean(action?.loop)
   })
-  const quality = createActionFrameQuality({
+  const quality = await createActionFrameQuality({
     frames,
     frameCount,
+    framesDir: safeOutputFramesDir,
     extraction: extraction || {
       mode: 'action-sheet',
       outputCount: 1,
@@ -891,6 +1000,7 @@ const repairActionFrameFromGeneratedImage = async ({
     fileName,
     width: FRAME_WIDTH,
     height: FRAME_HEIGHT,
+    sha256: frameInspection.sha256,
     visiblePixels: frameInspection.visiblePixels,
     frameBounds: frameInspection.bounds,
     sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
@@ -943,7 +1053,12 @@ const repairActionFrameFromGeneratedImage = async ({
   })
   const extraction = currentQa.extraction || frameSource.extraction
   const quality = qaComplete
-    ? createActionFrameQuality({ frames, frameCount, extraction })
+    ? await createActionFrameQuality({
+        frames,
+        frameCount,
+        extraction,
+        framesDir: safeOutputFramesDir
+      })
     : {
         ok: false,
         errors: [],

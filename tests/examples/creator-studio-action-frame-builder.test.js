@@ -9,12 +9,10 @@ const {
   buildActionFramesFromGeneratedImage,
   repairActionFrameFromGeneratedImage
 } = require('../../examples/plugins/creator-studio/lib/action-frame-builder')
-const { assertActionFrameQaPassed } = require('../../examples/plugins/creator-studio/lib/action-frame-qa')
 const {
   writeBadStaticActionSheet,
   writeGoodSubtleWaveSheet
 } = require('../fixtures/creator-studio/action-quality-fixtures')
-const { getActionSheetLayout } = require('../../examples/plugins/creator-studio/lib/action-sheet-layout')
 
 const makeDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-frames-'))
 
@@ -951,6 +949,70 @@ test('action frame builder rejects sliced single-character sheets as failed QA',
   assert.equal(qa.quality.metrics.sourceCellEdgeTouchCount > 8, true)
 })
 
+test('action frame builder rejects static action sheets as failed motion QA', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await writeBadStaticActionSheet({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 6
+  })
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'static-wave',
+      name: 'Static Wave',
+      frameCount: 6,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/static-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.match(qa.errors.join('\n'), /action_repeated_static/)
+  assert.equal(qa.quality.metrics.uniqueFrameCount, 1)
+  assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio, 0)
+})
+
+test('action frame builder accepts subtle waving sheets with stable anchors', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await writeGoodSubtleWaveSheet({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 6
+  })
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'subtle-wave',
+      name: 'Subtle Wave',
+      frameCount: 6,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/subtle-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, true)
+  assert.equal(qa.quality.metrics.uniqueFrameCount >= 4, true)
+  assert.equal(qa.quality.metrics.reusedFrameCount, 0)
+  assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
+})
+
 test('action frame builder rejects unsafe action ids', async () => {
   const dataDir = makeDataDir()
   await assert.rejects(
@@ -1368,7 +1430,7 @@ test('action frame builder rejects multiple provider sheets instead of combining
   )
 })
 
-test('action frame builder fails fast instead of reusing frames when provider sheet cells are empty', async () => {
+test('action frame builder fails QA when later single-sheet cells reuse previous frames', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
   const qaDir = path.join(dataDir, 'runs/demo/qa')
@@ -1398,8 +1460,19 @@ test('action frame builder fails fast instead of reusing frames when provider sh
     /visible pixels/i
   )
 
-  assert.equal(fs.existsSync(path.join(outputFramesDir, '0005.png')), false)
-  assert.equal(fs.existsSync(path.join(outputFramesDir, '0006.png')), false)
-  assert.equal(fs.existsSync(path.join(outputFramesDir, '0007.png')), false)
-  assert.equal(fs.existsSync(path.join(outputFramesDir, '0008.png')), false)
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  const frame5 = fs.readFileSync(path.join(result.framesDir, '0005.png'))
+  const frame6 = fs.readFileSync(path.join(result.framesDir, '0006.png'))
+  const frame8 = fs.readFileSync(path.join(result.framesDir, '0008.png'))
+  assert.equal(qa.ok, false)
+  assert.equal(qa.frames.length, 8)
+  assert.equal(Array.isArray(qa.warnings), true)
+  assert.equal(qa.warnings.length, 3)
+  assert.match(qa.errors.join('\n'), /action_reused_frames/)
+  assert.equal(qa.quality.metrics.reusedFrameCount, 3)
+  assert.match(qa.warnings[0], /Frame 0006\.png reused previous valid frame/i)
+  assert.equal(qa.frames[5].reusedPreviousFrame, true)
+  assert.equal(qa.frames[5].reusedFromFileName, '0005.png')
+  assert.equal(frame5.equals(frame6), true)
+  assert.equal(frame6.equals(frame8), true)
 })

@@ -1,8 +1,13 @@
 const sharp = require('sharp')
-const { getActionSheetLayout } = require('../../../examples/plugins/creator-studio/lib/action-sheet-layout')
 
 const DEFAULT_CELL_WIDTH = 256
 const DEFAULT_CELL_HEIGHT = 256
+
+const getSheetLayout = (frameCount) => {
+  const columns = frameCount === 6 ? 3 : Math.max(1, Math.min(4, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
+  return { columns, rows }
+}
 
 const catSvg = ({
   cellWidth = DEFAULT_CELL_WIDTH,
@@ -42,7 +47,7 @@ const catSvg = ({
 }
 
 const writeSheet = async ({ filePath, frameCount, frameSvg }) => {
-  const { columns, rows } = getActionSheetLayout(frameCount)
+  const { columns, rows } = getSheetLayout(frameCount)
   const composites = Array.from({ length: frameCount }, (_entry, index) => ({
     input: Buffer.from(frameSvg(index)),
     left: (index % columns) * DEFAULT_CELL_WIDTH,
