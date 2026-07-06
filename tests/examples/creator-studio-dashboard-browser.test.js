@@ -1486,6 +1486,11 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(reviewText, /Visual review/i)
     assert.match(reviewText, /full-pet-contact-sheet\.png/i)
     assert.match(reviewText, /idle\.gif/i)
+    assert.match(reviewText, /Row stability/i)
+    assert.match(reviewText, /idle: row-real/i)
+    assert.match(reviewText, /Centroid drift: 4\.5/i)
+    assert.match(reviewText, /Baseline drift: 2/i)
+    assert.match(reviewText, /stable-slots/i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
 

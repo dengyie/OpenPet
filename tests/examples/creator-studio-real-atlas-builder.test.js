@@ -136,6 +136,37 @@ const writeOfficialFrame = async ({ outputPath, rowIndex, frameIndex }) => {
     .toFile(outputPath)
 }
 
+const writeJitteredOfficialFrame = async ({ outputPath, frameIndex }) => {
+  const offsets = [
+    { x: 8, y: 2 },
+    { x: 52, y: 40 },
+    { x: 18, y: 16 },
+    { x: 78, y: 58 }
+  ]
+  const offset = offsets[frameIndex]
+  await sharp(Buffer.from(
+    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${offset.x}" y="${offset.y + 58}" width="${54 + frameIndex}" height="${72 - frameIndex}" fill="#f6b73c"/>
+      <rect x="${offset.x + 28 + frameIndex * 4}" y="${offset.y + 34}" width="12" height="${28 + frameIndex * 3}" fill="#1c7ed6"/>
+      <rect x="${offset.x + 18}" y="${offset.y + 128 - (frameIndex % 2)}" width="${22 + frameIndex}" height="8" fill="#2f9e44"/>
+    </svg>`
+  ))
+    .ensureAlpha()
+    .png()
+    .toFile(outputPath)
+}
+
+const writeTranslatedOfficialFrame = async ({ outputPath, frameIndex }) => {
+  await sharp(Buffer.from(
+    `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${40 + frameIndex * 10}" y="${84 + frameIndex * 4}" width="58" height="72" fill="#f6b73c"/>
+    </svg>`
+  ))
+    .ensureAlpha()
+    .png()
+    .toFile(outputPath)
+}
+
 const createOfficialFrameSvgBuffer = ({ rowIndex, frameIndex }) => Buffer.from(
   `<svg width="${CODEX_ATLAS.cellWidth}" height="${CODEX_ATLAS.cellHeight}" xmlns="http://www.w3.org/2000/svg">
     <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3)}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
@@ -343,6 +374,79 @@ test('real atlas builder composes official row package into complete Codex actio
   )
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
   assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
+})
+
+test('real atlas builder applies stable-slots before composing jittered official rows', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+  const officialRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+  const waving = officialRows.rows.find((row) => row.actionId === 'waving')
+  for (const [frameIndex, frame] of waving.frames.entries()) {
+    await writeJitteredOfficialFrame({ outputPath: frame.path, frameIndex })
+  }
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir,
+    officialRows
+  })
+
+  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
+  const wavingQa = rowQa.rows.find((row) => row.actionId === 'waving')
+  assert.equal(wavingQa.quality, FULL_PET_ROW_QUALITY.ROW_REAL)
+  assert.deepEqual(wavingQa.errors, [])
+  assert.equal(wavingQa.stabilization.method, 'stable-slots')
+  assert.equal(wavingQa.stabilization.frameWidth, CODEX_ATLAS.cellWidth)
+  assert.equal(wavingQa.stabilization.frameHeight, CODEX_ATLAS.cellHeight)
+  assert.equal(wavingQa.preStabilization.quality, FULL_PET_ROW_QUALITY.FAILED)
+  assert.equal(wavingQa.preStabilization.errors.includes('row_centroid_drift'), true)
+  assert.equal(wavingQa.preStabilization.errors.includes('row_baseline_drift'), true)
+  assert.equal(wavingQa.baselineDrift <= 30, true)
+  assert.equal(wavingQa.centroidDrift <= 40, true)
+  assert.equal(
+    fs.existsSync(path.join(dataDir, 'runs', 'run-1', 'qa', 'stable-rows', 'waving', 'stable-slots-metadata.json')),
+    true
+  )
+
+  const atlasQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'atlas-validation.json'), 'utf-8'))
+  assert.equal(atlasQa.frame.rows.find((row) => row.id === 'waving').sourceQuality, FULL_PET_ROW_QUALITY.ROW_REAL)
+  assert.equal(new Set(await getRowCellHashes(result.spritesheetPath, CODEX_ROWS.find((row) => row.id === 'waving'))).size, 4)
+  assert.equal(JSON.stringify(rowQa).includes(dataDir), false)
+})
+
+test('real atlas builder still rejects transform-like official rows after stable-slots retry', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+  const officialRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+  const running = officialRows.rows.find((row) => row.actionId === 'running')
+  for (const [frameIndex, frame] of running.frames.entries()) {
+    await writeTranslatedOfficialFrame({ outputPath: frame.path, frameIndex })
+  }
+
+  await assert.rejects(
+    buildRealAtlasFromGeneratedImage({
+      dataDir,
+      generationResult: createGenerationResult(relativePath),
+      outputDir,
+      qaDir,
+      officialRows
+    }),
+    /Official full-pet row running failed QA:/
+  )
+  assert.equal(
+    fs.existsSync(path.join(dataDir, 'runs', 'run-1', 'qa', 'stable-rows', 'running', 'stable-slots-metadata.json')),
+    false
+  )
 })
 
 test('real atlas builder accepts row frames extracted from official row job manifest outputs', async () => {

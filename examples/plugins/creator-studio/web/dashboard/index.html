@@ -898,6 +898,7 @@
         const reviewGate = review?.reviewGate || {}
         const visualReview = review?.visualReview || null
         const visualPreviews = Array.isArray(visualReview?.previews) ? visualReview.previews : []
+        const rowValidationRows = Array.isArray(review?.rowValidation?.rows) ? review.rowValidation.rows : []
         const showsMismatch = run?.status === 'ready_for_review' && review?.sourceImageMatchesCurrent === false
         const canRepair = ['failed', 'ready_for_review'].includes(String(run?.status || ''))
         return [
@@ -992,6 +993,21 @@
                       '</div>'
                     ].join('')
                   : '<p>No row GIF previews available.</p>',
+                '</div>'
+              ].join('')
+            : '',
+          rowValidationRows.length
+            ? [
+                '<div class="review-card review-summary">',
+                '<strong>Row stability</strong>',
+                ...rowValidationRows.map((row) => {
+                  const stabilizationMethod = row?.stabilization?.method || 'none'
+                  return [
+                    `<span>${escapeHtml(row.actionId || 'row')}: ${escapeHtml(row.quality || 'unknown')}</span>`,
+                    `<span>Centroid drift: ${escapeHtml(row.centroidDrift || 0)} / Baseline drift: ${escapeHtml(row.baselineDrift || 0)}</span>`,
+                    `<span>Stabilization: ${escapeHtml(stabilizationMethod)}</span>`
+                  ].join('')
+                }),
                 '</div>'
               ].join('')
             : '',
