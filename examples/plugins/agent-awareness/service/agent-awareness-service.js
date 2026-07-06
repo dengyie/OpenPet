@@ -7,7 +7,8 @@ const { isCodexHookPayload, normalizeCodexHookEvent } = require('./adapters/code
 const { createCodexRolloutPoller } = require('./adapters/codex-rollout-poller')
 const { createAgentStateMapper } = require('./state-mapper')
 const { createSessionStore } = require('./session-store')
-const { PLAN_FILE, TOKEN_FILE } = require('../commands/codex-hook-plan')
+const { TOKEN_FILE } = require('../commands/codex-hook-plan')
+const { readHookMode } = require('../lib/hook-mode')
 
 const DEFAULT_PORT = 8795
 
@@ -66,18 +67,6 @@ const isAuthorized = ({ request, token }) => {
   if (!token) return true
   const header = String(request.headers.authorization || '')
   return header === `Bearer ${token}`
-}
-
-const readHookMode = (dataDir) => {
-  const tokenPresent = fs.existsSync(path.join(dataDir, TOKEN_FILE))
-  const planPresent = fs.existsSync(path.join(dataDir, PLAN_FILE))
-  return {
-    installed: false,
-    mode: 'not-installed',
-    planAvailable: planPresent,
-    tokenConfigured: tokenPresent,
-    ingestAuthRequired: tokenPresent
-  }
 }
 
 const sanitizePollerStatus = (status = {}) => ({

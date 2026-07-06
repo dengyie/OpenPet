@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const { runJsonCommand } = require('./command-io')
 const { DEFAULT_PORT, PLAN_FILE, TOKEN_FILE, getDataDir } = require('./codex-hook-plan')
+const { readHookMode } = require('../lib/hook-mode')
 
 const CHECK_VALUE_LABELS = {
   'data-dir': 'plugin-data-dir',
@@ -126,10 +127,7 @@ if (require.main === module) {
       checks,
       diagnostics,
       serviceHealth,
-      hookMode: {
-        installed: false,
-        mode: 'not-installed'
-      },
+      hookMode: readHookMode(dataDir),
       nativeExecutionApproved
     })
   })

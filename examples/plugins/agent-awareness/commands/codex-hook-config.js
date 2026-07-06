@@ -6,6 +6,7 @@ const {
   TOKEN_FILE,
   writeCodexHookPlan
 } = require('./codex-hook-plan')
+const { HOOK_STATE_FILE } = require('../lib/hook-mode')
 
 const OPENPET_HOOK_SCRIPT = 'openpet-agent-awareness.js'
 const OPENPET_STATUS_MESSAGE = 'Notifying OpenPet'
@@ -17,7 +18,6 @@ const OPENPET_HOOK_EVENTS = [
   'PostToolUse',
   'Stop'
 ]
-const HOOK_STATE_FILE = 'hook-install-state.json'
 const DEFAULT_PORT = 8795
 
 const normalizeFileText = (text) => text.endsWith('\n') ? text : `${text}\n`

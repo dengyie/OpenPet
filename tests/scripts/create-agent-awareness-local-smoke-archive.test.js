@@ -106,10 +106,13 @@ test('parseArgs rejects missing and unexpected arguments', () => {
 
 test('createReadme preserves privacy-first claim boundary', () => {
   const { report } = createSessionFixture()
+  report.manualAcceptanceTemplate.notes = 'Separate live-app verification after this smoke run confirmed the dev7 app health endpoint showed hook installed.'
   const readme = createReadme({ report, archiveDir: '/tmp/archive' })
 
   assert.match(readme, /Agent Awareness Local Smoke Evidence/)
   assert.match(readme, /## Manual Acceptance/)
+  assert.match(readme, /separate live-app verification/i)
+  assert.match(readme, /outside the archived smoke run/i)
   assert.match(readme, /manualAcceptanceTemplate/)
   assert.match(readme, /does not by itself prove/i)
   assert.match(readme, /unsupportedLifecycleRecordCount = 19/)

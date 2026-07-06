@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-07-05T17:15:31.297Z",
+  "ok": true,
+  "source": {
+    "sessionDir": "release/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z",
+    "resultPath": "release/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z/agent-awareness-local-smoke-result.json"
+  },
+  "archive": {
+    "archiveDir": "docs/release-evidence/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z",
+    "outputPath": "docs/release-evidence/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z/agent-awareness-local-smoke-archive-result.json"
+  },
+  "smoke": {
+    "sanitizedSignalDetected": true,
+    "sessionCount": 24,
+    "activeSessionCount": 2,
+    "totalEvents": 913,
+    "unsupportedLifecycleRecordCount": 0,
+    "manualAcceptanceTemplatePresent": true,
+    "manualAcceptance": {
+      "dashboardUseful": "pass",
+      "petSpeechNoiseAcceptable": "pass",
+      "redactionLooksSafe": "pass",
+      "notesPresent": true
+    }
+  },
+  "files": [
+    {
+      "role": "agentAwarenessLocalSmokeResult",
+      "path": "agent-awareness-local-smoke-result.json",
+      "bytes": 3717,
+      "sha256": "255afdaea800af93fec6464051050e7560d4f8bf7ca10d89720cb51953beae21"
+    },
+    {
+      "role": "archiveReadme",
+      "path": "README.md",
+      "bytes": 3175,
+      "sha256": "f40e0d06fa2837a534e92741643e5b262ac7d5c7c7eb4c65f9f6b4705a38c2b8"
+    }
+  ]
+}

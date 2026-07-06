@@ -19,6 +19,7 @@ const { createSessionStore } = require('../../examples/plugins/agent-awareness/s
 const { createAgentStateMapper } = require('../../examples/plugins/agent-awareness/service/state-mapper')
 const { createAgentAwarenessServer } = require('../../examples/plugins/agent-awareness/service/agent-awareness-service')
 const { DEFAULT_PORT, PLAN_FILE, TOKEN_FILE, toCommandOutput, writeCodexHookPlan } = require('../../examples/plugins/agent-awareness/commands/codex-hook-plan')
+const { installCodexHooks } = require('../../examples/plugins/agent-awareness/commands/codex-hook-config')
 const { checkServiceHealth, readDiagnostics, redactDoctorOutput, toDoctorServiceHealthOutput } = require('../../examples/plugins/agent-awareness/commands/doctor')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/agent-awareness')
@@ -554,6 +555,71 @@ test('agent awareness server merges hook and poller events into one richer runti
   assert.equal(session.lastSource, 'poller')
 })
 
+test('agent awareness server reports installed hook mode when current hook assets still exist', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-installed-'))
+  const dataDir = path.join(root, 'agent-data')
+  const codexHome = path.join(root, 'codex-home')
+  installCodexHooks({ dataDir, codexHome, port: 65530 })
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => {},
+      say: async () => {}
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true, seenCount: 0 }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.start(0)
+  const port = service.server.address().port
+  const healthResponse = await fetch(`http://127.0.0.1:${port}/health`)
+  await service.close()
+
+  const health = await healthResponse.json()
+  assert.deepEqual(health.hookMode, {
+    installed: true,
+    mode: 'installed',
+    planAvailable: true,
+    tokenConfigured: true,
+    ingestAuthRequired: true
+  })
+})
+
+test('agent awareness server reports hook mode as not installed when install state remains but the sender script is missing', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-stale-hook-'))
+  const dataDir = path.join(root, 'agent-data')
+  const codexHome = path.join(root, 'codex-home')
+  const install = installCodexHooks({ dataDir, codexHome, port: 65530 })
+  fs.rmSync(install.hookScriptPath)
+
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => {},
+      say: async () => {}
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true, seenCount: 0 }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.start(0)
+  const port = service.server.address().port
+  const healthResponse = await fetch(`http://127.0.0.1:${port}/health`)
+  await service.close()
+
+  const health = await healthResponse.json()
+  assert.equal(health.hookMode.installed, false)
+  assert.equal(health.hookMode.mode, 'not-installed')
+  assert.equal(health.hookMode.planAvailable, true)
+  assert.equal(health.hookMode.tokenConfigured, true)
+})
+
 test('codex hook plan writes only plugin-owned planning files', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-plan-'))
   const result = writeCodexHookPlan({ dataDir, port: DEFAULT_PORT })
@@ -672,6 +738,49 @@ test('doctor reports service health and local plan status', () => {
     lastScanAt: '',
     lastError: ''
   })
+})
+
+test('doctor reports installed hook mode when current hook assets still exist', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-doctor-installed-'))
+  const dataDir = path.join(root, 'agent-data')
+  const codexHome = path.join(root, 'codex-home')
+  installCodexHooks({ dataDir, codexHome, port: 65530 })
+  const result = runCommand('doctor.js', {
+    paths: { dataDir },
+    codexHome,
+    port: 65530,
+    runtime: { nativeExecutionApproved: true }
+  }, { OPENPET_DATA_DIR: dataDir })
+
+  assert.equal(result.status, 0)
+  const body = JSON.parse(result.stdout)
+  assert.equal(body.hookMode.installed, true)
+  assert.equal(body.hookMode.mode, 'installed')
+})
+
+test('doctor reports hook mode as not installed when install state remains but hooks.json no longer contains OpenPet handlers', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-doctor-stale-hook-'))
+  const dataDir = path.join(root, 'agent-data')
+  const codexHome = path.join(root, 'codex-home')
+  const install = installCodexHooks({ dataDir, codexHome, port: 65530 })
+  fs.writeFileSync(install.hooksPath, JSON.stringify({
+    hooks: {
+      Stop: [{ hooks: [{ type: 'command', command: 'echo existing-stop' }] }]
+    }
+  }, null, 2))
+
+  const result = runCommand('doctor.js', {
+    paths: { dataDir },
+    codexHome,
+    port: 65530,
+    runtime: { nativeExecutionApproved: true }
+  }, { OPENPET_DATA_DIR: dataDir })
+
+  assert.equal(result.status, 0)
+  const body = JSON.parse(result.stdout)
+  assert.equal(body.hookMode.installed, false)
+  assert.equal(body.hookMode.mode, 'not-installed')
+  assert.equal(body.hookMode.planAvailable, true)
 })
 
 test('doctor falls back to host-managed-unknown when approval state is not provided', () => {
