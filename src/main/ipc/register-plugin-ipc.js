@@ -8,12 +8,23 @@ const registerPluginIpc = ({
   pluginInstallService,
   pluginGithubImportService,
   createPluginListView,
-  createPluginMutationResult
+  createPluginMutationResult,
+  createPluginViewState,
+  createPluginCommandRunResult,
+  createPluginSetupRunResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult
 }) => {
   ipcMainService.handle(IPC.PLUGINS_LIST, () => createPluginListView(pluginService.listPlugins()))
-  ipcMainService.handle(IPC.PLUGINS_SET_ENABLED, (_event, payload) => pluginService.setEnabled(payload.pluginId, payload.enabled))
-  ipcMainService.handle(IPC.PLUGINS_SET_NATIVE_EXECUTION_APPROVED, (_event, payload) => pluginService.setNativeExecutionApproved(payload.pluginId, payload.approved))
-  ipcMainService.handle(IPC.PLUGINS_SAVE_CONFIG, (_event, payload) => pluginService.saveConfig(payload.pluginId, payload.config))
+  ipcMainService.handle(IPC.PLUGINS_SET_ENABLED, (_event, payload) => createPluginViewState(
+    pluginService.setEnabled(payload.pluginId, payload.enabled)
+  ))
+  ipcMainService.handle(IPC.PLUGINS_SET_NATIVE_EXECUTION_APPROVED, (_event, payload) => createPluginViewState(
+    pluginService.setNativeExecutionApproved(payload.pluginId, payload.approved)
+  ))
+  ipcMainService.handle(IPC.PLUGINS_SAVE_CONFIG, (_event, payload) => createPluginViewState(
+    pluginService.saveConfig(payload.pluginId, payload.config)
+  ))
   ipcMainService.handle(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, (_event, payload) => {
     if (!creatorStudioDefaultFlowService?.runDefaultFlow) {
       throw new Error('Creator Studio default flow is not available')
@@ -22,18 +33,26 @@ const registerPluginIpc = ({
       prompt: payload?.prompt
     })
   })
-  ipcMainService.handle(IPC.PLUGINS_RUN_COMMAND, (_event, payload) => pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload))
-  ipcMainService.handle(IPC.PLUGINS_RUN_SETUP, (_event, payload) => pluginService.runSetup(payload.pluginId, payload.setupId))
+  ipcMainService.handle(IPC.PLUGINS_RUN_COMMAND, async (_event, payload) => createPluginCommandRunResult(
+    await pluginService.runCommand(payload.pluginId, payload.commandId, payload.payload)
+  ))
+  ipcMainService.handle(IPC.PLUGINS_RUN_SETUP, async (_event, payload) => createPluginSetupRunResult(
+    await pluginService.runSetup(payload.pluginId, payload.setupId)
+  ))
   ipcMainService.handle(IPC.PLUGINS_OPEN_DASHBOARD, (_event, payload) => (
     pluginService.openDashboard(payload.pluginId, payload.dashboardId, payload?.options || {})
   ))
-  ipcMainService.handle(IPC.PLUGINS_START_SERVICE, async (_event, payload) => (
+  ipcMainService.handle(IPC.PLUGINS_START_SERVICE, async (_event, payload) => createPluginServiceControlResult(
     await pluginService.startService(payload.pluginId, payload.serviceId)
   ))
-  ipcMainService.handle(IPC.PLUGINS_STOP_SERVICE, (_event, payload) => pluginService.stopService(payload.pluginId, payload.serviceId))
-  ipcMainService.handle(IPC.PLUGINS_CHECK_SERVICE_HEALTH, (_event, payload) => pluginService.checkServiceHealth(payload.pluginId, payload.serviceId))
+  ipcMainService.handle(IPC.PLUGINS_STOP_SERVICE, (_event, payload) => createPluginServiceControlResult(
+    pluginService.stopService(payload.pluginId, payload.serviceId)
+  ))
+  ipcMainService.handle(IPC.PLUGINS_CHECK_SERVICE_HEALTH, async (_event, payload) => createPluginServiceHealthCheckResult(
+    await pluginService.checkServiceHealth(payload.pluginId, payload.serviceId)
+  ))
   ipcMainService.handle(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY, (_event, payload) => (
-    pluginService.saveServiceHealthPolicy(payload.pluginId, payload.serviceId, payload.policy)
+    createPluginViewState(pluginService.saveServiceHealthPolicy(payload.pluginId, payload.serviceId, payload.policy))
   ))
 
   ipcMainService.handle(IPC.PLUGINS_INSPECT_PACKAGE, async () => {
@@ -67,7 +86,9 @@ const registerPluginIpc = ({
   ipcMainService.handle(IPC.PLUGINS_GET_LOGS, (_event, filters) => pluginService.getLogPage(filters))
   ipcMainService.handle(IPC.PLUGINS_EXPORT_LOGS, (_event, filters) => pluginService.exportLogs(filters))
   ipcMainService.handle(IPC.PLUGINS_CLEAR_LOGS, () => pluginService.clearLogs())
-  ipcMainService.handle(IPC.PLUGINS_CLEAR_STORAGE, (_event, payload) => pluginService.clearStorage(payload.pluginId))
+  ipcMainService.handle(IPC.PLUGINS_CLEAR_STORAGE, (_event, payload) => createPluginViewState(
+    pluginService.clearStorage(payload.pluginId)
+  ))
 }
 
 module.exports = { registerPluginIpc }

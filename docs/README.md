@@ -19,6 +19,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 
 | Area | Canonical docs |
 | --- | --- |
+| Agent Awareness program entry | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](./superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md) |
 | Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
 | Agent awareness and ClaudePet-inspired development route | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md), [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md), [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |

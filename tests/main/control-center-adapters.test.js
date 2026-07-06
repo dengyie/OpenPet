@@ -17,7 +17,12 @@ const {
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 } = require('../../src/main/control-center-adapters')
@@ -701,6 +706,402 @@ test('createPluginMutationResult normalizes plugin view payloads for Control Cen
       },
       blockStatus: { blocked: false, reasons: [] }
     }]
+  })
+})
+
+test('createPluginViewState normalizes native execution and runtime metadata', () => {
+  assert.deepEqual(createPluginViewState({
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    profile: 'hybrid',
+    source: 'local',
+    enabled: 1,
+    runnable: 'yes',
+    requiresNativeExecution: 1,
+    nativeExecutionApproved: 'yes',
+    permissions: ['pet:say', 42],
+    commands: [
+      { id: 'announce', title: 'Announce', internal: 'ignore-me' },
+      { title: 'missing-id' }
+    ],
+    entries: {
+      setup: [
+        {
+          id: 'install-deps',
+          title: 'Install deps',
+          command: 'npm install',
+          cwd: '/tmp/demo',
+          runtime: {
+            status: 'succeeded',
+            lastRunAt: 42,
+            exitCode: '0',
+            error: null,
+            internal: 'ignore-me'
+          }
+        },
+        { title: 'missing-id' }
+      ],
+      commands: [
+        {
+          id: 'announce',
+          title: 'Announce',
+          command: 'node cli.js',
+          cwd: '/repo/demo',
+          timeoutMs: '5000',
+          hiddenEnv: 'ignore-me'
+        },
+        { title: 'missing-id' }
+      ],
+      services: [
+        {
+          id: 'companion',
+          title: 'Companion',
+          command: 'node service.js',
+          cwd: '/repo/demo',
+          platforms: {
+            darwin: { command: 'npm run mac', cwd: '/repo/mac' },
+            linux: { command: 7, cwd: null }
+          },
+          health: {
+            type: 'http',
+            url: 'http://127.0.0.1:8787/health',
+            internal: 'ignore-me'
+          },
+          healthPolicy: {
+            enabled: 1,
+            intervalMs: '30000',
+            internal: 'ignore-me'
+          },
+          runtime: {
+            status: 'running',
+            pid: '4321',
+            startedAt: 99,
+            stoppedAt: null,
+            command: 'node service.js',
+            cwd: '/repo/demo',
+            exitCode: '0',
+            signal: 9,
+            error: null,
+            health: {
+              status: 'healthy',
+              checkedAt: 10,
+              url: 'http://127.0.0.1:8787/health',
+              statusCode: '200',
+              message: 7,
+              internal: 'ignore-me'
+            }
+          }
+        },
+        { title: 'missing-id' }
+      ],
+      dashboards: [
+        { id: 'main', title: 'Main Dashboard', url: 'http://127.0.0.1:8787', internal: 'ignore-me' },
+        { title: 'missing-id' }
+      ]
+    },
+    configSchema: { properties: [] },
+    config: { tone: 'soft', retry: 2, hidden: () => 'ignore-me' },
+    storage: { keyCount: '2', byteSize: '512' },
+    signatureStatus: { label: 'Unsigned' },
+    privateRuntime: { pid: 99 }
+  }), {
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    profile: 'hybrid',
+    source: 'local',
+    enabled: true,
+    runnable: true,
+    requiresNativeExecution: true,
+    nativeExecutionApproved: true,
+    permissions: ['pet:say'],
+    commands: [
+      { id: 'announce', title: 'Announce' }
+    ],
+    entries: {
+      setup: [
+        {
+          id: 'install-deps',
+          title: 'Install deps',
+          command: 'npm install',
+          cwd: '/tmp/demo',
+          runtime: {
+            status: 'succeeded',
+            lastRunAt: '',
+            exitCode: 0,
+            error: ''
+          }
+        }
+      ],
+      commands: [
+        {
+          id: 'announce',
+          title: 'Announce',
+          command: 'node cli.js',
+          cwd: '/repo/demo',
+          timeoutMs: 5000
+        }
+      ],
+      services: [
+        {
+          id: 'companion',
+          title: 'Companion',
+          command: 'node service.js',
+          cwd: '/repo/demo',
+          platforms: {
+            darwin: { command: 'npm run mac', cwd: '/repo/mac' }
+          },
+          health: {
+            type: 'http',
+            url: 'http://127.0.0.1:8787/health'
+          },
+          healthPolicy: {
+            enabled: true,
+            intervalMs: 30000
+          },
+          runtime: {
+            status: 'running',
+            pid: 4321,
+            startedAt: '',
+            stoppedAt: '',
+            command: 'node service.js',
+            cwd: '/repo/demo',
+            exitCode: 0,
+            signal: '',
+            error: '',
+            health: {
+              status: 'healthy',
+              checkedAt: '',
+              url: 'http://127.0.0.1:8787/health',
+              statusCode: 200,
+              message: ''
+            }
+          }
+        }
+      ],
+      dashboards: [
+        { id: 'main', title: 'Main Dashboard', url: 'http://127.0.0.1:8787' }
+      ]
+    },
+    configSchema: { properties: [] },
+    config: { tone: 'soft', retry: 2 },
+    storage: { keyCount: 2, byteSize: 512 },
+    signatureStatus: {
+      status: '',
+      label: 'Unsigned',
+      signer: '',
+      algorithm: '',
+      verified: false,
+      errors: []
+    }
+  })
+})
+
+test('plugin runtime result adapters normalize command, setup, and service payloads', () => {
+  assert.deepEqual(createPluginCommandRunResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: '0',
+    stdout: ['bad'],
+    stderr: null,
+    result: { ok: true, nested: ['safe'], hidden: () => 'ignore-me' }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    result: { ok: true, nested: ['safe'] }
+  })
+
+  assert.deepEqual(createPluginCommandRunResult({
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'import-approved-action',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: 'Imported action shy-spin from run run-demo-action-123',
+      run: {
+        runId: 'run-demo-action-123',
+        status: 'imported',
+        currentStep: 'imported',
+        importedActionId: 'shy-spin',
+        artifacts: {
+          actionFrames: {
+            framesDir: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin',
+            pipeline: {
+              paths: {
+                manifest: {
+                  bundle: '/tmp/openpet/runs/run-demo-action-123/outputs/shy-spin.openpet-action.zip'
+                }
+              }
+            }
+          }
+        }
+      },
+      triggerProposalSubmission: {
+        ok: true,
+        proposal: {
+          id: 'proposal:click:shy-spin:test'
+        }
+      },
+      hiddenCallback: () => 'ignore-me'
+    }
+  }), {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'import-approved-action',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: 'Imported action shy-spin from run run-demo-action-123',
+      run: {
+        runId: 'run-demo-action-123',
+        status: 'imported',
+        currentStep: 'imported',
+        importedActionId: 'shy-spin',
+        artifacts: {
+          actionFrames: {
+            framesDir: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin',
+            pipeline: {
+              paths: {
+                manifest: {
+                  bundle: '/tmp/openpet/runs/run-demo-action-123/outputs/shy-spin.openpet-action.zip'
+                }
+              }
+            }
+          }
+        }
+      },
+      triggerProposalSubmission: {
+        ok: true,
+        proposal: {
+          id: 'proposal:click:shy-spin:test'
+        }
+      }
+    }
+  })
+
+  assert.deepEqual(createPluginSetupRunResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: {
+      status: 'bad',
+      lastRunAt: 9,
+      exitCode: '0',
+      error: 7
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: {
+      status: 'not-run',
+      lastRunAt: '',
+      exitCode: 0,
+      error: ''
+    }
+  })
+
+  assert.deepEqual(createPluginServiceControlResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: {
+      status: 'running',
+      pid: '4321',
+      startedAt: 9,
+      stoppedAt: null,
+      command: 'node service.js',
+      cwd: '/repo/demo',
+      exitCode: '0',
+      signal: 7,
+      error: null,
+      health: {
+        status: 'healthy',
+        checkedAt: 10,
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: '200',
+        message: 9
+      }
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: {
+      status: 'running',
+      pid: 4321,
+      startedAt: '',
+      stoppedAt: '',
+      command: 'node service.js',
+      cwd: '/repo/demo',
+      exitCode: 0,
+      signal: '',
+      error: '',
+      health: {
+        status: 'healthy',
+        checkedAt: '',
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: 200,
+        message: ''
+      }
+    }
+  })
+
+  assert.deepEqual(createPluginServiceHealthCheckResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: {
+      status: 'bad',
+      checkedAt: 10,
+      url: 'http://127.0.0.1:8787/health',
+      statusCode: '503',
+      message: 7
+    },
+    runtime: {
+      status: 'failed',
+      error: 'Exited',
+      health: {
+        status: 'unhealthy',
+        statusCode: '503'
+      }
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: {
+      status: 'unknown',
+      checkedAt: '',
+      url: 'http://127.0.0.1:8787/health',
+      statusCode: 503,
+      message: ''
+    },
+    runtime: {
+      status: 'failed',
+      pid: 0,
+      startedAt: '',
+      stoppedAt: '',
+      command: '',
+      cwd: '',
+      exitCode: null,
+      signal: '',
+      error: 'Exited',
+      health: {
+        status: 'unhealthy',
+        checkedAt: '',
+        url: '',
+        statusCode: 503,
+        message: ''
+      }
+    }
   })
 })
 

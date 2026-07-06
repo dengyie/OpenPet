@@ -43,8 +43,13 @@ const {
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
   createPluginListView,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 } = require('./control-center-adapters')
@@ -995,7 +1000,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     pluginInstallService,
     pluginGithubImportService,
     createPluginListView,
-    createPluginMutationResult
+    createPluginMutationResult,
+    createPluginViewState,
+    createPluginCommandRunResult,
+    createPluginSetupRunResult,
+    createPluginServiceControlResult,
+    createPluginServiceHealthCheckResult
   })
   registerCreatorIpc({
     ipcMainService,
