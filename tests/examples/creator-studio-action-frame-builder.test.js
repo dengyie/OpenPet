@@ -53,6 +53,43 @@ const createActionSheetPng = async ({
     .toFile(filePath)
 }
 
+const createSlicedSingleCharacterSheetPng = async ({ filePath, frameCount = 16 }) => {
+  const columns = Math.max(1, Math.min(4, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
+  const cellWidth = 256
+  const cellHeight = 256
+  const width = columns * cellWidth
+  const height = rows * cellHeight
+
+  await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite([{
+      input: Buffer.from(`
+        <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+          <rect x="72" y="72" width="${width - 144}" height="${height - 96}" rx="220" fill="#d89b45" />
+          <ellipse cx="${width / 2}" cy="${height * 0.56}" rx="${width * 0.33}" ry="${height * 0.39}" fill="#d89b45" />
+          <circle cx="${width / 2}" cy="${height * 0.24}" r="${width * 0.19}" fill="#e2ad5b" />
+          <circle cx="${width * 0.39}" cy="${height * 0.12}" r="90" fill="#e2ad5b" />
+          <circle cx="${width * 0.61}" cy="${height * 0.12}" r="90" fill="#e2ad5b" />
+          <ellipse cx="${width * 0.34}" cy="${height * 0.53}" rx="120" ry="56" fill="#c98735" />
+          <ellipse cx="${width * 0.66}" cy="${height * 0.53}" rx="120" ry="56" fill="#c98735" />
+          <ellipse cx="${width * 0.45}" cy="${height * 0.9}" rx="90" ry="64" fill="#c98735" />
+          <ellipse cx="${width * 0.57}" cy="${height * 0.9}" rx="90" ry="64" fill="#c98735" />
+        </svg>
+      `),
+      left: 0,
+      top: 0
+    }])
+    .png()
+    .toFile(filePath)
+}
+
 test('action frame builder creates ordered transparent frames and QA evidence', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
@@ -139,6 +176,37 @@ test('action frame builder trims a plain opaque action-sheet background into usa
   const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
   assert.equal(qa.ok, true)
   assert.equal(qa.frames.every((frame) => frame.visiblePixels > 0), true)
+})
+
+test('action frame builder rejects sliced single-character sheets as failed QA', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  const sourcePath = path.join(sourceDir, '0001.png')
+  await createSlicedSingleCharacterSheetPng({ filePath: sourcePath, frameCount: 16 })
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'bad-wave',
+      name: 'Bad Wave',
+      frameCount: 16,
+      loop: false
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/bad-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.equal(qa.frames.length, 16)
+  assert.equal(qa.frames.every((frame) => frame.visiblePixels > 0), true)
+  assert.match(qa.errors.join('\n'), /cropped|sliced|touch/i)
+  assert.equal(qa.quality.metrics.sourceCellEdgeTouchCount > 8, true)
 })
 
 test('action frame builder rejects unsafe action ids', async () => {

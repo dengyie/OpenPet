@@ -84,6 +84,10 @@ const isHostGeneratedSingleActionRun = (run) => (
 
 const persistGeneratedImageAttempt = ({ dataDir, run, generationResult, now }) => {
   const currentRun = readRun({ dataDir, runId: run.runId })
+  const promptPreviewText = String(generationResult?.promptBuilder?.promptPreview?.text || '')
+  if (promptPreviewText) {
+    fs.writeFileSync(path.join(dataDir, 'runs', run.runId, 'inputs', 'provider-prompt.md'), `${promptPreviewText}\n`)
+  }
   const nextRun = {
     ...currentRun,
     updatedAt: now(),

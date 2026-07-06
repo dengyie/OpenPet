@@ -130,6 +130,8 @@ const extractVisibleBounds = ({ data, info }) => {
   let maxX = -1
   let maxY = -1
   let visiblePixels = 0
+  let sumX = 0
+  let sumY = 0
 
   for (let y = 0; y < info.height; y += 1) {
     for (let x = 0; x < info.width; x += 1) {
@@ -137,6 +139,8 @@ const extractVisibleBounds = ({ data, info }) => {
       const alpha = data[pixelIndex + 3]
       if (alpha > 0) {
         visiblePixels += 1
+        sumX += x
+        sumY += y
         if (x < minX) minX = x
         if (y < minY) minY = y
         if (x > maxX) maxX = x
@@ -151,7 +155,26 @@ const extractVisibleBounds = ({ data, info }) => {
     top: minY,
     width: Math.max(1, (maxX - minX) + 1),
     height: Math.max(1, (maxY - minY) + 1),
+    right: maxX,
+    bottom: maxY,
+    centroidX: Number((sumX / visiblePixels).toFixed(2)),
+    centroidY: Number((sumY / visiblePixels).toFixed(2)),
+    baselineY: maxY,
     visiblePixels
+  }
+}
+
+const inspectVisibleImage = async (imagePath) => {
+  const decoded = await sharp(imagePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  const bounds = extractVisibleBounds(decoded)
+  return {
+    width: decoded.info.width,
+    height: decoded.info.height,
+    visiblePixels: bounds?.visiblePixels || 0,
+    bounds
   }
 }
 
@@ -182,9 +205,15 @@ const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}
           left: 0,
           top: 0,
           width: trimMetadata.width,
-          height: trimMetadata.height
+          height: trimMetadata.height,
+          right: Math.max(0, trimMetadata.width - 1),
+          bottom: Math.max(0, trimMetadata.height - 1),
+          centroidX: Number(((trimMetadata.width - 1) / 2).toFixed(2)),
+          centroidY: Number(((trimMetadata.height - 1) / 2).toFixed(2)),
+          baselineY: Math.max(0, trimMetadata.height - 1)
         },
-        fullFrameVisible: false
+        fullFrameVisible: false,
+        opaqueFullFrameTrimmed: true
       }
     }
     throw new Error('Generated action sheet cell is missing a cutout-ready sprite silhouette')
@@ -202,7 +231,8 @@ const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}
     buffer: trimmed,
     visiblePixels: bounds.visiblePixels,
     bounds,
-    fullFrameVisible
+    fullFrameVisible,
+    opaqueFullFrameTrimmed: false
   }
 }
 
@@ -239,7 +269,8 @@ const createNormalizedFrame = async (sourceInput, options = {}) => {
     frameBuffer,
     sourceVisiblePixels: trimmed.visiblePixels,
     sourceBounds: trimmed.bounds,
-    sourceFilledCell: trimmed.fullFrameVisible
+    sourceFilledCell: trimmed.fullFrameVisible,
+    sourceOpaqueFullFrameTrimmed: Boolean(trimmed.opaqueFullFrameTrimmed)
   }
 }
 
@@ -369,6 +400,92 @@ const toDataRelativePath = ({ dataDir, targetPath }) => path
   .split(path.sep)
   .join('/')
 
+const numericRange = (values) => {
+  const finiteValues = values.map(Number).filter(Number.isFinite)
+  if (finiteValues.length === 0) return { min: 0, max: 0, range: 0, ratio: 1 }
+  const min = Math.min(...finiteValues)
+  const max = Math.max(...finiteValues)
+  return {
+    min,
+    max,
+    range: Number((max - min).toFixed(2)),
+    ratio: min > 0 ? Number((max / min).toFixed(3)) : (max > 0 ? Infinity : 1)
+  }
+}
+
+const sourceBoundsTouchCellEdge = (frame) => {
+  const bounds = frame?.sourceBounds
+  const cell = frame?.sourceCell
+  if (!bounds || !cell || frame?.sourceOpaqueFullFrameTrimmed) return false
+  const tolerance = 2
+  const right = Number.isFinite(Number(bounds.right))
+    ? Number(bounds.right)
+    : Number(bounds.left || 0) + Number(bounds.width || 0) - 1
+  const bottom = Number.isFinite(Number(bounds.bottom))
+    ? Number(bounds.bottom)
+    : Number(bounds.top || 0) + Number(bounds.height || 0) - 1
+  return Number(bounds.left || 0) <= tolerance ||
+    Number(bounds.top || 0) <= tolerance ||
+    right >= Number(cell.width || 0) - 1 - tolerance ||
+    bottom >= Number(cell.height || 0) - 1 - tolerance
+}
+
+const createActionFrameQuality = ({ frames, frameCount, extraction }) => {
+  const complete = isCompleteFrameEvidence({ frames, frameCount })
+  const frameBounds = frames.map((frame) => frame?.frameBounds).filter(Boolean)
+  const heights = numericRange(frameBounds.map((bounds) => bounds.height))
+  const widths = numericRange(frameBounds.map((bounds) => bounds.width))
+  const visiblePixels = numericRange(frames.map((frame) => frame?.visiblePixels))
+  const baseline = numericRange(frameBounds.map((bounds) => bounds.baselineY))
+  const centroidX = numericRange(frameBounds.map((bounds) => bounds.centroidX))
+  const centroidY = numericRange(frameBounds.map((bounds) => bounds.centroidY))
+  const sourceCellEdgeTouchCount = frames.filter(sourceBoundsTouchCellEdge).length
+  const sourceCellEdgeTouchRatio = frames.length > 0
+    ? Number((sourceCellEdgeTouchCount / frames.length).toFixed(3))
+    : 0
+  const mode = String(extraction?.mode || '')
+  const actionSheetMode = mode === 'action-sheet' || mode === 'action-sheet-fallback'
+  const errors = []
+  const warnings = []
+
+  if (!complete) {
+    errors.push('Action frame QA is incomplete.')
+  }
+  if (complete && actionSheetMode && sourceCellEdgeTouchCount >= Math.max(3, Math.ceil(frameCount * 0.5))) {
+    errors.push('Generated action sheet appears cropped or sliced: too many source cells touch grid boundaries.')
+  }
+  if (complete && heights.range > 52 && heights.ratio > 1.45) {
+    errors.push('Generated action frames have unstable sprite height; this usually indicates cropped body fragments.')
+  }
+  if (complete && visiblePixels.range > 3000 && visiblePixels.ratio > 2.4) {
+    errors.push('Generated action frames have unstable visible area; this usually indicates partial or mismatched frames.')
+  }
+  if (complete && baseline.range > 30 && (heights.range > 38 || visiblePixels.ratio > 1.8)) {
+    errors.push('Generated action frames have unstable body anchor; baseline drift is too large for direct import.')
+  } else if (complete && baseline.range > 24) {
+    warnings.push('Action frame baseline drift is elevated; review for visible shake before using in production.')
+  }
+
+  return {
+    ok: complete && errors.length === 0,
+    errors,
+    warnings,
+    metrics: {
+      frameCount: frames.length,
+      sourceCellEdgeTouchCount,
+      sourceCellEdgeTouchRatio,
+      visiblePixels,
+      frameBounds: {
+        width: widths,
+        height: heights,
+        baselineY: baseline,
+        centroidX,
+        centroidY
+      }
+    }
+  }
+}
+
 const createContactSheetLabel = ({ fileName, width }) => Buffer.from(`
   <svg width="${width}" height="${CONTACT_SHEET_LABEL_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
     <text x="${Math.floor(width / 2)}" y="14" text-anchor="middle" font-family="Avenir Next, Arial, sans-serif" font-size="12" font-weight="700" fill="#66727f">${fileName}</text>
@@ -475,13 +592,16 @@ const buildActionFramesFromGeneratedImage = async ({
     sourceRelativePaths = frameSource.sourceRelativePaths
     extraction = frameSource.extraction
     fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
+    const frameInspection = await inspectVisibleImage(framePath)
     frames.push({
       fileName,
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
-      visiblePixels: await countVisiblePixels(framePath),
+      visiblePixels: frameInspection.visiblePixels,
+      frameBounds: frameInspection.bounds,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
       sourceBounds: frameSource.normalized.sourceBounds,
+      sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
       ...(reusedPreviousFrame ? { reusedPreviousFrame: true, reusedFromFileName } : {}),
       ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
       ...(Number.isInteger(frameSource.extraction?.sourceOutputIndex) ? { sourceOutputIndex: frameSource.extraction.sourceOutputIndex } : {})
@@ -499,8 +619,17 @@ const buildActionFramesFromGeneratedImage = async ({
     frameCount,
     loop: Boolean(action?.loop)
   })
+  const quality = createActionFrameQuality({
+    frames,
+    frameCount,
+    extraction: extraction || {
+      mode: 'action-sheet',
+      outputCount: 1,
+      layout: getActionSheetLayout(frameCount)
+    }
+  })
   writeJson(qaPath, {
-    ok: true,
+    ok: quality.ok,
     actionId,
     name: String(action?.name || actionId),
     sourceRelativePath,
@@ -518,7 +647,9 @@ const buildActionFramesFromGeneratedImage = async ({
     triggerProposal: action?.triggerProposal || { type: 'unbound' },
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
     frames,
-    warnings
+    errors: quality.errors,
+    warnings: [...warnings, ...quality.warnings],
+    quality
   })
 
   return {
@@ -566,13 +697,16 @@ const repairActionFrameFromGeneratedImage = async ({
   })
   const framePath = path.join(safeOutputFramesDir, fileName)
   fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
+  const frameInspection = await inspectVisibleImage(framePath)
   const frame = {
     fileName,
     width: FRAME_WIDTH,
     height: FRAME_HEIGHT,
-    visiblePixels: await countVisiblePixels(framePath),
+    visiblePixels: frameInspection.visiblePixels,
+    frameBounds: frameInspection.bounds,
     sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
     sourceBounds: frameSource.normalized.sourceBounds,
+    sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
     ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
     repairedAt: now()
   }
@@ -614,9 +748,18 @@ const repairActionFrameFromGeneratedImage = async ({
     loop: Boolean(currentQa.loop ?? action?.loop),
     frameDurationsMs: currentQa.playback?.frameDurationsMs
   })
+  const extraction = currentQa.extraction || frameSource.extraction
+  const quality = qaComplete
+    ? createActionFrameQuality({ frames, frameCount, extraction })
+    : {
+        ok: false,
+        errors: [],
+        warnings: [],
+        metrics: { frameCount: frames.filter(Boolean).length }
+      }
   writeJson(qaPath, {
     ...currentQa,
-    ok: qaComplete,
+    ok: qaComplete && quality.ok,
     actionId,
     sourceRelativePath: currentQa.sourceRelativePath || frameSource.sourceRelativePath,
     sourceRelativePaths: Array.isArray(currentQa.sourceRelativePaths) && currentQa.sourceRelativePaths.length > 0
@@ -626,10 +769,12 @@ const repairActionFrameFromGeneratedImage = async ({
     frameWidth: FRAME_WIDTH,
     frameHeight: FRAME_HEIGHT,
     playback,
-    extraction: currentQa.extraction || frameSource.extraction,
+    extraction,
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
     frames,
-    warnings: nextWarnings,
+    errors: quality.errors,
+    warnings: [...nextWarnings, ...quality.warnings],
+    quality,
     repairs: [
       ...(Array.isArray(currentQa.repairs) ? currentQa.repairs : []),
       { fileName, repairedAt: frame.repairedAt }

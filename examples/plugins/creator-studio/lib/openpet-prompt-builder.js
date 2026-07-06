@@ -83,12 +83,39 @@ const toSentence = (value = '') => {
   return text ? `${text}.` : ''
 }
 
+const isWavingAction = (value = '') => /wave|waving|挥手|招手|挥爪|paw\s*wave/i.test(String(value || ''))
+
+const buildActionFramePlan = ({ action, frameCount }) => {
+  const motionPrompt = `${action?.name || ''} ${action?.motionPrompt || ''}`
+  if (isWavingAction(motionPrompt)) {
+    const frames = [
+      'Frame 1: neutral front-facing sitting pose, both front paws down.',
+      'Frame 2: the waving front paw begins to lift while the body stays still.',
+      'Frame 3: the waving front paw is fully raised beside the face.',
+      'Frame 4: the raised paw tilts slightly outward as the wave.',
+      'Frame 5: the raised paw tilts slightly inward as the wave.',
+      'Frame 6: the paw returns close to the original sitting pose.'
+    ]
+    if (frameCount <= frames.length) return frames.slice(0, frameCount)
+    return [
+      ...frames,
+      `Frames 7-${frameCount}: add small in-between paw-only motion, then settle back to the same anchored neutral pose.`
+    ]
+  }
+  return [
+    'Frame 1: clear neutral or anticipation pose with the character fully visible.',
+    'Middle frames: show the action progression with readable pose changes while keeping the body anchor stable.',
+    `Frame ${frameCount}: recovery or loop-compatible return pose with the character still centered.`
+  ]
+}
+
 const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetContext }) => {
   const mode = task.mode
   const styleSource = task.styleSource
   const actionName = sanitizeCreativeBrief(action?.name || 'pose')
   const visibleStyleContext = sanitizeCreativeBrief(currentPetContext)
   const actionSheet = getActionSheetLayout(action)
+  const framePlan = buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
   const sentences = [
     mode === 'full-pet'
       ? `Create one full-body OpenPet desktop pet sprite: ${sanitizeCreativeBrief(creativeBrief || task.characterBrief || actionName || 'cute desktop pet')}.`
@@ -100,8 +127,14 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
       ? `Arrange exactly ${actionSheet.frameCount} sequential poses in a ${actionSheet.columns} column by ${actionSheet.rows} row grid.`
       : 'One character only. Fully visible and centered.',
     mode === 'single-action'
-      ? 'Each grid cell must contain one full-body pose of the same character, fully visible and centered.'
+      ? 'Every grid cell is an independent full-body sprite frame of the same character, fully visible and centered.'
       : 'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, or accessories.',
+    mode === 'single-action'
+      ? 'Do not draw one large character spanning multiple grid cells; do not create a poster, collage, character sheet, or sticker sheet.'
+      : '',
+    mode === 'single-action'
+      ? 'Use equal-sized cells and keep the same foot baseline and body anchor in every frame.'
+      : '',
     'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, or accessories.',
     'Readable at small desktop size with a clean silhouette and stable body center.',
     'Use a plain clean background that is easy to cut out. No scene background.',
@@ -115,11 +148,18 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
       : action?.loop
         ? 'Make the pose balanced and loop-friendly.'
         : 'Make the pose clear, balanced, and easy to read.',
+    mode === 'single-action' ? framePlan.join(' ') : '',
+    mode === 'single-action'
+      ? 'Motion rule: keep the body, head, torso, feet, scale, lighting, outline, silhouette, and proportions consistent; only the acting limb or intended moving part should move noticeably.'
+      : '',
     styleSource === 'currentPet' || styleSource === 'referenceImage'
       ? 'Match the current character style as closely as possible.'
       : '',
     visibleStyleContext ? `Current pet style context: ${visibleStyleContext}.` : '',
     mode === 'single-action' ? `Action sheet label: ${actionName}.` : '',
+    mode === 'single-action'
+      ? 'Negative prompt: different character, different face, different eye color, different fur color, extra limbs, multiple characters, changing body shape, changing head size, cropped body, side view, back view, realistic photo style, background scene, furniture, text, labels, watermark, borders, shadows, motion blur, messy grid, inconsistent frame size.'
+      : '',
     mode === 'single-action' ? toSentence(creativeBrief) : ''
   ].filter(Boolean)
   return sentences.join(' ')
@@ -189,7 +229,9 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
         ? `Action sheet layout: ${actionSheet.columns} columns x ${actionSheet.rows} rows`
         : 'Action sheet layout: single pose source',
       `Trigger: ${describeTrigger(action)}`,
-      'Key pose plan: anticipation, primary action pose, readable exaggeration, and recovery or loop return.',
+      mode === 'single-action'
+        ? `Per-frame plan: ${buildActionFramePlan({ action, frameCount: actionSheet.frameCount }).join(' ')}`
+        : 'Key pose plan: anticipation, primary action pose, readable exaggeration, and recovery or loop return.',
       action?.loop
         ? 'For looping actions, start and end pose should be compatible, motion should not drift across the canvas, and body center should remain stable.'
         : 'For one-shot actions, start from neutral, perform the action clearly, then return to neutral or end in a clear final pose.'
@@ -209,12 +251,18 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
         : `Output one action sheet containing exactly ${actionSheet.frameCount} readable poses in a ${actionSheet.columns} x ${actionSheet.rows} grid.`,
       mode === 'full-pet'
         ? 'Do not create a multi-pose sheet.'
-        : 'Each grid cell must contain one sequential frame of the same character with no empty required cells.',
+        : 'Each grid cell must contain one independent full-body sequential frame of the same character with no empty required cells.',
+      mode === 'single-action'
+        ? 'Do not draw a single oversized character across the whole sheet; every required cell must be independently usable after slicing.'
+        : '',
+      mode === 'single-action'
+        ? 'Keep equal cell sizes, stable foot baseline, stable body anchor, stable scale, and safe padding in every frame.'
+        : '',
       'Do not add labels, annotations, UI chrome, or borders.',
       mode === 'full-pet'
         ? 'The result should be suitable for OpenPet action frame generation.'
         : 'The result should be suitable for direct OpenPet action frame slicing.'
-    ],
+    ].filter(Boolean),
     'Negative Constraints': [
       'No background scene, floor, furniture, room, landscape, or unrelated props.',
       'no text, logo, watermark, signature, UI, frame, or border.',

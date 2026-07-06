@@ -382,6 +382,9 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.prompt, /新增一个自定义动作：原地打滚/)
   assert.match(built.providerPrompt, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
   assert.match(built.providerPrompt, /Arrange exactly 12 sequential poses in a 4 column by 3 row grid\./)
+  assert.match(built.providerPrompt, /Every grid cell is an independent full-body sprite frame/)
+  assert.match(built.providerPrompt, /Do not draw one large character spanning multiple grid cells/)
+  assert.match(built.providerPrompt, /same foot baseline and body anchor/)
   assert.match(built.providerPrompt, /Match the current character style as closely as possible\./)
 })
 
@@ -1154,6 +1157,9 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.equal(run.artifacts.generatedImage.promptBuilder.promptPreview.truncated, false)
     assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
     assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Action sheet label: 原地打滚\./)
+    const providerPromptPath = path.join(dataDir, 'runs', created.json.run.runId, 'inputs', 'provider-prompt.md')
+    assert.equal(fs.existsSync(providerPromptPath), true)
+    assert.equal(fs.readFileSync(providerPromptPath, 'utf-8'), `${run.artifacts.generatedImage.promptBuilder.promptPreview.text}\n`)
     assert.deepEqual(run.artifacts.generatedImage.promptBuilder.warnings, [])
     assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-settings', '/creator/model-image-generate'])
   } finally {

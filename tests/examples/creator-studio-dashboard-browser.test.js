@@ -88,6 +88,15 @@ const writeTransparentActionSheetPng = async (targetPath, {
     .toFile(targetPath)
 }
 
+const getRequestedActionSheetLayout = (prompt = '') => {
+  const match = String(prompt || '').match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i)
+  if (!match) return { columns: 4, rows: 3 }
+  return {
+    columns: Number(match[1]) || 4,
+    rows: Number(match[2]) || 3
+  }
+}
+
 const seedImportedActionRun = async (dataDir) => {
   const run = createRun({
     dataDir,
@@ -2337,7 +2346,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
         }
         const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        writeTransparentActionSheetPng(generatedPath)
+        writeTransparentActionSheetPng(generatedPath, getRequestedActionSheetLayout(payload.prompt))
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
