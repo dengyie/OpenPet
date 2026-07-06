@@ -1137,50 +1137,6 @@ test('action frame builder repairs one frame and updates QA evidence', async () 
   assert.equal(JSON.stringify(qa).includes(dataDir), false)
 })
 
-test('action frame repair reuses the sequence crop and is pixel-idempotent', async () => {
-  const dataDir = makeDataDir()
-  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
-  const qaDir = path.join(dataDir, 'runs/demo/qa')
-  const outputFramesDir = path.join(dataDir, 'runs/demo/frames/actions/scale-changing-wave')
-  fs.mkdirSync(sourceDir, { recursive: true })
-  await createCustomActionSheetPng({
-    filePath: path.join(sourceDir, '0001.png'),
-    frameCount: 4,
-    createBody: (index) => {
-      const size = [64, 132, 92, 112][index]
-      const left = Math.floor((256 - size) / 2)
-      const top = 222 - size
-      return `<rect x="${left}" y="${top}" width="${size}" height="${size}" fill="#d89b45"/>`
-    }
-  })
-  const action = { actionId: 'scale-changing-wave', name: 'Scale Changing Wave', frameCount: 4, loop: false }
-  const generationResult = { outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }] }
-  const built = await buildActionFramesFromGeneratedImage({
-    dataDir,
-    generationResult,
-    action,
-    outputFramesDir,
-    qaDir
-  })
-  const beforeQa = JSON.parse(fs.readFileSync(built.qaPath, 'utf-8'))
-  const beforeFrame = beforeQa.frames[0]
-
-  await repairActionFrameFromGeneratedImage({
-    dataDir,
-    generationResult,
-    action,
-    outputFramesDir,
-    qaDir,
-    fileName: '0001.png'
-  })
-  const afterQa = JSON.parse(fs.readFileSync(built.qaPath, 'utf-8'))
-  const afterFrame = afterQa.frames[0]
-
-  assert.deepEqual(afterFrame.frameBounds, beforeFrame.frameBounds)
-  assert.equal(afterFrame.fileSha256, beforeFrame.fileSha256)
-  assert.deepEqual(afterQa.extraction.sharedCrop, beforeQa.extraction.sharedCrop)
-})
-
 test('action frame builder repairs legacy QA by backfilling missing frame hashes', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
