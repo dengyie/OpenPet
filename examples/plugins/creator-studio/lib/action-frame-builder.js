@@ -113,6 +113,12 @@ const countVisiblePixels = async (imagePath) => {
   return visiblePixels
 }
 
+const getActionSheetLayout = (frameCount) => {
+  const columns = frameCount === 6 ? 3 : Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
+  return { columns, rows }
+}
+
 const resolveGeneratedImageEntries = ({ dataDir, generationResult }) => {
   const outputs = Array.isArray(generationResult?.outputs) ? generationResult.outputs : []
   if (outputs.length === 0) {
