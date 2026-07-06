@@ -78,23 +78,6 @@ const createUniqueTextList = (values) => {
   return items
 }
 
-const isPlainObject = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value))
-
-const createActionAvailabilityView = (value) => {
-  if (!isPlainObject(value)) return {}
-  return Object.fromEntries(Object.entries(value)
-    .map(([actionId, evidence]) => {
-      const normalizedActionId = normalizeText(actionId)
-      if (!normalizedActionId || !isPlainObject(evidence)) return null
-      return [normalizedActionId, {
-        available: evidence.available === true,
-        quality: normalizeText(evidence.quality).slice(0, 80),
-        reason: normalizeText(evidence.reason).slice(0, 160)
-      }]
-    })
-    .filter(Boolean))
-}
-
 const findPluginById = (plugins = [], pluginId) => (
   Array.isArray(plugins)
     ? plugins.find((plugin) => plugin?.id === pluginId) || null
@@ -308,64 +291,23 @@ const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
 }
 
 const resolveOfficialActionCoverage = (basicActions) => {
-  const defaultRequiredActionIds = ['idle']
-  if (!isPlainObject(basicActions)) {
-    return {
-      basicActions: null,
-      missingOfficialActionIds: defaultRequiredActionIds
-    }
+  if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) {
+    return { basicActions: null, missingOfficialActionIds: [] }
   }
-
-  const hasPartialCoverageEvidence = (
-    Array.isArray(basicActions.availableActionIds) ||
-    Array.isArray(basicActions.omittedActionIds) ||
-    isPlainObject(basicActions.actionAvailability)
+  const requiredOfficialActionIds = createUniqueTextList(
+    Array.isArray(basicActions.requiredOfficialActionIds) && basicActions.requiredOfficialActionIds.length > 0
+      ? basicActions.requiredOfficialActionIds
+      : CODEX_ROWS.map((row) => row.id)
   )
-  const explicitRequiredActionIds = createUniqueTextList(basicActions.requiredActionIds)
-  const legacyRequiredActionIds = !hasPartialCoverageEvidence
-    ? createUniqueTextList(basicActions.requiredOfficialActionIds)
-    : []
-  const requiredActionIds = explicitRequiredActionIds.length > 0
-    ? explicitRequiredActionIds
-    : legacyRequiredActionIds.length > 0
-      ? legacyRequiredActionIds
-      : defaultRequiredActionIds
-
-  const availableActionIds = new Set(createUniqueTextList(
-    Array.isArray(basicActions.availableActionIds)
-      ? basicActions.availableActionIds
-      : basicActions.realActionIds
-  ))
-  const omittedActionIds = new Set(createUniqueTextList(basicActions.omittedActionIds))
-  const actionAvailability = createActionAvailabilityView(basicActions.actionAvailability)
-
-  for (const [sourceActionId, derivedActionId] of [['running-right', 'running-left']]) {
-    if (availableActionIds.has(sourceActionId) === availableActionIds.has(derivedActionId)) continue
-    availableActionIds.delete(sourceActionId)
-    availableActionIds.delete(derivedActionId)
-    omittedActionIds.add(sourceActionId)
-    omittedActionIds.add(derivedActionId)
-    actionAvailability[sourceActionId] = { available: false, quality: '', reason: 'directional-pair-incomplete' }
-    actionAvailability[derivedActionId] = { available: false, quality: '', reason: 'directional-pair-incomplete' }
-  }
-
-  const reportedMissingActionIds = createUniqueTextList(
-    explicitRequiredActionIds.length > 0
-      ? basicActions.missingRequiredActionIds
-      : legacyRequiredActionIds.length > 0
-        ? basicActions.missingRequiredOfficialActionIds
-        : []
-  )
-  const computedMissingActionIds = requiredActionIds.filter((actionId) => !availableActionIds.has(actionId))
+  const realActionIds = new Set(createUniqueTextList(basicActions.realActionIds))
+  const reportedMissingActionIds = createUniqueTextList(basicActions.missingRequiredOfficialActionIds)
+  const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
   const missingOfficialActionIds = createUniqueTextList([...reportedMissingActionIds, ...computedMissingActionIds])
   return {
     basicActions: {
       ...basicActions,
-      requiredActionIds,
-      availableActionIds: [...availableActionIds],
-      omittedActionIds: [...omittedActionIds].filter((actionId) => !availableActionIds.has(actionId)),
-      actionAvailability,
-      missingRequiredActionIds: missingOfficialActionIds
+      requiredOfficialActionIds,
+      missingRequiredOfficialActionIds: missingOfficialActionIds
     },
     missingOfficialActionIds
   }
@@ -835,18 +777,58 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         message: getCommandMessage(generated, '生成步骤已完成')
       })
 
-      const generatedCoverage = isFullPet
+      const generatedCoverage = importCommandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
         ? readBasicActionCoverage({ pluginDataDir, runId })
         : null
       const {
         basicActions: generatedBasicActions,
         missingOfficialActionIds
       } = resolveOfficialActionCoverage(generatedCoverage)
-      if (
-        isFullPet &&
-        normalizeText(run?.status) === 'ready_for_review' &&
-        missingOfficialActionIds.length > 0
-      ) {
+      if (normalizeText(run?.status) === 'ready_for_review' && missingOfficialActionIds.length > 0) {
+        const result = createWorkflowResult({
+          state: 'preview-ready',
+          code: 'preview_ready',
+          message: `角色预览已生成，但缺少官方动作行，不能自动批准或导入。请到 Creator Studio 继续处理 run ${runId}`,
+          run: createRunView({
+            state: 'preview-ready',
+            mode,
+            runId,
+            commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
+            message: getCommandMessage(generated, 'Preview output requires official action rows before import')
+          }),
+          reference: creatorReferenceService.getReference(referenceTarget),
+          basicActions: generatedBasicActions,
+          diagnostics: getWorkflowDiagnostics()
+        })
+        recordLog({
+          level: 'info',
+          event: 'creator.workflow.preview-ready',
+          message: 'Creator workflow produced preview-only full-pet output',
+          details: {
+            requestId,
+            mode,
+            runId,
+            missingOfficialActionIds,
+            elapsedMs: Date.now() - startedAt
+          }
+        })
+        setLastRun(result.run)
+        return result
+      }
+
+      if (normalizeText(run?.status) === 'ready_for_review') {
+        const approved = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_APPROVE_COMMAND_ID, { runId })
+        lastCommandResult = approved
+        run = getCreatorStudioRun(approved)
+        recordStage({ stage: 'approve', result: approved, run })
+        updateWorkflowProgress({
+          runId,
+          commandId: approved?.commandId || CREATOR_STUDIO_APPROVE_COMMAND_ID,
+          message: getCommandMessage(approved, 'Run 已批准')
+        })
+      }
+
+      if (normalizeText(run?.status) !== 'approved') {
         const result = createWorkflowResult({
           state: 'preview-ready',
           code: 'preview_ready',

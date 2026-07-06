@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
-const crypto = require('crypto')
 const {
+  OFFICIAL_FULL_PET_ACTION_IDS,
   getMissingRequiredRealActionIds
 } = require('./full-pet-basic-actions')
 
@@ -69,9 +69,6 @@ const hasOfficialActionPolicy = (basicActions) => Boolean(
   typeof basicActions === 'object' &&
   !Array.isArray(basicActions) &&
   (
-    Array.isArray(basicActions.requiredActionIds) ||
-    Array.isArray(basicActions.availableActionIds) ||
-    Array.isArray(basicActions.omittedActionIds) ||
     Array.isArray(basicActions.requiredOfficialActionIds) ||
     Array.isArray(basicActions.missingRequiredOfficialActionIds) ||
     Array.isArray(basicActions.previewFallbackActionIds)
@@ -80,34 +77,13 @@ const hasOfficialActionPolicy = (basicActions) => Boolean(
 
 const getMissingRequiredOfficialActionIds = (basicActions) => {
   if (!hasOfficialActionPolicy(basicActions)) return []
-  const hasPartialCoverageEvidence = (
-    Array.isArray(basicActions.availableActionIds) ||
-    Array.isArray(basicActions.omittedActionIds) ||
-    (basicActions.actionAvailability && typeof basicActions.actionAvailability === 'object' && !Array.isArray(basicActions.actionAvailability))
-  )
-  const explicitRequiredActionIds = createUniqueActionIdList(basicActions.requiredActionIds)
-  const legacyRequiredActionIds = !hasPartialCoverageEvidence
-    ? createUniqueActionIdList(basicActions.requiredOfficialActionIds)
-    : []
   const requiredOfficialActionIds = createUniqueActionIdList(
-    explicitRequiredActionIds.length > 0
-      ? explicitRequiredActionIds
-      : legacyRequiredActionIds.length > 0
-        ? legacyRequiredActionIds
-        : ['idle']
+    Array.isArray(basicActions.requiredOfficialActionIds) && basicActions.requiredOfficialActionIds.length > 0
+      ? basicActions.requiredOfficialActionIds
+      : OFFICIAL_FULL_PET_ACTION_IDS
   )
-  const realActionIds = new Set(createUniqueActionIdList(
-    Array.isArray(basicActions.availableActionIds)
-      ? basicActions.availableActionIds
-      : basicActions.realActionIds
-  ))
-  const reportedMissingActionIds = createUniqueActionIdList(
-    explicitRequiredActionIds.length > 0
-      ? basicActions.missingRequiredActionIds
-      : legacyRequiredActionIds.length > 0
-        ? basicActions.missingRequiredOfficialActionIds
-        : []
-  )
+  const realActionIds = new Set(createUniqueActionIdList(basicActions.realActionIds))
+  const reportedMissingActionIds = createUniqueActionIdList(basicActions.missingRequiredOfficialActionIds)
   const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
   return createUniqueActionIdList([...reportedMissingActionIds, ...computedMissingActionIds])
 }
