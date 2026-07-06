@@ -1,6 +1,9 @@
 const fs = require('fs')
 const path = require('path')
-const { getMissingRequiredRealActionIds } = require('./full-pet-basic-actions')
+const {
+  OFFICIAL_FULL_PET_ACTION_IDS,
+  getMissingRequiredRealActionIds
+} = require('./full-pet-basic-actions')
 
 const assertExistingPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   if (!targetPath) throw new Error(`${label} must stay inside the Creator Studio data directory`)
@@ -43,6 +46,46 @@ const getMissingRequiredBasicActions = (basicActions) => {
   if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) return []
   return getMissingRequiredRealActionIds(basicActions)
 }
+
+const createUniqueActionIdList = (values) => {
+  const seen = new Set()
+  const actionIds = []
+  for (const value of Array.isArray(values) ? values : []) {
+    const actionId = String(value || '').trim()
+    if (!actionId || seen.has(actionId)) continue
+    seen.add(actionId)
+    actionIds.push(actionId)
+  }
+  return actionIds
+}
+
+const hasOfficialActionPolicy = (basicActions) => Boolean(
+  basicActions &&
+  typeof basicActions === 'object' &&
+  !Array.isArray(basicActions) &&
+  (
+    Array.isArray(basicActions.requiredOfficialActionIds) ||
+    Array.isArray(basicActions.missingRequiredOfficialActionIds) ||
+    Array.isArray(basicActions.previewFallbackActionIds)
+  )
+)
+
+const getMissingRequiredOfficialActionIds = (basicActions) => {
+  if (!hasOfficialActionPolicy(basicActions)) return []
+  const requiredOfficialActionIds = createUniqueActionIdList(
+    Array.isArray(basicActions.requiredOfficialActionIds) && basicActions.requiredOfficialActionIds.length > 0
+      ? basicActions.requiredOfficialActionIds
+      : OFFICIAL_FULL_PET_ACTION_IDS
+  )
+  const realActionIds = new Set(createUniqueActionIdList(basicActions.realActionIds))
+  const reportedMissingActionIds = createUniqueActionIdList(basicActions.missingRequiredOfficialActionIds)
+  const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
+  return createUniqueActionIdList([...reportedMissingActionIds, ...computedMissingActionIds])
+}
+
+const isFullPetOfficialActionReady = (atlasQa) => (
+  getMissingRequiredOfficialActionIds(atlasQa?.basicActions).length === 0
+)
 
 const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/import' }) => {
   if (!artifacts?.qa || !artifacts?.sourceImageQa) {
@@ -92,6 +135,10 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
   if (missingRequiredBasicActions.length > 0) {
     throw new Error(`Full-pet QA missing required real basic actions before ${operation}: ${missingRequiredBasicActions.join(', ')}`)
   }
+  const missingRequiredOfficialActionIds = getMissingRequiredOfficialActionIds(atlasQa.basicActions)
+  if (missingRequiredOfficialActionIds.length > 0) {
+    throw new Error(`Full-pet QA missing required official action rows before ${operation}: ${missingRequiredOfficialActionIds.join(', ')}`)
+  }
 
   return { atlasQa, sourceQa }
 }
@@ -110,6 +157,8 @@ const assertRunFullPetQaPassed = ({ dataDir, run, operation = 'approval/import' 
 }
 
 module.exports = {
+  getMissingRequiredOfficialActionIds,
+  isFullPetOfficialActionReady,
   assertFullPetQaPassed,
   assertRunFullPetQaPassed
 }

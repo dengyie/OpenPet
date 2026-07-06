@@ -66,6 +66,18 @@ const normalizeActionId = (value, fallback = 'custom-action') => {
   return SAFE_ID_PATTERN.test(slug) ? slug : fallback
 }
 
+const createUniqueTextList = (values) => {
+  const seen = new Set()
+  const items = []
+  for (const value of Array.isArray(values) ? values : []) {
+    const item = normalizeText(value)
+    if (!item || seen.has(item)) continue
+    seen.add(item)
+    items.push(item)
+  }
+  return items
+}
+
 const findPluginById = (plugins = [], pluginId) => (
   Array.isArray(plugins)
     ? plugins.find((plugin) => plugin?.id === pluginId) || null
@@ -297,6 +309,29 @@ const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
       : null
   } catch (_) {
     return null
+  }
+}
+
+const resolveOfficialActionCoverage = (basicActions) => {
+  if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) {
+    return { basicActions: null, missingOfficialActionIds: [] }
+  }
+  const requiredOfficialActionIds = createUniqueTextList(
+    Array.isArray(basicActions.requiredOfficialActionIds) && basicActions.requiredOfficialActionIds.length > 0
+      ? basicActions.requiredOfficialActionIds
+      : CODEX_ROWS.map((row) => row.id)
+  )
+  const realActionIds = new Set(createUniqueTextList(basicActions.realActionIds))
+  const reportedMissingActionIds = createUniqueTextList(basicActions.missingRequiredOfficialActionIds)
+  const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
+  const missingOfficialActionIds = createUniqueTextList([...reportedMissingActionIds, ...computedMissingActionIds])
+  return {
+    basicActions: {
+      ...basicActions,
+      requiredOfficialActionIds,
+      missingRequiredOfficialActionIds: missingOfficialActionIds
+    },
+    missingOfficialActionIds
   }
 }
 
@@ -691,6 +726,45 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
         message: getCommandMessage(generated, '生成步骤已完成')
       })
+
+      const generatedCoverage = importCommandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
+        ? readBasicActionCoverage({ pluginDataDir, runId })
+        : null
+      const {
+        basicActions: generatedBasicActions,
+        missingOfficialActionIds
+      } = resolveOfficialActionCoverage(generatedCoverage)
+      if (normalizeText(run?.status) === 'ready_for_review' && missingOfficialActionIds.length > 0) {
+        const result = createWorkflowResult({
+          state: 'preview-ready',
+          code: 'preview_ready',
+          message: `角色预览已生成，但缺少官方动作行，不能自动批准或导入。请到 Creator Studio 继续处理 run ${runId}`,
+          run: createRunView({
+            state: 'preview-ready',
+            mode,
+            runId,
+            commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
+            message: getCommandMessage(generated, 'Preview output requires official action rows before import')
+          }),
+          reference: creatorReferenceService.getReference(referenceTarget),
+          basicActions: generatedBasicActions,
+          diagnostics: getWorkflowDiagnostics()
+        })
+        recordLog({
+          level: 'info',
+          event: 'creator.workflow.preview-ready',
+          message: 'Creator workflow produced preview-only full-pet output',
+          details: {
+            requestId,
+            mode,
+            runId,
+            missingOfficialActionIds,
+            elapsedMs: Date.now() - startedAt
+          }
+        })
+        setLastRun(result.run)
+        return result
+      }
 
       if (normalizeText(run?.status) === 'ready_for_review') {
         const approved = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_APPROVE_COMMAND_ID, { runId })

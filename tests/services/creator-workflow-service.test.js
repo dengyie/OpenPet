@@ -664,9 +664,10 @@ test('creator workflow service failure logs do not include raw prompt or file-pa
   assert.equal(JSON.stringify(logs).includes('/Users/mango/private/reference.png'), false)
 })
 
-test('creator workflow service binds a new character reference and completes a full-pet import', async () => {
+test('creator workflow service returns preview-ready for new-character output without official action rows', async () => {
   const bindCalls = []
   const copyCalls = []
+  const commandCalls = []
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-full-pet-'))
   const writeAtlasQa = () => {
     const qaDir = path.join(pluginDataDir, 'runs', 'run-002', 'qa')
@@ -681,7 +682,7 @@ test('creator workflow service binds a new character reference and completes a f
         missingRequiredActionIds: [],
         requiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
         previewFallbackActionIds: ['idle', 'waving', 'waiting'],
-        missingRequiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
+        missingRequiredOfficialActionIds: [],
         rows: [
           { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'base-preview' },
           { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'synthesized-preview' },
@@ -695,6 +696,7 @@ test('creator workflow service binds a new character reference and completes a f
       listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
       getPluginCreatorDataDir: () => pluginDataDir,
       runCommand: async (_pluginId, commandId) => {
+        commandCalls.push(commandId)
         if (commandId === 'draft-task') {
           return {
             commandId,
@@ -722,6 +724,7 @@ test('creator workflow service binds a new character reference and completes a f
           }
         }
         if (commandId === 'run-step') {
+          writeAtlasQa()
           return {
             commandId,
             result: {
@@ -735,48 +738,10 @@ test('creator workflow service binds a new character reference and completes a f
           }
         }
         if (commandId === 'approve-run') {
-          return {
-            commandId,
-            result: {
-              ok: true,
-              message: 'approved',
-              run: {
-                runId: 'run-002',
-                status: 'approved'
-              }
-            }
-          }
+          throw new Error('preview-only runs must not be auto-approved')
         }
         if (commandId === 'import-approved-pet') {
-          writeAtlasQa()
-          return {
-            commandId,
-            result: {
-              ok: true,
-              message: 'imported',
-              run: {
-                runId: 'run-002',
-                status: 'imported',
-                importedPackId: 'mango-cat',
-                activatedPackId: 'mango-cat'
-              },
-              imported: {
-                pack: {
-                  id: 'mango-cat',
-                  displayName: 'Mango Cat',
-                  version: '1.0.0',
-                  source: 'creator-studio',
-                  rootPath: '/tmp/pet-packs/mango-cat',
-                  actionCount: 9,
-                  defaultAction: 'idle',
-                  clickAction: 'waving'
-                }
-              },
-              activated: {
-                activePackId: 'mango-cat'
-              }
-            }
-          }
+          throw new Error('preview-only runs must not be imported')
         }
         throw new Error(`Unexpected command: ${commandId}`)
       }
@@ -826,10 +791,10 @@ test('creator workflow service binds a new character reference and completes a f
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.state, 'completed')
-  assert.equal(result.code, 'pet_imported')
-  assert.equal(result.activePet.id, 'mango-cat')
-  assert.equal(result.run.activatedPackId, 'mango-cat')
+  assert.equal(result.state, 'preview-ready')
+  assert.equal(result.code, 'preview_ready')
+  assert.equal(result.activePet, null)
+  assert.equal(result.run.activatedPackId, '')
   assert.equal(result.basicActions.baseIdentityCoverage, true)
   assert.deepEqual(result.basicActions.realActionIds, [])
   assert.deepEqual(result.basicActions.fallbackActionIds, ['idle', 'waving', 'waiting'])
@@ -839,6 +804,7 @@ test('creator workflow service binds a new character reference and completes a f
     ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
   )
   assert.equal(result.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
+  assert.deepEqual(commandCalls, ['draft-task', 'confirm-task', 'run-step'])
   assert.deepEqual(bindCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',
