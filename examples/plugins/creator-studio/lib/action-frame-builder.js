@@ -815,11 +815,7 @@ const buildActionFramesFromGeneratedImage = async ({
     const frameSource = stabilized.frameSources[index]
     sourceRelativePath = sourceRelativePath || frameSource.sourceRelativePath
     sourceRelativePaths = frameSource.sourceRelativePaths
-    const frameExtraction = createExtractionWithMode({
-      extraction: frameSource.extraction,
-      mode: extractionMode
-    })
-    extraction = frameExtraction
+    extraction = frameSource.extraction
     const fileSha256 = crypto.createHash('sha256').update(frameSource.normalized.frameBuffer).digest('hex')
     fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
     const frameInspection = await inspectVisibleImage(framePath)
@@ -828,6 +824,7 @@ const buildActionFramesFromGeneratedImage = async ({
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
       sha256: frameInspection.sha256,
+      fileSha256,
       visiblePixels: frameInspection.visiblePixels,
       frameBounds: frameInspection.bounds,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
@@ -1001,6 +998,7 @@ const repairActionFrameFromGeneratedImage = async ({
     width: FRAME_WIDTH,
     height: FRAME_HEIGHT,
     sha256: frameInspection.sha256,
+    fileSha256,
     visiblePixels: frameInspection.visiblePixels,
     frameBounds: frameInspection.bounds,
     sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,

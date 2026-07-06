@@ -9,6 +9,7 @@ const {
   buildActionFramesFromGeneratedImage,
   repairActionFrameFromGeneratedImage
 } = require('../../examples/plugins/creator-studio/lib/action-frame-builder')
+const { assertActionFrameQaPassed } = require('../../examples/plugins/creator-studio/lib/action-frame-qa')
 const {
   writeBadStaticActionSheet,
   writeGoodSubtleWaveSheet
@@ -1011,6 +1012,63 @@ test('action frame builder accepts subtle waving sheets with stable anchors', as
   assert.equal(qa.quality.metrics.uniqueFrameCount >= 4, true)
   assert.equal(qa.quality.metrics.reusedFrameCount, 0)
   assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
+})
+
+test('action frame qa rejects frames modified after validation', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await writeGoodSubtleWaveSheet({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 6
+  })
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'tamper-wave',
+      name: 'Tamper Wave',
+      frameCount: 6,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/tamper-wave'),
+    qaDir
+  })
+
+  assertActionFrameQaPassed({
+    dataDir,
+    actionFrames: {
+      actionId: result.actionId,
+      frameCount: result.frameCount,
+      frameWidth: result.frameWidth,
+      frameHeight: result.frameHeight,
+      framesDir: result.framesDir,
+      qa: result.qaPath
+    },
+    operation: 'import'
+  })
+
+  fs.writeFileSync(path.join(result.framesDir, '0003.png'), fs.readFileSync(path.join(result.framesDir, '0002.png')))
+
+  assert.throws(
+    () => assertActionFrameQaPassed({
+      dataDir,
+      actionFrames: {
+        actionId: result.actionId,
+        frameCount: result.frameCount,
+        frameWidth: result.frameWidth,
+        frameHeight: result.frameHeight,
+        framesDir: result.framesDir,
+        qa: result.qaPath
+      },
+      operation: 'import'
+    }),
+    /Action frame file hash must match QA before import/
+  )
 })
 
 test('action frame builder rejects unsafe action ids', async () => {

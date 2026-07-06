@@ -112,3 +112,33 @@ test('full-pet qa accepts complete official action row coverage', () => {
   assert.deepEqual(result.atlasQa.basicActions.realActionIds, ['idle', 'waving'])
   assert.deepEqual(result.atlasQa.basicActions.missingRequiredOfficialActionIds, [])
 })
+
+test('full-pet qa rejects spritesheets modified after atlas validation', () => {
+  const fixture = makeQaFixture({
+    atlasQa: {
+      atlasSha256: sha256('placeholder'),
+      basicActions: {
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: ['idle', 'waving'],
+        fallbackActionIds: [],
+        missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle', 'waving'],
+        previewFallbackActionIds: [],
+        missingRequiredOfficialActionIds: [],
+        rows: [
+          { actionId: 'idle', fallback: false, quality: 'row-real' },
+          { actionId: 'waving', fallback: false, quality: 'row-real' }
+        ]
+      }
+    }
+  })
+
+  assertFullPetQaPassed({ ...fixture, operation: 'import' })
+  fs.writeFileSync(fixture.artifacts.spritesheet, 'tampered')
+
+  assert.throws(
+    () => assertFullPetQaPassed({ ...fixture, operation: 'import' }),
+    /Full-pet spritesheet hash must match QA before import/
+  )
+})

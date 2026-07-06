@@ -62,29 +62,22 @@ const writeTransparentActionSheetPng = async (targetPath, {
       const column = frameIndex % columns
       const left = column * cellWidth
       const top = row * cellHeight
+      const frameIndex = (row * columns) + column
       const sway = frameIndex % 3 - 1
       const pawLift = [0, 7, 15, 11, 4, 10][frameIndex % 6]
       const pawAngle = [-8, -18, -28, 18, 28, 10][frameIndex % 6]
       const eyeOpen = frameIndex % 6 === 3 ? 0.45 : 1
-      const jumpOffsetY = actionId === 'jumping'
-        ? [0, -0.08, -0.16, -0.09, 0, 0][frameIndex % 6] * cellHeight
-        : 0
-      const stride = /^running(?:-|$)/.test(actionId)
-        ? [-0.12, 0, 0.12, 0, -0.08, 0.08][frameIndex % 6] * cellWidth
-        : 0
       const cx = left + (cellWidth / 2) + sway
       const poseTop = top + jumpOffsetY
       poses.push(`
-        <ellipse cx="${cx}" cy="${poseTop + (cellHeight * 0.58)}" rx="${cellWidth * (0.24 + ((frameIndex % 3) * 0.012))}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
-        <circle cx="${cx}" cy="${poseTop + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
-        <ellipse cx="${cx - (cellWidth * 0.06)}" cy="${poseTop + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
-        <ellipse cx="${cx + (cellWidth * 0.06)}" cy="${poseTop + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
-        <g transform="rotate(${pawAngle} ${cx + (cellWidth * 0.19)} ${poseTop + (cellHeight * 0.54) - pawLift})">
-          <ellipse cx="${cx + (cellWidth * 0.19)}" cy="${poseTop + (cellHeight * 0.54) - pawLift}" rx="${cellWidth * 0.055}" ry="${cellHeight * 0.18}" fill="#f19042"/>
-          <circle cx="${cx + (cellWidth * 0.19)}" cy="${poseTop + (cellHeight * 0.39) - pawLift}" r="${cellWidth * 0.055}" fill="#ffaa5a"/>
+        <ellipse cx="${cx}" cy="${top + (cellHeight * 0.58)}" rx="${cellWidth * 0.24}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
+        <circle cx="${cx}" cy="${top + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
+        <ellipse cx="${cx - (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <ellipse cx="${cx + (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <g transform="rotate(${pawAngle} ${cx + (cellWidth * 0.19)} ${top + (cellHeight * 0.54) - pawLift})">
+          <ellipse cx="${cx + (cellWidth * 0.19)}" cy="${top + (cellHeight * 0.54) - pawLift}" rx="${cellWidth * 0.055}" ry="${cellHeight * 0.18}" fill="#f19042"/>
+          <circle cx="${cx + (cellWidth * 0.19)}" cy="${top + (cellHeight * 0.39) - pawLift}" r="${cellWidth * 0.055}" fill="#ffaa5a"/>
         </g>
-        <ellipse cx="${cx - (cellWidth * 0.12) - stride}" cy="${poseTop + (cellHeight * 0.87)}" rx="${cellWidth * 0.08}" ry="${cellHeight * 0.045}" fill="#f19042"/>
-        <ellipse cx="${cx + (cellWidth * 0.12) + stride}" cy="${poseTop + (cellHeight * 0.87)}" rx="${cellWidth * 0.08}" ry="${cellHeight * 0.045}" fill="#f19042"/>
       `)
   }
   const svg = Buffer.from(`

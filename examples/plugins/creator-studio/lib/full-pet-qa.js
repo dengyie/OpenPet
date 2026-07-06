@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const {
   OFFICIAL_FULL_PET_ACTION_IDS,
   getMissingRequiredRealActionIds
