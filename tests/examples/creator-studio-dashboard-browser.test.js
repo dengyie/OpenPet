@@ -107,54 +107,12 @@ const writeTransparentActionSheetPng = async (targetPath, {
 }
 
 const getRequestedActionSheetLayout = (prompt = '') => {
-  const promptText = String(prompt || '')
-  const standardMatch = promptText.match(
-    /Create one \d+ x \d+ animation frame sheet with exactly (\d+) complete full-body character frames arranged in (\d+) columns and (\d+) rows/i
-  )
-  if (standardMatch) {
-    return {
-      columns: Number(standardMatch[2]),
-      rows: Number(standardMatch[3]),
-      frameCount: Number(standardMatch[1])
-    }
-  }
-  const match = promptText.match(/Arrange the frames in exactly (\d+) columns x (\d+) rows/i) ||
-    promptText.match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i) ||
-    promptText.match(/Arrange exactly \d+ full-body frames in (\d+) columns and (\d+) rows/i)
-  const frameCountMatch = promptText.match(/Generate exactly (\d+) animation frames/i) ||
-    promptText.match(/Arrange exactly (\d+) full-body frames/i)
-  if (!match) return { columns: 4, rows: 3, frameCount: Number(frameCountMatch?.[1]) || 12 }
+  const match = String(prompt || '').match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i)
+  if (!match) return { columns: 4, rows: 3 }
   return {
     columns: Number(match[1]) || 4,
-    rows: Number(match[2]) || 3,
-    frameCount: Number(frameCountMatch?.[1]) || (Number(match[1]) * Number(match[2])) || 12
+    rows: Number(match[2]) || 3
   }
-}
-
-const attachCanonicalReferenceToRun = async ({ dataDir, runId }) => {
-  const relativePath = `runs/${runId}/inputs/references/canonical-reference.png`
-  await writeTransparentActionSheetPng(path.join(dataDir, relativePath), {
-    columns: 1,
-    rows: 1,
-    cellWidth: 256,
-    cellHeight: 256
-  })
-  const run = readRun({ dataDir, runId })
-  writeRun({
-    dataDir,
-    run: {
-      ...run,
-      input: {
-        ...run.input,
-        referenceImage: {
-          fileName: 'canonical-reference.png',
-          relativePath,
-          metadataRelativePath: `runs/${runId}/inputs/references/reference.json`,
-          contentHash: 'test-reference'
-        }
-      }
-    }
-  })
 }
 
 const seedImportedActionRun = async (dataDir) => {
@@ -2417,9 +2375,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
         }
         const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        writeTransparentActionSheetPng(generatedPath, isActionRow
-          ? { ...getRequestedActionSheetLayout(payload.prompt), cellWidth: 256, cellHeight: 256 }
-          : { columns: 1, rows: 1, cellWidth: 256, cellHeight: 256 })
+        writeTransparentActionSheetPng(generatedPath, getRequestedActionSheetLayout(payload.prompt))
           .then(() => {
             response.end(JSON.stringify({
               ok: true,

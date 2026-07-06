@@ -117,29 +117,9 @@ const createActionSheetPng = async ({
     .toFile(filePath)
 }
 
-const createCustomActionSheetPng = async ({ filePath, frameCount, createBody }) => {
-  const { columns, rows } = getActionSheetLayout(frameCount)
-  const cellWidth = 256
-  const cellHeight = 256
-  await sharp({
-    create: {
-      width: columns * cellWidth,
-      height: rows * cellHeight,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    }
-  })
-    .composite(Array.from({ length: frameCount }, (_entry, index) => ({
-      input: Buffer.from(`<svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">${createBody(index)}</svg>`),
-      left: (index % columns) * cellWidth,
-      top: Math.floor(index / columns) * cellHeight
-    })))
-    .png()
-    .toFile(filePath)
-}
-
 const createSlicedSingleCharacterSheetPng = async ({ filePath, frameCount = 16 }) => {
-  const { columns, rows } = getActionSheetLayout(frameCount)
+  const columns = Math.max(1, Math.min(4, frameCount))
+  const rows = Math.max(1, Math.ceil(frameCount / columns))
   const cellWidth = 256
   const cellHeight = 256
   const width = columns * cellWidth
@@ -938,6 +918,37 @@ test('action frame qa rejects frames modified after validation', async () => {
     }),
     /Action frame file hash must match QA before import/
   )
+})
+
+test('action frame builder rejects sliced single-character sheets as failed QA', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  const sourcePath = path.join(sourceDir, '0001.png')
+  await createSlicedSingleCharacterSheetPng({ filePath: sourcePath, frameCount: 16 })
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'bad-wave',
+      name: 'Bad Wave',
+      frameCount: 16,
+      loop: false
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/bad-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.equal(qa.frames.length, 16)
+  assert.equal(qa.frames.every((frame) => frame.visiblePixels > 0), true)
+  assert.match(qa.errors.join('\n'), /cropped|sliced|touch/i)
+  assert.equal(qa.quality.metrics.sourceCellEdgeTouchCount > 8, true)
 })
 
 test('action frame builder rejects unsafe action ids', async () => {
