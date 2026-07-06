@@ -27,14 +27,17 @@ const assertSafeId = (value, fieldName) => {
   }
 }
 
-const normalizeCommands = (commands = []) => commands.map((command) => {
-  if (!command?.id) throw new Error('Plugin command id is required')
-  assertSafeId(command.id, 'command id')
-  return {
-    id: command.id,
-    title: command.title || command.id
-  }
-})
+const normalizeCommands = (commands = []) => {
+  if (!Array.isArray(commands)) throw new Error('Plugin commands must be an array')
+  return commands.map((command) => {
+    if (!command?.id) throw new Error('Plugin command id is required')
+    assertSafeId(command.id, 'command id')
+    return {
+      id: command.id,
+      title: command.title || command.id
+    }
+  })
+}
 
 const normalizeSignature = (signature) => {
   if (!signature) return null
@@ -249,7 +252,8 @@ const normalizePluginManifest = (manifest, { source = 'local', basePath = '' } =
     throw new Error('Plugin profile must be runtime, creator-tools, or hybrid')
   }
 
-  const permissions = manifest.permissions || []
+  const permissions = manifest.permissions == null ? [] : manifest.permissions
+  if (!Array.isArray(permissions)) throw new Error('Plugin permissions must be an array')
   for (const permission of permissions) {
     if (!KNOWN_PLUGIN_PERMISSIONS.has(permission)) {
       throw new Error(`Unknown plugin permission: ${permission}`)

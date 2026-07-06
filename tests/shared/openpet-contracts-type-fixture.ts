@@ -3,7 +3,9 @@ import type {
   ActionTriggerProposalPreviewResult,
   ActionTriggerRuleUpdateRequest,
   ActionTriggerRuleSpec,
+  AgentAwarenessLocalSmokeArchiveResult,
   AiProviderSmokeReport,
+  AiTalkLocalSmokeArchiveResult,
   ControlCenterSettings,
   CatalogInstallSelection,
   CreatorActionsMutationResult,
@@ -29,6 +31,9 @@ import type {
   PackagedPluginCleanupRuntimeArtifact,
   PackagedRuntimeSmokeEvidence,
   PackagedRuntimeSmokeReport,
+  PluginCommunitySourceEvidenceFromIntakeSummary,
+  PluginCommunitySourceDiscoverySummary,
+  PluginCommunitySourceIntakeSummary,
   PluginCommunitySourceInvitationSummary,
   PluginCommunitySourceSubmissionEvidenceSummary,
   PluginCleanupEvidenceArchiveManifest,
@@ -547,6 +552,102 @@ const creatorStudioProviderSmokeFixture = {
     }
   ]
 } satisfies CreatorStudioProviderSmokeReport
+
+const aiTalkLocalSmokeArchiveResultFixture = {
+  generatedAt: '2026-07-04T16:39:19.924Z',
+  ok: true,
+  source: {
+    sessionDir: 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z',
+    resultPath: 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json',
+    logPath: 'ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl'
+  },
+  archive: {
+    archiveDir: 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z',
+    outputPath: 'docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json',
+    sessionId: '2026-06-28T15-35-59-210Z'
+  },
+  smoke: {
+    generatedAt: '2026-06-28T15:35:59.235Z',
+    provider: 'openai-compatible',
+    baseUrl: '[redacted-local-url]',
+    model: 'gpt-5.5',
+    activePetPackId: 'duodong',
+    requestId: 'chat-mqxyb5gj-6tvex3h5',
+    providerLatencyMs: 2141,
+    bubbleVisible: true,
+    manualAcceptanceTemplatePresent: true,
+    manualAcceptance: {
+      bubbleVisibleLongEnough: 'pending',
+      inputUsable: 'pending',
+      desktopFeelNotesPresent: false,
+      requestId: 'chat-mqxyb5gj-6tvex3h5'
+    }
+  },
+  files: [
+    {
+      role: 'aiTalkLocalSmokeResult',
+      path: 'ai-talk-local-smoke-result.json',
+      bytes: 11502,
+      sha256: 'eb563555cac1034077c3a7db3a58dea89bd38ec0014af822431d0647f991f631'
+    },
+    {
+      role: 'aiTalkLocalSmokeLog',
+      path: 'logs/openpet-app.jsonl',
+      bytes: 5437,
+      sha256: '712c77c5c25dbbeae4a703942ebf17af1bc397056bf3931374d33ffade2222dc'
+    },
+    {
+      role: 'archiveReadme',
+      path: 'README.md',
+      bytes: 2661,
+      sha256: '336a6dfe6df2dcce9bbcc5e6bb3a4c61a7e35024c55be0ec75cbda95b2a992bf'
+    }
+  ],
+  warnings: [
+    'Archive preserves sanitized telemetry evidence only; human desktop-feel acceptance remains manual-required.'
+  ]
+} satisfies AiTalkLocalSmokeArchiveResult
+
+const agentAwarenessLocalSmokeArchiveResultFixture = {
+  generatedAt: '2026-07-04T16:33:49.257Z',
+  ok: true,
+  source: {
+    sessionDir: 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z',
+    resultPath: 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json'
+  },
+  archive: {
+    archiveDir: 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z',
+    outputPath: 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-archive-result.json'
+  },
+  smoke: {
+    sanitizedSignalDetected: true,
+    sessionCount: 20,
+    activeSessionCount: 3,
+    totalEvents: 1000,
+    unsupportedLifecycleRecordCount: 0,
+    manualAcceptanceTemplatePresent: true,
+    manualAcceptance: {
+      dashboardUseful: 'pending',
+      petSpeechNoiseAcceptable: 'pending',
+      redactionLooksSafe: 'pass',
+      notesPresent: false
+    }
+  },
+  files: [
+    {
+      role: 'agentAwarenessLocalSmokeResult',
+      path: 'agent-awareness-local-smoke-result.json',
+      bytes: 3374,
+      sha256: '7e906304a7489d3247e4b0a1243f9dcc378402d89ef7b750b834198653af865d'
+    },
+    {
+      role: 'archiveReadme',
+      path: 'README.md',
+      bytes: 2744,
+      sha256: 'f66cbd359e6e24ce2ea3e19fab740dd929b80e3eac655edc46c04c0383b8a186'
+    }
+  ]
+} satisfies AgentAwarenessLocalSmokeArchiveResult
 
 const creatorAssetsInspectFramesRequestFixture = {
   relativePath: 'assets/actions/wave',
@@ -1110,6 +1211,230 @@ const pluginCommunitySourceSubmissionEvidenceSummaryFixture = {
     summary: '/tmp/openpet/plugin-community-source-submission-evidence/2026-06-18T18-30-00Z/plugin-community-source-submission-evidence-summary.json'
   }
 } satisfies PluginCommunitySourceSubmissionEvidenceSummary
+
+const pluginCommunitySourceIntakeSummaryFixture = {
+  generatedAt: '2026-07-06T14:09:02.173Z',
+  outputDir: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter',
+  communitySource: {
+    kind: 'community-source',
+    url: 'https://github.com/alvinunreal/openpets-plugin-starter',
+    submitter: 'alvinunreal/openpets-plugin-starter'
+  },
+  archive: {
+    kind: 'https-archive',
+    archiveUrl: 'https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main',
+    finalUrl: 'https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main',
+    archiveSha256: '4b1817db54b5ca2ce8965bc47ac616aa372f213a0ee192f11b1635db1c80a9f5',
+    archiveByteSize: 6567,
+    pluginPath: '.',
+    archivePluginPath: '.',
+    extractedFileHashes: {
+      'openpets-plugin-starter-main/.gitignore': '1192f6042ff9d2b031b6e6cdb628e0f0096c1aa2363a09ddcc65eb0387280380',
+      'openpets-plugin-starter-main/README.md': '2d3fc282d100a873e5c162e5b88dd000402c7eba0f9eb73393ac724aec8dcb08',
+      'openpets-plugin-starter-main/assets/icon.svg': '27500d20cdda54a76db25d3006f8ac4acfe8bc5e628139429083b9684e6157bd',
+      'openpets-plugin-starter-main/index.js': '5b420afc6aa4474b87c1ce0d42755b53c769fb3ea3b6cf9b3b1c1e7274d4c7f6',
+      'openpets-plugin-starter-main/locales/en.json': '9bc84b6fa94050b5e18ce2276d4b6fe7b464594ee3c0f26670f6445929476c6f',
+      'openpets-plugin-starter-main/openpets.plugin.json': '2b4448b0065ab812799441e07980906a5ba522d1f70bd129c2ccae1958cf5258',
+      'openpets-plugin-starter-main/package-lock.json': '0e3a8a6598722d13ccae89f6ff55456a86c864996fb783e3505e723c17d418db',
+      'openpets-plugin-starter-main/package.json': '4c3989473ef1090b6a8f4dd76f5729e0e10ea41acae89db3dfd743f6315b2771',
+      'openpets-plugin-starter-main/test.js': '5a8e61c01566460a4300bc201e63618b9225709c5d629c6a22352e85af44b5f5'
+    }
+  },
+  plugin: null,
+  compatibility: {
+    ok: false,
+    reasonCode: 'plugin-json-missing',
+    summary: 'Candidate archive is incompatible with the current OpenPet plugin model because it requires a package rooted by plugin.json.'
+  },
+  status: 'incompatible-package-model',
+  notes: '2026-07-06 intake: public starter repo uses openpets.plugin.json at the archive root rather than the current OpenPet plugin.json package model.',
+  files: {
+    readme: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/README-community-intake.md',
+    checklist: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/community-intake-checklist.md',
+    commands: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/community-intake-commands.json',
+    intake: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/community-source-intake.json',
+    summary: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/plugin-community-source-intake-report-summary.json'
+  }
+} satisfies PluginCommunitySourceIntakeSummary
+
+const pluginCommunitySourceDiscoverySummaryFixture = {
+  generatedAt: '2026-07-06T15:32:18.403Z',
+  outputDir: 'docs/release-evidence/plugin-community-source-discovery-report/2026-07-06T16-20-00Z-openpets-topic-rerun',
+  status: 'compatible-source-not-found',
+  nextAction: 'find-or-invite-compatible-plugin-json-package',
+  searchResults: [
+    {
+      query: 'GitHub topic page: openpets',
+      tool: 'curl https://github.com/topics/openpets',
+      resultCount: 7,
+      notes: '2026-07-06 topic page lists 7 public openpets-tagged repositories: alvinunreal/openpets, alvinunreal/claude-pets, alterhq/awesome-codex-pets-projects, alvinunreal/opencode-pets, MisterBrookT/pethatch, MacSiem/openpets-bridge, and MacSiem/openpets.'
+    },
+    {
+      query: 'Repository tree inspection: MacSiem/openpets',
+      tool: 'curl https://api.github.com/repos/MacSiem/openpets/git/trees/main?recursive=1',
+      resultCount: 0,
+      notes: 'No plugin.json or openpets.plugin.json manifest candidates discovered in the current default branch tree.'
+    },
+    {
+      query: 'Repository tree inspection: MisterBrookT/pethatch',
+      tool: 'curl https://api.github.com/repos/MisterBrookT/pethatch/git/trees/main?recursive=1',
+      resultCount: 0,
+      notes: 'No plugin.json or openpets.plugin.json manifest candidates discovered in the current default branch tree.'
+    },
+    {
+      query: 'Repository tree inspection: alvinunreal/claude-pets',
+      tool: 'curl https://api.github.com/repos/alvinunreal/claude-pets/git/trees/master?recursive=1',
+      resultCount: 0,
+      notes: 'No plugin.json or openpets.plugin.json manifest candidates discovered in the current default branch tree.'
+    },
+    {
+      query: 'Repository tree inspection: alterhq/awesome-codex-pets-projects',
+      tool: 'curl https://api.github.com/repos/alterhq/awesome-codex-pets-projects/git/trees/main?recursive=1',
+      resultCount: 0,
+      notes: 'No plugin.json or openpets.plugin.json manifest candidates discovered in the current default branch tree.'
+    }
+  ],
+  candidates: [
+    {
+      sourceUrl: 'https://github.com/alvinunreal/openpets',
+      archiveUrl: 'https://codeload.github.com/alvinunreal/openpets/zip/refs/heads/main',
+      submitter: 'alvinunreal/openpets',
+      status: 'incompatible-package-model',
+      reasonCode: 'plugin-json-missing',
+      intakeReport: 'docs/release-evidence/plugin-community-source-intake-report/2026-06-18T23-30-00Z-openpets-official/',
+      phase99Evidence: '',
+      notes: 'Archived adjacent ecosystem source still uses openpets.plugin.json files, not the current OpenPet plugin.json package model.'
+    },
+    {
+      sourceUrl: 'https://github.com/alvinunreal/openpets-plugin-starter',
+      archiveUrl: 'https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main',
+      submitter: 'alvinunreal/openpets-plugin-starter',
+      status: 'incompatible-package-model',
+      reasonCode: 'plugin-json-missing',
+      intakeReport: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter/',
+      phase99Evidence: '',
+      notes: 'Public starter repo uses openpets.plugin.json at the archive root rather than the current OpenPet plugin.json package model.'
+    },
+    {
+      sourceUrl: 'https://github.com/alvinunreal/opencode-pets',
+      archiveUrl: 'https://codeload.github.com/alvinunreal/opencode-pets/zip/refs/heads/master',
+      submitter: 'alvinunreal/opencode-pets',
+      status: 'incompatible-package-model',
+      reasonCode: 'plugin-json-missing',
+      intakeReport: 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-30-00Z-opencode-pets/',
+      phase99Evidence: '',
+      notes: 'OpenCode plugin installer for OpenPets desktop pet status updates; archived intake still found no current OpenPet plugin.json package root.'
+    },
+    {
+      sourceUrl: 'https://github.com/alvinunreal/claude-pets',
+      archiveUrl: 'https://codeload.github.com/alvinunreal/claude-pets/zip/refs/heads/master',
+      submitter: 'alvinunreal/claude-pets',
+      status: 'not-found',
+      reasonCode: 'plugin-json-not-discovered',
+      intakeReport: '',
+      phase99Evidence: '',
+      notes: 'Topic-listed integration repo for Claude Code desktop pet status updates, but current tree inspection found no plugin.json or openpets.plugin.json candidate path.'
+    },
+    {
+      sourceUrl: 'https://github.com/alterhq/awesome-codex-pets-projects',
+      archiveUrl: 'https://codeload.github.com/alterhq/awesome-codex-pets-projects/zip/refs/heads/main',
+      submitter: 'alterhq/awesome-codex-pets-projects',
+      status: 'not-found',
+      reasonCode: 'plugin-json-not-discovered',
+      intakeReport: '',
+      phase99Evidence: '',
+      notes: 'Topic-listed curated gallery/listing repo, not a current OpenPet plugin package source.'
+    },
+    {
+      sourceUrl: 'https://github.com/MisterBrookT/pethatch',
+      archiveUrl: 'https://codeload.github.com/MisterBrookT/pethatch/zip/refs/heads/main',
+      submitter: 'MisterBrookT/pethatch',
+      status: 'not-found',
+      reasonCode: 'plugin-json-not-discovered',
+      intakeReport: '',
+      phase99Evidence: '',
+      notes: 'Topic-listed desktop pet pack market repo, but current tree inspection found no plugin.json or openpets.plugin.json candidate path.'
+    },
+    {
+      sourceUrl: 'https://github.com/MacSiem/openpets-bridge',
+      archiveUrl: 'https://codeload.github.com/MacSiem/openpets-bridge/zip/refs/heads/main',
+      submitter: 'MacSiem/openpets-bridge',
+      status: 'not-found',
+      reasonCode: 'plugin-json-not-discovered',
+      intakeReport: '',
+      phase99Evidence: '',
+      notes: 'Topic-listed archived bridge repo moved into MacSiem/openpets/bridge and does not present a current OpenPet plugin package root.'
+    },
+    {
+      sourceUrl: 'https://github.com/MacSiem/openpets',
+      archiveUrl: 'https://codeload.github.com/MacSiem/openpets/zip/refs/heads/main',
+      submitter: 'MacSiem/openpets',
+      status: 'not-found',
+      reasonCode: 'plugin-json-not-discovered',
+      intakeReport: '',
+      phase99Evidence: '',
+      notes: 'Topic-listed fork of alterhq/openpets with bridge additions; current tree inspection found no plugin.json or openpets.plugin.json candidate path.'
+    }
+  ],
+  candidateCounts: {
+    total: 8,
+    'not-inspected': 0,
+    'ready-for-community-evidence': 0,
+    'incompatible-package-model': 3,
+    'not-found': 5
+  },
+  notes: '2026-07-06 rerun broadened public discovery from prior adjacent repositories to the full current GitHub openpets topic plus previous intake-backed candidates. No compatible external current OpenPet plugin.json package was found.',
+  boundaries: [
+    'Discovery records search and candidate source observations only.',
+    'Discovery does not prove OpenPet plugin compatibility.',
+    'Discovery does not prove signing trust, catalog publication, runtime safety, or release readiness.',
+    'Only compatible plugin.json package candidates should continue into Phase 100, Phase 103, and Phase 99.'
+  ],
+  files: {
+    summary: 'plugin-community-source-discovery-summary.json',
+    readme: 'README-community-source-discovery.md'
+  }
+} satisfies PluginCommunitySourceDiscoverySummary
+
+const pluginCommunitySourceEvidenceFromIntakeSummaryFixture = {
+  generatedAt: '2026-06-18T23:50:00.000Z',
+  bridge: {
+    intakeSummary: 'plugin-community-source-intake-report-summary.json',
+    intakeOutputDir: '/tmp/openpet/plugin-community-source-intake-report/2026-06-18T23-40-00Z',
+    intakeStatus: 'ready-for-community-evidence',
+    intakeReasonCode: 'openpet-plugin-package',
+    sourcePlugin: {
+      id: 'openpet.example.weather-status',
+      name: 'Weather Status',
+      version: '1.0.0',
+      permissions: [],
+      networkAllowlist: []
+    },
+    sourceArchive: {
+      kind: 'https-archive',
+      archiveUrl: 'https://example.test/community-plugin/archive.zip',
+      finalUrl: 'https://example.test/community-plugin/archive.zip',
+      archiveSha256: 'a'.repeat(64),
+      archiveByteSize: 1234,
+      pluginPath: 'plugin',
+      archivePluginPath: 'community-plugin-main/plugin',
+      extractedFileHashes: {
+        'plugin.json': 'b'.repeat(64)
+      }
+    },
+    communitySource: {
+      kind: 'community-source',
+      url: 'https://example.test/community/submission/42',
+      submitter: 'Example Community Author'
+    },
+    boundaries: [
+      'Only ready Phase 100 intake summaries can enter this bridge.',
+      'The bridge preserves intake provenance but does not prove signing trust, catalog publication, runtime safety, or release readiness.',
+      'Incompatible intake summaries remain intake evidence and must not be routed into Phase 99.'
+    ]
+  },
+  submission: pluginCommunitySourceSubmissionEvidenceSummaryFixture
+} satisfies PluginCommunitySourceEvidenceFromIntakeSummary
 
 const pluginCommunitySourceInvitationSummaryFixture = {
   generatedAt: '2026-06-18T23:59:00.000Z',
@@ -1853,6 +2178,14 @@ const releaseArchiveFileFixture = {
   sha256: 'c'.repeat(64)
 }
 
+const macosArtifactArchiveFileFixture = {
+  role: 'macosReleaseEvidenceArtifactManifest',
+  path: '/tmp/openpet-release-evidence/macos-release-evidence-artifact-manifest.json',
+  exists: false,
+  bytes: 0,
+  sha256: ''
+}
+
 const releaseArchiveReportSectionFixture = {
   file: releaseArchiveFileFixture,
   report: {
@@ -1907,7 +2240,8 @@ const releaseArchiveManifestFixture = {
       exists: false,
       bytes: 0,
       sha256: ''
-    }
+    },
+    macosArtifactArchiveFileFixture
   ],
   macos: {
     releaseReady: false,
@@ -1940,6 +2274,21 @@ const releaseArchiveManifestFixture = {
         bytes: 128,
         sha256: 'e'.repeat(64)
       }
+    },
+    artifactArchive: {
+      file: macosArtifactArchiveFileFixture,
+      path: '/tmp/openpet-release-evidence/macos-release-evidence-artifact-manifest.json',
+      archiveDir: '/tmp/openpet-release-evidence',
+      outputPath: '',
+      artifactName: '',
+      releaseTag: '',
+      workflowRunUrl: '',
+      ok: false,
+      releaseReady: false,
+      macosEvidenceReady: false,
+      matchesMacosEvidence: false,
+      errors: [],
+      warnings: []
     }
   },
   reports: {
@@ -2018,6 +2367,21 @@ const releaseArchiveManifestFixture = {
       matchesReport: true,
       errors: [],
       warnings: ['desktopPickerArchiveManifest is archived but not release-ready']
+    },
+    macosArtifact: {
+      file: macosArtifactArchiveFileFixture,
+      path: '/tmp/openpet-release-evidence/macos-release-evidence-artifact-manifest.json',
+      archiveDir: '/tmp/openpet-release-evidence',
+      outputPath: '',
+      artifactName: '',
+      releaseTag: '',
+      workflowRunUrl: '',
+      ok: false,
+      releaseReady: false,
+      macosEvidenceReady: false,
+      matchesMacosEvidence: false,
+      errors: [],
+      warnings: []
     }
   },
   errors: ['missing macOS codesign evidence'],
@@ -2052,7 +2416,7 @@ const signedReleaseClosureReportFixture = {
       key: 'windows',
       status: 'not-ready',
       claim: 'Do not claim Windows release readiness for this archived artifact.',
-      blockers: ['Windows packaged runtime evidence platform is not win32']
+      blockers: ['Windows smoke evidence is archived but not signed release-ready']
     }
   },
   smartScreen: {
@@ -2073,11 +2437,16 @@ const signedReleaseClaimFixture = {
 export {
   catalogSelectionFixture,
   pluginReviewFixture,
+  aiTalkLocalSmokeArchiveResultFixture,
+  agentAwarenessLocalSmokeArchiveResultFixture,
   pluginSubmissionBundleSummaryFixture,
   pluginMaintainerApprovalRecordFixture,
   pluginRealWorldSubmissionRehearsalSummaryFixture,
   pluginRemoteSourceSubmissionRehearsalSummaryFixture,
   pluginCommunitySourceSubmissionEvidenceSummaryFixture,
+  pluginCommunitySourceIntakeSummaryFixture,
+  pluginCommunitySourceDiscoverySummaryFixture,
+  pluginCommunitySourceEvidenceFromIntakeSummaryFixture,
   pluginCommunitySourceInvitationSummaryFixture,
   pluginSetupRunFixture,
   releaseArchiveManifestFixture,

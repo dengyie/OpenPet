@@ -48,10 +48,36 @@ const readPluginManifest = (pluginPath) => {
   })
 }
 
+const copyDirectoryContents = (sourceDir, targetDir) => {
+  ensureDirectory(targetDir)
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name)
+    const targetPath = path.join(targetDir, entry.name)
+    if (entry.isDirectory()) {
+      copyDirectoryContents(sourcePath, targetPath)
+      continue
+    }
+    if (!entry.isFile()) continue
+    ensureDirectory(path.dirname(targetPath))
+    fs.writeFileSync(targetPath, fs.readFileSync(sourcePath))
+  }
+}
+
+const isRecoverableRecursiveCopyError = (error) => (
+  error?.code === 'ENOENT' ||
+  error?.code === 'ENOTDIR'
+)
+
 const copyDirectory = (sourceDir, targetDir) => {
   fs.rmSync(targetDir, { recursive: true, force: true })
   ensureDirectory(path.dirname(targetDir))
-  fs.cpSync(sourceDir, targetDir, { recursive: true })
+  try {
+    fs.cpSync(sourceDir, targetDir, { recursive: true })
+  } catch (error) {
+    if (!isRecoverableRecursiveCopyError(error)) throw error
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    copyDirectoryContents(sourceDir, targetDir)
+  }
 }
 
 const removeStaleCopies = ({ pluginDir, pluginId, targetDir }) => {

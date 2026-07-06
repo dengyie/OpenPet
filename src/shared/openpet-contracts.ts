@@ -476,6 +476,81 @@ export interface CreatorStudioProviderSmokeReport {
   }
 }
 
+export type ManualAcceptanceStatus = 'pass' | 'fail' | 'pending'
+
+export interface LocalSmokeArchiveFileSummary {
+  role: string
+  path: string
+  bytes: number
+  sha256: string
+}
+
+export interface AiTalkLocalSmokeArchiveManualAcceptance {
+  bubbleVisibleLongEnough: ManualAcceptanceStatus
+  inputUsable: ManualAcceptanceStatus
+  desktopFeelNotesPresent: boolean
+  requestId: string
+}
+
+export interface AiTalkLocalSmokeArchiveResult {
+  generatedAt: string
+  ok: boolean
+  source: {
+    sessionDir: string
+    resultPath: string
+    logPath: string
+  }
+  archive: {
+    archiveDir: string
+    outputPath: string
+    sessionId: string
+  }
+  smoke: {
+    generatedAt: string
+    provider: string
+    baseUrl: string
+    model: string
+    activePetPackId: string
+    requestId: string
+    providerLatencyMs: number
+    bubbleVisible: boolean
+    manualAcceptanceTemplatePresent: boolean
+    manualAcceptance: AiTalkLocalSmokeArchiveManualAcceptance
+  }
+  files: LocalSmokeArchiveFileSummary[]
+  warnings: string[]
+}
+
+export interface AgentAwarenessLocalSmokeArchiveManualAcceptance {
+  dashboardUseful: ManualAcceptanceStatus
+  petSpeechNoiseAcceptable: ManualAcceptanceStatus
+  redactionLooksSafe: ManualAcceptanceStatus
+  notesPresent: boolean
+}
+
+export interface AgentAwarenessLocalSmokeArchiveResult {
+  generatedAt: string
+  ok: boolean
+  source: {
+    sessionDir: string
+    resultPath: string
+  }
+  archive: {
+    archiveDir: string
+    outputPath: string
+  }
+  smoke: {
+    sanitizedSignalDetected: boolean
+    sessionCount: number
+    activeSessionCount: number
+    totalEvents: number
+    unsupportedLifecycleRecordCount: number
+    manualAcceptanceTemplatePresent: boolean
+    manualAcceptance: AgentAwarenessLocalSmokeArchiveManualAcceptance
+  }
+  files: LocalSmokeArchiveFileSummary[]
+}
+
 export interface AiConfigViewState {
   enabled: boolean
   provider: string
@@ -1337,6 +1412,133 @@ export interface PluginRemoteSourceSubmissionRehearsalSummary {
   submission: PluginSubmissionRehearsalSubmissionSection
   approval: PluginSubmissionRehearsalApprovalSection
   files: PluginRemoteSourceSubmissionRehearsalFiles
+}
+
+export type PluginCommunitySourceIntakeStatus = 'ready-for-community-evidence' | 'incompatible-package-model'
+export type PluginCommunitySourceIntakeReasonCode =
+  | 'openpet-plugin-package'
+  | 'plugin-json-missing'
+  | 'plugin-json-invalid'
+  | 'plugin-path-not-found'
+
+export interface PluginCommunitySourceIntakeMetadata {
+  kind: 'community-source'
+  url: string
+  submitter: string
+}
+
+export interface PluginCommunitySourceIntakeArchive {
+  kind: 'https-archive'
+  archiveUrl: string
+  finalUrl: string
+  archiveSha256: string
+  archiveByteSize: number
+  pluginPath: string
+  archivePluginPath: string
+  extractedFileHashes: Record<string, string>
+}
+
+export interface PluginCommunitySourceIntakeCompatibility {
+  ok: boolean
+  reasonCode: PluginCommunitySourceIntakeReasonCode
+  summary: string
+}
+
+export interface PluginCommunitySourceIntakeFiles {
+  readme: string
+  checklist: string
+  commands: string
+  intake: string
+  summary: string
+}
+
+export interface PluginCommunitySourceIntakeSummary {
+  generatedAt: string
+  outputDir: string
+  communitySource: PluginCommunitySourceIntakeMetadata
+  archive: PluginCommunitySourceIntakeArchive
+  plugin: PluginSubmissionSourcePlugin | null
+  compatibility: PluginCommunitySourceIntakeCompatibility
+  status: PluginCommunitySourceIntakeStatus
+  notes: string
+  files: PluginCommunitySourceIntakeFiles
+}
+
+export type PluginCommunitySourceDiscoveryCandidateStatus =
+  | 'not-inspected'
+  | 'not-found'
+  | 'incompatible-package-model'
+  | 'ready-for-community-evidence'
+
+export type PluginCommunitySourceDiscoveryStatus =
+  | 'community-evidence-ready'
+  | 'compatible-source-found'
+  | 'compatible-source-not-found'
+
+export type PluginCommunitySourceDiscoveryNextAction =
+  | 'review-community-evidence-for-release-claims'
+  | 'route-ready-intake-through-phase-103'
+  | 'find-or-invite-compatible-plugin-json-package'
+
+export interface PluginCommunitySourceDiscoverySearchResult {
+  query: string
+  tool: string
+  resultCount: number
+  notes: string
+}
+
+export interface PluginCommunitySourceDiscoveryCandidate {
+  sourceUrl: string
+  archiveUrl: string
+  submitter: string
+  status: PluginCommunitySourceDiscoveryCandidateStatus
+  reasonCode: string
+  intakeReport: string
+  phase99Evidence: string
+  notes: string
+}
+
+export interface PluginCommunitySourceDiscoveryCandidateCounts {
+  total: number
+  'not-inspected': number
+  'ready-for-community-evidence': number
+  'incompatible-package-model': number
+  'not-found': number
+}
+
+export interface PluginCommunitySourceDiscoveryFiles {
+  summary: string
+  readme: string
+}
+
+export interface PluginCommunitySourceDiscoverySummary {
+  generatedAt: string
+  outputDir: string
+  status: PluginCommunitySourceDiscoveryStatus
+  nextAction: PluginCommunitySourceDiscoveryNextAction
+  searchResults: PluginCommunitySourceDiscoverySearchResult[]
+  candidates: PluginCommunitySourceDiscoveryCandidate[]
+  candidateCounts: PluginCommunitySourceDiscoveryCandidateCounts
+  notes: string
+  boundaries: string[]
+  files: PluginCommunitySourceDiscoveryFiles
+}
+
+export interface PluginCommunitySourceEvidenceFromIntakeBridgeSection {
+  intakeSummary: string
+  intakeOutputDir: string
+  intakeStatus: PluginCommunitySourceIntakeStatus
+  intakeReasonCode: PluginCommunitySourceIntakeReasonCode
+  sourcePlugin: PluginSubmissionSourcePlugin
+  sourceArchive: PluginCommunitySourceIntakeArchive
+  communitySource: PluginCommunitySourceIntakeMetadata
+  boundaries: string[]
+}
+
+export interface PluginCommunitySourceEvidenceFromIntakeSummary {
+  generatedAt: string
+  bridge: PluginCommunitySourceEvidenceFromIntakeBridgeSection
+  submission: PluginCommunitySourceSubmissionEvidenceSummary
 }
 
 export type PluginCommunitySourceRelation = 'independent-third-party' | 'external-community' | 'unknown'
@@ -2899,6 +3101,22 @@ export interface ReleaseEvidenceLinkedArchiveSection {
   warnings: string[]
 }
 
+export interface MacosReleaseEvidenceArtifactArchiveSection {
+  file: ReleaseEvidenceArchiveFile
+  path: string
+  archiveDir: string
+  outputPath: string
+  artifactName: string
+  releaseTag: string
+  workflowRunUrl: string
+  ok: boolean
+  releaseReady: boolean
+  macosEvidenceReady: boolean
+  matchesMacosEvidence: boolean
+  errors: string[]
+  warnings: string[]
+}
+
 export type MacosReleaseEvidenceStatus = 'missing' | 'pending' | 'pass'
 
 export interface MacosReleaseEvidenceFileStatus {
@@ -2983,6 +3201,7 @@ export interface ReleaseEvidenceArchiveManifest {
     codesign: MacosReleaseEvidenceFileStatus
     notarization: MacosReleaseEvidenceFileStatus
     gatekeeper: MacosReleaseEvidenceFileStatus
+    artifactArchive: MacosReleaseEvidenceArtifactArchiveSection
   }
   reports: {
     releaseReady: boolean
@@ -2994,6 +3213,7 @@ export interface ReleaseEvidenceArchiveManifest {
     releaseReady: boolean
     windowsSmoke: ReleaseEvidenceLinkedArchiveSection
     desktopPicker: ReleaseEvidenceLinkedArchiveSection
+    macosArtifact: MacosReleaseEvidenceArtifactArchiveSection
   }
   errors: string[]
   warnings: string[]
