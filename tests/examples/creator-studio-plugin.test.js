@@ -3941,6 +3941,17 @@ test('creator studio service exposes full-pet review details for dashboard clien
         durations: [280, 110, 110, 140, 140, 320]
       }]
     })
+    assert.deepEqual(detail.fullPetReview.visualReview, {
+      contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
+      contactSheetUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/contact-sheet.png`,
+      previews: [{
+        actionId: 'idle',
+        path: `runs/${run.runId}/qa/previews/idle.gif`,
+        previewUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/previews/idle.gif`,
+        frameCount: 6,
+        durations: [280, 110, 110, 140, 140, 320]
+      }]
+    })
     assert.deepEqual(detail.fullPetReview.rowValidation.rows.map((row) => ({
       actionId: row.actionId,
       quality: row.quality,
