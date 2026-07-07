@@ -3,7 +3,8 @@ const assert = require('node:assert/strict')
 
 const {
   buildProviderCacheKey,
-  getScopedProviderModelCatalog
+  getScopedProviderModelCatalog,
+  uniqueModelIds
 } = require('../../src/main/services/provider-model-catalog')
 
 test('buildProviderCacheKey strips credentials and query fragments from provider URLs', () => {
@@ -32,5 +33,12 @@ test('getScopedProviderModelCatalog only returns catalogs that match the sanitiz
       fetchedAt: '',
       source: 'none'
     }
+  )
+})
+
+test('uniqueModelIds strips control characters before deduping provider model ids', () => {
+  assert.deepEqual(
+    uniqueModelIds(['gpt-image-2\0', 'gpt-image-2', ' gemini-image\t', '\n']),
+    ['gemini-image', 'gpt-image-2']
   )
 })

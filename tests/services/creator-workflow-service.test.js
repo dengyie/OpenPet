@@ -473,6 +473,7 @@ test('creator workflow service imports an existing action and auto-applies click
   ])
   assert.equal(commandCalls[0].payload.generationTask.mode, 'single-action')
   assert.equal(commandCalls[0].payload.generationTask.actions[0].frameCount, 6)
+  assert.equal(commandCalls[0].payload.generationTask.actions[0].synthesisMode, 'canonical-frame')
   assert.deepEqual(copiedRuns, [{
     targetType: EDITABLE_TARGET_TYPE,
     targetId: EDITABLE_TARGET_ID,

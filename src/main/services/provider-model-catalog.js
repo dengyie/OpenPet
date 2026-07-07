@@ -20,11 +20,15 @@ const normalizeProviderCatalogBaseUrl = (value) => {
   }
 }
 
+const normalizeProviderModelId = (value) => String(value || '')
+  .replace(/[\u0000-\u001F\u007F]/g, '')
+  .trim()
+
 const uniqueModelIds = (items = []) => {
   /** @type {string[]} */
   const models = []
   for (const item of Array.isArray(items) ? items : []) {
-    const modelId = String(item || '').trim()
+    const modelId = normalizeProviderModelId(item)
     if (!modelId || models.includes(modelId)) continue
     models.push(modelId)
     if (models.length >= MAX_MODEL_CATALOG_MODELS) break

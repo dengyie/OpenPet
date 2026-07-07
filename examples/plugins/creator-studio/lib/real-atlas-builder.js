@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const sharp = require('sharp')
+const { removeOpaqueEdgeBackground, sanitizeNearTransparentPixels } = require('./edge-background-cutout')
 const { createBasicActionCoverage } = require('./full-pet-basic-actions')
 const { composeOfficialFullPetAtlas } = require('./full-pet-atlas-composer')
 const {
@@ -136,13 +137,13 @@ const countVisiblePixels = async (imagePath) => {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
-const createNormalizedCellBuffer = async (sourcePath, variant = {}) => {
+const createNormalizedCellBuffer = async (sourceInput, variant = {}) => {
   const baseMaxWidth = Math.floor(CODEX_ATLAS.cellWidth * 0.82)
   const baseMaxHeight = Math.floor(CODEX_ATLAS.cellHeight * 0.82)
   const scale = clamp(Number(variant.scale) || 1, 0.92, 1.08)
   const maxWidth = Math.max(1, Math.round(baseMaxWidth * scale))
   const maxHeight = Math.max(1, Math.round(baseMaxHeight * scale))
-  const resized = await sharp(sourcePath)
+  const resized = await sharp(sourceInput)
     .ensureAlpha()
     .resize({
       width: maxWidth,
@@ -159,7 +160,7 @@ const createNormalizedCellBuffer = async (sourcePath, variant = {}) => {
   const left = clamp(centeredLeft + Math.round(Number(variant.translateX) || 0), 0, CODEX_ATLAS.cellWidth - resizedMetadata.width)
   const top = clamp(groundedTop + Math.round(Number(variant.translateY) || 0), 0, CODEX_ATLAS.cellHeight - resizedMetadata.height)
 
-  return sharp({
+  const cellBuffer = await sharp({
     create: {
       width: CODEX_ATLAS.cellWidth,
       height: CODEX_ATLAS.cellHeight,
@@ -170,6 +171,7 @@ const createNormalizedCellBuffer = async (sourcePath, variant = {}) => {
     .composite([{ input: resized, left, top }])
     .png()
     .toBuffer()
+  return sanitizeNearTransparentPixels(cellBuffer)
 }
 
 const createPreviewCellBuffers = async ({ sourcePath, row }) => {
@@ -538,6 +540,23 @@ const createEntryVisibilityInspector = ({ fallbackEntry, fallbackValidation, war
   }
 }
 
+const createPreviewSourcePreparer = () => {
+  const cache = new Map()
+  return async (entry) => {
+    const sourcePath = entry?.sourcePath
+    if (!sourcePath) return { sourceInput: sourcePath, sourceBackgroundRemoved: false, sourceBackgroundRemovedRatio: 0 }
+    if (cache.has(sourcePath)) return cache.get(sourcePath)
+    const backgroundRemoval = await removeOpaqueEdgeBackground(sourcePath)
+    const prepared = {
+      sourceInput: backgroundRemoval.buffer,
+      sourceBackgroundRemoved: Boolean(backgroundRemoval.removed),
+      sourceBackgroundRemovedRatio: Number(backgroundRemoval.removedPixelRatio || 0)
+    }
+    cache.set(sourcePath, prepared)
+    return prepared
+  }
+}
+
 const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, outputDir, qaDir, officialRows = null }) => {
   const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
   const fallbackEntry = entries[0]
@@ -576,6 +595,8 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     fallbackValidation: sourceValidation,
     warnings
   })
+  const preparePreviewSource = createPreviewSourcePreparer()
+  const fallbackPreviewSource = await preparePreviewSource(fallbackEntry)
   for (const row of CODEX_ROWS) {
     let resolved = findEntryForAction({
       entries,
@@ -591,8 +612,9 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
         quality: row.id === 'idle' ? 'base-preview' : 'synthesized-preview'
       }
     }
+    const previewSource = await preparePreviewSource(resolved.entry)
     rowCellBuffers.set(row.id, await createPreviewCellBuffers({
-      sourcePath: resolved.entry.sourcePath,
+      sourcePath: previewSource.sourceInput,
       row
     }))
     basicActionRows.push({
@@ -604,7 +626,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     })
   }
   const basicActions = createBasicActionCoverage(basicActionRows)
-  await sharp({
+  const atlasBuffer = await sharp({
     create: {
       width: CODEX_ATLAS.width,
       height: CODEX_ATLAS.height,
@@ -613,6 +635,9 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     }
   })
     .composite(createCellComposites(rowCellBuffers))
+    .png()
+    .toBuffer()
+  await sharp(await sanitizeNearTransparentPixels(atlasBuffer))
     .webp({ lossless: true })
     .toFile(spritesheetPath)
 
@@ -641,6 +666,8 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     visiblePixels: sourceValidation.visiblePixels,
     byteSize: size,
     sourceSha256,
+    sourceBackgroundRemoved: fallbackPreviewSource.sourceBackgroundRemoved,
+    sourceBackgroundRemovedRatio: fallbackPreviewSource.sourceBackgroundRemovedRatio,
     warnings: []
   })
   writeJson(atlasQaPath, {

@@ -120,3 +120,22 @@ test('reference resolver falls back to original reference when anchors are unava
   assert.equal(references[0].role, 'canonical-reference')
   assert.equal(references[0].relativePath, 'runs/run-anchor/inputs/references/canonical-reference.png')
 })
+
+test('reference resolver rejects anchor paths that escape through bare parent segments', () => {
+  const dataDir = makeDataDir()
+  const run = createRunWithAnchors(dataDir)
+  run.artifacts.anchorReferences.actionAnchors[0].relativePath = '..'
+  run.artifacts.anchorReferences.characterAnchor.relativePath = '..'
+  run.artifacts.anchorReferences.compositeBoard.relativePath = '..'
+
+  const references = resolveRunReferenceImages({
+    dataDir,
+    run,
+    stage: 'final',
+    actionId: 'waving'
+  })
+
+  assert.equal(references.length, 1)
+  assert.equal(references[0].role, 'canonical-reference')
+  assert.equal(references[0].relativePath, 'runs/run-anchor/inputs/references/canonical-reference.png')
+})

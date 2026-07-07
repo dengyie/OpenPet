@@ -62,6 +62,35 @@ const writeSingleCatFrame = async ({ filePath, width = 196, height = 212, backgr
     .toFile(filePath)
 }
 
+const writeOpaqueStripedCatFrame = async ({ filePath, width = 1024, height = 1024 }) => {
+  const stripeWidth = 96
+  const stripes = Array.from({ length: Math.ceil(width / stripeWidth) }, (_entry, index) => (
+    `<rect x="${index * stripeWidth}" y="0" width="${Math.ceil(stripeWidth / 2)}" height="${height}" fill="#f0f0f0" opacity="0.72" />`
+  )).join('')
+  await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 252, g: 252, b: 250, alpha: 1 }
+    }
+  })
+    .composite([
+      {
+        input: Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${stripes}</svg>`),
+        left: 0,
+        top: 0
+      },
+      {
+        input: Buffer.from(createCatFrameSvg({ width, height, pawLift: 18, pawAngle: -8 })),
+        left: 0,
+        top: 0
+      }
+    ])
+    .png()
+    .toFile(filePath)
+}
+
 const createActionSheetPng = async ({
   filePath,
   frameCount = 8,
@@ -360,6 +389,7 @@ test('canonical action synthesis creates stable local-motion frames from one app
   assert.equal(qa.extraction.mode, 'canonical-local-synthesis')
   assert.equal(qa.synthesis.mode, 'canonical-frame')
   assert.equal(qa.synthesis.source, 'single-approved-canonical-frame')
+  assert.equal(qa.synthesis.compositeMode, 'overlay-local-patch')
   assert.equal(qa.frames.length, 6)
   assert.equal(qa.quality.metrics.uniqueFrameCount >= 5, true)
   assert.equal(qa.quality.metrics.reusedFrameCount, 0)
@@ -368,6 +398,40 @@ test('canonical action synthesis creates stable local-motion frames from one app
   assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
   assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio < 0.65, true)
   assert.equal(qa.quality.metrics.identityCoreDiff.averageChangedPixelRatio < 0.52, true)
+})
+
+test('canonical action synthesis removes opaque edge backgrounds before local motion', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await writeOpaqueStripedCatFrame({
+    filePath: path.join(sourceDir, '0001.png')
+  })
+
+  const result = await buildCanonicalActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'canonical-opaque-wave',
+      name: 'Canonical Opaque Wave',
+      motionPrompt: 'friendly paw wave',
+      frameCount: 6,
+      loop: false,
+      synthesisMode: 'canonical-frame'
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/canonical-opaque-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, true)
+  assert.equal(qa.synthesis.compositeMode, 'overlay-local-patch')
+  assert.equal(qa.frames.every((frame) => frame.sourceBackgroundRemoved === true), true)
+  assert.equal(qa.frames.every((frame) => frame.sourceFilledFrame === false), true)
+  assert.equal(qa.quality.metrics.frameBounds.baselineY.range <= 6, true)
 })
 
 test('action frame builder rejects identity drift even when frame anchors are stable', async () => {

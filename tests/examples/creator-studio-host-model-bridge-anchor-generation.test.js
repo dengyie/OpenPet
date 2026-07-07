@@ -132,6 +132,39 @@ test('anchor generation creates composite, character, and action anchors with on
   assert.equal(result.anchorReferences.actionAnchors.length, 1)
   assert.equal(result.anchorReferences.actionAnchors[0].role, 'action-anchor')
   assert.equal(result.anchorReferences.actionAnchors[0].actionId, 'waving')
+  assert.deepEqual(result.anchorGeneration.stages.map((stage) => ({
+    stage: stage.stage,
+    actionId: stage.actionId || '',
+    referenceRole: stage.referenceRole,
+    outputRelativePath: stage.outputRelativePath,
+    promptRelativePath: stage.promptRelativePath || '',
+    model: stage.model || ''
+  })), [
+    {
+      stage: 'composite-reference-board',
+      actionId: '',
+      referenceRole: 'canonical-reference',
+      outputRelativePath: 'runs/run-anchor/inputs/anchors/composite-reference-board.png',
+      promptRelativePath: '',
+      model: ''
+    },
+    {
+      stage: 'character-anchor',
+      actionId: '',
+      referenceRole: 'composite-reference-board',
+      outputRelativePath: 'runs/run-anchor/anchors/character-anchor/0001.png',
+      promptRelativePath: 'runs/run-anchor/prompts/anchors/character-anchor.md',
+      model: 'gpt-image-2'
+    },
+    {
+      stage: 'action-anchor',
+      actionId: 'waving',
+      referenceRole: 'character-anchor',
+      outputRelativePath: 'runs/run-anchor/anchors/actions/waving-anchor/0001.png',
+      promptRelativePath: 'runs/run-anchor/prompts/anchors/actions/waving-anchor.md',
+      model: 'gpt-image-2'
+    }
+  ])
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.compositeBoard.relativePath)), true)
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.characterAnchor.relativePath)), true)
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.actionAnchors[0].relativePath)), true)

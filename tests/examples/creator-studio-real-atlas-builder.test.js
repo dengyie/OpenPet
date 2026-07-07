@@ -32,6 +32,41 @@ const writeSourcePng = async ({ dataDir, relativePath = 'runs/run-1/frames/base/
   return { relativePath, absolutePath }
 }
 
+const writeStripedPetSourcePng = async ({ dataDir, relativePath = 'runs/run-1/frames/base/striped.png' } = {}) => {
+  const absolutePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  await sharp({
+    create: {
+      width: 512,
+      height: 512,
+      channels: 4,
+      background: { r: 252, g: 252, b: 250, alpha: 1 }
+    }
+  })
+    .composite([{
+      input: Buffer.from(`
+        <svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="0" width="64" height="512" fill="#eeeeee" opacity="0.7" />
+          <rect x="128" y="0" width="64" height="512" fill="#eeeeee" opacity="0.7" />
+          <rect x="256" y="0" width="64" height="512" fill="#eeeeee" opacity="0.7" />
+          <rect x="384" y="0" width="64" height="512" fill="#eeeeee" opacity="0.7" />
+          <ellipse cx="256" cy="292" rx="92" ry="124" fill="#d99a3e" />
+          <circle cx="256" cy="184" r="78" fill="#e7ad54" />
+          <circle cx="218" cy="180" r="12" fill="#3f8b40" />
+          <circle cx="294" cy="180" r="12" fill="#3f8b40" />
+          <ellipse cx="256" cy="276" rx="44" ry="86" fill="#f4dfbd" />
+          <ellipse cx="214" cy="424" rx="34" ry="18" fill="#d99a3e" />
+          <ellipse cx="298" cy="424" rx="34" ry="18" fill="#d99a3e" />
+        </svg>
+      `),
+      left: 0,
+      top: 0
+    }])
+    .png()
+    .toFile(absolutePath)
+  return { relativePath, absolutePath }
+}
+
 const createGenerationResult = (relativePath) => ({
   backend: 'local',
   model: 'local-pet-sprite',
@@ -68,6 +103,22 @@ const countVisiblePixelsInCell = async ({ imagePath, row, column }) => {
     if (data[index] > 0) visible += 1
   }
   return visible
+}
+
+const countNearTransparentPixelsWithRgb = async (imagePath) => {
+  const { data, info } = await sharp(imagePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  let nearTransparentPixelsWithRgb = 0
+  for (let pixel = 0; pixel < info.width * info.height; pixel += 1) {
+    const index = pixel * info.channels
+    if (data[index + 3] > 8) continue
+    if (data[index] !== 0 || data[index + 1] !== 0 || data[index + 2] !== 0) {
+      nearTransparentPixelsWithRgb += 1
+    }
+  }
+  return nearTransparentPixelsWithRgb
 }
 
 const getRowCellHashes = async (spritesheetPath, row) => {
@@ -250,6 +301,31 @@ test('real atlas builder creates a Codex atlas from generated image pixels', asy
   assert.equal(atlasQa.visiblePixels, await countVisiblePixels(result.spritesheetPath))
   assert.equal(JSON.stringify(sourceQa).includes(dataDir), false)
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
+})
+
+test('real atlas builder removes opaque edge backgrounds from preview fallback sprites', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeStripedPetSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir
+  })
+
+  const sourceQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'source-image-validation.json'), 'utf-8'))
+  assert.equal(sourceQa.sourceBackgroundRemoved, true)
+  assert.equal(sourceQa.sourceBackgroundRemovedRatio > 0.25, true)
+  assert.equal(await countNearTransparentPixelsWithRgb(result.spritesheetPath), 0)
+  const idleVisiblePixels = await countVisiblePixelsInCell({
+    imagePath: result.spritesheetPath,
+    row: CODEX_ROWS.find((row) => row.id === 'idle'),
+    column: 0
+  })
+  assert.equal(idleVisiblePixels < CODEX_ATLAS.cellWidth * CODEX_ATLAS.cellHeight * 0.55, true)
 })
 
 test('real atlas builder keeps preview fallback rows visually stable instead of manufacturing motion variants', async () => {

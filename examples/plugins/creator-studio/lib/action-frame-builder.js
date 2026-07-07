@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const sharp = require('sharp')
+const { removeOpaqueEdgeBackground } = require('./edge-background-cutout')
 const { resolveGeneratedImagePath } = require('./real-atlas-builder')
 const { createPlaybackDiagnostics } = require('./action-frame-playback')
 
@@ -380,7 +381,7 @@ const countPairsAboveRatio = (pairs = [], threshold = 1) => (
     : 0
 )
 
-const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}) => {
+const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true, allowOpaqueFullFrameTrim = true } = {}) => {
   const decoded = await sharp(sourceInput)
     .ensureAlpha()
     .raw()
@@ -394,6 +395,9 @@ const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}
     bounds.width === decoded.info.width &&
     bounds.height === decoded.info.height
   if (!allowOpaqueFullFrame && fullFrameVisible) {
+    if (!allowOpaqueFullFrameTrim) {
+      throw new Error('Generated canonical source is missing a transparent cutout; opaque edge background could not be removed safely.')
+    }
     const trimAttempt = await sharp(sourceInput)
       .trim()
       .png()
@@ -441,7 +445,10 @@ const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}
 const createNormalizedFrame = async (sourceInput, options = {}) => {
   const maxWidth = Math.floor(FRAME_WIDTH * 0.82)
   const maxHeight = Math.floor(FRAME_HEIGHT * 0.82)
-  const trimmed = await trimFrameSource(sourceInput, options)
+  const backgroundRemoval = options.removeOpaqueBackground
+    ? await removeOpaqueEdgeBackground(sourceInput)
+    : { buffer: sourceInput, removed: false, removedPixelRatio: 0 }
+  const trimmed = await trimFrameSource(backgroundRemoval.buffer, options)
   const resized = await sharp(trimmed.buffer)
     .resize({
       width: maxWidth,
@@ -473,7 +480,9 @@ const createNormalizedFrame = async (sourceInput, options = {}) => {
     sourceBounds: trimmed.bounds,
     sourceFilledCell: trimmed.fullFrameVisible,
     sourceFilledFrame: trimmed.fullFrameVisible,
-    sourceOpaqueFullFrameTrimmed: Boolean(trimmed.opaqueFullFrameTrimmed)
+    sourceOpaqueFullFrameTrimmed: Boolean(trimmed.opaqueFullFrameTrimmed),
+    sourceBackgroundRemoved: Boolean(backgroundRemoval.removed),
+    sourceBackgroundRemovedRatio: Number(backgroundRemoval.removedPixelRatio || 0)
   }
 }
 
@@ -621,7 +630,7 @@ const resolveCanonicalMotionRegion = ({ bounds, action }) => {
   }
   const wave = isCanonicalWaveAction(action)
   const relative = wave
-    ? { left: 0.58, top: 0.18, right: 1.0, bottom: 0.76 }
+    ? { left: 0.72, top: 0.02, right: 1.0, bottom: 0.46 }
     : { left: 0.30, top: 0.18, right: 0.70, bottom: 0.64 }
 
   let left = clampInteger(visible.left + (visible.width * relative.left), 0, FRAME_WIDTH - 1)
@@ -682,19 +691,7 @@ const createCanonicalLocalMotionFrame = async ({ canonicalBuffer, motionRegion, 
   const left = clampInteger(motionRegion.left + Number(offset.x || 0), 0, FRAME_WIDTH - motionRegion.width)
   const top = clampInteger(motionRegion.top + Number(offset.y || 0), 0, FRAME_HEIGHT - motionRegion.height)
   return sharp(canonicalBuffer)
-    .composite([
-      {
-        input: patch,
-        left: motionRegion.left,
-        top: motionRegion.top,
-        blend: 'dest-out'
-      },
-      {
-        input: patch,
-        left,
-        top
-      }
-    ])
+    .composite([{ input: patch, left, top }])
     .png()
     .toBuffer()
 }
@@ -995,6 +992,8 @@ const buildActionFramesFromGeneratedImage = async ({
       sourceBounds: frameSource.normalized.sourceBounds,
       sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
       sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
+      sourceBackgroundRemoved: frameSource.normalized.sourceBackgroundRemoved,
+      sourceBackgroundRemovedRatio: frameSource.normalized.sourceBackgroundRemovedRatio,
       ...(reusedPreviousFrame ? { reusedPreviousFrame: true, reusedFromFileName } : {}),
       ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
       ...(Number.isInteger(frameSource.extraction?.sourceOutputIndex) ? { sourceOutputIndex: frameSource.extraction.sourceOutputIndex } : {})
@@ -1083,7 +1082,11 @@ const buildCanonicalActionFramesFromGeneratedImage = async ({
   fs.mkdirSync(safeQaDir, { recursive: true })
 
   const [sourceEntry] = resolveGeneratedImageEntries({ dataDir, generationResult })
-  const normalized = await createNormalizedFrame(sourceEntry.sourcePath)
+  const normalized = await createNormalizedFrame(sourceEntry.sourcePath, {
+    removeOpaqueBackground: true,
+    allowOpaqueFullFrame: false,
+    allowOpaqueFullFrameTrim: false
+  })
   const canonicalInspection = await inspectVisibleBuffer(normalized.frameBuffer)
   const motionRegion = resolveCanonicalMotionRegion({
     bounds: canonicalInspection.bounds,
@@ -1099,6 +1102,7 @@ const buildCanonicalActionFramesFromGeneratedImage = async ({
   const synthesis = {
     mode: 'canonical-frame',
     source: 'single-approved-canonical-frame',
+    compositeMode: 'overlay-local-patch',
     motionProfile,
     motionRegion,
     offsets
@@ -1127,6 +1131,8 @@ const buildCanonicalActionFramesFromGeneratedImage = async ({
       sourceBounds: normalized.sourceBounds,
       sourceFilledFrame: normalized.sourceFilledFrame,
       sourceOpaqueFullFrameTrimmed: normalized.sourceOpaqueFullFrameTrimmed,
+      sourceBackgroundRemoved: normalized.sourceBackgroundRemoved,
+      sourceBackgroundRemovedRatio: normalized.sourceBackgroundRemovedRatio,
       synthesisOffset: offsets[index] || { x: 0, y: 0 }
     })
   }
@@ -1228,6 +1234,8 @@ const repairActionFrameFromGeneratedImage = async ({
     sourceBounds: frameSource.normalized.sourceBounds,
     sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
     sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
+    sourceBackgroundRemoved: frameSource.normalized.sourceBackgroundRemoved,
+    sourceBackgroundRemovedRatio: frameSource.normalized.sourceBackgroundRemovedRatio,
     ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
     repairedAt: now()
   }

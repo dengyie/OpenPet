@@ -16,6 +16,7 @@ const {
   resolveReferenceImagePath,
   resolveImportedPetRoot,
   verifyNewCharacterScenario,
+  verifyScenarioResult,
   approveScenarioReferenceImage,
   runScenarioWorkflow,
   runCreatorWorkflowHostSmoke
@@ -171,6 +172,43 @@ test('verifyNewCharacterScenario resolves imported pack root from isolated userD
   assert.match(verification.message, /smoke-mango-cat/)
   assert.equal(verification.artifactPaths.petRoot, packRoot)
   assert.equal(verification.artifactPaths.petManifestPath, path.join(packRoot, 'pet.json'))
+})
+
+test('verifyScenarioResult treats new-character preview-ready as a passed official-row gate', () => {
+  const verification = verifyScenarioResult({
+    scenario: 'new-character',
+    result: {
+      ok: true,
+      state: 'preview-ready',
+      code: 'preview_ready',
+      run: {
+        runId: 'run-preview',
+        mode: 'full-pet'
+      },
+      basicActions: {
+        missingRequiredOfficialActionIds: ['idle', 'waving'],
+        previewFallbackActionIds: ['idle', 'waving']
+      }
+    },
+    workspaceRoot: '/tmp/workspace',
+    userDataDir: '/tmp/user-data',
+    runRecord: {
+      runId: 'run-preview',
+      conditioning: {
+        mode: 'image-edit',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        references: [{
+          fileName: 'canonical-reference.png',
+          relativePath: 'runs/run-preview/inputs/references/canonical-reference.png'
+        }]
+      }
+    }
+  })
+
+  assert.equal(verification.ok, true)
+  assert.match(verification.message, /Preview-only full-pet output/)
+  assert.deepEqual(verification.artifactPaths.referenceInput, 'runs/run-preview/inputs/references/canonical-reference.png')
 })
 
 test('approveScenarioReferenceImage returns a workflow token for a reference path', () => {

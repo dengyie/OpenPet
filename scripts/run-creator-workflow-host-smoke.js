@@ -594,7 +594,44 @@ const verifyNewCharacterScenario = ({ result, userDataDir }) => {
   }
 }
 
+const verifyPreviewReadyNewCharacterScenario = ({ result }) => {
+  const missingOfficialActionIds = Array.isArray(result?.basicActions?.missingRequiredOfficialActionIds)
+    ? result.basicActions.missingRequiredOfficialActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
+    : []
+  if (result?.state !== 'preview-ready' || result?.code !== 'preview_ready') {
+    return {
+      ok: false,
+      message: `Workflow did not complete successfully: ${result?.state || 'unknown'}`
+    }
+  }
+  if (missingOfficialActionIds.length === 0) {
+    return {
+      ok: false,
+      message: 'Preview-ready full-pet output did not report missing official action rows'
+    }
+  }
+  return {
+    ok: true,
+    message: `Preview-only full-pet output is correctly gated until official rows are generated: ${missingOfficialActionIds.join(', ')}`,
+    artifactPaths: {}
+  }
+}
+
 const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, runRecord }) => {
+  if (scenario === 'new-character' && result?.state === 'preview-ready') {
+    const previewVerification = verifyPreviewReadyNewCharacterScenario({ result })
+    if (!previewVerification.ok) return previewVerification
+    const conditioningVerification = verifyConditioningEvidence({ runRecord })
+    if (!conditioningVerification.ok) return conditioningVerification
+    return {
+      ok: true,
+      message: `${previewVerification.message}. ${conditioningVerification.message}.`,
+      artifactPaths: {
+        ...(isObject(previewVerification.artifactPaths) ? previewVerification.artifactPaths : {}),
+        ...(isObject(conditioningVerification.artifactPaths) ? conditioningVerification.artifactPaths : {})
+      }
+    }
+  }
   if (result?.state !== 'completed') {
     return {
       ok: false,
