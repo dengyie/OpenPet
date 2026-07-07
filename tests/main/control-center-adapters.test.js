@@ -2,6 +2,9 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  createAiBehaviorConfigView,
+  createAiBehaviorDecisionListView,
+  createAiBehaviorResultView,
   createAiConfigView,
   createAiMemoryProfileView,
   createAiPersonaDraftView,
@@ -105,6 +108,180 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       source: 'none'
     }
   })
+})
+
+test('AI behavior adapters normalize config, decisions, and results for Control Center', () => {
+  assert.equal(createAiBehaviorConfigView({}).useTools, true)
+
+  const config = createAiBehaviorConfigView({
+    enabled: 1,
+    useTools: false,
+    cooldownMs: '2500',
+    rules: [{
+      id: '',
+      enabled: false,
+      priority: '7',
+      when: {
+        intent: 'wave',
+        minConfidence: '0.6',
+        contains: ['hello', 42],
+        actionKind: 'gesture',
+        raw: 'ignore-me'
+      },
+      then: {
+        type: 'playAction',
+        text: 99,
+        actionId: 'wave',
+        event: null,
+        message: 'ok',
+        internal: 'ignore-me'
+      },
+      serviceOnly: 'ignore-me'
+    }, 'bad-rule'],
+    decisions: [{
+      id: '9',
+      timestamp: '2026-07-07T00:00:00.000Z',
+      matched: 1,
+      type: 'playAction',
+      ruleId: 'rule-wave',
+      reason: 'matched',
+      actionId: 'wave',
+      label: 7,
+      kind: 'gesture',
+      event: null,
+      intent: 'wave',
+      providerReason: 42,
+      displayMode: 'bubble',
+      inputSummary: 'reply:5 chars',
+      cooldown: '',
+      fallback: 'yes',
+      blockedReason: null,
+      replay: {
+        reply: 'hello',
+        behaviorIntent: {
+          intent: 'wave',
+          actionId: 'wave',
+          bubbleText: 'hi',
+          confidence: '0.75',
+          reason: 'provider says wave',
+          displayMode: 'bubble',
+          secretValue: 'sk-hidden'
+        },
+        rawProviderPayload: 'ignore-me'
+      },
+      rawProviderPayload: 'ignore-me'
+    }],
+    secretValue: 'sk-hidden'
+  })
+
+  assert.deepEqual(config, {
+    enabled: true,
+    useTools: false,
+    cooldownMs: 2500,
+    rules: [{
+      id: 'rule-1',
+      enabled: false,
+      priority: 7,
+      when: {
+        intent: 'wave',
+        minConfidence: 0.6,
+        contains: ['hello'],
+        actionKind: 'gesture'
+      },
+      then: {
+        type: 'playAction',
+        text: '',
+        actionId: 'wave',
+        event: '',
+        message: 'ok'
+      }
+    }],
+    decisions: [{
+      id: 9,
+      timestamp: '2026-07-07T00:00:00.000Z',
+      matched: true,
+      type: 'playAction',
+      ruleId: 'rule-wave',
+      reason: 'matched',
+      actionId: 'wave',
+      label: '',
+      kind: 'gesture',
+      event: '',
+      intent: 'wave',
+      displayMode: 'bubble',
+      inputSummary: 'reply:5 chars',
+      cooldown: false,
+      fallback: true,
+      blockedReason: '',
+      replay: {
+        reply: 'hello',
+        behaviorIntent: {
+          intent: 'wave',
+          actionId: 'wave',
+          bubbleText: 'hi',
+          confidence: 0.75,
+          reason: 'provider says wave',
+          displayMode: 'bubble'
+        }
+      }
+    }]
+  })
+
+  assert.deepEqual(createAiBehaviorResultView({
+    matched: 1,
+    reason: 'matched',
+    type: 'playAction',
+    ruleId: 8,
+    actionId: 'wave',
+    label: 'Wave',
+    kind: null,
+    event: 'done',
+    intent: 'wave',
+    providerReason: 7,
+    displayMode: 'action',
+    cooldown: '',
+    fallback: 'yes',
+    blockedReason: null,
+    replayOf: '9',
+    raw: 'ignore-me'
+  }), {
+    matched: true,
+    reason: 'matched',
+    type: 'playAction',
+    ruleId: '',
+    actionId: 'wave',
+    label: 'Wave',
+    kind: '',
+    event: 'done',
+    intent: 'wave',
+    displayMode: 'action',
+    cooldown: false,
+    fallback: true,
+    blockedReason: '',
+    replayOf: 9
+  })
+
+  assert.deepEqual(createAiBehaviorDecisionListView([{ id: '2', matched: 0, reason: 'cleared' }, 'bad']), [{
+    id: 2,
+    timestamp: '',
+    matched: false,
+    type: '',
+    ruleId: '',
+    reason: 'cleared',
+    actionId: '',
+    label: '',
+    kind: '',
+    event: '',
+    intent: '',
+    inputSummary: '',
+    cooldown: false,
+    fallback: false,
+    blockedReason: '',
+    replay: {
+      reply: '',
+      behaviorIntent: null
+    }
+  }])
 })
 
 test('AI talk persona adapters normalize payloads for Control Center', () => {

@@ -29,6 +29,9 @@
  * @typedef {import('../shared/openpet-contracts').ActionsConfigViewState} ActionsConfigViewState
  * @typedef {import('../shared/openpet-contracts').AboutInfoViewState} AboutInfoViewState
  * @typedef {import('../shared/openpet-contracts').AboutUpdateInfo} AboutUpdateInfo
+ * @typedef {import('../shared/openpet-contracts').AiBehaviorConfig} AiBehaviorConfig
+ * @typedef {import('../shared/openpet-contracts').AiBehaviorDecision} AiBehaviorDecision
+ * @typedef {import('../shared/openpet-contracts').AiBehaviorResult} AiBehaviorResult
  * @typedef {import('../shared/openpet-contracts').PetPackMutationResult} PetPackMutationResult
  * @typedef {import('../shared/openpet-contracts').PetPacksViewState} PetPacksViewState
  * @typedef {import('../shared/openpet-contracts').UpdateCheckViewState} UpdateCheckViewState
@@ -52,6 +55,8 @@ const PLUGIN_PROFILES = new Set(['runtime', 'creator-tools', 'hybrid'])
 const PLUGIN_CONFIG_FIELD_TYPES = new Set(['string', 'number', 'boolean'])
 const PLUGIN_SERVICE_HEALTH_STATUSES = new Set(['not-configured', 'unknown', 'checking', 'healthy', 'unhealthy'])
 const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed', 'timed_out'])
+const AI_BEHAVIOR_RULE_ACTION_TYPES = new Set(['say', 'playAction', 'setEvent'])
+const AI_BEHAVIOR_DISPLAY_MODES = new Set(['none', 'bubble', 'action', 'event'])
 
 /**
  * @param {unknown} value
@@ -351,6 +356,183 @@ const uniqueStrings = (items) => {
     values.push(item)
   }
   return values
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+const toViewString = (value) => (typeof value === 'string' ? value : '')
+
+/**
+ * @param {unknown} value
+ * @returns {import('../shared/openpet-contracts').AiBehaviorIntent | null}
+ */
+const createAiBehaviorIntentView = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = toRecord(value)
+  return {
+    ...(typeof input.label === 'string' ? { label: input.label } : {}),
+    ...(typeof input.kind === 'string' ? { kind: input.kind } : {}),
+    actionId: toViewString(input.actionId),
+    bubbleText: toViewString(input.bubbleText),
+    ...(typeof input.reason === 'string' ? { reason: input.reason } : {}),
+    ...(typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+      ? { displayMode: /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode) }
+      : {}),
+    intent: toViewString(input.intent),
+    confidence: toFiniteNumber(input.confidence)
+  }
+}
+
+/**
+ * @param {unknown} replay
+ * @returns {{ reply: string, behaviorIntent: import('../shared/openpet-contracts').AiBehaviorIntent | null }}
+ */
+const createAiBehaviorReplayView = (replay) => {
+  const input = toRecord(replay)
+  return {
+    reply: toViewString(input.reply),
+    behaviorIntent: createAiBehaviorIntentView(input.behaviorIntent)
+  }
+}
+
+/**
+ * @param {unknown} rule
+ * @param {number} index
+ * @returns {import('../shared/openpet-contracts').AiBehaviorRule | null}
+ */
+const createAiBehaviorRuleView = (rule, index = 0) => {
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) return null
+  const input = toRecord(rule)
+  const when = toRecord(input.when)
+  const then = toRecord(input.then)
+  return {
+    id: toViewString(input.id) || `rule-${index + 1}`,
+    enabled: input.enabled !== false,
+    priority: toFiniteNumber(input.priority),
+    when: {
+      intent: toViewString(when.intent),
+      minConfidence: toFiniteNumber(when.minConfidence),
+      contains: uniqueStrings(when.contains),
+      actionKind: toViewString(when.actionKind)
+    },
+    then: {
+      type: typeof then.type === 'string' && AI_BEHAVIOR_RULE_ACTION_TYPES.has(then.type)
+        ? /** @type {'say' | 'playAction' | 'setEvent'} */ (then.type)
+        : 'playAction',
+      text: toViewString(then.text),
+      actionId: toViewString(then.actionId),
+      event: toViewString(then.event),
+      message: toViewString(then.message)
+    }
+  }
+}
+
+/**
+ * @param {import('../shared/openpet-contracts').AiBehaviorRule | null} rule
+ * @returns {rule is import('../shared/openpet-contracts').AiBehaviorRule}
+ */
+const isAiBehaviorRuleView = (rule) => Boolean(rule)
+
+/**
+ * @param {unknown} decision
+ * @param {number} index
+ * @returns {AiBehaviorDecision | null}
+ */
+const createAiBehaviorDecisionView = (decision, index = 0) => {
+  if (!decision || typeof decision !== 'object' || Array.isArray(decision)) return null
+  const input = toRecord(decision)
+  const displayMode = typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+    ? /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode)
+    : ''
+  return {
+    id: Number.isFinite(Number(input.id)) ? Number(input.id) : index + 1,
+    timestamp: toViewString(input.timestamp),
+    matched: Boolean(input.matched),
+    type: toViewString(input.type),
+    ruleId: toViewString(input.ruleId),
+    reason: toViewString(input.reason),
+    actionId: toViewString(input.actionId),
+    label: toViewString(input.label),
+    kind: toViewString(input.kind),
+    event: toViewString(input.event),
+    intent: toViewString(input.intent),
+    ...(typeof input.providerReason === 'string' ? { providerReason: input.providerReason } : {}),
+    ...(displayMode ? { displayMode } : {}),
+    inputSummary: toViewString(input.inputSummary),
+    cooldown: Boolean(input.cooldown),
+    fallback: Boolean(input.fallback),
+    blockedReason: toViewString(input.blockedReason),
+    replay: createAiBehaviorReplayView(input.replay),
+    ...(input.replayRedacted !== undefined ? { replayRedacted: Boolean(input.replayRedacted) } : {})
+  }
+}
+
+/**
+ * @param {AiBehaviorDecision | null} decision
+ * @returns {decision is AiBehaviorDecision}
+ */
+const isAiBehaviorDecisionView = (decision) => Boolean(decision)
+
+/**
+ * @param {unknown} decisions
+ * @returns {AiBehaviorDecision[]}
+ */
+const createAiBehaviorDecisionListView = (decisions) => (
+  Array.isArray(decisions)
+    ? decisions
+      .map((decision, index) => createAiBehaviorDecisionView(decision, index))
+      .filter(isAiBehaviorDecisionView)
+    : []
+)
+
+/**
+ * @param {unknown} config
+ * @returns {AiBehaviorConfig}
+ */
+const createAiBehaviorConfigView = (config = {}) => {
+  const input = toRecord(config)
+  return {
+    enabled: Boolean(input.enabled),
+    useTools: input.useTools !== false,
+    cooldownMs: toNonNegativeInteger(input.cooldownMs),
+    rules: Array.isArray(input.rules)
+      ? input.rules
+        .map((rule, index) => createAiBehaviorRuleView(rule, index))
+        .filter(isAiBehaviorRuleView)
+      : [],
+    decisions: createAiBehaviorDecisionListView(input.decisions)
+  }
+}
+
+/**
+ * @param {unknown} result
+ * @returns {AiBehaviorResult}
+ */
+const createAiBehaviorResultView = (result = {}) => {
+  const input = toRecord(result)
+  const replayOf = Number(input.replayOf)
+  const displayMode = typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+    ? /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode)
+    : ''
+  return {
+    matched: Boolean(input.matched),
+    reason: toViewString(input.reason),
+    ...(typeof input.type === 'string' ? { type: input.type } : {}),
+    ...(input.ruleId !== undefined ? { ruleId: toViewString(input.ruleId) } : {}),
+    ...(input.actionId !== undefined ? { actionId: toViewString(input.actionId) } : {}),
+    ...(input.label !== undefined ? { label: toViewString(input.label) } : {}),
+    ...(input.kind !== undefined ? { kind: toViewString(input.kind) } : {}),
+    ...(input.event !== undefined ? { event: toViewString(input.event) } : {}),
+    ...(input.intent !== undefined ? { intent: toViewString(input.intent) } : {}),
+    ...(typeof input.providerReason === 'string' ? { providerReason: input.providerReason } : {}),
+    ...(displayMode ? { displayMode } : {}),
+    ...(input.cooldown !== undefined ? { cooldown: Boolean(input.cooldown) } : {}),
+    ...(input.fallback !== undefined ? { fallback: Boolean(input.fallback) } : {}),
+    ...(input.blockedReason !== undefined ? { blockedReason: toViewString(input.blockedReason) } : {}),
+    ...(Number.isFinite(replayOf) ? { replayOf } : {})
+  }
 }
 
 /**
@@ -1459,6 +1641,9 @@ const createUpdateCheckView = (result = {}) => ({
 })
 
 module.exports = {
+  createAiBehaviorConfigView,
+  createAiBehaviorDecisionListView,
+  createAiBehaviorResultView,
   createAiConfigView,
   createAiMemoryProfileView,
   createAiPersonaDraftView,

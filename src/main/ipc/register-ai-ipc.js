@@ -14,7 +14,10 @@ const registerAiIpc = ({
   createAiMemoryProfileView,
   createImageGenerationConfigView,
   createImageGenerationApiKeyResult,
-  createImageGenerationHealthCheckResult
+  createImageGenerationHealthCheckResult,
+  createAiBehaviorConfigView,
+  createAiBehaviorResultView,
+  createAiBehaviorDecisionListView
 }) => {
   ipcMainService.handle(IPC.AI_GET_CONFIG, () => createAiConfigView(aiService.getConfig()))
   ipcMainService.handle(IPC.AI_SAVE_CONFIG, (_event, config) => createAiConfigView(aiService.saveConfig(config)))
@@ -91,22 +94,24 @@ const registerAiIpc = ({
     })
   })
 
-  ipcMainService.handle(IPC.AI_BEHAVIOR_GET, () => behaviorOrchestratorService.getConfig())
-  ipcMainService.handle(IPC.AI_BEHAVIOR_SAVE, (_event, payload) => behaviorOrchestratorService.saveConfig(payload))
+  ipcMainService.handle(IPC.AI_BEHAVIOR_GET, () => createAiBehaviorConfigView(behaviorOrchestratorService.getConfig()))
+  ipcMainService.handle(IPC.AI_BEHAVIOR_SAVE, (_event, payload) => createAiBehaviorConfigView(behaviorOrchestratorService.saveConfig(payload)))
   ipcMainService.handle(IPC.AI_BEHAVIOR_DRY_RUN, (_event, payload) => (
-    behaviorOrchestratorService.dryRun({
+    createAiBehaviorResultView(behaviorOrchestratorService.dryRun({
       ...payload,
       actions: petService.getAnimations()?.actions || []
-    })
+    }))
   ))
   ipcMainService.handle(IPC.AI_BEHAVIOR_REPLAY_DECISION, (_event, payload) => (
-    behaviorOrchestratorService.replayDecision({
+    createAiBehaviorResultView(behaviorOrchestratorService.replayDecision({
       decisionId: payload?.decisionId,
       actions: petService.getAnimations()?.actions || []
-    })
+    }))
   ))
   ipcMainService.handle(IPC.AI_BEHAVIOR_EXPORT_DIAGNOSTICS, () => behaviorOrchestratorService.exportDiagnostics())
-  ipcMainService.handle(IPC.AI_BEHAVIOR_CLEAR_DECISIONS, () => behaviorOrchestratorService.clearDecisions())
+  ipcMainService.handle(IPC.AI_BEHAVIOR_CLEAR_DECISIONS, () => (
+    createAiBehaviorDecisionListView(behaviorOrchestratorService.clearDecisions())
+  ))
 }
 
 module.exports = { registerAiIpc }

@@ -29,6 +29,9 @@ const {
   normalizeLocalHttpConfig
 } = require('./ipc/pet-settings-adapter')
 const {
+  createAiBehaviorConfigView,
+  createAiBehaviorDecisionListView,
+  createAiBehaviorResultView,
   createAiConfigView,
   createAiMemoryProfileView,
   createAiPersonaDraftView,
@@ -989,7 +992,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     createAiMemoryProfileView,
     createImageGenerationConfigView,
     createImageGenerationApiKeyResult,
-    createImageGenerationHealthCheckResult
+    createImageGenerationHealthCheckResult,
+    createAiBehaviorConfigView,
+    createAiBehaviorResultView,
+    createAiBehaviorDecisionListView
   })
 
   registerPluginIpc({
