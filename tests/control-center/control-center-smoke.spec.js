@@ -1558,7 +1558,7 @@ test.describe('Control Center smoke', () => {
     await decisionsPanel.getByRole('button', { name: 'Replay' }).click()
     await expect(page.getByTestId('ai-behavior-status')).toContainText('Replay 命中')
     await expect(page.getByTestId('ai-status-line')).toHaveCount(0)
-    await expect(decisionsPanel.locator('.behavior-result')).toContainText('demo replay matched')
+    await expect(decisionsPanel.locator('.behavior-result')).toContainText('matched provider actionId')
 
     await decisionsPanel.getByRole('button', { name: '导出' }).click()
     await expect(page.getByTestId('ai-behavior-status')).toContainText('Behavior 诊断已导出')
