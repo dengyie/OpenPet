@@ -1,4 +1,9 @@
 const { callBridge } = require('./bridge-client')
+const { buildAnchorReferenceBoard } = require('./anchor-reference-board')
+const {
+  buildActionAnchorPrompt,
+  buildCharacterAnchorPrompt
+} = require('./anchor-prompt-builder')
 const { buildOpenPetImagePrompt, sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
@@ -32,6 +37,14 @@ const createSafeRelativePath = (value) => {
   const normalized = String(value || '').trim().replace(/\\/g, '/')
   if (!normalized || normalized.startsWith('/') || normalized.includes('../')) return ''
   return normalized
+}
+
+const createSafeFileSegment = (value, fallback = 'anchor') => {
+  const normalized = String(value || '').trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '')
+  return normalized || fallback
 }
 
 const normalizeModelName = (value) => String(value || '')
@@ -117,19 +130,64 @@ const shouldRetryWithAnotherModel = (error) => {
   )
 }
 
-const resolveRunReferenceImages = ({ dataDir, run }) => {
-  if (!dataDir || !run || typeof run !== 'object') return []
-  const referenceInput = run.input?.referenceImage
-  const relativePath = createSafeRelativePath(referenceInput?.relativePath)
-  if (!relativePath) return []
-  return [{
+const createReferenceImageFromRecord = ({ dataDir, record = {}, fallbackFileName = 'reference.png', fallbackRole = 'reference-image' }) => {
+  const relativePath = createSafeRelativePath(record?.relativePath)
+  if (!dataDir || !relativePath) return null
+  const fileName = String(record?.fileName || path.basename(relativePath) || fallbackFileName).trim() || fallbackFileName
+  return {
     path: path.join(dataDir, relativePath),
-    fileName: String(referenceInput?.fileName || referenceInput?.originalFileName || 'canonical-reference.png').trim() || 'canonical-reference.png',
+    fileName,
     relativePath,
-    metadataRelativePath: createSafeRelativePath(referenceInput?.metadataRelativePath),
-    sha256: String(referenceInput?.contentHash || '').trim(),
-    role: 'canonical-reference'
-  }]
+    metadataRelativePath: createSafeRelativePath(record?.metadataRelativePath),
+    sha256: String(record?.contentHash || record?.sha256 || '').trim(),
+    role: String(record?.role || fallbackRole).trim() || fallbackRole
+  }
+}
+
+const resolveOriginalReferenceImage = ({ dataDir, run }) => {
+  const referenceInput = run?.input?.referenceImage
+  if (!referenceInput) return null
+  return createReferenceImageFromRecord({
+    dataDir,
+    record: {
+      ...referenceInput,
+      fileName: referenceInput.fileName || referenceInput.originalFileName || 'canonical-reference.png',
+      role: 'canonical-reference'
+    },
+    fallbackFileName: 'canonical-reference.png',
+    fallbackRole: 'canonical-reference'
+  })
+}
+
+const findActionAnchorRecord = ({ anchorReferences, actionId }) => {
+  const normalizedActionId = String(actionId || '').trim()
+  if (!normalizedActionId || !Array.isArray(anchorReferences?.actionAnchors)) return null
+  return anchorReferences.actionAnchors.find((anchor) => String(anchor?.actionId || '').trim() === normalizedActionId) || null
+}
+
+const resolveAnchorReferenceCandidates = ({ run, stage = 'final', actionId = '' }) => {
+  const anchorReferences = run?.artifacts?.anchorReferences
+  if (!anchorReferences || typeof anchorReferences !== 'object') return []
+  const characterAnchor = anchorReferences.characterAnchor || null
+  const compositeBoard = anchorReferences.compositeBoard || null
+  const actionAnchor = findActionAnchorRecord({ anchorReferences, actionId })
+  if (stage === 'character-anchor') return [compositeBoard]
+  if (stage === 'action-anchor') return [characterAnchor, compositeBoard]
+  return [actionAnchor, characterAnchor, compositeBoard]
+}
+
+const resolveRunReferenceImages = ({ dataDir, run, stage = 'final', actionId = '' }) => {
+  if (!dataDir || !run || typeof run !== 'object') return []
+  const anchorReference = resolveAnchorReferenceCandidates({ run, stage, actionId })
+    .map((record) => createReferenceImageFromRecord({
+      dataDir,
+      record,
+      fallbackFileName: 'anchor-reference.png',
+      fallbackRole: 'anchor-reference'
+    }))
+    .find(Boolean)
+  const resolved = anchorReference || resolveOriginalReferenceImage({ dataDir, run })
+  return resolved ? [resolved] : []
 }
 
 const readHostModelSettings = async () => {
@@ -288,6 +346,189 @@ const generateWithModelFallback = async ({
   throw lastError || new Error('Creator Studio image generation failed')
 }
 
+const writeAnchorPromptFile = ({ dataDir, relativePath, prompt }) => {
+  const safeRelativePath = createSafeRelativePath(relativePath)
+  if (!safeRelativePath) throw new Error('Creator Studio anchor prompt path is invalid')
+  const promptPath = path.join(dataDir, safeRelativePath)
+  fs.mkdirSync(path.dirname(promptPath), { recursive: true })
+  fs.writeFileSync(promptPath, `${String(prompt || '').trim()}\n`)
+  return {
+    path: promptPath,
+    relativePath: safeRelativePath
+  }
+}
+
+const getFirstExistingOutput = ({ dataDir, response }) => {
+  const outputs = filterExistingGeneratedOutputs({
+    dataDir,
+    outputs: Array.isArray(response?.result?.outputs) ? response.result.outputs : []
+  })
+  return outputs[0] || null
+}
+
+const createAnchorRecordFromOutput = ({ output, role, actionId = '', promptRelativePath = '', model = '', modelAttempts = [] }) => {
+  const relativePath = createSafeRelativePath(output?.dataRelativePath)
+  if (!relativePath) return null
+  return {
+    ...(actionId ? { actionId } : {}),
+    role,
+    relativePath,
+    fileName: path.basename(relativePath),
+    promptRelativePath: createSafeRelativePath(promptRelativePath),
+    model: normalizeModelName(model),
+    modelAttempts
+  }
+}
+
+const resolveAnchorCharacterBrief = (run = {}) => sanitizeCreativeBrief(
+  run?.generationTask?.characterBrief ||
+  run?.input?.generationTask?.characterBrief ||
+  run?.input?.originalPrompt ||
+  run?.input?.prompt ||
+  run?.petId ||
+  'OpenPet desktop pet'
+)
+
+const getRunActions = (run = {}) => {
+  if (Array.isArray(run?.generationTask?.actions)) return run.generationTask.actions
+  if (Array.isArray(run?.input?.generationTask?.actions)) return run.input.generationTask.actions
+  return []
+}
+
+const shouldGenerateActionAnchors = (run = {}) => {
+  const mode = String(run?.generationTask?.mode || run?.input?.generationTask?.mode || '').trim()
+  return mode === 'single-action'
+}
+
+const generateAnchorReferences = async ({
+  dataDir,
+  run,
+  settings = {},
+  selectedModel = '',
+  requestedTimeoutMs,
+  originalReferenceImages = [],
+  generateWithFallbackImpl = generateWithModelFallback
+}) => {
+  const references = Array.isArray(originalReferenceImages) ? originalReferenceImages.filter(Boolean) : []
+  if (!dataDir || !run?.runId || references.length === 0) {
+    return {
+      anchorReferences: null,
+      anchorGeneration: {
+        skipped: true,
+        reason: 'missing-reference'
+      }
+    }
+  }
+
+  const characterBrief = resolveAnchorCharacterBrief(run)
+  const compositeBoard = await buildAnchorReferenceBoard({
+    dataDir,
+    runId: run.runId,
+    sourceReferences: references,
+    characterBrief
+  })
+  const compositeReferenceImage = {
+    path: compositeBoard.path,
+    fileName: path.basename(compositeBoard.relativePath),
+    relativePath: compositeBoard.relativePath,
+    metadataRelativePath: compositeBoard.metadataRelativePath,
+    role: 'composite-reference-board'
+  }
+
+  const characterPromptBuild = buildCharacterAnchorPrompt({
+    characterBrief,
+    referenceRole: 'composite-reference-board'
+  })
+  const characterPromptFile = writeAnchorPromptFile({
+    dataDir,
+    relativePath: path.join('runs', run.runId, 'prompts', 'anchors', 'character-anchor.md').replace(/\\/g, '/'),
+    prompt: characterPromptBuild.prompt
+  })
+  const characterAttempt = await generateWithFallbackImpl({
+    settings,
+    preferredModel: selectedModel,
+    model: selectedModel,
+    prompt: characterPromptBuild.prompt,
+    requestedTimeoutMs,
+    referenceImages: [compositeReferenceImage],
+    runId: run.runId,
+    dataRelativeDir: path.join('runs', run.runId, 'anchors', 'character-anchor').replace(/\\/g, '/')
+  })
+  const characterOutput = getFirstExistingOutput({ dataDir, response: characterAttempt.response })
+  if (!characterOutput) throw new Error('Creator Studio character anchor generation returned no outputs')
+  const characterAnchor = createAnchorRecordFromOutput({
+    output: characterOutput,
+    role: 'character-anchor',
+    promptRelativePath: characterPromptFile.relativePath,
+    model: characterAttempt.selectedModel,
+    modelAttempts: characterAttempt.attempts
+  })
+
+  const actionAnchors = []
+  if (shouldGenerateActionAnchors(run) && characterAnchor) {
+    const characterReferenceImage = {
+      path: path.join(dataDir, characterAnchor.relativePath),
+      fileName: characterAnchor.fileName || 'character-anchor.png',
+      relativePath: characterAnchor.relativePath,
+      role: 'character-anchor'
+    }
+    for (const action of getRunActions(run)) {
+      const actionId = createSafeFileSegment(action?.actionId, 'action')
+      const actionPromptBuild = buildActionAnchorPrompt({
+        characterBrief,
+        referenceRole: 'character-anchor',
+        action
+      })
+      const promptFile = writeAnchorPromptFile({
+        dataDir,
+        relativePath: path.join('runs', run.runId, 'prompts', 'anchors', 'actions', `${actionId}-anchor.md`).replace(/\\/g, '/'),
+        prompt: actionPromptBuild.prompt
+      })
+      const actionAttempt = await generateWithFallbackImpl({
+        settings,
+        preferredModel: selectedModel,
+        model: selectedModel,
+        prompt: actionPromptBuild.prompt,
+        requestedTimeoutMs,
+        referenceImages: [characterReferenceImage],
+        runId: run.runId,
+        dataRelativeDir: path.join('runs', run.runId, 'anchors', 'actions', `${actionId}-anchor`).replace(/\\/g, '/')
+      })
+      const actionOutput = getFirstExistingOutput({ dataDir, response: actionAttempt.response })
+      if (!actionOutput) throw new Error(`Creator Studio action anchor generation returned no outputs for ${actionId}`)
+      const actionAnchor = createAnchorRecordFromOutput({
+        output: actionOutput,
+        role: 'action-anchor',
+        actionId,
+        promptRelativePath: promptFile.relativePath,
+        model: actionAttempt.selectedModel,
+        modelAttempts: actionAttempt.attempts
+      })
+      if (actionAnchor) actionAnchors.push(actionAnchor)
+    }
+  }
+
+  return {
+    anchorReferences: {
+      version: 1,
+      sourcePriority: 'image-first',
+      compositeBoard: {
+        role: compositeBoard.role,
+        relativePath: compositeBoard.relativePath,
+        metadataRelativePath: compositeBoard.metadataRelativePath,
+        fileName: path.basename(compositeBoard.relativePath)
+      },
+      characterAnchor,
+      actionAnchors
+    },
+    anchorGeneration: {
+      skipped: false,
+      characterAnchorModel: characterAnchor?.model || '',
+      actionAnchorCount: actionAnchors.length
+    }
+  }
+}
+
 const generateFullPetBasicActionSource = async ({
   actionId,
   dataDir,
@@ -365,6 +606,20 @@ const generateFullPetBasicActionSources = async ({
   }
 }
 
+const hasUsableLocalReferenceImages = (referenceImages = []) => (
+  Array.isArray(referenceImages) &&
+  referenceImages.length > 0 &&
+  referenceImages.every((referenceImage) => {
+    const sourcePath = String(referenceImage?.path || '').trim()
+    return sourcePath && fs.existsSync(sourcePath) && fs.statSync(sourcePath).isFile()
+  })
+)
+
+const hasAnchorEligibleRunReference = (run = {}) => {
+  const referenceImage = run?.input?.referenceImage
+  return Number(referenceImage?.width) > 0 && Number(referenceImage?.height) > 0
+}
+
 const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const normalizedBackend = normalizeCreatorBackend(backend, FIXTURE_BACKEND)
   if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
@@ -377,15 +632,52 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 
   const settings = await readHostModelSettings()
   const configuredModelSnapshot = createModelSnapshot({ backend: normalizedBackend, settings })
+  const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  const originalReferenceImages = resolveOriginalReferenceImage({ dataDir, run })
+    ? [resolveOriginalReferenceImage({ dataDir, run })]
+    : []
+  let anchorReferences = null
+  let anchorGeneration = null
+  let runForGeneration = run
+  if (hasAnchorEligibleRunReference(run) && hasUsableLocalReferenceImages(originalReferenceImages)) {
+    const generatedAnchors = await generateAnchorReferences({
+      dataDir,
+      run,
+      settings,
+      selectedModel: configuredModelSnapshot.model,
+      requestedTimeoutMs,
+      originalReferenceImages
+    })
+    anchorReferences = generatedAnchors.anchorReferences
+    anchorGeneration = generatedAnchors.anchorGeneration
+    if (anchorReferences) {
+      runForGeneration = {
+        ...run,
+        artifacts: {
+          ...(run.artifacts || {}),
+          anchorReferences
+        }
+      }
+    }
+  }
   const promptBuild = buildOpenPetImagePrompt({
-    run,
+    run: runForGeneration,
     backend: normalizedBackend,
     model: configuredModelSnapshot.model
   })
   const providerPrompt = String(promptBuild.providerPrompt || promptBuild.prompt || '')
   const promptPreviewText = providerPrompt
-  const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
-  const referenceImages = resolveRunReferenceImages({ dataDir, run })
+  const firstActionForReference = Array.isArray(runForGeneration?.generationTask?.actions)
+    ? runForGeneration.generationTask.actions[0]
+    : Array.isArray(runForGeneration?.input?.generationTask?.actions)
+      ? runForGeneration.input.generationTask.actions[0]
+      : null
+  const referenceImages = resolveRunReferenceImages({
+    dataDir,
+    run: runForGeneration,
+    stage: 'final',
+    actionId: firstActionForReference?.actionId || ''
+  })
   const defaultConditioning = createDefaultConditioningSummary({
     model: configuredModelSnapshot.model,
     referenceImages
@@ -405,6 +697,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     modelSnapshot: configuredModelSnapshot,
     promptBuilder
   }
+  if (anchorReferences) attemptResult.anchorReferences = anchorReferences
+  if (anchorGeneration) attemptResult.anchorGeneration = anchorGeneration
   let response
   let selectedModel = configuredModelSnapshot.model
   let modelAttempts = []
@@ -442,7 +736,9 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     modelSnapshot,
     promptBuilder,
     model: selectedModel,
-    modelAttempts
+    modelAttempts,
+    ...(anchorReferences ? { anchorReferences } : {}),
+    ...(anchorGeneration ? { anchorGeneration } : {})
   }
 
   if (!isFullPetRun(run)) return result
@@ -466,5 +762,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 
 module.exports = {
   createFullPetActionPosePrompt,
-  generateViaHostModelBridge
+  generateAnchorReferences,
+  generateViaHostModelBridge,
+  resolveRunReferenceImages
 }

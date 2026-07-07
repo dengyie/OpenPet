@@ -102,7 +102,8 @@ const persistGeneratedImageAttempt = ({ dataDir, run, generationResult, now }) =
     updatedAt: now(),
     artifacts: {
       ...currentRun.artifacts,
-      generatedImage: generationResult
+      generatedImage: generationResult,
+      ...(generationResult?.anchorReferences ? { anchorReferences: generationResult.anchorReferences } : {})
     },
     ...(generationResult.modelSnapshot ? { modelSnapshot: generationResult.modelSnapshot } : {})
   }
@@ -322,5 +323,6 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 }
 
 module.exports = {
+  persistGeneratedImageAttempt,
   runGenerationStep
 }

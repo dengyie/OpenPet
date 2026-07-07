@@ -1,0 +1,255 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const http = require('node:http')
+const os = require('node:os')
+const path = require('node:path')
+const sharp = require('sharp')
+
+const {
+  generateAnchorReferences,
+  generateViaHostModelBridge
+} = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
+
+const makeDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-anchor-generation-'))
+
+const writeSourceImage = async (filePath) => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  await sharp({
+    create: {
+      width: 256,
+      height: 256,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    }
+  })
+    .composite([{
+      input: Buffer.from(`
+        <svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="128" cy="146" rx="74" ry="78" fill="#d7a14b"/>
+          <circle cx="128" cy="82" r="54" fill="#e7b65f"/>
+          <circle cx="96" cy="82" r="8" fill="#408c42"/>
+          <circle cx="160" cy="82" r="8" fill="#408c42"/>
+        </svg>
+      `),
+      left: 0,
+      top: 0
+    }])
+    .png()
+    .toFile(filePath)
+}
+
+const createFakeImageGenerate = ({ dataDir, calls }) => async ({
+  prompt,
+  referenceImages,
+  dataRelativeDir,
+  model
+}) => {
+  calls.push({
+    prompt,
+    model,
+    dataRelativeDir,
+    referenceRoles: referenceImages.map((reference) => reference.role)
+  })
+  const dataRelativePath = `${dataRelativeDir}/0001.png`
+  const outputPath = path.join(dataDir, dataRelativePath)
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: 256,
+      height: 256,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite([{
+      input: Buffer.from(`
+        <svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="128" cy="112" r="48" fill="#e7b65f"/>
+          <ellipse cx="128" cy="168" rx="56" ry="58" fill="#d7a14b"/>
+        </svg>
+      `),
+      left: 0,
+      top: 0
+    }])
+    .png()
+    .toFile(outputPath)
+  return {
+    response: {
+      result: {
+        backend: 'provider',
+        model,
+        outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
+      }
+    },
+    selectedModel: model,
+    attempts: [{ model, ok: true }]
+  }
+}
+
+test('anchor generation creates composite, character, and action anchors with one reference per provider call', async () => {
+  const dataDir = makeDataDir()
+  const sourcePath = path.join(dataDir, 'runs/run-anchor/inputs/references/cat.png')
+  await writeSourceImage(sourcePath)
+  const calls = []
+
+  const result = await generateAnchorReferences({
+    dataDir,
+    run: {
+      runId: 'run-anchor',
+      petId: 'anchor-cat',
+      generationTask: {
+        mode: 'single-action',
+        characterBrief: 'Golden cat with green eyes.',
+        actions: [{
+          actionId: 'waving',
+          name: 'Waving',
+          motionPrompt: 'Wave with the viewer-right front paw.',
+          animationType: 'stationary_loop',
+          frameCount: 6
+        }]
+      },
+      input: {
+        originalPrompt: 'Golden cat with green eyes.'
+      }
+    },
+    settings: { provider: 'openai-compatible', model: 'gpt-image-2' },
+    selectedModel: 'gpt-image-2',
+    requestedTimeoutMs: 300000,
+    originalReferenceImages: [{
+      path: sourcePath,
+      fileName: 'cat.png',
+      relativePath: 'runs/run-anchor/inputs/references/cat.png',
+      role: 'canonical-reference'
+    }],
+    generateWithFallbackImpl: createFakeImageGenerate({ dataDir, calls })
+  })
+
+  assert.equal(result.anchorReferences.version, 1)
+  assert.equal(result.anchorReferences.sourcePriority, 'image-first')
+  assert.equal(result.anchorReferences.compositeBoard.role, 'composite-reference-board')
+  assert.equal(result.anchorReferences.characterAnchor.role, 'character-anchor')
+  assert.equal(result.anchorReferences.actionAnchors.length, 1)
+  assert.equal(result.anchorReferences.actionAnchors[0].role, 'action-anchor')
+  assert.equal(result.anchorReferences.actionAnchors[0].actionId, 'waving')
+  assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.compositeBoard.relativePath)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.characterAnchor.relativePath)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.actionAnchors[0].relativePath)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.characterAnchor.promptRelativePath)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.actionAnchors[0].promptRelativePath)), true)
+
+  assert.deepEqual(calls.map((call) => call.referenceRoles), [
+    ['composite-reference-board'],
+    ['character-anchor']
+  ])
+  assert.equal(calls.every((call) => call.model === 'gpt-image-2'), true)
+})
+
+test('host model bridge runs anchors before final single-action generation and conditions final call on action anchor', async () => {
+  const dataDir = makeDataDir()
+  const sourceRelativePath = 'runs/run-anchor-flow/inputs/references/cat.png'
+  const sourcePath = path.join(dataDir, sourceRelativePath)
+  await writeSourceImage(sourcePath)
+  const requests = []
+  const server = http.createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {}
+      if (request.url === '/creator/model-settings') {
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ ok: true, config: { provider: 'openai-compatible', model: 'gpt-image-2', timeoutMs: 300000 } }))
+        return
+      }
+      if (request.url !== '/creator/model-image-generate') {
+        response.writeHead(404, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ ok: false, error: 'not found' }))
+        return
+      }
+      const dataRelativeDir = String(payload.output?.dataRelativeDir || '')
+      const dataRelativePath = `${dataRelativeDir}/0001.png`
+      const outputPath = path.join(dataDir, dataRelativePath)
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+      fs.writeFileSync(outputPath, 'png placeholder')
+      requests.push({
+        dataRelativeDir,
+        referenceRoles: Array.isArray(payload.referenceImages)
+          ? payload.referenceImages.map((reference) => reference.role)
+          : []
+      })
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({
+        ok: true,
+        result: {
+          backend: 'provider',
+          model: payload.model,
+          outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
+        }
+      }))
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${port}`
+  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
+
+  try {
+    const result = await generateViaHostModelBridge({
+      backend: 'provider',
+      dataDir,
+      run: {
+        runId: 'run-anchor-flow',
+        petId: 'anchor-cat',
+        input: {
+          originalPrompt: 'Golden cat with green eyes.',
+          referenceImage: {
+            fileName: 'cat.png',
+            relativePath: sourceRelativePath,
+            metadataRelativePath: 'runs/run-anchor-flow/inputs/references/reference.json',
+            contentHash: 'hash',
+            width: 256,
+            height: 256
+          }
+        },
+        generationTask: {
+          mode: 'single-action',
+          characterBrief: 'Golden cat with green eyes.',
+          actions: [{
+            actionId: 'waving',
+            name: 'Waving',
+            motionPrompt: 'Wave with the viewer-right front paw.',
+            animationType: 'stationary_loop',
+            synthesisMode: 'canonical-frame',
+            frameCount: 6,
+            loop: false,
+            transparentBackground: true
+          }]
+        }
+      }
+    })
+
+    assert.deepEqual(requests.map((entry) => entry.referenceRoles), [
+      ['composite-reference-board'],
+      ['character-anchor'],
+      ['action-anchor']
+    ])
+    assert.deepEqual(requests.map((entry) => entry.dataRelativeDir), [
+      'runs/run-anchor-flow/anchors/character-anchor',
+      'runs/run-anchor-flow/anchors/actions/waving-anchor',
+      'runs/run-anchor-flow/frames/base'
+    ])
+    assert.equal(result.anchorReferences.characterAnchor.role, 'character-anchor')
+    assert.equal(result.anchorReferences.actionAnchors[0].role, 'action-anchor')
+    assert.equal(result.conditioning.referenceImageCount, 1)
+    assert.equal(result.conditioning.references[0].role, 'action-anchor')
+  } finally {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
