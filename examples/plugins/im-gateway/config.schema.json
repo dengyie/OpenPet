@@ -1,0 +1,77 @@
+{
+  "title": "IM Gateway",
+  "description": "Control non-secret IM trigger policy for the bundled OpenPet IM Gateway.",
+  "type": "object",
+  "properties": {
+    "telegramEnabled": {
+      "type": "boolean",
+      "title": "Enable Telegram",
+      "description": "Enable the Telegram adapter when the IM Gateway service starts.",
+      "default": false
+    },
+    "telegramMode": {
+      "type": "string",
+      "title": "Telegram mode",
+      "description": "Phase 1 supports long polling only.",
+      "enum": ["polling"],
+      "default": "polling"
+    },
+    "privateChatPolicy": {
+      "type": "string",
+      "title": "Private chat policy",
+      "description": "Choose whether private chats require commands or can forward ordinary text to pet.say.",
+      "enum": ["command-only", "any-text"],
+      "default": "command-only"
+    },
+    "groupChatPolicy": {
+      "type": "string",
+      "title": "Group chat policy",
+      "description": "Choose how group chats can trigger OpenPet.",
+      "enum": ["mention-or-command", "command-only"],
+      "default": "mention-or-command"
+    },
+    "allowedUsers": {
+      "type": "string",
+      "title": "Allowed users",
+      "description": "Comma-separated Telegram user ids. Group chats always require an allowed user.",
+      "default": ""
+    },
+    "allowedChats": {
+      "type": "string",
+      "title": "Allowed chats",
+      "description": "Comma-separated Telegram chat ids for group or channel contexts.",
+      "default": ""
+    },
+    "allowAllPrivateChats": {
+      "type": "boolean",
+      "title": "Allow all private chats",
+      "description": "Allow private chat triggers from any user.",
+      "default": false
+    },
+    "allowAllGroupChats": {
+      "type": "boolean",
+      "title": "Allow all group chats",
+      "description": "Allow group chat ids without listing each chat. The sender must still be an allowed user.",
+      "default": false
+    },
+    "commandAliases": {
+      "type": "string",
+      "title": "Command aliases",
+      "description": "Comma-separated command aliases.",
+      "default": "/openpet,/op"
+    },
+    "petSayTtlMs": {
+      "type": "number",
+      "title": "Speech TTL",
+      "description": "Milliseconds to show pet.say text from IM triggers.",
+      "default": 6000
+    },
+    "receiptMode": {
+      "type": "string",
+      "title": "Receipt mode",
+      "description": "Choose when command receipts are sent back to IM.",
+      "enum": ["commands-only", "none"],
+      "default": "commands-only"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "openpet.im-gateway",
+  "name": "IM Gateway",
+  "version": "0.1.0",
+  "profile": "runtime",
+  "configSchema": "config.schema.json",
+  "description": "Connect IM messages to OpenPet pet speech, actions, and status events.",
+  "permissions": ["pet:say", "pet:action", "pet:event"],
+  "entries": {
+    "services": [
+      {
+        "id": "im-gateway",
+        "title": "IM Gateway Service",
+        "command": "node ./service/im-gateway-service.js",
+        "cwd": ".",
+        "health": { "type": "http", "url": "http://127.0.0.1:8796/health" }
+      }
+    ],
+    "dashboards": []
+  },
+  "manifest": {
+    "adapters": ["telegram"],
+    "privacy": {
+      "captures": ["platform", "adapter status", "hashed peer identifiers", "trigger type", "command name", "success/failure", "short error code", "timestamp"],
+      "doesNotCapture": ["raw IM text", "attachments", "voice transcripts", "tokens", "full platform payloads", "local file paths"]
+    }
+  }
+}
