@@ -195,6 +195,50 @@ button:hover {
   line-height: 1.45;
 }
 
+.usage-stats {
+  display: grid;
+  gap: 10px;
+}
+
+.usage-stats-header,
+.usage-stat-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.usage-stats-header {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.usage-stats-header strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.usage-stat-row {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-alt);
+}
+
+.usage-stat-date,
+.usage-stat-value {
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.usage-stat-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .health-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -415,7 +459,8 @@ button:hover {
   .hero,
   .panel-header,
   .session-header,
-  .health-row {
+  .health-row,
+  .usage-stat-row {
     flex-direction: column;
   }
 

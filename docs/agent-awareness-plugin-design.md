@@ -93,7 +93,7 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session model with bounded current-step summaries. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists bounded runtime session summaries to plugin-owned storage. |
 | `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events and rate-limited speech. |
-| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including aggregate usage tokens/cost/context, per-session usage, git, current-step and generated session-summary metadata, bounded `view=details&sessionId=<sanitized-id>` focus, and per-session `Focus` links. |
+| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including aggregate usage tokens/cost/context, lightweight daily usage stats from sanitized history, per-session usage, git, current-step and generated session-summary metadata, bounded `view=details&sessionId=<sanitized-id>` focus, and per-session `Focus` links. |
 
 ### Core Touchpoints Outside The Plugin
 
@@ -131,7 +131,7 @@ Before reviving any of these paths as official surface area, update all of the f
 | `tests/examples/agent-awareness-plugin.test.js` | Manifest contract, sanitization, hook normalization, rollout polling, visible metadata extraction, runtime session store, service behavior, and the full hook command surface. |
 | `tests/services/agent-awareness-plugin-service.test.js` | Plugin discovery, native execution approval, Codex-signal auto-start gating, health-note formatting, command redaction, and command results. |
 | `tests/services/agent-awareness-bundled-integration.test.js` | Bundled sync behavior, enabled-by-default discovery, config-backed auto-start opt-in, stopped-by-default service state, and start/stop lifecycle. |
-| `tests/examples/agent-awareness-dashboard.test.js` | Dashboard state rendering and redaction logic. |
+| `tests/examples/agent-awareness-dashboard.test.js` | Dashboard state rendering, usage stats, and redaction logic. |
 | `tests/examples/agent-awareness-dashboard-browser.test.js` | Browser-level dashboard smoke against the real local service. |
 | `tests/control-center/control-center-smoke.spec.js` | Control Center Agent Awareness approval gating, native health detail summary, and the first-class detail entry surface. |
 | `tests/main/pet-bubble-chat-renderer.test.js` | Pet-side quick-open button behavior for the Bubble Chat detail entry. |

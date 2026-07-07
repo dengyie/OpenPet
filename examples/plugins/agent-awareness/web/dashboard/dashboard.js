@@ -155,6 +155,89 @@ const createDashboardRuntime = ({
     return [branch, state, ...remote].filter(Boolean).join(' · ')
   }
 
+  const getDateKey = (value) => {
+    const numeric = Date.parse(String(value || ''))
+    return Number.isFinite(numeric) ? new Date(numeric).toISOString().slice(0, 10) : ''
+  }
+
+  const pluralize = (count, singular, plural = `${singular}s`) => `${formatNumber(count)} ${count === 1 ? singular : plural}`
+
+  const hasUsageStatsMetadata = (usage = {}) => (
+    hasFiniteMetadataNumber(usage.totalTokens) ||
+    hasFiniteMetadataNumber(usage.estimatedCostUsd) ||
+    hasFiniteMetadataNumber(usage.contextUsedPercent)
+  )
+
+  const buildUsageStats = (sessions = []) => {
+    const days = new Map()
+    for (const session of sessions) {
+      const sessionId = sanitizeDisplayText(session.sessionId || 'unknown-session').slice(0, 128)
+      const entries = Array.isArray(session.history) && session.history.length ? session.history : [session]
+      for (const entry of entries) {
+        const date = getDateKey(entry.timestamp || session.timestamp)
+        if (!date) continue
+        const usage = entry.usage && typeof entry.usage === 'object' ? entry.usage : null
+        if (!usage || !hasUsageStatsMetadata(usage)) continue
+        if (!days.has(date)) {
+          days.set(date, {
+            date,
+            eventCount: 0,
+            sessions: new Set(),
+            usageBySession: new Map()
+          })
+        }
+        const day = days.get(date)
+        day.eventCount += 1
+        day.sessions.add(sessionId)
+        const current = day.usageBySession.get(sessionId) || {
+          contextUsedPercent: null,
+          currency: '',
+          estimatedCostUsd: null,
+          totalTokens: null
+        }
+        if (hasFiniteMetadataNumber(usage.totalTokens)) {
+          const totalTokens = Math.round(Number(usage.totalTokens))
+          current.totalTokens = Math.max(current.totalTokens || 0, totalTokens)
+        }
+        if (hasFiniteMetadataNumber(usage.estimatedCostUsd)) {
+          const estimatedCostUsd = Number(usage.estimatedCostUsd)
+          current.estimatedCostUsd = Math.max(current.estimatedCostUsd || 0, estimatedCostUsd)
+        }
+        if (hasFiniteMetadataNumber(usage.contextUsedPercent)) {
+          const contextUsedPercent = Number(usage.contextUsedPercent)
+          current.contextUsedPercent = Math.max(current.contextUsedPercent || 0, contextUsedPercent)
+        }
+        if (usage.currency) current.currency = sanitizeDisplayText(usage.currency).slice(0, 8).toUpperCase()
+        day.usageBySession.set(sessionId, current)
+      }
+    }
+    return [...days.values()]
+      .sort((left, right) => right.date.localeCompare(left.date))
+      .slice(0, 7)
+      .map((day) => {
+        const usageRecords = [...day.usageBySession.values()]
+        const totalTokens = usageRecords.reduce((sum, usage) => sum + (usage.totalTokens || 0), 0)
+        const costRecords = usageRecords.filter((usage) => usage.estimatedCostUsd != null)
+        const cost = costRecords.length
+          ? costRecords.reduce((sum, usage) => sum + usage.estimatedCostUsd, 0)
+          : null
+        const currencies = new Set(costRecords.map((usage) => usage.currency).filter(Boolean))
+        const currency = currencies.size === 1 ? [...currencies][0] : currencies.size > 1 ? 'MIXED' : ''
+        const contextRecords = usageRecords
+          .map((usage) => usage.contextUsedPercent)
+          .filter((value) => value != null)
+        const peakContext = contextRecords.length ? Math.max(...contextRecords) : null
+        return {
+          date: day.date,
+          tokensText: totalTokens > 0 ? `${formatNumber(totalTokens)} tokens` : 'No token metadata',
+          costText: cost != null ? formatCost({ amount: cost, currency: currency || 'USD' }) : 'No cost metadata',
+          contextText: peakContext != null ? `${formatPercent(peakContext)} peak` : 'No context metadata',
+          sessionsText: pluralize(day.sessions.size, 'session'),
+          eventsText: pluralize(day.eventCount, 'event')
+        }
+      })
+  }
+
   const getActiveSessionCount = (sessions = []) => sessions.filter((session) => {
     const status = String(session.status || '').toLowerCase()
     return !['idle', 'completed', 'failed'].includes(status)
@@ -191,6 +274,7 @@ const createDashboardRuntime = ({
       detailNotice,
       requestedSessionId,
       serviceOk: health.ok === true,
+      usageStats: buildUsageStats(sessions),
       summary: [
         {
           label: 'Tracked Sessions',
@@ -325,6 +409,27 @@ const createDashboardRuntime = ({
     `).join('')}</ol>`
   }
 
+  const renderUsageStats = (stats = []) => `
+    <div class="usage-stats">
+      <div class="usage-stats-header">
+        <strong>Recent Daily Totals</strong>
+        <span>Latest sanitized daily totals</span>
+      </div>
+      ${stats.length ? stats.map((row) => `
+        <article class="usage-stat-row">
+          <div>
+            <p class="usage-stat-date">${escapeHtml(sanitizeDisplayText(row.date))}</p>
+            <p class="usage-stat-meta">${escapeHtml(sanitizeDisplayText(row.sessionsText))} · ${escapeHtml(sanitizeDisplayText(row.eventsText))}</p>
+          </div>
+          <div>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(row.tokensText))}</p>
+            <p class="usage-stat-meta">${escapeHtml(sanitizeDisplayText(row.costText))} · ${escapeHtml(sanitizeDisplayText(row.contextText))}</p>
+          </div>
+        </article>
+      `).join('') : '<p class="empty-state">No usage trend metadata yet.</p>'}
+    </div>
+  `
+
   const renderSessions = (sessions = [], detailState = {}) => {
     const detailNoticeHtml = detailState.detailMode && detailState.detailNotice
       ? `<p class="detail-notice">${escapeHtml(sanitizeDisplayText(detailState.detailNotice))}</p>`
@@ -380,6 +485,7 @@ const createDashboardRuntime = ({
   const renderDashboard = (viewModel) => ({
     statusLine: viewModel.serviceOk ? 'Service healthy' : 'Service unavailable',
     summaryHtml: renderSummary(viewModel.summary),
+    usageStatsHtml: renderUsageStats(viewModel.usageStats),
     healthHtml: renderHealthRows(viewModel.healthRows),
     sessionsHtml: renderSessions(viewModel.sessions, {
       detailFound: viewModel.detailFound,
@@ -403,6 +509,7 @@ const createDashboardRuntime = ({
     if (!documentRef) return
     const statusNode = documentRef.querySelector('#status-line')
     const summaryNode = documentRef.querySelector('#summary')
+    const usageStatsNode = documentRef.querySelector('#usage-stats')
     const healthNode = documentRef.querySelector('#health')
     const sessionsNode = documentRef.querySelector('#sessions')
     const refreshButton = documentRef.querySelector('#refresh')
@@ -410,6 +517,7 @@ const createDashboardRuntime = ({
     const renderError = (message) => {
       if (statusNode) statusNode.textContent = message || 'Dashboard failed to load'
       if (summaryNode) summaryNode.innerHTML = '<p class="empty-state">Unable to load summary.</p>'
+      if (usageStatsNode) usageStatsNode.innerHTML = '<p class="empty-state">Unable to load usage stats.</p>'
       if (healthNode) healthNode.innerHTML = '<p class="empty-state">Unable to load diagnostics.</p>'
       if (sessionsNode) sessionsNode.innerHTML = '<p class="empty-state">Unable to load sessions.</p>'
     }
@@ -421,6 +529,7 @@ const createDashboardRuntime = ({
         const rendered = renderDashboard(viewModel)
         if (statusNode) statusNode.textContent = rendered.statusLine
         if (summaryNode) summaryNode.innerHTML = rendered.summaryHtml
+        if (usageStatsNode) usageStatsNode.innerHTML = rendered.usageStatsHtml
         if (healthNode) healthNode.innerHTML = rendered.healthHtml
         if (sessionsNode) sessionsNode.innerHTML = rendered.sessionsHtml
       } catch (error) {
@@ -443,6 +552,7 @@ const createDashboardRuntime = ({
     renderHealthRows,
     renderSessions,
     renderSummary,
+    renderUsageStats,
     renderTimeline
   }
 }

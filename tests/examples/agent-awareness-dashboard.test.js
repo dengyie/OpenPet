@@ -174,6 +174,109 @@ test('agent awareness dashboard does not render null usage metadata as zero valu
   assert.equal(costMetric.value, 'No cost metadata')
   assert.equal(contextMetric.value, 'No context metadata')
   assert.equal(viewModel.sessions[0].usageText, 'No usage metadata yet')
+  assert.equal(viewModel.usageStats.length, 0)
+  assert.match(runtime.renderDashboard(viewModel).usageStatsHtml, /No usage trend metadata yet/)
+})
+
+test('agent awareness dashboard builds bounded usage stats from session history', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 1,
+        totalEvents: 4,
+        seenCount: 4
+      }
+    },
+    sessionsPayload: {
+      sessions: [
+        {
+          sessionId: 'session-a',
+          project: 'OpenPet #111111',
+          status: 'working',
+          type: 'turn.usage',
+          timestamp: '2026-07-07T12:00:00.000Z',
+          usage: {
+            totalTokens: 1500,
+            estimatedCostUsd: 0.012,
+            currency: 'USD',
+            contextUsedPercent: 0.75
+          },
+          history: [
+            {
+              type: 'turn.usage',
+              timestamp: '2026-07-06T12:00:00.000Z',
+              usage: {
+                totalTokens: 800,
+                estimatedCostUsd: 0.006,
+                currency: 'USD',
+                contextUsedPercent: 0.4
+              }
+            },
+            {
+              type: 'turn.usage',
+              timestamp: '2026-07-07T11:00:00.000Z',
+              usage: {
+                totalTokens: 1200,
+                estimatedCostUsd: 0.01,
+                currency: 'USD',
+                contextUsedPercent: 0.6
+              }
+            },
+            {
+              type: 'turn.usage',
+              timestamp: '2026-07-07T12:00:00.000Z',
+              usage: {
+                totalTokens: 1500,
+                estimatedCostUsd: 0.012,
+                currency: 'USD',
+                contextUsedPercent: 0.75
+              }
+            }
+          ]
+        },
+        {
+          sessionId: 'session-b',
+          project: 'Docs #222222',
+          status: 'completed',
+          type: 'turn.usage',
+          timestamp: '2026-07-07T13:00:00.000Z',
+          usage: {
+            totalTokens: 200,
+            estimatedCostUsd: 0.002,
+            currency: 'USD',
+            contextUsedPercent: 0.1
+          },
+          history: []
+        }
+      ]
+    }
+  })
+
+  assert.equal(viewModel.usageStats.length, 2)
+  assert.deepEqual(viewModel.usageStats[0], {
+    date: '2026-07-07',
+    tokensText: '1,700 tokens',
+    costText: '$0.014000 USD',
+    contextText: '0.75% peak',
+    sessionsText: '2 sessions',
+    eventsText: '3 events'
+  })
+  assert.deepEqual(viewModel.usageStats[1], {
+    date: '2026-07-06',
+    tokensText: '800 tokens',
+    costText: '$0.006000 USD',
+    contextText: '0.4% peak',
+    sessionsText: '1 session',
+    eventsText: '1 event'
+  })
+
+  const rendered = runtime.renderDashboard(viewModel)
+  assert.match(rendered.usageStatsHtml, /Recent Daily Totals/)
+  assert.match(rendered.usageStatsHtml, /2026-07-07/)
+  assert.match(rendered.usageStatsHtml, /1,700 tokens/)
+  assert.match(rendered.usageStatsHtml, /\$0.014000 USD/)
 })
 
 test('agent awareness dashboard renders sanitized current step summaries', () => {
