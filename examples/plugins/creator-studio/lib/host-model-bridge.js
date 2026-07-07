@@ -374,57 +374,9 @@ const listReferenceRoles = (referenceImages = []) => (
     : []
 )
 
-const createProviderReferenceContractError = (code, message) => {
-  const error = new Error(message)
-  error.code = code
-  return error
-}
-
-const assertExactlyOneProviderReferenceImage = (referenceImages = []) => {
-  if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
-    throw createProviderReferenceContractError(
-      'reference_image_required',
-      'Creator Studio image generation requires exactly one local reference image'
-    )
-  }
-  if (referenceImages.length !== 1) {
-    throw createProviderReferenceContractError(
-      'reference_image_count_invalid',
-      'Creator Studio image generation requires exactly one local reference image; build one local reference image before calling the image service'
-    )
-  }
-}
-
 const sumAttemptDurationsMs = (attempts = []) => attempts.reduce((total, attempt) => (
   total + Math.max(0, Number(attempt?.durationMs) || 0)
 ), 0)
-
-const resolveGenerationStageTimeout = ({ requestedTimeoutMs, deadlineMs = 0, nowMs = Date.now() }) => {
-  const requested = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
-  if (!deadlineMs) return requested
-  const remainingMs = Math.floor(Number(deadlineMs) - Number(nowMs))
-  if (remainingMs <= 0) {
-    throw new Error('Creator Studio generation exceeded the full-pet workflow time budget')
-  }
-  return Math.max(1, Math.min(requested, remainingMs))
-}
-
-const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0))
-
-const roundMetric = (value, digits = 4) => {
-  const factor = 10 ** digits
-  return Math.round((Number(value) || 0) * factor) / factor
-}
-
-const sha256File = (filePath) => crypto
-  .createHash('sha256')
-  .update(fs.readFileSync(filePath))
-  .digest('hex')
-
-const writeJsonFile = (filePath, value) => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true })
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
-}
 
 const createGenerationAttemptRecord = ({
   model,
@@ -455,10 +407,7 @@ const createProviderGenerationStage = ({
   outputRelativePath = '',
   promptRelativePath = '',
   outputCount = 0,
-  error = '',
-  adopted = false,
-  quality = null,
-  qualityProfile = null
+  error = ''
 }) => {
   const referenceRoles = listReferenceRoles(referenceImages)
   return {
@@ -474,9 +423,6 @@ const createProviderGenerationStage = ({
     outputRelativePath: createSafeRelativePath(outputRelativePath),
     promptRelativePath: createSafeRelativePath(promptRelativePath),
     outputCount: Math.max(0, Number(outputCount) || 0),
-    ...(qualityProfile ? { qualityProfile: createQualityProfileEvidence(qualityProfile) } : {}),
-    ...(adopted ? { adopted: true } : {}),
-    ...(quality ? { quality } : {}),
     ...(error ? { error: String(error).slice(0, 240) } : {})
   }
 }
@@ -590,6 +536,7 @@ const generateWithModelFallback = async ({
   }
   let lastError = null
   for (const model of modelCandidates) {
+    const startedAtMs = Date.now()
     try {
       const effectiveTimeoutMs = normalizeModelName(model) === normalizeModelName(preferredModel)
         ? requestedTimeoutMs
@@ -599,70 +546,34 @@ const generateWithModelFallback = async ({
         prompt,
         requestedTimeoutMs: effectiveTimeoutMs,
         referenceImages,
+        runId,
+        dataRelativeDir
+      })
+      attempts.push(createGenerationAttemptRecord({
+        model,
+        ok: true,
+        timeoutMs: effectiveTimeoutMs,
+        referenceImages,
         durationMs: Date.now() - startedAtMs
-      })]
-    }
-    throw error
-  }
-}
-
-const writeAnchorPromptFile = ({ dataDir, relativePath, prompt }) => {
-  const safeRelativePath = createSafeRelativePath(relativePath)
-  if (!safeRelativePath) throw new Error('Creator Studio anchor prompt path is invalid')
-  const promptPath = path.join(dataDir, safeRelativePath)
-  fs.mkdirSync(path.dirname(promptPath), { recursive: true })
-  fs.writeFileSync(promptPath, `${String(prompt || '').trim()}\n`)
-  return {
-    path: promptPath,
-    relativePath: safeRelativePath
-  }
-}
-
-const getFirstExistingOutput = ({ dataDir, response }) => {
-  const outputs = filterExistingGeneratedOutputs({
-    dataDir,
-    outputs: Array.isArray(response?.result?.outputs) ? response.result.outputs : []
-  })
-  return outputs[0] || null
-}
-
-const createCandidateFileSegment = (index, candidateId) => (
-  `${String(index + 1).padStart(2, '0')}-${createSafeFileSegment(candidateId, `candidate-${index + 1}`)}`
-)
-
-const distanceRgb = (a = {}, b = {}) => {
-  const dr = (Number(a.r) || 0) - (Number(b.r) || 0)
-  const dg = (Number(a.g) || 0) - (Number(b.g) || 0)
-  const db = (Number(a.b) || 0) - (Number(b.b) || 0)
-  return Math.sqrt((dr * dr) + (dg * dg) + (db * db))
-}
-
-const readImageMaskMetrics = async (filePath) => {
-  const decoded = await sharp(filePath)
-    .ensureAlpha()
-    .resize({
-      width: 256,
-      height: 256,
-      fit: 'inside',
-      withoutEnlargement: true
-    })
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-  const { data, info } = decoded
-  const width = Number(info.width) || 0
-  const height = Number(info.height) || 0
-  const totalPixels = width * height
-  if (!width || !height || totalPixels <= 0) {
-    return {
-      width,
-      height,
-      visiblePixels: 0,
-      coverage: 0,
-      edgeRatio: 1,
-      minPaddingRatio: 0,
-      centerOffsetRatio: 1,
-      meanRgb: { r: 0, g: 0, b: 0 },
-      bounds: null
+      }))
+      return {
+        response,
+        selectedModel: model,
+        attempts
+      }
+    } catch (error) {
+      attempts.push(createGenerationAttemptRecord({
+        model,
+        ok: false,
+        error: error?.message || error,
+        timeoutMs: normalizeModelName(model) === normalizeModelName(preferredModel)
+          ? requestedTimeoutMs
+          : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS),
+        referenceImages,
+        durationMs: Date.now() - startedAtMs
+      }))
+      lastError = error
+      if (!shouldRetryWithAnotherModel(error)) break
     }
   }
 
@@ -2307,11 +2218,16 @@ const generateAnchorReferences = async ({
   if (characterAnchor) {
     stages.push({
       stage: 'character-anchor',
+      ok: true,
       referenceRole: 'composite-reference-board',
+      referenceRoles: ['composite-reference-board'],
+      timeoutMs: Math.max(0, Number(requestedTimeoutMs) || 0),
+      durationMs: sumAttemptDurationsMs(characterAnchor.modelAttempts),
       outputRelativePath: characterAnchor.relativePath,
       promptRelativePath: characterAnchor.promptRelativePath,
       model: characterAnchor.model,
-      modelAttempts: characterAnchor.modelAttempts
+      modelAttempts: characterAnchor.modelAttempts,
+      outputCount: 1
     })
   }
 
@@ -2360,11 +2276,16 @@ const generateAnchorReferences = async ({
         stages.push({
           stage: 'action-anchor',
           actionId,
+          ok: true,
           referenceRole: 'character-anchor',
+          referenceRoles: ['character-anchor'],
+          timeoutMs: Math.max(0, Number(requestedTimeoutMs) || 0),
+          durationMs: sumAttemptDurationsMs(actionAnchor.modelAttempts),
           outputRelativePath: actionAnchor.relativePath,
           promptRelativePath: actionAnchor.promptRelativePath,
           model: actionAnchor.model,
-          modelAttempts: actionAnchor.modelAttempts
+          modelAttempts: actionAnchor.modelAttempts,
+          outputCount: 1
         })
       }
     }
@@ -3129,6 +3050,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   }
   if (anchorReferences) attemptResult.anchorReferences = anchorReferences
   if (anchorGeneration) attemptResult.anchorGeneration = anchorGeneration
+  const providerAnchorStages = getProviderAnchorStages(anchorGeneration)
+  if (providerAnchorStages.length > 0) attemptResult.generationStages = providerAnchorStages
   let response
   let selectedModel = configuredModelSnapshot.model
   let modelAttempts = []
@@ -3156,11 +3079,10 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       stage: 'final-image',
       ok: false,
       referenceImages,
-      timeoutMs: baseStageTimeoutMs,
+      timeoutMs: requestedTimeoutMs,
       durationMs: sumAttemptDurationsMs(failedAttempts),
       model: configuredModelSnapshot.model,
       modelAttempts: failedAttempts,
-      qualityProfile,
       error: error?.message || error
     })
     if (error && typeof error === 'object') {
@@ -3170,14 +3092,11 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       ]
       error.partialGenerationResult = {
         ...attemptResult,
-        artReadiness: resolveProviderArtReadinessForModels({
-          settings,
-          models: getSuccessfulGenerationModels({ stages: partialGenerationStages }),
-          governance,
-          approvals: providerArtApprovals
-        }),
         modelAttempts: failedAttempts,
-        generationStages: partialGenerationStages
+        generationStages: [
+          ...providerAnchorStages,
+          failedFinalStage
+        ]
       }
     }
     throw error
@@ -3206,6 +3125,19 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     promptBuilder,
     model: selectedModel,
     modelAttempts,
+    generationStages: [
+      ...providerAnchorStages,
+      createProviderGenerationStage({
+        stage: 'final-image',
+        ok: true,
+        referenceImages,
+        timeoutMs: requestedTimeoutMs,
+        durationMs: sumAttemptDurationsMs(modelAttempts),
+        model: selectedModel,
+        modelAttempts,
+        outputCount: Array.isArray(response?.result?.outputs) ? response.result.outputs.length : 0
+      })
+    ],
     ...(anchorReferences ? { anchorReferences } : {}),
     ...(anchorGeneration ? { anchorGeneration } : {})
   }
