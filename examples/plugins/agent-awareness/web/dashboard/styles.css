@@ -56,6 +56,10 @@ body {
   margin-bottom: 18px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .hero-copy {
   min-width: 0;
 }
@@ -138,6 +142,31 @@ button:hover {
   filter: brightness(0.98);
 }
 
+.view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.view-tabs a {
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.view-tabs a[aria-current="page"] {
+  border-color: var(--accent);
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--accent);
+}
+
 .panel {
   padding: 20px;
   margin-bottom: 16px;
@@ -216,6 +245,20 @@ button:hover {
 .usage-stats-header strong {
   color: var(--ink);
   font-size: 13px;
+}
+
+.usage-stats-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.usage-stats-totals article {
+  min-height: 92px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-alt);
 }
 
 .usage-stat-row {
@@ -446,7 +489,8 @@ button:hover {
 
 @media (max-width: 900px) {
   .metrics,
-  .health-grid {
+  .health-grid,
+  .usage-stats-totals {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -471,6 +515,7 @@ button:hover {
 
   .metrics,
   .health-grid,
+  .usage-stats-totals,
   .session-facts {
     grid-template-columns: 1fr;
   }

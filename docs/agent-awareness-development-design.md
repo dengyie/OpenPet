@@ -39,7 +39,7 @@ The current branch baseline is no longer "paper design only." It has the full pl
 - shipped hook + polling dual ingestion with one canonical runtime session model;
 - shipped trusted auto-start gating behind native approval plus explicit opt-in;
 - shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
-- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, lightweight daily usage stats from sanitized history, best-effort git branch/dirty summaries, content-safe current-step summaries, metadata-derived recent-progress hints, generated session summaries, dashboard rendering, bounded detail deep-link focus, in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
+- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, lightweight daily usage stats from sanitized history, a dedicated dashboard `view=stats` page, best-effort git branch/dirty summaries, content-safe current-step summaries, metadata-derived recent-progress hints, generated session summaries, dashboard rendering, bounded detail deep-link focus, in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
 - shipped a first-class Agent Awareness detail entry from Control Center;
 - shipped a pet-side quick-open detail entry from Bubble Chat;
 - kept the privacy boundary intact while adding the richer runtime shape.
@@ -84,8 +84,9 @@ Today Agent Awareness provides:
 - a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
 - a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
 - dashboard support for `view=details&sessionId=<sanitized-id>` so an existing safe session hash can be shown as a focused detail view;
+- dashboard support for `view=stats` so retained sanitized usage history can be inspected as a dedicated stats view without a new API;
 - a per-session dashboard `Focus` link that opens the same bounded detail route without adding a new host/plugin contract;
-- a read-only dashboard that shows aggregate usage tokens, token breakdown, estimated cost, peak context, recent daily usage stats, and per-session usage, git, current step, recent progress hint, and summary facts when available;
+- a read-only dashboard that shows aggregate usage tokens, token breakdown, estimated cost, peak context, a dedicated recent daily usage stats view, and per-session usage, git, current step, recent progress hint, and summary facts when available;
 - operator commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks`;
 - repeatable real-session smoke via `npm run run-agent-awareness-local-smoke`;
 - archived smoke review write-back through `npm run update-agent-awareness-local-smoke-report`.
@@ -128,7 +129,7 @@ The parity program is intentionally split into three bounded product phases. Pha
 | --- | --- | --- | --- | --- |
 | Phase A | stop feeling prototype-narrow | hook management, dual ingestion, trusted auto-start, richer runtime state, Control Center and pet-side detail entry | bundled plugin, `PluginService`, Plugins pane, pet-facing window | OpenPet can install hooks, auto-start safely, and open a useful current-session detail surface |
 | Phase B | make the companion broadly informative | token/context/cost, git state, project and session summary, recent progress hints, per-session views | bundled plugin store and dashboard, Plugins pane detail UI, shared session model | users can see what work is happening, where it belongs, and roughly how much it is costing |
-| Phase C | make it feel like a real desktop companion product | multi-session presentation, richer pet mood and action mapping, usage stats page, persona/settings | host presentation contract, pet windows, Control Center settings | multiple active sessions remain understandable, configurable, and visually expressive |
+| Phase C | make it feel like a real desktop companion product | multi-session presentation, richer pet mood and action mapping, host-level usage stats surfaces, persona/settings | host presentation contract, pet windows, Control Center settings | multiple active sessions remain understandable, configurable, and visually expressive |
 
 ## Phase Delivery Matrix
 
@@ -178,7 +179,7 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - `/health` exposes aggregate usage totals, token breakdown, estimated cost, currency, and peak context metadata;
 - runtime summaries prefer bounded progress labels, approval state, usage refreshes, git refreshes, context compaction, rollback, or safe tool names over raw lifecycle type strings for `currentStep`;
 - runtime summaries derive content-safe `recentProgressHint` text from bounded metadata such as approval waits, tool completion, usage totals, git branch, and completed/failed turn status;
-- the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, lightweight recent daily usage stats, and per-session usage/git/current-step/session-summary facts;
+- the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, a dedicated `view=stats` recent daily usage page with totals from retained sanitized history, and per-session usage/git/current-step/session-summary facts;
 - the Plugins pane renders a compact Agent Awareness-only native detail summary from the same reserved health diagnostics, without creating an arbitrary plugin JSON detail surface;
 - the dashboard honors `view=details&sessionId=<sanitized-id>` for safe per-session focus and renders a bounded empty state when the requested session is absent;
 - each rendered session card exposes a safe `Focus` link into that bounded detail route;
@@ -186,7 +187,7 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 
 **Still open**
 
-- a dedicated longitudinal stats page over time;
+- durable longitudinal usage rollups beyond the retained sanitized session-history window;
 - raw task-content summaries remain out of scope unless a future privacy design explicitly allows them.
 
 **Architecture owners**
@@ -209,7 +210,7 @@ Phase C is a product-completion phase, not a quick follow-up patch.
 
 - multi-session independent pet windows or strongly isolated session slots;
 - richer pet presentation such as status bar, mood, progress, and action mapping;
-- usage stats page;
+- host-level usage stats surfaces beyond the plugin dashboard;
 - dedicated companion persona and settings surfaces.
 
 **Architecture owners**
@@ -554,7 +555,7 @@ That program replaces the older "finish acceptance, then defer hook decisions un
 
 - multi-session independent pet windows or strongly isolated session slots;
 - richer pet presentation such as mood, status bar, and action mapping;
-- usage stats page;
+- host-level usage stats surfaces beyond the plugin dashboard;
 - dedicated companion persona and settings surfaces.
 
 The parity route still preserves the core trust boundary: richer metadata comes before any content mirroring, and raw prompts/transcripts/tool payloads remain out of scope by default.

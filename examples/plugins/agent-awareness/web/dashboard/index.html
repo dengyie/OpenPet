@@ -20,22 +20,28 @@
         </div>
       </header>
 
-      <section class="panel">
+      <nav class="view-tabs" aria-label="Dashboard views">
+        <a data-view-link="overview" href="/">Overview</a>
+        <a data-view-link="details" href="?view=details">Details</a>
+        <a data-view-link="stats" href="?view=stats">Stats</a>
+      </nav>
+
+      <section class="panel" data-section="summary">
         <h2>Summary</h2>
         <div id="summary" class="metrics" data-testid="agent-summary">Loading…</div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-section="stats">
         <h2>Usage Stats</h2>
         <div id="usage-stats" class="usage-stats-shell" data-testid="agent-usage-stats">Loading…</div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-section="diagnostics">
         <h2>Diagnostics</h2>
         <div id="health" class="health-grid" data-testid="agent-health">Loading…</div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-section="sessions">
         <div class="panel-header">
           <h2>Sessions</h2>
           <p class="panel-note">Project labels and session hashes only. No transcripts, stdout, or raw paths.</p>

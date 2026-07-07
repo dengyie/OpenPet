@@ -279,6 +279,87 @@ test('agent awareness dashboard builds bounded usage stats from session history'
   assert.match(rendered.usageStatsHtml, /\$0.014000 USD/)
 })
 
+test('agent awareness dashboard supports a dedicated usage stats view', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  assert.equal(runtime.normalizeDashboardQuery('?view=stats&sessionId=ignored').view, 'stats')
+
+  const viewModel = runtime.buildDashboardViewModel({
+    query: {
+      view: 'stats',
+      sessionId: 'ignored'
+    },
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 1,
+        totalEvents: 4,
+        seenCount: 4
+      }
+    },
+    sessionsPayload: {
+      sessions: [
+        {
+          sessionId: 'session-a',
+          project: 'OpenPet #111111',
+          status: 'working',
+          type: 'turn.usage',
+          timestamp: '2026-07-07T12:00:00.000Z',
+          history: [
+            {
+              type: 'turn.usage',
+              timestamp: '2026-07-06T12:00:00.000Z',
+              usage: {
+                totalTokens: 800,
+                estimatedCostUsd: 0.006,
+                currency: 'USD',
+                contextUsedPercent: 0.4
+              }
+            },
+            {
+              type: 'turn.usage',
+              timestamp: '2026-07-07T12:00:00.000Z',
+              usage: {
+                totalTokens: 1500,
+                estimatedCostUsd: 0.012,
+                currency: 'USD',
+                contextUsedPercent: 0.75
+              }
+            }
+          ]
+        },
+        {
+          sessionId: 'session-b',
+          project: 'Docs #222222',
+          status: 'completed',
+          type: 'turn.usage',
+          timestamp: '2026-07-07T13:00:00.000Z',
+          usage: {
+            totalTokens: 200,
+            estimatedCostUsd: 0.002,
+            currency: 'USD',
+            contextUsedPercent: 0.1
+          },
+          history: []
+        }
+      ]
+    }
+  })
+
+  const rendered = runtime.renderDashboard(viewModel)
+
+  assert.equal(viewModel.statsMode, true)
+  assert.equal(viewModel.detailMode, false)
+  assert.equal(viewModel.usageStatsTotals.daysText, '2 days')
+  assert.equal(viewModel.usageStatsTotals.tokensText, '2,500 tokens')
+  assert.equal(viewModel.usageStatsTotals.costText, '$0.020000 USD')
+  assert.equal(viewModel.usageStatsTotals.contextText, '0.75% peak')
+  assert.equal(viewModel.usageStatsTotals.sessionsText, '2 sessions')
+  assert.equal(viewModel.usageStatsTotals.eventsText, '3 events')
+  assert.match(rendered.usageStatsHtml, /Usage Stats Detail/)
+  assert.match(rendered.usageStatsHtml, /2,500 tokens/)
+  assert.match(rendered.usageStatsHtml, /\$0.020000 USD/)
+})
+
 test('agent awareness dashboard renders sanitized current step summaries', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const viewModel = runtime.buildDashboardViewModel({

@@ -17,7 +17,7 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 - Sanitized runtime session storage under `OPENPET_DATA_DIR/sessions.json`.
 - Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, generated session summaries, and metadata-derived progress hints.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
-- A local dashboard, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
+- A local dashboard with a dedicated usage stats view, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
 
 The current shipped scope does not auto-install hooks during discovery or app boot, does not trust the hook inside Codex on the user's behalf, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
@@ -120,5 +120,6 @@ Behavior:
 - The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness dashboard with `view=details`.
 - Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
 - The dashboard honors `view=details&sessionId=<sanitized-id>` to focus one existing safe session hash, and shows a bounded empty state when the requested session is absent.
+- The dashboard honors `view=stats` to show a dedicated usage stats page from retained sanitized session history.
 - Each session card exposes a `Focus` link into the same bounded detail route.
-- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, aggregate usage tokens/cost/context, lightweight daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.
+- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, aggregate usage tokens/cost/context, dedicated daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.

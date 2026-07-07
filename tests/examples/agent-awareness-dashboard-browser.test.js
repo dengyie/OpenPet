@@ -122,6 +122,31 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
     assert.match(focusedSessionsText || '', /Focused Session/)
     assert.match(focusedSessionsText || '', /Need approval/)
     assert.doesNotMatch(focusedSessionsText || '', /Finished \[path\]/)
+
+    await service.handleEvent({
+      sessionId: 'raw-usage-session',
+      type: 'turn.usage',
+      status: 'working',
+      message: 'Usage metadata updated',
+      project: 'OpenPet #123456',
+      usage: {
+        totalTokens: 1200,
+        estimatedCostUsd: 0.012,
+        currency: 'USD',
+        contextUsedPercent: 0.6
+      },
+      timestamp: '2026-07-03T12:06:00.000Z'
+    }, { initial: false })
+
+    await page.goto(`http://127.0.0.1:${port}/?view=stats`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('[data-testid="agent-usage-stats"] .usage-stats-totals')
+
+    const statsText = await page.textContent('[data-testid="agent-usage-stats"]')
+    assert.match(statsText || '', /Usage Stats Detail/)
+    assert.match(statsText || '', /1,200 tokens/)
+    assert.match(statsText || '', /\$0.012000 USD/)
+    assert.equal(await page.locator('[data-section="diagnostics"]').isHidden(), true)
+    assert.equal(await page.locator('[data-section="sessions"]').isHidden(), true)
     assert.deepEqual(consoleMessages, [])
   } finally {
     await browser.close()

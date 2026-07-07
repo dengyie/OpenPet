@@ -82,7 +82,7 @@ const createDashboardRuntime = ({
     }
     const normalizedView = normalizeQueryText(query.view, 32).toLowerCase()
     return {
-      view: normalizedView === 'details' ? 'details' : '',
+      view: ['details', 'stats'].includes(normalizedView) ? normalizedView : '',
       sessionId: normalizeQueryText(query.sessionId, 128)
     }
   }
@@ -168,7 +168,7 @@ const createDashboardRuntime = ({
     hasFiniteMetadataNumber(usage.contextUsedPercent)
   )
 
-  const buildUsageStats = (sessions = []) => {
+  const buildUsageStatsRecords = (sessions = []) => {
     const days = new Map()
     for (const session of sessions) {
       const sessionId = sanitizeDisplayText(session.sessionId || 'unknown-session').slice(0, 128)
@@ -229,13 +229,44 @@ const createDashboardRuntime = ({
         const peakContext = contextRecords.length ? Math.max(...contextRecords) : null
         return {
           date: day.date,
-          tokensText: totalTokens > 0 ? `${formatNumber(totalTokens)} tokens` : 'No token metadata',
-          costText: cost != null ? formatCost({ amount: cost, currency: currency || 'USD' }) : 'No cost metadata',
-          contextText: peakContext != null ? `${formatPercent(peakContext)} peak` : 'No context metadata',
-          sessionsText: pluralize(day.sessions.size, 'session'),
-          eventsText: pluralize(day.eventCount, 'event')
+          totalTokens,
+          cost,
+          currency,
+          peakContext,
+          sessionIds: [...day.sessions],
+          eventCount: day.eventCount
         }
       })
+  }
+
+  const formatUsageStatsRows = (records = []) => records.map((row) => ({
+    date: row.date,
+    tokensText: row.totalTokens > 0 ? `${formatNumber(row.totalTokens)} tokens` : 'No token metadata',
+    costText: row.cost != null ? formatCost({ amount: row.cost, currency: row.currency || 'USD' }) : 'No cost metadata',
+    contextText: row.peakContext != null ? `${formatPercent(row.peakContext)} peak` : 'No context metadata',
+    sessionsText: pluralize(row.sessionIds.length, 'session'),
+    eventsText: pluralize(row.eventCount, 'event')
+  }))
+
+  const buildUsageStatsTotals = (records = []) => {
+    const totalTokens = records.reduce((sum, row) => sum + (row.totalTokens || 0), 0)
+    const costRecords = records.filter((row) => row.cost != null)
+    const cost = costRecords.length ? costRecords.reduce((sum, row) => sum + row.cost, 0) : null
+    const currencies = new Set(costRecords.map((row) => row.currency).filter(Boolean))
+    const currency = currencies.size === 1 ? [...currencies][0] : currencies.size > 1 ? 'MIXED' : ''
+    const peakContexts = records
+      .map((row) => row.peakContext)
+      .filter((value) => value != null)
+    const sessionIds = new Set(records.flatMap((row) => row.sessionIds))
+    const eventCount = records.reduce((sum, row) => sum + (row.eventCount || 0), 0)
+    return {
+      daysText: pluralize(records.length, 'day'),
+      tokensText: totalTokens > 0 ? `${formatNumber(totalTokens)} tokens` : 'No token metadata',
+      costText: cost != null ? formatCost({ amount: cost, currency: currency || 'USD' }) : 'No cost metadata',
+      contextText: peakContexts.length ? `${formatPercent(Math.max(...peakContexts))} peak` : 'No context metadata',
+      sessionsText: pluralize(sessionIds.size, 'session'),
+      eventsText: pluralize(eventCount, 'event')
+    }
   }
 
   const getActiveSessionCount = (sessions = []) => sessions.filter((session) => {
@@ -254,6 +285,7 @@ const createDashboardRuntime = ({
       : getActiveSessionCount(sessions)
     const normalizedQuery = normalizeDashboardQuery(query)
     const detailMode = normalizedQuery.view === 'details'
+    const statsMode = normalizedQuery.view === 'stats'
     const requestedSessionId = normalizedQuery.sessionId
     const hasRequestedSessionId = detailMode && Boolean(requestedSessionId)
     const visibleSessions = hasRequestedSessionId
@@ -267,6 +299,7 @@ const createDashboardRuntime = ({
           ? `Focused Session: ${requestedSessionId}`
           : ''
         : 'Showing latest sanitized session details.'
+    const usageStatsRecords = buildUsageStatsRecords(sessions)
 
     return {
       detailFound,
@@ -274,7 +307,9 @@ const createDashboardRuntime = ({
       detailNotice,
       requestedSessionId,
       serviceOk: health.ok === true,
-      usageStats: buildUsageStats(sessions),
+      statsMode,
+      usageStats: formatUsageStatsRows(usageStatsRecords),
+      usageStatsTotals: buildUsageStatsTotals(usageStatsRecords),
       summary: [
         {
           label: 'Tracked Sessions',
@@ -409,12 +444,40 @@ const createDashboardRuntime = ({
     `).join('')}</ol>`
   }
 
-  const renderUsageStats = (stats = []) => `
+  const renderUsageStats = (stats = [], { statsMode = false, totals = {} } = {}) => `
     <div class="usage-stats">
       <div class="usage-stats-header">
-        <strong>Recent Daily Totals</strong>
-        <span>Latest sanitized daily totals</span>
+        <strong>${statsMode ? 'Usage Stats Detail' : 'Recent Daily Totals'}</strong>
+        <span>${statsMode ? 'Last 7 sanitized daily totals' : 'Latest sanitized daily totals'}</span>
       </div>
+      ${statsMode ? `
+        <div class="usage-stats-totals">
+          <article>
+            <p class="usage-stat-meta">Window</p>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(totals.daysText || '0 days'))}</p>
+          </article>
+          <article>
+            <p class="usage-stat-meta">Tokens</p>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(totals.tokensText || 'No token metadata'))}</p>
+          </article>
+          <article>
+            <p class="usage-stat-meta">Cost</p>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(totals.costText || 'No cost metadata'))}</p>
+          </article>
+          <article>
+            <p class="usage-stat-meta">Peak Context</p>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(totals.contextText || 'No context metadata'))}</p>
+          </article>
+          <article>
+            <p class="usage-stat-meta">Sessions</p>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(totals.sessionsText || '0 sessions'))}</p>
+          </article>
+          <article>
+            <p class="usage-stat-meta">Events</p>
+            <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(totals.eventsText || '0 events'))}</p>
+          </article>
+        </div>
+      ` : ''}
       ${stats.length ? stats.map((row) => `
         <article class="usage-stat-row">
           <div>
@@ -485,7 +548,10 @@ const createDashboardRuntime = ({
   const renderDashboard = (viewModel) => ({
     statusLine: viewModel.serviceOk ? 'Service healthy' : 'Service unavailable',
     summaryHtml: renderSummary(viewModel.summary),
-    usageStatsHtml: renderUsageStats(viewModel.usageStats),
+    usageStatsHtml: renderUsageStats(viewModel.usageStats, {
+      statsMode: viewModel.statsMode,
+      totals: viewModel.usageStatsTotals
+    }),
     healthHtml: renderHealthRows(viewModel.healthRows),
     sessionsHtml: renderSessions(viewModel.sessions, {
       detailFound: viewModel.detailFound,
@@ -513,6 +579,23 @@ const createDashboardRuntime = ({
     const healthNode = documentRef.querySelector('#health')
     const sessionsNode = documentRef.querySelector('#sessions')
     const refreshButton = documentRef.querySelector('#refresh')
+    const viewLinks = Array.from(documentRef.querySelectorAll('[data-view-link]'))
+    const diagnosticsPanel = documentRef.querySelector('[data-section="diagnostics"]')
+    const sessionsPanel = documentRef.querySelector('[data-section="sessions"]')
+
+    const applyViewState = (viewModel = {}) => {
+      const currentView = viewModel.statsMode ? 'stats' : viewModel.detailMode ? 'details' : 'overview'
+      viewLinks.forEach((link) => {
+        const linkView = link.getAttribute('data-view-link') || ''
+        if (linkView === currentView) {
+          link.setAttribute('aria-current', 'page')
+        } else {
+          link.removeAttribute('aria-current')
+        }
+      })
+      if (diagnosticsPanel) diagnosticsPanel.hidden = currentView === 'stats'
+      if (sessionsPanel) sessionsPanel.hidden = currentView === 'stats'
+    }
 
     const renderError = (message) => {
       if (statusNode) statusNode.textContent = message || 'Dashboard failed to load'
@@ -532,6 +615,7 @@ const createDashboardRuntime = ({
         if (usageStatsNode) usageStatsNode.innerHTML = rendered.usageStatsHtml
         if (healthNode) healthNode.innerHTML = rendered.healthHtml
         if (sessionsNode) sessionsNode.innerHTML = rendered.sessionsHtml
+        applyViewState(viewModel)
       } catch (error) {
         renderError(error?.message || 'Dashboard failed to load')
       }
