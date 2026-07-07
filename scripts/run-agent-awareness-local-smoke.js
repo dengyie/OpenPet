@@ -4,6 +4,7 @@ const path = require('path')
 const { createAgentAwarenessServer } = require('../examples/plugins/agent-awareness/service/agent-awareness-service')
 const { createCodexRolloutPoller } = require('../examples/plugins/agent-awareness/service/adapters/codex-rollout-poller')
 const { sanitizeText } = require('../examples/plugins/agent-awareness/service/adapters/codex')
+const { createAgentStateMapper } = require('../examples/plugins/agent-awareness/service/state-mapper')
 const { writeCodexHookPlan, toCommandOutput } = require('../examples/plugins/agent-awareness/commands/codex-hook-plan')
 
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'release', 'agent-awareness-local-smoke')
@@ -216,6 +217,7 @@ const hasSanitizedSessionSignal = ({ sessions = [], health = createEmptyHealth()
 const createRedactionChecks = ({ sessions = [], summary = {}, codexHome = '' } = {}) => {
   const serialized = JSON.stringify({
     sessions,
+    notificationPolicyEvidence: summary?.notificationPolicyEvidence || {},
     diagnostics: summary?.health?.diagnostics || {},
     codexPoller: summary?.health?.codexPoller || {}
   })
@@ -228,6 +230,80 @@ const createRedactionChecks = ({ sessions = [], summary = {}, codexHome = '' } =
     noRawPaths: !pathLeakPattern.test(serialized) && !serialized.includes(String(codexHome || '')),
     noLoopbackUrls: !localUrlPattern.test(serialized),
     noSecrets: !secretPattern.test(serialized)
+  }
+}
+
+const createNotificationPolicyEvidence = () => {
+  let currentNowMs = 1000
+  const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })
+  const base = {
+    sessionId: 'synthetic-session',
+    project: 'OpenPet #111111',
+    message: 'Synthetic event with /Users/mango/private/OpenPet and sk-test123'
+  }
+  const working = mapper.mapEvent({
+    event: {
+      ...base,
+      status: 'working',
+      type: 'tool.started'
+    },
+    previousSession: null
+  })
+  currentNowMs += 1000
+  const waiting = mapper.mapEvent({
+    event: {
+      ...base,
+      status: 'waiting',
+      type: 'approval.requested'
+    },
+    previousSession: { status: 'working' }
+  })
+  currentNowMs += 1000
+  const repeatedWaiting = mapper.mapEvent({
+    event: {
+      ...base,
+      status: 'waiting',
+      type: 'approval.still-waiting'
+    },
+    previousSession: { status: 'waiting' }
+  })
+  currentNowMs += 1000
+  const completed = mapper.mapEvent({
+    event: {
+      ...base,
+      status: 'completed',
+      type: 'turn.completed'
+    },
+    previousSession: { status: 'waiting' }
+  })
+  currentNowMs += 1000
+  const repeatedCompleted = mapper.mapEvent({
+    event: {
+      ...base,
+      status: 'completed',
+      type: 'session.completed'
+    },
+    previousSession: { status: 'completed' }
+  })
+  const mapped = [working, waiting, repeatedWaiting, completed, repeatedCompleted]
+  const decisions = mapped.map((entry) => entry.notification || {})
+  const decisionFields = Object.keys(decisions[0] || {})
+  const serializedDecisions = JSON.stringify(decisions)
+  return {
+    source: 'state-mapper-synthetic-sequence',
+    eventCount: mapped.length,
+    petEventCount: mapped.filter((entry) => entry.petEvent).length,
+    speechCount: mapped.filter((entry) => entry.speech?.text).length,
+    suppressedSpeechCount: mapped.filter((entry) => !entry.speech?.text).length,
+    urgentTransitionSpoke: Boolean(waiting.speech?.text),
+    repeatedUrgentSuppressed: repeatedWaiting.speech === null,
+    repeatedCompletionSuppressed: repeatedCompleted.speech === null,
+    eventPreservedWhenSpeechSuppressed: (
+      repeatedWaiting.petEvent?.type === 'agent:waiting' &&
+      repeatedCompleted.petEvent?.type === 'agent:completed'
+    ),
+    contentFreeDecisionEvidence: !/\/Users\/|sk-[A-Za-z0-9_-]+|Bearer\s+/i.test(serializedDecisions),
+    decisionFields
   }
 }
 
@@ -284,6 +360,7 @@ const runAgentAwarenessLocalSmoke = async ({
       noLoopbackUrls: false,
       noSecrets: false
     },
+    notificationPolicyEvidence: createNotificationPolicyEvidence(),
     manualAcceptanceTemplate: {
       dashboardUseful: null,
       petSpeechNoiseAcceptable: null,

@@ -107,6 +107,19 @@ test('runAgentAwarenessLocalSmoke writes a redacted report when sanitized Codex 
   assert.equal(result.redactionChecks.noRawPaths, true)
   assert.equal(result.redactionChecks.noLoopbackUrls, true)
   assert.equal(result.redactionChecks.noSecrets, true)
+  assert.deepEqual(result.notificationPolicyEvidence, {
+    source: 'state-mapper-synthetic-sequence',
+    eventCount: 5,
+    petEventCount: 5,
+    speechCount: 3,
+    suppressedSpeechCount: 2,
+    urgentTransitionSpoke: true,
+    repeatedUrgentSuppressed: true,
+    repeatedCompletionSuppressed: true,
+    eventPreservedWhenSpeechSuppressed: true,
+    contentFreeDecisionEvidence: true,
+    decisionFields: ['status', 'priority', 'reason', 'shouldSpeak', 'cooldownMs']
+  })
   assert.deepEqual(result.manualAcceptanceTemplate, {
     dashboardUseful: null,
     petSpeechNoiseAcceptable: null,
@@ -123,6 +136,8 @@ test('runAgentAwarenessLocalSmoke writes a redacted report when sanitized Codex 
   assert.equal(persisted.ok, true)
   assert.equal(persisted.codexHome, '[redacted-local-codex-home]')
   assert.equal(persisted.healthUrl, '[local-url]')
+  assert.equal(persisted.notificationPolicyEvidence.repeatedUrgentSuppressed, true)
+  assert.equal(persisted.notificationPolicyEvidence.contentFreeDecisionEvidence, true)
   assert.equal(JSON.stringify(persisted).includes('/Users/mango/private/project/OpenPet'), false)
   assert.equal(JSON.stringify(persisted).includes('127.0.0.1'), false)
   assert.equal(JSON.stringify(persisted).includes('sk-test123'), false)

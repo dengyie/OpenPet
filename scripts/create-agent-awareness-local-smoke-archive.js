@@ -59,6 +59,19 @@ const summarizeManualAcceptance = (manualAcceptance = {}) => ({
   notesPresent: String(manualAcceptance.notes || '').trim().length > 0
 })
 
+const summarizeNotificationPolicyEvidence = (evidence = {}) => ({
+  present: evidence && typeof evidence === 'object' && Object.keys(evidence).length > 0,
+  eventCount: Number(evidence.eventCount) || 0,
+  petEventCount: Number(evidence.petEventCount) || 0,
+  speechCount: Number(evidence.speechCount) || 0,
+  suppressedSpeechCount: Number(evidence.suppressedSpeechCount) || 0,
+  urgentTransitionSpoke: formatManualAcceptanceStatus(evidence.urgentTransitionSpoke),
+  repeatedUrgentSuppressed: formatManualAcceptanceStatus(evidence.repeatedUrgentSuppressed),
+  repeatedCompletionSuppressed: formatManualAcceptanceStatus(evidence.repeatedCompletionSuppressed),
+  eventPreservedWhenSpeechSuppressed: formatManualAcceptanceStatus(evidence.eventPreservedWhenSpeechSuppressed),
+  contentFreeDecisionEvidence: formatManualAcceptanceStatus(evidence.contentFreeDecisionEvidence)
+})
+
 const usage = () => [
   'Usage: node scripts/create-agent-awareness-local-smoke-archive.js --session-dir <dir> [options]',
   '',
@@ -150,6 +163,53 @@ const requireSanitizedReport = (report) => {
   if (report?.hookPlan?.serviceUrl !== '[local-url]') {
     throw new Error('Smoke report is not sanitized for archive: hookPlan.serviceUrl must be redacted')
   }
+  validateNotificationPolicyEvidence(report?.notificationPolicyEvidence)
+}
+
+const validateNotificationPolicyEvidence = (evidence) => {
+  if (evidence == null) return
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
+    throw new Error('notificationPolicyEvidence must be an object when present')
+  }
+
+  const allowedDecisionFieldNames = ['status', 'priority', 'reason', 'shouldSpeak', 'cooldownMs']
+  const allowedDecisionFields = new Set(allowedDecisionFieldNames)
+  const decisionFields = Array.isArray(evidence.decisionFields) ? evidence.decisionFields : []
+  const unknownDecisionFields = decisionFields.filter((field) => !allowedDecisionFields.has(String(field || '')))
+  const missingDecisionFields = allowedDecisionFieldNames.filter((field) => !decisionFields.includes(field))
+  const hasDuplicateDecisionFields = new Set(decisionFields).size !== decisionFields.length
+  const numericFields = ['eventCount', 'petEventCount', 'speechCount', 'suppressedSpeechCount']
+  const invalidNumericField = numericFields.find((field) => {
+    const value = Number(evidence[field])
+    return !Number.isFinite(value) || value < 0
+  })
+  const booleanFields = [
+    'urgentTransitionSpoke',
+    'repeatedUrgentSuppressed',
+    'repeatedCompletionSuppressed',
+    'eventPreservedWhenSpeechSuppressed',
+    'contentFreeDecisionEvidence'
+  ]
+  const invalidBooleanField = booleanFields.find((field) => typeof evidence[field] !== 'boolean')
+
+  if (evidence.source !== 'state-mapper-synthetic-sequence') {
+    throw new Error('notificationPolicyEvidence.source must be state-mapper-synthetic-sequence')
+  }
+  if (invalidNumericField) {
+    throw new Error(`notificationPolicyEvidence.${invalidNumericField} must be a non-negative number`)
+  }
+  if (invalidBooleanField) {
+    throw new Error(`notificationPolicyEvidence.${invalidBooleanField} must be a boolean`)
+  }
+  if (evidence.contentFreeDecisionEvidence !== true) {
+    throw new Error('notificationPolicyEvidence.contentFreeDecisionEvidence must be true')
+  }
+  if (unknownDecisionFields.length > 0) {
+    throw new Error(`notificationPolicyEvidence.decisionFields contains unsupported fields: ${unknownDecisionFields.join(', ')}`)
+  }
+  if (!Array.isArray(evidence.decisionFields) || missingDecisionFields.length > 0 || hasDuplicateDecisionFields) {
+    throw new Error('notificationPolicyEvidence.decisionFields must contain exactly status, priority, reason, shouldSpeak, cooldownMs')
+  }
 }
 
 const assertNoSensitiveArchiveText = (content, role) => {
@@ -211,16 +271,17 @@ const createArchiveResultValue = ({
       archiveDir: safeArchiveDir,
       outputPath: `${safeArchiveDir}/${DEFAULT_ARCHIVE_RESULT_NAME}`
     },
-  smoke: {
-    sanitizedSignalDetected: report?.sanitizedSignalDetected === true,
-    sessionCount: Number(report?.health?.diagnostics?.sessionCount) || 0,
-    activeSessionCount: Number(report?.health?.diagnostics?.activeSessionCount) || 0,
-    totalEvents: Number(report?.health?.diagnostics?.totalEvents) || 0,
-    unsupportedLifecycleRecordCount: Number(report?.health?.diagnostics?.unsupportedLifecycleRecordCount) || 0,
-    manualAcceptanceTemplatePresent: report?.manualAcceptanceTemplate && typeof report.manualAcceptanceTemplate === 'object',
-    manualAcceptance: summarizeManualAcceptance(report?.manualAcceptanceTemplate || {})
-  },
-  files
+    smoke: {
+      sanitizedSignalDetected: report?.sanitizedSignalDetected === true,
+      sessionCount: Number(report?.health?.diagnostics?.sessionCount) || 0,
+      activeSessionCount: Number(report?.health?.diagnostics?.activeSessionCount) || 0,
+      totalEvents: Number(report?.health?.diagnostics?.totalEvents) || 0,
+      unsupportedLifecycleRecordCount: Number(report?.health?.diagnostics?.unsupportedLifecycleRecordCount) || 0,
+      notificationPolicy: summarizeNotificationPolicyEvidence(report?.notificationPolicyEvidence || {}),
+      manualAcceptanceTemplatePresent: report?.manualAcceptanceTemplate && typeof report.manualAcceptanceTemplate === 'object',
+      manualAcceptance: summarizeManualAcceptance(report?.manualAcceptanceTemplate || {})
+    },
+    files
   }
 }
 
@@ -239,6 +300,14 @@ const createReadme = ({ report, archiveDir }) => {
   const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : DEFAULT_SESSION_DIR_LABEL
   const archiveSessionDir = sanitizeText(toPosixPath(path.relative(process.cwd(), archiveDir) || archiveDir), 240)
   const manualAcceptance = report?.manualAcceptanceTemplate || {}
+  const notificationPolicy = report?.notificationPolicyEvidence || {}
+  const notificationPolicyPass = (
+    notificationPolicy.urgentTransitionSpoke === true &&
+    notificationPolicy.repeatedUrgentSuppressed === true &&
+    notificationPolicy.repeatedCompletionSuppressed === true &&
+    notificationPolicy.eventPreservedWhenSpeechSuppressed === true &&
+    notificationPolicy.contentFreeDecisionEvidence === true
+  )
   const manualNotes = sanitizeText(manualAcceptance.notes || '', 400)
   const reportCommandPath = `${archiveSessionDir}/${DEFAULT_RESULT_NAME}`
 
@@ -265,6 +334,7 @@ const createReadme = ({ report, archiveDir }) => {
     `| Redaction boundary | ${Object.values(report?.redactionChecks || {}).every(Boolean) ? 'pass' : 'fail'} | \`sessionIdsHashed = ${report?.redactionChecks?.sessionIdsHashed === true}\`, \`projectLabelsRedacted = ${report?.redactionChecks?.projectLabelsRedacted === true}\`, \`noRawPaths = ${report?.redactionChecks?.noRawPaths === true}\`, \`noLoopbackUrls = ${report?.redactionChecks?.noLoopbackUrls === true}\`, \`noSecrets = ${report?.redactionChecks?.noSecrets === true}\`. |`,
     `| Hook planning | ${report?.hookPlan?.ok === true ? 'pass' : 'fail'} | \`instructionsFile = ${sanitizeText(report?.hookPlan?.instructionsFile || '', 120)}\`, \`authFile = ${sanitizeText(report?.hookPlan?.authFile || '', 120)}\`, and \`externalWrites = ${report?.hookPlan?.externalWrites === true}\`. |`,
     `| Poller diagnostics | ${report?.health?.ok === true ? 'pass' : 'fail'} | \`seenCount = ${seenCount}\`, \`unsupportedLifecycleRecordCount = ${unsupportedLifecycleRecordCount}\`, \`lastError = ${sanitizeText(report?.health?.diagnostics?.lastError || '', 80) || '""'}\`. |`,
+    `| Notification policy | ${notificationPolicyPass ? 'pass' : 'pending'} | \`eventCount = ${Number(notificationPolicy.eventCount) || 0}\`, \`speechCount = ${Number(notificationPolicy.speechCount) || 0}\`, \`suppressedSpeechCount = ${Number(notificationPolicy.suppressedSpeechCount) || 0}\`, \`urgentTransitionSpoke = ${notificationPolicy.urgentTransitionSpoke === true}\`, \`repeatedUrgentSuppressed = ${notificationPolicy.repeatedUrgentSuppressed === true}\`, \`repeatedCompletionSuppressed = ${notificationPolicy.repeatedCompletionSuppressed === true}\`. |`,
     '',
     '## Sample Sessions',
     '',
@@ -290,6 +360,8 @@ const createReadme = ({ report, archiveDir }) => {
     '## Claim Boundary',
     '',
     'This evidence confirms that the bundled agent-awareness service can discover real local Codex rollout data, reduce it to sanitized session summaries, and preserve the current privacy boundary for archived results.',
+    '',
+    'The synthetic notification-policy evidence exercises the plugin state mapper with bounded metadata only. It proves the low-noise policy shape is wired into the smoke artifact, but it is not a substitute for watching the desktop pet during a real session.',
     '',
     'It does not by itself prove that dashboard usefulness, pet speech noisiness, or the overall desktop interaction feel have passed human acceptance. The `manualAcceptanceTemplate` in the report remains the handoff point for that review.',
     '',

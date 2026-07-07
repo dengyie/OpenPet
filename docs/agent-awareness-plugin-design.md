@@ -92,7 +92,7 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `examples/plugins/agent-awareness/service/usage-summary.js` | Normalizes safe token/context/cost metadata from hook and rollout events for per-session and aggregate diagnostics. |
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session model with bounded current-step and metadata-derived progress summaries. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists bounded runtime session summaries to plugin-owned storage. |
-| `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events and rate-limited speech. |
+| `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events, rate-limited speech, and bounded internal notification decisions for cooldown/noise policy testing. |
 | `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including aggregate usage tokens/cost/context, dedicated `view=stats` daily totals from sanitized history, bounded attention-session focus markers, per-session usage, git, current-step, recent-progress, and generated session-summary metadata, bounded `view=details&sessionId=<sanitized-id>` focus, and per-session `Focus` links. |
 
 ### Core Touchpoints Outside The Plugin
@@ -135,7 +135,7 @@ Before reviving any of these paths as official surface area, update all of the f
 | `tests/examples/agent-awareness-dashboard-browser.test.js` | Browser-level dashboard smoke against the real local service. |
 | `tests/control-center/control-center-smoke.spec.js` | Control Center Agent Awareness approval gating, native health detail summary, and the first-class detail entry surface. |
 | `tests/main/pet-bubble-chat-renderer.test.js` | Pet-side quick-open button behavior for the Bubble Chat detail entry. |
-| `tests/scripts/run-agent-awareness-local-smoke.test.js` | Real-session smoke runner output shape and redaction checks. |
+| `tests/scripts/run-agent-awareness-local-smoke.test.js` | Real-session smoke runner output shape, bounded notification-policy evidence, and redaction checks. |
 | `tests/scripts/check-docs-drift.test.js` | Live-doc truth baseline for Agent Awareness terminology and indexed docs. |
 
 ## Update Checklist

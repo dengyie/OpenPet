@@ -78,7 +78,7 @@ Today Agent Awareness provides:
 - a local service with `GET /health`, `GET /api/sessions`, dashboard `/`, and bearer-token-gated `POST /api/events`;
 - richer sanitized runtime session state covering `session`, `turn`, `tool`, `approval`, `progress`, usage, git, and generated summary metadata;
 - bounded pet events for accepted safe lifecycle signals;
-- low-frequency pet speech for selected status changes;
+- low-frequency pet speech for selected status changes, backed by a plugin-internal notification policy that keeps urgent transitions interruptive while cooling repeated status chatter;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
 - a Control Center-native `Agent Awareness 原生详情` summary that reads the real bundled service health details for active sessions, tracked sessions, observed events, usage tokens, estimated cost, and peak context when available;
 - a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
@@ -117,7 +117,7 @@ Agent Awareness is not yet "complete Codex awareness." The current milestone doe
 - auto-install Codex hooks during discovery or app boot;
 - capture raw prompts, model responses, tool arguments, tool results, terminal transcript, stdout, stderr, or full local paths;
 - expose host-level multi-session pinning or independent pet-window focus controls as a finished product feature;
-- provide persistent noise controls;
+- provide user-configurable persistent noise controls;
 - infer model pricing or cost when Codex does not provide safe cost metadata;
 - drive semantic pet actions beyond `pet:event` and `pet:say`;
 - claim final desktop-feel sign-off without manual acceptance.
@@ -327,7 +327,7 @@ The plugin owns:
 | `examples/plugins/agent-awareness/service/git-summary.js` | Derives bounded git branch/dirty metadata without storing cwd. |
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session shape. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists sanitized runtime session state in plugin-owned storage. |
-| `examples/plugins/agent-awareness/service/state-mapper.js` | Maps canonical agent states into `pet:event` and rate-limited `pet:say`. |
+| `examples/plugins/agent-awareness/service/state-mapper.js` | Maps canonical agent states into `pet:event`, rate-limited `pet:say`, and bounded internal notification decisions. |
 | `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Exposes `/health`, `/api/sessions`, dashboard assets, and token-gated `/api/events`. |
 | `examples/plugins/agent-awareness/commands/doctor.js` | Reports sanitized setup and diagnostics. |
 | `examples/plugins/agent-awareness/commands/codex-hook-plan.js` | Writes a read-only future-hook plan inside plugin-owned storage. |
@@ -389,8 +389,10 @@ Speech policy is intentionally conservative:
 
 - `idle` never speaks;
 - `thinking` and `working` are rate-limited to once per session/status every 5 minutes by default;
+- repeated `waiting`, `blocked`, `completed`, and `failed` speech is cooled for 2 minutes per session/status by default;
 - identical event fingerprints are suppressed for 10 minutes by default;
 - `waiting`, `blocked`, `completed`, and `failed` may speak immediately on transition;
+- every notification decision carries bounded status, priority, reason, and cooldown metadata inside the plugin for testability without exposing raw prompts, paths, secrets, tool arguments, or transcript content;
 - the initial bootstrap scan must not notify the pet; only incremental events should notify it.
 
 The current tests explicitly prove the incremental-notification rule and the completion example:
@@ -479,6 +481,17 @@ archive creation, and manual-acceptance write-back without launching OpenPet.
 It proves tool wiring and redacted data flow only; it does not replace the real
 session smoke or the later human desktop review.
 
+The mock and smoke reports also preserve a bounded `notificationPolicyEvidence`
+block. That block is generated from a synthetic `state-mapper` sequence and
+records only counts, booleans, and notification decision field names. It proves
+the low-noise policy is wired into the evidence chain: urgent transitions can
+speak, repeated urgent/completed speech is suppressed, and pet events are still
+preserved when speech is suppressed. It does not record speech text and does not
+replace human judgment of desktop noise. Archive creation and manual-acceptance
+write-back reject present notification-policy evidence unless it names the fixed
+`state-mapper-synthetic-sequence` source, preserves exactly the bounded
+notification decision fields, and marks the decision evidence as content-free.
+
 ### Real-Session Smoke
 
 Primary entrypoint:
@@ -489,7 +502,7 @@ npm run run-agent-awareness-local-smoke -- \
   --output-dir agent-awareness-local-smoke
 ```
 
-The smoke result is expected to preserve a `manualAcceptanceTemplate` block so that automated validation and human desktop review stay clearly separated.
+The smoke result is expected to preserve both `notificationPolicyEvidence` and a `manualAcceptanceTemplate` block so that automated notification-policy evidence and human desktop review stay clearly separated.
 
 The report should then be updated with:
 
@@ -523,7 +536,7 @@ OpenPet is not yet at "pet completely perceives Codex" quality. The remaining ga
 - auto or semi-auto hook installation still lacks a final product decision;
 - the shipped plugin still prefers bounded awareness over deep session introspection;
 - host-level multi-session pinning, independent windows, and presentation arbitration are unfinished; the plugin-level bounded attention foundation has shipped;
-- persistent notification tuning is unfinished;
+- user-configurable persistent notification tuning is unfinished; the plugin-internal bounded notification policy foundation has shipped;
 - semantic pet behavior mapping is unfinished;
 - final desktop usefulness and noise acceptance are still partly manual.
 

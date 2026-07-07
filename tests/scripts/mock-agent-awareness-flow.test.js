@@ -115,6 +115,9 @@ test('mock agent-awareness flow rehearses smoke, archive, and manual acceptance 
   assert.equal(smokeResult.sessions[0].usage.totalTokens, 1500)
   assert.equal(smokeResult.sessions[0].git.branch, 'codex/dev7')
   assert.equal(smokeResult.sessions[0].summary.title, 'OpenPet #111111 on codex/dev7')
+  assert.equal(smokeResult.notificationPolicyEvidence.urgentTransitionSpoke, true)
+  assert.equal(smokeResult.notificationPolicyEvidence.repeatedUrgentSuppressed, true)
+  assert.equal(smokeResult.notificationPolicyEvidence.contentFreeDecisionEvidence, true)
   assert.deepEqual(smokeResult.manualAcceptanceTemplate, {
     dashboardUseful: null,
     petSpeechNoiseAcceptable: null,
@@ -145,6 +148,8 @@ test('mock agent-awareness flow rehearses smoke, archive, and manual acceptance 
   assert.equal(archiveResult.smoke.manualAcceptance.dashboardUseful, 'pending')
   assert.equal(archiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pending')
   assert.equal(archiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
+  assert.equal(archiveResult.smoke.notificationPolicy.urgentTransitionSpoke, 'pass')
+  assert.equal(archiveResult.smoke.notificationPolicy.repeatedUrgentSuppressed, 'pass')
 
   const archivedReportPath = path.join(archiveDir, 'agent-awareness-local-smoke-result.json')
   const archivedReadmePath = path.join(archiveDir, 'README.md')
@@ -183,6 +188,7 @@ test('mock agent-awareness flow rehearses smoke, archive, and manual acceptance 
 
   const updatedReadme = fs.readFileSync(archivedReadmePath, 'utf-8')
   assert.match(updatedReadme, /## Manual Acceptance/)
+  assert.match(updatedReadme, /Notification policy/)
   assert.match(updatedReadme, /\| Dashboard usefulness \| pass \|/)
   assert.match(updatedReadme, /\| Pet speech noise \| pass \|/)
   assert.match(updatedReadme, /real desktop feel remains manual/i)
@@ -193,6 +199,7 @@ test('mock agent-awareness flow rehearses smoke, archive, and manual acceptance 
   assert.equal(updatedArchiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pass')
   assert.equal(updatedArchiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(updatedArchiveResult.smoke.manualAcceptance.notesPresent, true)
+  assert.equal(updatedArchiveResult.smoke.notificationPolicy.repeatedCompletionSuppressed, 'pass')
   assert.equal(JSON.stringify(updatedArchiveResult).includes('/Users/mango/private/project/OpenPet'), false)
   assert.equal(JSON.stringify(updatedArchiveResult).includes('127.0.0.1'), false)
   assert.equal(JSON.stringify(updatedArchiveResult).includes('sk-test123'), false)
@@ -231,6 +238,8 @@ test('mock agent-awareness CLI flow rehearses the shipped smoke, archive, and up
   assert.equal(smokeReport.redactionChecks.noRawPaths, true)
   assert.equal(smokeReport.redactionChecks.noLoopbackUrls, true)
   assert.equal(smokeReport.redactionChecks.noSecrets, true)
+  assert.equal(smokeReport.notificationPolicyEvidence.repeatedUrgentSuppressed, true)
+  assert.equal(smokeReport.notificationPolicyEvidence.contentFreeDecisionEvidence, true)
 
   const archiveDir = path.join(archiveRoot, sessionId)
   const archive = runScript(archiveScript, [
@@ -247,6 +256,7 @@ test('mock agent-awareness CLI flow rehearses the shipped smoke, archive, and up
   assert.equal(archiveResult.smoke.manualAcceptance.dashboardUseful, 'pending')
   assert.equal(archiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pending')
   assert.equal(archiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
+  assert.equal(archiveResult.smoke.notificationPolicy.repeatedCompletionSuppressed, 'pass')
 
   const archivedReportPath = path.join(archiveDir, 'agent-awareness-local-smoke-result.json')
   const archivedReadmePath = path.join(archiveDir, 'README.md')
@@ -287,6 +297,7 @@ test('mock agent-awareness CLI flow rehearses the shipped smoke, archive, and up
   assert.equal(updatedArchiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pass')
   assert.equal(updatedArchiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(updatedArchiveResult.smoke.manualAcceptance.notesPresent, true)
+  assert.equal(updatedArchiveResult.smoke.notificationPolicy.contentFreeDecisionEvidence, 'pass')
   assert.equal(JSON.stringify(updatedArchiveResult).includes('/Users/mango/private/project/OpenPet'), false)
   assert.equal(JSON.stringify(updatedArchiveResult).includes('127.0.0.1'), false)
   assert.equal(JSON.stringify(updatedArchiveResult).includes('sk-test123'), false)

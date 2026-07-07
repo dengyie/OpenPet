@@ -1,6 +1,6 @@
 const createBridgeClient = ({
-  baseUrl = process.env.OPENPET_BRIDGE_URL || '',
-  token = process.env.OPENPET_BRIDGE_TOKEN || '',
+  baseUrl = process.env.OPENPET_SERVICE_BRIDGE_URL || process.env.OPENPET_BRIDGE_URL || '',
+  token = process.env.OPENPET_SERVICE_BRIDGE_TOKEN || process.env.OPENPET_BRIDGE_TOKEN || '',
   fetchImpl = globalThis.fetch
 } = {}) => {
   const post = async (route, payload) => {

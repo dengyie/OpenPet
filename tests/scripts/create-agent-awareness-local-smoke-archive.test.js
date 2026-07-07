@@ -72,6 +72,19 @@ const createSessionFixture = ({
       noLoopbackUrls: true,
       noSecrets: true
     },
+    notificationPolicyEvidence: {
+      source: 'state-mapper-synthetic-sequence',
+      eventCount: 5,
+      petEventCount: 5,
+      speechCount: 3,
+      suppressedSpeechCount: 2,
+      urgentTransitionSpoke: true,
+      repeatedUrgentSuppressed: true,
+      repeatedCompletionSuppressed: true,
+      eventPreservedWhenSpeechSuppressed: true,
+      contentFreeDecisionEvidence: true,
+      decisionFields: ['status', 'priority', 'reason', 'shouldSpeak', 'cooldownMs']
+    },
     manualAcceptanceTemplate: {
       dashboardUseful: null,
       petSpeechNoiseAcceptable: null,
@@ -114,6 +127,8 @@ test('createReadme preserves privacy-first claim boundary', () => {
   assert.match(readme, /separate live-app verification/i)
   assert.match(readme, /outside the archived smoke run/i)
   assert.match(readme, /manualAcceptanceTemplate/)
+  assert.match(readme, /Notification policy/)
+  assert.match(readme, /repeatedUrgentSuppressed = true/)
   assert.match(readme, /does not by itself prove/i)
   assert.match(readme, /unsupportedLifecycleRecordCount = 19/)
   assert.match(readme, /npm run run-agent-awareness-local-smoke -- --codex-home ~\/\.codex/)
@@ -151,6 +166,18 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
   assert.equal(result.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pending')
   assert.equal(result.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(result.smoke.manualAcceptance.notesPresent, false)
+  assert.deepEqual(result.smoke.notificationPolicy, {
+    present: true,
+    eventCount: 5,
+    petEventCount: 5,
+    speechCount: 3,
+    suppressedSpeechCount: 2,
+    urgentTransitionSpoke: 'pass',
+    repeatedUrgentSuppressed: 'pass',
+    repeatedCompletionSuppressed: 'pass',
+    eventPreservedWhenSpeechSuppressed: 'pass',
+    contentFreeDecisionEvidence: 'pass'
+  })
   assert.equal(result.source.sessionDir, 'agent-awareness-local-smoke/2026-07-03T15-38-32-999Z')
   assert.equal(result.source.resultPath, 'agent-awareness-local-smoke/2026-07-03T15-38-32-999Z/agent-awareness-local-smoke-result.json')
   assert.equal(result.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T15-38-32-999Z')
@@ -174,12 +201,14 @@ test('createAgentAwarenessLocalSmokeArchive copies sanitized artifacts and write
 
   const archivedReadme = fs.readFileSync(archivedReadmePath, 'utf-8')
   assert.match(archivedReadme, /privacy-safe session discovery/)
+  assert.match(archivedReadme, /synthetic notification-policy evidence/i)
   assert.match(archivedReadme, /does not by itself prove/i)
 
   const archiveResult = JSON.parse(fs.readFileSync(archiveResultPath, 'utf-8'))
   assert.equal(archiveResult.ok, true)
   assert.equal(archiveResult.smoke.totalEvents, 1000)
   assert.equal(archiveResult.smoke.manualAcceptance.dashboardUseful, 'pending')
+  assert.equal(archiveResult.smoke.notificationPolicy.repeatedCompletionSuppressed, 'pass')
   assert.doesNotMatch(JSON.stringify(archiveResult), /\/Users\//)
 })
 
@@ -225,6 +254,64 @@ test('createAgentAwarenessLocalSmokeArchive rejects sensitive authorization text
     () => createAgentAwarenessLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow }),
     /authorization header-like text/
   )
+})
+
+test('createAgentAwarenessLocalSmokeArchive rejects content-bearing notification evidence drift', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'agent-awareness-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  report.notificationPolicyEvidence.contentFreeDecisionEvidence = false
+  report.notificationPolicyEvidence.decisionFields = ['status', 'priority', 'message']
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-07-03T15-38-32-999Z')
+  assert.throws(
+    () => createAgentAwarenessLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow }),
+    /notificationPolicyEvidence/
+  )
+})
+
+test('createAgentAwarenessLocalSmokeArchive rejects notification evidence without source', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'agent-awareness-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  delete report.notificationPolicyEvidence.source
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-07-03T15-38-32-999Z')
+  assert.throws(
+    () => createAgentAwarenessLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow }),
+    /notificationPolicyEvidence\.source/
+  )
+})
+
+test('createAgentAwarenessLocalSmokeArchive rejects notification evidence with incomplete decision fields', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'agent-awareness-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  report.notificationPolicyEvidence.decisionFields = ['status', 'priority', 'reason', 'shouldSpeak']
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-07-03T15-38-32-999Z')
+  assert.throws(
+    () => createAgentAwarenessLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow }),
+    /notificationPolicyEvidence\.decisionFields/
+  )
+})
+
+test('createAgentAwarenessLocalSmokeArchive keeps legacy reports without notification evidence compatible', () => {
+  const { rootDir, sessionDir } = createSessionFixture()
+  const reportPath = path.join(sessionDir, 'agent-awareness-local-smoke-result.json')
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'))
+  delete report.notificationPolicyEvidence
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`)
+
+  const archiveDir = path.join(rootDir, 'archive', '2026-07-03T15-38-32-999Z')
+  const result = createAgentAwarenessLocalSmokeArchive({ sessionDir, archiveDir, now: fixedNow })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.smoke.notificationPolicy.present, false)
+  assert.equal(result.smoke.notificationPolicy.contentFreeDecisionEvidence, 'pending')
 })
 
 test('createAgentAwarenessLocalSmokeArchive refuses to overwrite an existing archive directory', () => {

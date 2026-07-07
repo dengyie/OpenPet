@@ -80,6 +80,19 @@ const createReportFixture = ({
       noLoopbackUrls: true,
       noSecrets: true
     },
+    notificationPolicyEvidence: {
+      source: 'state-mapper-synthetic-sequence',
+      eventCount: 5,
+      petEventCount: 5,
+      speechCount: 3,
+      suppressedSpeechCount: 2,
+      urgentTransitionSpoke: true,
+      repeatedUrgentSuppressed: true,
+      repeatedCompletionSuppressed: true,
+      eventPreservedWhenSpeechSuppressed: true,
+      contentFreeDecisionEvidence: true,
+      decisionFields: ['status', 'priority', 'reason', 'shouldSpeak', 'cooldownMs']
+    },
     manualAcceptanceTemplate: {
       dashboardUseful: null,
       petSpeechNoiseAcceptable: null,
@@ -183,6 +196,18 @@ test('updateAgentAwarenessLocalSmokeReport rewrites the report and companion REA
       activeSessionCount: 3,
       totalEvents: 1000,
       unsupportedLifecycleRecordCount: 0,
+      notificationPolicy: {
+        present: true,
+        eventCount: 5,
+        petEventCount: 5,
+        speechCount: 3,
+        suppressedSpeechCount: 2,
+        urgentTransitionSpoke: 'pass',
+        repeatedUrgentSuppressed: 'pass',
+        repeatedCompletionSuppressed: 'pass',
+        eventPreservedWhenSpeechSuppressed: 'pass',
+        contentFreeDecisionEvidence: 'pass'
+      },
       manualAcceptanceTemplatePresent: true
     },
     files: []
@@ -222,6 +247,8 @@ test('updateAgentAwarenessLocalSmokeReport rewrites the report and companion REA
   assert.equal(archiveResult.smoke.manualAcceptance.petSpeechNoiseAcceptable, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.redactionLooksSafe, 'pass')
   assert.equal(archiveResult.smoke.manualAcceptance.notesPresent, true)
+  assert.equal(archiveResult.smoke.notificationPolicy.repeatedUrgentSuppressed, 'pass')
+  assert.equal(archiveResult.smoke.notificationPolicy.contentFreeDecisionEvidence, 'pass')
   assert.equal(archiveResult.source.sessionDir, 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
   assert.equal(archiveResult.source.resultPath, 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json')
   assert.equal(archiveResult.archive.archiveDir, 'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
@@ -269,6 +296,39 @@ test('updateAgentAwarenessLocalSmokeReport rejects unsafe notes before writing',
       validateComplete: false
     }
   }), /local user path found/)
+})
+
+test('updateAgentAwarenessLocalSmokeReport rejects invalid notification policy evidence before writing', () => {
+  const { reportPath } = createReportFixture({
+    reportOverrides: {
+      notificationPolicyEvidence: {
+        source: 'state-mapper-synthetic-sequence',
+        eventCount: 5,
+        petEventCount: 5,
+        speechCount: 3,
+        suppressedSpeechCount: 2,
+        urgentTransitionSpoke: true,
+        repeatedUrgentSuppressed: true,
+        repeatedCompletionSuppressed: true,
+        eventPreservedWhenSpeechSuppressed: true,
+        contentFreeDecisionEvidence: true,
+        decisionFields: ['status', 'priority', 'speechText']
+      }
+    }
+  })
+
+  assert.throws(
+    () => updateAgentAwarenessLocalSmokeReport({
+      reportPath,
+      options: {
+        dashboardUseful: true,
+        petSpeechNoiseAcceptable: true,
+        redactionLooksSafe: true,
+        validateComplete: true
+      }
+    }),
+    /notificationPolicyEvidence/
+  )
 })
 
 test('cli exits non-zero when complete validation is requested with pending review fields', () => {

@@ -17,6 +17,7 @@ const {
 } = require('../../examples/plugins/agent-awareness/service/adapters/codex-rollout-poller')
 const { createSessionStore } = require('../../examples/plugins/agent-awareness/service/session-store')
 const { createAgentStateMapper } = require('../../examples/plugins/agent-awareness/service/state-mapper')
+const { createBridgeClient } = require('../../examples/plugins/agent-awareness/service/bridge-client')
 const { buildDiagnostics, createAgentAwarenessServer } = require('../../examples/plugins/agent-awareness/service/agent-awareness-service')
 const { DEFAULT_PORT, PLAN_FILE, TOKEN_FILE, toCommandOutput, writeCodexHookPlan } = require('../../examples/plugins/agent-awareness/commands/codex-hook-plan')
 const { installCodexHooks } = require('../../examples/plugins/agent-awareness/commands/codex-hook-config')
@@ -59,6 +60,47 @@ test('agent awareness manifest declares bounded runtime entries', () => {
   assert.equal(manifest.configSchema, 'config.schema.json')
   assert.equal(manifest.entries.services[0].id, 'agent-awareness')
   assert.equal(manifest.entries.dashboards[0].url, 'http://127.0.0.1:8795')
+})
+
+test('agent awareness bridge client reads service bridge env from plugin service', async () => {
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  const previousServiceBridgeUrl = process.env.OPENPET_SERVICE_BRIDGE_URL
+  const previousServiceBridgeToken = process.env.OPENPET_SERVICE_BRIDGE_TOKEN
+  const requests = []
+
+  try {
+    delete process.env.OPENPET_BRIDGE_URL
+    delete process.env.OPENPET_BRIDGE_TOKEN
+    process.env.OPENPET_SERVICE_BRIDGE_URL = 'http://127.0.0.1:7777/plugins/bridge/openpet.agent-awareness/agent-awareness/run'
+    process.env.OPENPET_SERVICE_BRIDGE_TOKEN = 'service-bridge-token'
+
+    const client = createBridgeClient({
+      fetchImpl: async (url, options) => {
+        requests.push({ url, options })
+        return {
+          ok: true,
+          json: async () => ({ ok: true })
+        }
+      }
+    })
+
+    const result = await client.say({ text: 'Agent needs attention.', ttlMs: 1000 })
+
+    assert.deepEqual(result, { ok: true })
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].url, 'http://127.0.0.1:7777/plugins/bridge/openpet.agent-awareness/agent-awareness/run/pet/say')
+    assert.equal(requests[0].options.headers.Authorization, 'Bearer service-bridge-token')
+  } finally {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    if (previousServiceBridgeUrl == null) delete process.env.OPENPET_SERVICE_BRIDGE_URL
+    else process.env.OPENPET_SERVICE_BRIDGE_URL = previousServiceBridgeUrl
+    if (previousServiceBridgeToken == null) delete process.env.OPENPET_SERVICE_BRIDGE_TOKEN
+    else process.env.OPENPET_SERVICE_BRIDGE_TOKEN = previousServiceBridgeToken
+  }
 })
 
 test('codex adapter hashes session ids and redacts project paths', () => {
@@ -679,6 +721,109 @@ test('state mapper rate-limits repeat speech for the same session and status', (
   assert.equal(Boolean(first.speech), true)
   assert.equal(second.speech, null)
   assert.equal(Boolean(third.speech), true)
+})
+
+test('state mapper lets urgent status changes interrupt while cooling repeated urgent speech', () => {
+  let currentNowMs = 1000
+  const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })
+  const working = { sessionId: 'session-urgent', status: 'working', type: 'tool.started', project: 'OpenPet #111111', message: 'Codex started a tool call.' }
+  const waiting = { sessionId: 'session-urgent', status: 'waiting', type: 'approval.requested', project: 'OpenPet #111111', message: 'Codex needs approval.' }
+
+  const first = mapper.mapEvent({ event: working, previousSession: null })
+  currentNowMs += 1000
+  const urgent = mapper.mapEvent({ event: waiting, previousSession: { status: 'working' } })
+  currentNowMs += 1000
+  const repeatedUrgent = mapper.mapEvent({
+    event: {
+      ...waiting,
+      type: 'approval.still-waiting'
+    },
+    previousSession: { status: 'waiting' }
+  })
+  currentNowMs += 2 * 60 * 1000
+  const cooledUrgent = mapper.mapEvent({
+    event: {
+      ...waiting,
+      type: 'approval.reminder'
+    },
+    previousSession: { status: 'waiting' }
+  })
+
+  assert.equal(Boolean(first.speech), true)
+  assert.equal(Boolean(urgent.speech), true)
+  assert.equal(urgent.notification.priority, 'urgent')
+  assert.equal(urgent.notification.reason, 'status-changed')
+  assert.equal(repeatedUrgent.speech, null)
+  assert.equal(repeatedUrgent.petEvent.type, 'agent:waiting')
+  assert.equal(repeatedUrgent.notification.reason, 'status-cooldown')
+  assert.equal(Boolean(cooledUrgent.speech), true)
+})
+
+test('state mapper suppresses repeated completion speech while preserving pet events', () => {
+  let currentNowMs = 1000
+  const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })
+  const completed = { sessionId: 'session-complete', status: 'completed', type: 'turn.completed', project: 'OpenPet #111111', message: 'Codex completed a turn.' }
+
+  const first = mapper.mapEvent({ event: completed, previousSession: { status: 'working' } })
+  currentNowMs += 1000
+  const repeated = mapper.mapEvent({
+    event: {
+      ...completed,
+      type: 'session.completed'
+    },
+    previousSession: { status: 'completed' }
+  })
+
+  assert.equal(Boolean(first.speech), true)
+  assert.equal(first.notification.priority, 'summary')
+  assert.equal(repeated.speech, null)
+  assert.deepEqual(repeated.petEvent, {
+    type: 'agent:completed',
+    message: 'Codex completed a turn.',
+    ttlMs: 8000
+  })
+  assert.equal(repeated.notification.reason, 'status-cooldown')
+})
+
+test('state mapper notification decision stays bounded and content-free', () => {
+  const mapper = createAgentStateMapper({ nowMs: () => 1000 })
+  const mapped = mapper.mapEvent({
+    event: {
+      sessionId: 'session-bounded',
+      status: 'working',
+      type: 'tool.started',
+      project: 'OpenPet #111111',
+      message: 'raw path /Users/mango/private/OpenPet and sk-test123'
+    },
+    previousSession: null
+  })
+
+  assert.deepEqual(mapped.notification, {
+    status: 'working',
+    priority: 'normal',
+    reason: 'status-changed',
+    shouldSpeak: true,
+    cooldownMs: 300000
+  })
+  assert.equal(JSON.stringify(mapped.notification).includes('/Users/mango'), false)
+  assert.equal(JSON.stringify(mapped.notification).includes('sk-test123'), false)
+})
+
+test('state mapper does not cooldown same-status events without in-memory speech history', () => {
+  const mapper = createAgentStateMapper({ nowMs: () => 1000 })
+  const mapped = mapper.mapEvent({
+    event: {
+      sessionId: 'session-restored',
+      status: 'working',
+      type: 'tool.started',
+      project: 'OpenPet #111111',
+      message: 'Codex started a tool call.'
+    },
+    previousSession: { status: 'working' }
+  })
+
+  assert.equal(Boolean(mapped.speech), true)
+  assert.equal(mapped.notification.reason, 'cooldown-elapsed')
 })
 
 test('agent awareness server serves health and notifies pet only for incremental events', async () => {

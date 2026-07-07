@@ -12,11 +12,21 @@ const DEFAULT_FINGERPRINT_SUPPRESSION_MS = 10 * 60 * 1000
 const DEFAULT_MIN_INTERVALS = {
   thinking: 5 * 60 * 1000,
   working: 5 * 60 * 1000,
-  waiting: 0,
-  blocked: 0,
-  completed: 0,
-  failed: 0,
+  waiting: 2 * 60 * 1000,
+  blocked: 2 * 60 * 1000,
+  completed: 2 * 60 * 1000,
+  failed: 2 * 60 * 1000,
   idle: Number.POSITIVE_INFINITY
+}
+
+const STATUS_PRIORITY = {
+  idle: 'silent',
+  thinking: 'normal',
+  working: 'normal',
+  waiting: 'urgent',
+  blocked: 'urgent',
+  completed: 'summary',
+  failed: 'urgent'
 }
 
 const createAgentStateMapper = ({
@@ -27,16 +37,53 @@ const createAgentStateMapper = ({
   const lastSpeechByStatusKey = new Map()
   const lastSpeechByFingerprint = new Map()
 
-  const shouldSpeak = ({ event, previousSession }) => {
-    if (event.status === 'idle') return false
+  const getCooldownMs = (status) => (
+    minIntervals[status] ?? DEFAULT_MIN_INTERVALS[status] ?? DEFAULT_MIN_INTERVALS.working
+  )
+
+  const toNotificationDecision = ({ event, reason, shouldSpeak, cooldownMs }) => ({
+    status: event.status,
+    priority: STATUS_PRIORITY[event.status] || STATUS_PRIORITY.working,
+    reason,
+    shouldSpeak,
+    cooldownMs: Number.isFinite(cooldownMs) ? cooldownMs : null
+  })
+
+  const evaluateSpeech = ({ event, previousSession }) => {
+    const cooldownMs = getCooldownMs(event.status)
+    if (event.status === 'idle') {
+      return {
+        nowMs: nowMs(),
+        notification: toNotificationDecision({ event, reason: 'idle', shouldSpeak: false, cooldownMs })
+      }
+    }
     const currentNowMs = nowMs()
+    if (previousSession?.status !== event.status) {
+      return {
+        nowMs: currentNowMs,
+        notification: toNotificationDecision({ event, reason: 'status-changed', shouldSpeak: true, cooldownMs })
+      }
+    }
     const fingerprint = `${event.sessionId}:${event.status}:${event.type}:${event.project || ''}`
     const previousFingerprintAt = lastSpeechByFingerprint.get(fingerprint) || 0
-    if (previousFingerprintAt && currentNowMs - previousFingerprintAt < fingerprintSuppressionMs) return false
-    if (previousSession?.status !== event.status) return true
+    if (previousFingerprintAt && currentNowMs - previousFingerprintAt < fingerprintSuppressionMs) {
+      return {
+        nowMs: currentNowMs,
+        notification: toNotificationDecision({ event, reason: 'fingerprint-cooldown', shouldSpeak: false, cooldownMs })
+      }
+    }
     const statusKey = `${event.sessionId}:${event.status}`
     const previousStatusAt = lastSpeechByStatusKey.get(statusKey) || 0
-    return currentNowMs - previousStatusAt >= (minIntervals[event.status] ?? DEFAULT_MIN_INTERVALS.working)
+    if (previousStatusAt && currentNowMs - previousStatusAt < cooldownMs) {
+      return {
+        nowMs: currentNowMs,
+        notification: toNotificationDecision({ event, reason: 'status-cooldown', shouldSpeak: false, cooldownMs })
+      }
+    }
+    return {
+      nowMs: currentNowMs,
+      notification: toNotificationDecision({ event, reason: 'cooldown-elapsed', shouldSpeak: true, cooldownMs })
+    }
   }
 
   const createSpeechText = (event) => {
@@ -57,16 +104,17 @@ const createAgentStateMapper = ({
       message: detail,
       ttlMs: event.status === 'completed' ? 8000 : 30000
     }
-    if (!shouldSpeak({ event, previousSession })) {
-      return { petEvent, speech: null }
+    const decision = evaluateSpeech({ event, previousSession })
+    if (!decision.notification.shouldSpeak) {
+      return { petEvent, speech: null, notification: decision.notification }
     }
-    const currentNowMs = nowMs()
     const statusKey = `${event.sessionId}:${event.status}`
     const fingerprint = `${event.sessionId}:${event.status}:${event.type}:${event.project || ''}`
-    lastSpeechByStatusKey.set(statusKey, currentNowMs)
-    lastSpeechByFingerprint.set(fingerprint, currentNowMs)
+    lastSpeechByStatusKey.set(statusKey, decision.nowMs)
+    lastSpeechByFingerprint.set(fingerprint, decision.nowMs)
     return {
       petEvent,
+      notification: decision.notification,
       speech: {
         text: createSpeechText(event),
         ttlMs: event.status === 'completed' ? 6000 : 9000
