@@ -754,9 +754,17 @@ const verifyPreviewReadyNewCharacterScenario = ({ result }) => {
 
 const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, runRecord }) => {
   if (scenario === 'new-character' && result?.state === 'preview-ready') {
+    const previewVerification = verifyPreviewReadyNewCharacterScenario({ result })
+    if (!previewVerification.ok) return previewVerification
+    const conditioningVerification = verifyConditioningEvidence({ runRecord })
+    if (!conditioningVerification.ok) return conditioningVerification
     return {
-      ok: false,
-      message: 'New-character workflow stopped at preview-ready; complete provider-generated official action rows are required before this smoke can pass.'
+      ok: true,
+      message: `${previewVerification.message}. ${conditioningVerification.message}.`,
+      artifactPaths: {
+        ...(isObject(previewVerification.artifactPaths) ? previewVerification.artifactPaths : {}),
+        ...(isObject(conditioningVerification.artifactPaths) ? conditioningVerification.artifactPaths : {})
+      }
     }
   }
   if (result?.state !== 'completed') {

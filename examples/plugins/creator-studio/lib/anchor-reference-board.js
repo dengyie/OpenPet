@@ -5,6 +5,17 @@ const { sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 
 const BOARD_SIZE = 1024
 const MAIN_PANEL_SIZE = 820
+const MULTI_PANEL_PADDING = 64
+const MULTI_PANEL_GAP = 24
+const MULTI_PRIMARY_PANEL = Object.freeze({
+  left: MULTI_PANEL_PADDING,
+  top: MULTI_PANEL_PADDING,
+  width: BOARD_SIZE - (MULTI_PANEL_PADDING * 2),
+  height: 648
+})
+const MULTI_SECONDARY_TOP = 752
+const MULTI_SECONDARY_HEIGHT = 208
+const MAX_RENDERED_SOURCES = 5
 
 const normalizeText = (value) => String(value || '').trim()
 
@@ -40,23 +51,73 @@ const normalizeSourceReference = (entry = {}, index = 0) => {
   }
 }
 
-const createSourceSummary = async (source) => {
+const createSourceSummary = async (source, layout) => {
   const metadata = await sharp(source.path).metadata()
   return {
     fileName: source.fileName,
     relativePath: source.relativePath,
     role: source.role,
     width: Number(metadata.width) || 0,
-    height: Number(metadata.height) || 0
+    height: Number(metadata.height) || 0,
+    layout
   }
 }
 
-const renderMainReference = async (sourcePath) => {
+const createSourceLayouts = (sourceCount) => {
+  if (sourceCount <= 1) {
+    return [{
+      role: 'primary',
+      rendered: true,
+      left: Math.round((BOARD_SIZE - MAIN_PANEL_SIZE) / 2),
+      top: 88,
+      width: MAIN_PANEL_SIZE,
+      height: MAIN_PANEL_SIZE
+    }]
+  }
+
+  const renderedCount = Math.min(sourceCount, MAX_RENDERED_SOURCES)
+  const secondaryCount = Math.max(0, renderedCount - 1)
+  const secondaryPanelWidth = Math.floor(
+    (MULTI_PRIMARY_PANEL.width - (MULTI_PANEL_GAP * Math.max(0, secondaryCount - 1))) / Math.max(1, secondaryCount)
+  )
+  const layouts = [{
+    role: 'primary',
+    rendered: true,
+    ...MULTI_PRIMARY_PANEL
+  }]
+  for (let index = 0; index < secondaryCount; index += 1) {
+    const left = MULTI_PANEL_PADDING + (index * (secondaryPanelWidth + MULTI_PANEL_GAP))
+    const isLast = index === secondaryCount - 1
+    layouts.push({
+      role: 'secondary',
+      rendered: true,
+      left,
+      top: MULTI_SECONDARY_TOP,
+      width: isLast
+        ? Math.max(1, BOARD_SIZE - MULTI_PANEL_PADDING - left)
+        : secondaryPanelWidth,
+      height: MULTI_SECONDARY_HEIGHT
+    })
+  }
+  for (let index = renderedCount; index < sourceCount; index += 1) {
+    layouts.push({
+      role: 'secondary',
+      rendered: false,
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0
+    })
+  }
+  return layouts
+}
+
+const renderReferencePanel = async ({ sourcePath, layout }) => {
   const buffer = await sharp(sourcePath)
     .ensureAlpha()
     .resize({
-      width: MAIN_PANEL_SIZE,
-      height: MAIN_PANEL_SIZE,
+      width: layout.width,
+      height: layout.height,
       fit: 'inside',
       withoutEnlargement: false
     })
@@ -65,8 +126,8 @@ const renderMainReference = async (sourcePath) => {
   const metadata = await sharp(buffer).metadata()
   return {
     input: buffer,
-    left: Math.round((BOARD_SIZE - (Number(metadata.width) || MAIN_PANEL_SIZE)) / 2),
-    top: 88 + Math.round((MAIN_PANEL_SIZE - (Number(metadata.height) || MAIN_PANEL_SIZE)) / 2)
+    left: layout.left + Math.round((layout.width - (Number(metadata.width) || layout.width)) / 2),
+    top: layout.top + Math.round((layout.height - (Number(metadata.height) || layout.height)) / 2)
   }
 }
 
@@ -101,7 +162,16 @@ const buildAnchorReferenceBoard = async ({
 
   const boardPath = path.join(outputDir, 'composite-reference-board.png')
   const metadataPath = path.join(outputDir, 'composite-reference-board.json')
-  const mainReference = await renderMainReference(sources[0].path)
+  const sourceLayouts = createSourceLayouts(sources.length)
+  const renderedReferences = []
+  for (const [index, source] of sources.entries()) {
+    const layout = sourceLayouts[index]
+    if (!layout?.rendered) continue
+    renderedReferences.push(await renderReferencePanel({
+      sourcePath: source.path,
+      layout
+    }))
+  }
   await sharp({
     create: {
       width: BOARD_SIZE,
@@ -110,7 +180,7 @@ const buildAnchorReferenceBoard = async ({
       background: { r: 255, g: 255, b: 255, alpha: 1 }
     }
   })
-    .composite([mainReference])
+    .composite(renderedReferences)
     .png()
     .toFile(boardPath)
 
@@ -121,8 +191,9 @@ const buildAnchorReferenceBoard = async ({
     width: BOARD_SIZE,
     height: BOARD_SIZE,
     sourceCount: sources.length,
+    renderedSourceCount: renderedReferences.length,
     characterBrief: sanitizeCreativeBrief(characterBrief),
-    sources: await Promise.all(sources.map(createSourceSummary))
+    sources: await Promise.all(sources.map((source, index) => createSourceSummary(source, sourceLayouts[index])))
   }
   writeJson(metadataPath, metadata)
 
@@ -135,6 +206,7 @@ const buildAnchorReferenceBoard = async ({
     width: BOARD_SIZE,
     height: BOARD_SIZE,
     sourceCount: sources.length,
+    renderedSourceCount: renderedReferences.length,
     characterBrief: metadata.characterBrief
   }
 }

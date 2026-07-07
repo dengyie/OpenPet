@@ -397,6 +397,7 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => {
     actionId: normalizeActionId(actionName, 'custom-action'),
     name: normalizeText(actionName),
     motionPrompt: normalizeText(motionPrompt) || normalizeText(actionName),
+    synthesisMode: 'canonical-frame',
     loop: false,
     frameCount: 6,
     transparentBackground: true,

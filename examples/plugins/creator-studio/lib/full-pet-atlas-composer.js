@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const sharp = require('sharp')
+const { sanitizeNearTransparentPixels } = require('./edge-background-cutout')
 const { OFFICIAL_FULL_PET_ROWS } = require('./full-pet-row-contract')
 
 const CODEX_ATLAS = Object.freeze({
@@ -70,7 +71,7 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
     }
   }
 
-  await sharp({
+  const atlasBuffer = await sharp({
     create: {
       width: CODEX_ATLAS.width,
       height: CODEX_ATLAS.height,
@@ -79,6 +80,9 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
     }
   })
     .composite(composites)
+    .png()
+    .toBuffer()
+  await sharp(await sanitizeNearTransparentPixels(atlasBuffer))
     .webp({ lossless: true })
     .toFile(outputPath)
 

@@ -105,6 +105,22 @@ const countVisiblePixelsInCell = async ({ imagePath, row, column }) => {
   return visible
 }
 
+const countNearTransparentPixelsWithRgb = async (imagePath) => {
+  const { data, info } = await sharp(imagePath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  let nearTransparentPixelsWithRgb = 0
+  for (let pixel = 0; pixel < info.width * info.height; pixel += 1) {
+    const index = pixel * info.channels
+    if (data[index + 3] > 8) continue
+    if (data[index] !== 0 || data[index + 1] !== 0 || data[index + 2] !== 0) {
+      nearTransparentPixelsWithRgb += 1
+    }
+  }
+  return nearTransparentPixelsWithRgb
+}
+
 const getRowCellHashes = async (spritesheetPath, row) => {
   const hashes = []
   for (let column = 0; column < row.durations.length; column += 1) {
@@ -266,6 +282,31 @@ test('real atlas builder creates a Codex atlas from generated image pixels', asy
   assert.equal(atlasQa.visiblePixels, await countVisiblePixels(result.previewPath))
   assert.equal(JSON.stringify(sourceQa).includes(dataDir), false)
   assert.equal(JSON.stringify(atlasQa).includes(dataDir), false)
+})
+
+test('real atlas builder removes opaque edge backgrounds from preview fallback sprites', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeStripedPetSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir
+  })
+
+  const sourceQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'source-image-validation.json'), 'utf-8'))
+  assert.equal(sourceQa.sourceBackgroundRemoved, true)
+  assert.equal(sourceQa.sourceBackgroundRemovedRatio > 0.25, true)
+  assert.equal(await countNearTransparentPixelsWithRgb(result.spritesheetPath), 0)
+  const idleVisiblePixels = await countVisiblePixelsInCell({
+    imagePath: result.spritesheetPath,
+    row: CODEX_ROWS.find((row) => row.id === 'idle'),
+    column: 0
+  })
+  assert.equal(idleVisiblePixels < CODEX_ATLAS.cellWidth * CODEX_ATLAS.cellHeight * 0.55, true)
 })
 
 test('real atlas builder keeps preview fallback rows visually stable instead of manufacturing motion variants', async () => {

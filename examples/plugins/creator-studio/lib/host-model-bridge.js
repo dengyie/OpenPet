@@ -2257,6 +2257,17 @@ const generateAnchorReferences = async ({
     sourceReferences: references,
     characterBrief
   })
+  const stages = [{
+    stage: 'composite-reference-board',
+    referenceRole: references.length === 1
+      ? String(references[0]?.role || 'canonical-reference')
+      : 'multiple-source-references',
+    referenceRoles: references.map((reference) => String(reference?.role || 'reference-image')),
+    outputRelativePath: compositeBoard.relativePath,
+    metadataRelativePath: compositeBoard.metadataRelativePath,
+    sourceCount: compositeBoard.sourceCount,
+    renderedSourceCount: compositeBoard.renderedSourceCount
+  }]
   const compositeReferenceImage = {
     path: compositeBoard.path,
     fileName: path.basename(compositeBoard.relativePath),
@@ -2293,6 +2304,16 @@ const generateAnchorReferences = async ({
     model: characterAttempt.selectedModel,
     modelAttempts: characterAttempt.attempts
   })
+  if (characterAnchor) {
+    stages.push({
+      stage: 'character-anchor',
+      referenceRole: 'composite-reference-board',
+      outputRelativePath: characterAnchor.relativePath,
+      promptRelativePath: characterAnchor.promptRelativePath,
+      model: characterAnchor.model,
+      modelAttempts: characterAnchor.modelAttempts
+    })
+  }
 
   const actionAnchors = []
   if (shouldGenerateActionAnchors(run) && characterAnchor) {
@@ -2334,7 +2355,18 @@ const generateAnchorReferences = async ({
         model: actionAttempt.selectedModel,
         modelAttempts: actionAttempt.attempts
       })
-      if (actionAnchor) actionAnchors.push(actionAnchor)
+      if (actionAnchor) {
+        actionAnchors.push(actionAnchor)
+        stages.push({
+          stage: 'action-anchor',
+          actionId,
+          referenceRole: 'character-anchor',
+          outputRelativePath: actionAnchor.relativePath,
+          promptRelativePath: actionAnchor.promptRelativePath,
+          model: actionAnchor.model,
+          modelAttempts: actionAnchor.modelAttempts
+        })
+      }
     }
   }
 
@@ -2354,7 +2386,8 @@ const generateAnchorReferences = async ({
     anchorGeneration: {
       skipped: false,
       characterAnchorModel: characterAnchor?.model || '',
-      actionAnchorCount: actionAnchors.length
+      actionAnchorCount: actionAnchors.length,
+      stages
     }
   }
 }
