@@ -2295,6 +2295,132 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow.getByRole('button', { name: 'Start Agent Awareness Service' })).toBeEnabled()
   })
 
+  test('manages IM Gateway Telegram token and service gate in the Plugins pane with the demo API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.im-gateway',
+            name: 'IM Gateway',
+            version: '0.1.0',
+            source: 'bundled',
+            enabled: true,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: false,
+            permissions: ['pet:say', 'pet:action', 'pet:event'],
+            commands: [],
+            entries: {
+              commands: [],
+              setup: [],
+              services: [
+                {
+                  id: 'im-gateway',
+                  title: 'IM Gateway Service',
+                  command: 'node ./service/im-gateway-service.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8796/health' },
+                  runtime: {
+                    status: 'stopped',
+                    pid: 0,
+                    health: {
+                      status: 'unknown',
+                      checkedAt: '',
+                      url: 'http://127.0.0.1:8796/health',
+                      statusCode: 0,
+                      message: ''
+                    }
+                  },
+                  healthPolicy: {
+                    enabled: false,
+                    intervalMs: 30000
+                  }
+                }
+              ],
+              dashboards: []
+            },
+            configSchema: {
+              title: 'IM Gateway Settings',
+              description: 'Public IM trigger policy. Tokens are stored by the host.',
+              properties: [
+                { key: 'telegramEnabled', title: 'Telegram enabled', type: 'boolean' },
+                { key: 'telegramMode', title: 'Telegram mode', type: 'string', enum: ['polling'] },
+                { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'trigger-keyword'] },
+                { key: 'groupChatPolicy', title: 'Group chats', type: 'string', enum: ['mention-or-command', 'command-only'] },
+                { key: 'allowedUsers', title: 'Allowed users', type: 'string' },
+                { key: 'allowedChats', title: 'Allowed chats', type: 'string' },
+                { key: 'allowAllPrivateChats', title: 'Allow all private chats', type: 'boolean' },
+                { key: 'allowAllGroupChats', title: 'Allow all group chats', type: 'boolean' },
+                { key: 'commandAliases', title: 'Command aliases', type: 'string' },
+                { key: 'petSayTtlMs', title: 'Pet say TTL', type: 'number' },
+                { key: 'receiptMode', title: 'Receipt mode', type: 'string', enum: ['commands-only', 'never'] }
+              ]
+            },
+            config: {
+              telegramEnabled: false,
+              telegramMode: 'polling',
+              privateChatPolicy: 'command-only',
+              groupChatPolicy: 'mention-or-command',
+              allowedUsers: '10001',
+              allowedChats: '',
+              allowAllPrivateChats: false,
+              allowAllGroupChats: false,
+              commandAliases: '/openpet,/op',
+              petSayTtlMs: 6000,
+              receiptMode: 'commands-only'
+            },
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: {
+              status: 'bundled',
+              label: 'Bundled plugin',
+              signer: 'openpet',
+              algorithm: '',
+              verified: true,
+              errors: []
+            },
+            blockStatus: { blocked: false, reasons: [] }
+          }
+        ],
+        secrets: {
+          imGatewayTelegramBotToken: false
+        },
+        pluginLogs: []
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
+    await expect(pluginRow).toContainText('openpet.im-gateway')
+    await expect(pluginRow).toContainText('pet:say · pet:action · pet:event')
+
+    const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
+    await expect(imCard).toContainText('Telegram token: not saved')
+    await expect(imCard).toContainText('Telegram: polling')
+    await expect(imCard).toContainText('QQ: disabled')
+    await expect(imCard).toContainText('WeChat: disabled')
+    await expect(pluginRow.getByRole('button', { name: 'Start IM Gateway Service' })).toBeDisabled()
+
+    await pluginRow.getByRole('switch', { name: 'Allow native process execution for IM Gateway' }).click()
+    await expect(pluginRow.getByRole('button', { name: 'Start IM Gateway Service' })).toBeEnabled()
+
+    const tokenInput = imCard.getByLabel('Telegram Bot Token')
+    await tokenInput.fill('123456:stage3-secret-token')
+    await imCard.getByRole('button', { name: 'Save Telegram Token' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Telegram token saved')
+    await expect(imCard).toContainText('Telegram token: saved')
+    await expect(tokenInput).toHaveValue('')
+    await expect(page.getByText('123456:stage3-secret-token')).toHaveCount(0)
+
+    await imCard.getByRole('button', { name: 'Clear Telegram Token' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('Telegram token cleared')
+    await expect(imCard).toContainText('Telegram token: not saved')
+    await expect(imCard.getByRole('button', { name: 'Clear Telegram Token' })).toBeDisabled()
+  })
+
   test('opens agent-awareness Codex details from the Plugins pane with the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({

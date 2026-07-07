@@ -6,6 +6,7 @@ import { toCommandResultPreview } from '../lib/plugin-command-result.mjs'
 import type {
   JsonObject,
   JsonValue,
+  ImGatewaySecretState,
   PaginatedLogsViewState,
   PluginDashboardOpenOptions,
   PluginLogEntry,
@@ -38,6 +39,7 @@ const parseCommandPayload = (draft: string): JsonObject | undefined => {
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
 const AGENT_AWARENESS_PLUGIN_ID = 'openpet.agent-awareness'
+const DEFAULT_IM_GATEWAY_SECRET_STATE: ImGatewaySecretState = { hasTelegramBotToken: false }
 
 const findPluginById = (plugins: PluginViewState[], pluginId: string) => (
   plugins.find((plugin) => plugin.id === pluginId) || null
@@ -79,6 +81,10 @@ export function usePluginsPane() {
   const [uninstallingPlugin, setUninstallingPlugin] = useState('')
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState('')
   const [inspectingGithubPlugin, setInspectingGithubPlugin] = useState(false)
+  const [imGatewaySecretState, setImGatewaySecretState] = useState<ImGatewaySecretState>(DEFAULT_IM_GATEWAY_SECRET_STATE)
+  const [imGatewayTelegramTokenDraft, setImGatewayTelegramTokenDraft] = useState('')
+  const [savingImGatewayTelegramToken, setSavingImGatewayTelegramToken] = useState(false)
+  const [clearingImGatewayTelegramToken, setClearingImGatewayTelegramToken] = useState(false)
 
   const loadLogsPage = async (nextFilters = filters, page = 1) => {
     const result = await api.getPluginLogs({ ...nextFilters, page, pageSize: PLUGIN_LOG_PAGE_SIZE })
@@ -91,12 +97,14 @@ export function usePluginsPane() {
     let mounted = true
     Promise.all([
       api.getPlugins(),
-      api.getPluginLogs({ ...filters, page: 1, pageSize: PLUGIN_LOG_PAGE_SIZE })
-    ]).then(([loadedPlugins, loadedLogs]) => {
+      api.getPluginLogs({ ...filters, page: 1, pageSize: PLUGIN_LOG_PAGE_SIZE }),
+      api.getImGatewaySecretState()
+    ]).then(([loadedPlugins, loadedLogs, loadedImGatewaySecretState]) => {
       if (!mounted) return
       setPlugins(loadedPlugins)
       setLogsPage(loadedLogs)
       setLogs(Array.isArray(loadedLogs.entries) ? loadedLogs.entries : [])
+      setImGatewaySecretState(loadedImGatewaySecretState || DEFAULT_IM_GATEWAY_SECRET_STATE)
       setLoading(false)
     }).catch((error) => {
       if (!mounted) return
@@ -530,6 +538,45 @@ export function usePluginsPane() {
     }))
   }
 
+  const onSaveImGatewayTelegramBotToken = async () => {
+    const token = imGatewayTelegramTokenDraft.trim()
+    if (!token) {
+      setStatus('Telegram Bot Token is required')
+      return
+    }
+    setSavingImGatewayTelegramToken(true)
+    setStatus('')
+    try {
+      const nextSecretState = await api.saveImGatewayTelegramBotToken(token)
+      setImGatewaySecretState(nextSecretState)
+      setImGatewayTelegramTokenDraft('')
+      await refreshLogs()
+      setStatus('Telegram token saved')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Telegram token save failed'))
+      await refreshLogs()
+    } finally {
+      setSavingImGatewayTelegramToken(false)
+    }
+  }
+
+  const onClearImGatewayTelegramBotToken = async () => {
+    setClearingImGatewayTelegramToken(true)
+    setStatus('')
+    try {
+      const nextSecretState = await api.clearImGatewayTelegramBotToken()
+      setImGatewaySecretState(nextSecretState)
+      setImGatewayTelegramTokenDraft('')
+      await refreshLogs()
+      setStatus('Telegram token cleared')
+    } catch (error) {
+      setStatus(messageFromError(error, 'Telegram token clear failed'))
+      await refreshLogs()
+    } finally {
+      setClearingImGatewayTelegramToken(false)
+    }
+  }
+
   const paneProps = {
     plugins,
     logs,
@@ -554,6 +601,10 @@ export function usePluginsPane() {
     inspectingGithubPlugin,
     installingPlugin,
     uninstallingPlugin,
+    imGatewaySecretState,
+    imGatewayTelegramTokenDraft,
+    savingImGatewayTelegramToken,
+    clearingImGatewayTelegramToken,
     onToggle,
     onSetNativeExecutionApproved,
     onInspectPluginPackage,
@@ -563,10 +614,13 @@ export function usePluginsPane() {
     onUninstallPlugin,
     onChangeConfig,
     onChangeCommandPayload,
+    onChangeImGatewayTelegramTokenDraft: setImGatewayTelegramTokenDraft,
     onChangeCreatorStudioPromptDraft: setCreatorStudioPromptDraft,
     onChangeGithubRepositoryUrl: setGithubRepositoryUrl,
     onSaveConfig,
     onRun,
+    onSaveImGatewayTelegramBotToken,
+    onClearImGatewayTelegramBotToken,
     onRunCreatorStudioDefaultFlow,
     onRunSetup,
     onOpenDashboard,

@@ -1,4 +1,5 @@
 import type {
+  ImGatewaySecretState,
   JsonValue,
   PaginatedLogsViewState,
   PermissionDiffState,
@@ -56,6 +57,10 @@ export interface PluginsPaneProps {
   inspectingGithubPlugin: boolean
   installingPlugin: boolean
   uninstallingPlugin: string
+  imGatewaySecretState: ImGatewaySecretState
+  imGatewayTelegramTokenDraft: string
+  savingImGatewayTelegramToken: boolean
+  clearingImGatewayTelegramToken: boolean
   onToggle: (pluginId: string, enabled: boolean) => void | Promise<void>
   onSetNativeExecutionApproved: (pluginId: string, approved: boolean) => void | Promise<void>
   onInspectPluginPackage: () => void | Promise<void>
@@ -65,9 +70,12 @@ export interface PluginsPaneProps {
   onUninstallPlugin: (pluginId: string) => void | Promise<void>
   onChangeConfig: (pluginId: string, key: string, value: JsonValue) => void
   onChangeCommandPayload: (pluginId: string, value: string) => void
+  onChangeImGatewayTelegramTokenDraft: (value: string) => void
   onChangeCreatorStudioPromptDraft: (value: string) => void
   onChangeGithubRepositoryUrl: (value: string) => void
   onSaveConfig: (pluginId: string) => void | Promise<void>
+  onSaveImGatewayTelegramBotToken: () => void | Promise<void>
+  onClearImGatewayTelegramBotToken: () => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
   onRunCreatorStudioDefaultFlow: () => void | Promise<void>
   onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>
@@ -206,7 +214,7 @@ function PluginReviewPanel({
   )
 }
 
-export function PluginsPane({ plugins, logs, logsPage, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onSetNativeExecutionApproved, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onPrevLogsPage, onNextLogsPage, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+export function PluginsPane({ plugins, logs, logsPage, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, imGatewaySecretState, imGatewayTelegramTokenDraft, savingImGatewayTelegramToken, clearingImGatewayTelegramToken, onToggle, onSetNativeExecutionApproved, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeImGatewayTelegramTokenDraft, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onSaveImGatewayTelegramBotToken, onClearImGatewayTelegramBotToken, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onPrevLogsPage, onNextLogsPage, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
   const enabledPluginCount = plugins.filter((plugin) => plugin.enabled).length
   const attentionPluginCount = plugins.filter((plugin) => (
     Boolean(plugin.blockStatus?.blocked) ||
@@ -609,6 +617,60 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       </button>
                     )
                   })}
+                </div>
+              ) : null}
+              {plugin.id === 'openpet.im-gateway' ? (
+                <div className="plugin-config-panel" aria-label="IM Gateway 设置">
+                  <div className="plugin-config-header">
+                    <strong>IM Gateway</strong>
+                    <span className="field-note">
+                      Telegram token: {imGatewaySecretState.hasTelegramBotToken ? 'saved' : 'not saved'}
+                    </span>
+                  </div>
+                  <div className="plugin-config-grid">
+                    <div className="plugin-config-field">
+                      <span>Telegram</span>
+                      <small>Telegram: {String(plugin.config?.telegramMode || 'polling')}</small>
+                    </div>
+                    <div className="plugin-config-field">
+                      <span>QQ</span>
+                      <small>QQ: disabled</small>
+                    </div>
+                    <div className="plugin-config-field">
+                      <span>WeChat</span>
+                      <small>WeChat: disabled</small>
+                    </div>
+                  </div>
+                  <label className="plugin-config-field" htmlFor="im-gateway-telegram-bot-token">
+                    <span>Telegram Bot Token</span>
+                    <input
+                      id="im-gateway-telegram-bot-token"
+                      className="text-input"
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={imGatewayTelegramTokenDraft}
+                      onChange={(event) => onChangeImGatewayTelegramTokenDraft(event.target.value)}
+                    />
+                  </label>
+                  <div className="plugin-commands">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!imGatewayTelegramTokenDraft.trim() || savingImGatewayTelegramToken}
+                      onClick={onSaveImGatewayTelegramBotToken}
+                    >
+                      {savingImGatewayTelegramToken ? 'Saving Telegram Token' : 'Save Telegram Token'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={!imGatewaySecretState.hasTelegramBotToken || clearingImGatewayTelegramToken}
+                      onClick={onClearImGatewayTelegramBotToken}
+                    >
+                      {clearingImGatewayTelegramToken ? 'Clearing Telegram Token' : 'Clear Telegram Token'}
+                    </button>
+                  </div>
                 </div>
               ) : null}
               {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (

@@ -2,7 +2,7 @@
 
 > Date: 2026-07-08
 > Branch: `dev9`
-> Status: route approved, pending implementation
+> Status: Phase 1 MVP in implementation on `dev9`
 > Scope: official privileged core plugin for IM integration with Telegram first, QQ and WeChat deferred
 
 ## 1. Purpose
@@ -436,6 +436,14 @@ Docs:
 - document Telegram setup through BotFather;
 - document how to find Telegram user/chat ids without persisting raw ids by default;
 - document privacy behavior and non-goals.
+
+### Phase 1 milestone record
+
+- Stage 1 plugin core: committed on `dev9` as `f7137192 feat: add IM gateway plugin core`.
+- Stage 2 host wiring: committed on `dev9` as `3c23532b feat: wire IM gateway host secrets`.
+- Stage 3 Control Center: adds the Plugins pane IM settings card, renderer-safe Telegram token saved state, token save/clear controls, and final verification.
+- Stop condition: after Stage 3 verification and commit, Phase 1 MVP foundation is complete. Do not start Phase 2 without a new approval.
+- Future development stays in the sections below so later IM work is explicit and separated from this MVP.
 
 ## 18. Future Work
 
