@@ -1240,14 +1240,23 @@ test('plugin runtime result adapters normalize command, setup, and service paylo
       checkedAt: 10,
       url: 'http://127.0.0.1:8787/health',
       statusCode: '503',
-      message: 7
+      message: 7,
+      details: [
+        { label: 'Usage Tokens', value: '1,500' },
+        { label: 'Secret token=bridge-secret', value: 'token=bridge-secret /Users/mango/private/file.txt' },
+        { label: 'Empty Value', value: '' },
+        { label: 42, value: 'ignored' }
+      ]
     },
     runtime: {
       status: 'failed',
       error: 'Exited',
       health: {
         status: 'unhealthy',
-        statusCode: '503'
+        statusCode: '503',
+        details: [
+          { label: 'Observed Events', value: '1,250' }
+        ]
       }
     }
   }), {
@@ -1259,7 +1268,11 @@ test('plugin runtime result adapters normalize command, setup, and service paylo
       checkedAt: '',
       url: 'http://127.0.0.1:8787/health',
       statusCode: 503,
-      message: ''
+      message: '',
+      details: [
+        { label: 'Usage Tokens', value: '1,500' },
+        { label: 'Secret [redacted-token]=[redacted-secret]', value: '[redacted-token]=[redacted-secret] [redacted-path]' }
+      ]
     },
     runtime: {
       status: 'failed',
@@ -1276,7 +1289,10 @@ test('plugin runtime result adapters normalize command, setup, and service paylo
         checkedAt: '',
         url: '',
         statusCode: 503,
-        message: ''
+        message: '',
+        details: [
+          { label: 'Observed Events', value: '1,250' }
+        ]
       }
     }
   })

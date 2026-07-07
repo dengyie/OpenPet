@@ -39,7 +39,7 @@ The current branch baseline is no longer "paper design only." It has the full pl
 - shipped hook + polling dual ingestion with one canonical runtime session model;
 - shipped trusted auto-start gating behind native approval plus explicit opt-in;
 - shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
-- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, best-effort git branch/dirty summaries, content-safe current-step summaries, generated session summaries, dashboard rendering, bounded detail deep-link focus, and in-dashboard session focus controls;
+- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, best-effort git branch/dirty summaries, content-safe current-step summaries, generated session summaries, dashboard rendering, bounded detail deep-link focus, in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
 - shipped a first-class Agent Awareness detail entry from Control Center;
 - shipped a pet-side quick-open detail entry from Bubble Chat;
 - kept the privacy boundary intact while adding the richer runtime shape.
@@ -80,6 +80,7 @@ Today Agent Awareness provides:
 - bounded pet events for accepted safe lifecycle signals;
 - low-frequency pet speech for selected status changes;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
+- a Control Center-native `Agent Awareness 原生详情` summary that reads the real bundled service health details for active sessions, tracked sessions, observed events, usage tokens, estimated cost, and peak context when available;
 - a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
 - a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
 - dashboard support for `view=details&sessionId=<sanitized-id>` so an existing safe session hash can be shown as a focused detail view;
@@ -177,6 +178,7 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - `/health` exposes aggregate usage totals, token breakdown, estimated cost, currency, and peak context metadata;
 - runtime summaries prefer bounded progress labels or safe tool names over raw lifecycle type strings for `currentStep`;
 - the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, and per-session usage/git/current-step/session-summary facts;
+- the Plugins pane renders a compact Agent Awareness-only native detail summary from the same reserved health diagnostics, without creating an arbitrary plugin JSON detail surface;
 - the dashboard honors `view=details&sessionId=<sanitized-id>` for safe per-session focus and renders a bounded empty state when the requested session is absent;
 - each rendered session card exposes a safe `Focus` link into that bounded detail route;
 - mock smoke flow preserves these fields in redacted reports.
@@ -184,8 +186,7 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 **Still open**
 
 - historical usage trends and a dedicated stats page over time;
-- richer semantic current-task summaries beyond lifecycle labels while remaining content-safe;
-- Control Center-native detail panel beyond opening the bundled dashboard.
+- richer semantic current-task summaries beyond lifecycle labels while remaining content-safe.
 
 **Architecture owners**
 

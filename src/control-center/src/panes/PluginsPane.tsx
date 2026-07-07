@@ -343,6 +343,9 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     const runtimeStatus = service.runtime?.status || 'stopped'
                     const healthStatus = service.runtime?.health?.status || (service.health?.url ? 'unknown' : 'not-configured')
                     const healthMessage = typeof service.runtime?.health?.message === 'string' ? service.runtime.health.message : ''
+                    const healthDetails = plugin.id === 'openpet.agent-awareness' && service.id === 'agent-awareness' && Array.isArray(service.runtime?.health?.details)
+                      ? service.runtime.health.details.filter((detail) => typeof detail.label === 'string' && typeof detail.value === 'string')
+                      : []
                     const healthNoteTone = healthStatus === 'healthy'
                       ? 'success'
                       : healthStatus === 'unhealthy'
@@ -361,6 +364,19 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                         <span>Service status: {runtimeStatus}{service.runtime?.pid ? ` · pid ${service.runtime.pid}` : ''}</span>
                         <span>Health: {healthStatus}</span>
                         {healthMessage ? <span className={`plugin-service-note plugin-service-note-${healthNoteTone}`}>Health note: {healthMessage}</span> : null}
+                        {healthDetails.length ? (
+                          <div className="agent-awareness-health-details" aria-label="Agent Awareness 原生详情">
+                            <strong>Agent Awareness 原生详情</strong>
+                            <dl>
+                              {healthDetails.map((detail) => (
+                                <div key={`${detail.label}:${detail.value}`}>
+                                  <dt>{detail.label}</dt>
+                                  <dd>{detail.value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           className="ghost"

@@ -2310,6 +2310,50 @@ button {
   line-height: 1.35;
 }
 
+.agent-awareness-health-details {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dbe6f2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.agent-awareness-health-details > strong {
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.agent-awareness-health-details dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.agent-awareness-health-details div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-awareness-health-details dt,
+.agent-awareness-health-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-awareness-health-details dt {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.agent-awareness-health-details dd {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .plugin-log-panel {
   display: grid;
   gap: 12px;

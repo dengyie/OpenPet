@@ -41,6 +41,7 @@ const {
   createRuntimeView: buildPluginRuntimeView,
   createSetupRuntimeView: buildPluginSetupRuntimeView
 } = require('./services/plugin-service-state')
+const { sanitizePluginCommandText } = require('./services/plugin-runtime-safety')
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
@@ -57,6 +58,13 @@ const PLUGIN_SERVICE_HEALTH_STATUSES = new Set(['not-configured', 'unknown', 'ch
 const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed', 'timed_out'])
 const AI_BEHAVIOR_RULE_ACTION_TYPES = new Set(['say', 'playAction', 'setEvent'])
 const AI_BEHAVIOR_DISPLAY_MODES = new Set(['none', 'bubble', 'action', 'event'])
+
+const sanitizePluginServiceHealthDetailLabel = (value = '') => sanitizePluginCommandText(value, {
+  maxLength: 80,
+  redactStandaloneTokenWords: false
+})
+
+const sanitizePluginServiceHealthDetailValue = (value = '') => sanitizePluginCommandText(value, { maxLength: 120 })
 
 /**
  * @param {unknown} value
@@ -963,7 +971,19 @@ const isPluginSetupEntryView = (setup) => Boolean(setup)
 const createPluginServiceHealthView = (health = {}, options = {}) => {
   const input = toRecord(health)
   const defaultStatus = options.defaultStatus || 'not-configured'
-  return {
+  const details = Array.isArray(input.details)
+    ? input.details
+      .map(toRecord)
+      .filter((detail) => typeof detail.label === 'string' && typeof detail.value === 'string')
+      .map((detail) => ({
+        label: sanitizePluginServiceHealthDetailLabel(detail.label),
+        value: sanitizePluginServiceHealthDetailValue(detail.value)
+      }))
+      .filter((detail) => detail.label && detail.value)
+      .slice(0, 8)
+    : []
+  /** @type {PluginServiceHealthViewState} */
+  const view = {
     status: typeof input.status === 'string' && PLUGIN_SERVICE_HEALTH_STATUSES.has(input.status)
       ? /** @type {import('../shared/openpet-contracts').PluginServiceHealthStatus} */ (input.status)
       : defaultStatus,
@@ -972,6 +992,8 @@ const createPluginServiceHealthView = (health = {}, options = {}) => {
     statusCode: Number.isFinite(Number(input.statusCode)) ? Number(input.statusCode) : null,
     message: typeof input.message === 'string' ? input.message : ''
   }
+  if (details.length) view.details = details
+  return view
 }
 
 /**

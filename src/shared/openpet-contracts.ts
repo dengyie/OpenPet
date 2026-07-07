@@ -2020,6 +2020,7 @@ export interface PluginServiceHealthViewState {
   url?: string
   statusCode?: number | null
   message?: string
+  details?: Array<{ label: string, value: string }>
 }
 
 export interface PluginServiceHealthPolicyViewState {

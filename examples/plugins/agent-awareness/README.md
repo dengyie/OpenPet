@@ -17,7 +17,7 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 - Sanitized runtime session storage under `OPENPET_DATA_DIR/sessions.json`.
 - Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, and generated session summaries.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
-- A local dashboard, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
+- A local dashboard, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
 
 The current shipped scope does not auto-install hooks during discovery or app boot, does not trust the hook inside Codex on the user's behalf, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
@@ -114,7 +114,8 @@ Behavior:
 ## Control Center Notes
 
 - The Plugins pane can show a compact health note for the real bundled `openpet.agent-awareness` service in the form `X active · Y sessions · Z events`.
-- That summary is reserved for `pluginId === openpet.agent-awareness` and `serviceId === agent-awareness`; other plugins do not inherit it by returning similarly shaped JSON.
+- When the real bundled service returns reserved diagnostics, the Plugins pane can also show `Agent Awareness 原生详情` with active/tracked session counts, observed events, usage tokens, estimated cost, and peak context.
+- Those summaries are reserved for `pluginId === openpet.agent-awareness` and `serviceId === agent-awareness`; other plugins do not inherit them by returning similarly shaped JSON.
 - The plugin exposes one config field today: `autoStartOnCodexSignal`, which is off by default and must be enabled explicitly.
 - The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness dashboard with `view=details`.
 - Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.

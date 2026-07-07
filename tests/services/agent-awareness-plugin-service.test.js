@@ -148,7 +148,11 @@ test('plugin service summarizes agent-awareness health responses into the servic
         diagnostics: {
           activeSessionCount: 3,
           sessionCount: 23,
-          totalEvents: 1250
+          totalEvents: 1250,
+          usageTotalTokens: 1500,
+          usageEstimatedCostUsd: 0.03,
+          usageCurrency: 'USD',
+          usagePeakContextUsedPercent: 0.8
         }
       })
     })
@@ -159,9 +163,21 @@ test('plugin service summarizes agent-awareness health responses into the servic
   assert.equal(result.ok, true)
   assert.equal(result.health.status, 'healthy')
   assert.equal(result.health.message, '3 active · 23 sessions · 1,250 events')
+  assert.deepEqual(result.health.details, [
+    { label: 'Active Sessions', value: '3' },
+    { label: 'Tracked Sessions', value: '23' },
+    { label: 'Observed Events', value: '1,250' },
+    { label: 'Usage Tokens', value: '1,500' },
+    { label: 'Estimated Cost', value: '$0.030000 USD' },
+    { label: 'Peak Context', value: '0.8%' }
+  ])
   assert.equal(
     service.listPlugins().find((entry) => entry.id === 'openpet.agent-awareness').entries.services[0].runtime.health.message,
     '3 active · 23 sessions · 1,250 events'
+  )
+  assert.equal(
+    service.listPlugins().find((entry) => entry.id === 'openpet.agent-awareness').entries.services[0].runtime.health.details[3].value,
+    '1,500'
   )
 })
 

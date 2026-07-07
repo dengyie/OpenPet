@@ -1870,7 +1870,15 @@ test.describe('Control Center smoke', () => {
                       checkedAt: '2026-07-03T12:00:00.000Z',
                       url: 'http://127.0.0.1:8795/health',
                       statusCode: 200,
-                      message: '3 active · 23 sessions · 1,250 events'
+                      message: '3 active · 23 sessions · 1,250 events',
+                      details: [
+                        { label: 'Active Sessions', value: '3' },
+                        { label: 'Tracked Sessions', value: '23' },
+                        { label: 'Observed Events', value: '1,250' },
+                        { label: 'Usage Tokens', value: '1,500' },
+                        { label: 'Estimated Cost', value: '$0.030000 USD' },
+                        { label: 'Peak Context', value: '0.8%' }
+                      ]
                     }
                   },
                   healthPolicy: {
@@ -1908,6 +1916,11 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('openpet.agent-awareness')
     await expect(pluginRow).toContainText('pet:say · pet:event')
     await expect(pluginRow).toContainText('Health note: 3 active · 23 sessions · 1,250 events')
+    await expect(pluginRow).toContainText('Agent Awareness 原生详情')
+    await expect(pluginRow).toContainText('Usage Tokens')
+    await expect(pluginRow).toContainText('1,500')
+    await expect(pluginRow).toContainText('Peak Context')
+    await expect(pluginRow).toContainText('0.8%')
 
     const approvalToggle = pluginRow.getByRole('switch', { name: 'Allow native process execution for Agent Awareness' })
     await expect(approvalToggle).toHaveAttribute('aria-checked', 'false')

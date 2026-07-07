@@ -68,6 +68,13 @@ const ACTIVE_SETUP_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 const ACTIVE_COMMAND_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 const AGENT_AWARENESS_PLUGIN_ID = 'openpet.agent-awareness'
 const AGENT_AWARENESS_SERVICE_ID = 'agent-awareness'
+
+const sanitizePluginHealthDetailLabel = (value = '') => sanitizePluginCommandText(value, {
+  maxLength: 80,
+  redactStandaloneTokenWords: false
+})
+
+const sanitizePluginHealthDetailValue = (value = '') => sanitizePluginCommandText(value, { maxLength: 120 })
 const DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS = 5000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS = 15 * 60 * 1000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES = 24
@@ -138,13 +145,26 @@ const createServiceHealthView = (health = {}, serviceEntry = {}) => {
   const statusCode = health.statusCode == null || health.statusCode === ''
     ? null
     : Number(health.statusCode)
-  return {
+  const details = Array.isArray(health.details)
+    ? health.details
+      .filter((detail) => isRecord(detail))
+      .filter((detail) => typeof detail.label === 'string' && typeof detail.value === 'string')
+      .map((detail) => ({
+        label: sanitizePluginHealthDetailLabel(detail.label),
+        value: sanitizePluginHealthDetailValue(detail.value)
+      }))
+      .filter((detail) => detail.label && detail.value)
+      .slice(0, 8)
+    : []
+  const view = {
     status: health.status || (hasConfiguredHealth ? 'unknown' : 'not-configured'),
     checkedAt: health.checkedAt || '',
     url: health.url || serviceEntry.health?.url || '',
     statusCode: Number.isFinite(statusCode) ? statusCode : null,
     message: health.message || ''
   }
+  if (details.length) view.details = details
+  return view
 }
 
 const formatCompactInteger = (value) => {
@@ -172,6 +192,41 @@ const summarizeAgentAwarenessHealthBody = (body) => {
   const sessionCount = formatCompactInteger(diagnostics.sessionCount)
   const totalEvents = formatCompactInteger(diagnostics.totalEvents)
   return `${activeSessionCount} active · ${sessionCount} sessions · ${totalEvents} events`
+}
+
+const formatHealthCost = ({ amount, currency = 'USD' } = {}) => {
+  if (amount == null || amount === '') return ''
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric)) return ''
+  return `$${numeric.toFixed(6)} ${sanitizePluginCommandText(currency || 'USD', { maxLength: 8 })}`
+}
+
+const formatHealthPercent = (value) => {
+  if (value == null || value === '') return ''
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? `${Math.round(numeric * 100) / 100}%` : ''
+}
+
+const createAgentAwarenessHealthDetails = (body) => {
+  if (!isAgentAwarenessHealthBody(body)) return []
+  const diagnostics = body.diagnostics
+  const details = [
+    { label: 'Active Sessions', value: formatCompactInteger(diagnostics.activeSessionCount) },
+    { label: 'Tracked Sessions', value: formatCompactInteger(diagnostics.sessionCount) },
+    { label: 'Observed Events', value: formatCompactInteger(diagnostics.totalEvents) }
+  ]
+  const usageTokens = Number(diagnostics.usageTotalTokens)
+  if (Number.isFinite(usageTokens) && usageTokens > 0) {
+    details.push({ label: 'Usage Tokens', value: formatCompactInteger(usageTokens) })
+  }
+  const estimatedCost = formatHealthCost({
+    amount: diagnostics.usageEstimatedCostUsd,
+    currency: diagnostics.usageCurrency
+  })
+  if (estimatedCost) details.push({ label: 'Estimated Cost', value: estimatedCost })
+  const peakContext = formatHealthPercent(diagnostics.usagePeakContextUsedPercent)
+  if (peakContext) details.push({ label: 'Peak Context', value: peakContext })
+  return details
 }
 
 const resolveCodexSignalHome = ({
@@ -229,19 +284,22 @@ const defaultProbeAgentAwarenessActivity = ({
   }
 }
 
-const readServiceHealthResponseMessage = async (response, { pluginId = '', serviceId = '' } = {}) => {
+const readServiceHealthResponse = async (response, { pluginId = '', serviceId = '' } = {}) => {
   const fallbackMessage = response?.ok ? 'OK' : `HTTP ${Number.isFinite(Number(response?.status)) ? Number(response.status) : 'error'}`
   const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase()
-  if (!contentType.includes('application/json')) return fallbackMessage
+  if (!contentType.includes('application/json')) return { message: fallbackMessage }
   try {
     const text = await readLimitedResponseText(response)
     const body = JSON.parse(text)
     if (isAgentAwarenessHealthTarget({ pluginId, serviceId })) {
-      return summarizeAgentAwarenessHealthBody(body) || fallbackMessage
+      return {
+        details: createAgentAwarenessHealthDetails(body),
+        message: summarizeAgentAwarenessHealthBody(body) || fallbackMessage
+      }
     }
-    return fallbackMessage
+    return { message: fallbackMessage }
   } catch (_) {
-    return fallbackMessage
+    return { message: fallbackMessage }
   }
 }
 
@@ -1908,13 +1966,16 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         const statusCode = Number(response?.status)
         const hasStatusCode = Number.isFinite(statusCode)
         const healthy = hasStatusCode ? statusCode >= 200 && statusCode < 300 : Boolean(response?.ok)
-        const message = await readServiceHealthResponseMessage(response, { pluginId, serviceId })
+        const healthResponse = await readServiceHealthResponse(response, { pluginId, serviceId })
         runtime.health = {
           status: healthy ? 'healthy' : 'unhealthy',
           checkedAt: new Date().toISOString(),
           url: healthUrl,
           statusCode: hasStatusCode ? statusCode : null,
-          message
+          message: healthResponse.message || ''
+        }
+        if (Array.isArray(healthResponse.details) && healthResponse.details.length) {
+          runtime.health.details = healthResponse.details
         }
       } catch (error) {
         runtime.health = {
