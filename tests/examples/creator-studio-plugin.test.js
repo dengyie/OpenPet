@@ -706,6 +706,8 @@ test('creator studio prompt builder emits canonical source instructions for cano
   assert.equal(built.actionId, 'wave')
   assert.match(built.providerPrompt, /canonical full-body source frame/i)
   assert.match(built.providerPrompt, /OpenPet will synthesize bounded local motion/i)
+  assert.match(built.providerPrompt, /source identity panels.*highest identity authority/i)
+  assert.match(built.providerPrompt, /action pose panels.*motion guidance/i)
   assert.doesNotMatch(built.providerPrompt, /3 columns x 2 rows grid/i)
 })
 

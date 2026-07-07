@@ -265,15 +265,22 @@ const findActionAnchorRecord = ({ anchorReferences, actionId }) => {
   return anchorReferences.actionAnchors.find((anchor) => String(anchor?.actionId || '').trim() === normalizedActionId) || null
 }
 
+const findFinalActionBoardRecord = ({ anchorReferences, actionId }) => {
+  const normalizedActionId = String(actionId || '').trim()
+  if (!normalizedActionId || !Array.isArray(anchorReferences?.finalActionBoards)) return null
+  return anchorReferences.finalActionBoards.find((board) => String(board?.actionId || '').trim() === normalizedActionId) || null
+}
+
 const resolveAnchorReferenceCandidates = ({ run, stage = 'final', actionId = '' }) => {
   const anchorReferences = run?.artifacts?.anchorReferences
   if (!anchorReferences || typeof anchorReferences !== 'object') return []
   const characterAnchor = anchorReferences.characterAnchor || null
   const compositeBoard = anchorReferences.compositeBoard || null
   const actionAnchor = findActionAnchorRecord({ anchorReferences, actionId })
+  const finalActionBoard = findFinalActionBoardRecord({ anchorReferences, actionId })
   if (stage === 'character-anchor') return [compositeBoard]
   if (stage === 'action-anchor') return [characterAnchor, compositeBoard]
-  return [actionAnchor, characterAnchor, compositeBoard]
+  return [finalActionBoard, actionAnchor, characterAnchor, compositeBoard]
 }
 
 const resolveRunReferenceImages = ({ dataDir, run, stage = 'final', actionId = '' }) => {
@@ -2232,6 +2239,7 @@ const generateAnchorReferences = async ({
   }
 
   const actionAnchors = []
+  const finalActionBoards = []
   if (shouldGenerateActionAnchors(run) && characterAnchor) {
     const characterReferenceImage = {
       path: path.join(dataDir, characterAnchor.relativePath),
@@ -2287,6 +2295,46 @@ const generateAnchorReferences = async ({
           modelAttempts: actionAnchor.modelAttempts,
           outputCount: 1
         })
+        const finalActionBoard = await buildAnchorReferenceBoard({
+          dataDir,
+          runId: run.runId,
+          sourceReferences: [{
+            path: compositeBoard.path,
+            fileName: path.basename(compositeBoard.relativePath),
+            relativePath: compositeBoard.relativePath,
+            role: 'source-identity-reference'
+          }, {
+            path: path.join(dataDir, actionAnchor.relativePath),
+            fileName: actionAnchor.fileName || `${actionId}-anchor.png`,
+            relativePath: actionAnchor.relativePath,
+            role: 'action-pose-reference'
+          }],
+          characterBrief: [
+            characterBrief,
+            `Action ${actionId}: source identity panel is authoritative; action pose panel is motion guidance only.`
+          ].filter(Boolean).join(' '),
+          outputRelativeDir: path.join('runs', run.runId, 'inputs', 'anchors', 'actions').replace(/\\/g, '/'),
+          boardRole: 'final-action-reference-board',
+          fileBaseName: `${actionId}-final-reference-board`
+        })
+        const finalActionBoardRecord = {
+          actionId,
+          role: finalActionBoard.role,
+          relativePath: finalActionBoard.relativePath,
+          metadataRelativePath: finalActionBoard.metadataRelativePath,
+          fileName: path.basename(finalActionBoard.relativePath)
+        }
+        finalActionBoards.push(finalActionBoardRecord)
+        stages.push({
+          stage: 'final-action-reference-board',
+          actionId,
+          referenceRole: 'source-identity-reference',
+          referenceRoles: ['source-identity-reference', 'action-pose-reference'],
+          outputRelativePath: finalActionBoardRecord.relativePath,
+          metadataRelativePath: finalActionBoardRecord.metadataRelativePath,
+          sourceCount: finalActionBoard.sourceCount,
+          renderedSourceCount: finalActionBoard.renderedSourceCount
+        })
       }
     }
   }
@@ -2302,7 +2350,8 @@ const generateAnchorReferences = async ({
         fileName: path.basename(compositeBoard.relativePath)
       },
       characterAnchor,
-      actionAnchors
+      actionAnchors,
+      finalActionBoards
     },
     anchorGeneration: {
       skipped: false,

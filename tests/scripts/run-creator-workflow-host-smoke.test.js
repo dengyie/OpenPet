@@ -291,15 +291,23 @@ test('runScenarioWorkflow approves the reference image but rejects failed provid
               artifacts: {
                 generatedImage: {
                   anchorGeneration: {
-                    stages: [{
-                      stage: 'character-anchor',
-                      ok: true,
-                      referenceRole: 'composite-reference-board',
-                      referenceRoles: ['composite-reference-board'],
-                      timeoutMs: 300000,
-                      durationMs: 91,
-                      model: 'gpt-image-2'
-                    }]
+                    stages: [
+                      {
+                        stage: 'composite-reference-board',
+                        referenceRole: 'canonical-reference',
+                        referenceRoles: ['canonical-reference'],
+                        outputRelativePath: 'runs/run-new-character/inputs/anchors/composite-reference-board.png'
+                      },
+                      {
+                        stage: 'character-anchor',
+                        ok: true,
+                        referenceRole: 'composite-reference-board',
+                        referenceRoles: ['composite-reference-board'],
+                        timeoutMs: 300000,
+                        durationMs: 91,
+                        model: 'gpt-image-2'
+                      }
+                    ]
                   },
                   generationStages: [{
                     stage: 'final-image',
@@ -355,18 +363,32 @@ test('runScenarioWorkflow approves the reference image but rejects failed provid
   assert.equal(calls[1][1].stylePrompt, 'Cartoon golden shaded cat pet.')
   assert.equal(calls[1][1].referenceImageToken, 'token-reference')
   assert.equal(calls[1][1].referenceImagePath, undefined)
-  assert.deepEqual(result.runRecord.anchorGenerationStages, [{
-    stage: 'character-anchor',
-    ok: true,
-    referenceRole: 'composite-reference-board',
-    referenceRoles: ['composite-reference-board'],
-    timeoutMs: 300000,
-    durationMs: 91,
-    model: 'gpt-image-2',
-    outputRelativePath: '',
-    promptRelativePath: '',
-    error: ''
-  }])
+  assert.deepEqual(result.runRecord.anchorGenerationStages, [
+    {
+      stage: 'composite-reference-board',
+      ok: null,
+      referenceRole: 'canonical-reference',
+      referenceRoles: ['canonical-reference'],
+      timeoutMs: 0,
+      durationMs: 0,
+      model: '',
+      outputRelativePath: 'runs/run-new-character/inputs/anchors/composite-reference-board.png',
+      promptRelativePath: '',
+      error: ''
+    },
+    {
+      stage: 'character-anchor',
+      ok: true,
+      referenceRole: 'composite-reference-board',
+      referenceRoles: ['composite-reference-board'],
+      timeoutMs: 300000,
+      durationMs: 91,
+      model: 'gpt-image-2',
+      outputRelativePath: '',
+      promptRelativePath: '',
+      error: ''
+    }
+  ])
   assert.deepEqual(result.runRecord.generationStages, [{
     stage: 'final-image',
     ok: false,

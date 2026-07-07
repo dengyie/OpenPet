@@ -52,6 +52,7 @@ const SOURCE_STYLE_AUTHORITY_RULES = [
 
 const MODEL_SHEET_REFERENCE_RULES = [
   'If the reference image is a model sheet, character sheet, or action reference board, use it as identity and pose guidance only.',
+  'For OpenPet final action reference boards, source identity panels are the highest identity authority; action pose panels are motion guidance only.',
   'Use the front, side, back, and action pose views to preserve the same body volume, markings, face, eye color, fur or material palette, tail shape, limb proportions, and pose vocabulary.',
   'Do not copy reference labels, text, captions, borders, sheet layout, beige background, guide lines, multiple view panels, or board presentation style into the output.',
   'Use the action poses in the reference only as pose vocabulary; generate the requested OpenPet asset format, not a duplicate of the reference sheet.'

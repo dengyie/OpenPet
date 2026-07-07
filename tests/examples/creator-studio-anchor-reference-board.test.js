@@ -180,3 +180,44 @@ test('anchor reference board renders additional source images as secondary panel
     y: secondaryLayouts[1].top + Math.floor(secondaryLayouts[1].height / 2)
   }), { r: 52, g: 172, b: 88, alpha: 255 })
 })
+
+test('anchor reference board can write a final action conditioning board role without overwriting the composite board', async () => {
+  const dataDir = makeDataDir()
+  const identityPath = path.join(dataDir, 'inputs/source/identity.png')
+  const actionPath = path.join(dataDir, 'inputs/source/action-anchor.png')
+  await writeSolidSourceImage(identityPath, { r: 224, g: 169, b: 72, alpha: 1 })
+  await writeSolidSourceImage(actionPath, { r: 36, g: 112, b: 224, alpha: 1 })
+
+  const result = await buildAnchorReferenceBoard({
+    dataDir,
+    runId: 'run-anchor',
+    sourceReferences: [{
+      path: identityPath,
+      fileName: 'identity.png',
+      relativePath: 'inputs/source/identity.png',
+      role: 'source-identity-reference'
+    }, {
+      path: actionPath,
+      fileName: 'action-anchor.png',
+      relativePath: 'inputs/source/action-anchor.png',
+      role: 'action-pose-reference'
+    }],
+    characterBrief: 'Identity panel wins; action panel is pose guidance.',
+    outputRelativeDir: 'runs/run-anchor/inputs/anchors/actions',
+    boardRole: 'final-action-reference-board',
+    fileBaseName: 'waving-final-reference-board'
+  })
+
+  assert.equal(result.role, 'final-action-reference-board')
+  assert.equal(result.relativePath, 'runs/run-anchor/inputs/anchors/actions/waving-final-reference-board.png')
+  assert.equal(result.metadataRelativePath, 'runs/run-anchor/inputs/anchors/actions/waving-final-reference-board.json')
+  assert.equal(fs.existsSync(result.path), true)
+  assert.equal(fs.existsSync(result.metadataPath), true)
+
+  const metadata = JSON.parse(fs.readFileSync(result.metadataPath, 'utf-8'))
+  assert.equal(metadata.role, 'final-action-reference-board')
+  assert.deepEqual(metadata.sources.map((source) => source.role), [
+    'source-identity-reference',
+    'action-pose-reference'
+  ])
+})
