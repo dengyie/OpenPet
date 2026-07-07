@@ -140,6 +140,10 @@ test('anchor generation creates composite, character, and action anchors with on
   assert.equal(result.anchorReferences.actionAnchors.length, 1)
   assert.equal(result.anchorReferences.actionAnchors[0].role, 'action-anchor')
   assert.equal(result.anchorReferences.actionAnchors[0].actionId, 'waving')
+  assert.equal(result.anchorReferences.finalActionBoards.length, 1)
+  assert.equal(result.anchorReferences.finalActionBoards[0].role, 'final-action-reference-board')
+  assert.equal(result.anchorReferences.finalActionBoards[0].actionId, 'waving')
+  assert.equal(result.anchorReferences.finalActionBoards[0].relativePath, 'runs/run-anchor/inputs/anchors/actions/waving-final-reference-board.png')
   assert.deepEqual(result.anchorGeneration.stages.map((stage) => ({
     stage: stage.stage,
     actionId: stage.actionId || '',
@@ -171,6 +175,14 @@ test('anchor generation creates composite, character, and action anchors with on
       outputRelativePath: 'runs/run-anchor/anchors/actions/waving-anchor/0001.png',
       promptRelativePath: 'runs/run-anchor/prompts/anchors/actions/waving-anchor.md',
       model: 'gpt-image-2'
+    },
+    {
+      stage: 'final-action-reference-board',
+      actionId: 'waving',
+      referenceRole: 'source-identity-reference',
+      outputRelativePath: 'runs/run-anchor/inputs/anchors/actions/waving-final-reference-board.png',
+      promptRelativePath: '',
+      model: ''
     }
   ])
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.compositeBoard.relativePath)), true)
@@ -178,6 +190,7 @@ test('anchor generation creates composite, character, and action anchors with on
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.actionAnchors[0].relativePath)), true)
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.characterAnchor.promptRelativePath)), true)
   assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.actionAnchors[0].promptRelativePath)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, result.anchorReferences.finalActionBoards[0].relativePath)), true)
 
   assert.deepEqual(calls.map((call) => call.referenceRoles), [
     ['composite-reference-board'],
@@ -242,22 +255,44 @@ test('host model bridge runs anchors before final single-action generation and c
       const dataRelativePath = `${dataRelativeDir}/0001.png`
       const outputPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-      fs.writeFileSync(outputPath, 'png placeholder')
-      requests.push({
-        dataRelativeDir,
-        referenceRoles: Array.isArray(payload.referenceImages)
-          ? payload.referenceImages.map((reference) => reference.role)
-          : []
-      })
-      response.writeHead(200, { 'Content-Type': 'application/json' })
-      response.end(JSON.stringify({
-        ok: true,
-        result: {
-          backend: 'provider',
-          model: payload.model,
-          outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
+      sharp({
+        create: {
+          width: 128,
+          height: 128,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
         }
-      }))
+      })
+        .composite([{
+          input: Buffer.from('<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="42" fill="#e7b65f"/></svg>'),
+          left: 0,
+          top: 0
+        }])
+        .png()
+        .toBuffer()
+        .then((buffer) => {
+          fs.writeFileSync(outputPath, buffer)
+          requests.push({
+            dataRelativeDir,
+            referenceRoles: Array.isArray(payload.referenceImages)
+              ? payload.referenceImages.map((reference) => reference.role)
+              : []
+          })
+          response.writeHead(200, { 'Content-Type': 'application/json' })
+          response.end(JSON.stringify({
+            ok: true,
+            result: {
+              backend: 'provider',
+              model: payload.model,
+              outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
+            }
+          }))
+        })
+        .catch((error) => {
+          response.writeHead(500, { 'Content-Type': 'application/json' })
+          response.end(JSON.stringify({ ok: false, error: error.message }))
+        })
+      return
     })
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -305,7 +340,7 @@ test('host model bridge runs anchors before final single-action generation and c
     assert.deepEqual(requests.map((entry) => entry.referenceRoles), [
       ['composite-reference-board'],
       ['character-anchor'],
-      ['action-anchor']
+      ['final-action-reference-board']
     ])
     assert.deepEqual(requests.map((entry) => entry.dataRelativeDir), [
       'runs/run-anchor-flow/anchors/character-anchor',
@@ -314,8 +349,9 @@ test('host model bridge runs anchors before final single-action generation and c
     ])
     assert.equal(result.anchorReferences.characterAnchor.role, 'character-anchor')
     assert.equal(result.anchorReferences.actionAnchors[0].role, 'action-anchor')
+    assert.equal(result.anchorReferences.finalActionBoards[0].role, 'final-action-reference-board')
     assert.equal(result.conditioning.referenceImageCount, 1)
-    assert.equal(result.conditioning.references[0].role, 'action-anchor')
+    assert.equal(result.conditioning.references[0].role, 'final-action-reference-board')
     assert.deepEqual(result.generationStages.map((stage) => ({
       stage: stage.stage,
       ok: stage.ok,
@@ -340,7 +376,7 @@ test('host model bridge runs anchors before final single-action generation and c
       {
         stage: 'final-image',
         ok: true,
-        referenceRoles: ['action-anchor'],
+        referenceRoles: ['final-action-reference-board'],
         timeoutMs: 300000,
         outputCount: 1
       }
@@ -392,16 +428,37 @@ test('host model bridge records final-stage timeout diagnostics when final actio
       const dataRelativePath = `${dataRelativeDir}/0001.png`
       const outputPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-      fs.writeFileSync(outputPath, 'png placeholder')
-      response.writeHead(200, { 'Content-Type': 'application/json' })
-      response.end(JSON.stringify({
-        ok: true,
-        result: {
-          backend: 'provider',
-          model: payload.model,
-          outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
+      sharp({
+        create: {
+          width: 128,
+          height: 128,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
         }
-      }))
+      })
+        .composite([{
+          input: Buffer.from('<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="42" fill="#e7b65f"/></svg>'),
+          left: 0,
+          top: 0
+        }])
+        .png()
+        .toBuffer()
+        .then((buffer) => {
+          fs.writeFileSync(outputPath, buffer)
+          response.writeHead(200, { 'Content-Type': 'application/json' })
+          response.end(JSON.stringify({
+            ok: true,
+            result: {
+              backend: 'provider',
+              model: payload.model,
+              outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
+            }
+          }))
+        })
+        .catch((error) => {
+          response.writeHead(500, { 'Content-Type': 'application/json' })
+          response.end(JSON.stringify({ ok: false, error: error.message }))
+        })
     })
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -473,20 +530,20 @@ test('host model bridge records final-stage timeout diagnostics when final actio
           {
             stage: 'final-image',
             ok: false,
-            referenceRoles: ['action-anchor'],
+            referenceRoles: ['final-action-reference-board'],
             timeoutMs: 300000,
             error: 'Post "https://ai.example/v1/images/edits": context canceled'
           }
         ])
         assert.equal(stages[2].modelAttempts[0].timeoutMs, 300000)
-        assert.deepEqual(stages[2].modelAttempts[0].referenceRoles, ['action-anchor'])
+        assert.deepEqual(stages[2].modelAttempts[0].referenceRoles, ['final-action-reference-board'])
         return true
       }
     )
     assert.deepEqual(requests.map((entry) => entry.referenceRoles), [
       ['composite-reference-board'],
       ['character-anchor'],
-      ['action-anchor']
+      ['final-action-reference-board']
     ])
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL

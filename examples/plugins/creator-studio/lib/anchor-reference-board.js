@@ -25,6 +25,15 @@ const toSafeRelativePath = (value) => {
   return normalized
 }
 
+const toSafeFileBaseName = (value, fallback = 'composite-reference-board') => {
+  const normalized = normalizeText(value)
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '')
+    .replace(/\.(?:png|json)$/i, '')
+  return normalized || fallback
+}
+
 const assertInsideDirectory = ({ rootDir, targetPath, message }) => {
   const root = path.resolve(rootDir)
   const target = path.resolve(targetPath)
@@ -136,7 +145,9 @@ const buildAnchorReferenceBoard = async ({
   runId,
   sourceReferences = [],
   characterBrief = '',
-  outputRelativeDir = ''
+  outputRelativeDir = '',
+  boardRole = 'composite-reference-board',
+  fileBaseName = 'composite-reference-board'
 }) => {
   if (!dataDir) throw new Error('Anchor reference board dataDir is required')
   const normalizedRunId = normalizeText(runId)
@@ -160,8 +171,12 @@ const buildAnchorReferenceBoard = async ({
   })
   fs.mkdirSync(outputDir, { recursive: true })
 
-  const boardPath = path.join(outputDir, 'composite-reference-board.png')
-  const metadataPath = path.join(outputDir, 'composite-reference-board.json')
+  const safeFileBaseName = toSafeFileBaseName(fileBaseName)
+  const normalizedBoardRole = normalizeText(boardRole) || 'composite-reference-board'
+  const boardFileName = `${safeFileBaseName}.png`
+  const metadataFileName = `${safeFileBaseName}.json`
+  const boardPath = path.join(outputDir, boardFileName)
+  const metadataPath = path.join(outputDir, metadataFileName)
   const sourceLayouts = createSourceLayouts(sources.length)
   const renderedReferences = []
   for (const [index, source] of sources.entries()) {
@@ -186,7 +201,7 @@ const buildAnchorReferenceBoard = async ({
 
   const metadata = {
     version: 1,
-    role: 'composite-reference-board',
+    role: normalizedBoardRole,
     sourcePriority: 'image-first',
     width: BOARD_SIZE,
     height: BOARD_SIZE,
@@ -198,11 +213,11 @@ const buildAnchorReferenceBoard = async ({
   writeJson(metadataPath, metadata)
 
   return {
-    role: 'composite-reference-board',
+    role: normalizedBoardRole,
     path: boardPath,
-    relativePath: path.join(relativeDir, 'composite-reference-board.png').replace(/\\/g, '/'),
+    relativePath: path.join(relativeDir, boardFileName).replace(/\\/g, '/'),
     metadataPath,
-    metadataRelativePath: path.join(relativeDir, 'composite-reference-board.json').replace(/\\/g, '/'),
+    metadataRelativePath: path.join(relativeDir, metadataFileName).replace(/\\/g, '/'),
     width: BOARD_SIZE,
     height: BOARD_SIZE,
     sourceCount: sources.length,

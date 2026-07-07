@@ -581,7 +581,7 @@ const summarizeGenerationStages = (stages = []) => (
   Array.isArray(stages)
     ? stages.map((stage) => ({
       stage: String(stage?.stage || ''),
-      ok: Boolean(stage?.ok),
+      ok: Object.hasOwn(stage || {}, 'ok') ? Boolean(stage?.ok) : null,
       referenceRole: String(stage?.referenceRole || ''),
       referenceRoles: Array.isArray(stage?.referenceRoles)
         ? stage.referenceRoles.map((role) => String(role || '')).filter(Boolean)
