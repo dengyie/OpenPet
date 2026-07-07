@@ -17,7 +17,7 @@ const {
 } = require('../../examples/plugins/agent-awareness/service/adapters/codex-rollout-poller')
 const { createSessionStore } = require('../../examples/plugins/agent-awareness/service/session-store')
 const { createAgentStateMapper } = require('../../examples/plugins/agent-awareness/service/state-mapper')
-const { createAgentAwarenessServer } = require('../../examples/plugins/agent-awareness/service/agent-awareness-service')
+const { buildDiagnostics, createAgentAwarenessServer } = require('../../examples/plugins/agent-awareness/service/agent-awareness-service')
 const { DEFAULT_PORT, PLAN_FILE, TOKEN_FILE, toCommandOutput, writeCodexHookPlan } = require('../../examples/plugins/agent-awareness/commands/codex-hook-plan')
 const { installCodexHooks } = require('../../examples/plugins/agent-awareness/commands/codex-hook-config')
 const { checkServiceHealth, readDiagnostics, redactDoctorOutput, toDoctorServiceHealthOutput } = require('../../examples/plugins/agent-awareness/commands/doctor')
@@ -811,6 +811,52 @@ test('agent awareness server aggregates bounded usage diagnostics across session
   assert.equal(health.diagnostics.usageEstimatedCostUsd, 0.03)
   assert.equal(health.diagnostics.usageCurrency, 'USD')
   assert.equal(health.diagnostics.usagePeakContextUsedPercent, 0.8)
+})
+
+test('agent awareness diagnostics selects the bounded attention session', () => {
+  const diagnostics = buildDiagnostics({
+    store: {
+      getStatus: () => ({
+        sessions: 3,
+        totalEvents: 3,
+        lastEventAt: '2026-07-07T00:00:02.000Z'
+      }),
+      listSessions: () => [
+        {
+          sessionId: 'working-session',
+          project: 'OpenPet #111111',
+          status: 'working',
+          type: 'tool.started',
+          timestamp: '2026-07-07T00:00:02.000Z'
+        },
+        {
+          sessionId: 'waiting-session',
+          project: 'Docs #222222',
+          status: 'waiting',
+          type: 'approval.requested',
+          timestamp: '2026-07-07T00:00:01.000Z'
+        },
+        {
+          sessionId: 'completed-session',
+          project: 'Done #333333',
+          status: 'completed',
+          type: 'turn.completed',
+          timestamp: '2026-07-07T00:00:03.000Z'
+        }
+      ]
+    },
+    rolloutPoller: {
+      getStatus: () => ({ enabled: true, seenCount: 3 })
+    }
+  })
+
+  assert.deepEqual(diagnostics.attentionSession, {
+    sessionId: 'waiting-session',
+    project: 'Docs #222222',
+    status: 'waiting',
+    reason: 'Waiting for user input'
+  })
+  assert.equal(JSON.stringify(diagnostics).includes('/Users/mango'), false)
 })
 
 test('agent awareness server merges hook and poller events into one richer runtime session shape', async () => {

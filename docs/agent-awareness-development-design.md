@@ -39,7 +39,7 @@ The current branch baseline is no longer "paper design only." It has the full pl
 - shipped hook + polling dual ingestion with one canonical runtime session model;
 - shipped trusted auto-start gating behind native approval plus explicit opt-in;
 - shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
-- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, lightweight daily usage stats from sanitized history, a dedicated dashboard `view=stats` page, best-effort git branch/dirty summaries, content-safe current-step summaries, metadata-derived recent-progress hints, generated session summaries, dashboard rendering, bounded detail deep-link focus, in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
+- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, lightweight daily usage stats from sanitized history, a dedicated dashboard `view=stats` page, best-effort git branch/dirty summaries, bounded attention-session arbitration, content-safe current-step summaries, metadata-derived recent-progress hints, generated session summaries, dashboard rendering, bounded detail deep-link focus, in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
 - shipped a first-class Agent Awareness detail entry from Control Center;
 - shipped a pet-side quick-open detail entry from Bubble Chat;
 - kept the privacy boundary intact while adding the richer runtime shape.
@@ -83,6 +83,7 @@ Today Agent Awareness provides:
 - a Control Center-native `Agent Awareness 原生详情` summary that reads the real bundled service health details for active sessions, tracked sessions, observed events, usage tokens, estimated cost, and peak context when available;
 - a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
 - a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
+- health diagnostics expose a bounded `attentionSession` chosen by status severity and recency, and the dashboard marks that session as `Focused`;
 - dashboard support for `view=details&sessionId=<sanitized-id>` so an existing safe session hash can be shown as a focused detail view;
 - dashboard support for `view=stats` so retained sanitized usage history can be inspected as a dedicated stats view without a new API;
 - a per-session dashboard `Focus` link that opens the same bounded detail route without adding a new host/plugin contract;
@@ -115,7 +116,7 @@ Agent Awareness is not yet "complete Codex awareness." The current milestone doe
 
 - auto-install Codex hooks during discovery or app boot;
 - capture raw prompts, model responses, tool arguments, tool results, terminal transcript, stdout, stderr, or full local paths;
-- expose multi-session pinning/focus controls as a finished product feature;
+- expose host-level multi-session pinning or independent pet-window focus controls as a finished product feature;
 - provide persistent noise controls;
 - infer model pricing or cost when Codex does not provide safe cost metadata;
 - drive semantic pet actions beyond `pet:event` and `pet:say`;
@@ -180,6 +181,7 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - runtime summaries prefer bounded progress labels, approval state, usage refreshes, git refreshes, context compaction, rollback, or safe tool names over raw lifecycle type strings for `currentStep`;
 - runtime summaries derive content-safe `recentProgressHint` text from bounded metadata such as approval waits, tool completion, usage totals, git branch, and completed/failed turn status;
 - the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, a dedicated `view=stats` recent daily usage page with totals from retained sanitized history, and per-session usage/git/current-step/session-summary facts;
+- health diagnostics derive a bounded attention session from safe status/recency metadata, and the dashboard labels that session as focused;
 - the Plugins pane renders a compact Agent Awareness-only native detail summary from the same reserved health diagnostics, without creating an arbitrary plugin JSON detail surface;
 - the dashboard honors `view=details&sessionId=<sanitized-id>` for safe per-session focus and renders a bounded empty state when the requested session is absent;
 - each rendered session card exposes a safe `Focus` link into that bounded detail route;
@@ -520,7 +522,7 @@ OpenPet is not yet at "pet completely perceives Codex" quality. The remaining ga
 
 - auto or semi-auto hook installation still lacks a final product decision;
 - the shipped plugin still prefers bounded awareness over deep session introspection;
-- multi-session focus, pinning, and arbitration are unfinished;
+- host-level multi-session pinning, independent windows, and presentation arbitration are unfinished; the plugin-level bounded attention foundation has shipped;
 - persistent notification tuning is unfinished;
 - semantic pet behavior mapping is unfinished;
 - final desktop usefulness and noise acceptance are still partly manual.

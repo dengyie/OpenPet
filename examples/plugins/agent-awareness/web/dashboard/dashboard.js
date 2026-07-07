@@ -109,6 +109,18 @@ const createDashboardRuntime = ({
     tone: 'neutral'
   }
 
+  const normalizeAttentionSession = (attentionSession = {}) => {
+    if (!attentionSession || typeof attentionSession !== 'object') return null
+    const sessionId = sanitizeDisplayText(attentionSession.sessionId || '').slice(0, 128)
+    if (!sessionId) return null
+    return {
+      sessionId,
+      project: sanitizeDisplayText(attentionSession.project || ''),
+      status: sanitizeDisplayText(attentionSession.status || ''),
+      reason: sanitizeDisplayText(attentionSession.reason || '')
+    }
+  }
+
   const summarizeHookMode = (hookMode = {}) => {
     if (hookMode.installed) return 'Installed'
     if (hookMode.planAvailable) return hookMode.tokenConfigured ? 'Plan ready' : 'Plan drafted'
@@ -300,11 +312,17 @@ const createDashboardRuntime = ({
           : ''
         : 'Showing latest sanitized session details.'
     const usageStatsRecords = buildUsageStatsRecords(sessions)
+    const attentionSession = normalizeAttentionSession(diagnostics.attentionSession)
+    const attentionStatus = getStatusMeta(attentionSession?.status || '')
+    const attentionDetail = attentionSession
+      ? [attentionSession.project, attentionSession.reason].filter(Boolean).join(' · ')
+      : 'No active attention session'
 
     return {
       detailFound,
       detailMode,
       detailNotice,
+      attentionSession,
       requestedSessionId,
       serviceOk: health.ok === true,
       statsMode,
@@ -345,6 +363,11 @@ const createDashboardRuntime = ({
           label: 'Peak Context',
           value: formatPercent(diagnostics.usagePeakContextUsedPercent) || 'No context metadata',
           detail: 'Highest observed session context'
+        },
+        {
+          label: 'Attention',
+          value: attentionSession ? attentionStatus.label : 'None',
+          detail: attentionDetail
         }
       ],
       healthRows: [
@@ -391,6 +414,7 @@ const createDashboardRuntime = ({
         sessionId: session.sessionId || '',
         message: sanitizeDisplayText(session.message || 'No sanitized message'),
         timestamp: formatTimestamp(session.timestamp),
+        isFocused: attentionSession?.sessionId === String(session.sessionId || ''),
         status: getStatusMeta(session.status),
         lastEvent: session.type || 'session.updated',
         usageText: describeUsage(session.usage),
@@ -512,6 +536,7 @@ const createDashboardRuntime = ({
           </div>
           <div class="session-actions">
             <a class="session-detail-link" data-testid="agent-session-focus" href="${escapeHtml(session.detailHref || buildDetailHref(session.sessionId))}" aria-label="Focus sanitized session details">Focus</a>
+            ${session.isFocused ? '<span class="status-badge tone-info">Focused</span>' : ''}
             <span class="status-badge tone-${escapeHtml(session.status.tone)}">${escapeHtml(session.status.label)}</span>
           </div>
         </header>

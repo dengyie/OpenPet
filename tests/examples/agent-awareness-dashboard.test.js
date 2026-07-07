@@ -576,6 +576,56 @@ test('agent awareness dashboard renders safe empty state for missing detail sess
   assert.doesNotMatch(rendered.sessionsHtml, /known-session/)
 })
 
+test('agent awareness dashboard marks the bounded attention session', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 2,
+        totalEvents: 4,
+        seenCount: 4,
+        attentionSession: {
+          sessionId: 'waiting-session',
+          project: 'Docs #222222',
+          status: 'waiting',
+          reason: 'Waiting for user input'
+        }
+      }
+    },
+    sessionsPayload: {
+      sessions: [
+        {
+          sessionId: 'working-session',
+          project: 'OpenPet #111111',
+          status: 'working',
+          type: 'tool.started',
+          message: 'Working session',
+          timestamp: '2026-07-07T00:00:00.000Z'
+        },
+        {
+          sessionId: 'waiting-session',
+          project: 'Docs #222222',
+          status: 'waiting',
+          type: 'approval.requested',
+          message: 'Waiting session',
+          timestamp: '2026-07-07T00:00:01.000Z'
+        }
+      ]
+    }
+  })
+
+  const attentionMetric = viewModel.summary.find((item) => item.label === 'Attention')
+  const rendered = runtime.renderDashboard(viewModel)
+
+  assert.equal(attentionMetric.value, 'Waiting')
+  assert.equal(attentionMetric.detail, 'Docs #222222 · Waiting for user input')
+  assert.equal(viewModel.sessions[0].isFocused, false)
+  assert.equal(viewModel.sessions[1].isFocused, true)
+  assert.match(rendered.sessionsHtml, /Focused/)
+  assert.match(rendered.sessionsHtml, /Waiting session/)
+})
+
 test('agent awareness dashboard rendering escapes content and emits structured sections', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const rendered = runtime.renderDashboard({

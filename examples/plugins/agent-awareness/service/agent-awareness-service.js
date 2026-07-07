@@ -82,6 +82,19 @@ const toFiniteNumber = (value) => {
 
 const roundSix = (value) => Math.round(value * 1_000_000) / 1_000_000
 
+const ATTENTION_STATUS = {
+  waiting: { score: 60, reason: 'Waiting for user input' },
+  blocked: { score: 55, reason: 'Blocked and needs review' },
+  failed: { score: 50, reason: 'Failed and needs review' },
+  working: { score: 30, reason: 'Working now' },
+  thinking: { score: 20, reason: 'Thinking through next step' }
+}
+
+const toTimestampMs = (value) => {
+  const numeric = Date.parse(String(value || ''))
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
 const buildUsageDiagnostics = (sessions = []) => {
   const totals = {
     usageTotalTokens: 0,
@@ -118,6 +131,36 @@ const buildUsageDiagnostics = (sessions = []) => {
   return totals
 }
 
+const buildAttentionSession = (sessions = []) => {
+  const candidates = sessions
+    .map((session) => {
+      const status = sanitizeText(session?.status || '', 32).toLowerCase()
+      const meta = ATTENTION_STATUS[status]
+      return {
+        sessionId: sanitizeText(session?.sessionId || '', 64),
+        project: sanitizeText(session?.project || '', 96),
+        status,
+        reason: meta?.reason || '',
+        score: meta?.score || 0,
+        timestampMs: toTimestampMs(session?.timestamp)
+      }
+    })
+    .filter((session) => session.sessionId && session.score > 0)
+    .sort((left, right) => (
+      right.score - left.score ||
+      right.timestampMs - left.timestampMs ||
+      left.sessionId.localeCompare(right.sessionId)
+    ))
+  const attention = candidates[0]
+  if (!attention) return null
+  return {
+    sessionId: attention.sessionId,
+    project: attention.project,
+    status: attention.status,
+    reason: attention.reason
+  }
+}
+
 const buildDiagnostics = ({ store, rolloutPoller }) => {
   const sessions = store.getStatus()
   const trackedSessions = store.listSessions()
@@ -133,6 +176,7 @@ const buildDiagnostics = ({ store, rolloutPoller }) => {
     unknownRecordCount: codexPoller.unknownRecordCount || 0,
     malformedRecordCount: codexPoller.malformedRecordCount || 0,
     unsupportedLifecycleRecordCount: codexPoller.unsupportedLifecycleRecordCount || 0,
+    attentionSession: buildAttentionSession(trackedSessions),
     ...usageDiagnostics,
     lastEventAt: sessions.lastEventAt || '',
     lastScanAt: codexPoller.lastScanAt || '',

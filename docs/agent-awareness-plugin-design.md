@@ -84,7 +84,7 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `examples/plugins/agent-awareness/commands/codex-hook-plan.js` | Writes the read-only future hook plan and plugin-owned token file. |
 | `examples/plugins/agent-awareness/commands/install-codex-hooks.js` | Installs bounded OpenPet-owned Codex hook handlers and writes hook install state. |
 | `examples/plugins/agent-awareness/commands/uninstall-codex-hooks.js` | Removes only the OpenPet-owned Codex hook handlers and clears hook install state. |
-| `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Hosts `/health`, `/api/sessions`, `/api/events`, and dashboard assets. |
+| `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Hosts `/health`, `/api/sessions`, `/api/events`, dashboard assets, aggregate usage diagnostics, and bounded attention-session diagnostics. |
 | `examples/plugins/agent-awareness/service/adapters/codex-rollout-poller.js` | Reads bounded Codex rollout JSONL signal and counts ignored/unknown/malformed records. |
 | `examples/plugins/agent-awareness/service/adapters/codex.js` | Sanitizes rollout events, hashes session ids, and redacts project paths. |
 | `examples/plugins/agent-awareness/service/adapters/codex-hook.js` | Maps bounded hook payloads into the shared runtime-event shape. |
@@ -93,7 +93,7 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session model with bounded current-step and metadata-derived progress summaries. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists bounded runtime session summaries to plugin-owned storage. |
 | `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events and rate-limited speech. |
-| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including aggregate usage tokens/cost/context, dedicated `view=stats` daily totals from sanitized history, per-session usage, git, current-step, recent-progress, and generated session-summary metadata, bounded `view=details&sessionId=<sanitized-id>` focus, and per-session `Focus` links. |
+| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including aggregate usage tokens/cost/context, dedicated `view=stats` daily totals from sanitized history, bounded attention-session focus markers, per-session usage, git, current-step, recent-progress, and generated session-summary metadata, bounded `view=details&sessionId=<sanitized-id>` focus, and per-session `Focus` links. |
 
 ### Core Touchpoints Outside The Plugin
 
