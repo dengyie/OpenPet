@@ -1,6 +1,6 @@
 const { sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 
-const PROMPT_BUILDER_VERSION = 1
+const PROMPT_BUILDER_VERSION = 2
 
 const normalizeActionText = (value, fallback = '') => sanitizeCreativeBrief(value || fallback)
 
@@ -27,6 +27,8 @@ const buildCharacterAnchorPrompt = ({ characterBrief = '', referenceRole = 'comp
       'Identity lock:',
       'Preserve the exact visible pet identity from the reference image.',
       'Preserve character type, face shape, eyes, eye shape, eye color, markings, fur or material texture, accessories, body proportions, head-to-body ratio, silhouette, lighting, rendering medium, and source visual style.',
+      'Species lock: keep the same species, animal type, or object category visible in the source image. If the source is a cat, output the same cat; never output a dog, corgi, fox, mascot, or different animal.',
+      'Accessory lock: Do not add a collar, scarf, bell, bow, tag, clothing, jewelry, prop, or outfit element unless it is clearly visible in the source image or explicitly requested by the user.',
       'Do not redesign, simplify, replace, cartoonify, change species, change outfit, or invent a different pet unless the user explicitly requested that transformation.',
       '',
       'Output contract:',
@@ -68,7 +70,9 @@ const buildActionAnchorPrompt = ({
       '',
       'Identity and style lock:',
       'Keep the same character identity, face, eyes, markings, fur or material texture, accessories, proportions, silhouette, lighting, rendering medium, and source visual style as the character anchor.',
+      'Keep the same species, animal type, or object category; if the reference character is a cat, keep it as the same cat.',
       'Do not redesign the pet, add a new outfit, change species, add props, add scene elements, or change camera angle.',
+      'Do not add a collar, scarf, bell, bow, tag, clothing, jewelry, prop, or outfit element unless it is already visible in the reference or explicitly requested by the user.',
       '',
       'Action anchor contract:',
       'Show clear action key-pose guidance, not a final sprite sheet.',
@@ -82,7 +86,7 @@ const buildActionAnchorPrompt = ({
       'Locked parts:',
       formatList(action.lockedParts, ['head', 'torso', 'feet/base', 'face', 'identity markings']),
       '',
-      'Negative prompt: different character, changed face, changed eyes, changed markings, changed proportions, extra limbs, missing limbs, props, scene background, floor, shadows, text, labels, watermark, motion blur, sprite sheet grid.'
+      'Negative prompt: different character, changed species, dog, corgi, fox, mascot, changed face, changed eyes, changed markings, changed proportions, collar, scarf, bell, bow, tag, clothing, jewelry, extra limbs, missing limbs, props, scene background, floor, shadows, text, labels, watermark, motion blur, sprite sheet grid.'
     ].filter(Boolean).join('\n')
   }
 }

@@ -17,6 +17,9 @@ test('character anchor prompt makes source image identity authoritative', () => 
   assert.match(result.prompt, /If the written description conflicts with the reference image, follow the reference image/i)
   assert.match(result.prompt, /do not copy.*board layout/i)
   assert.match(result.prompt, /Preserve.*eyes.*markings.*proportions.*silhouette/is)
+  assert.match(result.prompt, /same species/i)
+  assert.match(result.prompt, /never output a dog, corgi, fox, mascot, or different animal/i)
+  assert.match(result.prompt, /Do not add.*collar.*scarf.*bell/is)
   assert.match(result.prompt, /one full-body centered pet source image/i)
 })
 
@@ -38,6 +41,7 @@ test('action anchor prompt locks identity while describing local motion', () => 
   assert.match(result.prompt, /Action ID: waving/)
   assert.match(result.prompt, /Raise the viewer-right front paw and wave gently/)
   assert.match(result.prompt, /same character identity/i)
+  assert.match(result.prompt, /do not add.*collar.*scarf.*bell/is)
   assert.match(result.prompt, /stable lower-center root/i)
   assert.match(result.prompt, /body, head, feet\/base, and face remain locked/i)
   assert.match(result.prompt, /only the target limb changes/i)
