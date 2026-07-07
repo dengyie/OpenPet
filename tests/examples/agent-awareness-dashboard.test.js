@@ -78,6 +78,58 @@ test('agent awareness dashboard builds structured summary and diagnostics view m
   assert.equal(viewModel.sessions[0].timeline[0].message, 'Codex started a tool call at [path] via [local-url].')
 })
 
+test('agent awareness dashboard renders safe usage git and summary metadata', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 1,
+        totalEvents: 3,
+        seenCount: 3,
+        usageTotalTokens: 1500
+      }
+    },
+    sessionsPayload: {
+      sessions: [{
+        sessionId: 'abc123def456',
+        project: 'OpenPet #111111',
+        status: 'working',
+        type: 'turn.usage',
+        timestamp: '2026-07-07T00:00:00.000Z',
+        usage: {
+          totalTokens: 1500,
+          contextWindow: 200000,
+          contextUsedPercent: 0.75,
+          estimatedCostUsd: 0.012345,
+          currency: 'USD'
+        },
+        git: {
+          branch: 'codex/dev7',
+          dirty: true,
+          dirtyCount: 2,
+          ahead: 1,
+          behind: 0
+        },
+        summary: {
+          title: 'OpenPet on codex/dev7',
+          recentProgressHint: 'Working in /Users/mango/private/project/OpenPet'
+        }
+      }]
+    }
+  })
+
+  const usageMetric = viewModel.summary.find((item) => item.label === 'Usage Tokens')
+  assert.equal(usageMetric.value, '1,500')
+  assert.match(viewModel.sessions[0].usageText, /1,500 tokens/)
+  assert.match(viewModel.sessions[0].usageText, /0.75% context/)
+  assert.match(viewModel.sessions[0].usageText, /\$0.012345 USD/)
+  assert.match(viewModel.sessions[0].gitText, /codex\/dev7/)
+  assert.match(viewModel.sessions[0].gitText, /2 files changed/)
+  assert.match(viewModel.sessions[0].summaryTitle, /OpenPet on codex\/dev7/)
+  assert.equal(viewModel.sessions[0].progressHint, 'Working in [path]')
+})
+
 test('agent awareness dashboard rendering escapes content and emits structured sections', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const rendered = runtime.renderDashboard({
@@ -96,6 +148,10 @@ test('agent awareness dashboard rendering escapes content and emits structured s
         timestamp: 'Jul 03, 2026, 12:00 PM',
         status: { label: 'Waiting', tone: 'warning' },
         lastEvent: 'approval.requested',
+        usageText: '<script>bad</script> 1,500 tokens',
+        gitText: 'codex/dev7 /Users/mango/private/OpenPet',
+        summaryTitle: 'OpenPet <b>summary</b>',
+        progressHint: 'Working at http://127.0.0.1:8795',
         timeline: [
           {
             type: 'approval.requested',
@@ -115,6 +171,9 @@ test('agent awareness dashboard rendering escapes content and emits structured s
   assert.match(rendered.sessionsHtml, /\[path\]/)
   assert.match(rendered.sessionsHtml, /Bearer \[redacted\]/)
   assert.match(rendered.sessionsHtml, /Need review &lt;b&gt;now&lt;\/b&gt; at \[local-url\]/)
+  assert.match(rendered.sessionsHtml, /&lt;script&gt;bad&lt;\/script&gt; 1,500 tokens/)
+  assert.match(rendered.sessionsHtml, /codex\/dev7 \[path\]/)
+  assert.match(rendered.sessionsHtml, /OpenPet &lt;b&gt;summary&lt;\/b&gt;/)
   assert.doesNotMatch(rendered.sessionsHtml, /<img src=x onerror=alert\(1\)>/)
   assert.doesNotMatch(rendered.sessionsHtml, /127\.0\.0\.1:8795/)
   assert.doesNotMatch(rendered.sessionsHtml, /\/Users\/mango\/private/)

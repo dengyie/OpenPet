@@ -1,4 +1,6 @@
 const { sanitizeText } = require('./adapters/codex')
+const { normalizeGitSummary } = require('./git-summary')
+const { normalizeUsageSummary } = require('./usage-summary')
 
 const SAFE_PHASES = new Set(['session', 'turn', 'tool', 'approval', 'progress'])
 const INACTIVE_STATUSES = new Set(['idle', 'completed', 'failed'])
@@ -51,6 +53,8 @@ const normalizeApprovalState = ({ approvalState = '', phase = '', type = '', sta
 const normalizeRuntimeEvent = (event = {}, { now = () => new Date().toISOString() } = {}) => {
   const status = sanitizeText(event.status, 32).toLowerCase() || 'working'
   const phase = normalizePhase({ phase: event.phase, type: event.type, status })
+  const usage = normalizeUsageSummary(event.usage || event)
+  const git = normalizeGitSummary(event.git || event)
   return {
     adapter: sanitizeText(event.adapter || 'codex', 32) || 'codex',
     sessionId: sanitizeText(event.sessionId, 64),
@@ -76,8 +80,45 @@ const normalizeRuntimeEvent = (event = {}, { now = () => new Date().toISOString(
       source: event.source,
       type: event.type
     }),
+    usage,
+    git,
+    summary: normalizeSessionSummary({
+      event,
+      git,
+      phase,
+      project: sanitizeText(event.project, 96),
+      progressLabel: sanitizeText(event.progressLabel, 120),
+      type: sanitizeText(event.type || 'session.updated', 64) || 'session.updated',
+      message: sanitizeText(event.message, 160)
+    }),
     timestamp: sanitizeText(event.timestamp, 40) || now()
   }
+}
+
+const normalizeSessionSummary = ({
+  event = {},
+  git = null,
+  phase = '',
+  project = '',
+  progressLabel = '',
+  type = '',
+  message = ''
+} = {}) => {
+  const source = event.summary && typeof event.summary === 'object' ? event.summary : {}
+  const title = sanitizeText(source.title || '', 120) || (
+    project && git?.branch ? `${project} on ${git.branch}` : project
+  )
+  const currentStep = sanitizeText(source.currentStep || type || phase, 80)
+  const recentProgressHint = sanitizeText(
+    source.recentProgressHint || progressLabel || message || (project ? `Working in ${project}` : ''),
+    160
+  )
+  const normalized = {
+    title,
+    currentStep,
+    recentProgressHint
+  }
+  return Object.values(normalized).some(Boolean) ? normalized : null
 }
 
 const createRuntimeSession = (previousSession, event, { now = () => new Date().toISOString() } = {}) => {
@@ -85,6 +126,22 @@ const createRuntimeSession = (previousSession, event, { now = () => new Date().t
   const approvalState = normalized.phase === 'approval'
     ? normalized.approvalState
     : ''
+  const usage = normalized.usage || previousSession?.usage || null
+  const git = normalized.git || previousSession?.git || null
+  const previousSummary = previousSession?.summary || {}
+  const normalizedSummary = normalized.summary || {}
+  const normalizedTitleIsProjectOnly = normalizedSummary.title &&
+    normalized.project &&
+    normalizedSummary.title === normalized.project &&
+    previousSummary.title &&
+    previousSummary.title !== normalizedSummary.title
+  const summary = {
+    title: normalizedTitleIsProjectOnly
+      ? previousSummary.title
+      : (normalizedSummary.title || previousSummary.title || ''),
+    currentStep: normalizedSummary.currentStep || previousSummary.currentStep || '',
+    recentProgressHint: normalizedSummary.recentProgressHint || previousSummary.recentProgressHint || ''
+  }
   return {
     adapter: normalized.adapter || previousSession?.adapter || 'codex',
     sessionId: normalized.sessionId || previousSession?.sessionId || '',
@@ -103,6 +160,9 @@ const createRuntimeSession = (previousSession, event, { now = () => new Date().t
       ? normalized.active
       : (typeof previousSession?.active === 'boolean' ? previousSession.active : true),
     lastSource: normalized.lastSource || previousSession?.lastSource || 'poller',
+    usage,
+    git,
+    summary: Object.values(summary).some(Boolean) ? summary : null,
     timestamp: normalized.timestamp || previousSession?.timestamp || now()
   }
 }
@@ -120,6 +180,9 @@ const createRuntimeHistoryEntry = (session = {}) => ({
   progressTotal: session.progressTotal ?? null,
   approvalState: String(session.approvalState || ''),
   lastSource: String(session.lastSource || ''),
+  usage: session.usage || null,
+  git: session.git || null,
+  summary: session.summary || null,
   timestamp: String(session.timestamp || '')
 })
 

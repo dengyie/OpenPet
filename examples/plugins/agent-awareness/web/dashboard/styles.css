@@ -290,9 +290,31 @@ button:hover {
   margin-top: 14px;
 }
 
+.session-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.session-facts > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
 .session-event {
   margin-top: 6px;
   line-height: 1.35;
+}
+
+.session-fact-value {
+  margin-top: 6px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .session-message {
@@ -361,7 +383,8 @@ button:hover {
   }
 
   .metrics,
-  .health-grid {
+  .health-grid,
+  .session-facts {
     grid-template-columns: 1fr;
   }
 

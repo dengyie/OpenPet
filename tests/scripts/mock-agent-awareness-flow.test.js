@@ -9,6 +9,9 @@ const {
   runAgentAwarenessLocalSmoke
 } = require('../../scripts/run-agent-awareness-local-smoke')
 const {
+  createCodexRolloutPoller
+} = require('../../examples/plugins/agent-awareness/service/adapters/codex-rollout-poller')
+const {
   createAgentAwarenessLocalSmokeArchive
 } = require('../../scripts/create-agent-awareness-local-smoke-archive')
 const {
@@ -44,13 +47,32 @@ const createCodexRolloutFixture = () => {
       type: 'event_msg',
       timestamp: '2026-07-07T00:00:02.000Z',
       payload: {
+        type: 'token_count',
+        input_tokens: 1200,
+        output_tokens: 300,
+        total_tokens: 1500,
+        context_window: 200000,
+        estimated_cost_usd: 0.012345
+      }
+    }),
+    JSON.stringify({
+      type: 'turn_context',
+      timestamp: '2026-07-07T00:00:02.500Z',
+      payload: {
+        cwd: '/Users/mango/private/project/OpenPet'
+      }
+    }),
+    JSON.stringify({
+      type: 'event_msg',
+      timestamp: '2026-07-07T00:00:03.000Z',
+      payload: {
         type: 'tool_call',
         tool_name: 'read_file'
       }
     }),
     JSON.stringify({
       type: 'event_msg',
-      timestamp: '2026-07-07T00:00:03.000Z',
+      timestamp: '2026-07-07T00:00:04.000Z',
       payload: {
         type: 'task_complete',
         stdout: 'secret stdout sk-test123'
@@ -71,7 +93,18 @@ test('mock agent-awareness flow rehearses smoke, archive, and manual acceptance 
     outputDir: smokeOutputDir,
     scanTimeoutMs: 4000,
     sampleLimit: 3,
-    now: fixedSmokeNow
+    now: fixedSmokeNow,
+    createCodexRolloutPollerImpl: (options) => createCodexRolloutPoller({
+      ...options,
+      gitSummaryProvider: () => ({
+        branch: 'codex/dev7',
+        dirty: true,
+        dirtyCount: 2,
+        ahead: 1,
+        behind: 0,
+        repository: 'OpenPet #111111'
+      })
+    })
   })
 
   assert.equal(smokeResult.ok, true)
@@ -79,6 +112,9 @@ test('mock agent-awareness flow rehearses smoke, archive, and manual acceptance 
   assert.equal(smokeResult.redactionChecks.noRawPaths, true)
   assert.equal(smokeResult.redactionChecks.noLoopbackUrls, true)
   assert.equal(smokeResult.redactionChecks.noSecrets, true)
+  assert.equal(smokeResult.sessions[0].usage.totalTokens, 1500)
+  assert.equal(smokeResult.sessions[0].git.branch, 'codex/dev7')
+  assert.equal(smokeResult.sessions[0].summary.title, 'OpenPet #111111 on codex/dev7')
   assert.deepEqual(smokeResult.manualAcceptanceTemplate, {
     dashboardUseful: null,
     petSpeechNoiseAcceptable: null,

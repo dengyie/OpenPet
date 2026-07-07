@@ -77,6 +77,40 @@ test('codex adapter hashes session ids and redacts project paths', () => {
   assert.equal(event.message.includes('sk-test123'), false)
 })
 
+test('codex adapter preserves bounded visible info fields without raw local details', () => {
+  const event = normalizeCodexEvent({
+    sessionId: 'codex-session-visible-info',
+    type: 'turn.usage',
+    cwd: '/Users/mango/private/project/OpenPet',
+    usage: {
+      input_tokens: 1200,
+      output_tokens: 300,
+      total_tokens: 1500,
+      context_window: 200000,
+      estimated_cost_usd: 0.012345
+    },
+    git: {
+      branch: 'codex/dev7',
+      dirty: true,
+      dirtyCount: 2,
+      ahead: 1,
+      behind: 0,
+      repository: 'OpenPet #111111'
+    },
+    summary: {
+      title: 'OpenPet on codex/dev7',
+      recentProgressHint: 'Working in /Users/mango/private/project/OpenPet'
+    }
+  }, { now: () => '2026-07-07T00:00:00.000Z' })
+
+  assert.equal(event.usage.totalTokens, 1500)
+  assert.equal(event.usage.contextUsedPercent, 0.75)
+  assert.equal(event.git.branch, 'codex/dev7')
+  assert.equal(event.git.dirtyCount, 2)
+  assert.equal(event.summary.title, 'OpenPet on codex/dev7')
+  assert.equal(JSON.stringify(event).includes('/Users/mango/private'), false)
+})
+
 test('codex hook adapter maps bounded tool and approval progress without storing raw local details', () => {
   const event = normalizeCodexHookEvent({
     session_id: 'codex-session-raw',
@@ -104,6 +138,40 @@ test('codex hook adapter maps bounded tool and approval progress without storing
   assert.match(event.project, /^OpenPet #[a-f0-9]{6}$/)
   assert.equal(JSON.stringify(event).includes('/Users/mango/private'), false)
   assert.equal(JSON.stringify(event).includes('sk-test123'), false)
+})
+
+test('codex hook adapter accepts bounded usage and git visible info fields', () => {
+  const event = normalizeCodexHookEvent({
+    session_id: 'codex-session-hook-visible-info',
+    hook_event_name: 'PostToolUse',
+    tool_name: 'exec_command',
+    cwd: '/Users/mango/private/project/OpenPet',
+    usage: {
+      inputTokens: 2000,
+      outputTokens: 500,
+      totalTokens: 2500,
+      contextWindow: 200000,
+      estimatedCostUsd: 0.02
+    },
+    git: {
+      branch: 'codex/dev7',
+      dirty: false,
+      dirtyCount: 0,
+      repository: 'OpenPet #111111'
+    },
+    summary: {
+      title: 'OpenPet on codex/dev7',
+      currentStep: 'post tool',
+      recentProgressHint: 'Completed exec_command'
+    }
+  }, { now: () => '2026-07-07T00:00:00.000Z' })
+
+  assert.equal(event.usage.totalTokens, 2500)
+  assert.equal(event.usage.contextUsedPercent, 1.25)
+  assert.equal(event.git.branch, 'codex/dev7')
+  assert.equal(event.git.dirty, false)
+  assert.equal(event.summary.recentProgressHint, 'Completed exec_command')
+  assert.equal(JSON.stringify(event).includes('/Users/mango/private'), false)
 })
 
 test('codex rollout poller derives only safe lifecycle events from JSONL', async () => {
@@ -139,6 +207,61 @@ test('codex rollout poller derives only safe lifecycle events from JSONL', async
   })
   await poller.scanOnce()
   assert.equal(emitted.length, 4)
+})
+
+test('codex rollout poller derives safe usage and git metadata from metadata-only records', () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-visible-info-'))
+  const sessionsDir = path.join(codexHome, 'sessions')
+  fs.mkdirSync(sessionsDir, { recursive: true })
+  const filePath = path.join(sessionsDir, 'rollout-2026-07-07T00-00-00-visible-info.jsonl')
+  fs.writeFileSync(filePath, [
+    JSON.stringify({ type: 'session_meta', timestamp: '2026-07-07T00:00:00.000Z', payload: { id: 'raw-visible-1', cwd: '/Users/mango/private/project/OpenPet' } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-07-07T00:00:01.000Z', payload: { type: 'token_count', input_tokens: 1200, output_tokens: 300, total_tokens: 1500, context_window: 200000, estimated_cost_usd: 0.012345 } }),
+    JSON.stringify({ type: 'turn_context', timestamp: '2026-07-07T00:00:02.000Z', payload: { cwd: '/Users/mango/private/project/OpenPet' } })
+  ].join('\n'))
+
+  const events = readRolloutEvents({
+    filePath,
+    gitSummaryProvider: () => ({
+      branch: 'codex/dev7',
+      dirty: true,
+      dirtyCount: 2,
+      ahead: 1,
+      behind: 0,
+      repository: 'OpenPet #111111'
+    })
+  })
+
+  assert.deepEqual(events.map((event) => event.type), ['session.discovered', 'turn.usage', 'project.git'])
+  assert.equal(events[1].usage.totalTokens, 1500)
+  assert.equal(events[1].usage.contextUsedPercent, 0.75)
+  assert.equal(events[2].git.branch, 'codex/dev7')
+  assert.equal(events[2].summary.title, 'OpenPet #111111 on codex/dev7')
+  assert.equal(JSON.stringify(events).includes('/Users/mango/private'), false)
+})
+
+test('codex rollout poller skips git metadata when provider fails without dropping other safe events', () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-git-provider-fail-'))
+  const sessionsDir = path.join(codexHome, 'sessions')
+  fs.mkdirSync(sessionsDir, { recursive: true })
+  const filePath = path.join(sessionsDir, 'rollout-2026-07-07T00-00-00-git-provider-fail.jsonl')
+  fs.writeFileSync(filePath, [
+    JSON.stringify({ type: 'session_meta', timestamp: '2026-07-07T00:00:00.000Z', payload: { id: 'raw-visible-2', cwd: '/Users/mango/private/project/OpenPet' } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-07-07T00:00:01.000Z', payload: { type: 'token_count', input_tokens: 100, output_tokens: 50, total_tokens: 150 } }),
+    JSON.stringify({ type: 'turn_context', timestamp: '2026-07-07T00:00:02.000Z', payload: { cwd: '/Users/mango/private/project/OpenPet' } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-07-07T00:00:03.000Z', payload: { type: 'task_complete' } })
+  ].join('\n'))
+
+  const events = readRolloutEvents({
+    filePath,
+    gitSummaryProvider: () => {
+      throw new Error('git unavailable at /Users/mango/private/project/OpenPet')
+    }
+  })
+
+  assert.deepEqual(events.map((event) => event.type), ['session.discovered', 'turn.usage', 'turn.completed'])
+  assert.equal(events[1].usage.totalTokens, 150)
+  assert.equal(JSON.stringify(events).includes('/Users/mango/private'), false)
 })
 
 test('codex rollout poller maps safe tool-end lifecycle records without exposing payload content', () => {
@@ -417,6 +540,50 @@ test('session store clears approval state after the session leaves the approval 
   assert.equal(session.status, 'completed')
   assert.equal(session.approvalState, '')
   assert.equal(session.history[1].approvalState, '')
+})
+
+test('session store preserves bounded usage git and summary metadata', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-visible-info-'))
+  const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 4 })
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'working',
+    type: 'turn.usage',
+    project: 'OpenPet #111111',
+    usage: {
+      inputTokens: 1200,
+      outputTokens: 300,
+      cachedInputTokens: 100,
+      totalTokens: 1500,
+      contextWindow: 200000,
+      estimatedCostUsd: 0.012345,
+      currency: 'USD'
+    },
+    git: {
+      branch: 'codex/dev7',
+      dirty: true,
+      dirtyCount: 2,
+      ahead: 1,
+      behind: 0,
+      repository: 'OpenPet #111111'
+    },
+    summary: {
+      title: 'OpenPet on codex/dev7',
+      currentStep: 'turn.usage',
+      recentProgressHint: 'Working in OpenPet'
+    },
+    timestamp: '2026-07-07T00:00:00.000Z'
+  })
+
+  const session = store.listSessions()[0]
+  assert.equal(session.usage.totalTokens, 1500)
+  assert.equal(session.usage.contextUsedPercent, 0.75)
+  assert.equal(session.git.branch, 'codex/dev7')
+  assert.equal(session.git.dirty, true)
+  assert.equal(session.summary.title, 'OpenPet on codex/dev7')
+  assert.equal(session.history[0].usage.totalTokens, 1500)
+  assert.equal(JSON.stringify(session).includes('/Users/mango'), false)
 })
 
 test('state mapper rate-limits repeat speech for the same session and status', () => {

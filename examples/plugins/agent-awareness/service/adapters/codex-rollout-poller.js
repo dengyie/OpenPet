@@ -3,6 +3,8 @@ const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 const { toProjectLabel } = require('./codex')
+const { readGitSummary } = require('../git-summary')
+const { normalizeUsageSummary } = require('../usage-summary')
 
 const DEFAULT_SCAN_INTERVAL_MS = 3000
 const DEFAULT_MAX_FILES = 24
@@ -197,7 +199,13 @@ const classifyIgnoredRecord = ({ record }) => {
   return { bucket: 'unsupportedLifecycle', reason: `${topType}:${payloadType || 'unknown'}` }
 }
 
-const createEventFromRecord = ({ filePath, record, sessionMeta = {}, fallbackTimestamp }) => {
+const createEventFromRecord = ({
+  filePath,
+  record,
+  sessionMeta = {},
+  fallbackTimestamp,
+  gitSummaryProvider = ({ cwd }) => readGitSummary({ cwd })
+}) => {
   const payload = record?.payload || {}
   if (record?.type === 'session_meta') {
     return {
@@ -209,7 +217,50 @@ const createEventFromRecord = ({ filePath, record, sessionMeta = {}, fallbackTim
       timestamp: toIso(payload.timestamp || record.timestamp, fallbackTimestamp)
     }
   }
+  if (record?.type === 'turn_context') {
+    const cwd = payload.cwd || sessionMeta.cwd || ''
+    let git = null
+    try {
+      git = gitSummaryProvider({ cwd, record, sessionMeta })
+    } catch (_) {
+      git = null
+    }
+    if (!git) return null
+    const projectLabel = git.repository || toProjectLabel(cwd || sessionMeta.cwd || '')
+    return {
+      sessionId: sessionMeta.id || filePath,
+      type: 'project.git',
+      status: 'working',
+      message: 'Codex project git metadata updated.',
+      projectLabel,
+      git,
+      summary: {
+        title: git.branch && projectLabel ? `${projectLabel} on ${git.branch}` : projectLabel,
+        currentStep: 'project.git',
+        recentProgressHint: git.dirty ? `${git.dirtyCount || 0} changed files` : 'Working tree clean'
+      },
+      timestamp: toIso(record.timestamp, fallbackTimestamp)
+    }
+  }
   if (record?.type === 'event_msg') {
+    if (payload.type === 'token_count') {
+      const usage = normalizeUsageSummary(payload)
+      if (!usage) return null
+      return {
+        sessionId: sessionMeta.id || filePath,
+        type: 'turn.usage',
+        status: 'working',
+        message: 'Codex usage metadata updated.',
+        projectLabel: toProjectLabel(sessionMeta.cwd || ''),
+        usage,
+        summary: {
+          title: toProjectLabel(sessionMeta.cwd || ''),
+          currentStep: 'turn.usage',
+          recentProgressHint: usage.totalTokens != null ? `${usage.totalTokens} tokens observed` : 'Usage metadata updated'
+        },
+        timestamp: toIso(record.timestamp, fallbackTimestamp)
+      }
+    }
     if (payload.type === 'task_started') {
       return {
         sessionId: sessionMeta.id || filePath,
@@ -326,9 +377,17 @@ const createEventFromRecord = ({ filePath, record, sessionMeta = {}, fallbackTim
   return null
 }
 
-const readRolloutEvents = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => inspectRolloutFile({ filePath, maxLines }).events
+const readRolloutEvents = ({
+  filePath,
+  maxLines = DEFAULT_MAX_LINES,
+  gitSummaryProvider
+} = {}) => inspectRolloutFile({ filePath, maxLines, gitSummaryProvider }).events
 
-const inspectRolloutFile = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => {
+const inspectRolloutFile = ({
+  filePath,
+  maxLines = DEFAULT_MAX_LINES,
+  gitSummaryProvider
+} = {}) => {
   const lines = readTailLines({ filePath, maxLines })
   const events = []
   const malformedRecordKeys = []
@@ -352,7 +411,7 @@ const inspectRolloutFile = ({ filePath, maxLines = DEFAULT_MAX_LINES } = {}) => 
         cwd: record.payload?.cwd || ''
       }
     }
-    const event = createEventFromRecord({ filePath, record, sessionMeta, fallbackTimestamp })
+    const event = createEventFromRecord({ filePath, record, sessionMeta, fallbackTimestamp, gitSummaryProvider })
     if (event) {
       events.push({ event, recordKey })
       continue
@@ -382,6 +441,7 @@ const createCodexRolloutPoller = ({
   maxLines = DEFAULT_MAX_LINES,
   onEvent = async () => {},
   now = () => Date.now(),
+  gitSummaryProvider,
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval
 } = {}) => {
@@ -412,7 +472,7 @@ const createCodexRolloutPoller = ({
     try {
       for (const file of listRolloutFiles({ codexHome, maxFiles })) {
         scanned += 1
-        const inspection = inspectRolloutFile({ filePath: file.filePath, maxLines })
+        const inspection = inspectRolloutFile({ filePath: file.filePath, maxLines, gitSummaryProvider })
         for (const malformedKey of inspection.malformedRecordKeys) {
           if (seenMalformed.has(malformedKey)) continue
           seenMalformed.add(malformedKey)

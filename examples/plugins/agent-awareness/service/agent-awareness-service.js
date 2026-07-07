@@ -77,6 +77,10 @@ const sanitizePollerStatus = (status = {}) => ({
 const buildDiagnostics = ({ store, rolloutPoller }) => {
   const sessions = store.getStatus()
   const trackedSessions = store.listSessions()
+  const usageTotalTokens = trackedSessions.reduce((sum, session) => {
+    const totalTokens = Number(session?.usage?.totalTokens)
+    return sum + (Number.isFinite(totalTokens) ? totalTokens : 0)
+  }, 0)
   const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
   return {
     sessionCount: sessions.sessions || 0,
@@ -88,6 +92,7 @@ const buildDiagnostics = ({ store, rolloutPoller }) => {
     unknownRecordCount: codexPoller.unknownRecordCount || 0,
     malformedRecordCount: codexPoller.malformedRecordCount || 0,
     unsupportedLifecycleRecordCount: codexPoller.unsupportedLifecycleRecordCount || 0,
+    usageTotalTokens,
     lastEventAt: sessions.lastEventAt || '',
     lastScanAt: codexPoller.lastScanAt || '',
     lastError: codexPoller.lastError || ''

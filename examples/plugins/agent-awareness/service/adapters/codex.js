@@ -1,5 +1,7 @@
 const crypto = require('crypto')
 const path = require('path')
+const { normalizeGitSummary } = require('../git-summary')
+const { normalizeUsageSummary } = require('../usage-summary')
 
 const TYPE_STATUS_MAP = new Map([
   ['session.discovered', 'idle'],
@@ -53,25 +55,53 @@ const toNullableNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+const normalizeVisibleSummary = ({ summary = {}, project = '', type = '', message = '', progressLabel = '', git = null } = {}) => {
+  const source = summary && typeof summary === 'object' ? summary : {}
+  const title = sanitizeText(source.title || '', 120) || (
+    project && git?.branch ? `${project} on ${git.branch}` : project
+  )
+  const currentStep = sanitizeText(source.currentStep || type, 80)
+  const recentProgressHint = sanitizeText(source.recentProgressHint || progressLabel || message || '', 160)
+  const normalized = { title, currentStep, recentProgressHint }
+  return Object.values(normalized).some(Boolean) ? normalized : null
+}
+
 const normalizeCodexEvent = (payload = {}, { now = () => new Date().toISOString() } = {}) => {
   const rawSessionId = payload.sessionId || payload.session_id || payload.conversationId || payload.filePath || 'unknown-session'
   const type = sanitizeText(payload.type || payload.event || payload.name || 'session.updated', 64)
   const project = sanitizeText(payload.projectLabel || '', 96) || toProjectLabel(payload.cwd || payload.workspace || payload.project || '')
+  const usage = normalizeUsageSummary(payload.usage || payload)
+  const git = normalizeGitSummary(payload.git || payload)
+  const message = sanitizeText(
+    payload.message || (typeof payload.summary === 'string' ? payload.summary : '') || payload.summaryText || payload.statusText || '',
+    160
+  )
+  const progressLabel = sanitizeText(payload.progressLabel || '', 120)
   return {
     adapter: 'codex',
     sessionId: hashSessionId(rawSessionId),
     status: normalizeStatus({ type, status: payload.status }),
     type,
-    message: sanitizeText(payload.message || payload.summary || payload.statusText || '', 160),
+    message,
     project,
     toolName: sanitizeText(payload.toolName || payload.tool || '', 64),
     phase: sanitizeText(payload.phase || '', 32),
-    progressLabel: sanitizeText(payload.progressLabel || '', 120),
+    progressLabel,
     progressStep: sanitizeText(payload.progressStep || '', 64),
     progressCurrent: toNullableNumber(payload.progressCurrent),
     progressTotal: toNullableNumber(payload.progressTotal),
     approvalState: sanitizeText(payload.approvalState || '', 32).toLowerCase(),
     lastSource: sanitizeText(payload.lastSource || payload.source || '', 32).toLowerCase(),
+    usage,
+    git,
+    summary: normalizeVisibleSummary({
+      summary: payload.summary,
+      project,
+      type,
+      message,
+      progressLabel,
+      git
+    }),
     active: payload.active === false ? false : undefined,
     timestamp: sanitizeText(payload.timestamp, 40) || now()
   }

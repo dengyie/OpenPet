@@ -15,6 +15,7 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 - Dual-channel Codex ingestion: zero-config rollout polling under `~/.codex/sessions` / `~/.codex/archived_sessions` plus optional shipped hooks.
 - Explicit `install-codex-hooks` / `uninstall-codex-hooks` commands for reversible, backup-safe Codex hook management.
 - Sanitized runtime session storage under `OPENPET_DATA_DIR/sessions.json`.
+- Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, and generated session summaries.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
 - A local dashboard, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
 
@@ -29,6 +30,9 @@ Stored and displayed data is intentionally narrow:
 - bounded runtime phase;
 - bounded event type;
 - project basename plus short hash;
+- numeric token/context/cost metadata when Codex exposes it as metadata;
+- git branch, dirty state, dirty count, and ahead/behind counts;
+- generated session summary title, current step, and recent progress hint;
 - bounded tool name;
 - bounded approval state;
 - bounded progress label, step, and counts;
@@ -114,4 +118,4 @@ Behavior:
 - The plugin exposes one config field today: `autoStartOnCodexSignal`, which is off by default and must be enabled explicitly.
 - The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness dashboard with `view=details`.
 - Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
-- The first dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, and diagnostics.
+- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, usage metadata, git metadata, generated session summaries, and diagnostics.

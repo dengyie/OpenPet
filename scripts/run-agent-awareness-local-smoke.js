@@ -80,7 +80,10 @@ const sanitizeSessions = (sessions = [], sampleLimit = DEFAULT_SAMPLE_LIMIT) => 
     project: sanitizeText(session?.project || '', 120),
     message: sanitizeText(session?.message || '', 160),
     timestamp: sanitizeText(session?.timestamp || '', 40),
-    eventCount: Array.isArray(session?.history) ? session.history.length : 0
+    eventCount: Array.isArray(session?.history) ? session.history.length : 0,
+    usage: sanitizePersistedValue(session?.usage || null),
+    git: sanitizePersistedValue(session?.git || null),
+    summary: sanitizePersistedValue(session?.summary || null)
   }))
 )
 
@@ -104,6 +107,7 @@ const createEmptyHealth = () => ({
     unknownRecordCount: 0,
     malformedRecordCount: 0,
     unsupportedLifecycleRecordCount: 0,
+    usageTotalTokens: 0,
     lastEventAt: '',
     lastScanAt: '',
     lastError: ''

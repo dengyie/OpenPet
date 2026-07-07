@@ -34,6 +34,17 @@ const createDashboardRuntime = ({
     return Number.isFinite(numeric) ? new Intl.NumberFormat('en-US').format(numeric) : '0'
   }
 
+  const formatPercent = (value) => {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? `${Math.round(numeric * 100) / 100}%` : ''
+  }
+
+  const formatCost = ({ amount, currency = 'USD' } = {}) => {
+    const numeric = Number(amount)
+    if (!Number.isFinite(numeric)) return ''
+    return `$${numeric.toFixed(6)} ${sanitizeDisplayText(currency || 'USD')}`
+  }
+
   const formatTimestamp = (value) => {
     if (!value) return 'No recent activity'
     const numeric = Date.parse(String(value))
@@ -67,6 +78,27 @@ const createDashboardRuntime = ({
     if (metadata > 0) parts.push(`${formatNumber(metadata)} metadata`)
     if (unsupported > 0) parts.push(`${formatNumber(unsupported)} unsupported`)
     return parts.length ? parts.join(' · ') : 'No ignored rollout records'
+  }
+
+  const describeUsage = (usage = {}) => {
+    if (!usage || typeof usage !== 'object') return 'No usage metadata yet'
+    const parts = []
+    if (Number.isFinite(Number(usage.totalTokens))) parts.push(`${formatNumber(usage.totalTokens)} tokens`)
+    if (Number.isFinite(Number(usage.contextUsedPercent))) parts.push(`${formatPercent(usage.contextUsedPercent)} context`)
+    const cost = formatCost({ amount: usage.estimatedCostUsd, currency: usage.currency })
+    if (cost) parts.push(cost)
+    return parts.length ? parts.join(' · ') : 'No usage metadata yet'
+  }
+
+  const describeGit = (git = {}) => {
+    if (!git || typeof git !== 'object') return 'No git metadata yet'
+    const branch = sanitizeDisplayText(git.branch || 'unknown branch')
+    const dirtyCount = Number(git.dirtyCount) || 0
+    const state = git.dirty ? `${formatNumber(dirtyCount)} files changed` : 'clean'
+    const remote = []
+    if (Number(git.ahead) > 0) remote.push(`ahead ${formatNumber(git.ahead)}`)
+    if (Number(git.behind) > 0) remote.push(`behind ${formatNumber(git.behind)}`)
+    return [branch, state, ...remote].filter(Boolean).join(' · ')
   }
 
   const getActiveSessionCount = (sessions = []) => sessions.filter((session) => {
@@ -106,6 +138,11 @@ const createDashboardRuntime = ({
           label: 'Hook Mode',
           value: summarizeHookMode(hookMode),
           detail: hookMode.ingestAuthRequired ? 'Bearer token required for POST /api/events' : 'Polling-only by default'
+        },
+        {
+          label: 'Usage Tokens',
+          value: formatNumber(diagnostics.usageTotalTokens),
+          detail: 'Sanitized metadata only'
         }
       ],
       healthRows: [
@@ -153,6 +190,10 @@ const createDashboardRuntime = ({
         timestamp: formatTimestamp(session.timestamp),
         status: getStatusMeta(session.status),
         lastEvent: session.type || 'session.updated',
+        usageText: describeUsage(session.usage),
+        gitText: describeGit(session.git),
+        summaryTitle: sanitizeDisplayText(session.summary?.title || session.project || 'Session summary'),
+        progressHint: sanitizeDisplayText(session.summary?.recentProgressHint || session.message || 'No progress hint yet'),
         timeline: Array.isArray(session.history)
           ? session.history.slice(-4).reverse().map((entry) => ({
             type: entry.type || 'session.updated',
@@ -216,6 +257,21 @@ const createDashboardRuntime = ({
           <p class="session-label">Last Event</p>
           <p class="session-event">${escapeHtml(sanitizeDisplayText(session.lastEvent))}</p>
           <p class="session-message">${escapeHtml(sanitizeDisplayText(session.message))}</p>
+        </div>
+        <div class="session-facts">
+          <div>
+            <p class="session-label">Session Summary</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(session.summaryTitle))}</p>
+            <p class="session-message">${escapeHtml(sanitizeDisplayText(session.progressHint))}</p>
+          </div>
+          <div>
+            <p class="session-label">Usage</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(session.usageText))}</p>
+          </div>
+          <div>
+            <p class="session-label">Git</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(session.gitText))}</p>
+          </div>
         </div>
         <div class="session-body">
           <p class="session-label">Recent Timeline</p>

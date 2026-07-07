@@ -39,9 +39,11 @@ examples/plugins/agent-awareness/
   service/
     agent-awareness-service.js
     bridge-client.js
+    git-summary.js
     runtime-session.js
     session-store.js
     state-mapper.js
+    usage-summary.js
     adapters/
       codex.js
       codex-hook.js
@@ -86,10 +88,12 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `examples/plugins/agent-awareness/service/adapters/codex-rollout-poller.js` | Reads bounded Codex rollout JSONL signal and counts ignored/unknown/malformed records. |
 | `examples/plugins/agent-awareness/service/adapters/codex.js` | Sanitizes rollout events, hashes session ids, and redacts project paths. |
 | `examples/plugins/agent-awareness/service/adapters/codex-hook.js` | Maps bounded hook payloads into the shared runtime-event shape. |
+| `examples/plugins/agent-awareness/service/git-summary.js` | Derives safe branch, dirty, ahead, and behind metadata from a local cwd without storing the cwd. |
+| `examples/plugins/agent-awareness/service/usage-summary.js` | Normalizes safe token/context/cost metadata from hook and rollout events. |
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session model. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists bounded runtime session summaries to plugin-owned storage. |
 | `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events and rate-limited speech. |
-| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction. |
+| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including usage, git, and generated session-summary metadata. |
 
 ### Core Touchpoints Outside The Plugin
 
@@ -124,7 +128,7 @@ Before reviving any of these paths as official surface area, update all of the f
 
 | Test file | What it protects |
 | --- | --- |
-| `tests/examples/agent-awareness-plugin.test.js` | Manifest contract, sanitization, hook normalization, rollout polling, runtime session store, service behavior, and the full hook command surface. |
+| `tests/examples/agent-awareness-plugin.test.js` | Manifest contract, sanitization, hook normalization, rollout polling, visible metadata extraction, runtime session store, service behavior, and the full hook command surface. |
 | `tests/services/agent-awareness-plugin-service.test.js` | Plugin discovery, native execution approval, Codex-signal auto-start gating, health-note formatting, command redaction, and command results. |
 | `tests/services/agent-awareness-bundled-integration.test.js` | Bundled sync behavior, enabled-by-default discovery, config-backed auto-start opt-in, stopped-by-default service state, and start/stop lifecycle. |
 | `tests/examples/agent-awareness-dashboard.test.js` | Dashboard state rendering and redaction logic. |
