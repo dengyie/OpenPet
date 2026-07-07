@@ -183,6 +183,15 @@ const createChecks = (docsRoot) => {
       failure: 'docs/README.md is missing the current agent-awareness design or plugin README entry.'
     },
     {
+      id: 'docs-readme-keeps-current-truth-routing',
+      description: 'docs/README.md should route current truth to live docs and demote historical phase/review/spec files to audit records.',
+      run: () =>
+        /Where should I read next\?/i.test(readme) &&
+        /Use the live docs above for current truth/i.test(readme) &&
+        /Phase, review, and old Superpowers plan\/spec files are audit records/i.test(readme),
+      failure: 'docs/README.md no longer clearly routes current truth to live docs while demoting historical records.'
+    },
+    {
       id: 'release-evidence-indexes-provider-and-release-truth',
       description: 'docs/README.md should index provider smoke and release-truth evidence classes.',
       run: () => /release-evidence\/.*ai-provider-smoke\/.*ai-talk-local-smoke\/.*agent-awareness-local-smoke\/.*creator-studio-provider-smoke\/.*release-public-assets\/.*packaged-runtime\/.*signed-release-closure\//is.test(readme),
@@ -193,6 +202,16 @@ const createChecks = (docsRoot) => {
       description: 'docs/README.md should link the release-evidence index entrypoint.',
       run: () => /release-evidence\/README\.md/i.test(readme),
       failure: 'docs/README.md is missing the release-evidence index entrypoint.'
+    },
+    {
+      id: 'creator-studio-keeps-image-fidelity-boundary',
+      description: 'Live docs should keep generated-pet image quality tied to original-image fidelity rather than provider smoke alone.',
+      run: () =>
+        /highly consistent with the user's original image/i.test(combined) &&
+        /recognizable identity[\s\S]*silhouette[\s\S]*palette[\s\S]*style[\s\S]*important visual traits/i.test(combined) &&
+        /Provider smoke[\s\S]*command\/data flow[\s\S]*not final visual fidelity proof/i.test(combined) &&
+        /frame\/atlas QA[\s\S]*structural import-readiness[\s\S]*not human visual fidelity proof/i.test(combined),
+      failure: 'Live docs no longer keep generated-pet image quality tied to original-image fidelity and manual/future visual acceptance.'
     },
     {
       id: 'handoff-links-release-evidence-index',

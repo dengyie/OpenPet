@@ -33,6 +33,7 @@ Use this file for open work and priority changes. Keep phase docs, reviews, and 
 - [ ] Keep `PetService` as the single source of truth for pet state and action/event flows.
 - [ ] Keep all new user-facing configuration in Control Center rather than manual file edits.
 - [ ] Keep API keys and provider credentials out of renderer and ordinary plugin contexts.
+- [ ] Keep generated-pet quality claims tied to human or future automated review against the user's original image; provider smoke and atlas QA are not production asset-quality approval by themselves.
 - [ ] Keep extension security language conservative: permission-limited and isolated does not mean fully sandboxed or universally safe.
 
 ## Current Baseline

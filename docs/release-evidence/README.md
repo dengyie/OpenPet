@@ -17,6 +17,8 @@ This directory is the maintainer entrypoint for archived evidence artifacts.
 - Signed release closure audits: [`signed-release-closure/`](./signed-release-closure/)
 - Community-source discovery and intake: [`plugin-community-source-discovery-report/`](./plugin-community-source-discovery-report/), [`plugin-community-source-intake-report/`](./plugin-community-source-intake-report/), [`plugin-community-source-invitation-kit/`](./plugin-community-source-invitation-kit/)
 
+Creator Studio provider smoke archives prove provider reachability, command/data flow, and generated asset pipeline wiring. They do not prove final pet visual identity or production asset quality; generated pets still require human review or a future explicit visual-fidelity gate against the user's original image.
+
 ## Supporting Rehearsals And Tooling Evidence
 
 - Plugin author rehearsal: [`plugin-author-rehearsal/`](./plugin-author-rehearsal/)

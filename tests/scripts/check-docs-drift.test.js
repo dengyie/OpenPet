@@ -82,8 +82,8 @@ test('checkDocsDrift fails when docs map stops indexing the agent-awareness cano
   fs.writeFileSync(
     readmePath,
     readme.replace(
-      /\| Agent awareness and ClaudePet-inspired development route \| .* \|/,
-      '| Agent awareness and ClaudePet-inspired development route | documentation pending |'
+      /\| Agent Awareness current program \| .* \|/,
+      '| Agent Awareness current program | documentation pending |'
     ),
     'utf-8'
   )
@@ -92,6 +92,24 @@ test('checkDocsDrift fails when docs map stops indexing the agent-awareness cano
 
   assert.equal(result.ok, false)
   assert.match(result.errors.join('\n'), /agent-awareness design|plugin README/i)
+})
+
+test('checkDocsDrift fails when docs map stops routing current truth to live docs', () => {
+  const docsRoot = createDocsFixture()
+  const readmePath = path.join(docsRoot, 'README.md')
+  const readme = fs.readFileSync(readmePath, 'utf-8')
+  fs.writeFileSync(
+    readmePath,
+    readme
+      .replace(/It answers: Where should I read next\?\n\n/, '')
+      .replace(/Use the live docs above for current truth\.[\s\S]*?active runbooks\.\n\n/, ''),
+    'utf-8'
+  )
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /current truth|audit records/i)
 })
 
 test('checkDocsDrift fails when docs map stops linking the release-evidence index', () => {
@@ -181,6 +199,32 @@ test('checkDocsDrift fails when handoff stops separating synthetic rehearsals fr
 
   assert.equal(result.ok, false)
   assert.match(result.errors.join('\n'), /synthetic rehearsal boundaries/i)
+})
+
+test('checkDocsDrift fails when generated pet image fidelity boundary disappears', () => {
+  const docsRoot = createDocsFixture()
+  for (const relativePath of LIVE_DOC_FILES) {
+    const filePath = path.join(docsRoot, relativePath)
+    const content = fs.readFileSync(filePath, 'utf-8')
+    fs.writeFileSync(
+      filePath,
+      content
+        .replace(/highly consistent with the user's original image/gi, 'good enough for a pet pack')
+        .replace(/recognizable identity/gi, 'general identity')
+        .replace(/silhouette/gi, 'outline')
+        .replace(/palette/gi, 'colors')
+        .replace(/style/gi, 'look')
+        .replace(/important visual traits/gi, 'visual features')
+        .replace(/not final visual fidelity proof/gi, 'final visual fidelity proof')
+        .replace(/not human visual fidelity proof/gi, 'human visual fidelity proof'),
+      'utf-8'
+    )
+  }
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /generated-pet image quality|original-image fidelity/i)
 })
 
 test('checkDocsDrift fails when testing-strategy stops describing the live-doc truth suite', () => {

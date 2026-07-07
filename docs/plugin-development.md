@@ -85,6 +85,8 @@ OpenPet should preserve structural safety:
 
 The example intentionally uses a deterministic fixture backend first. Creator Studio now treats model-backed generation as one host-owned `provider` path while still accepting legacy `cloud` / `local` inputs as compatibility aliases. When Creator Studio uses model-backed generation, that generation remains host-managed: the command gets a short-lived bridge token for bounded host routes, OpenPet keeps provider credentials in main-process secret storage, and plugin-managed provider credentials are currently unsupported in the author-facing trust model.
 
+Provider-backed generation evidence proves the host bridge, provider call, and asset QA pipeline are wired. It does not prove final pet visual identity; production-quality generated pets still require human review or a future explicit visual-fidelity gate showing the output stays highly consistent with the user's original image.
+
 ## Manifest Shape
 
 Use this first-version shape for new extension design:

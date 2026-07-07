@@ -47,6 +47,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 - Creator Studio image Provider smoke evidence now also has a repeatable CLI entry point: `npm run smoke:creator-studio-provider -- --prompt <text> [--user-data-dir <dir>] [--output-dir <dir>] [--width <n>] [--height <n>] [--timeout-ms <n>] [--skip-health-check]`. It reuses the saved host image Provider config and secret, runs the OpenPet prompt builder plus provider image generation plus action-frame QA chain, and writes a sanitized session report without raw API keys.
 - AI Provider smoke evidence for the user's OpenPet development gateway is archived under `docs/release-evidence/ai-provider-smoke/2026-06-28T11-08-10Z-openpet-gateway/`: `/models` exposed `gpt-5.5` and `gpt-image-2`, and `gpt-5.5` passed chat completion smoke; image generation was intentionally skipped.
 - Creator Studio provider smoke evidence for the user's OpenPet development gateway is archived under `docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/`: the saved host-owned `gpt-image-2` configuration passed health check, returned one source PNG after about `265s` using requested `512x512` generation constraints, and passed 16-frame action QA with zero warnings under a temporary `420000ms` timeout override.
+- Provider smoke and frame/atlas QA prove command/data flow and structural import readiness; production-quality pet generation still requires generated output to remain highly consistent with the user's original image, including recognizable identity, silhouette, palette, style, and important visual traits.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, conservative legacy `settings.ai.conversations.control-center` migration, active pet-pack refresh signals for AI pane and desktop chat, redacted trace diagnostics export with pet-pack and conversation filters, trace-filter rebinding when the active pet-pack changes, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, provider behavior `reason` / `displayMode` preservation through behavior decisions, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Bubble chat is now the default lightweight pet dialogue surface, with the standalone desktop chat positioned as an extended panel for longer history and advanced interaction.
@@ -155,6 +156,7 @@ Current state:
 - `scripts/run-creator-studio-provider-smoke.js` and `npm run smoke:creator-studio-provider` provide a sanitized host-side smoke path for confirming that the saved Creator Studio image Provider configuration can complete prompt build, provider generation, and action-frame QA using the same main-process services that own secrets and output writes; smoke operators can tune width, height, and a temporary per-run timeout without persisting those overrides back into saved settings.
 - The user's current OpenPet gateway has archived sanitized evidence confirming that `gpt-5.5` and `gpt-image-2` are discoverable model ids and that `gpt-5.5` can complete a chat smoke request.
 - The user's current OpenPet gateway also has archived sanitized Creator Studio smoke evidence confirming that the saved host-owned `gpt-image-2` image Provider path can complete prompt build, real provider generation, and action-frame QA end to end when the smoke run is given a `420000ms` timeout and `512x512` generation constraints.
+- That Creator Studio provider smoke is command/data flow evidence, not final visual fidelity proof; frame/atlas QA is structural import-readiness evidence, not human visual fidelity proof.
 
 P1 work:
 
@@ -170,7 +172,7 @@ P2/P3:
 Manual-required:
 
 - Real cloud/local provider smoke evidence for each supported provider preset.
-- Human review of generated image quality and contact-sheet readability before treating `gpt-image-2` output as production asset-quality evidence.
+- Human review that generated image output stays highly consistent with the user's original image, including recognizable identity, silhouette, palette, style, and important visual traits, before treating `gpt-image-2` output as production asset-quality evidence.
 
 ### 2. AI Talk And Pet Chat
 
@@ -305,7 +307,7 @@ P2/P3:
 
 Manual-required:
 
-- Human review of generated pet/action quality before claiming production asset quality.
+- Human review of generated pet/action quality before claiming production asset quality, especially original-image fidelity for full-pet generation.
 
 ### 5. Plugin Host Bridge And Security
 

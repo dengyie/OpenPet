@@ -40,6 +40,7 @@
 
 ```bash
 node --test tests/scripts/run-agent-awareness-local-smoke.test.js
+node --test tests/scripts/mock-agent-awareness-flow.test.js
 node --test tests/examples/agent-awareness-plugin.test.js tests/examples/agent-awareness-dashboard.test.js tests/examples/agent-awareness-dashboard-browser.test.js
 npm run check:docs-drift
 ```
@@ -47,6 +48,7 @@ npm run check:docs-drift
 通过标准：
 
 - 本地 smoke 脚本测试通过
+- mock smoke/archive/update 演练通过，并在不启动 OpenPet 的前提下覆盖数据流闭环
 - 现有 agent-awareness 运行时 / dashboard 回归通过
 - 文档漂移检查通过
 

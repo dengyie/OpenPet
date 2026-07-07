@@ -1,6 +1,8 @@
 # OpenPet Documentation Map
 
-This is the maintainer entry point for project documentation. The goal is to keep a small set of live operating docs current and treat the rest of `docs/` as background or audit history.
+This is the maintainer entry point for project documentation. It answers: Where should I read next?
+
+The goal is to keep a small set of live operating docs current and treat the rest of `docs/` as background or audit history.
 
 ## Current Docs
 
@@ -16,15 +18,16 @@ This is the maintainer entry point for project documentation. The goal is to kee
 | Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
 | Compact product and release snapshot | [`project-status-review.md`](./project-status-review.md) |
 
+Use the live docs above for current truth. Phase, review, and old Superpowers plan/spec files are audit records unless this map explicitly lists them as active runbooks.
+
 ## Product Areas
 
 | Area | Canonical docs |
 | --- | --- |
-| Agent Awareness program entry | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](./superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md) |
+| Agent Awareness current program | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md), [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
+| Agent Awareness implementation history | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md), [`superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](./superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md), [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md), [`phases/phase-107-agent-awareness-bundled-plugin.md`](./phases/phase-107-agent-awareness-bundled-plugin.md), [`reviews/phase-107-agent-awareness-bundled-plugin-review.md`](./reviews/phase-107-agent-awareness-bundled-plugin-review.md) |
 | Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md), [`phases/phase-104-plugin-community-source-discovery-report.md`](./phases/phase-104-plugin-community-source-discovery-report.md), [`phases/phase-105-plugin-community-source-invitation-kit.md`](./phases/phase-105-plugin-community-source-invitation-kit.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
-| Agent awareness and ClaudePet-inspired development route | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md), [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md), [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
-| Agent awareness implementation reference | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md), [`phases/phase-107-agent-awareness-bundled-plugin.md`](./phases/phase-107-agent-awareness-bundled-plugin.md), [`reviews/phase-107-agent-awareness-bundled-plugin-review.md`](./reviews/phase-107-agent-awareness-bundled-plugin-review.md) |
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
 | AI Talk and pet dialogue | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md), [`superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md`](./superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md), [`superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md`](./superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md) |
 | Control Center visual design notes | [`design-system/cursor-settings.md`](./design-system/cursor-settings.md) |

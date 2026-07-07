@@ -435,8 +435,15 @@ node --test tests/services/agent-awareness-plugin-service.test.js
 node --test tests/services/agent-awareness-bundled-integration.test.js
 node --test tests/services/plugin-service.test.js
 node --test tests/scripts/run-agent-awareness-local-smoke.test.js
+node --test tests/scripts/mock-agent-awareness-flow.test.js
 npm run check:docs-drift
 ```
+
+`tests/scripts/mock-agent-awareness-flow.test.js` is the synthetic preflight for
+the archive chain: it drives mock Codex rollout data through smoke generation,
+archive creation, and manual-acceptance write-back without launching OpenPet.
+It proves tool wiring and redacted data flow only; it does not replace the real
+session smoke or the later human desktop review.
 
 ### Real-Session Smoke
 

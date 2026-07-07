@@ -353,6 +353,31 @@ test('live docs describe the bundled agent-awareness baseline truthfully', () =>
   )
 })
 
+test('docs README routes current truth to live docs and treats history as audit records', () => {
+  const docsReadme = fs.readFileSync(path.join(repoRoot, 'docs/README.md'), 'utf-8')
+
+  assert.match(
+    docsReadme,
+    /Where should I read next\?/i,
+    'docs/README.md should introduce itself as the navigation hub'
+  )
+  assert.match(
+    docsReadme,
+    /Use the live docs above for current truth/i,
+    'docs/README.md should route current facts to live docs'
+  )
+  assert.match(
+    docsReadme,
+    /Phase, review, and old Superpowers plan\/spec files are audit records/i,
+    'docs/README.md should demote historical phase, review, and old plan/spec docs to audit records'
+  )
+  assert.match(
+    docsReadme,
+    /\| Agent Awareness current program \|[\s\S]*agent-awareness-development-design\.md[\s\S]*examples\/plugins\/agent-awareness\/README\.md[\s\S]*2026-07-03-agent-awareness-real-codex-acceptance-runbook\.md/i,
+    'docs/README.md should keep one current Agent Awareness program row with the design, plugin README, and active runbook'
+  )
+})
+
 test('live docs describe the current plugin host bridge generation boundary truthfully', () => {
   const context = readProjectContext()
   const facts = context.currentFacts.join('\n')
