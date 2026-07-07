@@ -226,6 +226,50 @@ test('agent awareness dashboard load applies location detail query', async () =>
   assert.deepEqual(viewModel.sessions.map((session) => session.sessionId), ['target-session'])
 })
 
+test('agent awareness dashboard renders safe per-session focus links', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 1,
+        totalEvents: 2,
+        seenCount: 2
+      }
+    },
+    sessionsPayload: {
+      sessions: [
+        {
+          sessionId: 'target-session',
+          project: 'OpenPet #111111',
+          status: 'working',
+          type: 'tool.started',
+          message: 'Target session',
+          timestamp: '2026-07-07T00:00:00.000Z'
+        },
+        {
+          sessionId: 'abc"><script>alert(1)</script>',
+          project: 'Unsafe #222222',
+          status: 'waiting',
+          type: 'approval.requested',
+          message: 'Unsafe session id should stay escaped',
+          timestamp: '2026-07-07T00:00:01.000Z'
+        }
+      ]
+    }
+  })
+
+  const rendered = runtime.renderDashboard(viewModel)
+
+  assert.equal(viewModel.sessions[0].detailHref, '?view=details&sessionId=target-session')
+  assert.equal(viewModel.sessions[1].detailHref, '?view=details&sessionId=abc%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E')
+  assert.match(rendered.sessionsHtml, /data-testid="agent-session-focus"/)
+  assert.match(rendered.sessionsHtml, /href="\?view=details&amp;sessionId=target-session"/)
+  assert.match(rendered.sessionsHtml, /href="\?view=details&amp;sessionId=abc%22%3E%3Cscript%3Ealert\(1\)%3C%2Fscript%3E"/)
+  assert.doesNotMatch(rendered.sessionsHtml, /<script>/)
+  assert.doesNotMatch(rendered.sessionsHtml, /javascript:/i)
+})
+
 test('agent awareness dashboard renders safe empty state for missing detail session', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const viewModel = runtime.buildDashboardViewModel({

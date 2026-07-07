@@ -286,6 +286,33 @@ button:hover {
   margin-bottom: 14px;
 }
 
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.session-detail-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.session-detail-link:hover {
+  border-color: var(--accent);
+}
+
 .session-project {
   font-size: 16px;
   line-height: 1.3;

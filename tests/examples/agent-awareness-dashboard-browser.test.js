@@ -98,6 +98,7 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
     assert.match(sessionsText || '', /\[local-url\]/)
     assert.match(sessionsText || '', /Finished \[path\]/)
     assert.equal(sessionCount, 2)
+    assert.equal(await page.locator('[data-testid="agent-session-focus"]').count(), 2)
     assert.equal(pageText.includes('/Users/mango/private'), false)
     assert.equal(pageText.includes('127.0.0.1:8795'), false)
     assert.equal(pageText.includes('sk-test123'), false)
@@ -106,7 +107,12 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
     const targetSession = service.store.listSessions().find((session) => session.message.includes('Need approval'))
     assert.ok(targetSession?.sessionId)
 
-    await page.goto(`http://127.0.0.1:${port}/?view=details&sessionId=${encodeURIComponent(targetSession.sessionId)}`, { waitUntil: 'networkidle' })
+    await page
+      .locator('[data-testid="agent-session"]')
+      .filter({ hasText: 'Need approval' })
+      .locator('[data-testid="agent-session-focus"]')
+      .click()
+    await page.waitForURL(`http://127.0.0.1:${port}/?view=details&sessionId=${encodeURIComponent(targetSession.sessionId)}`)
     await page.waitForSelector('[data-testid="agent-sessions"] [data-testid="agent-session"]')
 
     const focusedSessionsText = await page.textContent('[data-testid="agent-sessions"]')

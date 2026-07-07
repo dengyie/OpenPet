@@ -80,6 +80,8 @@ const createDashboardRuntime = ({
     }
   }
 
+  const buildDetailHref = (sessionId = '') => `?view=details&sessionId=${encodeURIComponent(normalizeQueryText(sessionId, 128))}`
+
   const getCurrentDashboardQuery = () => normalizeDashboardQuery(locationRef?.search || '')
 
   const formatTimestamp = (value) => {
@@ -240,6 +242,7 @@ const createDashboardRuntime = ({
         }
       ],
       sessions: visibleSessions.map((session) => ({
+        detailHref: buildDetailHref(session.sessionId || ''),
         project: sanitizeDisplayText(session.project || 'Unknown project'),
         sessionId: session.sessionId || '',
         message: sanitizeDisplayText(session.message || 'No sanitized message'),
@@ -313,7 +316,10 @@ const createDashboardRuntime = ({
             <p class="session-project">${escapeHtml(sanitizeDisplayText(session.project))}</p>
             <p class="session-meta">${escapeHtml(sanitizeDisplayText(session.sessionId))} · ${escapeHtml(session.timestamp)}</p>
           </div>
-          <span class="status-badge tone-${escapeHtml(session.status.tone)}">${escapeHtml(session.status.label)}</span>
+          <div class="session-actions">
+            <a class="session-detail-link" data-testid="agent-session-focus" href="${escapeHtml(session.detailHref || buildDetailHref(session.sessionId))}" aria-label="Focus sanitized session details">Focus</a>
+            <span class="status-badge tone-${escapeHtml(session.status.tone)}">${escapeHtml(session.status.label)}</span>
+          </div>
         </header>
         <div class="session-body">
           <p class="session-label">Last Event</p>
