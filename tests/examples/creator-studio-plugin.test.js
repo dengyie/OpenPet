@@ -454,6 +454,7 @@ test('creator studio generation task preserves sanitized action asset protocol f
       animationType: 'emote',
       viewDirection: 'front-facing with token=secret',
       loopType: 'short loop',
+      synthesisMode: 'canonical-frame',
       animatedParts: ['eyes', 'small facial expression change', ''],
       lockedParts: ['body center', 'feet/base', 'http://127.0.0.1:8317/private'],
       secondaryMotion: ['tiny head bob only'],
@@ -468,6 +469,7 @@ test('creator studio generation task preserves sanitized action asset protocol f
 
   const action = task.actions[0]
   assert.equal(action.animationType, 'emote')
+  assert.equal(action.synthesisMode, 'canonical-frame')
   assert.equal(action.viewDirection, 'front-facing with [redacted-token]=[redacted-secret]')
   assert.deepEqual(action.animatedParts, ['eyes', 'small facial expression change'])
   assert.deepEqual(action.lockedParts, ['body center', 'feet/base', '[redacted-local-url]'])
@@ -669,6 +671,42 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.providerPrompt, /Forbidden motion:/)
   assert.match(built.providerPrompt, /Match the current character style as closely as possible\./)
   assert.match(built.providerPrompt, /programmatically sliced/i)
+})
+
+test('creator studio prompt builder emits canonical source instructions for canonical-frame synthesis', () => {
+  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+  const generationTask = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    characterBrief: 'Keep the same golden cat identity.',
+    actions: [{
+      actionId: 'wave',
+      name: 'Wave',
+      motionPrompt: 'wave one front paw',
+      frameCount: 6,
+      synthesisMode: 'canonical-frame',
+      triggerProposal: { type: 'click', binding: 'clickAction' }
+    }]
+  })
+
+  const built = buildOpenPetImagePrompt({
+    run: {
+      petId: 'golden-cat',
+      input: {
+        prompt: 'Keep the same golden cat identity.',
+        generationTask
+      }
+    },
+    backend: 'provider',
+    model: 'gpt-image-2'
+  })
+
+  assert.equal(built.actionId, 'wave')
+  assert.match(built.providerPrompt, /canonical full-body source frame/i)
+  assert.match(built.providerPrompt, /OpenPet will synthesize bounded local motion/i)
+  assert.doesNotMatch(built.providerPrompt, /3 columns x 2 rows grid/i)
 })
 
 test('creator studio prompt builder emits a generic OpenPet action asset protocol for wave actions', () => {

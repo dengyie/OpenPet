@@ -1,22 +1,12 @@
 const fs = require('fs')
 const path = require('path')
 const { getBackendAdapter } = require('./backend-adapters')
+const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
+const { generateViaHostModelBridge } = require('./host-model-bridge')
 const {
-  appendRunLog,
-  createGenerationLease,
-  createGenerationLeaseHeartbeat,
-  readRun,
-  updateRunStatus,
-  writeRun
-} = require('./run-store')
-const {
-  generateViaHostModelBridge,
-  regenerateFullPetActionsViaHostModelBridge
-} = require('./host-model-bridge')
-const {
+  buildActionFramesFromGeneratedImage,
   buildCanonicalActionFramesFromGeneratedImage
 } = require('./action-frame-builder')
-const { assertActionFrameQaPassed } = require('./action-frame-qa')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const { loadPetGenerationGovernance } = require('./pet-generation-governance')
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
@@ -121,7 +111,11 @@ const isHostGeneratedSingleActionRun = (run) => (
   run.generationTask.actions.length > 0
 )
 
-const getActionFrameBuilder = () => buildCanonicalActionFramesFromGeneratedImage
+const getActionFrameBuilder = (action = {}) => (
+  action?.synthesisMode === 'canonical-frame'
+    ? buildCanonicalActionFramesFromGeneratedImage
+    : buildActionFramesFromGeneratedImage
+)
 
 const persistGeneratedImageAttempt = ({ dataDir, run, generationResult, now }) => {
   const currentRun = readRun({ dataDir, runId: run.runId })

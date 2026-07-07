@@ -1014,6 +1014,48 @@ test('action frame builder accepts subtle waving sheets with stable anchors', as
   assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
 })
 
+test('canonical action synthesis creates stable local-motion frames from one approved source', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await writeSingleCatFrame({
+    filePath: path.join(sourceDir, '0001.png'),
+    width: 1024,
+    height: 1024
+  })
+
+  const result = await buildCanonicalActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'canonical-wave',
+      name: 'Canonical Wave',
+      frameCount: 6,
+      loop: false,
+      synthesisMode: 'canonical-frame'
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/canonical-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, true)
+  assert.equal(qa.extraction.mode, 'canonical-local-synthesis')
+  assert.equal(qa.synthesis.mode, 'canonical-frame')
+  assert.equal(qa.synthesis.source, 'single-approved-canonical-frame')
+  assert.equal(qa.frames.length, 6)
+  assert.equal(qa.quality.metrics.uniqueFrameCount >= 5, true)
+  assert.equal(qa.quality.metrics.reusedFrameCount, 0)
+  assert.equal(qa.quality.metrics.frameBounds.baselineY.range <= 6, true)
+  assert.equal(qa.quality.metrics.visiblePixels.ratio < 1.25, true)
+  assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
+  assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio < 0.65, true)
+  assert.equal(qa.quality.metrics.identityCoreDiff.averageChangedPixelRatio < 0.52, true)
+})
+
 test('action frame builder rejects identity drift even when frame anchors are stable', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')

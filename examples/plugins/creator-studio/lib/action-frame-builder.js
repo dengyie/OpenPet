@@ -281,6 +281,21 @@ const decodeFramePixels = async (imagePath) => sharp(imagePath)
   .raw()
   .toBuffer({ resolveWithObject: true })
 
+const inspectVisibleBuffer = async (buffer) => {
+  const decoded = await sharp(buffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  const bounds = extractVisibleBounds(decoded)
+  return {
+    width: decoded.info.width,
+    height: decoded.info.height,
+    sha256: crypto.createHash('sha256').update(decoded.data).digest('hex'),
+    visiblePixels: bounds?.visiblePixels || 0,
+    bounds
+  }
+}
+
 const getFrameFilePath = ({ framesDir, frame }) => path.join(framesDir, frame.fileName || '')
 
 const getVisibleRgbDistance = ({ dataA, dataB, index }) => (
@@ -648,19 +663,105 @@ const resolveFrameCellSource = async ({ dataDir, generationResult, frameCount, f
   }
 }
 
-const materializeFrameSource = async ({ frameCellSource, sharedCrop = null }) => ({
-  ...frameCellSource,
-  normalized: await createNormalizedFrame(frameCellSource.prepared, sharedCrop)
-})
+const clampInteger = (value, min, max) => Math.max(min, Math.min(max, Math.round(value)))
 
-const resolveFrameSource = async ({ dataDir, generationResult, frameCount, frameIndex }) => {
-  const frameCellSource = await resolveFrameCellSource({
-    dataDir,
-    generationResult,
-    frameCount,
-    frameIndex
+const isCanonicalWaveAction = (action = {}) => /wave|waving|挥手|招手|挥爪|paw\s*wave/i.test(
+  `${action?.name || ''} ${action?.motionPrompt || ''}`
+)
+
+const resolveCanonicalMotionProfile = (action = {}) => (
+  isCanonicalWaveAction(action)
+    ? 'wave-local-appendage'
+    : 'generic-local-motion'
+)
+
+const resolveCanonicalMotionRegion = ({ bounds, action }) => {
+  const visible = bounds || {
+    left: 0,
+    top: 0,
+    width: FRAME_WIDTH,
+    height: FRAME_HEIGHT,
+    right: FRAME_WIDTH - 1,
+    bottom: FRAME_HEIGHT - 1
+  }
+  const wave = isCanonicalWaveAction(action)
+  const relative = wave
+    ? { left: 0.58, top: 0.18, right: 1.0, bottom: 0.76 }
+    : { left: 0.30, top: 0.18, right: 0.70, bottom: 0.64 }
+
+  let left = clampInteger(visible.left + (visible.width * relative.left), 0, FRAME_WIDTH - 1)
+  let top = clampInteger(visible.top + (visible.height * relative.top), 0, FRAME_HEIGHT - 1)
+  let right = clampInteger(visible.left + (visible.width * relative.right), left + 1, FRAME_WIDTH)
+  let bottom = clampInteger(visible.top + (visible.height * relative.bottom), top + 1, FRAME_HEIGHT)
+
+  const minWidth = wave ? 28 : 24
+  const minHeight = wave ? 44 : 32
+  if (right - left < minWidth) {
+    right = clampInteger(left + minWidth, left + 1, FRAME_WIDTH)
+    left = clampInteger(right - minWidth, 0, right - 1)
+  }
+  if (bottom - top < minHeight) {
+    bottom = clampInteger(top + minHeight, top + 1, FRAME_HEIGHT)
+    top = clampInteger(bottom - minHeight, 0, bottom - 1)
+  }
+
+  return {
+    left,
+    top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top)
+  }
+}
+
+const createCanonicalMotionOffsets = ({ frameCount, action }) => {
+  if (frameCount <= 1) return [{ x: 0, y: 0 }]
+  if (isCanonicalWaveAction(action) && frameCount === 6) {
+    return [
+      { x: 0, y: 0 },
+      { x: -3, y: -8 },
+      { x: -7, y: -15 },
+      { x: 5, y: -14 },
+      { x: -5, y: -10 },
+      { x: -1, y: -3 }
+    ]
+  }
+  return Array.from({ length: frameCount }, (_entry, index) => {
+    const t = frameCount === 1 ? 0 : index / (frameCount - 1)
+    const cycle = Math.sin(t * Math.PI * 2)
+    const lift = Math.sin(t * Math.PI)
+    return {
+      x: Math.round(cycle * 4),
+      y: -Math.round(lift * 6)
+    }
   })
-  return materializeFrameSource({ frameCellSource })
+}
+
+const createCanonicalLocalMotionFrame = async ({ canonicalBuffer, motionRegion, offset }) => {
+  if (!offset || (Number(offset.x || 0) === 0 && Number(offset.y || 0) === 0)) {
+    return Buffer.from(canonicalBuffer)
+  }
+  const patch = await sharp(canonicalBuffer)
+    .extract(motionRegion)
+    .png()
+    .toBuffer()
+  const left = clampInteger(motionRegion.left + Number(offset.x || 0), 0, FRAME_WIDTH - motionRegion.width)
+  const top = clampInteger(motionRegion.top + Number(offset.y || 0), 0, FRAME_HEIGHT - motionRegion.height)
+  return sharp(canonicalBuffer)
+    .composite([
+      {
+        input: patch,
+        left: motionRegion.left,
+        top: motionRegion.top,
+        blend: 'dest-out'
+      },
+      {
+        input: patch,
+        left,
+        top
+      }
+    ])
+    .png()
+    .toBuffer()
 }
 
 const toDataRelativePath = ({ dataDir, targetPath }) => path
@@ -1050,12 +1151,6 @@ const buildActionFramesFromGeneratedImage = async ({
   }
 }
 
-const isProviderKeyframeSpriteRowGeneration = (generationResult = {}) => Boolean(
-  generationResult?.keyframeSpriteRow?.ok === true &&
-  Array.isArray(generationResult.outputs) &&
-  generationResult.outputs.length === 1
-)
-
 const buildCanonicalActionFramesFromGeneratedImage = async ({
   dataDir,
   generationResult,
@@ -1063,26 +1158,120 @@ const buildCanonicalActionFramesFromGeneratedImage = async ({
   outputFramesDir,
   qaDir
 }) => {
-  if (!isProviderKeyframeSpriteRowGeneration(generationResult)) {
-    const actionId = String(action?.actionId || 'canonical action').trim()
-    if (generationResult?.keyframeSpriteRow?.ok === true && Array.isArray(generationResult.outputs) && generationResult.outputs.length !== 1) {
-      throw new Error(
-        `Provider keyframe sprite row must be one single provider-generated sprite sheet for ${actionId}; multi-output frame sets are not allowed for deliverable action generation.`
-      )
-    }
-    throw new Error(
-      `Provider keyframe sprite row is required for ${actionId}; local frame synthesis is not allowed for deliverable action generation.`
-    )
+  const actionId = String(action?.actionId || '').trim()
+  assertSafeActionId(actionId)
+  const frameCount = normalizeFrameCount(action?.frameCount || 16)
+  const safeOutputFramesDir = assertWritablePathInsideDataDir({
+    dataDir,
+    targetPath: outputFramesDir,
+    label: 'action frames output directory'
+  })
+  const safeQaDir = assertWritablePathInsideDataDir({
+    dataDir,
+    targetPath: qaDir,
+    label: 'action QA directory'
+  })
+
+  fs.rmSync(safeOutputFramesDir, { recursive: true, force: true })
+  fs.mkdirSync(safeOutputFramesDir, { recursive: true })
+  fs.mkdirSync(safeQaDir, { recursive: true })
+
+  const [sourceEntry] = resolveGeneratedImageEntries({ dataDir, generationResult })
+  const normalized = await createNormalizedFrame(sourceEntry.sourcePath)
+  const canonicalInspection = await inspectVisibleBuffer(normalized.frameBuffer)
+  const motionRegion = resolveCanonicalMotionRegion({
+    bounds: canonicalInspection.bounds,
+    action
+  })
+  const offsets = createCanonicalMotionOffsets({ frameCount, action })
+  const motionProfile = resolveCanonicalMotionProfile(action)
+  const extraction = {
+    mode: 'canonical-local-synthesis',
+    outputCount: 1,
+    sourceFrame: 'canonical'
+  }
+  const synthesis = {
+    mode: 'canonical-frame',
+    source: 'single-approved-canonical-frame',
+    motionProfile,
+    motionRegion,
+    offsets
+  }
+  const frames = []
+  for (let index = 0; index < frameCount; index += 1) {
+    const fileName = `${String(index + 1).padStart(4, '0')}.png`
+    const framePath = path.join(safeOutputFramesDir, fileName)
+    const frameBuffer = await createCanonicalLocalMotionFrame({
+      canonicalBuffer: normalized.frameBuffer,
+      motionRegion,
+      offset: offsets[index] || { x: 0, y: 0 }
+    })
+    const fileSha256 = crypto.createHash('sha256').update(frameBuffer).digest('hex')
+    fs.writeFileSync(framePath, frameBuffer)
+    const frameInspection = await inspectVisibleImage(framePath)
+    frames.push({
+      fileName,
+      width: FRAME_WIDTH,
+      height: FRAME_HEIGHT,
+      sha256: frameInspection.sha256,
+      fileSha256,
+      visiblePixels: frameInspection.visiblePixels,
+      frameBounds: frameInspection.bounds,
+      sourceVisiblePixels: normalized.sourceVisiblePixels,
+      sourceBounds: normalized.sourceBounds,
+      sourceFilledFrame: normalized.sourceFilledFrame,
+      sourceOpaqueFullFrameTrimmed: normalized.sourceOpaqueFullFrameTrimmed,
+      synthesisOffset: offsets[index] || { x: 0, y: 0 }
+    })
   }
 
-  return buildActionFramesFromGeneratedImage({
+  const contactSheetPath = await writeActionFrameContactSheet({
     dataDir,
-    generationResult,
-    action,
-    outputFramesDir,
-    qaDir,
-    extractionMode: 'provider-keyframe-row'
+    framesDir: safeOutputFramesDir,
+    qaDir: safeQaDir,
+    frames
   })
+  const qaPath = path.join(safeQaDir, 'action-frame-validation.json')
+  const playback = createPlaybackDiagnostics({
+    frameCount,
+    loop: Boolean(action?.loop)
+  })
+  const quality = await createActionFrameQuality({
+    frames,
+    frameCount,
+    framesDir: safeOutputFramesDir,
+    extraction
+  })
+  writeJson(qaPath, {
+    ok: quality.ok,
+    actionId,
+    name: String(action?.name || actionId),
+    sourceRelativePath: sourceEntry.sourceRelativePath,
+    sourceRelativePaths: [sourceEntry.sourceRelativePath],
+    frameCount,
+    frameWidth: FRAME_WIDTH,
+    frameHeight: FRAME_HEIGHT,
+    loop: Boolean(action?.loop),
+    playback,
+    extraction,
+    synthesis,
+    triggerProposal: action?.triggerProposal || { type: 'unbound' },
+    contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
+    frames,
+    errors: quality.errors,
+    warnings: quality.warnings,
+    quality
+  })
+
+  return {
+    actionId,
+    frameCount,
+    frameWidth: FRAME_WIDTH,
+    frameHeight: FRAME_HEIGHT,
+    framesDir: safeOutputFramesDir,
+    contactSheetPath,
+    qaPath
+  }
 }
 
 const repairActionFrameFromGeneratedImage = async ({
