@@ -176,6 +176,42 @@ test('agent awareness dashboard does not render null usage metadata as zero valu
   assert.equal(viewModel.sessions[0].usageText, 'No usage metadata yet')
 })
 
+test('agent awareness dashboard renders sanitized current step summaries', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 1,
+        totalEvents: 1,
+        seenCount: 1
+      }
+    },
+    sessionsPayload: {
+      sessions: [{
+        sessionId: 'abc123def456',
+        project: 'OpenPet #111111',
+        status: 'working',
+        type: 'tool.started',
+        timestamp: '2026-07-07T00:00:00.000Z',
+        summary: {
+          title: 'OpenPet on codex/dev7',
+          currentStep: 'Running tool at /Users/mango/private/project/OpenPet',
+          recentProgressHint: 'Checking http://127.0.0.1:8795'
+        }
+      }]
+    }
+  })
+
+  const rendered = runtime.renderDashboard(viewModel)
+
+  assert.equal(viewModel.sessions[0].currentStep, 'Running tool at [path]')
+  assert.match(rendered.sessionsHtml, /Current Step/)
+  assert.match(rendered.sessionsHtml, /Running tool at \[path\]/)
+  assert.doesNotMatch(rendered.sessionsHtml, /\/Users\/mango\/private/)
+  assert.doesNotMatch(rendered.sessionsHtml, /127\.0\.0\.1:8795/)
+})
+
 test('agent awareness dashboard focuses requested session in details mode', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const viewModel = runtime.buildDashboardViewModel({

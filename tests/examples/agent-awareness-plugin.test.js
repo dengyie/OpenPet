@@ -586,6 +586,28 @@ test('session store preserves bounded usage git and summary metadata', () => {
   assert.equal(JSON.stringify(session).includes('/Users/mango'), false)
 })
 
+test('session summary prefers bounded progress labels for current step', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-summary-step-'))
+  const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 4 })
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'working',
+    phase: 'tool',
+    type: 'tool.started',
+    project: 'OpenPet #111111',
+    toolName: 'exec_command',
+    progressLabel: 'Running tool at /Users/mango/private/project/OpenPet',
+    message: 'Codex started a tool call.',
+    timestamp: '2026-07-07T00:00:00.000Z'
+  })
+
+  const session = store.listSessions()[0]
+  assert.equal(session.summary.currentStep, 'Running tool at [path]')
+  assert.equal(session.summary.recentProgressHint, 'Running tool at [path]')
+  assert.equal(JSON.stringify(session).includes('/Users/mango'), false)
+})
+
 test('state mapper rate-limits repeat speech for the same session and status', () => {
   let currentNowMs = 1000
   const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })

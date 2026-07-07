@@ -88,11 +88,35 @@ const normalizeRuntimeEvent = (event = {}, { now = () => new Date().toISOString(
       phase,
       project: sanitizeText(event.project, 96),
       progressLabel: sanitizeText(event.progressLabel, 120),
+      status,
+      toolName: sanitizeText(event.toolName, 64),
       type: sanitizeText(event.type || 'session.updated', 64) || 'session.updated',
       message: sanitizeText(event.message, 160)
     }),
     timestamp: sanitizeText(event.timestamp, 40) || now()
   }
+}
+
+const buildCurrentStep = ({
+  phase = '',
+  progressLabel = '',
+  source = {},
+  status = '',
+  toolName = '',
+  type = ''
+} = {}) => {
+  const explicit = sanitizeText(source.currentStep || '', 80)
+  const safeProgressLabel = sanitizeText(progressLabel, 80)
+  const safeToolName = sanitizeText(toolName, 64)
+  const safeType = sanitizeText(type, 80)
+  const safePhase = sanitizeText(phase, 32)
+  const safeStatus = sanitizeText(status, 32)
+  const explicitLooksGenerated = explicit && (explicit === safeType || explicit === safePhase)
+  if (safeProgressLabel && (!explicit || explicitLooksGenerated)) return safeProgressLabel
+  if (safeToolName && (!explicit || explicitLooksGenerated)) return `Tool: ${safeToolName}`
+  if (safePhase === 'approval' && (!explicit || explicitLooksGenerated)) return 'Awaiting approval'
+  if (safeStatus === 'completed' && (!explicit || explicitLooksGenerated)) return 'Completed'
+  return explicit || safeType || safePhase
 }
 
 const normalizeSessionSummary = ({
@@ -101,6 +125,8 @@ const normalizeSessionSummary = ({
   phase = '',
   project = '',
   progressLabel = '',
+  status = '',
+  toolName = '',
   type = '',
   message = ''
 } = {}) => {
@@ -108,7 +134,14 @@ const normalizeSessionSummary = ({
   const title = sanitizeText(source.title || '', 120) || (
     project && git?.branch ? `${project} on ${git.branch}` : project
   )
-  const currentStep = sanitizeText(source.currentStep || type || phase, 80)
+  const currentStep = buildCurrentStep({
+    phase,
+    progressLabel,
+    source,
+    status,
+    toolName,
+    type
+  })
   const recentProgressHint = sanitizeText(
     source.recentProgressHint || progressLabel || message || (project ? `Working in ${project}` : ''),
     160

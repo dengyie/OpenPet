@@ -180,6 +180,10 @@ button:hover {
   color: var(--muted);
 }
 
+.session-sub-label {
+  margin-top: 10px;
+}
+
 .metric-value {
   font-size: 22px;
   line-height: 1.2;

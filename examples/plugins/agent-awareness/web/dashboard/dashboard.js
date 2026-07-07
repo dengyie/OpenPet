@@ -277,6 +277,7 @@ const createDashboardRuntime = ({
         usageText: describeUsage(session.usage),
         gitText: describeGit(session.git),
         summaryTitle: sanitizeDisplayText(session.summary?.title || session.project || 'Session summary'),
+        currentStep: sanitizeDisplayText(session.summary?.currentStep || session.progressLabel || session.type || 'No current step yet'),
         progressHint: sanitizeDisplayText(session.summary?.recentProgressHint || session.message || 'No progress hint yet'),
         timeline: Array.isArray(session.history)
           ? session.history.slice(-4).reverse().map((entry) => ({
@@ -355,6 +356,8 @@ const createDashboardRuntime = ({
           <div>
             <p class="session-label">Session Summary</p>
             <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(session.summaryTitle))}</p>
+            <p class="session-label session-sub-label">Current Step</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(session.currentStep))}</p>
             <p class="session-message">${escapeHtml(sanitizeDisplayText(session.progressHint))}</p>
           </div>
           <div>
