@@ -6,6 +6,7 @@ const VALID_STYLE_SOURCES = new Set(['currentPet', 'referenceImage', 'textOnly']
 const VALID_TRIGGER_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const HOST_RULE_TRIGGER_TYPES = new Set(['random', 'state', 'event'])
 const VALID_ANIMATION_TYPES = new Set(['stationary_loop', 'locomotion_loop', 'vertical_bounce', 'pose_transition', 'reaction', 'emote'])
+const VALID_SYNTHESIS_MODES = new Set(['canonical-frame'])
 const SAFE_ACTION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const MAX_ACTION_FRAME_COUNT = 32
 const MAX_TRIGGER_SPEC_TEXT_LENGTH = 240
@@ -108,6 +109,10 @@ const normalizeAction = (action = {}, index = 0) => {
   if (animationType && !VALID_ANIMATION_TYPES.has(animationType)) {
     throw new Error(`Creator Studio animationType is invalid: ${animationType}`)
   }
+  const synthesisMode = String(action.synthesisMode || '').trim()
+  if (synthesisMode && !VALID_SYNTHESIS_MODES.has(synthesisMode)) {
+    throw new Error(`Creator Studio synthesisMode is invalid: ${synthesisMode}`)
+  }
   return {
     actionId,
     name,
@@ -116,6 +121,7 @@ const normalizeAction = (action = {}, index = 0) => {
     frameCount: clampFrameCount(action.frameCount, loop ? 12 : 16),
     transparentBackground: action.transparentBackground !== false,
     ...(animationType ? { animationType } : {}),
+    ...(synthesisMode ? { synthesisMode } : {}),
     ...(action.viewDirection ? { viewDirection: sanitizeActionSpecText(action.viewDirection) } : {}),
     ...(action.loopType ? { loopType: sanitizeActionSpecText(action.loopType) } : {}),
     ...(normalizeSpecList(action.animatedParts).length > 0 ? { animatedParts: normalizeSpecList(action.animatedParts) } : {}),

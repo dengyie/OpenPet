@@ -3,7 +3,10 @@ const path = require('path')
 const { getBackendAdapter } = require('./backend-adapters')
 const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
 const { generateViaHostModelBridge } = require('./host-model-bridge')
-const { buildActionFramesFromGeneratedImage } = require('./action-frame-builder')
+const {
+  buildActionFramesFromGeneratedImage,
+  buildCanonicalActionFramesFromGeneratedImage
+} = require('./action-frame-builder')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const {
@@ -82,6 +85,12 @@ const isHostGeneratedSingleActionRun = (run) => (
   run.generationTask.actions.length > 0
 )
 
+const getActionFrameBuilder = (action = {}) => (
+  action?.synthesisMode === 'canonical-frame'
+    ? buildCanonicalActionFramesFromGeneratedImage
+    : buildActionFramesFromGeneratedImage
+)
+
 const persistGeneratedImageAttempt = ({ dataDir, run, generationResult, now }) => {
   const currentRun = readRun({ dataDir, runId: run.runId })
   const promptPreviewText = String(generationResult?.promptBuilder?.promptPreview?.text || '')
@@ -121,7 +130,7 @@ const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, 
   const runDir = path.join(dataDir, 'runs', run.runId)
   const framesDir = path.join(runDir, 'frames', 'actions', action.actionId)
   const qaDir = path.join(runDir, 'qa')
-  const actionFrames = await buildActionFramesFromGeneratedImage({
+  const actionFrames = await getActionFrameBuilder(action)({
     dataDir,
     generationResult,
     action,
