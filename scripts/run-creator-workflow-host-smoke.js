@@ -56,6 +56,7 @@ const usage = () => [
   '  --existing-action-name <text> Action id/name for the existing-action scenario.',
   '  --existing-action-prompt <text>',
   '                               Motion prompt for the existing-action scenario.',
+  '  --provider-timeout-ms <ms>   Override image provider timeout only inside isolated smoke userData.',
   '  --json                        Print the final report as JSON.',
   '  --help',
   '',
@@ -65,6 +66,18 @@ const usage = () => [
 ].join('\n')
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+
+const parsePositiveInt = (value, label) => {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number <= 0) throw new Error(`${label} must be a positive integer`)
+  return number
+}
+
+const normalizeOptionalPositiveInt = (value, label) => {
+  if (value == null || value === '') return 0
+  if (Number(value) === 0) return 0
+  return parsePositiveInt(value, label)
+}
 
 const defaultAppDataDir = ({ platform = process.platform, env = process.env, homedir = os.homedir } = {}) => {
   if (platform === 'darwin') return path.join(homedir(), 'Library', 'Application Support')
@@ -130,6 +143,7 @@ const parseArgs = (argv) => {
     newCharacterStylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
     existingActionName: DEFAULT_EXISTING_ACTION_NAME,
     existingActionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
+    providerTimeoutMs: 0,
     json: false,
     help: false
   }
@@ -168,6 +182,9 @@ const parseArgs = (argv) => {
     } else if (arg === '--existing-action-prompt') {
       options.existingActionPrompt = readValue(index, arg)
       index += 1
+    } else if (arg === '--provider-timeout-ms') {
+      options.providerTimeoutMs = readValue(index, arg)
+      index += 1
     } else if (arg === '--json') {
       options.json = true
     } else {
@@ -186,42 +203,55 @@ const parseArgs = (argv) => {
   options.newCharacterStylePrompt = String(options.newCharacterStylePrompt || DEFAULT_NEW_CHARACTER_STYLE_PROMPT).trim() || DEFAULT_NEW_CHARACTER_STYLE_PROMPT
   options.existingActionName = String(options.existingActionName || DEFAULT_EXISTING_ACTION_NAME).trim() || DEFAULT_EXISTING_ACTION_NAME
   options.existingActionPrompt = String(options.existingActionPrompt || DEFAULT_EXISTING_ACTION_PROMPT).trim() || DEFAULT_EXISTING_ACTION_PROMPT
+  options.providerTimeoutMs = normalizeOptionalPositiveInt(options.providerTimeoutMs, 'Provider timeout MS')
   createScenarioList(options.scenario)
   return options
 }
 
-const prepareSeedSettings = (settings = {}) => ({
-  ...settings,
-  creator: {
-    ...(isObject(settings.creator) ? settings.creator : {}),
-    references: {}
-  },
-  petPacks: {
-    ...(isObject(settings.petPacks) ? settings.petPacks : {}),
-    activePackId: 'legacy-cat',
-    installed: isObject(settings.petPacks?.installed) ? settings.petPacks.installed : {}
-  },
-  plugins: {
-    ...(isObject(settings.plugins) ? settings.plugins : {}),
-    enabled: {
-      ...(isObject(settings.plugins?.enabled) ? settings.plugins.enabled : {}),
-      'official.basic-behavior': settings.plugins?.enabled?.['official.basic-behavior'] !== false,
-      [CREATOR_STUDIO_PLUGIN_ID]: true
+const prepareSeedSettings = (settings = {}, { providerTimeoutMs = 0 } = {}) => {
+  const normalizedProviderTimeoutMs = normalizeOptionalPositiveInt(providerTimeoutMs, 'Provider timeout MS')
+  return {
+    ...settings,
+    ...(normalizedProviderTimeoutMs ? {
+      models: {
+        ...(isObject(settings.models) ? settings.models : {}),
+        imageGeneration: {
+          ...(isObject(settings.models?.imageGeneration) ? settings.models.imageGeneration : {}),
+          timeoutMs: normalizedProviderTimeoutMs
+        }
+      }
+    } : {}),
+    creator: {
+      ...(isObject(settings.creator) ? settings.creator : {}),
+      references: {}
     },
-    nativeExecutionApproved: {
-      ...(isObject(settings.plugins?.nativeExecutionApproved) ? settings.plugins.nativeExecutionApproved : {}),
-      [CREATOR_STUDIO_PLUGIN_ID]: true
+    petPacks: {
+      ...(isObject(settings.petPacks) ? settings.petPacks : {}),
+      activePackId: 'legacy-cat',
+      installed: isObject(settings.petPacks?.installed) ? settings.petPacks.installed : {}
     },
-    config: isObject(settings.plugins?.config) ? settings.plugins.config : {},
-    storage: isObject(settings.plugins?.storage) ? settings.plugins.storage : {},
-    logs: []
-  },
-  localHttp: {
-    ...(isObject(settings.localHttp) ? settings.localHttp : {}),
-    enabled: false,
-    logs: []
+    plugins: {
+      ...(isObject(settings.plugins) ? settings.plugins : {}),
+      enabled: {
+        ...(isObject(settings.plugins?.enabled) ? settings.plugins.enabled : {}),
+        'official.basic-behavior': settings.plugins?.enabled?.['official.basic-behavior'] !== false,
+        [CREATOR_STUDIO_PLUGIN_ID]: true
+      },
+      nativeExecutionApproved: {
+        ...(isObject(settings.plugins?.nativeExecutionApproved) ? settings.plugins.nativeExecutionApproved : {}),
+        [CREATOR_STUDIO_PLUGIN_ID]: true
+      },
+      config: isObject(settings.plugins?.config) ? settings.plugins.config : {},
+      storage: isObject(settings.plugins?.storage) ? settings.plugins.storage : {},
+      logs: []
+    },
+    localHttp: {
+      ...(isObject(settings.localHttp) ? settings.localHttp : {}),
+      enabled: false,
+      logs: []
+    }
   }
-})
+}
 
 const resolveStoredReferenceImagePath = (settings = {}) => {
   const references = isObject(settings.creator?.references) ? settings.creator.references : {}
@@ -266,12 +296,13 @@ const resolveReferenceImagePath = ({
 
 const seedScenarioUserData = ({
   sourceUserDataDir,
-  targetUserDataDir
+  targetUserDataDir,
+  providerTimeoutMs = 0
 } = {}) => {
   ensureDir(targetUserDataDir)
   const sourceSettings = readJsonIfExists(path.join(sourceUserDataDir, 'settings.json'))
   const sourceSecrets = readJsonIfExists(path.join(sourceUserDataDir, 'secrets.json'))
-  const seededSettings = prepareSeedSettings(sourceSettings)
+  const seededSettings = prepareSeedSettings(sourceSettings, { providerTimeoutMs })
   const seededSecrets = isObject(sourceSecrets) ? sourceSecrets : { secrets: {} }
   writeJson(path.join(targetUserDataDir, 'settings.json'), seededSettings)
   writeJson(path.join(targetUserDataDir, 'secrets.json'), seededSecrets)
@@ -472,8 +503,11 @@ const readRunRecordSummary = ({ pluginDataDir, runId }) => {
   if (!pluginDataDir || !runId) return { runRecord: null, runRecordPath: '' }
   const runRecordPath = path.join(pluginDataDir, 'runs', runId, 'run.json')
   const runRecord = readJsonIfExists(runRecordPath)
-  const conditioning = isObject(runRecord?.artifacts?.generatedImage?.conditioning)
-    ? runRecord.artifacts.generatedImage.conditioning
+  const generatedImage = isObject(runRecord?.artifacts?.generatedImage)
+    ? runRecord.artifacts.generatedImage
+    : {}
+  const conditioning = isObject(generatedImage?.conditioning)
+    ? generatedImage.conditioning
     : null
   return {
     runRecordPath,
@@ -498,7 +532,9 @@ const readRunRecordSummary = ({ pluginDataDir, runId }) => {
               role: String(reference?.role || '')
             }))
           : []
-      } : null
+      } : null,
+      anchorGenerationStages: summarizeGenerationStages(generatedImage?.anchorGeneration?.stages),
+      generationStages: summarizeGenerationStages(generatedImage?.generationStages)
     } : null
   }
 }
@@ -540,6 +576,25 @@ const verifyConditioningEvidence = ({ runRecord }) => {
     }
   }
 }
+
+const summarizeGenerationStages = (stages = []) => (
+  Array.isArray(stages)
+    ? stages.map((stage) => ({
+      stage: String(stage?.stage || ''),
+      ok: Boolean(stage?.ok),
+      referenceRole: String(stage?.referenceRole || ''),
+      referenceRoles: Array.isArray(stage?.referenceRoles)
+        ? stage.referenceRoles.map((role) => String(role || '')).filter(Boolean)
+        : [],
+      timeoutMs: Math.max(0, Number(stage?.timeoutMs) || 0),
+      durationMs: Math.max(0, Number(stage?.durationMs) || 0),
+      model: String(stage?.model || ''),
+      outputRelativePath: String(stage?.outputRelativePath || ''),
+      promptRelativePath: String(stage?.promptRelativePath || ''),
+      error: sanitizeText(stage?.error || '', 500)
+    }))
+    : []
+)
 
 const verifyExistingActionScenario = ({ result, workspaceRoot }) => {
   const actionId = String(result?.run?.importedActionId || result?.importedAction?.actionId || '').trim()
@@ -687,13 +742,14 @@ const runScenarioWorkflow = async ({
   newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
   existingActionName = DEFAULT_EXISTING_ACTION_NAME,
   existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
+  providerTimeoutMs = 0,
   logLimit = DEFAULT_LOG_LIMIT,
   createSmokeRuntimeImpl = createSmokeRuntime
 } = {}) => {
   const userDataDir = path.join(scenarioDir, 'user-data')
   const workspaceRoot = path.join(scenarioDir, 'workspace')
   prepareScenarioWorkspace({ repoRoot, workspaceRoot })
-  const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir })
+  const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir, providerTimeoutMs })
   const runtime = createSmokeRuntimeImpl({ repoRoot, workspaceRoot, userDataDir })
   const seededProviderConfig = typeof runtime.imageGenerationModelService?.getConfig === 'function'
     ? runtime.imageGenerationModelService.getConfig()
@@ -801,6 +857,7 @@ const runCreatorWorkflowHostSmoke = async ({
   newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
   existingActionName = DEFAULT_EXISTING_ACTION_NAME,
   existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
+  providerTimeoutMs = 0,
   now = () => new Date(),
   runScenarioImpl = runScenarioWorkflow,
   repoRoot = path.join(__dirname, '..')
@@ -829,7 +886,8 @@ const runCreatorWorkflowHostSmoke = async ({
         newCharacterName,
         newCharacterStylePrompt,
         existingActionName,
-        existingActionPrompt
+        existingActionPrompt,
+        providerTimeoutMs
       })
       scenarioResults.push(scenarioResult)
       if (!scenarioResult.ok) {
@@ -884,7 +942,8 @@ const runCreatorWorkflowHostSmoke = async ({
       newCharacterName,
       newCharacterStylePrompt,
       existingActionName,
-      existingActionPrompt
+      existingActionPrompt,
+      providerTimeoutMs
     }, { sessionDir: sessionPaths.sessionDir }),
     referenceImagePath: createSafeProjectPath(
       path.resolve(resolvedReferenceImagePath),
@@ -913,7 +972,8 @@ const main = async () => {
     newCharacterName: options.newCharacterName,
     newCharacterStylePrompt: options.newCharacterStylePrompt,
     existingActionName: options.existingActionName,
-    existingActionPrompt: options.existingActionPrompt
+    existingActionPrompt: options.existingActionPrompt,
+    providerTimeoutMs: options.providerTimeoutMs
   })
 
   if (options.json) {

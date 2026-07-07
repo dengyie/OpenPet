@@ -42,6 +42,7 @@ test('parseArgs accepts creator workflow host smoke options', () => {
     '--new-character-style-prompt', 'Cartoon golden shaded cat pet.',
     '--existing-action-name', 'golden-wave',
     '--existing-action-prompt', 'Cartoon golden cat waving.',
+    '--provider-timeout-ms', '600000',
     '--json'
   ])
 
@@ -53,6 +54,7 @@ test('parseArgs accepts creator workflow host smoke options', () => {
   assert.equal(options.newCharacterStylePrompt, 'Cartoon golden shaded cat pet.')
   assert.equal(options.existingActionName, 'golden-wave')
   assert.equal(options.existingActionPrompt, 'Cartoon golden cat waving.')
+  assert.equal(options.providerTimeoutMs, 600000)
   assert.equal(options.json, true)
 })
 
@@ -97,6 +99,24 @@ test('prepareSeedSettings enables the bundled creator plugin and resets the edit
   assert.equal(settings.petPacks.activePackId, 'legacy-cat')
   assert.deepEqual(settings.creator.references, {})
   assert.equal(settings.localHttp.enabled, false)
+})
+
+test('prepareSeedSettings can override provider timeout for isolated smoke runs', () => {
+  const settings = prepareSeedSettings({
+    models: {
+      imageGeneration: {
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-image-2',
+        timeoutMs: 300000
+      }
+    }
+  }, {
+    providerTimeoutMs: 600000
+  })
+
+  assert.equal(settings.models.imageGeneration.timeoutMs, 600000)
+  assert.equal(settings.models.imageGeneration.model, 'gpt-image-2')
 })
 
 test('resolveReferenceImagePath prefers explicit and stored references before repo fallback', () => {
@@ -269,6 +289,27 @@ test('runScenarioWorkflow approves the reference image before generating a new c
               status: 'completed',
               artifacts: {
                 generatedImage: {
+                  anchorGeneration: {
+                    stages: [{
+                      stage: 'character-anchor',
+                      ok: true,
+                      referenceRole: 'composite-reference-board',
+                      referenceRoles: ['composite-reference-board'],
+                      timeoutMs: 300000,
+                      durationMs: 91,
+                      model: 'gpt-image-2'
+                    }]
+                  },
+                  generationStages: [{
+                    stage: 'final-image',
+                    ok: false,
+                    referenceRole: 'action-anchor',
+                    referenceRoles: ['action-anchor'],
+                    timeoutMs: 300000,
+                    durationMs: 300000,
+                    model: 'gpt-image-2',
+                    error: 'context canceled'
+                  }],
                   conditioning: {
                     mode: 'image-edit',
                     endpoint: '/images/edits',
@@ -312,6 +353,30 @@ test('runScenarioWorkflow approves the reference image before generating a new c
   assert.equal(calls[1][1].stylePrompt, 'Cartoon golden shaded cat pet.')
   assert.equal(calls[1][1].referenceImageToken, 'token-reference')
   assert.equal(calls[1][1].referenceImagePath, undefined)
+  assert.deepEqual(result.runRecord.anchorGenerationStages, [{
+    stage: 'character-anchor',
+    ok: true,
+    referenceRole: 'composite-reference-board',
+    referenceRoles: ['composite-reference-board'],
+    timeoutMs: 300000,
+    durationMs: 91,
+    model: 'gpt-image-2',
+    outputRelativePath: '',
+    promptRelativePath: '',
+    error: ''
+  }])
+  assert.deepEqual(result.runRecord.generationStages, [{
+    stage: 'final-image',
+    ok: false,
+    referenceRole: 'action-anchor',
+    referenceRoles: ['action-anchor'],
+    timeoutMs: 300000,
+    durationMs: 300000,
+    model: 'gpt-image-2',
+    outputRelativePath: '',
+    promptRelativePath: '',
+    error: 'context canceled'
+  }])
 })
 
 test('runCreatorWorkflowHostSmoke writes a structured report with injected scenario runner results', async () => {

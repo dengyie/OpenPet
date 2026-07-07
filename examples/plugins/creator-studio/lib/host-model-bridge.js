@@ -248,11 +248,72 @@ const createModelSnapshot = ({ backend, settings }) => {
   }
 }
 
-const createGenerationAttemptRecord = ({ model, ok, error = '' }) => ({
+const listReferenceRoles = (referenceImages = []) => (
+  Array.isArray(referenceImages)
+    ? referenceImages.map((referenceImage) => String(referenceImage?.role || 'reference-image').trim() || 'reference-image')
+    : []
+)
+
+const sumAttemptDurationsMs = (attempts = []) => attempts.reduce((total, attempt) => (
+  total + Math.max(0, Number(attempt?.durationMs) || 0)
+), 0)
+
+const createGenerationAttemptRecord = ({
+  model,
+  ok,
+  error = '',
+  timeoutMs = 0,
+  referenceImages = [],
+  durationMs = 0
+}) => ({
   model: normalizeModelName(model),
   ok: Boolean(ok),
+  timeoutMs: Math.max(0, Number(timeoutMs) || 0),
+  durationMs: Math.max(0, Number(durationMs) || 0),
+  referenceImageCount: Array.isArray(referenceImages) ? referenceImages.length : 0,
+  referenceRoles: listReferenceRoles(referenceImages),
   ...(error ? { error: String(error).slice(0, 240) } : {})
 })
+
+const createProviderGenerationStage = ({
+  stage,
+  actionId = '',
+  ok,
+  referenceImages = [],
+  timeoutMs = 0,
+  durationMs = 0,
+  model = '',
+  modelAttempts = [],
+  outputRelativePath = '',
+  promptRelativePath = '',
+  outputCount = 0,
+  error = ''
+}) => {
+  const referenceRoles = listReferenceRoles(referenceImages)
+  return {
+    stage,
+    ...(actionId ? { actionId } : {}),
+    ok: Boolean(ok),
+    referenceRole: referenceRoles[0] || '',
+    referenceRoles,
+    timeoutMs: Math.max(0, Number(timeoutMs) || 0),
+    durationMs: Math.max(0, Number(durationMs) || 0),
+    model: normalizeModelName(model),
+    modelAttempts: Array.isArray(modelAttempts) ? modelAttempts : [],
+    outputRelativePath: createSafeRelativePath(outputRelativePath),
+    promptRelativePath: createSafeRelativePath(promptRelativePath),
+    outputCount: Math.max(0, Number(outputCount) || 0),
+    ...(error ? { error: String(error).slice(0, 240) } : {})
+  }
+}
+
+const getProviderAnchorStages = (anchorGeneration = {}) => (
+  Array.isArray(anchorGeneration?.stages)
+    ? anchorGeneration.stages.filter((stage) => (
+      stage?.stage === 'character-anchor' || stage?.stage === 'action-anchor'
+    ))
+    : []
+)
 
 const isFullPetRun = (run = {}) => String(run?.generationTask?.mode || run?.input?.generationTask?.mode || '').trim() === 'full-pet'
 
@@ -322,6 +383,7 @@ const generateWithModelFallback = async ({
   }
   let lastError = null
   for (const model of modelCandidates) {
+    const startedAtMs = Date.now()
     try {
       const effectiveTimeoutMs = normalizeModelName(model) === normalizeModelName(preferredModel)
         ? requestedTimeoutMs
@@ -334,14 +396,29 @@ const generateWithModelFallback = async ({
         runId,
         dataRelativeDir
       })
-      attempts.push(createGenerationAttemptRecord({ model, ok: true }))
+      attempts.push(createGenerationAttemptRecord({
+        model,
+        ok: true,
+        timeoutMs: effectiveTimeoutMs,
+        referenceImages,
+        durationMs: Date.now() - startedAtMs
+      }))
       return {
         response,
         selectedModel: model,
         attempts
       }
     } catch (error) {
-      attempts.push(createGenerationAttemptRecord({ model, ok: false, error: error?.message || error }))
+      attempts.push(createGenerationAttemptRecord({
+        model,
+        ok: false,
+        error: error?.message || error,
+        timeoutMs: normalizeModelName(model) === normalizeModelName(preferredModel)
+          ? requestedTimeoutMs
+          : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS),
+        referenceImages,
+        durationMs: Date.now() - startedAtMs
+      }))
       lastError = error
       if (!shouldRetryWithAnotherModel(error)) break
     }
@@ -483,11 +560,16 @@ const generateAnchorReferences = async ({
   if (characterAnchor) {
     stages.push({
       stage: 'character-anchor',
+      ok: true,
       referenceRole: 'composite-reference-board',
+      referenceRoles: ['composite-reference-board'],
+      timeoutMs: Math.max(0, Number(requestedTimeoutMs) || 0),
+      durationMs: sumAttemptDurationsMs(characterAnchor.modelAttempts),
       outputRelativePath: characterAnchor.relativePath,
       promptRelativePath: characterAnchor.promptRelativePath,
       model: characterAnchor.model,
-      modelAttempts: characterAnchor.modelAttempts
+      modelAttempts: characterAnchor.modelAttempts,
+      outputCount: 1
     })
   }
 
@@ -536,11 +618,16 @@ const generateAnchorReferences = async ({
         stages.push({
           stage: 'action-anchor',
           actionId,
+          ok: true,
           referenceRole: 'character-anchor',
+          referenceRoles: ['character-anchor'],
+          timeoutMs: Math.max(0, Number(requestedTimeoutMs) || 0),
+          durationMs: sumAttemptDurationsMs(actionAnchor.modelAttempts),
           outputRelativePath: actionAnchor.relativePath,
           promptRelativePath: actionAnchor.promptRelativePath,
           model: actionAnchor.model,
-          modelAttempts: actionAnchor.modelAttempts
+          modelAttempts: actionAnchor.modelAttempts,
+          outputCount: 1
         })
       }
     }
@@ -738,6 +825,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   }
   if (anchorReferences) attemptResult.anchorReferences = anchorReferences
   if (anchorGeneration) attemptResult.anchorGeneration = anchorGeneration
+  const providerAnchorStages = getProviderAnchorStages(anchorGeneration)
+  if (providerAnchorStages.length > 0) attemptResult.generationStages = providerAnchorStages
   let response
   let selectedModel = configuredModelSnapshot.model
   let modelAttempts = []
@@ -755,10 +844,25 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     selectedModel = generationAttempt.selectedModel
     modelAttempts = generationAttempt.attempts
   } catch (error) {
+    const failedAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts : modelAttempts
+    const failedFinalStage = createProviderGenerationStage({
+      stage: 'final-image',
+      ok: false,
+      referenceImages,
+      timeoutMs: requestedTimeoutMs,
+      durationMs: sumAttemptDurationsMs(failedAttempts),
+      model: configuredModelSnapshot.model,
+      modelAttempts: failedAttempts,
+      error: error?.message || error
+    })
     if (error && typeof error === 'object') {
       error.partialGenerationResult = {
         ...attemptResult,
-        modelAttempts: Array.isArray(error.modelAttempts) ? error.modelAttempts : modelAttempts
+        modelAttempts: failedAttempts,
+        generationStages: [
+          ...providerAnchorStages,
+          failedFinalStage
+        ]
       }
     }
     throw error
@@ -776,6 +880,19 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     promptBuilder,
     model: selectedModel,
     modelAttempts,
+    generationStages: [
+      ...providerAnchorStages,
+      createProviderGenerationStage({
+        stage: 'final-image',
+        ok: true,
+        referenceImages,
+        timeoutMs: requestedTimeoutMs,
+        durationMs: sumAttemptDurationsMs(modelAttempts),
+        model: selectedModel,
+        modelAttempts,
+        outputCount: Array.isArray(response?.result?.outputs) ? response.result.outputs.length : 0
+      })
+    ],
     ...(anchorReferences ? { anchorReferences } : {}),
     ...(anchorGeneration ? { anchorGeneration } : {})
   }
