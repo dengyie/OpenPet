@@ -700,9 +700,6 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 }
 
 module.exports = {
-  buildHostGeneratedActionOutput,
   persistGeneratedImageAttempt,
-  runFullPetActionRepair,
-  runFullPetIdentityRepair,
   runGenerationStep
 }

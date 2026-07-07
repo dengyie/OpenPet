@@ -1,277 +1,93 @@
-const { getActionSheetLayout, normalizeFrameCount } = require('./action-sheet-layout')
-const { createQualityGuidanceLines } = require('./pet-generation-human-examples')
-const {
-  DEFAULT_FULL_BODY_SUBJECT,
-  createProviderImageTask,
-  sanitizeVisualDirective
-} = require('./provider-image-task')
-const {
-  PROMPT_COMPILER_VERSION,
-  compileProviderImagePrompt
-} = require('./provider-image-prompt-compiler')
-const { createVisualPlan } = require('./visual-plan')
-const {
-  buildActionFramePlan,
-  getKeyframePoseInstruction,
-  inferAnimationType,
-  resolvePrimaryAnimatedPart
-} = require('./action-semantics')
+const { sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 
-const PROMPT_BUILDER_VERSION = 6
+const PROMPT_BUILDER_VERSION = 1
 
-const normalizeActionText = (value, fallback = '') => (
-  sanitizeVisualDirective(value || fallback)
-)
+const normalizeActionText = (value, fallback = '') => sanitizeCreativeBrief(value || fallback)
 
-const resolveLoopIntent = (action = {}) => {
-  const animationType = inferAnimationType(action)
-  if (animationType === 'locomotion_loop') return 'a seamless in-place locomotion cycle'
-  if (animationType === 'vertical_bounce') return 'a grounded jump that returns to the original baseline'
-  if (animationType === 'stationary_loop') return 'a seamless stationary loop with a stable body root'
-  if (animationType === 'pose_transition') return 'a readable transition from the starting pose to the ending pose'
-  return 'a readable action with a stable identity and clear recovery'
+const formatList = (items, fallback) => {
+  const values = Array.isArray(items)
+    ? items.map((item) => sanitizeCreativeBrief(item)).filter(Boolean)
+    : []
+  return (values.length ? values : fallback).map((item) => `- ${item}`).join('\n')
 }
 
-const resolveViewDirection = (action = {}) => {
-  const explicit = normalizeActionText(action.viewDirection)
-  if (explicit) return explicit
-  if (inferAnimationType(action) === 'locomotion_loop') return 'preserve the requested directional facing'
-  return 'preserve the canonical viewpoint'
-}
-
-const createVisualAction = ({ action = {}, keyframeRole = '', frameCount = 0 } = {}) => {
-  const normalizedRole = String(keyframeRole || '').trim().toLowerCase()
-  const name = normalizeActionText(action.name, action.motionPrompt || 'the requested action')
-  const moment = normalizedRole
-    ? getKeyframePoseInstruction({ action, keyframeRole: normalizedRole })
-    : normalizeActionText(action.motionPrompt, name)
+const buildCharacterAnchorPrompt = ({ characterBrief = '', referenceRole = 'composite-reference-board' } = {}) => {
+  const brief = sanitizeCreativeBrief(characterBrief)
   return {
-    name,
-    animationType: inferAnimationType(action),
-    moment,
-    viewDirection: resolveViewDirection(action),
-    loopType: normalizeActionText(action.loopType, resolveLoopIntent(action)),
-    movingParts: Array.isArray(action.animatedParts) && action.animatedParts.length
-      ? action.animatedParts
-      : [resolvePrimaryAnimatedPart(action)],
-    secondaryMotion: Array.isArray(action.secondaryMotion) ? action.secondaryMotion : [],
-    lockedParts: Array.isArray(action.lockedParts) && action.lockedParts.length
-      ? action.lockedParts
-      : ['visible identity-bearing features', 'identity markings', 'body proportions', 'character scale'],
-    forbiddenMotion: Array.isArray(action.forbiddenMotion) ? action.forbiddenMotion : [],
-    loopIntent: resolveLoopIntent(action),
-    frameBeats: frameCount > 0 ? buildActionFramePlan({ action, frameCount }) : []
+    role: 'character-anchor',
+    version: PROMPT_BUILDER_VERSION,
+    warnings: [],
+    prompt: [
+      'Create one character anchor view for OpenPet.',
+      `Reference role: ${sanitizeCreativeBrief(referenceRole)}.`,
+      'The source image is the highest identity authority.',
+      'If the written description conflicts with the reference image, follow the reference image.',
+      'Use the reference board for identity and pose guidance only; do not copy the board layout, text, labels, panels, borders, or background into the output.',
+      '',
+      'Identity lock:',
+      'Preserve the exact visible pet identity from the reference image.',
+      'Preserve character type, face shape, eyes, eye shape, eye color, markings, fur or material texture, accessories, body proportions, head-to-body ratio, silhouette, lighting, rendering medium, and source visual style.',
+      'Do not redesign, simplify, replace, cartoonify, change species, change outfit, or invent a different pet unless the user explicitly requested that transformation.',
+      '',
+      'Output contract:',
+      'Create one full-body centered pet source image.',
+      'Use a clean transparent-friendly cutout with 8-12% safe padding.',
+      'No sprite sheet, no model sheet, no poster, no collage, no multi-pose image, no text, no watermark, no props, no scene background, no floor, no cast shadow.',
+      '',
+      brief ? `User pet description: ${brief}.` : 'User pet description: none.'
+    ].join('\n')
   }
 }
 
-const createCompiledResult = ({
-  role,
-  compiled,
-  actionId = '',
-  frameCount = 0,
-  keyframeRole = ''
-}) => ({
-  role,
-  version: PROMPT_BUILDER_VERSION,
-  promptCompilerVersion: PROMPT_COMPILER_VERSION,
-  prompt: compiled.text,
-  promptCompiler: compiled.safeSummary,
-  warnings: compiled.warnings,
-  ...(actionId ? { actionId } : {}),
-  ...(frameCount ? { frameCount } : {}),
-  ...(keyframeRole ? { keyframeRole } : {})
-})
-
-const buildCharacterAnchorPrompt = ({
-  model = 'gpt-image-2',
-  referenceRole = 'single-character-reference',
-  qualityGuidance = null,
-  canvas,
-  appearanceIntent = [],
-  visualPlan = null,
-  strategyId = '',
-  requestedChanges = []
-} = {}) => {
-  const resolvedVisualPlan = createVisualPlan(visualPlan || {
-    appearanceIntent,
-    requestedChanges,
-    subject: DEFAULT_FULL_BODY_SUBJECT
-  })
-  const task = createProviderImageTask({
-    taskType: 'character-image',
-    stage: 'identity',
-    canvas,
-    referenceRole,
-    subject: DEFAULT_FULL_BODY_SUBJECT,
-    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
-    strategyId,
-    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
-  })
-  const compiled = compileProviderImagePrompt({
-    task,
-    model,
-    visualPlan: resolvedVisualPlan,
-    qualityGuidance: createQualityGuidanceLines({ qualityGuidance })
-  })
-  return createCompiledResult({ role: 'character-anchor', compiled })
-}
-
-const buildActionKeyframePrompt = ({
-  model = 'gpt-image-2',
-  referenceRole = 'single-character-reference',
-  action = {},
-  keyframeRole = 'start',
-  qualityGuidance = null,
-  canvas,
-  appearanceIntent = [],
-  visualPlan = null,
-  strategyId = '',
-  requestedChanges = []
-} = {}) => {
-  const actionId = normalizeActionText(action.actionId, 'action')
-  const normalizedKeyframeRole = String(keyframeRole || '').trim().toLowerCase() === 'start'
-    ? 'start'
-    : 'peak'
-  const visualAction = createVisualAction({ action, keyframeRole: normalizedKeyframeRole })
-  const resolvedVisualPlan = createVisualPlan(visualPlan || {
-    appearanceIntent,
-    requestedChanges,
-    action: visualAction,
-    subject: DEFAULT_FULL_BODY_SUBJECT
-  })
-  const task = createProviderImageTask({
-    taskType: 'action-keyframe',
-    stage: normalizedKeyframeRole,
-    canvas,
-    referenceRole,
-    subject: DEFAULT_FULL_BODY_SUBJECT,
-    action: visualAction,
-    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
-    strategyId,
-    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
-  })
-  const compiled = compileProviderImagePrompt({
-    task,
-    model,
-    visualPlan: resolvedVisualPlan,
-    qualityGuidance: createQualityGuidanceLines({
-      qualityGuidance,
-      actionId: action.actionId,
-      animationType: inferAnimationType(action)
-    })
-  })
-  return createCompiledResult({
-    role: 'action-keyframe',
-    compiled,
-    actionId,
-    keyframeRole: normalizedKeyframeRole
-  })
-}
-
 const buildActionAnchorPrompt = ({
-  model = 'gpt-image-2',
-  referenceRole = 'single-character-reference',
-  action = {},
-  qualityGuidance = null,
-  canvas,
-  appearanceIntent = [],
-  visualPlan = null,
-  strategyId = '',
-  requestedChanges = []
+  characterBrief = '',
+  referenceRole = 'character-anchor',
+  action = {}
 } = {}) => {
   const actionId = normalizeActionText(action.actionId, 'action')
-  const visualAction = createVisualAction({ action, keyframeRole: 'peak' })
-  const resolvedVisualPlan = createVisualPlan(visualPlan || {
-    appearanceIntent,
-    requestedChanges,
-    action: visualAction,
-    subject: DEFAULT_FULL_BODY_SUBJECT
-  })
-  const task = createProviderImageTask({
-    taskType: 'action-keyframe',
-    stage: 'peak',
-    canvas,
-    referenceRole,
-    subject: DEFAULT_FULL_BODY_SUBJECT,
-    action: visualAction,
-    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
-    strategyId,
-    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
-  })
-  const compiled = compileProviderImagePrompt({
-    task,
-    model,
-    visualPlan: resolvedVisualPlan,
-    qualityGuidance: createQualityGuidanceLines({
-      qualityGuidance,
-      actionId: action.actionId,
-      animationType: inferAnimationType(action)
-    })
-  })
-  return createCompiledResult({ role: 'action-anchor', compiled, actionId })
-}
-
-const buildActionSpriteRowPrompt = ({
-  model = 'gpt-image-2',
-  referenceRole = 'identity-and-motion-reference',
-  action = {},
-  qualityGuidance = null,
-  canvas,
-  appearanceIntent = [],
-  visualPlan = null,
-  strategyId = '',
-  requestedChanges = []
-} = {}) => {
-  const actionId = normalizeActionText(action.actionId, 'action')
-  const frameCount = normalizeFrameCount(action.frameCount || 6)
-  const layout = getActionSheetLayout(frameCount)
-  const visualAction = createVisualAction({ action, frameCount })
-  const resolvedVisualPlan = createVisualPlan(visualPlan || {
-    appearanceIntent,
-    requestedChanges,
-    action: visualAction,
-    subject: DEFAULT_FULL_BODY_SUBJECT
-  })
-  const task = createProviderImageTask({
-    taskType: 'action-frame-sheet',
-    stage: 'final',
-    ...(canvas ? { canvas } : {}),
-    sheet: {
-      frameCount,
-      columns: layout.columns,
-      rows: layout.rows,
-      readingOrder: 'left-to-right-top-to-bottom'
-    },
-    referenceRole,
-    subject: DEFAULT_FULL_BODY_SUBJECT,
-    action: visualAction,
-    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
-    strategyId,
-    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
-  })
-  const compiled = compileProviderImagePrompt({
-    task,
-    model,
-    visualPlan: resolvedVisualPlan,
-    qualityGuidance: createQualityGuidanceLines({
-      qualityGuidance,
-      actionId: action.actionId,
-      animationType: inferAnimationType(action)
-    })
-  })
-  return createCompiledResult({
-    role: 'action-sprite-row',
-    compiled,
+  const actionName = normalizeActionText(action.name, actionId)
+  const motionPrompt = normalizeActionText(action.motionPrompt, actionName)
+  const animationType = normalizeActionText(action.animationType, 'stationary_loop')
+  const brief = sanitizeCreativeBrief(characterBrief)
+  return {
+    role: 'action-anchor',
+    version: PROMPT_BUILDER_VERSION,
     actionId,
-    frameCount
-  })
+    warnings: [],
+    prompt: [
+      'Create one action anchor view for OpenPet.',
+      `Reference role: ${sanitizeCreativeBrief(referenceRole)}.`,
+      'The source image is the highest identity authority.',
+      'If the written description conflicts with the reference image, follow the reference image.',
+      '',
+      `Action ID: ${actionId}`,
+      `Action name: ${actionName}`,
+      `Motion intent: ${motionPrompt}`,
+      `Animation type: ${animationType}`,
+      brief ? `User pet description: ${brief}.` : '',
+      '',
+      'Identity and style lock:',
+      'Keep the same character identity, face, eyes, markings, fur or material texture, accessories, proportions, silhouette, lighting, rendering medium, and source visual style as the character anchor.',
+      'Do not redesign the pet, add a new outfit, change species, add props, add scene elements, or change camera angle.',
+      '',
+      'Action anchor contract:',
+      'Show clear action key-pose guidance, not a final sprite sheet.',
+      'Keep a stable lower-center root and unchanged body scale.',
+      'Keep the moving parts clearly separated enough for OpenPet local synthesis or row generation.',
+      'For stationary actions, body, head, feet/base, and face remain locked while only the target limb changes.',
+      '',
+      'Animated parts:',
+      formatList(action.animatedParts, ['the requested moving part']),
+      '',
+      'Locked parts:',
+      formatList(action.lockedParts, ['head', 'torso', 'feet/base', 'face', 'identity markings']),
+      '',
+      'Negative prompt: different character, changed face, changed eyes, changed markings, changed proportions, extra limbs, missing limbs, props, scene background, floor, shadows, text, labels, watermark, motion blur, sprite sheet grid.'
+    ].filter(Boolean).join('\n')
+  }
 }
 
 module.exports = {
-  PROMPT_BUILDER_VERSION,
   buildActionAnchorPrompt,
-  buildActionKeyframePrompt,
-  buildActionSpriteRowPrompt,
-  buildCharacterAnchorPrompt,
-  createVisualAction
+  buildCharacterAnchorPrompt
 }
