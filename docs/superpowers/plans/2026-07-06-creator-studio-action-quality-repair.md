@@ -8,6 +8,24 @@
 
 **Tech Stack:** Node.js CommonJS modules, `sharp`, Node native test runner, existing Creator Studio run/output layout, existing OpenPet plugin bridge import flow.
 
+## 2026-07-07 Update: Identity Drift Gate
+
+The latest reference-conditioned provider evidence found a third single-action blocker:
+
+- Evidence report: `release/standalone-image-provider-samples/2026-07-06T23-00-00-915Z-original-reference-quality/report.json`
+- Contact sheet: `release/standalone-image-provider-samples/2026-07-06T23-00-00-915Z-original-reference-quality/data/actions/wave-candidate-1/qa/action-frame-contact-sheet.png`
+- Symptom: baseline, visible area, and frame count passed deterministic QA, but the cat visibly changed face, eyes, and body identity across frames.
+- Root cause: action QA had a minimum-motion floor but no maximum whole-sprite or face/body-core change ceiling. Per-frame reference generation could therefore pass as "animated" even when it was actually redrawing a different pet every frame.
+- Fix layer: `examples/plugins/creator-studio/lib/action-frame-builder.js`.
+- Fresh revalidation of the same generated outputs now fails with `qa.ok=false`, `averageChangedPixelRatio=0.868924`, `identityCoreAverageChangedPixelRatio=0.842441`, `excessiveWholeSpriteChangePairCount=3`, and `excessiveIdentityCoreChangePairCount=5`.
+
+Landed policy:
+
+- Full-sprite adjacent change above the identity-stability ceiling fails QA.
+- Center face/body-core adjacent change above the identity-stability ceiling fails QA.
+- The metrics are written into `action-frame-validation.json` as `identityCoreDiff`, `excessiveWholeSpriteChangePairCount`, and `excessiveIdentityCoreChangePairCount`.
+- Tests now use stable same-character synthetic fixtures for valid provider/action-sheet paths; changing the whole color/face every frame is treated as a bad fixture, not a valid action.
+
 ## Global Constraints
 
 - Work only in `/Users/mango/.codex/worktrees/3c34/OpenPet` on branch `codex/dev8`.
@@ -28,6 +46,7 @@ The current branch contains useful official-row infrastructure, but two producti
 
 1. Full-pet provider generation can produce a base-only preview atlas and still pass approval/import gates.
 2. Single-action generation can reuse frames or produce near-static frames and still pass action-frame QA.
+3. Reference-conditioned per-frame generation can keep anchors stable while changing character identity from frame to frame.
 
 These are quality-gate failures, not only prompt failures. Prompt improvements are useful, but they cannot be the authority for whether an asset is safe to import. The authority must be deterministic QA plus approval/import gates.
 
@@ -91,6 +110,23 @@ Root cause:
 
 Action-frame QA treats "complete image files exist" as enough, plus some anti-jitter checks. It does not separately enforce "the animation actually animates." Reuse is surfaced as a warning instead of a blocking error.
 
+### P1: Single-Action QA Allows Identity Drift With Stable Anchors
+
+Current path:
+
+```text
+per-frame reference-conditioned provider run
+  -> every frame contains a centered full-body cutout
+  -> baseline/height/visible-area metrics stay within range
+  -> adjacent visible-pixel change is high, but high change is treated as acceptable motion
+  -> qa.ok remains true
+  -> approval/import can proceed unless a human catches the identity drift
+```
+
+Root cause:
+
+The previous QA only rejected too little motion. It did not reject too much global redraw or high change inside the stable face/body core. For waving and most desktop-pet actions, large adjacent changes across the whole sprite or the central identity region are evidence of character redraw, not better animation.
+
 ## 3. Official Protocol Reference
 
 OpenAI's `hatch-pet` skill defines the practical reference contract for Codex-compatible pets:
@@ -130,6 +166,8 @@ Single-action runs must fail QA when:
 - any required frame was reused from a previous frame;
 - unique frame count is too low for the requested frame count;
 - adjacent frames are almost identical across the whole animation;
+- adjacent frames redraw too much of the whole sprite;
+- adjacent frames change too much inside the stable face/body core;
 - total motion is below the minimum for the action type;
 - frame files no longer match QA evidence at approval/import time.
 
@@ -353,6 +391,7 @@ Modify:
 - `examples/plugins/creator-studio/lib/action-frame-builder.js`
   - Add unique-frame, reuse, duplicate, and motion metrics.
   - Write frame hashes into `action-frame-validation.json`.
+  - Add whole-sprite and identity-core excessive-change metrics so stable-anchor identity drift fails before approval.
 - `examples/plugins/creator-studio/lib/action-frame-qa.js`
   - Recompute hashes and core frame evidence at approval/import time.
   - Block reused or static QA.
@@ -514,6 +553,99 @@ Expected:
 - Reused cells fail.
 - Static sheets fail.
 - Valid varied sheets pass.
+
+### Task 2.1: Add Single-Action Identity Drift QA
+
+**Files:**
+
+- Modify: `examples/plugins/creator-studio/lib/action-frame-builder.js`
+- Modify: `tests/examples/creator-studio-action-frame-builder.test.js`
+- Modify: `tests/examples/creator-studio-plugin.test.js`
+
+**Interfaces:**
+
+Add to `action-frame-validation.json`:
+
+```json
+{
+  "quality": {
+    "metrics": {
+      "identityCoreDiff": {
+        "minChangedPixelRatio": 0.04,
+        "maxChangedPixelRatio": 0.14,
+        "averageChangedPixelRatio": 0.08
+      },
+      "excessiveWholeSpriteChangePairCount": 0,
+      "excessiveIdentityCoreChangePairCount": 0
+    }
+  }
+}
+```
+
+Policy:
+
+- Average adjacent whole-sprite change above `0.65` is an error.
+- Any adjacent whole-sprite pair above `0.86` is an error.
+- Average adjacent identity-core change above `0.52` is an error.
+- Any adjacent identity-core pair above `0.72` is an error.
+- These gates are intentionally defensive. They block obvious "different pet each frame" outputs; they do not prove final artistic approval.
+
+**Steps:**
+
+- [x] Add a regression fixture where anchors and visible area are stable but face, eye, and fur colors change every frame.
+- [x] Add identity-core adjacent-pixel metrics.
+- [x] Fail QA when whole-sprite or core identity change exceeds the stability limit.
+- [x] Update provider/action-sheet test fixtures so valid examples move one stable character instead of changing colors every frame.
+- [x] Revalidate the known bad generated sample without spending provider quota.
+- [x] Run:
+
+```sh
+node --test tests/examples/creator-studio-action-frame-builder.test.js
+node --test tests/examples/creator-studio-plugin.test.js
+```
+
+Fresh evidence:
+
+- `tests/examples/creator-studio-action-frame-builder.test.js`: 20 passing tests.
+- `tests/examples/creator-studio-plugin.test.js`: 85 passing tests.
+- Known bad provider sample revalidation now fails with both whole-sprite redraw and identity-core drift errors.
+
+## 2026-07-07 Update: Approved Reference Validation Still Blocks Import
+
+After the user approved the high-similarity multi-view/action reference image, dev8 ran fresh reference-conditioned wave validation with that image as the identity lock:
+
+- Sheet strategy, original front reference plus approved board:
+  - `release/standalone-image-provider-samples/2026-07-06T23-53-23-591Z-original-reference-quality/report.json`
+  - Result: `qa.ok=false`; baseline and height were stable, but whole-sprite average diff was `0.714156`, identity-core average diff was `0.667577`, and the strict gate rejected the candidate.
+- Sheet strategy, approved board used for front, board, and identity lock:
+  - `release/standalone-image-provider-samples/2026-07-06T23-58-12-152Z-original-reference-quality/report.json`
+  - Result: `qa.ok=false` with the same identity-drift failure class.
+- Per-frame strategy, approved board used for front, board, and identity lock:
+  - `release/standalone-image-provider-samples/2026-07-07T00-01-35-748Z-original-reference-quality/report.json`
+  - Result: `qa.ok=false`; whole-sprite average diff was `0.919283`, identity-core average diff was `0.901949`, and visible-area ratio was `1.491`.
+- Per-frame strategy, original front reference plus original full reference plus user-approved high-similarity identity-lock board:
+  - `release/standalone-image-provider-samples/2026-07-07T00-33-47-940Z-original-reference-quality/report.json`
+  - Result: transport and request formatting were healthy: every `/images/edits` request used `gpt-image-2`, `quality=high`, reference-conditioned multipart upload, and returned HTTP 200.
+  - Deterministic QA still rejected the candidate: baseline range `0`, height range `0`, visible-area ratio `1.117`, but whole-sprite average diff `0.836982` and identity-core average diff `0.807008`.
+  - Visual review matched the metrics: the provider kept a stable slot but redrew the cat face/body between frames and simplified the distinctive green eyes into generic dark eyes.
+
+Visual review of the contact sheets confirmed the deterministic failures: the provider simplified the distinctive green eyes into generic dark eyes and redrew the cat identity between frames. The current code correctly blocks these outputs from approval/import. This is not a solved production-art path yet.
+
+Landed follow-up:
+
+- The production prompt builder now explicitly preserves distinctive eyes, iris color, pupil shape, catchlights, eyelids, and expression.
+- The negative prompt now rejects lost iris color, lost eye highlights, generic black-dot eyes, and hollow eyes.
+
+Next implementation slice:
+
+- Stop relying on one-shot full sprite-sheet or independent per-frame generation as the primary production path for high-likeness assets.
+- Productize a stricter staged workflow:
+  1. generate or accept a canonical transparent full-body frame;
+  2. visually approve that canonical frame;
+  3. generate each action as controlled masked edits, local reference-preserving rig/pose-keyframe synthesis, or other bounded changes from the canonical frame;
+  4. run deterministic QA plus human contact-sheet review before import.
+- Treat independent per-frame image generation as an exploration/debugging path only until it can preserve identity-core pixels across adjacent frames.
+- Keep the current QA gates as the import authority so provider regressions cannot silently enter OpenPet.
 
 ### Task 3: Bind QA Evidence To Imported Files
 
@@ -776,4 +908,5 @@ Remaining backlog after this milestone:
 
 - Add profile-specific thresholds for `idle`, `waving`, `running`, `jumping`, and reaction rows.
 - Add row-level retry/repair controls around the official row job state machine.
-- Run a real provider smoke only after the local image gateway/model list is stable, then perform human visual review of row GIFs/contact sheets.
+- Add a canonical-frame action synthesis path that preserves the approved reference identity first, then moves only bounded action regions.
+- Run a real provider smoke only after the local image gateway/model list is stable and the canonical-frame action path exists, then perform human visual review of row GIFs/contact sheets.

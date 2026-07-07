@@ -90,7 +90,7 @@ const createActionSheetPng = async ({
     const row = Math.floor(index / columns)
     const pose = wave[index % wave.length]
     return {
-      input: Buffer.from(createCatFrameSvg({ width: cellWidth, height: cellHeight, ...catOptions, ...pose })),
+      input: Buffer.from(createCatFrameSvg({ width: cellWidth, height: cellHeight, ...pose })),
       left: column * cellWidth,
       top: row * cellHeight
     }
@@ -1014,6 +1014,58 @@ test('action frame builder accepts subtle waving sheets with stable anchors', as
   assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
 })
 
+test('action frame builder rejects identity drift even when frame anchors are stable', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  const variants = [
+    { body: '#d89b45', head: '#e2ad5b', chest: '#f2dcc0', eye: '#4f8c42' },
+    { body: '#b76e38', head: '#d99c4b', chest: '#f8ead7', eye: '#1f1f1f' },
+    { body: '#e7b55f', head: '#f0c874', chest: '#fff3df', eye: '#4f8c42' },
+    { body: '#c88742', head: '#dea557', chest: '#f2dcc0', eye: '#8f5a32' },
+    { body: '#df9c3c', head: '#f1bd61', chest: '#fff2e4', eye: '#222222' },
+    { body: '#a46b3d', head: '#c99052', chest: '#ead1af', eye: '#4f8c42' }
+  ]
+
+  for (const [index, variant] of variants.entries()) {
+    await writeSingleCatFrame({
+      filePath: path.join(sourceDir, `${String(index + 1).padStart(4, '0')}.png`),
+      width: 1024,
+      height: 1024,
+      ...variant
+    })
+  }
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: variants.map((_variant, index) => ({
+        dataRelativePath: `runs/demo/frames/base/${String(index + 1).padStart(4, '0')}.png`,
+        mimeType: 'image/png'
+      }))
+    },
+    action: {
+      actionId: 'identity-drift-wave',
+      name: 'Identity Drift Wave',
+      frameCount: 6,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/identity-drift-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.match(qa.errors.join('\n'), /identity drift|whole sprite|face\/body core/i)
+  assert.equal(qa.quality.metrics.frameBounds.baselineY.range, 0)
+  assert.equal(qa.quality.metrics.visiblePixels.ratio < 1.2, true)
+  assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.65, true)
+  assert.equal(qa.quality.metrics.identityCoreDiff.averageChangedPixelRatio > 0.52, true)
+  assert.equal(qa.quality.metrics.excessiveWholeSpriteChangePairCount > 0, true)
+  assert.equal(qa.quality.metrics.excessiveIdentityCoreChangePairCount > 0, true)
+})
+
 test('action frame qa rejects frames modified after validation', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
@@ -1407,7 +1459,169 @@ test('action frame builder rejects multi-output scale variants before QA', async
 
 })
 
-test('action frame builder rejects multiple provider sheets instead of combining their cells', async () => {
+test('action frame builder fails QA for large opaque multi-output provider frames', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+
+  for (let index = 1; index <= 3; index += 1) {
+    await sharp({
+      create: {
+        width: 1024,
+        height: 1024,
+        channels: 4,
+        background: { r: 240 - (index * 8), g: 240 - (index * 8), b: 240 - (index * 8), alpha: 1 }
+      }
+    })
+      .composite([{
+        input: Buffer.from(`
+          <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="${512 + (index * 12)}" cy="620" rx="230" ry="310" fill="#d89b45" />
+            <circle cx="${512 + (index * 12)}" cy="330" r="130" fill="#e2ad5b" />
+          </svg>
+        `),
+        left: 0,
+        top: 0
+      }])
+      .png()
+      .toFile(path.join(sourceDir, `${String(index).padStart(4, '0')}.png`))
+  }
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [
+        { dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' },
+        { dataRelativePath: 'runs/demo/frames/base/0002.png', mimeType: 'image/png' },
+        { dataRelativePath: 'runs/demo/frames/base/0003.png', mimeType: 'image/png' }
+      ]
+    },
+    action: {
+      actionId: 'opaque-wave',
+      name: 'Opaque Wave',
+      frameCount: 3,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/opaque-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.match(qa.errors.join('\n'), /opaque|background|cutout/i)
+  assert.equal(qa.quality.metrics.opaqueMultiOutputFrameCount, 3)
+  assert.equal(qa.quality.metrics.largeOpaqueMultiOutputFrameCount, 3)
+})
+
+test('action frame builder fails QA for small opaque multi-output provider frames', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  const wave = [
+    { pawLift: 0, pawAngle: 0 },
+    { pawLift: 16, pawAngle: -8 },
+    { pawLift: 4, pawAngle: 5 }
+  ]
+
+  for (let index = 1; index <= 3; index += 1) {
+    await writeSingleCatFrame({
+      filePath: path.join(sourceDir, `${String(index).padStart(4, '0')}.png`),
+      width: 196,
+      height: 212,
+      background: { r: 245, g: 245, b: 245, alpha: 1 },
+      ...wave[index - 1]
+    })
+  }
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [
+        { dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' },
+        { dataRelativePath: 'runs/demo/frames/base/0002.png', mimeType: 'image/png' },
+        { dataRelativePath: 'runs/demo/frames/base/0003.png', mimeType: 'image/png' }
+      ]
+    },
+    action: {
+      actionId: 'small-opaque-wave',
+      name: 'Small Opaque Wave',
+      frameCount: 3,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/small-opaque-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.match(qa.errors.join('\n'), /opaque|background|cutout/i)
+  assert.equal(qa.quality.metrics.opaqueMultiOutputFrameCount, 3)
+  assert.equal(qa.quality.metrics.largeOpaqueMultiOutputFrameCount, 0)
+})
+
+test('action frame builder fails QA for unstable visible area below legacy tolerance', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  const sizes = [
+    { rx: 100, ry: 300 },
+    { rx: 210, ry: 220 },
+    { rx: 110, ry: 290 }
+  ]
+
+  for (const [index, size] of sizes.entries()) {
+    await sharp({
+      create: {
+        width: 1024,
+        height: 1024,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
+      }
+    })
+      .composite([{
+        input: Buffer.from(`
+          <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="512" cy="630" rx="${size.rx}" ry="${size.ry}" fill="#d89b45" />
+            <circle cx="512" cy="${620 - size.ry}" r="${Math.max(58, Math.floor(size.rx * 0.5))}" fill="#e2ad5b" />
+          </svg>
+        `),
+        left: 0,
+        top: 0
+      }])
+      .png()
+      .toFile(path.join(sourceDir, `${String(index + 1).padStart(4, '0')}.png`))
+  }
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [
+        { dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' },
+        { dataRelativePath: 'runs/demo/frames/base/0002.png', mimeType: 'image/png' },
+        { dataRelativePath: 'runs/demo/frames/base/0003.png', mimeType: 'image/png' }
+      ]
+    },
+    action: {
+      actionId: 'scale-drift',
+      name: 'Scale Drift',
+      frameCount: 3,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/scale-drift'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.match(qa.errors.join('\n'), /unstable visible area/i)
+  assert.equal(qa.quality.metrics.visiblePixels.ratio > 1.8, true)
+  assert.equal(qa.quality.metrics.visiblePixels.ratio < 2.4, true)
+})
+
+test('action frame builder falls back across multiple action-sheet outputs when earlier sheets miss cells', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
   const qaDir = path.join(dataDir, 'runs/demo/qa')
