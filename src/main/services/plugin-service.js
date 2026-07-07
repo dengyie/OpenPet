@@ -68,13 +68,15 @@ const ACTIVE_SETUP_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 const ACTIVE_COMMAND_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
 const AGENT_AWARENESS_PLUGIN_ID = 'openpet.agent-awareness'
 const AGENT_AWARENESS_SERVICE_ID = 'agent-awareness'
-
 const sanitizePluginHealthDetailLabel = (value = '') => sanitizePluginCommandText(value, {
   maxLength: 80,
   redactStandaloneTokenWords: false
 })
 
 const sanitizePluginHealthDetailValue = (value = '') => sanitizePluginCommandText(value, { maxLength: 120 })
+const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
+const IM_GATEWAY_SERVICE_ID = 'im-gateway'
+const IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID = 'im.telegram.botToken'
 const DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS = 5000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS = 15 * 60 * 1000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES = 24
@@ -372,7 +374,7 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, secretService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const commandBridgeRuntimes = new Map()
@@ -935,6 +937,44 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const normalizePluginConfig = (schema, config = {}) => normalizePluginServiceConfig(schema, config, coerceConfigValue)
 
   const getPluginConfig = (pluginId, schema) => normalizePluginConfig(schema, getConfigMap()[pluginId] || {})
+
+  const getImGatewaySecretState = () => ({
+    hasTelegramBotToken: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID))
+  })
+
+  const assertImGatewaySecretService = () => {
+    if (!secretService) throw new Error('Secret service is not available')
+  }
+
+  const saveImGatewayTelegramBotToken = (token) => {
+    assertImGatewaySecretService()
+    const value = String(token || '').trim()
+    if (!value) throw new Error('Telegram bot token is required')
+    secretService.setSecret({
+      id: IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID,
+      value,
+      label: 'Telegram Bot Token'
+    })
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway Telegram token saved' })
+    return getImGatewaySecretState()
+  }
+
+  const clearImGatewayTelegramBotToken = () => {
+    assertImGatewaySecretService()
+    secretService.deleteSecret?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway Telegram token cleared' })
+    return getImGatewaySecretState()
+  }
+
+  const createImGatewayServiceEnv = (plugin, serviceId) => {
+    if (plugin.manifest.id !== IM_GATEWAY_PLUGIN_ID || serviceId !== IM_GATEWAY_SERVICE_ID) return {}
+    const env = {
+      OPENPET_IM_GATEWAY_CONFIG_JSON: JSON.stringify(getPluginConfig(plugin.manifest.id, plugin.configSchema))
+    }
+    const token = secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)
+    if (token) env.OPENPET_IM_TELEGRAM_BOT_TOKEN = token
+    return env
+  }
 
   const assertPermission = (manifest, permission) => {
     if (!manifest.permissions.includes(permission)) {
@@ -1806,7 +1846,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             OPENPET_LOG_DIR: serviceDirs.logDir,
             ...createAgentAwarenessServiceEnv({ pluginId, serviceId }),
             OPENPET_SERVICE_BRIDGE_URL: bridgeBaseUrl,
-            OPENPET_SERVICE_BRIDGE_TOKEN: bridgeToken
+            OPENPET_SERVICE_BRIDGE_TOKEN: bridgeToken,
+            ...createImGatewayServiceEnv(plugin, serviceId)
           },
           shell: false,
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -2171,7 +2212,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     maybeAutostartAgentAwareness,
     pollAgentAwarenessAutostart,
     getPluginDefinition,
-    getPluginCreatorDataDir
+    getPluginCreatorDataDir,
+    getImGatewaySecretState,
+    saveImGatewayTelegramBotToken,
+    clearImGatewayTelegramBotToken
   }
 }
 

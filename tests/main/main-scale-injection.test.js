@@ -153,7 +153,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
 
     const serviceFactories = {
       './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
-      './src/main/services/secret-service': { createSecretService: () => ({}) },
+      './src/main/services/secret-service': { createSecretService: () => ({ id: 'secret-service' }) },
       './src/main/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
       './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({ id: 'hatch-pet-agent-service' }) },
       './src/main/services/ai-talk-store': {
@@ -268,10 +268,12 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     assert.equal(registeredIpcDependencies.aiTalkService.id, 'ai-talk-service')
     assert.equal(registeredIpcDependencies.creatorStudioDefaultFlowService.id, 'creator-studio-default-flow-service')
     assert.equal(createdCreatorStudioDefaultFlowDependencies.pluginService.stopAllServices != null, true)
+    assert.equal(registeredPluginDependencies.secretService.id, 'secret-service')
     assert.equal(bundledPluginSyncDependencies.pluginDir, path.join(__dirname, '..', '.tmp-main-scale-injection', 'plugins'))
     assert.deepEqual(bundledPluginSyncDependencies.bundledPluginDirs, [
       path.resolve(__dirname, '../../examples/plugins/creator-studio'),
-      path.resolve(__dirname, '../../examples/plugins/agent-awareness')
+      path.resolve(__dirname, '../../examples/plugins/agent-awareness'),
+      path.resolve(__dirname, '../../examples/plugins/im-gateway')
     ])
     assert.deepEqual(appLogs.map((entry) => entry.event), [
       'app.ready',

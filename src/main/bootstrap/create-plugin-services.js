@@ -33,6 +33,7 @@ const createPluginServices = ({
   aiService,
   aiTalkService,
   imageGenerationModelService,
+  secretService,
   triggerRuleRuntimeService,
   settingsService,
   appLogService,
@@ -48,11 +49,12 @@ const createPluginServices = ({
   const pluginDir = path.join(app.getPath('userData'), 'plugins')
   const bundledCreatorStudioDir = path.join(projectRoot, 'examples', 'plugins', 'creator-studio')
   const bundledAgentAwarenessDir = path.join(projectRoot, 'examples', 'plugins', 'agent-awareness')
+  const bundledImGatewayDir = path.join(projectRoot, 'examples', 'plugins', 'im-gateway')
   const getCatalogBlockStatus = (candidate, catalogService, methodName) => catalogService?.[methodName]?.(candidate) || { blocked: false, reasons: [] }
 
   const bundledPluginSync = syncBundledPlugins({
     pluginDir,
-    bundledPluginDirs: [bundledCreatorStudioDir, bundledAgentAwarenessDir],
+    bundledPluginDirs: [bundledCreatorStudioDir, bundledAgentAwarenessDir, bundledImGatewayDir],
     settingsService
   })
   logBundledPluginSync({ bundledPluginSync, appLogService })
@@ -76,6 +78,7 @@ const createPluginServices = ({
     aiService,
     aiTalkService,
     imageGenerationModelService,
+    secretService,
     pluginDirs: [pluginDir],
     officialPlugins: [createBasicBehaviorPlugin()],
     openExternal: (url) => shell.openExternal(url),

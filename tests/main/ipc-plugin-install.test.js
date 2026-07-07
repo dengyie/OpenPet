@@ -1807,6 +1807,52 @@ test('plugins:list returns normalized plugin view payloads', async () => {
   }])
 })
 
+test('plugins IM Gateway secret IPC returns renderer-safe token state', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        getImGatewaySecretState: () => ({ hasTelegramBotToken: false }),
+        saveImGatewayTelegramBotToken: (token) => {
+          calls.push(['save-token', token])
+          return { hasTelegramBotToken: true }
+        },
+        clearImGatewayTelegramBotToken: () => {
+          calls.push(['clear-token'])
+          return { hasTelegramBotToken: false }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const state = await ipcMain.handlers.get(IPC.PLUGINS_GET_IM_GATEWAY_SECRET_STATE)()
+  const saved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_TELEGRAM_TOKEN)(null, { token: 'telegram-token' })
+  const cleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN)()
+
+  assert.deepEqual(state, { hasTelegramBotToken: false })
+  assert.deepEqual(saved, { hasTelegramBotToken: true })
+  assert.deepEqual(cleared, { hasTelegramBotToken: false })
+  assert.deepEqual(calls, [
+    ['save-token', 'telegram-token'],
+    ['clear-token']
+  ])
+  assert.equal(JSON.stringify({ state, saved, cleared }).includes('telegram-token'), false)
+})
+
 test('plugin mutation handlers return plugin mutation result with refreshed plugin list', async () => {
   const ipcMain = createIpcMainStub()
   const plugins = [{ id: 'focus-timer', enabled: false }]

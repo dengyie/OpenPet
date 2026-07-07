@@ -142,6 +142,7 @@ const createOpenPetRuntime = ({
     aiService,
     aiTalkService,
     imageGenerationModelService,
+    secretService,
     triggerRuleRuntimeService,
     settingsService,
     appLogService,

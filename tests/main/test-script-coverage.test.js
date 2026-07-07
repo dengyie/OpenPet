@@ -34,4 +34,5 @@ test('packaged app includes bundled official plugin directories', () => {
 
   assert.equal(buildFiles.includes('examples/plugins/creator-studio/**/*'), true)
   assert.equal(buildFiles.includes('examples/plugins/agent-awareness/**/*'), true)
+  assert.equal(buildFiles.includes('examples/plugins/im-gateway/**/*'), true)
 })

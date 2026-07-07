@@ -3985,6 +3985,107 @@ test('plugin service starts and stops enabled declaration service entries', asyn
   assert.equal(settingsService.get().plugins.logs[0].message, 'Service stopped')
 })
 
+test('plugin service stores IM Gateway Telegram token without exposing its value', () => {
+  const secretCalls = []
+  let savedToken = ''
+  const service = createPluginService({
+    settingsService: createSettingsService(),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [],
+    secretService: {
+      getSecretValue: (id) => id === 'im.telegram.botToken' ? savedToken : '',
+      setSecret: ({ id, value, label }) => {
+        secretCalls.push({ id, value, label })
+        savedToken = value
+        return { id, label, hasValue: Boolean(value) }
+      },
+      deleteSecret: (id) => {
+        secretCalls.push({ id, deleted: true })
+        savedToken = ''
+      }
+    }
+  })
+
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false })
+
+  const saved = service.saveImGatewayTelegramBotToken('telegram-token')
+
+  assert.deepEqual(saved, { hasTelegramBotToken: true })
+  assert.deepEqual(secretCalls[0], {
+    id: 'im.telegram.botToken',
+    value: 'telegram-token',
+    label: 'Telegram Bot Token'
+  })
+  assert.equal(JSON.stringify(saved).includes('telegram-token'), false)
+
+  const cleared = service.clearImGatewayTelegramBotToken()
+
+  assert.deepEqual(cleared, { hasTelegramBotToken: false })
+  assert.deepEqual(secretCalls[1], { id: 'im.telegram.botToken', deleted: true })
+})
+
+test('plugin service injects Telegram secret and config only for IM Gateway service', async () => {
+  const imGatewaySpawned = []
+  const weatherSpawned = []
+  const imGatewayChild = createSlowStoppingServiceProcess()
+  const weatherChild = createSlowStoppingServiceProcess()
+  const secretService = {
+    getSecretValue: (id) => id === 'im.telegram.botToken' ? 'telegram-token' : ''
+  }
+  const imGatewayService = createPluginService({
+    settingsService: createSettingsService({
+      plugins: {
+        enabled: { 'openpet.im-gateway': true },
+        config: {
+          'openpet.im-gateway': {
+            telegramEnabled: true,
+            allowedUsers: '1001',
+            allowedChats: '-2001'
+          }
+        }
+      }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    secretService,
+    spawnServiceProcess: (file, args, options) => {
+      imGatewaySpawned.push({ file, args, options })
+      return imGatewayChild
+    }
+  })
+
+  await imGatewayService.startService('openpet.im-gateway', 'im-gateway')
+
+  assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_TELEGRAM_BOT_TOKEN, 'telegram-token')
+  assert.equal(JSON.stringify(imGatewaySpawned[0].options.env).includes('telegram-token'), true)
+  const config = JSON.parse(imGatewaySpawned[0].options.env.OPENPET_IM_GATEWAY_CONFIG_JSON)
+  assert.equal(config.telegramEnabled, true)
+  assert.equal(config.allowedUsers, '1001')
+  assert.equal(config.allowedChats, '-2001')
+  assert.equal(JSON.stringify(config).includes('telegram-token'), false)
+
+  const weatherService = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    secretService,
+    spawnServiceProcess: (file, args, options) => {
+      weatherSpawned.push({ file, args, options })
+      return weatherChild
+    }
+  })
+
+  await weatherService.startService('weather-declaration', 'companion')
+
+  assert.equal(weatherSpawned[0].options.env.OPENPET_IM_TELEGRAM_BOT_TOKEN, undefined)
+  assert.equal(weatherSpawned[0].options.env.OPENPET_IM_GATEWAY_CONFIG_JSON, undefined)
+})
+
 test('plugin service registers service bridge runtime before spawning child process', async () => {
   const child = createSlowStoppingServiceProcess()
   const originalMapSet = Map.prototype.set

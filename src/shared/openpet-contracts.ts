@@ -1714,6 +1714,10 @@ export interface PluginViewState {
   blockStatus?: CatalogReviewState
 }
 
+export interface ImGatewaySecretState {
+  hasTelegramBotToken: boolean
+}
+
 export interface PluginLogEntry {
   id: string
   timestamp: string
@@ -3503,6 +3507,9 @@ export interface ControlCenterApi {
   setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<PluginViewState>
   setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<PluginViewState>
   savePluginConfig: (pluginId: string, config: JsonObject) => Promise<PluginViewState>
+  getImGatewaySecretState: () => Promise<ImGatewaySecretState>
+  saveImGatewayTelegramBotToken: (token: string) => Promise<ImGatewaySecretState>
+  clearImGatewayTelegramBotToken: () => Promise<ImGatewaySecretState>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   getCreatorState: () => Promise<CreatorStateViewState>
   pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>

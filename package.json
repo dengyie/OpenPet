@@ -104,6 +104,7 @@
       "catalog/**/*",
       "examples/plugins/creator-studio/**/*",
       "examples/plugins/agent-awareness/**/*",
+      "examples/plugins/im-gateway/**/*",
       "dist/control-center/**/*",
       "build/native/**/*",
       "src/main/**/*",
