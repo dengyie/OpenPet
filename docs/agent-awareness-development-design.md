@@ -39,7 +39,7 @@ The current branch baseline is no longer "paper design only." It has the full pl
 - shipped hook + polling dual ingestion with one canonical runtime session model;
 - shipped trusted auto-start gating behind native approval plus explicit opt-in;
 - shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
-- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, best-effort git branch/dirty summaries, generated session summaries, dashboard rendering, bounded detail deep-link focus, and in-dashboard session focus controls;
+- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, best-effort git branch/dirty summaries, generated session summaries, dashboard rendering, bounded detail deep-link focus, and in-dashboard session focus controls;
 - shipped a first-class Agent Awareness detail entry from Control Center;
 - shipped a pet-side quick-open detail entry from Bubble Chat;
 - kept the privacy boundary intact while adding the richer runtime shape.
@@ -84,7 +84,7 @@ Today Agent Awareness provides:
 - a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
 - dashboard support for `view=details&sessionId=<sanitized-id>` so an existing safe session hash can be shown as a focused detail view;
 - a per-session dashboard `Focus` link that opens the same bounded detail route without adding a new host/plugin contract;
-- a read-only dashboard that shows aggregate usage tokens plus per-session usage, git, and summary facts when available;
+- a read-only dashboard that shows aggregate usage tokens, token breakdown, estimated cost, peak context, and per-session usage, git, and summary facts when available;
 - operator commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks`;
 - repeatable real-session smoke via `npm run run-agent-awareness-local-smoke`;
 - archived smoke review write-back through `npm run update-agent-awareness-local-smoke-report`.
@@ -174,15 +174,15 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - rollout polling derives safe `token_count` metadata into usage summaries;
 - rollout polling derives safe `turn_context` cwd into bounded git metadata without storing the cwd;
 - hook and poller adapters preserve bounded `usage`, `git`, and `summary` objects;
-- `/health` exposes aggregate `usageTotalTokens`;
-- the dashboard renders aggregate usage tokens and per-session usage/git/session-summary facts;
+- `/health` exposes aggregate usage totals, token breakdown, estimated cost, currency, and peak context metadata;
+- the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, and per-session usage/git/session-summary facts;
 - the dashboard honors `view=details&sessionId=<sanitized-id>` for safe per-session focus and renders a bounded empty state when the requested session is absent;
 - each rendered session card exposes a safe `Focus` link into that bounded detail route;
 - mock smoke flow preserves these fields in redacted reports.
 
 **Still open**
 
-- richer usage history and stats over time;
+- historical usage trends and a dedicated stats page over time;
 - stronger current-task summary policy that remains content-safe;
 - Control Center-native detail panel beyond opening the bundled dashboard.
 

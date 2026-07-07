@@ -74,13 +74,54 @@ const sanitizePollerStatus = (status = {}) => ({
   lastError: sanitizeText(status.lastError || '', 160)
 })
 
+const toFiniteNumber = (value) => {
+  if (value == null || value === '') return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+const roundSix = (value) => Math.round(value * 1_000_000) / 1_000_000
+
+const buildUsageDiagnostics = (sessions = []) => {
+  const totals = {
+    usageTotalTokens: 0,
+    usageInputTokens: 0,
+    usageOutputTokens: 0,
+    usageCachedInputTokens: 0,
+    usageEstimatedCostUsd: null,
+    usageCurrency: '',
+    usagePeakContextUsedPercent: null
+  }
+  const currencies = new Set()
+  for (const session of sessions) {
+    const usage = session?.usage && typeof session.usage === 'object' ? session.usage : null
+    if (!usage) continue
+    const totalTokens = toFiniteNumber(usage.totalTokens)
+    const inputTokens = toFiniteNumber(usage.inputTokens)
+    const outputTokens = toFiniteNumber(usage.outputTokens)
+    const cachedInputTokens = toFiniteNumber(usage.cachedInputTokens)
+    const estimatedCostUsd = toFiniteNumber(usage.estimatedCostUsd)
+    const contextUsedPercent = toFiniteNumber(usage.contextUsedPercent)
+    if (totalTokens != null) totals.usageTotalTokens += Math.round(totalTokens)
+    if (inputTokens != null) totals.usageInputTokens += Math.round(inputTokens)
+    if (outputTokens != null) totals.usageOutputTokens += Math.round(outputTokens)
+    if (cachedInputTokens != null) totals.usageCachedInputTokens += Math.round(cachedInputTokens)
+    if (estimatedCostUsd != null) totals.usageEstimatedCostUsd = roundSix((totals.usageEstimatedCostUsd || 0) + estimatedCostUsd)
+    if (contextUsedPercent != null) {
+      totals.usagePeakContextUsedPercent = totals.usagePeakContextUsedPercent == null
+        ? contextUsedPercent
+        : Math.max(totals.usagePeakContextUsedPercent, contextUsedPercent)
+    }
+    if (usage.currency) currencies.add(sanitizeText(usage.currency, 8).toUpperCase())
+  }
+  totals.usageCurrency = currencies.size === 1 ? [...currencies][0] : currencies.size > 1 ? 'MIXED' : ''
+  return totals
+}
+
 const buildDiagnostics = ({ store, rolloutPoller }) => {
   const sessions = store.getStatus()
   const trackedSessions = store.listSessions()
-  const usageTotalTokens = trackedSessions.reduce((sum, session) => {
-    const totalTokens = Number(session?.usage?.totalTokens)
-    return sum + (Number.isFinite(totalTokens) ? totalTokens : 0)
-  }, 0)
+  const usageDiagnostics = buildUsageDiagnostics(trackedSessions)
   const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
   return {
     sessionCount: sessions.sessions || 0,
@@ -92,7 +133,7 @@ const buildDiagnostics = ({ store, rolloutPoller }) => {
     unknownRecordCount: codexPoller.unknownRecordCount || 0,
     malformedRecordCount: codexPoller.malformedRecordCount || 0,
     unsupportedLifecycleRecordCount: codexPoller.unsupportedLifecycleRecordCount || 0,
-    usageTotalTokens,
+    ...usageDiagnostics,
     lastEventAt: sessions.lastEventAt || '',
     lastScanAt: codexPoller.lastScanAt || '',
     lastError: codexPoller.lastError || ''

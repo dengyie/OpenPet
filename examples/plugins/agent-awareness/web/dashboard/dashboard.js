@@ -35,12 +35,19 @@ const createDashboardRuntime = ({
     return Number.isFinite(numeric) ? new Intl.NumberFormat('en-US').format(numeric) : '0'
   }
 
+  const hasFiniteMetadataNumber = (value) => {
+    if (value == null || value === '') return false
+    return Number.isFinite(Number(value))
+  }
+
   const formatPercent = (value) => {
+    if (!hasFiniteMetadataNumber(value)) return ''
     const numeric = Number(value)
-    return Number.isFinite(numeric) ? `${Math.round(numeric * 100) / 100}%` : ''
+    return `${Math.round(numeric * 100) / 100}%`
   }
 
   const formatCost = ({ amount, currency = 'USD' } = {}) => {
+    if (amount == null || amount === '') return ''
     const numeric = Number(amount)
     if (!Number.isFinite(numeric)) return ''
     return `$${numeric.toFixed(6)} ${sanitizeDisplayText(currency || 'USD')}`
@@ -122,11 +129,19 @@ const createDashboardRuntime = ({
   const describeUsage = (usage = {}) => {
     if (!usage || typeof usage !== 'object') return 'No usage metadata yet'
     const parts = []
-    if (Number.isFinite(Number(usage.totalTokens))) parts.push(`${formatNumber(usage.totalTokens)} tokens`)
-    if (Number.isFinite(Number(usage.contextUsedPercent))) parts.push(`${formatPercent(usage.contextUsedPercent)} context`)
+    if (hasFiniteMetadataNumber(usage.totalTokens)) parts.push(`${formatNumber(usage.totalTokens)} tokens`)
+    if (hasFiniteMetadataNumber(usage.contextUsedPercent)) parts.push(`${formatPercent(usage.contextUsedPercent)} context`)
     const cost = formatCost({ amount: usage.estimatedCostUsd, currency: usage.currency })
     if (cost) parts.push(cost)
     return parts.length ? parts.join(' · ') : 'No usage metadata yet'
+  }
+
+  const describeUsageDiagnostics = (diagnostics = {}) => {
+    const parts = []
+    if (Number(diagnostics.usageInputTokens) > 0) parts.push(`${formatNumber(diagnostics.usageInputTokens)} input`)
+    if (Number(diagnostics.usageOutputTokens) > 0) parts.push(`${formatNumber(diagnostics.usageOutputTokens)} output`)
+    if (Number(diagnostics.usageCachedInputTokens) > 0) parts.push(`${formatNumber(diagnostics.usageCachedInputTokens)} cached`)
+    return parts.length ? parts.join(' · ') : 'Sanitized metadata only'
   }
 
   const describeGit = (git = {}) => {
@@ -200,7 +215,17 @@ const createDashboardRuntime = ({
         {
           label: 'Usage Tokens',
           value: formatNumber(diagnostics.usageTotalTokens),
-          detail: 'Sanitized metadata only'
+          detail: describeUsageDiagnostics(diagnostics)
+        },
+        {
+          label: 'Usage Cost',
+          value: formatCost({ amount: diagnostics.usageEstimatedCostUsd, currency: diagnostics.usageCurrency }) || 'No cost metadata',
+          detail: 'Estimated metadata only'
+        },
+        {
+          label: 'Peak Context',
+          value: formatPercent(diagnostics.usagePeakContextUsedPercent) || 'No context metadata',
+          detail: 'Highest observed session context'
         }
       ],
       healthRows: [

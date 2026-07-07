@@ -677,6 +677,68 @@ test('agent awareness server serves health and notifies pet only for incremental
   ])
 })
 
+test('agent awareness server aggregates bounded usage diagnostics across sessions', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-usage-diagnostics-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => {},
+      say: async () => {}
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true, seenCount: 0 }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.start(0)
+  await service.handleEvent({
+    sessionId: 'raw-session-usage-a',
+    type: 'turn.usage',
+    status: 'working',
+    project: 'OpenPet #111111',
+    usage: {
+      inputTokens: 700,
+      outputTokens: 300,
+      cachedInputTokens: 100,
+      totalTokens: 1000,
+      contextUsedPercent: 0.5,
+      estimatedCostUsd: 0.01,
+      currency: 'usd'
+    },
+    timestamp: '2026-07-07T00:00:00.000Z'
+  })
+  await service.handleEvent({
+    sessionId: 'raw-session-usage-b',
+    type: 'turn.usage',
+    status: 'working',
+    project: 'Docs #222222',
+    usage: {
+      inputTokens: 300,
+      outputTokens: 200,
+      totalTokens: 500,
+      contextUsedPercent: 0.8,
+      estimatedCostUsd: 0.02,
+      currency: 'USD'
+    },
+    timestamp: '2026-07-07T00:00:01.000Z'
+  })
+
+  const port = service.server.address().port
+  const healthResponse = await fetch(`http://127.0.0.1:${port}/health`)
+  await service.close()
+  const health = await healthResponse.json()
+
+  assert.equal(health.diagnostics.usageTotalTokens, 1500)
+  assert.equal(health.diagnostics.usageInputTokens, 1000)
+  assert.equal(health.diagnostics.usageOutputTokens, 500)
+  assert.equal(health.diagnostics.usageCachedInputTokens, 100)
+  assert.equal(health.diagnostics.usageEstimatedCostUsd, 0.03)
+  assert.equal(health.diagnostics.usageCurrency, 'USD')
+  assert.equal(health.diagnostics.usagePeakContextUsedPercent, 0.8)
+})
+
 test('agent awareness server merges hook and poller events into one richer runtime session shape', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-merge-'))
   const service = createAgentAwarenessServer({

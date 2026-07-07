@@ -120,4 +120,4 @@ Behavior:
 - Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
 - The dashboard honors `view=details&sessionId=<sanitized-id>` to focus one existing safe session hash, and shows a bounded empty state when the requested session is absent.
 - Each session card exposes a `Focus` link into the same bounded detail route.
-- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, usage metadata, git metadata, generated session summaries, and diagnostics.
+- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, aggregate usage tokens/cost/context, per-session usage metadata, git metadata, generated session summaries, and diagnostics.

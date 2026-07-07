@@ -87,7 +87,13 @@ test('agent awareness dashboard renders safe usage git and summary metadata', ()
         activeSessionCount: 1,
         totalEvents: 3,
         seenCount: 3,
-        usageTotalTokens: 1500
+        usageTotalTokens: 1500,
+        usageInputTokens: 1000,
+        usageOutputTokens: 500,
+        usageCachedInputTokens: 100,
+        usageEstimatedCostUsd: 0.03,
+        usageCurrency: 'USD',
+        usagePeakContextUsedPercent: 0.8
       }
     },
     sessionsPayload: {
@@ -120,7 +126,12 @@ test('agent awareness dashboard renders safe usage git and summary metadata', ()
   })
 
   const usageMetric = viewModel.summary.find((item) => item.label === 'Usage Tokens')
+  const costMetric = viewModel.summary.find((item) => item.label === 'Usage Cost')
+  const contextMetric = viewModel.summary.find((item) => item.label === 'Peak Context')
   assert.equal(usageMetric.value, '1,500')
+  assert.equal(usageMetric.detail, '1,000 input · 500 output · 100 cached')
+  assert.equal(costMetric.value, '$0.030000 USD')
+  assert.equal(contextMetric.value, '0.8%')
   assert.match(viewModel.sessions[0].usageText, /1,500 tokens/)
   assert.match(viewModel.sessions[0].usageText, /0.75% context/)
   assert.match(viewModel.sessions[0].usageText, /\$0.012345 USD/)
@@ -128,6 +139,41 @@ test('agent awareness dashboard renders safe usage git and summary metadata', ()
   assert.match(viewModel.sessions[0].gitText, /2 files changed/)
   assert.match(viewModel.sessions[0].summaryTitle, /OpenPet on codex\/dev7/)
   assert.equal(viewModel.sessions[0].progressHint, 'Working in [path]')
+})
+
+test('agent awareness dashboard does not render null usage metadata as zero values', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    health: {
+      ok: true,
+      diagnostics: {
+        usageTotalTokens: 0,
+        usageEstimatedCostUsd: null,
+        usagePeakContextUsedPercent: null
+      }
+    },
+    sessionsPayload: {
+      sessions: [{
+        sessionId: 'abc123def456',
+        project: 'OpenPet #111111',
+        status: 'working',
+        type: 'turn.usage',
+        timestamp: '2026-07-07T00:00:00.000Z',
+        usage: {
+          totalTokens: null,
+          contextUsedPercent: null,
+          estimatedCostUsd: null
+        }
+      }]
+    }
+  })
+
+  const costMetric = viewModel.summary.find((item) => item.label === 'Usage Cost')
+  const contextMetric = viewModel.summary.find((item) => item.label === 'Peak Context')
+
+  assert.equal(costMetric.value, 'No cost metadata')
+  assert.equal(contextMetric.value, 'No context metadata')
+  assert.equal(viewModel.sessions[0].usageText, 'No usage metadata yet')
 })
 
 test('agent awareness dashboard focuses requested session in details mode', () => {
