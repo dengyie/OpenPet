@@ -13,6 +13,8 @@ const HOOK_TYPES = new Set([
   'stop'
 ])
 
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
+
 const toNullableNumber = (value) => {
   if (value == null || value === '') return null
   const numeric = Number(value)
@@ -249,6 +251,9 @@ const createRuntimeSession = (previousSession, event, { now = () => new Date().t
     : ''
   const usage = normalized.usage || previousSession?.usage || null
   const git = normalized.git || previousSession?.git || null
+  const message = hasOwn(event, 'message')
+    ? normalized.message
+    : (normalized.message || previousSession?.message || '')
   const previousSummary = previousSession?.summary || {}
   const normalizedSummary = normalized.summary || {}
   const normalizedTitleIsProjectOnly = normalizedSummary.title &&
@@ -270,7 +275,7 @@ const createRuntimeSession = (previousSession, event, { now = () => new Date().t
     status: normalized.status || previousSession?.status || 'working',
     phase: normalized.phase || previousSession?.phase || 'session',
     type: normalized.type || previousSession?.type || 'session.updated',
-    message: normalized.message || previousSession?.message || '',
+    message,
     toolName: normalized.toolName || previousSession?.toolName || '',
     progressLabel: normalized.progressLabel || previousSession?.progressLabel || '',
     progressStep: normalized.progressStep || previousSession?.progressStep || '',

@@ -584,6 +584,36 @@ test('session store clears approval state after the session leaves the approval 
   assert.equal(session.history[1].approvalState, '')
 })
 
+test('session store clears stale visible message when a newer event explicitly has no message', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-message-clear-'))
+  const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 6 })
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'waiting',
+    type: 'approval.requested',
+    phase: 'approval',
+    message: 'Codex needs approval.',
+    project: 'A #111111',
+    approvalState: 'requested',
+    timestamp: '2026-07-03T00:00:00.000Z'
+  })
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'idle',
+    type: 'session.discovered',
+    phase: 'session',
+    message: '',
+    project: 'A #111111',
+    timestamp: '2026-07-03T00:00:01.000Z'
+  })
+
+  const session = store.listSessions()[0]
+  assert.equal(session.status, 'idle')
+  assert.equal(session.message, '')
+  assert.equal(session.history[1].message, '')
+})
+
 test('session store preserves bounded usage git and summary metadata', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-visible-info-'))
   const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 4 })
@@ -1053,6 +1083,47 @@ test('agent awareness server merges hook and poller events into one richer runti
   assert.equal(session.progressTotal, 3)
   assert.equal(session.approvalState, 'requested')
   assert.equal(session.lastSource, 'poller')
+})
+
+test('agent awareness server does not let older poller discovery downgrade newer hook state', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-stale-merge-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => {},
+      say: async () => {}
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true, seenCount: 0 }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.handleEvent({
+    session_id: 'raw-session-stale-merge',
+    hook_event_name: 'PermissionRequest',
+    tool_name: 'exec_command',
+    cwd: '/Users/mango/private/project/OpenPet',
+    timestamp: '2026-07-03T00:00:10.000Z'
+  }, { initial: false })
+  await service.handleEvent({
+    sessionId: 'raw-session-stale-merge',
+    type: 'session.discovered',
+    status: 'idle',
+    message: '',
+    projectLabel: 'OpenPet #111111',
+    timestamp: '2026-07-03T00:00:00.000Z'
+  }, { initial: false })
+
+  const session = service.store.listSessions()[0]
+  assert.equal(session.status, 'waiting')
+  assert.equal(session.phase, 'approval')
+  assert.equal(session.approvalState, 'requested')
+  assert.equal(session.message, 'Codex is waiting for exec_command approval.')
+  assert.equal(session.history.at(-1).type, 'session.discovered')
+  assert.equal(session.history.at(-1).status, 'idle')
+  assert.equal(session.history.at(-1).message, '')
 })
 
 test('agent awareness server reports installed hook mode when current hook assets still exist', async () => {

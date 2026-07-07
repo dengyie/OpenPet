@@ -29,6 +29,19 @@ const getLatestTimestamp = (sessions = []) => sessions.reduce((latest, session) 
   return toTimestampMs(session.timestamp) > toTimestampMs(latest) ? session.timestamp : latest
 }, '')
 
+const isOlderRuntimeEvent = (session = {}, eventSession = {}) => {
+  const currentTimestampMs = toTimestampMs(session.timestamp)
+  const eventTimestampMs = toTimestampMs(eventSession.timestamp)
+  return currentTimestampMs > 0 && eventTimestampMs > 0 && eventTimestampMs < currentTimestampMs
+}
+
+const mergeStaleMetadata = (session = {}, eventSession = {}) => {
+  if (!session.project && eventSession.project) session.project = eventSession.project
+  if (!session.usage && eventSession.usage) session.usage = eventSession.usage
+  if (!session.git && eventSession.git) session.git = eventSession.git
+  if (!session.summary && eventSession.summary) session.summary = eventSession.summary
+}
+
 const createSessionStore = ({
   dataDir,
   maxSessions = DEFAULT_MAX_SESSIONS,
@@ -92,6 +105,14 @@ const createSessionStore = ({
         session = { ...createRuntimeSession(null, event), history: [] }
         state.sessions.push(session)
       } else {
+        const eventSession = createRuntimeSession(null, event)
+        if (isOlderRuntimeEvent(session, eventSession)) {
+          mergeStaleMetadata(session, eventSession)
+          session.history.push(createRuntimeHistoryEntry(eventSession))
+          evict()
+          save()
+          return session
+        }
         Object.assign(session, createRuntimeSession(session, event))
       }
       session.history.push(createRuntimeHistoryEntry(session))
