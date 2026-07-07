@@ -20,6 +20,7 @@ const DEFAULT_CONFIG = {
 }
 
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
+const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
@@ -205,6 +206,18 @@ const normalizeTimeoutMs = (value, fallback) => {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
 }
 
+const normalizeProviderQuality = (value, fallback = '') => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (['low', 'medium', 'high', 'auto'].includes(normalized)) return normalized
+  return fallback
+}
+
+const getProviderImageQuality = ({ model, constraints = {} }) => {
+  const explicit = normalizeProviderQuality(constraints.quality)
+  if (explicit) return explicit
+  return model === 'gpt-image-2' ? DEFAULT_GPT_IMAGE_2_QUALITY : ''
+}
+
 const fetchWithTimeout = async ({
   fetchImpl,
   url,
@@ -360,11 +373,13 @@ const normalizeReferenceImages = (referenceImages = []) => {
 }
 
 const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
+  const quality = getProviderImageQuality({ model, constraints })
   const payload = {
     model,
     prompt,
     size: `${constraints.width}x${constraints.height}`
   }
+  if (quality) payload.quality = quality
   if (model !== 'gpt-image-2') {
     payload.background = constraints.transparent ? 'transparent' : 'white'
     payload.response_format = 'b64_json'
@@ -403,6 +418,7 @@ const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
 const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
   const boundary = createMultipartBoundary()
   const buffers = []
+  const quality = getProviderImageQuality({ model, constraints })
   const imageField = referenceImages.length > 1 ? 'image[]' : 'image'
   for (const referenceImage of referenceImages) {
     appendMultipartFilePart(buffers, boundary, imageField, referenceImage)
@@ -410,6 +426,7 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
   appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
+  if (quality) appendMultipartTextPart(buffers, boundary, 'quality', quality)
   if (model !== 'gpt-image-2') {
     appendMultipartTextPart(buffers, boundary, 'background', constraints.transparent ? 'transparent' : 'white')
     appendMultipartTextPart(buffers, boundary, 'response_format', 'b64_json')
@@ -441,6 +458,7 @@ const createConditioningSummary = ({
   referenceImageCount: referenceImages.length,
   requestedTransparent: Boolean(constraints?.transparent),
   size: `${constraints?.width || 0}x${constraints?.height || 0}`,
+  quality: getProviderImageQuality({ model, constraints }),
   references: referenceImages.map((referenceImage) => ({
     fileName: referenceImage.fileName,
     mimeType: referenceImage.mimeType,
@@ -929,6 +947,7 @@ const createImageGenerationModelService = ({
     const backgroundMode = getProviderGenerationBackgroundMode({ model: config.model, constraints })
     const normalizedReferenceImages = normalizeReferenceImages(referenceImages)
     const endpoint = normalizedReferenceImages.length > 0 ? '/images/edits' : '/images/generations'
+    const quality = getProviderImageQuality({ model: config.model, constraints })
     const conditioning = createConditioningSummary({
       endpoint,
       referenceImages: normalizedReferenceImages,
@@ -948,6 +967,7 @@ const createImageGenerationModelService = ({
         height: constraints.height,
         requestedTransparent: Boolean(constraints.transparent),
         backgroundMode,
+        quality,
         endpoint,
         requestMode: conditioning.mode,
         referenceImageCount: normalizedReferenceImages.length,

@@ -415,7 +415,7 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => ({
     name: normalizeText(actionName),
     motionPrompt: normalizeText(motionPrompt) || normalizeText(actionName),
     loop: false,
-    frameCount: 16,
+    frameCount: 6,
     transparentBackground: true,
     triggerProposal: {
       type: 'click',

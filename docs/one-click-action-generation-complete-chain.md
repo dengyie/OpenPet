@@ -33,6 +33,8 @@ Current limitations:
 - The default full-pet path only generates a base source image.
 - Local geometric transforms of the base source are not valid substitutes for real row-strip generation.
 - `uniqueFrameCount` proves cells differ, but it does not prove animation quality.
+- For single-action assets, deterministic QA now rejects reused/static frames, unstable visible area, opaque provider backgrounds, and excessive whole-sprite or face/body-core redraw that indicates identity drift.
+- The latest `gpt-image-2` reference-conditioned per-frame wave smoke with the user-approved high-similarity identity-lock board proved the request path is healthy but the independent-frame strategy is still not production quality: every request returned HTTP 200 with `quality=high`, yet QA rejected the output because whole-sprite average diff was `0.836982` and identity-core average diff was `0.807008`.
 - `idle`, `running`, `running-right`, `jumping`, `waving`, `waiting`, `failed`, and `review` cannot be honestly accepted as generated semantic actions unless each row has its own generated row strip or approved row source.
 - Existing golden-cat evidence proves technical import/playback, not final production action quality.
 - Real provider row generation, contact-sheet/GIF review, and human visual review remain Manual-required before claiming production art approval.
@@ -121,6 +123,7 @@ OpenPet must add QA metrics that catch:
 - baseline jumps;
 - repeated or near-static rows;
 - rows made only from local transforms;
+- excessive whole-sprite redraw or face/body-core redraw between adjacent single-action frames;
 - wrong row semantics.
 
 ## User-Facing Modes
@@ -164,6 +167,13 @@ This mode costs more image-generation budget because real action quality require
 Purpose: generate or repair one explicit action for an existing pet.
 
 This path remains separate from full-pet generation. It can use an action sheet or frame sequence, then import through the host-owned action bridge.
+
+Current QA truth:
+
+- `action-frame-validation.json` records unique frame counts, reused frame counts, adjacent visible-pixel diffs, identity-core diffs, visible-area stability, baseline stability, opaque multi-output provider background counts, source-edge/cropping checks, and per-frame file hashes.
+- Approval and import require `qa.ok === true` and matching frame file hashes.
+- A provider output can still require human review even when deterministic QA passes; deterministic QA blocks obvious failures but does not replace visual approval.
+- The 2026-07-06 golden-cat per-frame provider sample that previously passed QA now fails revalidation because adjacent frames redraw too much of the whole sprite and the stable face/body core.
 
 ## Data Contract
 
@@ -303,11 +313,12 @@ Current verified path:
 - one clean front-facing reference image;
 - host-owned provider generation;
 - technical import of a generated pet pack;
-- existing-action generation and import for explicit single-action flows.
+- existing-action generation and import for explicit single-action flows when deterministic QA and human visual review pass.
 
 Current known gap:
 
 - full-pet action rows are not yet official-quality unless they come from real row-specific generated sources and pass visual QA.
+- high-likeness single-action generation should not rely on independent per-frame image generation as the production strategy. The next quality path is an approved canonical frame plus controlled masked edits, local reference-preserving rig/pose-keyframe synthesis, or another bounded method that changes only the action region.
 
 ## Non-Goals
 

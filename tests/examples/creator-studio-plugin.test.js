@@ -34,6 +34,34 @@ const createActionFrameQa = ({
   warnings: []
 })
 
+const createGeneratedActionSheetFrameSvg = ({
+  width,
+  height,
+  body,
+  head,
+  pawLift,
+  pawAngle
+}) => `
+  <svg width="${width}" height="${height}" viewBox="0 0 196 212" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="98" cy="130" rx="48" ry="58" fill="${body}" />
+    <circle cx="98" cy="78" r="42" fill="${head}" />
+    <circle cx="72" cy="43" r="16" fill="${head}" />
+    <circle cx="124" cy="43" r="16" fill="${head}" />
+    <ellipse cx="98" cy="146" rx="25" ry="36" fill="#f2dcc0" opacity="0.92" />
+    <ellipse cx="84" cy="80" rx="7" ry="8" fill="#4f8c42" />
+    <ellipse cx="112" cy="80" rx="7" ry="8" fill="#4f8c42" />
+    <ellipse cx="98" cy="96" rx="10" ry="7" fill="#f2dcc0" opacity="0.95" />
+    <circle cx="98" cy="93" r="3" fill="#7b4b2a" />
+    <ellipse cx="75" cy="188" rx="16" ry="9" fill="${body}" />
+    <ellipse cx="121" cy="188" rx="16" ry="9" fill="${body}" />
+    <g transform="rotate(${pawAngle} 132 ${122 - pawLift})">
+      <ellipse cx="132" cy="${122 - pawLift}" rx="11" ry="32" fill="${body}" />
+      <circle cx="132" cy="${92 - pawLift}" r="11" fill="${head}" />
+    </g>
+    <ellipse cx="64" cy="135" rx="11" ry="32" fill="${body}" />
+  </svg>
+`
+
 const createGeneratedActionSheet = async ({ filePath, frameCount = 12, palette } = {}) => {
   const columns = Math.max(1, Math.min(4, frameCount))
   const rows = Math.max(1, Math.ceil(frameCount / columns))
@@ -41,18 +69,35 @@ const createGeneratedActionSheet = async ({ filePath, frameCount = 12, palette }
   const cellHeight = 256
   const colors = Array.isArray(palette) && palette.length > 0
     ? palette
-    : ['#ff9f1c', '#2ec4b6', '#e71d36', '#577590', '#ffbf69', '#6d597a', '#00afb9', '#8ac926']
+    : ['#d89b45', '#e2ad5b']
+  const poses = [
+    { pawLift: 0, pawAngle: 0 },
+    { pawLift: 8, pawAngle: -4 },
+    { pawLift: 18, pawAngle: -10 },
+    { pawLift: 26, pawAngle: -16 },
+    { pawLift: 30, pawAngle: 8 },
+    { pawLift: 22, pawAngle: -8 },
+    { pawLift: 14, pawAngle: 4 },
+    { pawLift: 6, pawAngle: 1 },
+    { pawLift: 0, pawAngle: 0 },
+    { pawLift: 7, pawAngle: -3 },
+    { pawLift: 15, pawAngle: -8 },
+    { pawLift: 3, pawAngle: 1 }
+  ]
+  const body = colors[0] || '#d89b45'
+  const head = colors[1] || body
   const composites = Array.from({ length: frameCount }, (_entry, index) => {
     const column = index % columns
     const row = Math.floor(index / columns)
-    const fill = colors[index % colors.length]
+    const pose = poses[index % poses.length]
     return {
-      input: Buffer.from(`
-        <svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">
-          <ellipse cx="${128 + ((index % 3) - 1) * 9}" cy="${144 - ((index % 2) * 12)}" rx="72" ry="84" fill="${fill}" />
-          <circle cx="${128 + ((index % 4) - 1.5) * 7}" cy="88" r="40" fill="${fill}" opacity="0.84" />
-        </svg>
-      `),
+      input: Buffer.from(createGeneratedActionSheetFrameSvg({
+        width: cellWidth,
+        height: cellHeight,
+        body,
+        head,
+        ...pose
+      })),
       left: column * cellWidth,
       top: row * cellHeight
     }
@@ -394,7 +439,9 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.match(built.prompt, /exactly one pet character/)
   assert.match(built.prompt, /8-12% safe padding/)
   assert.match(built.prompt, /no cropped ears, tail, paws, limbs/)
-  assert.match(built.prompt, /compact desktop-pet body/)
+  assert.match(built.prompt, /Use the source body and head proportions/)
+  assert.match(built.prompt, /If the reference image is a model sheet/)
+  assert.match(built.prompt, /Do not copy reference labels/)
   assert.match(built.prompt, /full-pet/)
   assert.match(built.prompt, /transparent-friendly, easy cutout silhouette/)
   assert.match(built.prompt, /no text, logo, watermark/)
@@ -404,7 +451,15 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.match(built.providerPrompt, /One character only\. Fully visible and centered\./)
   assert.match(built.providerPrompt, /Priority order:/)
   assert.match(built.providerPrompt, /same character identity/i)
+  assert.match(built.providerPrompt, /If the reference image is a model sheet/)
+  assert.match(built.providerPrompt, /front, side, back, and action pose/)
+  assert.match(built.providerPrompt, /Do not copy reference labels/)
+  assert.match(built.providerPrompt, /Reference style is authoritative/)
+  assert.match(built.providerPrompt, /Do not force a cartoon conversion/)
+  assert.match(built.providerPrompt, /Preserve distinctive eyes/)
+  assert.match(built.providerPrompt, /generic black dots/)
   assert.match(built.providerPrompt, /checkerboard background/)
+  assert.doesNotMatch(built.providerPrompt, /realistic photo style/)
   assert.doesNotMatch(built.providerPrompt, /ground shadow, shadows/)
 })
 
@@ -503,13 +558,22 @@ test('creator studio prompt builder emits a generic OpenPet action asset protoco
   assert.match(built.providerPrompt, /Create a transparent-background animation sprite sheet for OpenPet/)
   assert.match(built.providerPrompt, /game-ready character animation asset that will be sliced programmatically/)
   assert.match(built.providerPrompt, /REFERENCE CHARACTER LOCK:/)
+  assert.match(built.providerPrompt, /If the reference image is a model sheet/)
+  assert.match(built.providerPrompt, /front, side, back, and action pose/)
+  assert.match(built.providerPrompt, /Do not copy reference labels/)
+  assert.match(built.providerPrompt, /Use the action poses in the reference only as pose vocabulary/)
   assert.match(built.providerPrompt, /character type:/)
   assert.match(built.providerPrompt, /head and face shape:/)
   assert.match(built.providerPrompt, /patterns, markings, clothes, accessories:/)
+  assert.match(built.providerPrompt, /Reference style is authoritative/)
+  assert.match(built.providerPrompt, /Do not force a cartoon conversion/)
+  assert.match(built.providerPrompt, /Preserve distinctive eyes/)
+  assert.match(built.providerPrompt, /generic black dots/)
   assert.match(built.providerPrompt, /Priority order:/)
   assert.match(built.providerPrompt, /1\. Same character identity in every frame/)
-  assert.match(built.providerPrompt, /2\. Clean transparent sprite sheet layout/)
+  assert.match(built.providerPrompt, /2\. Same source visual style in every frame/)
   assert.match(built.providerPrompt, /3\. Stable root anchor, scale, and alignment/)
+  assert.match(built.providerPrompt, /4\. Clean transparent sprite sheet layout/)
   assert.match(built.providerPrompt, /6 animation frames/)
   assert.match(built.providerPrompt, /3 columns x 2 rows grid/)
   assert.match(built.providerPrompt, /no visible grid lines/)
@@ -518,6 +582,7 @@ test('creator studio prompt builder emits a generic OpenPet action asset protoco
   assert.match(built.providerPrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/)
   assert.match(built.providerPrompt, /Frame 2: viewer-right front limb begins to lift/)
   assert.match(built.providerPrompt, /checkerboard background/)
+  assert.doesNotMatch(built.providerPrompt, /realistic photo style/)
   assert.doesNotMatch(built.providerPrompt, /golden British Shorthair/)
   assert.doesNotMatch(built.providerPrompt, /right front paw/)
   assert.doesNotMatch(built.providerPrompt, /only the paw/i)

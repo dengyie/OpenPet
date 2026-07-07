@@ -18,6 +18,16 @@ const ACTION_SHEET_MAX_COLUMNS = 4
 const VISIBLE_ALPHA_THRESHOLD = 8
 const COLOR_DIFF_THRESHOLD = 18
 const MIN_AVERAGE_CHANGED_PIXEL_RATIO = 0.003
+const MAX_AVERAGE_CHANGED_PIXEL_RATIO = 0.65
+const MAX_PAIR_CHANGED_PIXEL_RATIO = 0.86
+const MAX_IDENTITY_CORE_AVERAGE_CHANGED_PIXEL_RATIO = 0.52
+const MAX_IDENTITY_CORE_PAIR_CHANGED_PIXEL_RATIO = 0.72
+const IDENTITY_CORE_REGION = Object.freeze({
+  left: 0.28,
+  top: 0.16,
+  right: 0.72,
+  bottom: 0.78
+})
 
 const assertSafeActionId = (actionId) => {
   if (!SAFE_ACTION_ID_PATTERN.test(actionId || '')) {
@@ -238,7 +248,23 @@ const getVisibleRgbDistance = ({ dataA, dataB, index }) => (
   Math.abs(dataA[index + 2] - dataB[index + 2])
 )
 
-const compareAdjacentFramePixels = (previous, next) => {
+const resolveCompareRegion = ({ info, region }) => {
+  if (!region) {
+    return {
+      left: 0,
+      top: 0,
+      right: info.width,
+      bottom: info.height
+    }
+  }
+  const left = Math.max(0, Math.min(info.width - 1, Math.floor(info.width * Number(region.left || 0))))
+  const top = Math.max(0, Math.min(info.height - 1, Math.floor(info.height * Number(region.top || 0))))
+  const right = Math.max(left + 1, Math.min(info.width, Math.ceil(info.width * Number(region.right || 1))))
+  const bottom = Math.max(top + 1, Math.min(info.height, Math.ceil(info.height * Number(region.bottom || 1))))
+  return { left, top, right, bottom }
+}
+
+const compareAdjacentFramePixels = (previous, next, options = {}) => {
   if (
     previous.info.width !== next.info.width ||
     previous.info.height !== next.info.height ||
@@ -250,18 +276,22 @@ const compareAdjacentFramePixels = (previous, next) => {
   let changedPixels = 0
   let visibleUnionPixels = 0
   const channels = previous.info.channels
-  for (let index = 0; index < previous.data.length; index += channels) {
-    const alphaA = previous.data[index + 3]
-    const alphaB = next.data[index + 3]
-    const visibleA = alphaA > VISIBLE_ALPHA_THRESHOLD
-    const visibleB = alphaB > VISIBLE_ALPHA_THRESHOLD
-    if (!visibleA && !visibleB) continue
-    visibleUnionPixels += 1
-    if (
-      Math.abs(alphaA - alphaB) > VISIBLE_ALPHA_THRESHOLD ||
-      getVisibleRgbDistance({ dataA: previous.data, dataB: next.data, index }) > COLOR_DIFF_THRESHOLD
-    ) {
-      changedPixels += 1
+  const region = resolveCompareRegion({ info: previous.info, region: options.region })
+  for (let y = region.top; y < region.bottom; y += 1) {
+    for (let x = region.left; x < region.right; x += 1) {
+      const index = ((y * previous.info.width) + x) * channels
+      const alphaA = previous.data[index + 3]
+      const alphaB = next.data[index + 3]
+      const visibleA = alphaA > VISIBLE_ALPHA_THRESHOLD
+      const visibleB = alphaB > VISIBLE_ALPHA_THRESHOLD
+      if (!visibleA && !visibleB) continue
+      visibleUnionPixels += 1
+      if (
+        Math.abs(alphaA - alphaB) > VISIBLE_ALPHA_THRESHOLD ||
+        getVisibleRgbDistance({ dataA: previous.data, dataB: next.data, index }) > COLOR_DIFF_THRESHOLD
+      ) {
+        changedPixels += 1
+      }
     }
   }
 
@@ -274,31 +304,7 @@ const compareAdjacentFramePixels = (previous, next) => {
   }
 }
 
-const createAdjacentFrameDiffMetrics = async ({ frames, framesDir }) => {
-  if (!framesDir || frames.length < 2) {
-    return {
-      minChangedPixelRatio: 0,
-      maxChangedPixelRatio: 0,
-      averageChangedPixelRatio: 0,
-      pairs: []
-    }
-  }
-
-  const decodedFrames = []
-  for (const frame of frames) {
-    decodedFrames.push(await decodeFramePixels(getFrameFilePath({ framesDir, frame })))
-  }
-
-  const pairs = []
-  for (let index = 1; index < decodedFrames.length; index += 1) {
-    const diff = compareAdjacentFramePixels(decodedFrames[index - 1], decodedFrames[index])
-    pairs.push({
-      from: frames[index - 1].fileName,
-      to: frames[index].fileName,
-      ...diff
-    })
-  }
-
+const summarizeAdjacentPairs = (pairs) => {
   const ratios = pairs.map((pair) => pair.changedPixelRatio)
   const average = ratios.length > 0
     ? ratios.reduce((total, value) => total + value, 0) / ratios.length
@@ -310,6 +316,54 @@ const createAdjacentFrameDiffMetrics = async ({ frames, framesDir }) => {
     pairs
   }
 }
+
+const createAdjacentFrameDiffMetrics = async ({ frames, framesDir }) => {
+  if (!framesDir || frames.length < 2) {
+    return {
+      minChangedPixelRatio: 0,
+      maxChangedPixelRatio: 0,
+      averageChangedPixelRatio: 0,
+      pairs: [],
+      identityCore: {
+        minChangedPixelRatio: 0,
+        maxChangedPixelRatio: 0,
+        averageChangedPixelRatio: 0,
+        pairs: []
+      }
+    }
+  }
+
+  const decodedFrames = []
+  for (const frame of frames) {
+    decodedFrames.push(await decodeFramePixels(getFrameFilePath({ framesDir, frame })))
+  }
+
+  const createPairs = (region) => {
+    const pairs = []
+    for (let index = 1; index < decodedFrames.length; index += 1) {
+      const diff = compareAdjacentFramePixels(decodedFrames[index - 1], decodedFrames[index], { region })
+      pairs.push({
+        from: frames[index - 1].fileName,
+        to: frames[index].fileName,
+        ...diff
+      })
+    }
+    return pairs
+  }
+
+  const pairs = createPairs()
+  const identityCorePairs = createPairs(IDENTITY_CORE_REGION)
+  return {
+    ...summarizeAdjacentPairs(pairs),
+    identityCore: summarizeAdjacentPairs(identityCorePairs)
+  }
+}
+
+const countPairsAboveRatio = (pairs = [], threshold = 1) => (
+  Array.isArray(pairs)
+    ? pairs.filter((pair) => Number(pair?.changedPixelRatio || 0) > threshold).length
+    : 0
+)
 
 const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true } = {}) => {
   const decoded = await sharp(sourceInput)
@@ -403,6 +457,7 @@ const createNormalizedFrame = async (sourceInput, options = {}) => {
     sourceVisiblePixels: trimmed.visiblePixels,
     sourceBounds: trimmed.bounds,
     sourceFilledCell: trimmed.fullFrameVisible,
+    sourceFilledFrame: trimmed.fullFrameVisible,
     sourceOpaqueFullFrameTrimmed: Boolean(trimmed.opaqueFullFrameTrimmed)
   }
 }
@@ -576,6 +631,17 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   const sourceCellEdgeTouchRatio = frames.length > 0
     ? Number((sourceCellEdgeTouchCount / frames.length).toFixed(3))
     : 0
+  const mode = String(extraction?.mode || '')
+  const opaqueMultiOutputFrameCount = mode === 'multi-output'
+    ? frames.filter((frame) => frame?.sourceFilledFrame).length
+    : 0
+  const largeOpaqueMultiOutputFrameCount = mode === 'multi-output'
+    ? frames.filter((frame) => {
+        const bounds = frame?.sourceBounds || {}
+        return frame?.sourceFilledFrame &&
+          (Number(bounds.width || 0) > FRAME_WIDTH * 2 || Number(bounds.height || 0) > FRAME_HEIGHT * 2)
+      }).length
+    : 0
   const uniqueFrameCount = new Set(frames.map((frame) => frame?.sha256).filter(Boolean)).size
   const duplicateFrameCount = Math.max(0, frames.length - uniqueFrameCount)
   const reusedFrameCount = frames.filter((frame) => frame?.reusedPreviousFrame).length
@@ -585,9 +651,28 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
         minChangedPixelRatio: 0,
         maxChangedPixelRatio: 0,
         averageChangedPixelRatio: 0,
-        pairs: []
+        pairs: [],
+        identityCore: {
+          minChangedPixelRatio: 0,
+          maxChangedPixelRatio: 0,
+          averageChangedPixelRatio: 0,
+          pairs: []
+        }
       }
-  const mode = String(extraction?.mode || '')
+  const identityCoreDiff = adjacentFrameDiff.identityCore || {
+    minChangedPixelRatio: 0,
+    maxChangedPixelRatio: 0,
+    averageChangedPixelRatio: 0,
+    pairs: []
+  }
+  const excessiveWholeSpriteChangePairCount = countPairsAboveRatio(
+    adjacentFrameDiff.pairs,
+    MAX_PAIR_CHANGED_PIXEL_RATIO
+  )
+  const excessiveIdentityCoreChangePairCount = countPairsAboveRatio(
+    identityCoreDiff.pairs,
+    MAX_IDENTITY_CORE_PAIR_CHANGED_PIXEL_RATIO
+  )
   const actionSheetMode = mode === 'action-sheet' || mode === 'action-sheet-fallback'
   const errors = []
   const warnings = []
@@ -597,6 +682,9 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   }
   if (complete && actionSheetMode && sourceCellEdgeTouchCount >= Math.max(3, Math.ceil(frameCount * 0.5))) {
     errors.push('Generated action sheet appears cropped or sliced: too many source cells touch grid boundaries.')
+  }
+  if (complete && opaqueMultiOutputFrameCount > 0) {
+    errors.push('Generated multi-output action frames include opaque full-image backgrounds; frames must be transparent cutout sprites.')
   }
   if (complete && reusedFrameCount > 0) {
     errors.push('action_reused_frames')
@@ -612,10 +700,28 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   if (complete && adjacentFrameDiff.averageChangedPixelRatio < MIN_AVERAGE_CHANGED_PIXEL_RATIO) {
     errors.push('action_motion_below_minimum')
   }
+  if (
+    complete &&
+    (
+      adjacentFrameDiff.averageChangedPixelRatio > MAX_AVERAGE_CHANGED_PIXEL_RATIO ||
+      excessiveWholeSpriteChangePairCount > 0
+    )
+  ) {
+    errors.push('Generated action frames change too much of the whole sprite between adjacent frames; this usually indicates identity drift or full-character redraw.')
+  }
+  if (
+    complete &&
+    (
+      identityCoreDiff.averageChangedPixelRatio > MAX_IDENTITY_CORE_AVERAGE_CHANGED_PIXEL_RATIO ||
+      excessiveIdentityCoreChangePairCount > 0
+    )
+  ) {
+    errors.push('Generated action frames have unstable face/body core pixels; this usually indicates character identity drift.')
+  }
   if (complete && heights.range > 52 && heights.ratio > 1.45) {
     errors.push('Generated action frames have unstable sprite height; this usually indicates cropped body fragments.')
   }
-  if (complete && visiblePixels.range > 3000 && visiblePixels.ratio > 2.4) {
+  if (complete && visiblePixels.range > 3000 && visiblePixels.ratio > 1.8) {
     errors.push('Generated action frames have unstable visible area; this usually indicates partial or mismatched frames.')
   }
   if (complete && baseline.range > 30 && (heights.range > 38 || visiblePixels.ratio > 1.8)) {
@@ -634,8 +740,13 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
       duplicateFrameCount,
       reusedFrameCount,
       adjacentFrameDiff,
+      identityCoreDiff,
+      excessiveWholeSpriteChangePairCount,
+      excessiveIdentityCoreChangePairCount,
       sourceCellEdgeTouchCount,
       sourceCellEdgeTouchRatio,
+      opaqueMultiOutputFrameCount,
+      largeOpaqueMultiOutputFrameCount,
       visiblePixels,
       frameBounds: {
         width: widths,
@@ -766,6 +877,7 @@ const buildActionFramesFromGeneratedImage = async ({
       frameBounds: frameInspection.bounds,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
       sourceBounds: frameSource.normalized.sourceBounds,
+      sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
       sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
       ...(reusedPreviousFrame ? { reusedPreviousFrame: true, reusedFromFileName } : {}),
       ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
@@ -875,6 +987,7 @@ const repairActionFrameFromGeneratedImage = async ({
     frameBounds: frameInspection.bounds,
     sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
     sourceBounds: frameSource.normalized.sourceBounds,
+    sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
     sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
     ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
     repairedAt: now()

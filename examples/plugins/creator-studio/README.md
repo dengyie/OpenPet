@@ -20,6 +20,14 @@ Current full-pet policy:
   - row-specific required for official-quality full-pet output: `idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, `review`
   - only deterministic derivation allowed by the official rules: `running-left` from approved `running-right`, preserving frame order
 
+Current single-action policy:
+
+- Generated action frames must pass deterministic QA before approval or import.
+- QA rejects missing/empty frames, reused frames, repeated static sheets, unstable visible area, unstable body anchors, opaque provider backgrounds, and excessive adjacent whole-sprite or face/body-core redraw that indicates identity drift.
+- Passing deterministic QA is still not final art approval. Review the contact sheet before importing because metrics cannot fully prove semantic quality or character likeness.
+- Independent per-frame provider generation is currently an exploration path for high-likeness references, not the preferred production strategy. Fresh `gpt-image-2` evidence with a user-approved identity-lock board kept the slot anchored but redrew the cat identity between frames, so the import gate correctly rejected it.
+- The next production-quality action path should start from an approved canonical frame and apply controlled masked edits, local reference-preserving rig/pose-keyframe synthesis, or another bounded method that moves only the intended action region.
+
 Current commands:
 
 - `create-run`: create a run workspace under `OPENPET_DATA_DIR/runs`.

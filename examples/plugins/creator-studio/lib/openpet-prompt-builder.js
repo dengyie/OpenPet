@@ -16,6 +16,20 @@ const SECTION_ORDER = [
 
 const ACTION_SHEET_MAX_COLUMNS = 4
 
+const MODEL_SHEET_REFERENCE_RULES = [
+  'If the reference image is a model sheet, character sheet, or action reference board, use it as identity and pose guidance only.',
+  'Use the front, side, back, and action pose views to preserve the same body volume, markings, face, eye color, fur or material palette, tail shape, limb proportions, and pose vocabulary.',
+  'Do not copy reference labels, text, captions, borders, sheet layout, beige background, guide lines, multiple view panels, or board presentation style into the output.',
+  'Use the action poses in the reference only as pose vocabulary; generate the requested OpenPet asset format, not a duplicate of the reference sheet.'
+]
+
+const SOURCE_STYLE_AUTHORITY_RULES = [
+  "Reference style is authoritative: keep the source image's visual medium, rendering detail, lighting, and texture unless the user explicitly asks for a style change.",
+  'Do not force a cartoon conversion, cute simplification, 3D conversion, pixel-art conversion, or realism conversion when the reference uses a different style.',
+  'Preserve distinctive eyes from the reference, including iris color, pupil shape, catchlights, eyelids, and expression; do not simplify them into generic black dots or hollow eyes.',
+  "OpenPet compatibility means a clean cutout, stable anchor, readable small-window scale, and safe padding; it does not override the user's reference identity or style."
+]
+
 const sanitizeCreativeBrief = (value = '') => {
   let sanitized = String(value || '')
   sanitized = sanitized.replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[redacted-secret]')
@@ -268,6 +282,10 @@ const createNegativePrompt = ({ mode, actionName }) => {
     'changing species',
     'changing face',
     'changing eye color',
+    'lost iris color',
+    'lost eye highlights',
+    'generic black-dot eyes',
+    'hollow eyes',
     'changing body shape',
     'changing proportions',
     'changing head size',
@@ -311,8 +329,8 @@ const createNegativePrompt = ({ mode, actionName }) => {
     'messy layout',
     'uneven cells',
     'non-transparent background',
-    'realistic photo style',
-    '3D render unless requested',
+    'unrequested style conversion',
+    'unrequested 3D render',
     'low quality',
     'blurry',
     'noisy'
@@ -336,10 +354,12 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
       'Create a transparent-background OpenPet source image for a future animation asset.',
       'One character only. Fully visible and centered.',
       'Use a plain clean background that is easy to cut out.',
-      'Priority order: 1. Same character identity. 2. Clean transparent sprite source. 3. Stable root anchor, scale, and alignment. 4. Cute polished rendering.',
-      'Preserve identity-defining features: character type, head and face shape, eye shape and color, facial markings, body silhouette, proportions, main colors, material texture, patterns, markings, clothes, accessories, and overall cute OpenPet style.',
+      'Priority order: 1. Same character identity. 2. Same source visual style. 3. Clean transparent sprite source. 4. Stable root anchor, scale, and alignment. 5. Source-faithful polished rendering.',
+      'Preserve identity-defining features: character type, head and face shape, eye shape and color, facial markings, body silhouette, proportions, main colors, material texture, patterns, markings, clothes, accessories, and overall source visual style.',
+      ...SOURCE_STYLE_AUTHORITY_RULES,
+      ...MODEL_SHEET_REFERENCE_RULES,
       'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, accessories, or body parts.',
-      'Use soft internal shading and clean cartoon lighting; no cast shadow or ground shadow, no floor, no scene background, no checkerboard background.',
+      'Keep lighting, texture density, and rendering detail consistent with the reference; no cast shadow or ground shadow, no floor, no scene background, no checkerboard background.',
       'no text, logo, watermark, UI, border, extra characters, sticker sheet, or extra poses.',
       `Negative prompt: ${negativePrompt}.`,
       toSentence(creativeBrief)
@@ -360,21 +380,23 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
     '- eye shape and eye color: same eyes from the source',
     '- mouth / muzzle / facial markings: same source facial details',
     '- body silhouette and proportions: same body shape',
-    '- head-to-body ratio: same cute OpenPet proportions',
+    '- head-to-body ratio: same source proportions adapted only as needed for readable desktop-pet scale',
     '- main colors: same palette',
     '- fur / skin / material texture: same material feel',
     '- patterns, markings, clothes, accessories: preserve all identity-defining details',
-    '- overall cute OpenPet style: same line weight, rendering detail, and style complexity',
+    '- overall source style: same visual medium, line or edge treatment, rendering detail, lighting, texture, and style complexity',
+    ...SOURCE_STYLE_AUTHORITY_RULES,
+    ...MODEL_SHEET_REFERENCE_RULES,
     'The character must remain recognizable as exactly the same character in every frame.',
     visibleStyleContext ? `Current pet style context: ${visibleStyleContext}.` : '',
     styleSource === 'currentPet' || styleSource === 'referenceImage' ? 'Match the current character style as closely as possible.' : '',
     '',
     'Priority order:',
     '1. Same character identity in every frame.',
-    '2. Clean transparent sprite sheet layout.',
+    '2. Same source visual style in every frame.',
     '3. Stable root anchor, scale, and alignment.',
-    '4. Clear readable action.',
-    '5. Cute polished OpenPet rendering.',
+    '4. Clean transparent sprite sheet layout.',
+    '5. Clear readable action.',
     '',
     'SPRITE SHEET FORMAT:',
     `- ${actionSheet.frameCount} animation frames`,
@@ -437,12 +459,12 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
     ...framePlan,
     '',
     'ANIMATION QUALITY:',
-    'Use smooth cartoon animation spacing.',
+    'Use smooth animation spacing.',
     'Use clear readable poses.',
     'Use small controlled changes between adjacent frames.',
     'The frames should feel like they belong to one continuous animation drawn by the same animator.',
-    'The character should look cute, polished, clean, and suitable for a desktop pet or game companion.',
-    'Use soft internal shading, subtle material or fur shading when appropriate, and clean cartoon lighting.',
+    'The character should look source-faithful, polished, clean, and suitable for a desktop pet or game companion.',
+    'Keep lighting, material or fur texture, and rendering detail consistent with the reference while preserving a clean cutout silhouette.',
     '',
     `Negative prompt: ${negativePrompt}.`,
     toSentence(creativeBrief)
@@ -483,7 +505,9 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
           : 'Derive the identity from the creative brief.',
       'Render the same single character in every frame. Do not redesign, reinterpret, replace, simplify, or create a different variant of the character.',
       'Keep the same character identity, proportions, face, palette, and overall style.',
-      'Preserve character type, head and face shape, eye shape and eye color, mouth, muzzle, facial markings, body silhouette, proportions, head-to-body ratio, main colors, material texture, patterns, markings, clothes, accessories, and overall cute OpenPet style.',
+      'Preserve character type, head and face shape, eye shape and eye color, mouth, muzzle, facial markings, body silhouette, proportions, head-to-body ratio, main colors, material texture, patterns, markings, clothes, accessories, and overall source visual style.',
+      ...SOURCE_STYLE_AUTHORITY_RULES,
+      ...MODEL_SHEET_REFERENCE_RULES,
       styleSource === 'currentPet'
         ? "Keep the current pet's style, proportions, palette, facial design, and line work."
         : 'Keep a distinctive but simple identity that remains reusable for future OpenPet actions.',
@@ -547,12 +571,12 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
       'Do not let the character drift, rotate, shrink, grow, or change identity between frames.'
     ],
     'Style And Quality Contract': [
-      'Use smooth cartoon animation spacing.',
+      'Use smooth animation spacing.',
       'Use clear readable poses and small controlled changes between adjacent frames.',
       'The frames should feel like they belong to one continuous animation drawn by the same animator.',
-      'Use a compact desktop-pet body with a slightly oversized head for readability unless the source identity requires otherwise.',
+      'Use the source body and head proportions unless a tiny readability adjustment is necessary for the desktop-pet window.',
       'Keep a clear face, simple readable expression, simple limbs, visible paws, ears, tail, or equivalent identity features.',
-      'Use soft internal shading, subtle material or fur shading when appropriate, and clean cartoon lighting.',
+      'Keep lighting, material or fur texture, and rendering detail consistent with the reference while preserving a clean cutout silhouette.',
       'Avoid heavy shadow, complex lighting, malformed limbs, duplicate heads, merged paws, malformed tail, or unclear face.'
     ],
     'Negative Contract': [
