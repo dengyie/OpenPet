@@ -15,7 +15,7 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 - Dual-channel Codex ingestion: zero-config rollout polling under `~/.codex/sessions` / `~/.codex/archived_sessions` plus optional shipped hooks.
 - Explicit `install-codex-hooks` / `uninstall-codex-hooks` commands for reversible, backup-safe Codex hook management.
 - Sanitized runtime session storage under `OPENPET_DATA_DIR/sessions.json`.
-- Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, and generated session summaries.
+- Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, generated session summaries, and metadata-derived progress hints.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
 - A local dashboard, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
 
@@ -40,7 +40,7 @@ Stored and displayed data is intentionally narrow:
 - bounded source marker (`hook` or `poller`);
 - timestamp.
 
-The plugin ignores raw content-bearing fields and only uses safe top-level lifecycle hints to derive pet-visible status.
+The plugin ignores raw content-bearing fields and only uses safe top-level lifecycle and metadata hints to derive pet-visible status, current step, and recent progress text.
 
 Additional hardening in the current MVP:
 
@@ -121,4 +121,4 @@ Behavior:
 - Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
 - The dashboard honors `view=details&sessionId=<sanitized-id>` to focus one existing safe session hash, and shows a bounded empty state when the requested session is absent.
 - Each session card exposes a `Focus` link into the same bounded detail route.
-- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, aggregate usage tokens/cost/context, lightweight daily usage stats, per-session usage metadata, git metadata, current-step summaries, generated session summaries, and diagnostics.
+- The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, aggregate usage tokens/cost/context, lightweight daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.

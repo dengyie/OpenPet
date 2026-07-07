@@ -608,6 +608,58 @@ test('session summary prefers bounded progress labels for current step', () => {
   assert.equal(JSON.stringify(session).includes('/Users/mango'), false)
 })
 
+test('session summary derives semantic hints from bounded runtime metadata', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-store-semantic-summary-'))
+  const store = createSessionStore({ dataDir, maxSessions: 2, maxEvents: 4 })
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'waiting',
+    phase: 'approval',
+    type: 'approval.requested',
+    project: 'OpenPet #111111',
+    toolName: 'exec_command',
+    timestamp: '2026-07-07T00:00:00.000Z'
+  })
+
+  let session = store.listSessions()[0]
+  assert.equal(session.summary.currentStep, 'Awaiting approval')
+  assert.equal(session.summary.recentProgressHint, 'Waiting for approval to run exec_command')
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'working',
+    phase: 'tool',
+    type: 'posttooluse',
+    project: 'OpenPet #111111',
+    toolName: 'exec_command',
+    timestamp: '2026-07-07T00:00:01.000Z'
+  })
+
+  session = store.listSessions()[0]
+  assert.equal(session.summary.currentStep, 'Tool: exec_command')
+  assert.equal(session.summary.recentProgressHint, 'Finished tool exec_command')
+
+  store.upsertEvent({
+    sessionId: 'a',
+    status: 'working',
+    phase: 'turn',
+    type: 'turn.usage',
+    project: 'OpenPet #111111',
+    usage: { totalTokens: 1500 },
+    summary: {
+      currentStep: 'turn.usage',
+      recentProgressHint: '1500 tokens observed'
+    },
+    timestamp: '2026-07-07T00:00:02.000Z'
+  })
+
+  session = store.listSessions()[0]
+  assert.equal(session.summary.currentStep, 'Updating usage metadata')
+  assert.equal(session.summary.recentProgressHint, 'Usage updated: 1,500 tokens')
+  assert.equal(JSON.stringify(session).includes('/Users/mango'), false)
+})
+
 test('state mapper rate-limits repeat speech for the same session and status', () => {
   let currentNowMs = 1000
   const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })

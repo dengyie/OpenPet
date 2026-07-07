@@ -19,6 +19,12 @@ const toNullableNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : null
 }
 
+const formatCompactInteger = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return ''
+  return new Intl.NumberFormat('en-US').format(Math.round(numeric))
+}
+
 const normalizePhase = ({ phase = '', type = '', status = '' } = {}) => {
   const explicit = sanitizeText(phase, 32).toLowerCase()
   if (SAFE_PHASES.has(explicit)) return explicit
@@ -91,7 +97,8 @@ const normalizeRuntimeEvent = (event = {}, { now = () => new Date().toISOString(
       status,
       toolName: sanitizeText(event.toolName, 64),
       type: sanitizeText(event.type || 'session.updated', 64) || 'session.updated',
-      message: sanitizeText(event.message, 160)
+      message: sanitizeText(event.message, 160),
+      usage
     }),
     timestamp: sanitizeText(event.timestamp, 40) || now()
   }
@@ -111,12 +118,85 @@ const buildCurrentStep = ({
   const safeType = sanitizeText(type, 80)
   const safePhase = sanitizeText(phase, 32)
   const safeStatus = sanitizeText(status, 32)
+  const safeTypeKey = safeType.toLowerCase()
+  const safePhaseKey = safePhase.toLowerCase()
+  const safeStatusKey = safeStatus.toLowerCase()
   const explicitLooksGenerated = explicit && (explicit === safeType || explicit === safePhase)
   if (safeProgressLabel && (!explicit || explicitLooksGenerated)) return safeProgressLabel
+  if (
+    (safePhaseKey === 'approval' || safeStatusKey === 'waiting' || safeTypeKey === 'permissionrequest' || safeTypeKey.startsWith('approval.')) &&
+    (!explicit || explicitLooksGenerated)
+  ) {
+    return 'Awaiting approval'
+  }
+  if (safeTypeKey === 'turn.usage' && (!explicit || explicitLooksGenerated)) return 'Updating usage metadata'
+  if (safeTypeKey === 'project.git' && (!explicit || explicitLooksGenerated)) return 'Refreshing git state'
+  if (safeTypeKey === 'context.compacted' && (!explicit || explicitLooksGenerated)) return 'Compacting context'
+  if (safeTypeKey === 'turn.rolled-back' && (!explicit || explicitLooksGenerated)) return 'Rolled back recent turns'
+  if (safeStatusKey === 'failed' && (!explicit || explicitLooksGenerated)) return 'Failed'
   if (safeToolName && (!explicit || explicitLooksGenerated)) return `Tool: ${safeToolName}`
-  if (safePhase === 'approval' && (!explicit || explicitLooksGenerated)) return 'Awaiting approval'
-  if (safeStatus === 'completed' && (!explicit || explicitLooksGenerated)) return 'Completed'
+  if (safeStatusKey === 'completed' && (!explicit || explicitLooksGenerated)) return 'Completed'
   return explicit || safeType || safePhase
+}
+
+const buildProgressHint = ({
+  git = null,
+  message = '',
+  phase = '',
+  progressLabel = '',
+  source = {},
+  status = '',
+  toolName = '',
+  type = '',
+  usage = null
+} = {}) => {
+  const safeToolName = sanitizeText(toolName, 64)
+  const safeType = sanitizeText(type, 80)
+  const safePhase = sanitizeText(phase, 32)
+  const safeStatus = sanitizeText(status, 32)
+  const safeTypeKey = safeType.toLowerCase()
+  const safePhaseKey = safePhase.toLowerCase()
+  const safeStatusKey = safeStatus.toLowerCase()
+  const sourceCurrentStep = sanitizeText(source.currentStep || '', 80)
+  const sourceHintLooksGenerated = sourceCurrentStep && (sourceCurrentStep === safeType || sourceCurrentStep === safePhase)
+  const explicit = sanitizeText(source.recentProgressHint || '', 160)
+  if (explicit && !sourceHintLooksGenerated) return explicit
+  const generatedFallbackHint = explicit && sourceHintLooksGenerated ? explicit : ''
+
+  const safeProgressLabel = sanitizeText(progressLabel, 160)
+  if (safeProgressLabel) return safeProgressLabel
+
+  const waitingForApproval = safePhaseKey === 'approval' ||
+    safeStatusKey === 'waiting' ||
+    safeTypeKey === 'permissionrequest' ||
+    safeTypeKey.startsWith('approval.')
+
+  if (waitingForApproval) {
+    return safeToolName
+      ? `Waiting for approval to run ${safeToolName}`
+      : 'Waiting for approval'
+  }
+
+  if (safeToolName) {
+    return safeTypeKey === 'posttooluse' || safeTypeKey === 'tool.finished'
+      ? `Finished tool ${safeToolName}`
+      : `Using tool ${safeToolName}`
+  }
+
+  if (safeTypeKey === 'turn.usage' && usage?.totalTokens != null) {
+    return `Usage updated: ${formatCompactInteger(usage.totalTokens)} tokens`
+  }
+
+  if (safeTypeKey === 'project.git' && git?.branch) {
+    return `Git state: ${sanitizeText(git.branch, 80)}`
+  }
+
+  if (generatedFallbackHint) return generatedFallbackHint
+
+  if (safeStatusKey === 'completed') return 'Completed turn'
+  if (safeStatusKey === 'failed') return 'Agent turn failed'
+
+  return sanitizeText(message, 160)
 }
 
 const normalizeSessionSummary = ({
@@ -128,7 +208,8 @@ const normalizeSessionSummary = ({
   status = '',
   toolName = '',
   type = '',
-  message = ''
+  message = '',
+  usage = null
 } = {}) => {
   const source = event.summary && typeof event.summary === 'object' ? event.summary : {}
   const title = sanitizeText(source.title || '', 120) || (
@@ -142,10 +223,17 @@ const normalizeSessionSummary = ({
     toolName,
     type
   })
-  const recentProgressHint = sanitizeText(
-    source.recentProgressHint || progressLabel || message || (project ? `Working in ${project}` : ''),
-    160
-  )
+  const recentProgressHint = buildProgressHint({
+    git,
+    message,
+    phase,
+    progressLabel,
+    source,
+    status,
+    toolName,
+    type,
+    usage
+  }) || (project ? `Working in ${project}` : '')
   const normalized = {
     title,
     currentStep,
