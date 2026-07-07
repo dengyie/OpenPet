@@ -226,8 +226,7 @@ button[aria-pressed="true"] {
 .bubble-item-source {
   font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   line-height: 1;
   color: var(--bubble-muted);
 }

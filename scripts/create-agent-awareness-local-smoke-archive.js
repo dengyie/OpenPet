@@ -65,6 +65,7 @@ const summarizeNotificationPolicyEvidence = (evidence = {}) => ({
   petEventCount: Number(evidence.petEventCount) || 0,
   speechCount: Number(evidence.speechCount) || 0,
   suppressedSpeechCount: Number(evidence.suppressedSpeechCount) || 0,
+  routineStatusSuppressed: formatManualAcceptanceStatus(evidence.routineStatusSuppressed),
   urgentTransitionSpoke: formatManualAcceptanceStatus(evidence.urgentTransitionSpoke),
   repeatedUrgentSuppressed: formatManualAcceptanceStatus(evidence.repeatedUrgentSuppressed),
   repeatedCompletionSuppressed: formatManualAcceptanceStatus(evidence.repeatedCompletionSuppressed),
@@ -184,6 +185,7 @@ const validateNotificationPolicyEvidence = (evidence) => {
     return !Number.isFinite(value) || value < 0
   })
   const booleanFields = [
+    'routineStatusSuppressed',
     'urgentTransitionSpoke',
     'repeatedUrgentSuppressed',
     'repeatedCompletionSuppressed',
@@ -302,6 +304,7 @@ const createReadme = ({ report, archiveDir }) => {
   const manualAcceptance = report?.manualAcceptanceTemplate || {}
   const notificationPolicy = report?.notificationPolicyEvidence || {}
   const notificationPolicyPass = (
+    notificationPolicy.routineStatusSuppressed === true &&
     notificationPolicy.urgentTransitionSpoke === true &&
     notificationPolicy.repeatedUrgentSuppressed === true &&
     notificationPolicy.repeatedCompletionSuppressed === true &&
@@ -334,7 +337,7 @@ const createReadme = ({ report, archiveDir }) => {
     `| Redaction boundary | ${Object.values(report?.redactionChecks || {}).every(Boolean) ? 'pass' : 'fail'} | \`sessionIdsHashed = ${report?.redactionChecks?.sessionIdsHashed === true}\`, \`projectLabelsRedacted = ${report?.redactionChecks?.projectLabelsRedacted === true}\`, \`noRawPaths = ${report?.redactionChecks?.noRawPaths === true}\`, \`noLoopbackUrls = ${report?.redactionChecks?.noLoopbackUrls === true}\`, \`noSecrets = ${report?.redactionChecks?.noSecrets === true}\`. |`,
     `| Hook planning | ${report?.hookPlan?.ok === true ? 'pass' : 'fail'} | \`instructionsFile = ${sanitizeText(report?.hookPlan?.instructionsFile || '', 120)}\`, \`authFile = ${sanitizeText(report?.hookPlan?.authFile || '', 120)}\`, and \`externalWrites = ${report?.hookPlan?.externalWrites === true}\`. |`,
     `| Poller diagnostics | ${report?.health?.ok === true ? 'pass' : 'fail'} | \`seenCount = ${seenCount}\`, \`unsupportedLifecycleRecordCount = ${unsupportedLifecycleRecordCount}\`, \`lastError = ${sanitizeText(report?.health?.diagnostics?.lastError || '', 80) || '""'}\`. |`,
-    `| Notification policy | ${notificationPolicyPass ? 'pass' : 'pending'} | \`eventCount = ${Number(notificationPolicy.eventCount) || 0}\`, \`speechCount = ${Number(notificationPolicy.speechCount) || 0}\`, \`suppressedSpeechCount = ${Number(notificationPolicy.suppressedSpeechCount) || 0}\`, \`urgentTransitionSpoke = ${notificationPolicy.urgentTransitionSpoke === true}\`, \`repeatedUrgentSuppressed = ${notificationPolicy.repeatedUrgentSuppressed === true}\`, \`repeatedCompletionSuppressed = ${notificationPolicy.repeatedCompletionSuppressed === true}\`. |`,
+    `| Notification policy | ${notificationPolicyPass ? 'pass' : 'pending'} | \`eventCount = ${Number(notificationPolicy.eventCount) || 0}\`, \`speechCount = ${Number(notificationPolicy.speechCount) || 0}\`, \`suppressedSpeechCount = ${Number(notificationPolicy.suppressedSpeechCount) || 0}\`, \`routineStatusSuppressed = ${notificationPolicy.routineStatusSuppressed === true}\`, \`urgentTransitionSpoke = ${notificationPolicy.urgentTransitionSpoke === true}\`, \`repeatedUrgentSuppressed = ${notificationPolicy.repeatedUrgentSuppressed === true}\`, \`repeatedCompletionSuppressed = ${notificationPolicy.repeatedCompletionSuppressed === true}\`. |`,
     '',
     '## Sample Sessions',
     '',

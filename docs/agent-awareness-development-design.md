@@ -327,7 +327,7 @@ The plugin owns:
 | `examples/plugins/agent-awareness/service/git-summary.js` | Derives bounded git branch/dirty metadata without storing cwd. |
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session shape. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists sanitized runtime session state in plugin-owned storage. |
-| `examples/plugins/agent-awareness/service/state-mapper.js` | Maps canonical agent states into `pet:event`, rate-limited `pet:say`, and bounded internal notification decisions. |
+| `examples/plugins/agent-awareness/service/state-mapper.js` | Maps canonical agent states into `pet:event`, routine visual-only updates, rate-limited urgent/summary `pet:say`, and bounded internal notification decisions. |
 | `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Exposes `/health`, `/api/sessions`, dashboard assets, and token-gated `/api/events`. |
 | `examples/plugins/agent-awareness/commands/doctor.js` | Reports sanitized setup and diagnostics. |
 | `examples/plugins/agent-awareness/commands/codex-hook-plan.js` | Writes a read-only future-hook plan inside plugin-owned storage. |
@@ -388,7 +388,7 @@ agent:<status>
 Speech policy is intentionally conservative:
 
 - `idle` never speaks;
-- `thinking` and `working` are rate-limited to once per session/status every 5 minutes by default;
+- `thinking` and `working` are routine visual-only updates by default: they still emit `agent:<status>` pet events, but they do not open desktop speech bubbles;
 - repeated `waiting`, `blocked`, `completed`, and `failed` speech is cooled for 2 minutes per session/status by default;
 - identical event fingerprints are suppressed for 10 minutes by default;
 - `waiting`, `blocked`, `completed`, and `failed` may speak immediately on transition;

@@ -24,12 +24,19 @@ const DRAG_START_DISTANCE_PX = 4
 
 const hasTextSelection = () => Boolean(String(window.getSelection?.() || '').trim())
 
+const normalizeSourceLabel = (source = '') => {
+  const normalizedSource = String(source || '').trim()
+  if (normalizedSource.startsWith('plugin:openpet.agent-awareness')) return 'Codex'
+  return ''
+}
+
 const createFallbackItem = (message = {}) => ({
   id: message.id || `fallback:${message.createdAt || ''}:${message.source || ''}:${message.text || ''}`,
   kind: message.kind === 'dialogue' ? 'dialogue' : 'notice',
   role: ['user', 'pet', 'system'].includes(message.role) ? message.role : 'pet',
   text: String(message.text || ''),
   source: message.source || 'Pet',
+  sourceLabel: message.sourceLabel || normalizeSourceLabel(message.source),
   createdAt: message.createdAt || '',
   flowState: message.flowState || ''
 })
@@ -60,6 +67,10 @@ const getItemKey = (item = {}, index = 0) => (
 )
 
 const getSourceLabel = (item = {}) => {
+  const sourceLabel = String(item.sourceLabel || '').trim()
+  if (sourceLabel) return sourceLabel
+  const normalizedSourceLabel = normalizeSourceLabel(item.source)
+  if (normalizedSourceLabel) return normalizedSourceLabel
   if (!item?.text) return 'Pet'
   if (item.kind === 'notice') return item.source || '提示'
   if (item.role === 'user') return '你'

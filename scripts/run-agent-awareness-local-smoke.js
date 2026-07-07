@@ -295,6 +295,7 @@ const createNotificationPolicyEvidence = () => {
     petEventCount: mapped.filter((entry) => entry.petEvent).length,
     speechCount: mapped.filter((entry) => entry.speech?.text).length,
     suppressedSpeechCount: mapped.filter((entry) => !entry.speech?.text).length,
+    routineStatusSuppressed: working.speech === null,
     urgentTransitionSpoke: Boolean(waiting.speech?.text),
     repeatedUrgentSuppressed: repeatedWaiting.speech === null,
     repeatedCompletionSuppressed: repeatedCompleted.speech === null,

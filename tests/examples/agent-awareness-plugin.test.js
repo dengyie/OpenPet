@@ -702,7 +702,7 @@ test('session summary derives semantic hints from bounded runtime metadata', () 
   assert.equal(JSON.stringify(session).includes('/Users/mango'), false)
 })
 
-test('state mapper rate-limits repeat speech for the same session and status', () => {
+test('state mapper keeps routine working updates visual-only', () => {
   let currentNowMs = 1000
   const mapper = createAgentStateMapper({ nowMs: () => currentNowMs })
   const event = { sessionId: 'session-1', status: 'working', type: 'tool.started', project: 'OpenPet #111111', message: 'Codex started a tool call.' }
@@ -718,9 +718,14 @@ test('state mapper rate-limits repeat speech for the same session and status', (
     previousSession: { status: 'working' }
   })
 
-  assert.equal(Boolean(first.speech), true)
+  assert.equal(first.speech, null)
+  assert.equal(first.petEvent.type, 'agent:working')
+  assert.equal(first.petEvent.message, '')
+  assert.equal(first.notification.reason, 'routine-status')
   assert.equal(second.speech, null)
-  assert.equal(Boolean(third.speech), true)
+  assert.equal(second.notification.reason, 'routine-status')
+  assert.equal(third.speech, null)
+  assert.equal(third.notification.reason, 'routine-status')
 })
 
 test('state mapper lets urgent status changes interrupt while cooling repeated urgent speech', () => {
@@ -749,12 +754,13 @@ test('state mapper lets urgent status changes interrupt while cooling repeated u
     previousSession: { status: 'waiting' }
   })
 
-  assert.equal(Boolean(first.speech), true)
+  assert.equal(first.speech, null)
   assert.equal(Boolean(urgent.speech), true)
   assert.equal(urgent.notification.priority, 'urgent')
   assert.equal(urgent.notification.reason, 'status-changed')
   assert.equal(repeatedUrgent.speech, null)
   assert.equal(repeatedUrgent.petEvent.type, 'agent:waiting')
+  assert.equal(repeatedUrgent.petEvent.message, '')
   assert.equal(repeatedUrgent.notification.reason, 'status-cooldown')
   assert.equal(Boolean(cooledUrgent.speech), true)
 })
@@ -779,7 +785,7 @@ test('state mapper suppresses repeated completion speech while preserving pet ev
   assert.equal(repeated.speech, null)
   assert.deepEqual(repeated.petEvent, {
     type: 'agent:completed',
-    message: 'Codex completed a turn.',
+    message: '',
     ttlMs: 8000
   })
   assert.equal(repeated.notification.reason, 'status-cooldown')
@@ -801,8 +807,8 @@ test('state mapper notification decision stays bounded and content-free', () => 
   assert.deepEqual(mapped.notification, {
     status: 'working',
     priority: 'normal',
-    reason: 'status-changed',
-    shouldSpeak: true,
+    reason: 'routine-status',
+    shouldSpeak: false,
     cooldownMs: 300000
   })
   assert.equal(JSON.stringify(mapped.notification).includes('/Users/mango'), false)
@@ -814,12 +820,12 @@ test('state mapper does not cooldown same-status events without in-memory speech
   const mapped = mapper.mapEvent({
     event: {
       sessionId: 'session-restored',
-      status: 'working',
-      type: 'tool.started',
+      status: 'waiting',
+      type: 'approval.requested',
       project: 'OpenPet #111111',
-      message: 'Codex started a tool call.'
+      message: 'Codex needs approval.'
     },
-    previousSession: { status: 'working' }
+    previousSession: { status: 'waiting' }
   })
 
   assert.equal(Boolean(mapped.speech), true)
@@ -891,7 +897,7 @@ test('agent awareness server serves health and notifies pet only for incremental
   assert.equal('codexHome' in health.codexPoller, false)
   assert.equal(Array.isArray(sessions.sessions), true)
   assert.deepEqual(bridgeCalls, [
-    ['event', { type: 'agent:completed', message: 'Codex completed a turn.', ttlMs: 8000 }],
+    ['event', { type: 'agent:completed', message: '', ttlMs: 8000 }],
     ['say', { text: '我刚完成：Codex completed a turn.', ttlMs: 6000 }]
   ])
 })

@@ -576,6 +576,39 @@ test('pet bubble chat preserves non-ai pet say dialogue in the left-side bubble 
   ])
 })
 
+test('pet bubble chat gives agent-awareness bridge messages a user-facing Codex label', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  const state = manager.showMessage({
+    text: '这里需要你确认：Codex needs approval.',
+    source: 'plugin:openpet.agent-awareness:bridge',
+    sourceSurface: 'plugin-bridge',
+    kind: 'dialogue',
+    role: 'pet',
+    createdAt: '2026-06-24T00:00:02.000Z'
+  })
+
+  assert.deepEqual(state.items.map((item) => [item.kind, item.role, item.source, item.sourceLabel]), [
+    ['dialogue', 'pet', 'plugin:openpet.agent-awareness:bridge', 'Codex']
+  ])
+})
+
 test('pet bubble chat manager reuses a single window and latest message replaces prior auto-hide timer', () => {
   const timers = []
   const logs = []

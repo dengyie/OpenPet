@@ -233,6 +233,18 @@ const resolveCodexSignalHome = ({
   codexHome = process.env.OPENPET_CODEX_HOME || process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
 } = {}) => codexHome
 
+const createAgentAwarenessServiceEnv = ({
+  pluginId,
+  serviceId,
+  codexHome = resolveCodexSignalHome()
+} = {}) => {
+  if (pluginId !== AGENT_AWARENESS_PLUGIN_ID || serviceId !== AGENT_AWARENESS_SERVICE_ID) return {}
+  return {
+    OPENPET_CODEX_HOME: codexHome,
+    CODEX_HOME: codexHome
+  }
+}
+
 const listLatestCodexSignalFiles = ({
   codexHome = resolveCodexSignalHome(),
   maxFiles = DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES,
@@ -1735,6 +1747,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             OPENPET_DATA_DIR: serviceDirs.dataDir,
             OPENPET_CACHE_DIR: serviceDirs.cacheDir,
             OPENPET_LOG_DIR: serviceDirs.logDir,
+            ...createAgentAwarenessServiceEnv({ pluginId, serviceId }),
             OPENPET_SERVICE_BRIDGE_URL: bridgeBaseUrl,
             OPENPET_SERVICE_BRIDGE_TOKEN: bridgeToken
           },

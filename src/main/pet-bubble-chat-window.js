@@ -223,6 +223,12 @@ const createBubbleItemId = ({ kind, source, createdAt, text }) => {
   return `bubble:${kind}:${Math.abs(hash).toString(36)}`
 }
 
+const normalizeSourceLabel = ({ source = '' } = {}) => {
+  const normalizedSource = String(source || '').trim()
+  if (normalizedSource.startsWith('plugin:openpet.agent-awareness')) return 'Codex'
+  return ''
+}
+
 const createBubbleRequestId = () => `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
 const normalizeBubbleChatItem = (payload = {}) => {
@@ -241,6 +247,7 @@ const normalizeBubbleChatItem = (payload = {}) => {
     role,
     text: message.text,
     source: message.source || (kind === 'dialogue' ? 'ai' : 'pet'),
+    sourceLabel: normalizeSourceLabel({ source: message.source }),
     sourceSurface: message.sourceSurface || message.source || (kind === 'dialogue' ? 'ai' : 'pet'),
     createdAt,
     conversationId: typeof payload.conversationId === 'string' ? payload.conversationId : '',

@@ -1,13 +1,3 @@
-const STATUS_COPY = {
-  idle: 'Agent is idle.',
-  thinking: 'Agent is thinking through the next step.',
-  working: 'Agent is working on the task.',
-  waiting: 'Agent is waiting for your input.',
-  blocked: 'Agent is blocked and needs attention.',
-  completed: 'Agent finished this turn.',
-  failed: 'Agent hit an error.'
-}
-
 const DEFAULT_FINGERPRINT_SUPPRESSION_MS = 10 * 60 * 1000
 const DEFAULT_MIN_INTERVALS = {
   thinking: 5 * 60 * 1000,
@@ -28,6 +18,8 @@ const STATUS_PRIORITY = {
   completed: 'summary',
   failed: 'urgent'
 }
+
+const ROUTINE_VISUAL_ONLY_STATUSES = new Set(['thinking', 'working'])
 
 const createAgentStateMapper = ({
   nowMs = () => Date.now(),
@@ -55,6 +47,12 @@ const createAgentStateMapper = ({
       return {
         nowMs: nowMs(),
         notification: toNotificationDecision({ event, reason: 'idle', shouldSpeak: false, cooldownMs })
+      }
+    }
+    if (ROUTINE_VISUAL_ONLY_STATUSES.has(event.status)) {
+      return {
+        nowMs: nowMs(),
+        notification: toNotificationDecision({ event, reason: 'routine-status', shouldSpeak: false, cooldownMs })
       }
     }
     const currentNowMs = nowMs()
@@ -87,9 +85,6 @@ const createAgentStateMapper = ({
   }
 
   const createSpeechText = (event) => {
-    if (event.status === 'thinking' || event.status === 'working') {
-      return event.message ? `我在处理：${event.message}` : '我在忙这件事。'
-    }
     if (event.status === 'waiting') return event.message ? `这里需要你确认：${event.message}` : '这里需要你确认一下。'
     if (event.status === 'blocked') return event.message ? `我被卡住了：${event.message}` : '我这里卡住了。'
     if (event.status === 'completed') return event.message ? `我刚完成：${event.message}` : '我刚做完。'
@@ -98,10 +93,11 @@ const createAgentStateMapper = ({
   }
 
   const mapEvent = ({ event, previousSession }) => {
-    const detail = event.message || STATUS_COPY[event.status] || STATUS_COPY.working
     const petEvent = {
       type: `agent:${event.status}`,
-      message: detail,
+      // Agent events are state signals. Visible desktop copy is emitted only
+      // through pet:say so urgent statuses do not create duplicate bubbles.
+      message: '',
       ttlMs: event.status === 'completed' ? 8000 : 30000
     }
     const decision = evaluateSpeech({ event, previousSession })

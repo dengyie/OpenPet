@@ -125,4 +125,4 @@ Behavior:
 - The dashboard honors `view=stats` to show a dedicated usage stats page from retained sanitized session history.
 - Each session card exposes a `Focus` link into the same bounded detail route.
 - The dashboard is read-only and focuses on sanitized session status, bounded attention focus, recent timeline, hook-plan state, aggregate usage tokens/cost/context, dedicated daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.
-- Local smoke reports include bounded `notificationPolicyEvidence` from a synthetic state-mapper sequence. It proves the report/archive chain carries low-noise policy evidence, but it does not replace human desktop speech-noise acceptance.
+- Local smoke reports include bounded `notificationPolicyEvidence` from a synthetic state-mapper sequence, including proof that routine `thinking`/`working` updates stay visual-only while urgent and summary transitions can still speak. It proves the report/archive chain carries low-noise policy evidence, but it does not replace human desktop speech-noise acceptance.

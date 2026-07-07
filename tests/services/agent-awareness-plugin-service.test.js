@@ -127,6 +127,51 @@ test('plugin service discovers bundled agent-awareness plugin and gates service 
   assert.equal(service.listPlugins().find((entry) => entry.id === 'openpet.agent-awareness').entries.services[0].runtime.status, 'stopped')
 })
 
+test('plugin service passes configured Codex home to bundled agent-awareness service', async () => {
+  const pluginRoot = createPluginCopyRoot()
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-codex-home-'))
+  const previousOpenPetCodexHome = process.env.OPENPET_CODEX_HOME
+  const previousCodexHome = process.env.CODEX_HOME
+  const spawned = []
+  const child = createSlowStoppingServiceProcess()
+  const settingsService = createBareSettingsService({
+    plugins: { enabled: { 'openpet.agent-awareness': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [pluginRoot],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  process.env.OPENPET_CODEX_HOME = codexHome
+  delete process.env.CODEX_HOME
+  service.setNativeExecutionApproved('openpet.agent-awareness', true)
+
+  try {
+    await service.startService('openpet.agent-awareness', 'agent-awareness')
+
+    assert.equal(spawned.length, 1)
+    assert.equal(spawned[0].options.env.OPENPET_CODEX_HOME, codexHome)
+    assert.equal(spawned[0].options.env.CODEX_HOME, codexHome)
+  } finally {
+    if (previousOpenPetCodexHome === undefined) {
+      delete process.env.OPENPET_CODEX_HOME
+    } else {
+      process.env.OPENPET_CODEX_HOME = previousOpenPetCodexHome
+    }
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME
+    } else {
+      process.env.CODEX_HOME = previousCodexHome
+    }
+  }
+})
+
 test('plugin service summarizes agent-awareness health responses into the service health note', async () => {
   const settingsService = createBareSettingsService({
     plugins: { enabled: { 'openpet.agent-awareness': true } }
