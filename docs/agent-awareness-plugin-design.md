@@ -93,7 +93,7 @@ Anything not exposed from `plugin.json` should not be treated as current product
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session model. |
 | `examples/plugins/agent-awareness/service/session-store.js` | Persists bounded runtime session summaries to plugin-owned storage. |
 | `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events and rate-limited speech. |
-| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including usage, git, and generated session-summary metadata. |
+| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including usage, git, generated session-summary metadata, and bounded `view=details&sessionId=<sanitized-id>` focus. |
 
 ### Core Touchpoints Outside The Plugin
 

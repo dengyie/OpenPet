@@ -1,6 +1,7 @@
 const createDashboardRuntime = ({
   documentRef = typeof document !== 'undefined' ? document : null,
-  fetchImpl = typeof fetch === 'function' ? fetch.bind(globalThis) : null
+  fetchImpl = typeof fetch === 'function' ? fetch.bind(globalThis) : null,
+  locationRef = typeof window !== 'undefined' ? window.location : null
 } = {}) => {
   const escapeHtml = (value) => String(value || '')
     .replace(/&/g, '&amp;')
@@ -44,6 +45,42 @@ const createDashboardRuntime = ({
     if (!Number.isFinite(numeric)) return ''
     return `$${numeric.toFixed(6)} ${sanitizeDisplayText(currency || 'USD')}`
   }
+
+  const getFirstQueryValue = (value) => {
+    if (Array.isArray(value)) return value[0]
+    return value
+  }
+
+  const normalizeQueryText = (value, maxLength = 128) => sanitizeDisplayText(getFirstQueryValue(value) || '').slice(0, maxLength)
+
+  const parseDashboardQuery = (search = '') => {
+    const query = {}
+    const rawSearch = String(search || '')
+    const trimmedSearch = rawSearch.startsWith('?') ? rawSearch.slice(1) : rawSearch
+    if (!trimmedSearch) return query
+    const params = new URLSearchParams(trimmedSearch)
+    for (const [key, value] of params.entries()) {
+      if (!query[key]) query[key] = value
+    }
+    return query
+  }
+
+  const normalizeDashboardQuery = (query = {}) => {
+    if (typeof query === 'string') return normalizeDashboardQuery(parseDashboardQuery(query))
+    if (typeof URLSearchParams !== 'undefined' && query instanceof URLSearchParams) {
+      return normalizeDashboardQuery(Object.fromEntries(query.entries()))
+    }
+    if (!query || typeof query !== 'object') {
+      return { view: '', sessionId: '' }
+    }
+    const normalizedView = normalizeQueryText(query.view, 32).toLowerCase()
+    return {
+      view: normalizedView === 'details' ? 'details' : '',
+      sessionId: normalizeQueryText(query.sessionId, 128)
+    }
+  }
+
+  const getCurrentDashboardQuery = () => normalizeDashboardQuery(locationRef?.search || '')
 
   const formatTimestamp = (value) => {
     if (!value) return 'No recent activity'
@@ -106,7 +143,7 @@ const createDashboardRuntime = ({
     return !['idle', 'completed', 'failed'].includes(status)
   }).length
 
-  const buildDashboardViewModel = ({ health = {}, sessionsPayload = {} } = {}) => {
+  const buildDashboardViewModel = ({ health = {}, sessionsPayload = {}, query = {} } = {}) => {
     const sessions = Array.isArray(sessionsPayload.sessions) ? sessionsPayload.sessions : []
     const diagnostics = health.diagnostics || {}
     const hookMode = health.hookMode || {}
@@ -115,8 +152,27 @@ const createDashboardRuntime = ({
     const activeSessionCount = Number.isFinite(Number(diagnostics.activeSessionCount))
       ? Number(diagnostics.activeSessionCount)
       : getActiveSessionCount(sessions)
+    const normalizedQuery = normalizeDashboardQuery(query)
+    const detailMode = normalizedQuery.view === 'details'
+    const requestedSessionId = normalizedQuery.sessionId
+    const hasRequestedSessionId = detailMode && Boolean(requestedSessionId)
+    const visibleSessions = hasRequestedSessionId
+      ? sessions.filter((session) => String(session.sessionId || '') === requestedSessionId)
+      : sessions
+    const detailFound = !hasRequestedSessionId || visibleSessions.length > 0
+    const detailNotice = !detailMode
+      ? ''
+      : hasRequestedSessionId
+        ? detailFound
+          ? `Focused Session: ${requestedSessionId}`
+          : ''
+        : 'Showing latest sanitized session details.'
 
     return {
+      detailFound,
+      detailMode,
+      detailNotice,
+      requestedSessionId,
       serviceOk: health.ok === true,
       summary: [
         {
@@ -183,7 +239,7 @@ const createDashboardRuntime = ({
           tone: diagnostics.lastError ? 'danger' : 'success'
         }
       ],
-      sessions: sessions.map((session) => ({
+      sessions: visibleSessions.map((session) => ({
         project: sanitizeDisplayText(session.project || 'Unknown project'),
         sessionId: session.sessionId || '',
         message: sanitizeDisplayText(session.message || 'No sanitized message'),
@@ -240,11 +296,17 @@ const createDashboardRuntime = ({
     `).join('')}</ol>`
   }
 
-  const renderSessions = (sessions = []) => {
+  const renderSessions = (sessions = [], detailState = {}) => {
+    const detailNoticeHtml = detailState.detailMode && detailState.detailNotice
+      ? `<p class="detail-notice">${escapeHtml(sanitizeDisplayText(detailState.detailNotice))}</p>`
+      : ''
     if (!sessions.length) {
-      return '<p class="empty-state">No sanitized agent sessions observed yet.</p>'
+      const emptyCopy = detailState.detailMode && detailState.detailFound === false
+        ? 'Requested sanitized session was not found.'
+        : 'No sanitized agent sessions observed yet.'
+      return `${detailNoticeHtml}<p class="empty-state">${escapeHtml(emptyCopy)}</p>`
     }
-    return sessions.map((session) => `
+    return `${detailNoticeHtml}${sessions.map((session) => `
       <article class="session" data-testid="agent-session">
         <header class="session-header">
           <div>
@@ -278,14 +340,18 @@ const createDashboardRuntime = ({
           ${renderTimeline(session.timeline)}
         </div>
       </article>
-    `).join('')
+    `).join('')}`
   }
 
   const renderDashboard = (viewModel) => ({
     statusLine: viewModel.serviceOk ? 'Service healthy' : 'Service unavailable',
     summaryHtml: renderSummary(viewModel.summary),
     healthHtml: renderHealthRows(viewModel.healthRows),
-    sessionsHtml: renderSessions(viewModel.sessions)
+    sessionsHtml: renderSessions(viewModel.sessions, {
+      detailFound: viewModel.detailFound,
+      detailMode: viewModel.detailMode,
+      detailNotice: viewModel.detailNotice
+    })
   })
 
   const load = async () => {
@@ -296,7 +362,7 @@ const createDashboardRuntime = ({
     ])
     const health = await healthResponse.json()
     const sessionsPayload = await sessionsResponse.json()
-    return buildDashboardViewModel({ health, sessionsPayload })
+    return buildDashboardViewModel({ health, sessionsPayload, query: getCurrentDashboardQuery() })
   }
 
   const mount = async () => {
@@ -335,7 +401,10 @@ const createDashboardRuntime = ({
   return {
     buildDashboardViewModel,
     escapeHtml,
+    load,
     mount,
+    normalizeDashboardQuery,
+    parseDashboardQuery,
     renderDashboard,
     renderHealthRows,
     renderSessions,

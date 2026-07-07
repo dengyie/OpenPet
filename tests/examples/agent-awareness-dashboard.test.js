@@ -130,6 +130,142 @@ test('agent awareness dashboard renders safe usage git and summary metadata', ()
   assert.equal(viewModel.sessions[0].progressHint, 'Working in [path]')
 })
 
+test('agent awareness dashboard focuses requested session in details mode', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    query: {
+      view: 'details',
+      sessionId: 'target-session'
+    },
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 2,
+        totalEvents: 6,
+        seenCount: 6
+      }
+    },
+    sessionsPayload: {
+      sessions: [
+        {
+          sessionId: 'target-session',
+          project: 'OpenPet #111111',
+          status: 'working',
+          type: 'tool.started',
+          message: 'Target session',
+          timestamp: '2026-07-07T00:00:00.000Z'
+        },
+        {
+          sessionId: 'other-session',
+          project: 'Other #222222',
+          status: 'waiting',
+          type: 'approval.requested',
+          message: 'Other session',
+          timestamp: '2026-07-07T00:01:00.000Z'
+        }
+      ]
+    }
+  })
+
+  assert.equal(viewModel.detailMode, true)
+  assert.equal(viewModel.requestedSessionId, 'target-session')
+  assert.equal(viewModel.detailFound, true)
+  assert.equal(viewModel.sessions.length, 1)
+  assert.equal(viewModel.sessions[0].sessionId, 'target-session')
+  assert.equal(viewModel.summary[0].value, '2')
+  assert.equal(viewModel.summary[0].detail, '2 active now')
+  assert.match(viewModel.detailNotice, /Focused Session/)
+})
+
+test('agent awareness dashboard load applies location detail query', async () => {
+  const runtime = createDashboardRuntime({
+    documentRef: null,
+    locationRef: {
+      search: '?view=details&sessionId=target-session'
+    },
+    fetchImpl: async (url) => ({
+      json: async () => {
+        if (url === '/health') {
+          return {
+            ok: true,
+            diagnostics: {
+              activeSessionCount: 1,
+              totalEvents: 2,
+              seenCount: 2
+            }
+          }
+        }
+        return {
+          sessions: [
+            {
+              sessionId: 'target-session',
+              project: 'OpenPet #111111',
+              status: 'working',
+              type: 'tool.started',
+              message: 'Target session',
+              timestamp: '2026-07-07T00:00:00.000Z'
+            },
+            {
+              sessionId: 'other-session',
+              project: 'Other #222222',
+              status: 'working',
+              type: 'tool.started',
+              message: 'Other session',
+              timestamp: '2026-07-07T00:00:01.000Z'
+            }
+          ]
+        }
+      }
+    })
+  })
+
+  const viewModel = await runtime.load()
+
+  assert.equal(viewModel.detailMode, true)
+  assert.equal(viewModel.requestedSessionId, 'target-session')
+  assert.deepEqual(viewModel.sessions.map((session) => session.sessionId), ['target-session'])
+})
+
+test('agent awareness dashboard renders safe empty state for missing detail session', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    query: {
+      view: 'details',
+      sessionId: '<script>alert(1)</script>/Users/mango/private'
+    },
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 0,
+        totalEvents: 1,
+        seenCount: 1
+      }
+    },
+    sessionsPayload: {
+      sessions: [
+        {
+          sessionId: 'known-session',
+          project: 'OpenPet #111111',
+          status: 'completed',
+          type: 'turn.completed',
+          message: 'Known session',
+          timestamp: '2026-07-07T00:00:00.000Z'
+        }
+      ]
+    }
+  })
+
+  const rendered = runtime.renderDashboard(viewModel)
+
+  assert.equal(viewModel.detailMode, true)
+  assert.equal(viewModel.detailFound, false)
+  assert.equal(viewModel.sessions.length, 0)
+  assert.match(rendered.sessionsHtml, /Requested sanitized session was not found/)
+  assert.doesNotMatch(rendered.sessionsHtml, /<script>/)
+  assert.doesNotMatch(rendered.sessionsHtml, /\/Users\/mango\/private/)
+  assert.doesNotMatch(rendered.sessionsHtml, /known-session/)
+})
+
 test('agent awareness dashboard rendering escapes content and emits structured sections', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const rendered = runtime.renderDashboard({

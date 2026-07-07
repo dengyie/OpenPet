@@ -39,7 +39,7 @@ The current branch baseline is no longer "paper design only." It has the full pl
 - shipped hook + polling dual ingestion with one canonical runtime session model;
 - shipped trusted auto-start gating behind native approval plus explicit opt-in;
 - shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
-- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, best-effort git branch/dirty summaries, generated session summaries, and dashboard rendering;
+- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, best-effort git branch/dirty summaries, generated session summaries, dashboard rendering, and bounded detail deep-link focus;
 - shipped a first-class Agent Awareness detail entry from Control Center;
 - shipped a pet-side quick-open detail entry from Bubble Chat;
 - kept the privacy boundary intact while adding the richer runtime shape.
@@ -82,6 +82,7 @@ Today Agent Awareness provides:
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
 - a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
 - a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
+- dashboard support for `view=details&sessionId=<sanitized-id>` so an existing safe session hash can be shown as a focused detail view;
 - a read-only dashboard that shows aggregate usage tokens plus per-session usage, git, and summary facts when available;
 - operator commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks`;
 - repeatable real-session smoke via `npm run run-agent-awareness-local-smoke`;
@@ -174,12 +175,13 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - hook and poller adapters preserve bounded `usage`, `git`, and `summary` objects;
 - `/health` exposes aggregate `usageTotalTokens`;
 - the dashboard renders aggregate usage tokens and per-session usage/git/session-summary facts;
+- the dashboard honors `view=details&sessionId=<sanitized-id>` for safe per-session focus and renders a bounded empty state when the requested session is absent;
 - mock smoke flow preserves these fields in redacted reports.
 
 **Still open**
 
 - richer usage history and stats over time;
-- dedicated per-session focus controls beyond the current dashboard list;
+- first-class in-dashboard focus controls beyond incoming deep links;
 - stronger current-task summary policy that remains content-safe;
 - Control Center-native detail panel beyond opening the bundled dashboard.
 

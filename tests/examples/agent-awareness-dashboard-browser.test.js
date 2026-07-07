@@ -12,14 +12,14 @@ try {
 const { createAgentAwarenessServer } = require('../../examples/plugins/agent-awareness/service/agent-awareness-service')
 const { writeCodexHookPlan } = require('../../examples/plugins/agent-awareness/commands/codex-hook-plan')
 
-const openDashboardPage = async (port) => {
+const openDashboardPage = async (port, route = '/') => {
   const browser = await chromium.launch({ headless: true })
   const page = await browser.newPage()
   const consoleMessages = []
   page.on('console', (message) => {
     consoleMessages.push({ type: message.type(), text: message.text() })
   })
-  await page.goto(`http://127.0.0.1:${port}`, { waitUntil: 'networkidle' })
+  await page.goto(`http://127.0.0.1:${port}${route}`, { waitUntil: 'networkidle' })
   return { browser, consoleMessages, page }
 }
 
@@ -102,6 +102,20 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
     assert.equal(pageText.includes('127.0.0.1:8795'), false)
     assert.equal(pageText.includes('sk-test123'), false)
     assert.equal(pageText.includes('secret-token'), false)
+
+    const targetSession = service.store.listSessions().find((session) => session.message.includes('Need approval'))
+    assert.ok(targetSession?.sessionId)
+
+    await page.goto(`http://127.0.0.1:${port}/?view=details&sessionId=${encodeURIComponent(targetSession.sessionId)}`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('[data-testid="agent-sessions"] [data-testid="agent-session"]')
+
+    const focusedSessionsText = await page.textContent('[data-testid="agent-sessions"]')
+    const focusedSessionCount = await page.locator('[data-testid="agent-session"]').count()
+
+    assert.equal(focusedSessionCount, 1)
+    assert.match(focusedSessionsText || '', /Focused Session/)
+    assert.match(focusedSessionsText || '', /Need approval/)
+    assert.doesNotMatch(focusedSessionsText || '', /Finished \[path\]/)
     assert.deepEqual(consoleMessages, [])
   } finally {
     await browser.close()

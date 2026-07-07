@@ -118,4 +118,5 @@ Behavior:
 - The plugin exposes one config field today: `autoStartOnCodexSignal`, which is off by default and must be enabled explicitly.
 - The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness dashboard with `view=details`.
 - Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
+- The dashboard honors `view=details&sessionId=<sanitized-id>` to focus one existing safe session hash, and shows a bounded empty state when the requested session is absent.
 - The dashboard is read-only and focuses on sanitized session status, recent timeline, hook-plan state, usage metadata, git metadata, generated session summaries, and diagnostics.
