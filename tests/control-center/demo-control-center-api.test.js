@@ -129,6 +129,69 @@ const setDemoCreatorReferencePickerPath = async (pickerPath) => {
   await demoControlCenterAPI.getPetChatState()
 }
 
+const createImGatewayPhase2DemoPlugin = () => ({
+  id: 'openpet.im-gateway',
+  name: 'IM Gateway',
+  version: '0.2.0-demo',
+  source: 'bundled',
+  enabled: true,
+  runnable: true,
+  requiresNativeExecution: true,
+  nativeExecutionApproved: true,
+  permissions: ['pet:say', 'pet:action', 'pet:event', 'ai:chat'],
+  commands: [],
+  entries: {
+    setup: [],
+    commands: [],
+    services: [],
+    dashboards: []
+  },
+  configSchema: {
+    title: 'IM Gateway Settings',
+    description: 'Public IM trigger policy. Tokens are stored by the host.',
+    properties: [
+      { key: 'telegramEnabled', title: 'Telegram enabled', type: 'boolean' },
+      { key: 'telegramMode', title: 'Telegram mode', type: 'string', enum: ['polling'] },
+      { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'any-text'], hidden: true },
+      { key: 'privateTextMode', title: 'Private text mode', type: 'string', enum: ['command-only', 'pet-say', 'ai-chat'] },
+      { key: 'groupChatPolicy', title: 'Group chats', type: 'string', enum: ['mention-or-command', 'command-only'] },
+      { key: 'groupAiRepliesEnabled', title: 'Enable group AI replies', type: 'boolean' },
+      { key: 'allowedUsers', title: 'Allowed users', type: 'string' },
+      { key: 'allowedChats', title: 'Allowed chats', type: 'string' },
+      { key: 'allowAllPrivateChats', title: 'Allow all private chats', type: 'boolean' },
+      { key: 'allowAllGroupChats', title: 'Allow all group chats', type: 'boolean' },
+      { key: 'commandAliases', title: 'Command aliases', type: 'string' },
+      { key: 'petSayTtlMs', title: 'Pet say TTL', type: 'number' },
+      { key: 'receiptMode', title: 'Receipt mode', type: 'string', enum: ['commands-only', 'none'] }
+    ]
+  },
+  config: {
+    telegramEnabled: true,
+    telegramMode: 'polling',
+    privateChatPolicy: 'command-only',
+    privateTextMode: 'command-only',
+    groupChatPolicy: 'mention-or-command',
+    groupAiRepliesEnabled: false,
+    allowedUsers: '1001',
+    allowedChats: '-2001',
+    allowAllPrivateChats: false,
+    allowAllGroupChats: false,
+    commandAliases: '/openpet,/op',
+    petSayTtlMs: 6000,
+    receiptMode: 'commands-only'
+  },
+  storage: { keyCount: 0, byteSize: 0, valid: true },
+  signatureStatus: {
+    status: 'bundled',
+    label: 'Bundled plugin',
+    signer: 'openpet',
+    algorithm: '',
+    verified: true,
+    errors: []
+  },
+  blockStatus: { blocked: false, reasons: [] }
+})
+
 test('control center API entrypoint lazy-loads demo fallback without installing it globally', async () => {
   delete global.window.controlCenterAPI
   const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
@@ -273,6 +336,27 @@ test('demo API installs a fixture plugin and returns command mock output', async
   assert.equal(commandResult.commandId, 'hello')
   assert.equal(commandResult.result.message, 'Demo command completed')
   assert.deepEqual(commandResult.result.payload, { greeting: 'hi' })
+})
+
+test('demo API IM Gateway phase 2 AI reply config fields save and reload through schema-backed normalization', async () => {
+  const installed = await upsertDemoPlugin(createImGatewayPhase2DemoPlugin())
+  const configured = await demoControlCenterAPI.savePluginConfig(installed.id, {
+    ...(installed.config || {}),
+    privateTextMode: 'ai-chat',
+    groupAiRepliesEnabled: true,
+    allowedUsers: '1001,1002'
+  })
+
+  assert.equal(configured.config.privateChatPolicy, 'command-only')
+  assert.equal(configured.config.privateTextMode, 'ai-chat')
+  assert.equal(configured.config.groupAiRepliesEnabled, true)
+  assert.equal(configured.config.allowedUsers, '1001,1002')
+
+  const refreshed = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === installed.id)
+  assert.ok(refreshed)
+  assert.equal(refreshed.config.privateTextMode, 'ai-chat')
+  assert.equal(refreshed.config.groupAiRepliesEnabled, true)
+  assert.equal(refreshed.configSchema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
 })
 
 test('demo API chat mock appends user and assistant messages', async () => {

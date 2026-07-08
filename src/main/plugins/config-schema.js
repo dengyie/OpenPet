@@ -55,7 +55,8 @@ const normalizeConfigField = (key, rawField = {}, required = false) => {
     type,
     title: rawField.title || key,
     description: rawField.description || '',
-    required: Boolean(required)
+    required: Boolean(required),
+    hidden: rawField.hidden === true
   }
   if (Array.isArray(rawField.enum)) field.enum = rawField.enum.map((value) => coerceConfigValue(value, { key, type }))
   if (hasOwn(rawField, 'default')) field.default = coerceConfigValue(rawField.default, field)

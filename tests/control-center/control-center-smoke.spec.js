@@ -2297,6 +2297,7 @@ test.describe('Control Center smoke', () => {
 
   test('manages IM Gateway Telegram token and service gate in the Plugins pane with the demo API', async ({ page }) => {
     await page.addInitScript(() => {
+      if (window.sessionStorage.getItem('openpet.controlCenter.demoState')) return
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         plugins: [
           {
@@ -2308,7 +2309,7 @@ test.describe('Control Center smoke', () => {
             runnable: true,
             requiresNativeExecution: true,
             nativeExecutionApproved: false,
-            permissions: ['pet:say', 'pet:action', 'pet:event'],
+            permissions: ['pet:say', 'pet:action', 'pet:event', 'ai:chat'],
             commands: [],
             entries: {
               commands: [],
@@ -2345,8 +2346,10 @@ test.describe('Control Center smoke', () => {
               properties: [
                 { key: 'telegramEnabled', title: 'Telegram enabled', type: 'boolean' },
                 { key: 'telegramMode', title: 'Telegram mode', type: 'string', enum: ['polling'] },
-                { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'any-text'] },
+                { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'any-text'], hidden: true },
+                { key: 'privateTextMode', title: 'Private text mode', type: 'string', enum: ['command-only', 'pet-say', 'ai-chat'] },
                 { key: 'groupChatPolicy', title: 'Group chats', type: 'string', enum: ['mention-or-command', 'command-only'] },
+                { key: 'groupAiRepliesEnabled', title: 'Enable group AI replies', type: 'boolean' },
                 { key: 'allowedUsers', title: 'Allowed users', type: 'string' },
                 { key: 'allowedChats', title: 'Allowed chats', type: 'string' },
                 { key: 'allowAllPrivateChats', title: 'Allow all private chats', type: 'boolean' },
@@ -2360,7 +2363,9 @@ test.describe('Control Center smoke', () => {
               telegramEnabled: false,
               telegramMode: 'polling',
               privateChatPolicy: 'command-only',
+              privateTextMode: 'command-only',
               groupChatPolicy: 'mention-or-command',
+              groupAiRepliesEnabled: false,
               allowedUsers: '10001',
               allowedChats: '',
               allowAllPrivateChats: false,
@@ -2393,17 +2398,34 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
     await expect(pluginRow).toContainText('openpet.im-gateway')
-    await expect(pluginRow).toContainText('pet:say · pet:action · pet:event')
+    await expect(pluginRow).toContainText('pet:say · pet:action · pet:event · ai:chat')
 
     const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
+    const configCard = pluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
     await expect(imCard).toContainText('Telegram token: not saved')
     await expect(imCard).toContainText('Telegram: polling')
     await expect(imCard).toContainText('QQ: disabled')
     await expect(imCard).toContainText('WeChat: disabled')
+    await expect(configCard.getByText('Private chats', { exact: true })).toHaveCount(0)
+    await expect(configCard.getByText('Private text mode')).toBeVisible()
+    await expect(configCard.getByText('Enable group AI replies')).toBeVisible()
     await expect(pluginRow.getByRole('button', { name: 'Start IM Gateway Service' })).toBeDisabled()
 
     await pluginRow.getByRole('switch', { name: 'Allow native process execution for IM Gateway' }).click()
     await expect(pluginRow.getByRole('button', { name: 'Start IM Gateway Service' })).toBeEnabled()
+
+    await configCard.getByLabel('Private text mode').selectOption({ label: 'ai-chat' })
+    await configCard.getByRole('switch', { name: 'Enable group AI replies' }).click()
+    await configCard.getByRole('button', { name: '保存配置' }).click()
+
+    await expect(page.locator('.status-line')).toContainText('插件配置已保存')
+    await page.reload()
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const refreshedPluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
+    const refreshedConfigCard = refreshedPluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
+    await expect(refreshedConfigCard.getByLabel('Private text mode')).toHaveValue('2')
+    await expect(refreshedConfigCard.getByRole('switch', { name: 'Enable group AI replies' })).toHaveAttribute('aria-checked', 'true')
 
     const tokenInput = imCard.getByLabel('Telegram Bot Token')
     await tokenInput.fill('123456:stage3-secret-token')

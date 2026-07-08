@@ -19,6 +19,23 @@ platform SDKs into the OpenPet main process.
 Private chats default to command-only. Group chats default to mention-or-command.
 Action and event changes always require `/openpet` or `/op`.
 
+## AI Replies (Phase 2)
+
+Telegram AI replies stay host-owned even though the IM transport lives in the
+bundled plugin runtime.
+
+- Private text mode can be set to `command-only`, `pet-say`, or `ai-chat`.
+- Group AI replies stay off by default and only run when all of these are true:
+  direct `@bot` mention, allowlist pass, and `groupAiRepliesEnabled` enabled.
+- `/openpet` commands still take priority over free-text AI routing.
+- IM conversations are isolated per Telegram context so private chats and group
+  mentions do not share a transcript.
+- The gateway keeps at most one in-flight AI request plus one queued follow-up
+  per conversation. A third private message receives a short busy notice.
+- The plugin health view exposes only redacted counters, timestamps, error
+  codes, and hashed peer identifiers. Raw transcript text and Telegram ids are
+  not exposed there.
+
 ## Commands
 
 - `/openpet say <text>`

@@ -20,6 +20,7 @@
       "type": "string",
       "title": "Private chat policy",
       "description": "Choose whether private chats require commands or can forward ordinary text to pet.say.",
+      "hidden": true,
       "enum": ["command-only", "any-text"],
       "default": "command-only"
     },

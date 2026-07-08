@@ -22,6 +22,7 @@ interface PluginConfigField {
   type?: 'string' | 'number' | 'boolean'
   enum?: JsonValue[]
   required?: boolean
+  hidden?: boolean
 }
 
 export interface PluginsPaneProps {
@@ -100,12 +101,13 @@ const isPluginConfigField = (field: unknown): field is PluginConfigField => {
   if (!isRecord(field) || typeof field.key !== 'string') return false
   if (field.type != null && !['string', 'number', 'boolean'].includes(String(field.type))) return false
   if (field.enum != null && !Array.isArray(field.enum)) return false
+  if (field.hidden != null && typeof field.hidden !== 'boolean') return false
   return true
 }
 
 const toConfigFields = (plugin: PluginViewState) => (
   Array.isArray(plugin.configSchema?.properties)
-    ? plugin.configSchema.properties.filter(isPluginConfigField)
+    ? plugin.configSchema.properties.filter(isPluginConfigField).filter((field) => field.hidden !== true)
     : []
 )
 

@@ -1677,6 +1677,7 @@ export interface PluginConfigFieldViewState {
   type?: 'string' | 'number' | 'boolean'
   enum?: JsonValue[]
   required?: boolean
+  hidden?: boolean
 }
 
 export interface PluginConfigSchemaViewState {

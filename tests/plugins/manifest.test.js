@@ -539,3 +539,26 @@ test('rejects plugin config schemas that look like secret storage', () => {
     }
   }), /Plugin config endpoint uses password-style secret metadata/)
 })
+
+test('preserves plugin config field visibility metadata for renderer-only filtering', () => {
+  const schema = normalizeConfigSchema({
+    title: 'IM Gateway Settings',
+    type: 'object',
+    properties: {
+      privateChatPolicy: {
+        type: 'string',
+        title: 'Private chats',
+        enum: ['command-only', 'any-text'],
+        hidden: true
+      },
+      privateTextMode: {
+        type: 'string',
+        title: 'Private text mode',
+        enum: ['command-only', 'pet-say', 'ai-chat']
+      }
+    }
+  })
+
+  assert.equal(schema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
+  assert.equal(schema.properties.find((field) => field.key === 'privateTextMode')?.hidden, false)
+})

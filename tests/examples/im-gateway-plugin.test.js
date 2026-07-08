@@ -30,6 +30,7 @@ test('im gateway manifest declares a bounded official runtime plugin without sec
   assert.equal(manifest.entries.services[0].health.url, 'http://127.0.0.1:8796/health')
   assert.equal(schema.properties.some((field) => /token|secret|password|credential/i.test(field.key)), false)
   assert.equal(schema.properties.find((field) => field.key === 'telegramEnabled')?.default, false)
+  assert.equal(schema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
 })
 
 test('im gateway config normalizes safe defaults and comma separated allowlists', () => {
