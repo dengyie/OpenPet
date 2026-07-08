@@ -180,86 +180,27 @@ const createDashboardRuntime = ({
     return [branch, state, ...remote].filter(Boolean).join(' · ')
   }
 
-  const getDateKey = (value) => {
-    const numeric = Date.parse(String(value || ''))
-    return Number.isFinite(numeric) ? new Date(numeric).toISOString().slice(0, 10) : ''
-  }
-
   const pluralize = (count, singular, plural = `${singular}s`) => `${formatNumber(count)} ${count === 1 ? singular : plural}`
 
-  const hasUsageStatsMetadata = (usage = {}) => (
-    hasFiniteMetadataNumber(usage.totalTokens) ||
-    hasFiniteMetadataNumber(usage.estimatedCostUsd) ||
-    hasFiniteMetadataNumber(usage.contextUsedPercent)
-  )
-
-  const buildUsageStatsRecords = (sessions = []) => {
-    const days = new Map()
-    for (const session of sessions) {
-      const sessionId = sanitizeDisplayText(session.sessionId || 'unknown-session').slice(0, 128)
-      const entries = Array.isArray(session.history) && session.history.length ? session.history : [session]
-      for (const entry of entries) {
-        const date = getDateKey(entry.timestamp || session.timestamp)
-        if (!date) continue
-        const usage = entry.usage && typeof entry.usage === 'object' ? entry.usage : null
-        if (!usage || !hasUsageStatsMetadata(usage)) continue
-        if (!days.has(date)) {
-          days.set(date, {
-            date,
-            eventCount: 0,
-            sessions: new Set(),
-            usageBySession: new Map()
-          })
-        }
-        const day = days.get(date)
-        day.eventCount += 1
-        day.sessions.add(sessionId)
-        const current = day.usageBySession.get(sessionId) || {
-          contextUsedPercent: null,
-          currency: '',
-          estimatedCostUsd: null,
-          totalTokens: null
-        }
-        if (hasFiniteMetadataNumber(usage.totalTokens)) {
-          const totalTokens = Math.round(Number(usage.totalTokens))
-          current.totalTokens = Math.max(current.totalTokens || 0, totalTokens)
-        }
-        if (hasFiniteMetadataNumber(usage.estimatedCostUsd)) {
-          const estimatedCostUsd = Number(usage.estimatedCostUsd)
-          current.estimatedCostUsd = Math.max(current.estimatedCostUsd || 0, estimatedCostUsd)
-        }
-        if (hasFiniteMetadataNumber(usage.contextUsedPercent)) {
-          const contextUsedPercent = Number(usage.contextUsedPercent)
-          current.contextUsedPercent = Math.max(current.contextUsedPercent || 0, contextUsedPercent)
-        }
-        if (usage.currency) current.currency = sanitizeDisplayText(usage.currency).slice(0, 8).toUpperCase()
-        day.usageBySession.set(sessionId, current)
-      }
-    }
-    return [...days.values()]
-      .sort((left, right) => right.date.localeCompare(left.date))
+  const buildUsageStatsRecords = (dailyUsageRollups = []) => {
+    return [...(Array.isArray(dailyUsageRollups) ? dailyUsageRollups : [])]
+      .sort((left, right) => String(right?.date || '').localeCompare(String(left?.date || '')))
       .slice(0, 7)
-      .map((day) => {
-        const usageRecords = [...day.usageBySession.values()]
-        const totalTokens = usageRecords.reduce((sum, usage) => sum + (usage.totalTokens || 0), 0)
-        const costRecords = usageRecords.filter((usage) => usage.estimatedCostUsd != null)
-        const cost = costRecords.length
-          ? costRecords.reduce((sum, usage) => sum + usage.estimatedCostUsd, 0)
-          : null
-        const currencies = new Set(costRecords.map((usage) => usage.currency).filter(Boolean))
-        const currency = currencies.size === 1 ? [...currencies][0] : currencies.size > 1 ? 'MIXED' : ''
-        const contextRecords = usageRecords
-          .map((usage) => usage.contextUsedPercent)
-          .filter((value) => value != null)
-        const peakContext = contextRecords.length ? Math.max(...contextRecords) : null
+      .map((row) => {
+        const rowTotals = row?.totals && typeof row.totals === 'object' ? row.totals : {}
+        const sessionIds = [...new Set(
+          (Array.isArray(row?.sessions) ? row.sessions : [])
+            .map((session) => sanitizeDisplayText(session?.sessionId || '').slice(0, 128))
+            .filter(Boolean)
+        )]
         return {
-          date: day.date,
-          totalTokens,
-          cost,
-          currency,
-          peakContext,
-          sessionIds: [...day.sessions],
-          eventCount: day.eventCount
+          date: sanitizeDisplayText(row?.date || ''),
+          totalTokens: Number(rowTotals.tokenDelta) || 0,
+          cost: hasFiniteMetadataNumber(rowTotals.costDeltaUsd) ? Number(rowTotals.costDeltaUsd) : null,
+          currency: sanitizeDisplayText(rowTotals.currency || '').toUpperCase(),
+          peakContext: hasFiniteMetadataNumber(rowTotals.peakContextUsedPercent) ? Number(rowTotals.peakContextUsedPercent) : null,
+          sessionIds,
+          eventCount: Number(rowTotals.eventCount) || 0
         }
       })
   }
@@ -641,7 +582,7 @@ const createDashboardRuntime = ({
           ? `Focused Session: ${requestedSessionId}`
           : ''
         : 'Showing latest sanitized session details.'
-    const usageStatsRecords = buildUsageStatsRecords(liveSessions)
+    const usageStatsRecords = buildUsageStatsRecords(dailyUsageRollups)
     const attentionStatus = getStatusMeta(attentionSession?.status || '')
     const attentionDetail = attentionSession
       ? [attentionSession.project, attentionSession.reason].filter(Boolean).join(' · ')

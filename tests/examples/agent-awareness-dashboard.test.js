@@ -178,7 +178,7 @@ test('agent awareness dashboard does not render null usage metadata as zero valu
   assert.match(runtime.renderDashboard(viewModel).usageStatsHtml, /No usage trend metadata yet/)
 })
 
-test('agent awareness dashboard builds bounded usage stats from session history', () => {
+test('agent awareness dashboard builds bounded usage stats from retained daily rollups', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const viewModel = runtime.buildDashboardViewModel({
     health: {
@@ -190,7 +190,7 @@ test('agent awareness dashboard builds bounded usage stats from session history'
       }
     },
     sessionsPayload: {
-      sessions: [
+      liveSessions: [
         {
           sessionId: 'session-a',
           project: 'OpenPet #111111',
@@ -250,6 +250,63 @@ test('agent awareness dashboard builds bounded usage stats from session history'
           },
           history: []
         }
+      ],
+      dailyUsageRollups: [
+        {
+          date: '2026-07-07',
+          totals: {
+            tokenDelta: 900,
+            costDeltaUsd: 0.008,
+            currency: 'USD',
+            peakContextUsedPercent: 0.75,
+            eventCount: 2,
+            sessionCount: 2,
+            projectCount: 2
+          },
+          sessions: [
+            {
+              sessionId: 'session-a',
+              project: 'OpenPet #111111',
+              tokenDelta: 700,
+              costDeltaUsd: 0.006,
+              currency: 'USD',
+              peakContextUsedPercent: 0.75,
+              eventCount: 1
+            },
+            {
+              sessionId: 'session-b',
+              project: 'Docs #222222',
+              tokenDelta: 200,
+              costDeltaUsd: 0.002,
+              currency: 'USD',
+              peakContextUsedPercent: 0.1,
+              eventCount: 1
+            }
+          ]
+        },
+        {
+          date: '2026-07-06',
+          totals: {
+            tokenDelta: 800,
+            costDeltaUsd: 0.006,
+            currency: 'USD',
+            peakContextUsedPercent: 0.4,
+            eventCount: 1,
+            sessionCount: 1,
+            projectCount: 1
+          },
+          sessions: [
+            {
+              sessionId: 'session-a',
+              project: 'OpenPet #111111',
+              tokenDelta: 800,
+              costDeltaUsd: 0.006,
+              currency: 'USD',
+              peakContextUsedPercent: 0.4,
+              eventCount: 1
+            }
+          ]
+        }
       ]
     }
   })
@@ -257,11 +314,11 @@ test('agent awareness dashboard builds bounded usage stats from session history'
   assert.equal(viewModel.usageStats.length, 2)
   assert.deepEqual(viewModel.usageStats[0], {
     date: '2026-07-07',
-    tokensText: '1,700 tokens',
-    costText: '$0.014000 USD',
+    tokensText: '900 tokens',
+    costText: '$0.008000 USD',
     contextText: '0.75% peak',
     sessionsText: '2 sessions',
-    eventsText: '3 events'
+    eventsText: '2 events'
   })
   assert.deepEqual(viewModel.usageStats[1], {
     date: '2026-07-06',
@@ -275,8 +332,8 @@ test('agent awareness dashboard builds bounded usage stats from session history'
   const rendered = runtime.renderDashboard(viewModel)
   assert.match(rendered.usageStatsHtml, /Recent Daily Totals/)
   assert.match(rendered.usageStatsHtml, /2026-07-07/)
-  assert.match(rendered.usageStatsHtml, /1,700 tokens/)
-  assert.match(rendered.usageStatsHtml, /\$0.014000 USD/)
+  assert.match(rendered.usageStatsHtml, /900 tokens/)
+  assert.match(rendered.usageStatsHtml, /\$0.008000 USD/)
 })
 
 test('agent awareness dashboard supports a dedicated usage stats view', () => {
@@ -297,7 +354,7 @@ test('agent awareness dashboard supports a dedicated usage stats view', () => {
       }
     },
     sessionsPayload: {
-      sessions: [
+      liveSessions: [
         {
           sessionId: 'session-a',
           project: 'OpenPet #111111',
@@ -341,6 +398,63 @@ test('agent awareness dashboard supports a dedicated usage stats view', () => {
           },
           history: []
         }
+      ],
+      dailyUsageRollups: [
+        {
+          date: '2026-07-07',
+          totals: {
+            tokenDelta: 900,
+            costDeltaUsd: 0.008,
+            currency: 'USD',
+            peakContextUsedPercent: 0.75,
+            eventCount: 2,
+            sessionCount: 2,
+            projectCount: 2
+          },
+          sessions: [
+            {
+              sessionId: 'session-a',
+              project: 'OpenPet #111111',
+              tokenDelta: 700,
+              costDeltaUsd: 0.006,
+              currency: 'USD',
+              peakContextUsedPercent: 0.75,
+              eventCount: 1
+            },
+            {
+              sessionId: 'session-b',
+              project: 'Docs #222222',
+              tokenDelta: 200,
+              costDeltaUsd: 0.002,
+              currency: 'USD',
+              peakContextUsedPercent: 0.1,
+              eventCount: 1
+            }
+          ]
+        },
+        {
+          date: '2026-07-06',
+          totals: {
+            tokenDelta: 800,
+            costDeltaUsd: 0.006,
+            currency: 'USD',
+            peakContextUsedPercent: 0.4,
+            eventCount: 1,
+            sessionCount: 1,
+            projectCount: 1
+          },
+          sessions: [
+            {
+              sessionId: 'session-a',
+              project: 'OpenPet #111111',
+              tokenDelta: 800,
+              costDeltaUsd: 0.006,
+              currency: 'USD',
+              peakContextUsedPercent: 0.4,
+              eventCount: 1
+            }
+          ]
+        }
       ]
     }
   })
@@ -351,14 +465,14 @@ test('agent awareness dashboard supports a dedicated usage stats view', () => {
   assert.equal(viewModel.statsMode, true)
   assert.equal(viewModel.detailMode, false)
   assert.equal(viewModel.usageStatsTotals.daysText, '2 days')
-  assert.equal(viewModel.usageStatsTotals.tokensText, '2,500 tokens')
-  assert.equal(viewModel.usageStatsTotals.costText, '$0.020000 USD')
+  assert.equal(viewModel.usageStatsTotals.tokensText, '1,700 tokens')
+  assert.equal(viewModel.usageStatsTotals.costText, '$0.014000 USD')
   assert.equal(viewModel.usageStatsTotals.contextText, '0.75% peak')
   assert.equal(viewModel.usageStatsTotals.sessionsText, '2 sessions')
   assert.equal(viewModel.usageStatsTotals.eventsText, '3 events')
   assert.match(rendered.usageStatsHtml, /Usage Stats Detail/)
-  assert.match(rendered.usageStatsHtml, /2,500 tokens/)
-  assert.match(rendered.usageStatsHtml, /\$0.020000 USD/)
+  assert.match(rendered.usageStatsHtml, /1,700 tokens/)
+  assert.match(rendered.usageStatsHtml, /\$0.014000 USD/)
 })
 
 test('agent awareness dashboard builds a 30-day usage workbench view', () => {

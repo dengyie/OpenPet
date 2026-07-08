@@ -221,6 +221,78 @@ test('session store prunes expired retained history on load without new events',
   assert.equal(status.historyWindowEnd, '')
 })
 
+test('session store reapplies live event retention on load without new events', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-live-evict-load-'))
+  let store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:00:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  for (let index = 1; index <= 5; index += 1) {
+    store.upsertEvent({
+      sessionId: 'session-a',
+      project: 'OpenPet #111111',
+      status: 'working',
+      type: 'tool.started',
+      timestamp: `2026-07-09T10:0${index}:00.000Z`,
+      message: `event-${index}`
+    })
+  }
+
+  store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:05:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 3
+  })
+
+  const state = store.getDashboardState()
+  const status = store.getStatus()
+  assert.equal(state.liveSessions[0].history.length, 3)
+  assert.equal(state.sessionSummaries[0].eventCount, 5)
+  assert.equal(status.totalEvents, 5)
+})
+
+test('session store reapplies live session retention on load without new events', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-live-session-load-'))
+  let store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:00:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  for (let index = 1; index <= 4; index += 1) {
+    store.upsertEvent({
+      sessionId: `session-${index}`,
+      project: `Project-${index} #111111`,
+      status: 'working',
+      type: 'tool.started',
+      timestamp: `2026-07-09T10:0${index}:00.000Z`,
+      message: `event-${index}`
+    })
+  }
+
+  store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:05:00.000Z',
+    retentionDays: 30,
+    maxSessions: 2,
+    maxEvents: 10
+  })
+
+  const state = store.getDashboardState()
+  const status = store.getStatus()
+  assert.deepEqual(state.liveSessions.map((session) => session.sessionId), ['session-4', 'session-3'])
+  assert.equal(state.sessionSummaries.length, 4)
+  assert.equal(status.totalEvents, 4)
+})
+
 test('session store keeps retained summary counts when live history is evicted', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-rollups-evict-'))
   const store = createSessionStore({
@@ -248,10 +320,12 @@ test('session store keeps retained summary counts when live history is evicted',
   }
 
   const state = store.getDashboardState()
+  const status = store.getStatus()
   assert.equal(state.liveSessions[0].history.length, 3)
   assert.equal(state.sessionSummaries[0].eventCount, 5)
   assert.equal(state.sessionSummaries[0].timelineTail.length, 5)
   assert.equal(state.dailyUsageRollups[0].totals.tokenDelta, 500)
+  assert.equal(status.totalEvents, 5)
 })
 
 test('session store migrates legacy usage history into retained rollups and keeps the last snapshot', () => {

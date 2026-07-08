@@ -21,6 +21,22 @@ const getLatestTimestamp = (sessions = []) => sessions.reduce((latest, session) 
   return toTimestampMs(session.timestamp) > toTimestampMs(latest) ? session.timestamp : latest
 }, '')
 
+const maxTimestamp = (left = '', right = '') => {
+  return toTimestampMs(right) > toTimestampMs(left) ? String(right || '') : String(left || '')
+}
+
+const countLiveEvents = (sessions = []) => sessions.reduce((sum, session) => {
+  return sum + ((Array.isArray(session.history) ? session.history.length : 0))
+}, 0)
+
+const countRetainedSummaryEvents = (sessionSummaries = []) => sessionSummaries.reduce((sum, summary) => {
+  return sum + (Number(summary?.eventCount) || 0)
+}, 0)
+
+const getLatestSummaryTimestamp = (sessionSummaries = []) => sessionSummaries.reduce((latest, summary) => {
+  return toTimestampMs(summary?.lastSeenAt) > toTimestampMs(latest) ? summary.lastSeenAt : latest
+}, '')
+
 const isOlderRuntimeEvent = (session = {}, eventSession = {}) => {
   const currentTimestampMs = toTimestampMs(session.timestamp)
   const eventTimestampMs = toTimestampMs(eventSession.timestamp)
@@ -141,25 +157,40 @@ const createSessionStore = ({
   const save = () => {
     state.updatedAt = now()
     state.retentionDays = retentionDays
+    const liveLastEventAt = getLatestTimestamp(state.liveSessions)
+    const summaryLastEventAt = getLatestSummaryTimestamp(state.sessionSummaries)
     state.stats = {
       ...state.stats,
-      totalEvents: state.liveSessions.reduce((sum, session) => sum + ((Array.isArray(session.history) ? session.history.length : 0)), 0),
-      lastEventAt: getLatestTimestamp(state.liveSessions)
+      totalEvents: Math.max(
+        Number(state.stats?.totalEvents) || 0,
+        countLiveEvents(state.liveSessions),
+        countRetainedSummaryEvents(state.sessionSummaries)
+      ),
+      lastEventAt: maxTimestamp(
+        state.stats?.lastEventAt || '',
+        maxTimestamp(liveLastEventAt, summaryLastEventAt)
+      )
     }
     writeStoreStateAtomically({ storePath, state })
   }
 
   const normalizeLoadedRetention = () => {
     const previousRetentionDays = Number(state.retentionDays) || retentionDays
+    const previousLiveSessionCount = state.liveSessions.length
+    const previousLiveEventCount = countLiveEvents(state.liveSessions)
     const previousSummaryCount = state.sessionSummaries.length
     const previousRollupCount = state.dailyUsageRollups.length
+    state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
     state.retentionDays = retentionDays
     state = pruneRetainedHistory({ state, now, retentionDays })
     const retentionChanged = previousRetentionDays !== retentionDays
+    const liveRetentionChanged =
+      previousLiveSessionCount !== state.liveSessions.length ||
+      previousLiveEventCount !== countLiveEvents(state.liveSessions)
     const pruned =
       previousSummaryCount !== state.sessionSummaries.length ||
       previousRollupCount !== state.dailyUsageRollups.length
-    if (retentionChanged || pruned) save()
+    if (retentionChanged || liveRetentionChanged || pruned) save()
   }
 
   normalizeLoadedRetention()
@@ -201,6 +232,13 @@ const createSessionStore = ({
     upsertEvent: (event) => {
       const sessionId = String(event.sessionId || '')
       if (!sessionId) throw new Error('sessionId is required')
+      const recordObservedEvent = (timestamp) => {
+        state.stats = {
+          ...state.stats,
+          totalEvents: (Number(state.stats?.totalEvents) || 0) + 1,
+          lastEventAt: maxTimestamp(state.stats?.lastEventAt || '', timestamp || '')
+        }
+      }
       let session = state.liveSessions.find((candidate) => candidate.sessionId === sessionId)
       if (!session) {
         session = { ...createRuntimeSession(null, event, { now }), history: [] }
@@ -210,6 +248,7 @@ const createSessionStore = ({
         if (isOlderRuntimeEvent(session, eventSession)) {
           mergeStaleMetadata(session, eventSession)
           session.history.push(createRuntimeHistoryEntry(eventSession))
+          recordObservedEvent(eventSession.timestamp)
           state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
           syncSessionSummary(session)
           state = pruneRetainedHistory({ state, now, retentionDays })
@@ -219,6 +258,7 @@ const createSessionStore = ({
         Object.assign(session, createRuntimeSession(session, event, { now }))
       }
       session.history.push(createRuntimeHistoryEntry(session))
+      recordObservedEvent(session.timestamp)
       state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
       const summary = syncSessionSummary(session)
       if (session.usage) {
