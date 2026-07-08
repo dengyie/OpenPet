@@ -52,12 +52,25 @@ const mergeUsagePeak = (previousUsagePeak, usageLatest) => {
   }
 }
 
+const buildTimelineTail = (history = [], previousSummary = null) => {
+  if (!previousSummary || !Array.isArray(previousSummary.timelineTail)) {
+    return history.slice(-6).map((entry) => clone(entry))
+  }
+  const latestEntry = history.length ? clone(history[history.length - 1]) : null
+  const previousTail = previousSummary.timelineTail.map((entry) => clone(entry))
+  if (!latestEntry) return previousTail.slice(-6)
+  return [...previousTail, latestEntry].slice(-6)
+}
+
 const buildSessionSummary = (session = {}, previousSummary = null) => {
   const history = Array.isArray(session.history) ? session.history : []
-  const timelineTail = history.slice(-6).map((entry) => clone(entry))
+  const timelineTail = buildTimelineTail(history, previousSummary)
   const usageLatest = session.usage ? clone(session.usage) : null
   const gitLatest = session.git ? clone(session.git) : null
   const summary = session.summary ? clone(session.summary) : null
+  const eventCount = previousSummary
+    ? Math.max(Number(previousSummary.eventCount) || 0, Math.max(0, history.length - 1)) + (history.length ? 1 : 0)
+    : history.length
   return {
     sessionId: String(session.sessionId || ''),
     project: String(session.project || ''),
@@ -74,7 +87,7 @@ const buildSessionSummary = (session = {}, previousSummary = null) => {
     usageLatest,
     usagePeak: mergeUsagePeak(previousSummary?.usagePeak || null, usageLatest),
     gitLatest,
-    eventCount: history.length,
+    eventCount,
     timelineTail,
     lastUsageSnapshot: previousSummary?.lastUsageSnapshot ? clone(previousSummary.lastUsageSnapshot) : null
   }
@@ -135,6 +148,21 @@ const createSessionStore = ({
     }
     writeStoreStateAtomically({ storePath, state })
   }
+
+  const normalizeLoadedRetention = () => {
+    const previousRetentionDays = Number(state.retentionDays) || retentionDays
+    const previousSummaryCount = state.sessionSummaries.length
+    const previousRollupCount = state.dailyUsageRollups.length
+    state.retentionDays = retentionDays
+    state = pruneRetainedHistory({ state, now, retentionDays })
+    const retentionChanged = previousRetentionDays !== retentionDays
+    const pruned =
+      previousSummaryCount !== state.sessionSummaries.length ||
+      previousRollupCount !== state.dailyUsageRollups.length
+    if (retentionChanged || pruned) save()
+  }
+
+  normalizeLoadedRetention()
 
   const syncSessionSummary = (session) => {
     const index = state.sessionSummaries.findIndex((candidate) => candidate.sessionId === session.sessionId)

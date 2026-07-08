@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { rebuildUsageRollupsFromLegacySessions } = require('./usage-rollups')
 
 const SCHEMA_VERSION = 2
 const STORE_FILE = 'sessions.json'
@@ -81,7 +82,8 @@ const buildSessionSummaryFromLegacySession = (session = {}) => {
     usagePeak: usageLatest ? cloneJson(usageLatest) : null,
     gitLatest,
     eventCount: history.length,
-    timelineTail
+    timelineTail,
+    lastUsageSnapshot: usageLatest ? cloneJson(usageLatest) : null
   }
 }
 
@@ -97,7 +99,10 @@ const migrateLegacyStore = ({
   const migrated = createEmptyStoreState({ now, retentionDays })
   migrated.liveSessions = legacySessions
   migrated.sessionSummaries = legacySessions.map((session) => buildSessionSummaryFromLegacySession(session))
-  migrated.dailyUsageRollups = []
+  migrated.dailyUsageRollups = rebuildUsageRollupsFromLegacySessions({
+    sessions: legacySessions,
+    sessionSummaries: migrated.sessionSummaries
+  })
   migrated.stats.totalEvents = Number(parsed?.stats?.totalEvents) || legacySessions.reduce((sum, session) => {
     return sum + (Array.isArray(session.history) ? session.history.length : 0)
   }, 0)

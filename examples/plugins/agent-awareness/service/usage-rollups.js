@@ -67,6 +67,8 @@ const updateCounts = (day) => {
   day.totals.projectCount = uniqueProjects.size
 }
 
+const cloneJson = (value) => JSON.parse(JSON.stringify(value))
+
 const applyUsageSnapshotDelta = ({ state, sessionSummary, usage, timestamp, project }) => {
   const date = toDateKey(timestamp)
   if (!date || !sessionSummary?.sessionId || !usage || typeof usage !== 'object') return state
@@ -125,8 +127,50 @@ const pruneRetainedHistory = ({ state, now, retentionDays }) => {
   return state
 }
 
+const rebuildUsageRollupsFromLegacySessions = ({ sessions = [], sessionSummaries = [] } = {}) => {
+  const rollupState = { dailyUsageRollups: [] }
+  const summaryMap = new Map(
+    sessionSummaries
+      .filter((summary) => summary?.sessionId)
+      .map((summary) => [String(summary.sessionId), summary])
+  )
+
+  for (const session of sessions) {
+    const sessionId = String(session?.sessionId || '')
+    const summary = summaryMap.get(sessionId)
+    if (!summary) continue
+
+    const sourceEntries = Array.isArray(session.history) && session.history.length
+      ? session.history
+      : [session]
+    const usageEntries = sourceEntries
+      .filter((entry) => entry?.usage && entry?.timestamp)
+      .map((entry) => cloneJson(entry))
+      .sort((left, right) => String(left.timestamp || '').localeCompare(String(right.timestamp || '')))
+
+    summary.lastUsageSnapshot = null
+    for (const entry of usageEntries) {
+      applyUsageSnapshotDelta({
+        state: rollupState,
+        sessionSummary: summary,
+        usage: entry.usage,
+        timestamp: entry.timestamp,
+        project: session.project || summary.project || ''
+      })
+      summary.lastUsageSnapshot = cloneJson(entry.usage)
+    }
+    if (!summary.lastUsageSnapshot && session.usage) {
+      summary.lastUsageSnapshot = cloneJson(session.usage)
+    }
+  }
+
+  rollupState.dailyUsageRollups.sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')))
+  return rollupState.dailyUsageRollups
+}
+
 module.exports = {
   applyUsageSnapshotDelta,
   pruneRetainedHistory,
+  rebuildUsageRollupsFromLegacySessions,
   toDateKey
 }
