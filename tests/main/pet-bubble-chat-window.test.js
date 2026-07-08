@@ -258,6 +258,60 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
   assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.opened' && entry.details.anchorProfile === 'tight-head-anchor-v1'), true)
 })
 
+test('pet bubble chat manager tracks transient streaming state without persisting dialogue', () => {
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    }),
+    appLogService: { record: () => {} }
+  })
+
+  const streaming = manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    conversationId: 'control-center:legacy-cat:main',
+    petPackId: 'legacy-cat',
+    status: 'streaming',
+    partialReply: 'Hel',
+    chunkCount: 1,
+    canCancel: true
+  })
+
+  assert.equal(instances.length, 1)
+  assert.equal(instances[0].visible, true)
+  assert.equal(streaming.streaming.requestId, 'chat-stream-1')
+  assert.equal(streaming.streaming.partialReply, 'Hel')
+  assert.equal(streaming.streaming.canCancel, true)
+  assert.equal(streaming.sending, true)
+  assert.equal(streaming.awaitingReply, true)
+  assert.equal(streaming.items.some((item) => item.text === 'Hel'), false)
+  assert.equal(instances[0].sent.at(-1).channel, IPC.PET_BUBBLE_CHAT_STATE_CHANGED)
+
+  const completed = manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    status: 'completed',
+    partialReply: 'Hello',
+    canCancel: false
+  })
+
+  assert.equal(completed.streaming.status, 'completed')
+  assert.equal(completed.streaming.partialReply, 'Hello')
+  assert.equal(completed.streaming.canCancel, false)
+  assert.equal(completed.sending, false)
+  assert.equal(completed.awaitingReply, false)
+})
+
 test('pet bubble chat manager shows latest message and auto hides when idle', () => {
   const timers = []
   const logs = []

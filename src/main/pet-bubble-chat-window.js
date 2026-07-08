@@ -307,6 +307,29 @@ const normalizePendingUserMessage = (payload = {}) => {
   }
 }
 
+const normalizeStreamState = (payload = {}) => {
+  const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(payload.status)
+    ? payload.status
+    : 'streaming'
+  const partialReply = String(payload.partialReply || '').slice(0, 12000)
+  return {
+    requestId: typeof payload.requestId === 'string' ? payload.requestId.slice(0, 120) : '',
+    conversationId: typeof payload.conversationId === 'string' ? payload.conversationId.slice(0, 240) : '',
+    petPackId: typeof payload.petPackId === 'string' ? payload.petPackId.slice(0, 160) : '',
+    entrypoint: typeof payload.entrypoint === 'string' ? payload.entrypoint.slice(0, 80) : '',
+    status,
+    partialReply,
+    partialReplyChars: Number.isFinite(Number(payload.partialReplyChars)) ? Number(payload.partialReplyChars) : partialReply.length,
+    chunkCount: Number.isFinite(Number(payload.chunkCount)) ? Number(payload.chunkCount) : 0,
+    canCancel: payload.canCancel === true && (status === 'started' || status === 'streaming'),
+    errorMessage: typeof payload.errorMessage === 'string' ? payload.errorMessage.slice(0, 240) : ''
+  }
+}
+
+const isActiveStreamState = (streaming = {}) => (
+  streaming?.status === 'started' || streaming?.status === 'streaming'
+)
+
 const createPendingBubbleItem = (pendingMessage = {}) => ({
   id: pendingMessage.id,
   kind: 'dialogue',
@@ -386,6 +409,7 @@ const createPetBubbleChatWindowManager = ({
     noticeItems: [],
     transientDialogueItems: [],
     pendingUserMessages: [],
+    streaming: null,
     unseenCount: 0,
     hitTestInteractive: false,
     lastUserMessage: null,
@@ -504,7 +528,7 @@ const createPetBubbleChatWindowManager = ({
 
   const shouldHoldVisible = () => {
     const settings = getSettings()
-    return isPinned() || state.interacting || state.awaitingReply || Boolean(state.error) || settings.autoHide === false
+    return isPinned() || state.interacting || state.awaitingReply || isActiveStreamState(state.streaming) || Boolean(state.error) || settings.autoHide === false
   }
 
   const getHoldVisibleReason = () => {
@@ -513,6 +537,7 @@ const createPetBubbleChatWindowManager = ({
     if (isPinned()) return state.autoPinned && !state.pinned ? 'auto-pinned' : 'pinned'
     if (state.interacting) return 'interacting'
     if (state.awaitingReply) return 'awaiting-reply'
+    if (isActiveStreamState(state.streaming)) return 'streaming'
     if (state.error) return 'error'
     return ''
   }
@@ -1171,6 +1196,39 @@ const createPetBubbleChatWindowManager = ({
     return getState()
   }
 
+  const applyStreamState = (payload = {}) => {
+    const streaming = normalizeStreamState(payload)
+    const active = isActiveStreamState(streaming)
+    if (active) ensureWindow()
+    patchState({
+      streaming,
+      sending: active,
+      awaitingReply: active || state.pendingUserMessages.some((item) => item.status === 'queued' || item.status === 'sending'),
+      error: streaming.status === 'failed' ? streaming.errorMessage : ''
+    })
+    if (active) {
+      if (!state.visible) patchState({ visible: true, anchorMode: BUBBLE_ANCHOR_MODE.ANCHORED, placement: '' })
+      if (bubbleWindow && !bubbleWindow.isDestroyed?.()) {
+        syncToPetWindow()
+        bubbleWindow.showInactive?.()
+        bubbleWindow.moveTop?.()
+      }
+    }
+    recordLog({
+      level: streaming.status === 'failed' ? 'warn' : 'debug',
+      event: 'pet-bubble-chat.stream-state.applied',
+      message: 'Pet bubble chat stream state applied',
+      details: getStateLogDetails({
+        requestId: streaming.requestId,
+        reason: streaming.status,
+        partialReplyChars: streaming.partialReplyChars,
+        chunkCount: streaming.chunkCount
+      })
+    })
+    scheduleAutoHide('stream-state-changed')
+    return getState()
+  }
+
   const queueOutgoingMessage = ({ text, requestId = '' } = {}) => {
     const pending = normalizePendingUserMessage({
       text,
@@ -1233,6 +1291,7 @@ const createPetBubbleChatWindowManager = ({
     const remainingPending = state.pendingUserMessages.filter((item) => item.requestId !== requestId)
     patchState({
       pendingUserMessages: remainingPending,
+      streaming: state.streaming?.requestId === requestId ? null : state.streaming,
       sending: false,
       awaitingReply: remainingPending.length > 0,
       error: ''
@@ -1266,6 +1325,7 @@ const createPetBubbleChatWindowManager = ({
     }))
     patchState({
       pendingUserMessages: nextPending,
+      streaming: state.streaming?.requestId === requestId ? null : state.streaming,
       sending: false,
       awaitingReply: nextPending.length > 0,
       error: String(error || '').slice(0, 240)
@@ -1346,6 +1406,7 @@ const createPetBubbleChatWindowManager = ({
     setHitTestMode,
     setPinned,
     setSendingState,
+    applyStreamState,
     queueOutgoingMessage,
     completeRequest,
     failRequest,

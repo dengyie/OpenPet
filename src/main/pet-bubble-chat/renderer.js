@@ -46,8 +46,9 @@ const getRenderableItems = (state = {}) => {
     ? state.items.filter((item) => item?.text)
     : (state.message?.text ? [createFallbackItem(state.message)] : [])
   const userText = String(state.lastUserMessage?.text || '').trim()
-  if (!userText || items.some((item) => item.role === 'user' && item.text === userText)) return items
-  return [
+  const withLocalUser = !userText || items.some((item) => item.role === 'user' && item.text === userText)
+    ? items
+    : [
     ...items,
     {
       id: `local-user:${state.lastUserMessage?.createdAt || userText}`,
@@ -58,6 +59,30 @@ const getRenderableItems = (state = {}) => {
       createdAt: state.lastUserMessage?.createdAt || '',
       status: state.sending ? 'sending' : 'sent',
       flowState: state.sending ? 'sending' : 'sent'
+    }
+  ]
+  const streaming = state.streaming && typeof state.streaming === 'object' ? state.streaming : null
+  if (!streaming?.requestId) return withLocalUser
+  const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(streaming.status)
+    ? streaming.status
+    : 'streaming'
+  const statusText = status === 'canceled'
+    ? '已取消'
+    : (status === 'failed' ? (streaming.errorMessage || '回复失败') : '正在回复...')
+  return [
+    ...withLocalUser,
+    {
+      id: `stream:${streaming.requestId}:${status}`,
+      kind: 'dialogue',
+      role: 'pet',
+      text: String(streaming.partialReply || statusText),
+      source: 'ai',
+      sourceLabel: 'Pet',
+      createdAt: '',
+      status,
+      flowState: status,
+      requestId: streaming.requestId,
+      canCancel: streaming.canCancel === true
     }
   ]
 }
@@ -87,7 +112,8 @@ const shouldHoldScroll = () => Boolean(
   miniInput.value.trim() ||
   hasTextSelection() ||
   currentState.sending ||
-  currentState.error
+  currentState.error ||
+  currentState.streaming?.canCancel
 )
 
 const canScrollHistory = () => {
@@ -100,6 +126,7 @@ const canUseWindowControls = () => Boolean(
   (
     (Array.isArray(currentState.items) && currentState.items.length > 0) ||
     currentState.awaitingReply ||
+    Boolean(currentState.streaming?.requestId) ||
     currentState.error
   )
 )
@@ -115,6 +142,7 @@ const shouldAcceptHitTest = () => {
     hasDraft ||
     hasTextSelection() ||
     Boolean(currentState.sending) ||
+    Boolean(currentState.streaming?.canCancel) ||
     Boolean(currentState.error) ||
     canScrollHistory()
 }
@@ -240,6 +268,7 @@ const renderBubbleItems = (items = []) => {
     const flowState = item.flowState || ''
     node.className = `bubble-item bubble-item--${kind} bubble-item--${role} bubble-item--${status}${flowState ? ` bubble-item--flow-${flowState}` : ''}`
     node.dataset.itemId = getItemKey(item, index)
+    if (item.requestId) node.dataset.requestId = item.requestId
 
     const label = document.createElement('span')
     label.className = 'bubble-item-source'
@@ -251,11 +280,21 @@ const renderBubbleItems = (items = []) => {
 
     node.appendChild(label)
     node.appendChild(text)
-    if (flowState === 'sending' || flowState === 'queued') {
+    if (item.canCancel) {
+      const cancel = document.createElement('button')
+      cancel.className = 'cancel-stream-button'
+      cancel.textContent = '停止'
+      node.appendChild(cancel)
+    } else if (flowState === 'sending' || flowState === 'queued' || flowState === 'streaming' || flowState === 'started') {
       const pending = document.createElement('span')
       pending.className = 'bubble-item-meta'
       pending.textContent = '...'
       node.appendChild(pending)
+    } else if (flowState === 'canceled') {
+      const canceled = document.createElement('span')
+      canceled.className = 'bubble-item-meta'
+      canceled.textContent = '已取消'
+      node.appendChild(canceled)
     } else if (flowState === 'pending-merge') {
       const pending = document.createElement('span')
       pending.className = 'bubble-item-meta'
@@ -356,6 +395,26 @@ bubbleCard?.addEventListener('mouseenter', () => {
   setInteracting(true)
   setHitTestMode(true, 'renderer-mouseenter')
   renderState(currentState)
+})
+
+const findRequestIdTarget = (target) => {
+  let node = target
+  while (node) {
+    if (node.dataset?.requestId) return node
+    node = node.parentNode
+  }
+  return null
+}
+
+document.addEventListener('click', (event) => {
+  const button = event.target?.closest?.('.cancel-stream-button')
+  if (!button) return
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  const item = findRequestIdTarget(button)
+  const requestId = item?.dataset?.requestId || ''
+  if (!requestId) return
+  window.petBubbleChatAPI.cancelMessage?.({ requestId }).then(renderState).catch(() => {})
 })
 bubbleCard?.addEventListener('mouseleave', () => {
   if (dragState) return

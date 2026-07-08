@@ -20,8 +20,25 @@ const escapeHtml = (value) => String(value ?? '')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#39;')
 
-const renderMessages = (messages = []) => {
-  if (!Array.isArray(messages) || !messages.length) {
+const normalizeStreaming = (streaming = null) => {
+  if (!streaming || typeof streaming !== 'object' || !streaming.requestId) return null
+  const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(streaming.status)
+    ? streaming.status
+    : 'streaming'
+  const fallback = status === 'canceled'
+    ? '已取消'
+    : (status === 'failed' ? (streaming.errorMessage || '回复失败') : '正在回复...')
+  return {
+    requestId: String(streaming.requestId),
+    status,
+    text: String(streaming.partialReply || fallback),
+    canCancel: streaming.canCancel === true && (status === 'started' || status === 'streaming')
+  }
+}
+
+const renderMessages = (messages = [], streaming = null) => {
+  const streamItem = normalizeStreaming(streaming)
+  if ((!Array.isArray(messages) || !messages.length) && !streamItem) {
     messagesEl.innerHTML = [
       '<article class="empty-state">',
       '<span>扩展聊天面板已经就位。</span>',
@@ -30,12 +47,22 @@ const renderMessages = (messages = []) => {
     ].join('')
     return
   }
-  messagesEl.innerHTML = messages.map((message) => [
+  const messageHtml = (Array.isArray(messages) ? messages : []).map((message) => [
     `<article class="message ${message.role === 'user' ? 'user' : 'assistant'}">`,
     `<span>${message.role === 'user' ? '你' : '宠物'}</span>`,
     `<p>${escapeHtml(message.content).replaceAll('\n', '<br>')}</p>`,
     '</article>'
   ].join('')).join('')
+  const streamingHtml = streamItem
+    ? [
+        `<article class="message assistant streaming" data-request-id="${escapeHtml(streamItem.requestId)}" data-status="${escapeHtml(streamItem.status)}">`,
+        '<span>宠物</span>',
+        `<p>${escapeHtml(streamItem.text).replaceAll('\n', '<br>')}</p>`,
+        streamItem.canCancel ? '<button type="button" class="cancel-stream-button">停止</button>' : '',
+        '</article>'
+      ].join('')
+    : ''
+  messagesEl.innerHTML = messageHtml + streamingHtml
   messagesEl.scrollTop = messagesEl.scrollHeight
 }
 
@@ -61,7 +88,8 @@ const renderWindowState = (state = {}) => {
       ...(currentState.bubble || {}),
       ...(state.bubble || {})
     },
-    messages: Array.isArray(state.messages) ? state.messages : currentState.messages
+    messages: Array.isArray(state.messages) ? state.messages : currentState.messages,
+    streaming: Object.prototype.hasOwnProperty.call(state, 'streaming') ? state.streaming : currentState.streaming
   }
   const alwaysOnTop = currentState.alwaysOnTop !== false
   const bubblePinned = currentState.bubbleChat?.pinned === true
@@ -80,7 +108,7 @@ const renderWindowState = (state = {}) => {
     ? '输入消息，Enter 发送，Shift+Enter 换行'
     : (currentState.ai?.reason || '请先配置 AI Provider')
   renderBubble(currentState.bubble || {})
-  renderMessages(currentState.messages || [])
+  renderMessages(currentState.messages || [], currentState.streaming)
 }
 
 const refreshState = async () => {
@@ -167,6 +195,17 @@ chatInput.addEventListener('keydown', (event) => {
 })
 
 sendButton.addEventListener('click', sendDraft)
+
+document.addEventListener('click', (event) => {
+  const button = event.target?.closest?.('.cancel-stream-button')
+  if (!button) return
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  const item = button.closest?.('[data-request-id]')
+  const requestId = item?.getAttribute?.('data-request-id') || item?.dataset?.requestId || ''
+  if (!requestId) return
+  window.petChatAPI.cancelMessage?.({ requestId }).then(renderWindowState).catch(() => {})
+})
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') window.petChatAPI.hide()

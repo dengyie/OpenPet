@@ -108,7 +108,8 @@ const createHarness = async ({ initialState, deferAnimationFrames = false } = {}
     setInteracting: [],
     setHitTestMode: [],
     dragWindowTo: [],
-    sendMessage: []
+    sendMessage: [],
+    cancelMessage: []
   }
   const animationFrameQueue = []
   const initialItems = [
@@ -222,6 +223,21 @@ const createHarness = async ({ initialState, deferAnimationFrames = false } = {}
           }
           return { state: latestState }
         },
+        cancelMessage: async (payload) => {
+          apiCalls.cancelMessage.push(payload)
+          latestState = {
+            ...latestState,
+            streaming: {
+              ...(latestState.streaming || {}),
+              requestId: payload?.requestId || latestState.streaming?.requestId || '',
+              status: 'canceled',
+              canCancel: false
+            },
+            sending: false,
+            awaitingReply: false
+          }
+          return latestState
+        },
         onStateChanged: (callback) => apiStateListeners.push((state) => {
           latestState = { ...latestState, ...state }
           callback(latestState)
@@ -273,6 +289,41 @@ test('bubble chat renderer renders user, pet and notice items as a mini dialogue
   assert.match(items[0].textContent, /你好/)
   assert.match(items[1].textContent, /我在/)
   assert.match(items[2].textContent, /天气提醒/)
+})
+
+test('bubble chat renderer displays streaming partial reply and cancels by request id', async () => {
+  const harness = await createHarness({
+    initialState: {
+      streaming: {
+        requestId: 'chat-stream-1',
+        conversationId: 'control-center:legacy-cat:main',
+        petPackId: 'legacy-cat',
+        status: 'streaming',
+        partialReply: 'Hel',
+        partialReplyChars: 3,
+        canCancel: true
+      },
+      sending: true,
+      awaitingReply: true
+    }
+  })
+  const { apiCalls, documentListeners, elements } = harness
+  const streamingItem = elements['bubble-items'].children.find((item) => item.dataset.requestId === 'chat-stream-1')
+  const cancelButton = streamingItem?.children.find((child) => String(child.className || '').includes('cancel-stream-button'))
+
+  assert.ok(streamingItem)
+  assert.match(streamingItem.textContent, /Hel/)
+  assert.match(streamingItem.className, /bubble-item--streaming/)
+  assert.ok(cancelButton)
+
+  await dispatchDocument(documentListeners, 'click', {
+    target: cancelButton,
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.equal(apiCalls.cancelMessage.length, 1)
+  assert.equal(apiCalls.cancelMessage[0].requestId, 'chat-stream-1')
 })
 
 test('bubble chat renderer sends mini input on Enter and collapses interaction after success', async () => {

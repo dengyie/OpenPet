@@ -8,6 +8,7 @@ const IPC = {
   PET_BUBBLE_CHAT_SET_HIT_TEST_MODE: 'pet-bubble-chat:set-hit-test-mode',
   PET_BUBBLE_CHAT_DRAG_TO: 'pet-bubble-chat:drag-to',
   PET_BUBBLE_CHAT_SEND_MESSAGE: 'pet-bubble-chat:send-message',
+  PET_BUBBLE_CHAT_CANCEL_MESSAGE: 'pet-bubble-chat:cancel-message',
   PET_BUBBLE_CHAT_STATE_CHANGED: 'pet-bubble-chat:state-changed',
   PET_CHAT_OPEN: 'pet-chat:open',
   PLUGINS_OPEN_DASHBOARD: 'plugins:open-dashboard'
@@ -42,6 +43,9 @@ contextBridge.exposeInMainWorld('petBubbleChatAPI', {
   openFullChat: () => ipcRenderer.invoke(IPC.PET_CHAT_OPEN),
   openAgentAwarenessDetails: () => ipcRenderer.invoke(IPC.PLUGINS_OPEN_DASHBOARD, AGENT_AWARENESS_DASHBOARD_PAYLOAD),
   sendMessage: (payload) => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE, payload),
+  cancelMessage: (payload = {}) => ipcRenderer.invoke(IPC.PET_BUBBLE_CHAT_CANCEL_MESSAGE, {
+    requestId: typeof payload.requestId === 'string' ? payload.requestId : ''
+  }),
   onStateChanged: (callback) => {
     ipcRenderer.on(IPC.PET_BUBBLE_CHAT_STATE_CHANGED, (_event, state) => callback(state))
   }

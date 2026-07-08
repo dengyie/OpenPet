@@ -67,7 +67,8 @@ const createHarness = async () => {
     openSettings: [],
     sendMessage: [],
     setAlwaysOnTop: [],
-    setBubblePinned: []
+    setBubblePinned: [],
+    cancelMessage: []
   }
   let failOpenBubbleChat = false
   let latestState = {
@@ -144,6 +145,19 @@ const createHarness = async () => {
           }
           return { state: latestState }
         },
+        cancelMessage: async (payload) => {
+          apiCalls.cancelMessage.push(payload)
+          latestState = {
+            ...latestState,
+            streaming: {
+              ...(latestState.streaming || {}),
+              requestId: payload?.requestId || latestState.streaming?.requestId || '',
+              status: 'canceled',
+              canCancel: false
+            }
+          }
+          return latestState
+        },
         onStateChanged: (callback) => {
           stateListeners.push(callback)
         }
@@ -213,6 +227,58 @@ test('pet chat renderer still supports composer send flow after bubble handoff a
   assert.deepEqual(apiCalls.sendMessage, ['你好呀'])
   assert.equal(input.value, '')
   assert.equal(elements.messages.innerHTML.includes('收到'), true)
+})
+
+test('pet chat renderer displays streaming assistant message and cancels by request id', async () => {
+  const harness = await createHarness()
+  const { apiCalls, documentListeners, elements, stateListeners } = harness
+
+  stateListeners[0]({
+    streaming: {
+      requestId: 'chat-stream-1',
+      conversationId: 'control-center:legacy-cat:main',
+      petPackId: 'legacy-cat',
+      status: 'streaming',
+      partialReply: 'Hel',
+      partialReplyChars: 3,
+      canCancel: true
+    }
+  })
+
+  assert.equal(elements.messages.innerHTML.includes('data-request-id="chat-stream-1"'), true)
+  assert.equal(elements.messages.innerHTML.includes('data-status="streaming"'), true)
+  assert.equal(elements.messages.innerHTML.includes('Hel'), true)
+  assert.equal(elements.messages.innerHTML.includes('cancel-stream-button'), true)
+
+  await dispatchDocument(documentListeners, 'click', {
+    target: {
+      closest: (selector) => {
+        if (selector === '.cancel-stream-button') return {
+          closest: (parentSelector) => parentSelector === '[data-request-id]'
+            ? { getAttribute: (name) => (name === 'data-request-id' ? 'chat-stream-1' : '') }
+            : null
+        }
+        return null
+      }
+    },
+    preventDefault() {},
+    stopPropagation() {}
+  })
+
+  assert.equal(apiCalls.cancelMessage.length, 1)
+  assert.equal(apiCalls.cancelMessage[0].requestId, 'chat-stream-1')
+
+  stateListeners[0]({
+    streaming: {
+      requestId: 'chat-stream-1',
+      status: 'completed',
+      partialReply: 'Hello',
+      canCancel: false
+    }
+  })
+
+  assert.equal(elements.messages.innerHTML.includes('data-status="completed"'), true)
+  assert.equal(elements.messages.innerHTML.includes('cancel-stream-button'), false)
 })
 
 test('pet chat renderer can pin the lightweight bubble surface from the full chat window', async () => {

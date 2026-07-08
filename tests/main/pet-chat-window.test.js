@@ -250,3 +250,68 @@ test('pet chat window can open Control Center settings through injected callback
   assert.deepEqual(manager.openSettings(), { ok: true })
   assert.equal(opened, 1)
 })
+
+test('pet chat window manager tracks transient streaming state and broadcasts it', () => {
+  FakeChatWindow.instances = []
+  const { createPetChatWindowManager } = loadPetChatWindowModule()
+  const manager = createPetChatWindowManager({
+    getPetWindow: () => ({ isDestroyed: () => false, getBounds: () => ({ x: 50, y: 50, width: 150, height: 150 }) }),
+    settingsService: createSettingsServiceStub(),
+    BrowserWindow: FakeChatWindow,
+    screen: createScreenStub(),
+    app: createAppStub()
+  })
+
+  manager.open()
+  const chatWindow = FakeChatWindow.instances[0]
+  const streaming = manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    conversationId: 'control-center:legacy-cat:main',
+    petPackId: 'legacy-cat',
+    status: 'streaming',
+    partialReply: 'Hel',
+    canCancel: true
+  })
+
+  assert.equal(streaming.streaming.requestId, 'chat-stream-1')
+  assert.equal(streaming.streaming.partialReply, 'Hel')
+  assert.equal(streaming.streaming.canCancel, true)
+  assert.equal(chatWindow.webContents.sent.at(-1).channel, 'pet-chat:state-changed')
+  assert.equal(chatWindow.webContents.sent.at(-1).payload.streaming.requestId, 'chat-stream-1')
+
+  const completed = manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    status: 'completed',
+    partialReply: 'Hello',
+    canCancel: false
+  })
+
+  assert.equal(completed.streaming.status, 'completed')
+  assert.equal(completed.streaming.canCancel, false)
+})
+
+test('pet chat window manager clears matching transient streaming state', () => {
+  FakeChatWindow.instances = []
+  const { createPetChatWindowManager } = loadPetChatWindowModule()
+  const manager = createPetChatWindowManager({
+    getPetWindow: () => ({ isDestroyed: () => false, getBounds: () => ({ x: 50, y: 50, width: 150, height: 150 }) }),
+    settingsService: createSettingsServiceStub(),
+    BrowserWindow: FakeChatWindow,
+    screen: createScreenStub(),
+    app: createAppStub()
+  })
+
+  manager.open()
+  manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    status: 'completed',
+    partialReply: 'Hello',
+    canCancel: false
+  })
+
+  const unchanged = manager.clearStreamState('other-request')
+  assert.equal(unchanged.streaming.requestId, 'chat-stream-1')
+
+  const cleared = manager.clearStreamState('chat-stream-1')
+  assert.equal(cleared.streaming, null)
+})

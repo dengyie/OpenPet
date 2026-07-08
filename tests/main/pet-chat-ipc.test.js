@@ -476,6 +476,61 @@ test('pet chat IPC broadcasts streaming state to both chat surfaces', async () =
   assert.equal(chatStates[0].requestId, 'chat-stream-1')
 })
 
+test('pet chat send clears completed transient stream before returning final state', async () => {
+  const clearCalls = []
+  const ipcMain = registerPetChatHandlers({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        hasApiKey: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5'
+      })
+    },
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      getConversation: () => [{ id: 'a1', role: 'assistant', content: 'Hello', createdAt: '2026-06-24T00:00:01.000Z' }],
+      streamChat: async ({ onState }) => {
+        onState({
+          requestId: 'chat-stream-1',
+          conversationId: 'control-center:legacy-cat:main',
+          petPackId: 'legacy-cat',
+          status: 'completed',
+          partialReply: 'Hello',
+          partialReplyChars: 5,
+          canCancel: false
+        })
+        return {
+          requestId: 'chat-stream-1',
+          conversationId: 'control-center:legacy-cat:main',
+          reply: 'Hello',
+          bubbleSegments: ['Hello'],
+          messages: [{ id: 'a1', role: 'assistant', content: 'Hello', createdAt: '2026-06-24T00:00:01.000Z' }]
+        }
+      }
+    },
+    petBubbleChatWindowService: {
+      applyStreamState: () => ({}),
+      refreshItems: () => ({ visible: true })
+    },
+    petChatWindowService: {
+      applyStreamState: () => ({ streaming: { requestId: 'chat-stream-1', status: 'completed' } }),
+      clearStreamState: (requestId) => {
+        clearCalls.push(requestId)
+        return { alwaysOnTop: true, visible: true, hasWindow: true, streaming: null }
+      },
+      getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true, streaming: null })
+    }
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: 'hello' })
+
+  assert.deepEqual(clearCalls, ['chat-stream-1'])
+  assert.equal(result.state.streaming, null)
+  assert.deepEqual(result.state.messages, [{ id: 'a1', role: 'assistant', content: 'Hello', createdAt: '2026-06-24T00:00:01.000Z' }])
+})
+
 test('pet bubble chat IPC delegates state, open, local message, hide, pin and interaction updates', async () => {
   const calls = []
   const conversationMessages = [

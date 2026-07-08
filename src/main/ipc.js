@@ -640,6 +640,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       assertPetChatReady()
       const result = await runAiChatRequest({ message, entrypoint: 'control-center', requestId }, { source })
       petChatFacade.refreshBubbleChatItems({ reason: 'pet-chat-send' })
+      petChatWindowService?.clearStreamState?.(result.requestId || requestId)
       const state = petChatFacade.getState()
       recordAppLog({
         scope: 'pet-chat',

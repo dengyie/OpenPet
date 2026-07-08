@@ -41,6 +41,25 @@ const normalizeDesktopChatSettings = (desktopChat = {}) => {
   }
 }
 
+const normalizeStreamState = (payload = {}) => {
+  const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(payload.status)
+    ? payload.status
+    : 'streaming'
+  const partialReply = String(payload.partialReply || '').slice(0, 12000)
+  return {
+    requestId: typeof payload.requestId === 'string' ? payload.requestId.slice(0, 120) : '',
+    conversationId: typeof payload.conversationId === 'string' ? payload.conversationId.slice(0, 240) : '',
+    petPackId: typeof payload.petPackId === 'string' ? payload.petPackId.slice(0, 160) : '',
+    entrypoint: typeof payload.entrypoint === 'string' ? payload.entrypoint.slice(0, 80) : '',
+    status,
+    partialReply,
+    partialReplyChars: Number.isFinite(Number(payload.partialReplyChars)) ? Number(payload.partialReplyChars) : partialReply.length,
+    chunkCount: Number.isFinite(Number(payload.chunkCount)) ? Number(payload.chunkCount) : 0,
+    canCancel: payload.canCancel === true && (status === 'started' || status === 'streaming'),
+    errorMessage: typeof payload.errorMessage === 'string' ? payload.errorMessage.slice(0, 240) : ''
+  }
+}
+
 const getWorkAreaForBounds = (screenService, bounds) => {
   const fallback = { x: 0, y: 0, width: 1440, height: 900 }
   const display = bounds && typeof screenService?.getDisplayMatching === 'function'
@@ -126,6 +145,7 @@ const createPetChatWindowManager = ({
   if (!settingsService) throw new Error('settingsService is required')
   let chatWindow = null
   let allowClose = false
+  let streamingState = null
 
   const recordLog = (entry) => {
     try {
@@ -158,6 +178,7 @@ const createPetChatWindowManager = ({
     const desktopChat = getDesktopChatSettings()
     return {
       ...desktopChat,
+      streaming: streamingState,
       visible: Boolean(chatWindow && !chatWindow.isDestroyed?.() && chatWindow.isVisible?.()),
       hasWindow: Boolean(chatWindow && !chatWindow.isDestroyed?.())
     }
@@ -318,6 +339,35 @@ const createPetChatWindowManager = ({
     return { ok: true }
   }
 
+  const applyStreamState = (payload = {}) => {
+    streamingState = normalizeStreamState(payload)
+    const state = getState()
+    sendStateChanged(state)
+    recordLog({
+      level: streamingState.status === 'failed' ? 'warn' : 'debug',
+      event: 'pet-chat.stream-state.applied',
+      message: 'Pet chat stream state applied',
+      details: {
+        requestId: streamingState.requestId,
+        status: streamingState.status,
+        partialReplyChars: streamingState.partialReplyChars,
+        chunkCount: streamingState.chunkCount
+      }
+    })
+    return state
+  }
+
+  const clearStreamState = (requestId = '') => {
+    const normalizedRequestId = typeof requestId === 'string' ? requestId.slice(0, 120) : ''
+    if (!streamingState || (normalizedRequestId && streamingState.requestId !== normalizedRequestId)) {
+      return getState()
+    }
+    streamingState = null
+    const state = getState()
+    sendStateChanged(state)
+    return state
+  }
+
   app?.on?.('before-quit', () => {
     allowClose = true
     saveBounds({ source: 'before-quit' })
@@ -328,6 +378,8 @@ const createPetChatWindowManager = ({
     hide,
     open,
     openSettings,
+    applyStreamState,
+    clearStreamState,
     saveBounds,
     sendStateChanged,
     setAlwaysOnTop
