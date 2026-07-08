@@ -4191,6 +4191,102 @@ test('plugin service bridge pet routes enforce manifest permissions', async () =
   assert.match(response.body.error, /does not have pet:say permission/)
 })
 
+test('plugin service bridge lets service runtimes call ai chat through aiTalkService', async () => {
+  const spawned = []
+  const aiCalls = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    aiTalkService: {
+      chatFromEntrypoint: async (payload) => {
+        aiCalls.push(payload)
+        return {
+          conversationId: 'im-gateway:legacy-cat:plugin:weather-declaration:service:companion:telegram:private:1001:1001',
+          reply: 'host reply'
+        }
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({ permissions: ['ai:chat'] })],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return createSlowStoppingServiceProcess()
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const response = await requestBridge(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/ai/chat`, {
+    token: spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN,
+    method: 'POST',
+    body: {
+      message: 'hello from telegram',
+      conversationKey: 'telegram:private:1001:1001',
+      entrypoint: 'im-gateway',
+      sourceContext: {
+        platform: 'telegram',
+        chatType: 'private',
+        chatId: '1001',
+        userId: '1001',
+        messageId: '42'
+      }
+    }
+  })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.result.reply, 'host reply')
+  assert.deepEqual(aiCalls, [{
+    message: 'hello from telegram',
+    conversationId: 'plugin:weather-declaration:service:companion:telegram:private:1001:1001',
+    entrypoint: 'im-gateway',
+    requestId: '',
+    skipUserAppend: false,
+    sourceContext: {
+      platform: 'telegram',
+      chatType: 'private',
+      chatId: '1001',
+      userId: '1001',
+      messageId: '42'
+    }
+  }])
+})
+
+test('plugin service bridge ai chat enforces manifest permissions', async () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    aiTalkService: {
+      chatFromEntrypoint: async () => {
+        throw new Error('host ai should not be reached')
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir()],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return createSlowStoppingServiceProcess()
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const response = await requestBridge(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/ai/chat`, {
+    token: spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN,
+    method: 'POST',
+    body: {
+      message: 'blocked',
+      conversationKey: 'telegram:private:1001:1001',
+      entrypoint: 'im-gateway'
+    }
+  })
+
+  assert.equal(response.status, 403)
+  assert.match(response.body.error, /does not have ai:chat permission/)
+})
+
 test('plugin service bridge expires when the service process exits', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

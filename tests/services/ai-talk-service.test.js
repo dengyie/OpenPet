@@ -2121,3 +2121,68 @@ test('ai talk service streamChat state callback failures do not abort completion
   assert.equal(JSON.stringify(logs).includes('safe partial'), false)
   assert.equal(JSON.stringify(logs).includes('safe final'), false)
 })
+
+test('ai talk service routes IM entrypoints through named conversations', async () => {
+  const requests = []
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
+      complete: async (request) => {
+        requests.push(request)
+        return { reply: `reply ${requests.length}` }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const privateResult = await service.chatFromEntrypoint({
+    entrypoint: 'im-gateway',
+    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001',
+    message: 'private hello',
+    sourceContext: {
+      platform: 'telegram',
+      chatType: 'private',
+      chatId: '1001',
+      userId: '1001',
+      messageId: '42'
+    }
+  })
+  const groupResult = await service.chatFromEntrypoint({
+    entrypoint: 'im-gateway',
+    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:group:-2001:1001',
+    message: 'group hello',
+    sourceContext: {
+      platform: 'telegram',
+      chatType: 'group',
+      chatId: '-2001',
+      userId: '1001',
+      messageId: '43'
+    }
+  })
+
+  assert.equal(
+    privateResult.conversationId,
+    'im-gateway:legacy-cat:plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001'
+  )
+  assert.equal(
+    groupResult.conversationId,
+    'im-gateway:legacy-cat:plugin:openpet.im-gateway:service:im-gateway:telegram:group:-2001:1001'
+  )
+  assert.deepEqual(
+    store
+      .getMessages('im-gateway:legacy-cat', 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001')
+      .map((message) => message.content),
+    ['private hello', 'reply 1']
+  )
+  assert.deepEqual(
+    store
+      .getMessages('im-gateway:legacy-cat', 'plugin:openpet.im-gateway:service:im-gateway:telegram:group:-2001:1001')
+      .map((message) => message.content),
+    ['group hello', 'reply 2']
+  )
+  assert.equal(requests[0].messages.at(-1).content, 'private hello')
+  assert.equal(requests[1].messages.at(-1).content, 'group hello')
+  assert.equal(service.getLatestTraceSummary({ conversationId: privateResult.conversationId }).request.entrypoint, 'im-gateway')
+})

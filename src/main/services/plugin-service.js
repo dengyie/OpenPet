@@ -84,14 +84,15 @@ const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_DEPTH = 5
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const defaultServiceProcessTree = createServiceProcessTree()
-const SERVICE_BRIDGE_ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event)$/
+const SERVICE_BRIDGE_ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/ai\/chat)$/
 const SERVICE_BRIDGE_READ_ONLY_ROUTES = new Map([
   ['/context', 'context']
 ])
 const SERVICE_BRIDGE_JSON_ROUTES = new Map([
   ['/pet/say', 'petSay'],
   ['/pet/action', 'petAction'],
-  ['/pet/event', 'petEvent']
+  ['/pet/event', 'petEvent'],
+  ['/ai/chat', 'aiChat']
 ])
 
 const getDirectoryByteSize = (folderPath) => {
@@ -374,7 +375,7 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, secretService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, aiTalkService, imageGenerationModelService, secretService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const commandBridgeRuntimes = new Map()
@@ -852,7 +853,29 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   })
 
   const createPluginServiceBridgeHandlers = (plugin, serviceId, bridgeRunId = '') => {
-    return createPluginPetBridgeHandlers(plugin, `service:${serviceId}`)
+    return {
+      ...createPluginPetBridgeHandlers(plugin, `service:${serviceId}`),
+      aiChat: async (payload = {}) => {
+        assertPermission(plugin.manifest, 'ai:chat')
+        if (!aiTalkService?.chatFromEntrypoint) throw new Error('AI talk service is not available')
+        const message = typeof payload?.message === 'string' ? payload.message.trim() : ''
+        const conversationKey = typeof payload?.conversationKey === 'string' ? payload.conversationKey.trim() : ''
+        if (!message) throw new Error('AI chat message is empty')
+        if (!conversationKey) throw new Error('AI chat conversationKey is required')
+        appendLog({ pluginId: plugin.manifest.id, commandId: `service:${serviceId}`, level: 'info', message: 'Bridge ai.chat invoked' })
+        return {
+          ok: true,
+          result: await aiTalkService.chatFromEntrypoint({
+            message,
+            conversationId: `plugin:${plugin.manifest.id}:service:${serviceId}:${conversationKey}`,
+            entrypoint: typeof payload?.entrypoint === 'string' && payload.entrypoint.trim() ? payload.entrypoint.trim() : 'im-gateway',
+            requestId: typeof payload?.requestId === 'string' ? payload.requestId : '',
+            skipUserAppend: payload?.skipUserAppend === true,
+            sourceContext: isRecord(payload?.sourceContext) ? payload.sourceContext : {}
+          })
+        }
+      }
+    }
   }
 
   const commandBridgeServer = createPluginCommandBridgeServer({

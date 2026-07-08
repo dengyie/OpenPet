@@ -390,25 +390,32 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
 
   const getState = () => clone(state)
 
-  const ensureMainConversation = ({ entrypoint = 'control-center', petPackId, personaHash = '' } = {}) => {
+  const ensureConversation = ({
+    entrypoint = 'control-center',
+    petPackId,
+    conversationId = 'main',
+    personaHash = ''
+  } = {}) => {
     if (!petPackId || typeof petPackId !== 'string') throw new Error('petPackId is required')
     const timestamp = now()
     const sessionId = createSessionId({ entrypoint, petPackId })
-    const conversationId = 'main'
-    const conversationKey = `${sessionId}:${conversationId}`
+    const normalizedConversationId = typeof conversationId === 'string' && conversationId.trim()
+      ? conversationId.trim()
+      : 'main'
+    const conversationKey = `${sessionId}:${normalizedConversationId}`
     if (!state.sessions[sessionId]) {
       state.sessions[sessionId] = {
         id: sessionId,
         entrypoint,
         petPackId,
-        activeConversationId: conversationId,
+        activeConversationId: normalizedConversationId,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     }
     if (!state.conversations[conversationKey]) {
       state.conversations[conversationKey] = {
-        id: conversationId,
+        id: normalizedConversationId,
         sessionId,
         petPackId,
         title: '',
@@ -431,12 +438,18 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     }
     state.sessions[sessionId] = {
       ...state.sessions[sessionId],
-      activeConversationId: conversationId,
+      activeConversationId: normalizedConversationId,
       updatedAt: timestamp
     }
     persist()
-    return { sessionId, conversationId, conversation: clone(state.conversations[conversationKey]) }
+    return {
+      sessionId,
+      conversationId: normalizedConversationId,
+      conversation: clone(state.conversations[conversationKey])
+    }
   }
+
+  const ensureMainConversation = (input = {}) => ensureConversation({ ...input, conversationId: 'main' })
 
   const getMessages = (sessionId, conversationId = 'main') => {
     return clone(state.messages[`${sessionId}:${conversationId}`] || [])
@@ -1204,6 +1217,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     createMemoryJob,
     clearPetPackMemories,
     deleteMemory,
+    ensureConversation,
     ensureMainConversation,
     finishMemoryJob,
     getMessages,

@@ -499,9 +499,12 @@ const summarizeBehavior = (value = {}) => ({
 
 const splitTalkConversationId = (conversationId) => {
   const normalized = normalizeString(conversationId)
-  const match = normalized.match(/^(.+:.+):(main)$/)
-  if (!match) return null
-  return { sessionId: match[1], conversationId: match[2] }
+  const parts = normalized.split(':').filter(Boolean)
+  if (parts.length < 3) return null
+  return {
+    sessionId: parts.slice(0, 2).join(':'),
+    conversationId: parts.slice(2).join(':')
+  }
 }
 
 const getPetPackIdFromSessionId = (sessionId) => {
@@ -1363,7 +1366,33 @@ const createAiTalkService = ({
     }
   }
 
-  const createTurnRequest = ({ message, messageBatch, entrypoint, requestId, generateRequestId = false }) => {
+  const resolveConversationHandle = ({
+    entrypoint = 'control-center',
+    petPackId,
+    personaHash = '',
+    conversationId = 'main'
+  } = {}) => {
+    const normalizedConversationId = normalizeString(conversationId) || 'main'
+    return normalizedConversationId === 'main'
+      ? aiTalkStore.ensureMainConversation({ entrypoint, petPackId, personaHash })
+      : aiTalkStore.ensureConversation({
+          entrypoint,
+          petPackId,
+          conversationId: normalizedConversationId,
+          personaHash
+        })
+  }
+
+  const createTurnRequest = ({
+    message,
+    messageBatch,
+    entrypoint,
+    conversationId = 'main',
+    requestId,
+    generateRequestId = false,
+    skipUserAppend = false,
+    sourceContext = null
+  }) => {
     const normalizedBatch = Array.isArray(messageBatch)
       ? messageBatch.map(normalizeString).filter(Boolean)
       : []
@@ -1375,7 +1404,10 @@ const createAiTalkService = ({
     ).slice(0, 120)
     return {
       entrypoint,
+      requestedConversationId: normalizeString(conversationId) || 'main',
       requestId: safeRequestId,
+      skipUserAppend: skipUserAppend === true,
+      sourceContext: sourceContext && typeof sourceContext === 'object' ? sourceContext : null,
       userContents,
       diagnostics: {
         entrypoint,
@@ -1387,7 +1419,7 @@ const createAiTalkService = ({
   }
 
   const resolveTurnContext = ({ request, requireStreaming = false, activePack = null }) => {
-    const { diagnostics, entrypoint, userContents } = request
+    const { diagnostics, entrypoint, requestedConversationId, userContents } = request
     if (!userContents.length) throw new Error('AI chat message is empty')
     if (userContents.some((item) => item.length > MAX_USER_MESSAGE_CHARS)) throw new Error('AI chat message is too long')
     const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
@@ -1403,7 +1435,12 @@ const createAiTalkService = ({
     const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
     diagnostics.personaHash = personaHash
     migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
-    const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({ entrypoint, petPackId, personaHash })
+    const { sessionId, conversationId } = resolveConversationHandle({
+      entrypoint,
+      petPackId,
+      personaHash,
+      conversationId: requestedConversationId
+    })
     migrateLegacyConversationIfNeeded({ sessionId, conversationId, petPackId })
     const conversationPublicId = `${sessionId}:${conversationId}`
     diagnostics.conversationId = conversationPublicId
@@ -1431,12 +1468,13 @@ const createAiTalkService = ({
       sessionId,
       conversationId,
       conversationPublicId,
+      skipUserAppend,
       userContents
     } = context
     const history = aiTalkStore.getMessages(sessionId, conversationId)
     const userMessages = userContents.map((entry) => ({ role: 'user', content: entry }))
     const unresolvedPrefixLength = getUnresolvedUserPrefixLength(history, userContents)
-    const pendingUserMessages = userMessages.slice(unresolvedPrefixLength)
+    const pendingUserMessages = skipUserAppend ? [] : userMessages.slice(unresolvedPrefixLength)
     const memoryContext = getMemoryContext({ petPackId, userMessage: userContents.join('\n'), history })
     const memoryIdsInjected = memoryContext.map((memory) => memory.id).filter(Boolean)
     const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
@@ -1871,10 +1909,26 @@ const createAiTalkService = ({
       : { interruptedCount: 0 }
   )
 
-  const chat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId } = {}) => {
+  const chat = async ({
+    message,
+    messageBatch = null,
+    entrypoint = 'control-center',
+    conversationId: requestedConversationId = 'main',
+    requestId,
+    skipUserAppend = false,
+    sourceContext: _sourceContext = null
+  } = {}) => {
     if (disposed) throw createDisposedError()
     const startedAt = Date.now()
-    const turnRequest = createTurnRequest({ message, messageBatch, entrypoint, requestId })
+    const turnRequest = createTurnRequest({
+      message,
+      messageBatch,
+      entrypoint,
+      conversationId: requestedConversationId,
+      requestId,
+      skipUserAppend,
+      sourceContext: _sourceContext
+    })
     const userContents = turnRequest.userContents
     let activePackDiagnostics = null
     const diagnostics = turnRequest.diagnostics
@@ -2007,9 +2061,53 @@ const createAiTalkService = ({
     }
   }
 
+  const chatFromEntrypoint = (payload = {}) => {
+    const normalizedConversationId = normalizeString(payload.conversationId)
+    if (!normalizedConversationId) throw new Error('AI chat conversationId is required')
+    return chat({
+      ...payload,
+      entrypoint: normalizeString(payload.entrypoint) || 'im-gateway',
+      conversationId: normalizedConversationId
+    })
+  }
+
+  const appendUserMessages = ({ messages = [], entrypoint = 'control-center' } = {}) => {
+    const userContents = (Array.isArray(messages) ? messages : [])
+      .map(normalizeString)
+      .filter(Boolean)
+    if (!userContents.length) return { conversationId: '', messages: [] }
+    if (userContents.some((item) => item.length > MAX_USER_MESSAGE_CHARS)) {
+      throw new Error('AI chat message is too long')
+    }
+    const { manifest, petPackId } = resolveActivePack()
+    const { personaHash } = resolvePersona(manifest, petPackId)
+    migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
+    const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({
+      entrypoint,
+      petPackId,
+      personaHash
+    })
+    migrateLegacyConversationIfNeeded({
+      sessionId,
+      conversationId,
+      petPackId
+    })
+    const nextMessages = aiTalkStore.appendMessages(
+      sessionId,
+      conversationId,
+      userContents.map((content) => ({ role: 'user', content }))
+    )
+    return {
+      conversationId: `${sessionId}:${conversationId}`,
+      messages: nextMessages
+    }
+  }
+
   return {
+    appendUserMessages,
     cancelRequest,
     chat,
+    chatFromEntrypoint,
     compilePersonaPrompt,
     compileMemoryContextPrompt,
     clearPetPackMemories,

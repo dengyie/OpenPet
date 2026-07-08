@@ -544,6 +544,35 @@ test('ai talk store excludes non-chat traces from default trace export listing',
   assert.equal(JSON.stringify(memoryFilterTraces).includes('sk-cpa-should-not-be-saved'), false)
 })
 
+test('ai talk store creates external conversations alongside the main thread', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
+
+  const main = store.ensureMainConversation({
+    entrypoint: 'control-center',
+    petPackId: 'legacy-cat',
+    personaHash: 'hash-main'
+  })
+  const im = store.ensureConversation({
+    entrypoint: 'im-gateway',
+    petPackId: 'legacy-cat',
+    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001',
+    personaHash: 'hash-im'
+  })
+
+  store.appendMessages(im.sessionId, im.conversationId, [
+    { role: 'user', content: 'hello from telegram' }
+  ])
+
+  assert.equal(main.sessionId, 'control-center:legacy-cat')
+  assert.equal(im.sessionId, 'im-gateway:legacy-cat')
+  assert.equal(im.conversationId, 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001')
+  assert.deepEqual(
+    store.getMessages(im.sessionId, im.conversationId).map((message) => message.content),
+    ['hello from telegram']
+  )
+  assert.deepEqual(store.getMessages(main.sessionId, main.conversationId), [])
+})
+
 test('ai talk store caps active memories by demoting lowest-value entries', () => {
   const storePath = createTempStorePath()
   const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })
