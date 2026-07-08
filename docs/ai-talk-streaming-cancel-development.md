@@ -3,11 +3,18 @@
 > Date: 2026-07-09
 > Scope: AI Talk 流式回复、取消生成、桌面聊天状态同步
 > Baseline: `dev6` branch, based on local `main@b557fd4f`
-> Status: Phase 1 core and Phase 2 IPC contract are implemented on `dev6`; renderer/window streaming UI and smoke closeout remain pending.
+> Status: Phase 1 core and Phase 2 IPC/window/renderer wiring are implemented on `dev6`; Phase 2 renderer work is currently in the working tree and must be committed before merge; smoke/runbook closeout remains pending.
 
 ## 1. 文档定位
 
-这份文档是 AI Talk Streaming + Cancel 的完整开发入口。它不替代详细 spec 和逐步实现计划，而是把当前代码结构、已落地能力、剩余开发边界、测试方式和验收口径收敛到一个位置，方便后续继续开发或 review。
+这份文档是 AI Talk Streaming + Cancel 的完整开发入口。它把当前代码结构、已落地能力、剩余开发边界、测试方式和验收口径收敛到一个位置，方便后续继续开发、review、合入和验收。
+
+阅读顺序：
+
+1. 先读本文档，确认当前真实状态、文件边界和验收步骤。
+2. 需要理解产品与架构取舍时，读 design spec。
+3. 需要继续实现未完成阶段时，按 implementation plan 的任务执行。
+4. 需要合入前判断质量时，按本文档的测试矩阵和 review checklist 执行。
 
 Related docs:
 
@@ -41,7 +48,18 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 
 ## 4. Current Branch Progress
 
-### Landed On `dev6`
+### Phase Status
+
+| Phase | Scope | Current Status | Commit / State |
+| --- | --- | --- | --- |
+| Phase 1 | Provider streaming adapter | Implemented | `fccabdae feat(phase-1): add provider streaming adapter` |
+| Phase 1 | AI Talk streaming lifecycle | Implemented | `e90b33be feat(phase-1): add ai talk streaming lifecycle` |
+| Phase 2 | IPC stream/cancel contract | Implemented | `f78e56c2 feat(phase-2): add ai talk streaming ipc contract` |
+| Phase 2 | Bubble Chat and PetChat renderer states | Implemented in working tree | Needs commit before merge |
+| Phase 3 | Cancel/failure recovery hardening | Mostly covered by Phase 1/2 tests | Needs real-provider smoke confirmation |
+| Phase 4 | Smoke/runbook/evidence closeout | Not implemented | Next bounded phase |
+
+### Landed Or Implemented On `dev6`
 
 - `AiService.streamComplete()` exists in `src/main/services/ai-service.js`.
 - OpenAI-compatible SSE streaming deltas are parsed into normalized text deltas.
@@ -57,17 +75,37 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 - `src/main/ipc.js` can call `streamChat()` when available and fall back to existing chat when it is not.
 - Bubble Chat and PetChatWindow services receive stream state through `applyStreamState?.()` if implemented.
 - IPC tests cover shared cancel handlers and stream-state broadcast.
+- `PetBubbleChatWindowManager.applyStreamState()` stores transient streaming state, drives visibility, and avoids durable partial persistence.
+- `PetChatWindowManager.applyStreamState()` stores transient streaming state and `clearStreamState(requestId)` clears the completed transient item.
+- Bubble Chat preload exposes `cancelMessage({ requestId })`.
+- PetChat preload exposes `cancelMessage({ requestId })`.
+- Bubble Chat renderer displays partial assistant text and a cancel button for cancellable states.
+- PetChat renderer displays one transient assistant message with `data-request-id` and `data-status`.
 
-### Not Yet Landed On `dev6`
+### Not Yet Implemented
 
-- `PetBubbleChatWindowManager.applyStreamState()` state storage and broadcast.
-- `PetChatWindowManager.applyStreamState()` state storage and broadcast.
-- Bubble Chat preload `cancelMessage()`.
-- PetChat preload `cancelMessage()`.
-- Bubble Chat renderer partial assistant item and cancel button.
-- PetChat renderer partial assistant message and cancel button.
 - Streaming/cancel smoke flags in `scripts/run-ai-talk-local-smoke.js`.
 - Real provider streaming/cancel evidence archive.
+- Human desktop acceptance for long replies, cancel hit target, auto-hide behavior, and failure recovery copy.
+
+### Working Tree Note
+
+At the time this document was updated, Phase 2 renderer/window code existed as uncommitted changes in these files:
+
+- `src/main/ipc.js`
+- `src/main/pet-bubble-chat-preload.js`
+- `src/main/pet-bubble-chat-window.js`
+- `src/main/pet-bubble-chat/renderer.js`
+- `src/main/pet-chat-preload.js`
+- `src/main/pet-chat-window.js`
+- `src/main/pet-chat/renderer.js`
+- `tests/main/pet-bubble-chat-renderer.test.js`
+- `tests/main/pet-bubble-chat-window.test.js`
+- `tests/main/pet-chat-ipc.test.js`
+- `tests/main/pet-chat-renderer.test.js`
+- `tests/main/pet-chat-window.test.js`
+
+Do not stage `tmp/`. Commit Phase 2 renderer/window work separately before starting Phase 4.
 
 ## 5. Architecture Boundaries
 
@@ -255,13 +293,13 @@ Current `src/main/ipc.js` behavior:
 - `onState` fanout calls `petBubbleChatWindowService.applyStreamState?.(state)` and `petChatWindowService.applyStreamState?.(state)`.
 - Cancel handlers call `aiTalkService.cancelRequest()` with `sourceSurface`.
 
-Renderer-facing preload APIs still need to be added in Task 4.
+Renderer-facing preload APIs now exist for Bubble Chat and PetChatWindow. They only pass `requestId` back to main process cancel handlers and do not expose provider config, prompts, or secrets.
 
 ## 12. UI Development Requirements
 
 ### Bubble Chat
 
-Implement `applyStreamState(state)` in `src/main/pet-bubble-chat-window.js`:
+`applyStreamState(state)` in `src/main/pet-bubble-chat-window.js` must keep these invariants:
 
 - Normalize the state.
 - Store it as `state.streaming`.
@@ -270,6 +308,7 @@ Implement `applyStreamState(state)` in `src/main/pet-bubble-chat-window.js`:
 - Broadcast state using the existing Bubble Chat state change path.
 - Keep the window visible during `started`, `streaming`, `canceled`, and `failed`.
 - Do not insert partial text into durable dialogue history.
+- Clear matching transient state when `completeRequest()` or `failRequest()` refreshes durable dialogue.
 
 Renderer behavior in `src/main/pet-bubble-chat/renderer.js`:
 
@@ -278,14 +317,16 @@ Renderer behavior in `src/main/pet-bubble-chat/renderer.js`:
 - Show a cancel button only when `canCancel === true`.
 - Clicking cancel calls `window.petBubbleChatAPI.cancelMessage({ requestId })`.
 - Terminal canceled/failed state should be visually clear and allow the user to type again.
+- The transient streaming item must be derived only from `state.streaming`; durable dialogue `items` remain the source for completed transcript display.
 
 ### PetChatWindow
 
-Implement `applyStreamState(state)` in `src/main/pet-chat-window.js`:
+`applyStreamState(state)` in `src/main/pet-chat-window.js` must keep these invariants:
 
 - Store `state.streaming` in the window state returned by `getState()`.
 - Broadcast through existing `PET_CHAT_STATE_CHANGED`.
 - Keep transcript messages and transient streaming message separate.
+- Clear matching completed transient state before returning final `PET_CHAT_SEND_MESSAGE` state, otherwise the final assistant reply can appear twice.
 
 Renderer behavior in `src/main/pet-chat/renderer.js`:
 
@@ -293,10 +334,11 @@ Renderer behavior in `src/main/pet-chat/renderer.js`:
 - Mark it with `data-status="streaming"`, `data-status="canceled"`, or `data-status="failed"`.
 - Show cancel button only while cancellable.
 - Remove or disable cancel affordance on terminal states.
+- Do not create local synthetic assistant history from partial text.
 
 ## 13. Smoke And Evidence Requirements
 
-Extend `scripts/run-ai-talk-local-smoke.js` with:
+Phase 4 should extend `scripts/run-ai-talk-local-smoke.js` with explicit streaming and cancel options:
 
 ```bash
 npm run run-ai-talk-local-smoke -- \
@@ -336,10 +378,30 @@ Smoke claims must stay narrow:
 
 - It can prove service chain, provider completion, request correlation, and sanitized reporting.
 - It cannot by itself prove desktop placement, dwell time, reading comfort, or hit-testing quality.
+- It must not archive API keys, raw prompts, raw provider chunks, or full memory text.
 
-## 14. Test Matrix
+## 14. Developer Workflow
 
-### Already Passing In Phase 1/2
+Before editing:
+
+```bash
+git branch --show-current
+git status --short
+git worktree list
+```
+
+Rules:
+
+- Work on `dev6` or another feature worktree, not the protected primary `main` worktree.
+- Rebase feature branch onto latest `main` before merging.
+- Stage only files that belong to the current phase.
+- Keep `tmp/`, `node_modules/`, `dist/`, release artifacts, and generated local smoke output out of commits unless the phase explicitly archives evidence.
+- Use TDD for code changes: add focused failing tests, run them, implement minimal code, rerun tests.
+- End each phase with `production-code-quality-review` and fix P0/P1 blockers before commit.
+
+## 15. Test Matrix
+
+### Phase 1/2 Core Regression
 
 ```bash
 node --test tests/services/ai-service.test.js
@@ -348,7 +410,7 @@ node --test tests/main/pet-chat-ipc.test.js
 npm run check:syntax
 ```
 
-### Required Before Completing Renderer Phase
+### Renderer And Window Regression
 
 ```bash
 node --test tests/main/pet-bubble-chat-window.test.js \
@@ -357,7 +419,7 @@ node --test tests/main/pet-bubble-chat-window.test.js \
   tests/main/pet-chat-window.test.js
 ```
 
-### Required Before Merge Readiness
+### Focused Full AI Talk Streaming Regression
 
 ```bash
 node --test tests/services/ai-service.test.js \
@@ -375,7 +437,15 @@ npm run test:core
 npm run check:syntax
 ```
 
-## 15. Production Review Checklist
+Current known verification from Phase 2 working tree:
+
+- `node --test tests/main/pet-bubble-chat-window.test.js tests/main/pet-chat-window.test.js tests/main/pet-bubble-chat-renderer.test.js tests/main/pet-chat-renderer.test.js tests/main/pet-chat-ipc.test.js` passed with 81 tests.
+- `node --test tests/services/ai-service.test.js tests/services/ai-talk-service.test.js tests/services/ai-talk-store.test.js` passed with 96 tests.
+- `npm run check:syntax` passed.
+- `npm run test:core` passed with 1172 tests.
+- Existing `MODULE_TYPELESS_PACKAGE_JSON` warnings are pre-existing and non-blocking.
+
+## 16. Production Review Checklist
 
 Use `production-code-quality-review` at the end of each phase.
 
@@ -403,9 +473,9 @@ Blockers that must be fixed before merge:
 - Non-streaming chat regression.
 - UI surfaces displaying different request lifecycle for the same `requestId`.
 
-## 16. User Acceptance Steps
+## 17. User Acceptance Steps
 
-After the remaining renderer and smoke tasks land:
+After the Phase 2 renderer/window commit lands:
 
 1. Start the configured local provider gateway at `http://127.0.0.1:8317/v1`.
 2. Confirm Control Center AI chat provider uses the saved gateway config and model `gpt-5.5`.
@@ -418,8 +488,22 @@ After the remaining renderer and smoke tasks land:
 9. Inspect `~/Library/Application Support/ibot/logs/openpet-app.jsonl`.
 10. Confirm logs have `ai-talk.stream.started`, `ai-talk.stream.delta`, and terminal `completed` or `canceled` events.
 11. Confirm logs do not contain API key, raw prompt, or raw provider chunks.
+12. Repeat once with the PetChatWindow open and once with only Bubble Chat open.
+13. If cancel appears to do nothing, capture the `requestId` shown in renderer state/logs and search `openpet-app.jsonl` for that id.
 
-## 17. Backlog After V1
+## 18. Phase 4 Exit Criteria
+
+Phase 4 can close the milestone when all of these are true:
+
+- `scripts/run-ai-talk-local-smoke.js` accepts `--stream` and `--cancel-after-ms`.
+- Smoke tests cover completed streaming and canceled streaming report shape.
+- Report includes request correlation, chunk count, first delta latency, provider latency, terminal status, and side-effect flags.
+- Report redaction tests prove secrets, raw prompts, raw chunks, and raw memory are absent.
+- Manual runbook explains local provider setup, Bubble Chat acceptance, PetChatWindow acceptance, log inspection, and known claim boundaries.
+- `npm run test:core`, `npm run check:syntax`, and focused smoke tests pass.
+- Production review passes or only leaves non-blocking P2/P3 backlog.
+
+## 19. Backlog After V1
 
 - Streaming with behavior tool calls instead of v1 fallback.
 - Markdown/rich content rendering.
@@ -430,4 +514,3 @@ After the remaining renderer and smoke tasks land:
 - Plugin extension points for AI Talk.
 - Provider routing/failover.
 - Real-time token/cost display.
-
