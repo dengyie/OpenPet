@@ -15,6 +15,9 @@ const createAdapterHealth = (adapter = {}, state = {}) => {
     lastTriggerAt: state.lastTriggerAt || '',
     triggerCount: state.triggerCount || 0,
     lastErrorCode: adapterStatus.lastErrorCode || state.lastErrorCode || '',
+    lastAiReplyAt: state.lastAiReplyAt || '',
+    aiReplyCount: state.aiReplyCount || 0,
+    lastAiErrorCode: state.lastAiErrorCode || '',
     lastChatHash: state.lastChatId ? hashIdentifier(state.lastChatId) : '',
     lastUserHash: state.lastUserId ? hashIdentifier(state.lastUserId) : ''
   }

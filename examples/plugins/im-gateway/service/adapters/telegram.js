@@ -40,6 +40,13 @@ const isDirectBotMention = (ctx = {}, message = {}) => {
   return getMentionEntities(ctx, message).some((entity) => normalizeTelegramHandle(entity?.text) === botUsername)
 }
 
+const getDirectBotMentionText = (ctx = {}, message = {}) => {
+  const botUsername = normalizeTelegramHandle(ctx.me?.username)
+  if (!botUsername) return ''
+  const match = getMentionEntities(ctx, message).find((entity) => normalizeTelegramHandle(entity?.text) === botUsername)
+  return typeof match?.text === 'string' ? match.text : ''
+}
+
 const createTelegramMessage = (ctx = {}, now) => {
   const message = ctx.message || {}
   const chat = ctx.chat || message.chat || {}
@@ -53,6 +60,7 @@ const createTelegramMessage = (ctx = {}, now) => {
     userName: from.username || [from.first_name, from.last_name].filter(Boolean).join(' '),
     messageId: message.message_id,
     text: message.text,
+    directMentionText: getDirectBotMentionText(ctx, message),
     isMention: isDirectBotMention(ctx, message)
   }, { adapterId: 'telegram', platform: 'telegram', now })
 

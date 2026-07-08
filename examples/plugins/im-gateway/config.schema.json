@@ -23,12 +23,25 @@
       "enum": ["command-only", "any-text"],
       "default": "command-only"
     },
+    "privateTextMode": {
+      "type": "string",
+      "title": "Private text mode",
+      "description": "Choose how ordinary private non-command text routes inside Telegram.",
+      "enum": ["command-only", "pet-say", "ai-chat"],
+      "default": "command-only"
+    },
     "groupChatPolicy": {
       "type": "string",
       "title": "Group chat policy",
       "description": "Choose how group chats can trigger OpenPet.",
       "enum": ["mention-or-command", "command-only"],
       "default": "mention-or-command"
+    },
+    "groupAiRepliesEnabled": {
+      "type": "boolean",
+      "title": "Enable group AI replies",
+      "description": "Allow host-owned AI replies for direct bot mentions in allowed groups.",
+      "default": false
     },
     "allowedUsers": {
       "type": "string",

@@ -19,6 +19,7 @@ const createBridgeClient = ({
 
   return {
     action: (payload) => post('/pet/action', payload),
+    aiChat: (payload) => post('/ai/chat', payload),
     event: (payload) => post('/pet/event', payload),
     say: (payload) => post('/pet/say', payload)
   }

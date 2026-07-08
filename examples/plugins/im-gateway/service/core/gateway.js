@@ -1,9 +1,13 @@
 const { isMessageAllowed } = require('./allowlist')
+const { createAiQueue } = require('./ai-queue')
 const { parseOpenPetCommand } = require('./commands')
-const { shouldTriggerSay } = require('./trigger-policy')
+const { resolveAiRoute, truncateAiReply } = require('./ai-routing')
 const { normalizeImGatewayConfig } = require('../config')
 const { createGatewayHealth } = require('../health')
 const { sanitizeReceiptText } = require('../log-safety')
+
+const PRIVATE_BUSY_NOTICE = 'Still thinking about your last message. Please send one more message in a moment.'
+const PRIVATE_FAILURE_NOTICE = 'I could not reply just now. Please try again in a moment.'
 
 const createEmptyState = () => ({
   lastMessageAt: '',
@@ -11,7 +15,10 @@ const createEmptyState = () => ({
   triggerCount: 0,
   lastErrorCode: '',
   lastChatId: '',
-  lastUserId: ''
+  lastUserId: '',
+  lastAiReplyAt: '',
+  aiReplyCount: 0,
+  lastAiErrorCode: ''
 })
 
 const createImGateway = ({
@@ -22,6 +29,7 @@ const createImGateway = ({
 } = {}) => {
   const config = normalizeImGatewayConfig(rawConfig)
   const adapterState = new Map()
+  const aiQueue = createAiQueue()
 
   const getState = (adapter) => {
     if (!adapterState.has(adapter.id)) adapterState.set(adapter.id, createEmptyState())
@@ -31,6 +39,16 @@ const createImGateway = ({
   const sendReceipt = async (adapter, message, text) => {
     if (config.receiptMode === 'none') return
     const safeText = sanitizeReceiptText(text)
+    if (!safeText) return
+    if (typeof message.reply === 'function') {
+      await message.reply(safeText)
+      return
+    }
+    if (typeof adapter.sendReceipt === 'function') await adapter.sendReceipt(message, safeText)
+  }
+
+  const sendDirectReply = async (adapter, message, text) => {
+    const safeText = sanitizeReceiptText(text, 2000)
     if (!safeText) return
     if (typeof message.reply === 'function') {
       await message.reply(safeText)
@@ -50,6 +68,22 @@ const createImGateway = ({
     const state = getState(adapter)
     state.lastTriggerAt = now()
     state.triggerCount += 1
+    state.lastChatId = message.chatId || ''
+    state.lastUserId = message.userId || ''
+  }
+
+  const markAiReply = (adapter, message) => {
+    const state = getState(adapter)
+    state.lastAiReplyAt = now()
+    state.aiReplyCount += 1
+    state.lastAiErrorCode = ''
+    state.lastChatId = message.chatId || ''
+    state.lastUserId = message.userId || ''
+  }
+
+  const markAiError = (adapter, message, code) => {
+    const state = getState(adapter)
+    state.lastAiErrorCode = String(code || 'ai-reply-failed')
     state.lastChatId = message.chatId || ''
     state.lastUserId = message.userId || ''
   }
@@ -91,10 +125,58 @@ const createImGateway = ({
       return
     }
 
-    const trigger = shouldTriggerSay(message, command, config)
-    if (!trigger.triggered) return
-    await bridgeClient.say?.({ text: String(message.text || ''), ttlMs: config.petSayTtlMs })
-    markTrigger(adapter, message)
+    const route = resolveAiRoute(message, config)
+    if (route.mode === 'ignore') return
+
+    if (route.mode === 'pet-say') {
+      await bridgeClient.say?.({ text: route.messageText, ttlMs: config.petSayTtlMs })
+      markTrigger(adapter, message)
+      return
+    }
+
+    await aiQueue.push(route.conversationKey, {
+      run: async () => {
+        try {
+          const result = await bridgeClient.aiChat?.({
+            message: route.messageText,
+            conversationKey: route.conversationKey,
+            entrypoint: 'im-gateway',
+            sourceContext: {
+              platform: message.platform,
+              chatType: message.chatType,
+              chatId: message.chatId,
+              userId: message.userId,
+              messageId: message.messageId
+            }
+          })
+          const replyText = truncateAiReply(result?.result?.reply || result?.reply || '', message)
+          if (!replyText) throw new Error('empty-ai-reply')
+          try {
+            await sendDirectReply(adapter, message, replyText)
+          } catch (_) {
+            markAiError(adapter, message, 'reply-send-failed')
+            return
+          }
+          markAiReply(adapter, message)
+          markTrigger(adapter, message)
+        } catch (_) {
+          markAiError(adapter, message, 'ai-reply-failed')
+          if (String(message.chatType || '').toLowerCase() === 'private') {
+            try {
+              await sendDirectReply(adapter, message, PRIVATE_FAILURE_NOTICE)
+            } catch (_) {}
+          }
+        }
+      },
+      onDrop: async () => {
+        markAiError(adapter, message, 'ai-queue-busy')
+        if (String(message.chatType || '').toLowerCase() === 'private') {
+          try {
+            await sendDirectReply(adapter, message, PRIVATE_BUSY_NOTICE)
+          } catch (_) {}
+        }
+      }
+    })
   }
 
   const start = async () => {

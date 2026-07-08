@@ -11,6 +11,7 @@ const normalizeImMessage = (message = {}, {
   userName: String(message.userName || ''),
   messageId: String(message.messageId || ''),
   text: String(message.text || ''),
+  directMentionText: String(message.directMentionText || ''),
   isCommand: message.isCommand === true || String(message.text || '').trim().startsWith('/'),
   isMention: message.isMention === true,
   receivedAt: message.receivedAt || now(),

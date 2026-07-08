@@ -25,7 +25,7 @@ test('im gateway manifest declares a bounded official runtime plugin without sec
 
   assert.equal(manifest.id, 'openpet.im-gateway')
   assert.equal(manifest.profile, 'runtime')
-  assert.deepEqual(manifest.permissions, ['pet:say', 'pet:action', 'pet:event'])
+  assert.deepEqual(manifest.permissions, ['pet:say', 'pet:action', 'pet:event', 'ai:chat'])
   assert.deepEqual(manifest.entries.services.map((service) => service.id), ['im-gateway'])
   assert.equal(manifest.entries.services[0].health.url, 'http://127.0.0.1:8796/health')
   assert.equal(schema.properties.some((field) => /token|secret|password|credential/i.test(field.key)), false)
@@ -48,7 +48,18 @@ test('im gateway config normalizes safe defaults and comma separated allowlists'
   assert.deepEqual(config.commandAliases, ['/openpet', '/op'])
   assert.equal(config.petSayTtlMs, 9000)
   assert.equal(config.privateChatPolicy, 'command-only')
+  assert.equal(config.privateTextMode, 'command-only')
   assert.equal(config.groupChatPolicy, 'mention-or-command')
+  assert.equal(config.groupAiRepliesEnabled, false)
+})
+
+test('im gateway config migrates legacy private chat policy into phase 2 text mode', () => {
+  const config = normalizeImGatewayConfig({
+    privateChatPolicy: 'any-text'
+  })
+
+  assert.equal(config.privateChatPolicy, 'any-text')
+  assert.equal(config.privateTextMode, 'pet-say')
 })
 
 test('im gateway allowlist requires user approval for private chats and chat plus user approval for groups', () => {
@@ -173,6 +184,45 @@ test('im gateway health redacts message content and peer identifiers', async () 
   assert.equal(encoded.includes('msg-secret'), false)
 })
 
+test('im gateway routes private ai-chat text through the host ai bridge', async () => {
+  const aiCalls = []
+  const adapter = createFakeAdapter({ id: 'fake', platform: 'telegram' })
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {
+      aiChat: async (payload) => {
+        aiCalls.push(payload)
+        return { ok: true, result: { reply: 'y'.repeat(900) } }
+      }
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      privateTextMode: 'ai-chat'
+    })
+  })
+
+  await gateway.start()
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: '1001',
+    userId: '1001',
+    text: 'x'.repeat(2500),
+    messageId: 'msg-ai-private'
+  })
+
+  assert.equal(aiCalls[0].message.length, 2000)
+  assert.equal(aiCalls[0].conversationKey, 'telegram:private:1001:1001')
+  assert.deepEqual(aiCalls[0].sourceContext, {
+    platform: 'telegram',
+    chatType: 'private',
+    chatId: '1001',
+    userId: '1001',
+    messageId: 'msg-ai-private'
+  })
+  assert.equal(adapter.receipts[0].text.length, 800)
+})
+
 test('im gateway only treats direct bot mentions as group text triggers', async () => {
   const calls = []
   const gateway = createImGateway({
@@ -213,6 +263,233 @@ test('im gateway only treats direct bot mentions as group text triggers', async 
   assert.deepEqual(calls, [
     { text: 'hello @openpet_bot', ttlMs: 6000 }
   ])
+})
+
+test('im gateway routes direct group mentions to ai only when the explicit toggle is enabled', async () => {
+  const aiCalls = []
+  const sayCalls = []
+  const replies = []
+  const gateway = createImGateway({
+    bridgeClient: {
+      aiChat: async (payload) => {
+        aiCalls.push(payload)
+        return { ok: true, result: { reply: 'r'.repeat(300) } }
+      },
+      say: async (payload) => sayCalls.push(payload)
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      allowedChats: '-2001',
+      groupChatPolicy: 'mention-or-command',
+      groupAiRepliesEnabled: true
+    })
+  })
+
+  const adapter = {
+    id: 'telegram',
+    platform: 'telegram',
+    sendReceipt: async (_message, text) => replies.push(text)
+  }
+  await gateway.handleMessage(adapter, createTelegramMessage({
+    message: {
+      message_id: 2,
+      text: `please @openpet_bot ${'x'.repeat(900)}`,
+      entities: [{ type: 'mention', offset: 7, length: 12 }]
+    },
+    chat: { id: '-2001', type: 'group' },
+    from: { id: '1001', username: 'allowed-user' },
+    me: { username: 'openpet_bot' }
+  }, () => '2026-07-08T00:00:01.000Z'))
+
+  assert.equal(sayCalls.length, 0)
+  assert.equal(aiCalls[0].message.length, 500)
+  assert.equal(aiCalls[0].message.startsWith('@openpet_bot'), false)
+  assert.equal(aiCalls[0].conversationKey, 'telegram:group:-2001:1001')
+  assert.equal(replies[0].length, 160)
+})
+
+test('im gateway allows one in-flight and one queued ai request per conversation', async () => {
+  const requests = []
+  const replies = []
+  let releaseFirst
+  const firstCanFinish = new Promise((resolve) => {
+    releaseFirst = resolve
+  })
+  const adapter = createFakeAdapter({ id: 'fake', platform: 'telegram' })
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {
+      aiChat: async (payload) => {
+        requests.push(payload.message)
+        if (payload.message === 'first') {
+          await firstCanFinish
+          return { ok: true, result: { reply: 'reply one' } }
+        }
+        return { ok: true, result: { reply: `reply for ${payload.message}` } }
+      }
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      privateTextMode: 'ai-chat'
+    })
+  })
+
+  await gateway.start()
+  const send = (text, messageId) => gateway.handleMessage(adapter, {
+    platform: 'telegram',
+    adapterId: 'fake',
+    chatType: 'private',
+    chatId: '1001',
+    userId: '1001',
+    messageId,
+    text,
+    receivedAt: '2026-07-09T00:00:00.000Z',
+    reply: async (value) => replies.push(value)
+  })
+
+  const first = send('first', 'm1')
+  await new Promise((resolve) => setImmediate(resolve))
+  const second = send('second', 'm2')
+  const third = send('third', 'm3')
+  await new Promise((resolve) => setImmediate(resolve))
+  releaseFirst()
+  await Promise.all([first, second, third])
+
+  assert.deepEqual(requests, ['first', 'second'])
+  assert.equal(replies.includes('Still thinking about your last message. Please send one more message in a moment.'), true)
+})
+
+test('im gateway sends private failure notices but keeps group failures silent', async () => {
+  const replies = []
+  const gateway = createImGateway({
+    bridgeClient: {
+      aiChat: async () => {
+        throw new Error('provider timed out')
+      }
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      allowedChats: '-2001',
+      privateTextMode: 'ai-chat',
+      groupAiRepliesEnabled: true
+    })
+  })
+
+  const privateAdapter = {
+    id: 'private',
+    platform: 'telegram',
+    sendReceipt: async (_message, text) => replies.push(['private', text])
+  }
+  const groupAdapter = {
+    id: 'group',
+    platform: 'telegram',
+    sendReceipt: async (_message, text) => replies.push(['group', text])
+  }
+
+  await gateway.handleMessage(privateAdapter, {
+    platform: 'telegram',
+    adapterId: 'private',
+    chatType: 'private',
+    chatId: '1001',
+    userId: '1001',
+    messageId: 'p1',
+    text: 'hello',
+    receivedAt: '2026-07-09T00:00:00.000Z'
+  })
+
+  await gateway.handleMessage(groupAdapter, {
+    platform: 'telegram',
+    adapterId: 'group',
+    chatType: 'group',
+    chatId: '-2001',
+    userId: '1001',
+    messageId: 'g1',
+    text: '@openpet_bot hello',
+    directMentionText: '@openpet_bot',
+    isMention: true,
+    receivedAt: '2026-07-09T00:00:01.000Z'
+  })
+
+  assert.deepEqual(replies, [['private', 'I could not reply just now. Please try again in a moment.']])
+})
+
+test('im gateway health exposes redacted ai counters and error codes', async () => {
+  const adapter = createFakeAdapter({ id: 'fake', platform: 'telegram' })
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {
+      aiChat: async () => ({ ok: true, result: { reply: 'ok reply' } })
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      privateTextMode: 'ai-chat'
+    }),
+    now: () => '2026-07-09T00:00:00.000Z'
+  })
+
+  await gateway.start()
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: '1001',
+    userId: '1001',
+    text: 'hello secret text',
+    messageId: 'msg-ai'
+  })
+
+  const health = gateway.getHealth()
+  const encoded = JSON.stringify(health)
+  assert.equal(health.adapters.telegram.aiReplyCount, 1)
+  assert.equal(health.adapters.telegram.lastAiReplyAt, '2026-07-09T00:00:00.000Z')
+  assert.equal(health.adapters.telegram.lastAiErrorCode, '')
+  assert.equal(encoded.includes('hello secret text'), false)
+  assert.equal(encoded.includes('1001'), false)
+})
+
+test('im gateway records a redacted send failure code when reply delivery fails', async () => {
+  const adapter = {
+    id: 'telegram',
+    platform: 'telegram',
+    start: async () => {},
+    stop: async () => {},
+    sendReceipt: async () => {
+      throw new Error('telegram send failed')
+    },
+    getStatus: () => ({
+      enabled: true,
+      status: 'connected',
+      mode: 'fake',
+      lastErrorCode: ''
+    })
+  }
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {
+      aiChat: async () => ({ ok: true, result: { reply: 'ok reply' } })
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      privateTextMode: 'ai-chat'
+    }),
+    now: () => '2026-07-09T00:00:00.000Z'
+  })
+
+  await gateway.handleMessage(adapter, {
+    platform: 'telegram',
+    adapterId: 'telegram',
+    chatType: 'private',
+    chatId: '1001',
+    userId: '1001',
+    messageId: 'send-1',
+    text: 'hello',
+    receivedAt: '2026-07-09T00:00:00.000Z'
+  })
+
+  assert.equal(gateway.getHealth().adapters.telegram.lastAiErrorCode, 'reply-send-failed')
 })
 
 test('im gateway health exposes adapter error codes for operator diagnostics', async () => {

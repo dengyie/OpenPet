@@ -2,7 +2,9 @@ const DEFAULT_CONFIG = {
   telegramEnabled: false,
   telegramMode: 'polling',
   privateChatPolicy: 'command-only',
+  privateTextMode: 'command-only',
   groupChatPolicy: 'mention-or-command',
+  groupAiRepliesEnabled: false,
   allowedUsers: [],
   allowedChats: [],
   allowAllPrivateChats: false,
@@ -33,15 +35,29 @@ const normalizePetSayTtlMs = (value) => {
   return Math.min(60000, Math.max(1000, Math.floor(numeric)))
 }
 
+const normalizeBoolean = (value, fallback = false) => (
+  value === true || value === 'true' ? true : fallback
+)
+
+const derivePrivateTextMode = (input = {}) => {
+  const explicit = normalizeEnum(input.privateTextMode, ['command-only', 'pet-say', 'ai-chat'], '')
+  if (explicit) return explicit
+  return normalizeEnum(input.privateChatPolicy, ['command-only', 'any-text'], DEFAULT_CONFIG.privateChatPolicy) === 'any-text'
+    ? 'pet-say'
+    : 'command-only'
+}
+
 const normalizeImGatewayConfig = (input = {}) => ({
-  telegramEnabled: input.telegramEnabled === true || input.telegramEnabled === 'true',
+  telegramEnabled: normalizeBoolean(input.telegramEnabled),
   telegramMode: normalizeEnum(input.telegramMode, ['polling'], DEFAULT_CONFIG.telegramMode),
   privateChatPolicy: normalizeEnum(input.privateChatPolicy, ['command-only', 'any-text'], DEFAULT_CONFIG.privateChatPolicy),
+  privateTextMode: derivePrivateTextMode(input),
   groupChatPolicy: normalizeEnum(input.groupChatPolicy, ['mention-or-command', 'command-only'], DEFAULT_CONFIG.groupChatPolicy),
+  groupAiRepliesEnabled: normalizeBoolean(input.groupAiRepliesEnabled),
   allowedUsers: splitCommaList(input.allowedUsers),
   allowedChats: splitCommaList(input.allowedChats),
-  allowAllPrivateChats: input.allowAllPrivateChats === true || input.allowAllPrivateChats === 'true',
-  allowAllGroupChats: input.allowAllGroupChats === true || input.allowAllGroupChats === 'true',
+  allowAllPrivateChats: normalizeBoolean(input.allowAllPrivateChats),
+  allowAllGroupChats: normalizeBoolean(input.allowAllGroupChats),
   commandAliases: splitCommaList(input.commandAliases).length ? splitCommaList(input.commandAliases) : [...DEFAULT_CONFIG.commandAliases],
   petSayTtlMs: normalizePetSayTtlMs(input.petSayTtlMs),
   receiptMode: normalizeEnum(input.receiptMode, ['commands-only', 'none'], DEFAULT_CONFIG.receiptMode)

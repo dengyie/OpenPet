@@ -5,7 +5,7 @@
   "profile": "runtime",
   "configSchema": "config.schema.json",
   "description": "Connect IM messages to OpenPet pet speech, actions, and status events.",
-  "permissions": ["pet:say", "pet:action", "pet:event"],
+  "permissions": ["pet:say", "pet:action", "pet:event", "ai:chat"],
   "entries": {
     "services": [
       {
