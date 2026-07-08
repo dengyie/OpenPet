@@ -1,7 +1,7 @@
 # OpenPet Current TODO Architecture
 
-> Date: 2026-07-07
-> Baseline: `codex/dev7@7bf0be2e`
+> Date: 2026-07-09
+> Baseline: local `main@51208a53` / `codex/dev7@51208a53`
 > Status: live TODO entry point
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
 
@@ -83,6 +83,7 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 - Agent awareness smoke sessions can also be copied into release evidence with `npm run create-agent-awareness-local-smoke-archive -- --session-dir <session-dir>`; the archive helper accepts only redacted reports and keeps its README explicit about the remaining human-acceptance boundary.
 - Archived agent-awareness smoke evidence can now be reviewed in place through `npm run update-agent-awareness-local-smoke-report -- <report.json> ...`, which updates `manualAcceptanceTemplate`, rewrites the companion README, refreshes any existing archive summary JSON, and still rejects raw local paths, loopback URLs, or secret-like text from being written back into the archive.
 - A canonical archived real smoke sample lives under `docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/`, proving the current local Codex environment yields sanitized session signal with `unknownRecordCount = 0` and `unsupportedLifecycleRecordCount = 0` while still leaving dashboard usefulness and speech-noise review manual.
+- Agent Awareness Phase A is now merged to local main with reversible hook install/uninstall, hook + polling ingestion, trusted opt-in auto-start, richer runtime state, Control Center and Bubble Chat detail entries, and stale-session merge protection. Its Phase B foundation is also present for safe usage/git/session-summary metadata, usage stats, per-session focus links, and bounded notification-policy evidence.
 
 ### 4A. Agent Awareness Plugin
 
@@ -99,17 +100,22 @@ Current state:
 - `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks` now avoid raw local paths in their operator-visible outputs, and `/health` plus dashboard rendering sanitize poller error text.
 - The Plugins pane can show a compact health note for the real bundled `agent-awareness` service using `X active · Y sessions · Z events`.
 - Control Center now has a first-class `查看 Codex 详情` entry for the real bundled plugin, and Bubble Chat exposes a pet-side `Codex 详情` quick-open entry that reuses the same bounded dashboard route.
+- Phase B visible-info foundation is present: safe numeric token/context/cost metadata when Codex exposes it, best-effort git branch/dirty/ahead/behind summaries, generated current-step/session summaries, recent progress hints, aggregate usage diagnostics, a dedicated stats dashboard route, and per-session focus links.
+- Runtime reconciliation now preserves fresher hook-derived approval/status details when older poller discovery records arrive, while explicit empty messages can still clear stale visible message text.
+- Retained-history hardening now reapplies live-session bounds on startup, keeps observed-event counts monotonic across live eviction, and aligns overview usage totals with retained daily rollups instead of mixed live-history peaks.
 
 P1 work:
 
 - Keep the new real-session smoke path green against fresh local Codex evidence and archive follow-up notes when a live run exposes new rollout record shapes.
 - Complete the remaining human desktop acceptance for dashboard usefulness and speech-noise expectations.
+- Complete the next bounded Phase B visible-info slice: durable usage rollups beyond the retained sanitized history window, stronger per-session focus/summary polish, and clearer current project/session context without storing raw prompts, transcripts, tool payloads, or full paths.
 
 P2/P3:
 
 - Host-owned semantic pet behavior contract for `idle` / `thinking` / `working` / `waiting` / `completed` / `failed`.
-- Token/context/cost aggregation, git status, current project summary, and per-session detail views.
-- Session focus/pinning and richer multi-session arbitration.
+- Host-level usage stats surfaces that reuse the plugin-owned safe rollups without exposing raw agent content.
+- Session focus/pinning, richer multi-session arbitration, or independent pet windows/session slots.
+- User-configurable notification/persona settings for the companion layer.
 
 Manual-required:
 
@@ -396,6 +402,11 @@ Choose one of these when starting the next development milestone:
    - User value: new plugin/Creator Studio host routes stay permission-gated, documented, and regression-covered instead of silently widening plugin authority.
    - Main files: `src/main/services/plugin-service.js`, `src/main/plugins/`, `docs/plugin-authoring.md`, bridge route/permission regression tests.
    - Scope rule: only start when adding or changing host bridge routes; otherwise keep this as a guardrail, not standalone polish.
+
+4. Agent Awareness Phase B Acceptance And Visible-Info Completion
+   - User value: the pet and dashboard remain useful during real Codex work without becoming noisy or privacy-invasive.
+   - Main files: `examples/plugins/agent-awareness/`, `src/main/services/plugin-service.js`, `src/control-center/src/hooks/usePluginsPane.ts`, `src/control-center/src/panes/PluginsPane.tsx`, `docs/agent-awareness-development-design.md`, and Agent Awareness smoke/evidence scripts.
+   - Scope rule: close acceptance and one visible-info slice at a time. Do not expand into Creator Studio, general plugin contracts, or raw task-content capture.
 
 ## Verification Commands For Future Milestones
 
