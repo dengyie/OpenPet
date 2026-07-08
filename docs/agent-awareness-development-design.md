@@ -1,8 +1,8 @@
 # OpenPet Agent Awareness Development Design
 
-> Date: 2026-07-05
-> Branch: `codex/dev7`
-> Status: canonical live development document for the Agent Awareness track
+> Date: 2026-07-09
+> Baseline: local `main@51208a53` with ongoing Phase B workbench development on `codex/dev7`
+> Status: canonical live development document for the Agent Awareness track after the Phase B dashboard workbench implementation
 
 ## Documentation Set
 
@@ -25,13 +25,13 @@ This document is the single live entry for the whole Agent Awareness program. Us
 | Layer | Status | Use this when you need |
 | --- | --- | --- |
 | Current shipped baseline | live | the exact product truth today |
-| Phase A: product skeleton parity | code complete, manual acceptance pending | the current implementation milestone |
-| Phase B: core visible information | foundation shipped, broader phase open | the visible metadata layer after Phase A |
+| Phase A: product skeleton parity | merged to local main; manual acceptance follow-up open | the shipped product skeleton baseline |
+| Phase B: core visible information | plugin dashboard workbench shipped; desktop acceptance still manual | the visible metadata layer after Phase A |
 | Phase C: desktop companion completeness | designed, not started | the later companion-product completeness layer |
 
 ## Current Delivery Status
 
-The current branch baseline is no longer "paper design only." It has the full planned Phase A code surface plus the first Phase B visible-information foundation. Manual-required desktop acceptance is still open.
+The current `codex/dev7` baseline is no longer "paper design only." It has the full planned Phase A code surface plus the full bundled-plugin/dashboard Phase B visible-information milestone. Manual-required desktop acceptance is still open.
 
 ### Already Landed
 
@@ -39,9 +39,11 @@ The current branch baseline is no longer "paper design only." It has the full pl
 - shipped hook + polling dual ingestion with one canonical runtime session model;
 - shipped trusted auto-start gating behind native approval plus explicit opt-in;
 - shipped richer runtime metadata covering `session`, `turn`, `tool`, `approval`, and `progress`;
-- shipped the first Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, lightweight daily usage stats from sanitized history, a dedicated dashboard `view=stats` page, best-effort git branch/dirty summaries, bounded attention-session arbitration, content-safe current-step summaries, metadata-derived recent-progress hints, generated session summaries, dashboard rendering, bounded detail deep-link focus, in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
+- shipped the Phase B unified retained-history layer with a versioned `sessions.json` store, 30-day rolling retention, `liveSessions`, `sessionSummaries`, and `dailyUsageRollups`;
+- shipped the Phase B visible metadata layer for token/context/cost values when Codex exposes them, aggregate usage diagnostics, 30-day usage rollups, a dedicated dashboard Usage workbench, best-effort git branch/dirty summaries, bounded attention-session arbitration, content-safe current-step summaries, metadata-derived recent-progress hints, generated session summaries, a per-session Sessions workbench, safe in-dashboard session focus controls, and a compact Control Center-native Agent Awareness detail summary;
 - shipped a first-class Agent Awareness detail entry from Control Center;
 - shipped a pet-side quick-open detail entry from Bubble Chat;
+- shipped stale-session merge protection so older poller `session.discovered` data cannot downgrade newer hook-derived approval/status details, while an explicit empty message can still clear stale visible message text;
 - kept the privacy boundary intact while adding the richer runtime shape.
 
 ### Manual-Required Boundaries
@@ -50,6 +52,14 @@ These are intentionally outside automated completion:
 
 - the user still must trust the installed hook inside Codex with `/hooks`;
 - final desktop product acceptance still needs human review of dashboard usefulness and pet speech frequency.
+
+## Post-Merge Development Route
+
+The implementation work for Phase A is closed in the current baseline. The active follow-up is now acceptance stabilization plus Phase C product work:
+
+1. Acceptance stabilization: keep the real-session smoke and archive write-back chain green, refresh evidence when Codex signal shapes change, and finish human desktop review for dashboard usefulness and pet speech/noise.
+2. Phase B stabilization: keep the 30-day retained-history model, Sessions workbench, and Usage workbench accurate as Codex signal shapes evolve, and migrate remaining callers toward the canonical dashboard routes.
+3. Phase C design and execution: decide the host-level multi-session presentation model, richer pet status/mood/action mapping, usage stats surface ownership, and persona/settings controls before implementation.
 
 ## Goal And Positioning
 
@@ -76,18 +86,18 @@ Today Agent Awareness provides:
 - dual-channel Codex ingestion: rollout polling from `~/.codex/sessions` / `~/.codex/archived_sessions` plus optional hook-assisted freshness;
 - trusted host-side auto-start after `native execution approval`, explicit opt-in, and recent Codex activity detection;
 - a local service with `GET /health`, `GET /api/sessions`, dashboard `/`, and bearer-token-gated `POST /api/events`;
+- a unified retained-history store under `OPENPET_DATA_DIR/sessions.json` with `liveSessions`, `sessionSummaries`, and `dailyUsageRollups`;
 - richer sanitized runtime session state covering `session`, `turn`, `tool`, `approval`, `progress`, usage, git, and generated summary metadata;
 - bounded pet events for accepted safe lifecycle signals;
 - low-frequency pet speech for selected status changes, backed by a plugin-internal notification policy that keeps urgent transitions interruptive while cooling repeated status chatter;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
 - a Control Center-native `Agent Awareness 原生详情` summary that reads the real bundled service health details for active sessions, tracked sessions, observed events, usage tokens, estimated cost, and peak context when available;
-- a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard detail view;
-- a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded detail view;
+- a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard session workbench;
+- a pet-side `Codex 详情` quick-open button in Bubble Chat that opens the same bounded session workbench;
 - health diagnostics expose a bounded `attentionSession` chosen by status severity and recency, and the dashboard marks that session as `Focused`;
-- dashboard support for `view=details&sessionId=<sanitized-id>` so an existing safe session hash can be shown as a focused detail view;
-- dashboard support for `view=stats` so retained sanitized usage history can be inspected as a dedicated stats view without a new API;
-- a per-session dashboard `Focus` link that opens the same bounded detail route without adding a new host/plugin contract;
-- a read-only dashboard that shows aggregate usage tokens, token breakdown, estimated cost, peak context, a dedicated recent daily usage stats view, and per-session usage, git, current step, recent progress hint, and summary facts when available;
+- dashboard canonical support for `view=overview`, `view=sessions&sessionId=<sanitized-id>`, and `view=usage`, with legacy `view=details` and `view=stats` kept as compatibility aliases;
+- a per-session dashboard `Focus` link that opens the bounded Sessions workbench without adding a new host/plugin contract;
+- a read-only dashboard that shows aggregate usage tokens, token breakdown, estimated cost, peak context, a 30-day Usage workbench, and per-session usage, git, current step, recent progress hint, and summary facts when available;
 - operator commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks`;
 - repeatable real-session smoke via `npm run run-agent-awareness-local-smoke`;
 - archived smoke review write-back through `npm run update-agent-awareness-local-smoke-report`.
@@ -124,7 +134,7 @@ Agent Awareness is not yet "complete Codex awareness." The current milestone doe
 
 ## ClaudePet Parity Program
 
-The parity program is intentionally split into three bounded product phases. Phase A is code complete, and a narrow Phase B foundation has landed. The rest of Phase B and all of Phase C remain separate milestones.
+The parity program is intentionally split into three bounded product phases. Phase A is implemented and merged to local main, and a narrow Phase B foundation has landed. The rest of Phase B and all of Phase C remain separate milestones.
 
 | Phase | Product objective | Scope boundary | Primary owners | Exit signal |
 | --- | --- | --- | --- | --- |
@@ -136,7 +146,7 @@ The parity program is intentionally split into three bounded product phases. Pha
 
 ### Phase A: Product Skeleton Parity
 
-Phase A is the only active implementation milestone right now.
+Phase A is closed for implementation in the current local main baseline. The only remaining Phase A-tagged work is manual desktop acceptance evidence.
 
 **Scope**
 
@@ -162,7 +172,7 @@ Phase A is the only active implementation milestone right now.
 
 ### Phase B: Core Visible Information
 
-Phase B has started with a foundation slice. That slice adds safe visible metadata, but it does not close the broader Phase B product goal.
+Phase B is shipped for the bundled-plugin/dashboard scope. The remaining work for this track is acceptance stabilization plus Phase C product expansion.
 
 **Scope**
 
@@ -172,7 +182,7 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - recent task progress and hints;
 - per-session independent detail views.
 
-**Shipped foundation**
+**Shipped**
 
 - rollout polling derives safe `token_count` metadata into usage summaries;
 - rollout polling derives safe `turn_context` cwd into bounded git metadata without storing the cwd;
@@ -180,17 +190,19 @@ Phase B has started with a foundation slice. That slice adds safe visible metada
 - `/health` exposes aggregate usage totals, token breakdown, estimated cost, currency, and peak context metadata;
 - runtime summaries prefer bounded progress labels, approval state, usage refreshes, git refreshes, context compaction, rollback, or safe tool names over raw lifecycle type strings for `currentStep`;
 - runtime summaries derive content-safe `recentProgressHint` text from bounded metadata such as approval waits, tool completion, usage totals, git branch, and completed/failed turn status;
-- the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, a dedicated `view=stats` recent daily usage page with totals from retained sanitized history, and per-session usage/git/current-step/session-summary facts;
+- the store persists `liveSessions`, `sessionSummaries`, and `dailyUsageRollups` in one schema-versioned `sessions.json` file with a 30-day rolling retention window;
+- `/api/sessions` exposes the unified workbench payload directly for the dashboard;
+- the dashboard renders aggregate usage tokens, token breakdown, estimated cost, peak context, a canonical `view=usage` 30-day workbench with totals/top-sessions/top-projects/daily deltas, and per-session usage/git/current-step/session-summary facts;
 - health diagnostics derive a bounded attention session from safe status/recency metadata, and the dashboard labels that session as focused;
 - the Plugins pane renders a compact Agent Awareness-only native detail summary from the same reserved health diagnostics, without creating an arbitrary plugin JSON detail surface;
-- the dashboard honors `view=details&sessionId=<sanitized-id>` for safe per-session focus and renders a bounded empty state when the requested session is absent;
-- each rendered session card exposes a safe `Focus` link into that bounded detail route;
+- the dashboard honors canonical `view=sessions&sessionId=<sanitized-id>` focus plus legacy `view=details` compatibility, and renders a bounded empty state when the requested session is absent;
+- each rendered session card exposes a safe `Focus` link into that bounded Sessions workbench;
 - mock smoke flow preserves these fields in redacted reports.
 
-**Still open**
+**Deliberately still out of scope**
 
-- durable longitudinal usage rollups beyond the retained sanitized session-history window;
-- raw task-content summaries remain out of scope unless a future privacy design explicitly allows them.
+- raw task-content summaries remain out of scope unless a future privacy design explicitly allows them;
+- host-level usage stats surfaces beyond the plugin dashboard remain Phase C work.
 
 **Architecture owners**
 
@@ -326,12 +338,14 @@ The plugin owns:
 | `examples/plugins/agent-awareness/service/usage-summary.js` | Normalizes safe token/context/cost metadata. |
 | `examples/plugins/agent-awareness/service/git-summary.js` | Derives bounded git branch/dirty metadata without storing cwd. |
 | `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session shape. |
-| `examples/plugins/agent-awareness/service/session-store.js` | Persists sanitized runtime session state in plugin-owned storage. |
+| `examples/plugins/agent-awareness/service/session-store-schema.js` | Owns schema versioning, legacy migration, empty-state creation, and atomic writes for the unified retained-history store. |
+| `examples/plugins/agent-awareness/service/session-store.js` | Persists unified sanitized runtime session state and retained read models in plugin-owned storage. |
+| `examples/plugins/agent-awareness/service/usage-rollups.js` | Applies positive usage deltas into daily rollups and prunes retained history on the 30-day window. |
 | `examples/plugins/agent-awareness/service/state-mapper.js` | Maps canonical agent states into `pet:event`, routine visual-only updates, rate-limited urgent/summary `pet:say`, and bounded internal notification decisions. |
 | `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Exposes `/health`, `/api/sessions`, dashboard assets, and token-gated `/api/events`. |
 | `examples/plugins/agent-awareness/commands/doctor.js` | Reports sanitized setup and diagnostics. |
 | `examples/plugins/agent-awareness/commands/codex-hook-plan.js` | Writes a read-only future-hook plan inside plugin-owned storage. |
-| `examples/plugins/agent-awareness/web/dashboard/*` | Read-only dashboard for sanitized session status, diagnostics, hook-plan state, usage, git, and summary metadata. |
+| `examples/plugins/agent-awareness/web/dashboard/*` | Read-only dashboard for sanitized Overview, Sessions, and Usage workbench views. |
 
 ## Runtime Contract
 
@@ -544,27 +558,24 @@ That is the honest line: the current system already provides real sanitized awar
 
 ## Development Route
 
-The baseline above remains the current shipped truth. The next expansion route is now the ClaudePet parity program documented in:
+The baseline above remains the current shipped truth. The next expansion route is the remaining ClaudePet parity program documented in:
 
 - [`docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md)
 
-That program replaces the older "finish acceptance, then defer hook decisions until later" sequence with a clearer product roadmap:
+That program replaces the older "finish acceptance, then defer hook decisions until later" sequence with a clearer product roadmap. Use it for remaining Phase B/C slices, not to reopen the already merged Phase A implementation.
 
 ### Phase A: Product Skeleton Parity
 
-- officially ship `install-codex-hooks` and `uninstall-codex-hooks`;
-- support hook plus polling dual ingestion;
-- allow trusted auto-start after approval and opt-in;
-- promote runtime state from simple status to `session`, `turn`, `tool`, `approval`, and `progress`;
-- add a first-class detail entry in Control Center and from the pet-facing surface.
+- implemented baseline: official hook install/uninstall, hook plus polling ingestion, trusted opt-in auto-start, richer runtime state, and first-class detail entry points;
+- follow-up boundary: keep smoke/archive evidence current and finish manual desktop acceptance for usefulness/noise.
 
 ### Phase B: Core Visible Information
 
-- token, context, and cost aggregation foundation: shipped for safe numeric metadata, richer history still open;
+- token, context, and cost aggregation: shipped for safe numeric metadata plus retained 30-day rollups;
 - git status foundation: shipped for branch/dirty/ahead/behind metadata, deeper repository views still open;
-- current project and current session summary foundation: shipped as generated metadata summaries, semantic content summaries still out of scope;
-- recent task progress and hints foundation: shipped from safe metadata including approval waits, tool completion, usage updates, git refreshes, and completed/failed turn status;
-- per-session detail views.
+- current project and current session summary: shipped as generated metadata summaries, semantic content summaries still out of scope;
+- recent task progress and hints: shipped from safe metadata including approval waits, tool completion, usage updates, git refreshes, and completed/failed turn status;
+- per-session detail views: shipped as the Sessions workbench with compatibility support for legacy focus routes.
 
 ### Phase C: Desktop Companion Completeness
 

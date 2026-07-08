@@ -112,16 +112,20 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
       .filter({ hasText: 'Need approval' })
       .locator('[data-testid="agent-session-focus"]')
       .click()
-    await page.waitForURL(`http://127.0.0.1:${port}/?view=details&sessionId=${encodeURIComponent(targetSession.sessionId)}`)
+    await page.waitForURL(`http://127.0.0.1:${port}/?view=sessions&sessionId=${encodeURIComponent(targetSession.sessionId)}`)
+    await page.waitForSelector('[data-testid="agent-session-workbench"]')
     await page.waitForSelector('[data-testid="agent-sessions"] [data-testid="agent-session"]')
 
     const focusedSessionsText = await page.textContent('[data-testid="agent-sessions"]')
+    const sessionWorkbenchText = await page.textContent('[data-testid="agent-session-workbench"]')
     const focusedSessionCount = await page.locator('[data-testid="agent-session"]').count()
 
     assert.equal(focusedSessionCount, 1)
     assert.match(focusedSessionsText || '', /Focused Session/)
     assert.match(focusedSessionsText || '', /Need approval/)
     assert.doesNotMatch(focusedSessionsText || '', /Finished \[path\]/)
+    assert.match(sessionWorkbenchText || '', /Need approval/)
+    assert.match(sessionWorkbenchText || '', /Waiting/)
 
     await service.handleEvent({
       sessionId: 'raw-usage-session',
@@ -138,15 +142,16 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
       timestamp: '2026-07-03T12:06:00.000Z'
     }, { initial: false })
 
-    await page.goto(`http://127.0.0.1:${port}/?view=stats`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('[data-testid="agent-usage-stats"] .usage-stats-totals')
+    await page.goto(`http://127.0.0.1:${port}/?view=usage`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('[data-testid="agent-usage-workbench"]')
 
-    const statsText = await page.textContent('[data-testid="agent-usage-stats"]')
-    assert.match(statsText || '', /Usage Stats Detail/)
+    const statsText = await page.textContent('[data-testid="agent-usage-workbench"]')
+    assert.match(statsText || '', /30-Day Usage Workbench/)
     assert.match(statsText || '', /1,200 tokens/)
     assert.match(statsText || '', /\$0.012000 USD/)
     assert.equal(await page.locator('[data-section="diagnostics"]').isHidden(), true)
     assert.equal(await page.locator('[data-section="sessions"]').isHidden(), true)
+    assert.equal(await page.locator('[data-section="session-workbench"]').isHidden(), true)
     assert.deepEqual(consoleMessages, [])
   } finally {
     await browser.close()

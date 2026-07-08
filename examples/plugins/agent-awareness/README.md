@@ -14,11 +14,12 @@ Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI codin
 
 - Dual-channel Codex ingestion: zero-config rollout polling under `~/.codex/sessions` / `~/.codex/archived_sessions` plus optional shipped hooks.
 - Explicit `install-codex-hooks` / `uninstall-codex-hooks` commands for reversible, backup-safe Codex hook management.
-- Sanitized runtime session storage under `OPENPET_DATA_DIR/sessions.json`.
+- Sanitized unified runtime storage under `OPENPET_DATA_DIR/sessions.json` with `liveSessions`, `sessionSummaries`, and `dailyUsageRollups`.
+- A 30-day rolling retained history window for per-session workbench state and usage rollups.
 - Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, generated session summaries, and metadata-derived progress hints.
 - Plugin-internal notification policy for low-frequency pet speech: urgent transitions can interrupt, repeated status chatter is cooled, and pet events are still emitted when speech is suppressed.
 - Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
-- A local dashboard with a dedicated usage stats view, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
+- A local dashboard with canonical `overview`, `sessions`, and `usage` workbench routes, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
 
 The current shipped scope does not auto-install hooks during discovery or app boot, does not trust the hook inside Codex on the user's behalf, does not expose user-configurable persistent noise controls, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
@@ -118,11 +119,13 @@ Behavior:
 - When the real bundled service returns reserved diagnostics, the Plugins pane can also show `Agent Awareness 原生详情` with active/tracked session counts, observed events, usage tokens, estimated cost, and peak context.
 - Those summaries are reserved for `pluginId === openpet.agent-awareness` and `serviceId === agent-awareness`; other plugins do not inherit them by returning similarly shaped JSON.
 - The plugin exposes one config field today: `autoStartOnCodexSignal`, which is off by default and must be enabled explicitly.
-- The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness dashboard with `view=details`.
-- Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded detail route.
+- The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness session workbench.
+- Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded session-workbench route.
 - `/health` diagnostics include a bounded attention session selected from safe status and recency metadata.
-- The dashboard honors `view=details&sessionId=<sanitized-id>` to focus one existing safe session hash, and shows a bounded empty state when the requested session is absent.
-- The dashboard honors `view=stats` to show a dedicated usage stats page from retained sanitized session history.
-- Each session card exposes a `Focus` link into the same bounded detail route.
-- The dashboard is read-only and focuses on sanitized session status, bounded attention focus, recent timeline, hook-plan state, aggregate usage tokens/cost/context, dedicated daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.
+- The dashboard canonical routes are `?view=overview`, `?view=sessions&sessionId=<sanitized-id>`, and `?view=usage`.
+- The dashboard still accepts legacy `view=details` and `view=stats` links during the compatibility migration, but new links should target `sessions` and `usage`.
+- The Sessions workbench focuses one retained safe session hash, shows a bounded empty state when the requested session is absent, and keeps focus links inside sanitized session IDs only.
+- The Usage workbench shows rolling 30-day totals plus top sessions, top projects, and retained daily deltas from sanitized history.
+- Each session card exposes a `Focus` link into the bounded session workbench.
+- The dashboard is read-only and focuses on sanitized session status, bounded attention focus, recent timeline, hook-plan state, aggregate usage tokens/cost/context, retained daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.
 - Local smoke reports include bounded `notificationPolicyEvidence` from a synthetic state-mapper sequence, including proof that routine `thinking`/`working` updates stay visual-only while urgent and summary transitions can still speak. It proves the report/archive chain carries low-noise policy evidence, but it does not replace human desktop speech-noise acceptance.

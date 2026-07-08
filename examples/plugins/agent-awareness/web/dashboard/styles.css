@@ -75,6 +75,7 @@ body {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -89,6 +90,11 @@ h2 {
   font-size: 18px;
   line-height: 1.2;
   margin-bottom: 14px;
+}
+
+h3 {
+  font-size: 15px;
+  line-height: 1.3;
 }
 
 .summary,
@@ -229,6 +235,13 @@ button:hover {
   gap: 10px;
 }
 
+.workbench,
+.workbench-shell,
+.workbench-list {
+  display: grid;
+  gap: 12px;
+}
+
 .usage-stats-header,
 .usage-stat-row {
   display: flex;
@@ -259,6 +272,38 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-alt);
+}
+
+.workbench-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.workbench-card,
+.workbench-list-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-alt);
+}
+
+.workbench-card {
+  padding: 14px;
+}
+
+.workbench-list-item {
+  padding: 14px;
+}
+
+.workbench-metrics {
+  margin-top: 14px;
 }
 
 .usage-stat-row {
@@ -490,7 +535,8 @@ button:hover {
 @media (max-width: 900px) {
   .metrics,
   .health-grid,
-  .usage-stats-totals {
+  .usage-stats-totals,
+  .workbench-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -501,6 +547,7 @@ button:hover {
   }
 
   .hero,
+  .workbench-hero,
   .panel-header,
   .session-header,
   .health-row,
@@ -516,6 +563,7 @@ button:hover {
   .metrics,
   .health-grid,
   .usage-stats-totals,
+  .workbench-grid,
   .session-facts {
     grid-template-columns: 1fr;
   }

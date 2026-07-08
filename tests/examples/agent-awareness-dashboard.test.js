@@ -281,7 +281,7 @@ test('agent awareness dashboard builds bounded usage stats from session history'
 
 test('agent awareness dashboard supports a dedicated usage stats view', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
-  assert.equal(runtime.normalizeDashboardQuery('?view=stats&sessionId=ignored').view, 'stats')
+  assert.equal(runtime.normalizeDashboardQuery('?view=stats&sessionId=ignored').view, 'usage')
 
   const viewModel = runtime.buildDashboardViewModel({
     query: {
@@ -347,6 +347,7 @@ test('agent awareness dashboard supports a dedicated usage stats view', () => {
 
   const rendered = runtime.renderDashboard(viewModel)
 
+  assert.equal(viewModel.currentView, 'usage')
   assert.equal(viewModel.statsMode, true)
   assert.equal(viewModel.detailMode, false)
   assert.equal(viewModel.usageStatsTotals.daysText, '2 days')
@@ -358,6 +359,67 @@ test('agent awareness dashboard supports a dedicated usage stats view', () => {
   assert.match(rendered.usageStatsHtml, /Usage Stats Detail/)
   assert.match(rendered.usageStatsHtml, /2,500 tokens/)
   assert.match(rendered.usageStatsHtml, /\$0.020000 USD/)
+})
+
+test('agent awareness dashboard builds a 30-day usage workbench view', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    query: { view: 'usage' },
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 2,
+        totalEvents: 8,
+        seenCount: 8
+      }
+    },
+    sessionsPayload: {
+      liveSessions: [],
+      sessionSummaries: [
+        { sessionId: 'session-a', project: 'OpenPet #111111' },
+        { sessionId: 'session-b', project: 'Docs #222222' }
+      ],
+      dailyUsageRollups: [
+        {
+          date: '2026-07-09',
+          totals: {
+            tokenDelta: 1700,
+            costDeltaUsd: 0.014,
+            currency: 'USD',
+            peakContextUsedPercent: 0.75,
+            eventCount: 3,
+            sessionCount: 2,
+            projectCount: 2
+          },
+          sessions: [
+            {
+              sessionId: 'session-a',
+              project: 'OpenPet #111111',
+              tokenDelta: 1500,
+              costDeltaUsd: 0.012,
+              currency: 'USD',
+              peakContextUsedPercent: 0.75,
+              eventCount: 2
+            },
+            {
+              sessionId: 'session-b',
+              project: 'Docs #222222',
+              tokenDelta: 200,
+              costDeltaUsd: 0.002,
+              currency: 'USD',
+              peakContextUsedPercent: 0.1,
+              eventCount: 1
+            }
+          ]
+        }
+      ]
+    }
+  })
+
+  assert.equal(viewModel.currentView, 'usage')
+  assert.equal(viewModel.usageTotals.tokensText, '1,700 tokens')
+  assert.equal(viewModel.topSessions[0].sessionId, 'session-a')
+  assert.equal(viewModel.topProjects[0].project, 'OpenPet #111111')
 })
 
 test('agent awareness dashboard renders sanitized current step summaries', () => {
@@ -526,6 +588,9 @@ test('agent awareness dashboard builds a selected session workbench from stable 
   assert.equal(viewModel.selectedSession.sessionId, 'target-session')
   assert.equal(viewModel.selectedSession.currentStep, 'Tool: apply_patch')
   assert.equal(viewModel.selectedSession.detailHref, '?view=sessions&sessionId=target-session')
+  const rendered = runtime.renderDashboard(viewModel)
+  assert.match(rendered.sessionWorkbenchHtml, /Focused Session/)
+  assert.match(rendered.sessionWorkbenchHtml, /Tool: apply_patch/)
 })
 
 test('agent awareness dashboard load applies location detail query', async () => {
@@ -611,12 +676,14 @@ test('agent awareness dashboard renders safe per-session focus links', () => {
   })
 
   const rendered = runtime.renderDashboard(viewModel)
+  const targetSession = viewModel.sessions.find((session) => session.sessionId === 'target-session')
+  const unsafeSession = viewModel.sessions.find((session) => session.sessionId.includes('alert(1)'))
 
-  assert.equal(viewModel.sessions[0].detailHref, '?view=details&sessionId=target-session')
-  assert.equal(viewModel.sessions[1].detailHref, '?view=details&sessionId=abc%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E')
+  assert.equal(targetSession.detailHref, '?view=sessions&sessionId=target-session')
+  assert.equal(unsafeSession.detailHref, '?view=sessions&sessionId=abc%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E')
   assert.match(rendered.sessionsHtml, /data-testid="agent-session-focus"/)
-  assert.match(rendered.sessionsHtml, /href="\?view=details&amp;sessionId=target-session"/)
-  assert.match(rendered.sessionsHtml, /href="\?view=details&amp;sessionId=abc%22%3E%3Cscript%3Ealert\(1\)%3C%2Fscript%3E"/)
+  assert.match(rendered.sessionsHtml, /href="\?view=sessions&amp;sessionId=target-session"/)
+  assert.match(rendered.sessionsHtml, /href="\?view=sessions&amp;sessionId=abc%22%3E%3Cscript%3Ealert\(1\)%3C%2Fscript%3E"/)
   assert.doesNotMatch(rendered.sessionsHtml, /<script>/)
   assert.doesNotMatch(rendered.sessionsHtml, /javascript:/i)
 })
@@ -702,11 +769,13 @@ test('agent awareness dashboard marks the bounded attention session', () => {
 
   const attentionMetric = viewModel.summary.find((item) => item.label === 'Attention')
   const rendered = runtime.renderDashboard(viewModel)
+  const workingSession = viewModel.sessions.find((session) => session.sessionId === 'working-session')
+  const waitingSession = viewModel.sessions.find((session) => session.sessionId === 'waiting-session')
 
   assert.equal(attentionMetric.value, 'Waiting')
   assert.equal(attentionMetric.detail, 'Docs #222222 · Waiting for user input')
-  assert.equal(viewModel.sessions[0].isFocused, false)
-  assert.equal(viewModel.sessions[1].isFocused, true)
+  assert.equal(workingSession.isFocused, false)
+  assert.equal(waitingSession.isFocused, true)
   assert.match(rendered.sessionsHtml, /Focused/)
   assert.match(rendered.sessionsHtml, /Waiting session/)
 })

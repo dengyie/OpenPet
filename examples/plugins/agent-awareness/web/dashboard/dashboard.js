@@ -40,6 +40,13 @@ const createDashboardRuntime = ({
     return Number.isFinite(Number(value))
   }
 
+  const roundSix = (value) => Math.round(Number(value || 0) * 1_000_000) / 1_000_000
+
+  const toTimestampMs = (value) => {
+    const numeric = Date.parse(String(value || ''))
+    return Number.isFinite(numeric) ? numeric : 0
+  }
+
   const formatPercent = (value) => {
     if (!hasFiniteMetadataNumber(value)) return ''
     const numeric = Number(value)
@@ -83,15 +90,17 @@ const createDashboardRuntime = ({
     const normalizedView = normalizeQueryText(query.view, 32).toLowerCase()
     const currentView = normalizedView === 'details'
       ? 'sessions'
-      : ['overview', 'sessions', 'stats', 'usage'].includes(normalizedView) ? normalizedView : 'overview'
+      : normalizedView === 'stats'
+        ? 'usage'
+        : ['overview', 'sessions', 'usage'].includes(normalizedView) ? normalizedView : 'overview'
     return {
       view: currentView,
       sessionId: normalizeQueryText(query.sessionId, 128)
     }
   }
 
-  const buildDetailHref = (sessionId = '') => `?view=details&sessionId=${encodeURIComponent(normalizeQueryText(sessionId, 128))}`
   const buildSessionHref = (sessionId = '') => `?view=sessions&sessionId=${encodeURIComponent(normalizeQueryText(sessionId, 128))}`
+  const buildDetailHref = (sessionId = '') => buildSessionHref(sessionId)
 
   const getCurrentDashboardQuery = () => normalizeDashboardQuery(locationRef?.search || '')
 
@@ -323,27 +332,307 @@ const createDashboardRuntime = ({
     }
   }
 
+  const buildSessionCards = ({
+    liveSessions = [],
+    sessionSummaries = [],
+    requestedSessionId = '',
+    attentionSession = null
+  } = {}) => {
+    const liveSessionMap = new Map(liveSessions.map((session) => [String(session.sessionId || ''), session]))
+    const cards = []
+    const seenSessionIds = new Set()
+
+    for (const summary of sessionSummaries) {
+      const sessionId = String(summary?.sessionId || '')
+      if (!sessionId) continue
+      const liveSession = liveSessionMap.get(sessionId) || null
+      const timelineSource = Array.isArray(summary.timelineTail) && summary.timelineTail.length
+        ? summary.timelineTail
+        : (Array.isArray(liveSession?.history) ? liveSession.history.slice(-4) : [])
+      cards.push({
+        detailHref: buildSessionHref(sessionId),
+        project: sanitizeDisplayText(summary.project || liveSession?.project || 'Unknown project'),
+        sessionId,
+        message: sanitizeDisplayText(
+          liveSession?.message ||
+          summary.summary?.recentProgressHint ||
+          timelineSource.at(-1)?.message ||
+          'No sanitized message'
+        ),
+        timestamp: formatTimestamp(summary.lastSeenAt || liveSession?.timestamp || ''),
+        sortTimestamp: summary.lastSeenAt || liveSession?.timestamp || '',
+        isFocused: attentionSession?.sessionId === sessionId,
+        status: getStatusMeta(summary.status || liveSession?.status),
+        lastEvent: summary.lastEventType || liveSession?.type || 'session.updated',
+        usageText: describeUsage(summary.usageLatest || liveSession?.usage || {}),
+        gitText: describeGit(summary.gitLatest || liveSession?.git || {}),
+        summaryTitle: sanitizeDisplayText(summary.summary?.title || liveSession?.summary?.title || summary.project || 'Session summary'),
+        currentStep: sanitizeDisplayText(
+          summary.summary?.currentStep ||
+          liveSession?.summary?.currentStep ||
+          summary.phase ||
+          liveSession?.progressLabel ||
+          liveSession?.type ||
+          'No current step yet'
+        ),
+        progressHint: sanitizeDisplayText(
+          summary.summary?.recentProgressHint ||
+          liveSession?.summary?.recentProgressHint ||
+          liveSession?.message ||
+          'No progress hint yet'
+        ),
+        timeline: timelineSource.slice(-4).reverse().map((entry) => ({
+          type: entry.type || 'session.updated',
+          status: getStatusMeta(entry.status),
+          message: sanitizeDisplayText(entry.message || 'No sanitized message'),
+          timestamp: formatTimestamp(entry.timestamp)
+        }))
+      })
+      seenSessionIds.add(sessionId)
+    }
+
+    for (const session of liveSessions) {
+      const sessionId = String(session.sessionId || '')
+      if (!sessionId || seenSessionIds.has(sessionId)) continue
+      cards.push({
+        detailHref: buildSessionHref(sessionId),
+        project: sanitizeDisplayText(session.project || 'Unknown project'),
+        sessionId,
+        message: sanitizeDisplayText(session.message || 'No sanitized message'),
+        timestamp: formatTimestamp(session.timestamp),
+        sortTimestamp: session.timestamp || '',
+        isFocused: attentionSession?.sessionId === sessionId,
+        status: getStatusMeta(session.status),
+        lastEvent: session.type || 'session.updated',
+        usageText: describeUsage(session.usage),
+        gitText: describeGit(session.git),
+        summaryTitle: sanitizeDisplayText(session.summary?.title || session.project || 'Session summary'),
+        currentStep: sanitizeDisplayText(session.summary?.currentStep || session.progressLabel || session.type || 'No current step yet'),
+        progressHint: sanitizeDisplayText(session.summary?.recentProgressHint || session.message || 'No progress hint yet'),
+        timeline: Array.isArray(session.history)
+          ? session.history.slice(-4).reverse().map((entry) => ({
+            type: entry.type || 'session.updated',
+            status: getStatusMeta(entry.status),
+            message: sanitizeDisplayText(entry.message || 'No sanitized message'),
+            timestamp: formatTimestamp(entry.timestamp)
+          }))
+          : []
+      })
+    }
+
+    const filteredCards = requestedSessionId
+      ? cards.filter((session) => session.sessionId === requestedSessionId)
+      : cards
+
+    return filteredCards
+      .sort((left, right) => toTimestampMs(right.sortTimestamp) - toTimestampMs(left.sortTimestamp))
+      .map(({ sortTimestamp, ...session }) => session)
+  }
+
+  const mergeCurrency = (left = '', right = '') => {
+    if (!left) return right || ''
+    if (!right || right === left) return left
+    return 'MIXED'
+  }
+
+  const formatUsageDelta = ({ totalTokens = 0, costDeltaUsd = null, currency = '', peakContextUsedPercent = null } = {}) => ({
+    tokensText: totalTokens > 0 ? `${formatNumber(totalTokens)} tokens` : 'No token metadata',
+    costText: costDeltaUsd != null ? formatCost({ amount: costDeltaUsd, currency: currency || 'USD' }) : 'No cost metadata',
+    contextText: peakContextUsedPercent != null ? `${formatPercent(peakContextUsedPercent)} peak` : 'No context metadata'
+  })
+
+  const buildUsageWorkbenchViewModel = ({ dailyUsageRollups = [], sessionSummaries = [] } = {}) => {
+    const normalizedRows = Array.isArray(dailyUsageRollups) ? dailyUsageRollups : []
+    const sessionSummaryMap = new Map(
+      (Array.isArray(sessionSummaries) ? sessionSummaries : [])
+        .filter((summary) => summary?.sessionId)
+        .map((summary) => [String(summary.sessionId), summary])
+    )
+
+    const totals = {
+      totalTokens: 0,
+      costDeltaUsd: null,
+      currency: '',
+      peakContextUsedPercent: null,
+      eventCount: 0,
+      sessionIds: new Set(),
+      projects: new Set()
+    }
+    const sessionMap = new Map()
+    const projectMap = new Map()
+
+    for (const row of normalizedRows) {
+      const rowTotals = row?.totals && typeof row.totals === 'object' ? row.totals : {}
+      const rowTokenDelta = Number(rowTotals.tokenDelta) || 0
+      const rowCostDelta = hasFiniteMetadataNumber(rowTotals.costDeltaUsd) ? Number(rowTotals.costDeltaUsd) : null
+      const rowPeakContext = hasFiniteMetadataNumber(rowTotals.peakContextUsedPercent) ? Number(rowTotals.peakContextUsedPercent) : null
+
+      totals.totalTokens += rowTokenDelta
+      totals.costDeltaUsd = rowCostDelta == null
+        ? totals.costDeltaUsd
+        : roundSix((totals.costDeltaUsd || 0) + rowCostDelta)
+      totals.currency = mergeCurrency(totals.currency, sanitizeDisplayText(rowTotals.currency || '').toUpperCase())
+      totals.peakContextUsedPercent = rowPeakContext == null
+        ? totals.peakContextUsedPercent
+        : Math.max(totals.peakContextUsedPercent || 0, rowPeakContext)
+      totals.eventCount += Number(rowTotals.eventCount) || 0
+
+      for (const sessionRow of Array.isArray(row?.sessions) ? row.sessions : []) {
+        const sessionId = sanitizeDisplayText(sessionRow?.sessionId || '').slice(0, 128)
+        const project = sanitizeDisplayText(
+          sessionRow?.project ||
+          sessionSummaryMap.get(sessionId)?.project ||
+          'Unknown project'
+        )
+        if (sessionId) totals.sessionIds.add(sessionId)
+        if (project) totals.projects.add(project)
+
+        if (sessionId) {
+          if (!sessionMap.has(sessionId)) {
+            sessionMap.set(sessionId, {
+              sessionId,
+              project,
+              totalTokens: 0,
+              costDeltaUsd: null,
+              currency: '',
+              peakContextUsedPercent: null,
+              eventCount: 0
+            })
+          }
+          const aggregate = sessionMap.get(sessionId)
+          aggregate.project = aggregate.project || project
+          aggregate.totalTokens += Number(sessionRow.tokenDelta) || 0
+          aggregate.costDeltaUsd = hasFiniteMetadataNumber(sessionRow.costDeltaUsd)
+            ? roundSix((aggregate.costDeltaUsd || 0) + Number(sessionRow.costDeltaUsd))
+            : aggregate.costDeltaUsd
+          aggregate.currency = mergeCurrency(aggregate.currency, sanitizeDisplayText(sessionRow.currency || '').toUpperCase())
+          aggregate.peakContextUsedPercent = hasFiniteMetadataNumber(sessionRow.peakContextUsedPercent)
+            ? Math.max(aggregate.peakContextUsedPercent || 0, Number(sessionRow.peakContextUsedPercent))
+            : aggregate.peakContextUsedPercent
+          aggregate.eventCount += Number(sessionRow.eventCount) || 0
+        }
+
+        if (project) {
+          if (!projectMap.has(project)) {
+            projectMap.set(project, {
+              project,
+              totalTokens: 0,
+              costDeltaUsd: null,
+              currency: '',
+              peakContextUsedPercent: null,
+              eventCount: 0,
+              sessionIds: new Set()
+            })
+          }
+          const aggregate = projectMap.get(project)
+          aggregate.totalTokens += Number(sessionRow.tokenDelta) || 0
+          aggregate.costDeltaUsd = hasFiniteMetadataNumber(sessionRow.costDeltaUsd)
+            ? roundSix((aggregate.costDeltaUsd || 0) + Number(sessionRow.costDeltaUsd))
+            : aggregate.costDeltaUsd
+          aggregate.currency = mergeCurrency(aggregate.currency, sanitizeDisplayText(sessionRow.currency || '').toUpperCase())
+          aggregate.peakContextUsedPercent = hasFiniteMetadataNumber(sessionRow.peakContextUsedPercent)
+            ? Math.max(aggregate.peakContextUsedPercent || 0, Number(sessionRow.peakContextUsedPercent))
+            : aggregate.peakContextUsedPercent
+          aggregate.eventCount += Number(sessionRow.eventCount) || 0
+          if (sessionId) aggregate.sessionIds.add(sessionId)
+        }
+      }
+    }
+
+    const usageTotals = {
+      daysText: pluralize(normalizedRows.length, 'day'),
+      sessionsText: pluralize(totals.sessionIds.size, 'session'),
+      projectsText: pluralize(totals.projects.size, 'project'),
+      eventsText: pluralize(totals.eventCount, 'event'),
+      ...formatUsageDelta({
+        totalTokens: totals.totalTokens,
+        costDeltaUsd: totals.costDeltaUsd,
+        currency: totals.currency,
+        peakContextUsedPercent: totals.peakContextUsedPercent
+      })
+    }
+
+    const usageRows = normalizedRows.map((row) => {
+      const rowTotals = row?.totals && typeof row.totals === 'object' ? row.totals : {}
+      return {
+        date: sanitizeDisplayText(row?.date || ''),
+        sessionsText: pluralize(Number(rowTotals.sessionCount) || 0, 'session'),
+        projectsText: pluralize(Number(rowTotals.projectCount) || 0, 'project'),
+        eventsText: pluralize(Number(rowTotals.eventCount) || 0, 'event'),
+        ...formatUsageDelta({
+          totalTokens: Number(rowTotals.tokenDelta) || 0,
+          costDeltaUsd: hasFiniteMetadataNumber(rowTotals.costDeltaUsd) ? Number(rowTotals.costDeltaUsd) : null,
+          currency: sanitizeDisplayText(rowTotals.currency || '').toUpperCase(),
+          peakContextUsedPercent: hasFiniteMetadataNumber(rowTotals.peakContextUsedPercent) ? Number(rowTotals.peakContextUsedPercent) : null
+        })
+      }
+    })
+
+    const topSessions = [...sessionMap.values()]
+      .sort((left, right) => (
+        right.totalTokens - left.totalTokens ||
+        (right.costDeltaUsd || 0) - (left.costDeltaUsd || 0) ||
+        right.eventCount - left.eventCount ||
+        left.sessionId.localeCompare(right.sessionId)
+      ))
+      .slice(0, 5)
+      .map((session) => ({
+        sessionId: session.sessionId,
+        project: session.project,
+        detailHref: buildSessionHref(session.sessionId),
+        eventsText: pluralize(session.eventCount, 'event'),
+        ...formatUsageDelta(session)
+      }))
+
+    const topProjects = [...projectMap.values()]
+      .sort((left, right) => (
+        right.totalTokens - left.totalTokens ||
+        (right.costDeltaUsd || 0) - (left.costDeltaUsd || 0) ||
+        right.eventCount - left.eventCount ||
+        left.project.localeCompare(right.project)
+      ))
+      .slice(0, 5)
+      .map((project) => ({
+        project: project.project,
+        sessionsText: pluralize(project.sessionIds.size, 'session'),
+        eventsText: pluralize(project.eventCount, 'event'),
+        ...formatUsageDelta(project)
+      }))
+
+    return {
+      usageTotals,
+      usageRows,
+      topSessions,
+      topProjects
+    }
+  }
+
   const buildDashboardViewModel = ({ health = {}, sessionsPayload = {}, query = {} } = {}) => {
-    const sessions = Array.isArray(sessionsPayload.liveSessions)
+    const liveSessions = Array.isArray(sessionsPayload.liveSessions)
       ? sessionsPayload.liveSessions
       : (Array.isArray(sessionsPayload.sessions) ? sessionsPayload.sessions : [])
     const sessionSummaries = Array.isArray(sessionsPayload.sessionSummaries) ? sessionsPayload.sessionSummaries : []
+    const dailyUsageRollups = Array.isArray(sessionsPayload.dailyUsageRollups) ? sessionsPayload.dailyUsageRollups : []
     const diagnostics = health.diagnostics || {}
     const hookMode = health.hookMode || {}
     const codexPoller = health.codexPoller || {}
-    const latestTimestamp = diagnostics.lastEventAt || sessions[0]?.timestamp || ''
+    const latestTimestamp = diagnostics.lastEventAt || liveSessions[0]?.timestamp || sessionSummaries[0]?.lastSeenAt || ''
     const activeSessionCount = Number.isFinite(Number(diagnostics.activeSessionCount))
       ? Number(diagnostics.activeSessionCount)
-      : getActiveSessionCount(sessions)
+      : getActiveSessionCount(liveSessions)
     const normalizedQuery = normalizeDashboardQuery(query)
     const currentView = normalizedQuery.view || 'overview'
     const detailMode = currentView === 'sessions'
-    const statsMode = currentView === 'stats' || currentView === 'usage'
+    const statsMode = currentView === 'usage'
     const requestedSessionId = normalizedQuery.sessionId
+    const attentionSession = normalizeAttentionSession(diagnostics.attentionSession)
+    const visibleSessions = buildSessionCards({
+      liveSessions,
+      sessionSummaries,
+      requestedSessionId: detailMode ? requestedSessionId : '',
+      attentionSession
+    })
     const hasRequestedSessionId = detailMode && Boolean(requestedSessionId)
-    const visibleSessions = hasRequestedSessionId
-      ? sessions.filter((session) => String(session.sessionId || '') === requestedSessionId)
-      : sessions
     const detailFound = !hasRequestedSessionId || visibleSessions.length > 0
     const detailNotice = !detailMode
       ? ''
@@ -352,14 +641,15 @@ const createDashboardRuntime = ({
           ? `Focused Session: ${requestedSessionId}`
           : ''
         : 'Showing latest sanitized session details.'
-    const usageStatsRecords = buildUsageStatsRecords(sessions)
-    const attentionSession = normalizeAttentionSession(diagnostics.attentionSession)
+    const usageStatsRecords = buildUsageStatsRecords(liveSessions)
     const attentionStatus = getStatusMeta(attentionSession?.status || '')
     const attentionDetail = attentionSession
       ? [attentionSession.project, attentionSession.reason].filter(Boolean).join(' · ')
       : 'No active attention session'
-    const selectedSessionId = requestedSessionId || sessions[0]?.sessionId || sessionSummaries[0]?.sessionId || ''
+    const selectedSessionId = requestedSessionId || liveSessions[0]?.sessionId || sessionSummaries[0]?.sessionId || ''
     const selectedSummary = sessionSummaries.find((item) => String(item.sessionId || '') === String(selectedSessionId)) || null
+    const usageWorkbench = buildUsageWorkbenchViewModel({ dailyUsageRollups, sessionSummaries })
+    const trackedSessionCount = sessionSummaries.length || liveSessions.length
 
     return {
       currentView,
@@ -368,15 +658,19 @@ const createDashboardRuntime = ({
       detailNotice,
       attentionSession,
       requestedSessionId,
-      selectedSession: buildSelectedSession({ selectedSummary, liveSessions: sessions }),
+      selectedSession: buildSelectedSession({ selectedSummary, liveSessions }),
       serviceOk: health.ok === true,
       statsMode,
       usageStats: formatUsageStatsRows(usageStatsRecords),
       usageStatsTotals: buildUsageStatsTotals(usageStatsRecords),
+      usageRows: usageWorkbench.usageRows,
+      usageTotals: usageWorkbench.usageTotals,
+      topSessions: usageWorkbench.topSessions,
+      topProjects: usageWorkbench.topProjects,
       summary: [
         {
           label: 'Tracked Sessions',
-          value: formatNumber(sessions.length),
+          value: formatNumber(trackedSessionCount),
           detail: `${formatNumber(activeSessionCount)} active now`
         },
         {
@@ -453,29 +747,7 @@ const createDashboardRuntime = ({
           tone: diagnostics.lastError ? 'danger' : 'success'
         }
       ],
-      sessions: visibleSessions.map((session) => ({
-        detailHref: buildDetailHref(session.sessionId || ''),
-        project: sanitizeDisplayText(session.project || 'Unknown project'),
-        sessionId: session.sessionId || '',
-        message: sanitizeDisplayText(session.message || 'No sanitized message'),
-        timestamp: formatTimestamp(session.timestamp),
-        isFocused: attentionSession?.sessionId === String(session.sessionId || ''),
-        status: getStatusMeta(session.status),
-        lastEvent: session.type || 'session.updated',
-        usageText: describeUsage(session.usage),
-        gitText: describeGit(session.git),
-        summaryTitle: sanitizeDisplayText(session.summary?.title || session.project || 'Session summary'),
-        currentStep: sanitizeDisplayText(session.summary?.currentStep || session.progressLabel || session.type || 'No current step yet'),
-        progressHint: sanitizeDisplayText(session.summary?.recentProgressHint || session.message || 'No progress hint yet'),
-        timeline: Array.isArray(session.history)
-          ? session.history.slice(-4).reverse().map((entry) => ({
-            type: entry.type || 'session.updated',
-            status: getStatusMeta(entry.status),
-            message: sanitizeDisplayText(entry.message || 'No sanitized message'),
-            timestamp: formatTimestamp(entry.timestamp)
-          }))
-          : []
-      }))
+      sessions: visibleSessions
     }
   }
 
@@ -562,6 +834,162 @@ const createDashboardRuntime = ({
     </div>
   `
 
+  const renderSessionWorkbench = (selectedSession = null) => {
+    if (!selectedSession) {
+      return '<p class="empty-state">No sanitized session selected yet.</p>'
+    }
+    return `
+      <div class="workbench-shell">
+        <div class="workbench-hero">
+          <div>
+            <p class="session-label">Focused Session</p>
+            <p class="session-project">${escapeHtml(sanitizeDisplayText(selectedSession.project))}</p>
+            <p class="session-meta">${escapeHtml(sanitizeDisplayText(selectedSession.sessionId))}</p>
+          </div>
+          <div class="session-actions">
+            <span class="status-badge tone-${escapeHtml(selectedSession.status.tone)}">${escapeHtml(selectedSession.status.label)}</span>
+            ${selectedSession.phase ? `<span class="status-badge tone-neutral">${escapeHtml(sanitizeDisplayText(selectedSession.phase))}</span>` : ''}
+            ${selectedSession.approvalState ? `<span class="status-badge tone-warning">${escapeHtml(sanitizeDisplayText(selectedSession.approvalState))}</span>` : ''}
+          </div>
+        </div>
+        <div class="session-facts workbench-metrics">
+          <div>
+            <p class="session-label">Current Step</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(selectedSession.currentStep || 'No current step yet'))}</p>
+            <p class="session-message">${escapeHtml(sanitizeDisplayText(selectedSession.progressHint || 'No progress hint yet'))}</p>
+          </div>
+          <div>
+            <p class="session-label">Last Seen</p>
+            <p class="session-fact-value">${escapeHtml(selectedSession.lastSeenAt)}</p>
+            <p class="session-message">${escapeHtml(sanitizeDisplayText(selectedSession.firstSeenAt))}</p>
+          </div>
+          <div>
+            <p class="session-label">Usage Latest</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(selectedSession.usageText))}</p>
+          </div>
+          <div>
+            <p class="session-label">Usage Peak</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(selectedSession.usagePeakText || 'No usage metadata yet'))}</p>
+          </div>
+          <div>
+            <p class="session-label">Git</p>
+            <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(selectedSession.gitText || 'No git metadata yet'))}</p>
+          </div>
+          <div>
+            <p class="session-label">Events</p>
+            <p class="session-fact-value">${escapeHtml(pluralize(selectedSession.eventCount || 0, 'event'))}</p>
+            <p class="session-message">${escapeHtml(sanitizeDisplayText(selectedSession.toolName || 'No active tool'))}</p>
+          </div>
+        </div>
+        <div class="session-body">
+          <p class="session-label">Recent Timeline</p>
+          ${renderTimeline(selectedSession.timeline)}
+        </div>
+      </div>
+    `
+  }
+
+  const renderUsageWorkbench = ({
+    usageTotals = {},
+    usageRows = [],
+    topSessions = [],
+    topProjects = []
+  } = {}) => `
+    <div class="workbench-shell">
+      <div class="usage-stats-header">
+        <strong>30-Day Usage Workbench</strong>
+        <span>Retained daily deltas, top sessions, and top projects.</span>
+      </div>
+      <div class="usage-stats-totals workbench-usage-totals">
+        <article>
+          <p class="usage-stat-meta">Window</p>
+          <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(usageTotals.daysText || '0 days'))}</p>
+        </article>
+        <article>
+          <p class="usage-stat-meta">Tokens</p>
+          <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(usageTotals.tokensText || 'No token metadata'))}</p>
+        </article>
+        <article>
+          <p class="usage-stat-meta">Cost</p>
+          <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(usageTotals.costText || 'No cost metadata'))}</p>
+        </article>
+        <article>
+          <p class="usage-stat-meta">Peak Context</p>
+          <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(usageTotals.contextText || 'No context metadata'))}</p>
+        </article>
+        <article>
+          <p class="usage-stat-meta">Sessions</p>
+          <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(usageTotals.sessionsText || '0 sessions'))}</p>
+        </article>
+        <article>
+          <p class="usage-stat-meta">Projects</p>
+          <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(usageTotals.projectsText || '0 projects'))}</p>
+        </article>
+      </div>
+      <div class="workbench-grid">
+        <section class="workbench-card">
+          <div class="panel-header">
+            <h3>Daily Window</h3>
+            <p class="panel-note">${escapeHtml(sanitizeDisplayText(usageTotals.eventsText || '0 events'))}</p>
+          </div>
+          <div class="usage-stats">
+            ${usageRows.length ? usageRows.map((row) => `
+              <article class="usage-stat-row">
+                <div>
+                  <p class="usage-stat-date">${escapeHtml(sanitizeDisplayText(row.date))}</p>
+                  <p class="usage-stat-meta">${escapeHtml(sanitizeDisplayText(row.sessionsText))} · ${escapeHtml(sanitizeDisplayText(row.projectsText))} · ${escapeHtml(sanitizeDisplayText(row.eventsText))}</p>
+                </div>
+                <div>
+                  <p class="usage-stat-value">${escapeHtml(sanitizeDisplayText(row.tokensText))}</p>
+                  <p class="usage-stat-meta">${escapeHtml(sanitizeDisplayText(row.costText))} · ${escapeHtml(sanitizeDisplayText(row.contextText))}</p>
+                </div>
+              </article>
+            `).join('') : '<p class="empty-state">No retained usage history yet.</p>'}
+          </div>
+        </section>
+        <section class="workbench-card">
+          <div class="panel-header">
+            <h3>Top Sessions</h3>
+            <p class="panel-note">Focus into a retained session.</p>
+          </div>
+          <div class="workbench-list">
+            ${topSessions.length ? topSessions.map((session) => `
+              <article class="workbench-list-item">
+                <div>
+                  <p class="session-project">${escapeHtml(sanitizeDisplayText(session.project))}</p>
+                  <p class="session-meta">${escapeHtml(sanitizeDisplayText(session.sessionId))}</p>
+                </div>
+                <div class="session-actions">
+                  <a class="session-detail-link" href="${escapeHtml(session.detailHref)}">Open</a>
+                </div>
+                <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(session.tokensText))}</p>
+                <p class="session-message">${escapeHtml(sanitizeDisplayText(session.costText))} · ${escapeHtml(sanitizeDisplayText(session.contextText))} · ${escapeHtml(sanitizeDisplayText(session.eventsText))}</p>
+              </article>
+            `).join('') : '<p class="empty-state">No retained sessions yet.</p>'}
+          </div>
+        </section>
+        <section class="workbench-card">
+          <div class="panel-header">
+            <h3>Top Projects</h3>
+            <p class="panel-note">Sanitized project rollups only.</p>
+          </div>
+          <div class="workbench-list">
+            ${topProjects.length ? topProjects.map((project) => `
+              <article class="workbench-list-item">
+                <div>
+                  <p class="session-project">${escapeHtml(sanitizeDisplayText(project.project))}</p>
+                  <p class="session-meta">${escapeHtml(sanitizeDisplayText(project.sessionsText))} · ${escapeHtml(sanitizeDisplayText(project.eventsText))}</p>
+                </div>
+                <p class="session-fact-value">${escapeHtml(sanitizeDisplayText(project.tokensText))}</p>
+                <p class="session-message">${escapeHtml(sanitizeDisplayText(project.costText))} · ${escapeHtml(sanitizeDisplayText(project.contextText))}</p>
+              </article>
+            `).join('') : '<p class="empty-state">No retained projects yet.</p>'}
+          </div>
+        </section>
+      </div>
+    </div>
+  `
+
   const renderSessions = (sessions = [], detailState = {}) => {
     const detailNoticeHtml = detailState.detailMode && detailState.detailNotice
       ? `<p class="detail-notice">${escapeHtml(sanitizeDisplayText(detailState.detailNotice))}</p>`
@@ -622,6 +1050,13 @@ const createDashboardRuntime = ({
       statsMode: viewModel.statsMode,
       totals: viewModel.usageStatsTotals
     }),
+    sessionWorkbenchHtml: renderSessionWorkbench(viewModel.selectedSession),
+    usageWorkbenchHtml: renderUsageWorkbench({
+      usageTotals: viewModel.usageTotals,
+      usageRows: viewModel.usageRows,
+      topSessions: viewModel.topSessions,
+      topProjects: viewModel.topProjects
+    }),
     healthHtml: renderHealthRows(viewModel.healthRows),
     sessionsHtml: renderSessions(viewModel.sessions, {
       detailFound: viewModel.detailFound,
@@ -648,13 +1083,18 @@ const createDashboardRuntime = ({
     const usageStatsNode = documentRef.querySelector('#usage-stats')
     const healthNode = documentRef.querySelector('#health')
     const sessionsNode = documentRef.querySelector('#sessions')
+    const sessionWorkbenchNode = documentRef.querySelector('#session-workbench')
+    const usageWorkbenchNode = documentRef.querySelector('#usage-workbench')
     const refreshButton = documentRef.querySelector('#refresh')
     const viewLinks = Array.from(documentRef.querySelectorAll('[data-view-link]'))
+    const usageStatsPanel = documentRef.querySelector('[data-section="usage-stats"]')
     const diagnosticsPanel = documentRef.querySelector('[data-section="diagnostics"]')
     const sessionsPanel = documentRef.querySelector('[data-section="sessions"]')
+    const sessionWorkbenchPanel = documentRef.querySelector('[data-section="session-workbench"]')
+    const usageWorkbenchPanel = documentRef.querySelector('[data-section="usage-workbench"]')
 
     const applyViewState = (viewModel = {}) => {
-      const currentView = viewModel.statsMode ? 'stats' : viewModel.detailMode ? 'details' : 'overview'
+      const currentView = viewModel.currentView || 'overview'
       viewLinks.forEach((link) => {
         const linkView = link.getAttribute('data-view-link') || ''
         if (linkView === currentView) {
@@ -663,8 +1103,11 @@ const createDashboardRuntime = ({
           link.removeAttribute('aria-current')
         }
       })
-      if (diagnosticsPanel) diagnosticsPanel.hidden = currentView === 'stats'
-      if (sessionsPanel) sessionsPanel.hidden = currentView === 'stats'
+      if (usageStatsPanel) usageStatsPanel.hidden = currentView !== 'overview'
+      if (diagnosticsPanel) diagnosticsPanel.hidden = currentView !== 'overview'
+      if (sessionsPanel) sessionsPanel.hidden = currentView === 'usage'
+      if (sessionWorkbenchPanel) sessionWorkbenchPanel.hidden = currentView !== 'sessions'
+      if (usageWorkbenchPanel) usageWorkbenchPanel.hidden = currentView !== 'usage'
     }
 
     const renderError = (message) => {
@@ -673,6 +1116,8 @@ const createDashboardRuntime = ({
       if (usageStatsNode) usageStatsNode.innerHTML = '<p class="empty-state">Unable to load usage stats.</p>'
       if (healthNode) healthNode.innerHTML = '<p class="empty-state">Unable to load diagnostics.</p>'
       if (sessionsNode) sessionsNode.innerHTML = '<p class="empty-state">Unable to load sessions.</p>'
+      if (sessionWorkbenchNode) sessionWorkbenchNode.innerHTML = '<p class="empty-state">Unable to load session workbench.</p>'
+      if (usageWorkbenchNode) usageWorkbenchNode.innerHTML = '<p class="empty-state">Unable to load usage workbench.</p>'
     }
 
     const refresh = async () => {
@@ -685,6 +1130,8 @@ const createDashboardRuntime = ({
         if (usageStatsNode) usageStatsNode.innerHTML = rendered.usageStatsHtml
         if (healthNode) healthNode.innerHTML = rendered.healthHtml
         if (sessionsNode) sessionsNode.innerHTML = rendered.sessionsHtml
+        if (sessionWorkbenchNode) sessionWorkbenchNode.innerHTML = rendered.sessionWorkbenchHtml
+        if (usageWorkbenchNode) usageWorkbenchNode.innerHTML = rendered.usageWorkbenchHtml
         applyViewState(viewModel)
       } catch (error) {
         renderError(error?.message || 'Dashboard failed to load')
@@ -704,9 +1151,11 @@ const createDashboardRuntime = ({
     parseDashboardQuery,
     renderDashboard,
     renderHealthRows,
+    renderSessionWorkbench,
     renderSessions,
     renderSummary,
     renderUsageStats,
+    renderUsageWorkbench,
     renderTimeline
   }
 }
