@@ -13,8 +13,14 @@ platform SDKs into the OpenPet main process.
 2. In OpenPet Control Center, enable the IM Gateway plugin.
 3. Save the Telegram token in the IM Gateway card. The token is stored by the
    host secret service and is injected only into this plugin service.
-4. Add allowed Telegram user ids and, for groups, allowed chat ids.
-5. Approve native execution, then start the IM Gateway Service.
+4. Approve native execution, then start the IM Gateway Service.
+5. In Telegram, send `/openpet whoami` in private chat and `/openpet chatid`
+   in the target chat to collect the values needed for `allowedUsers` and
+   `allowedChats`.
+6. Save the allowlist values in the IM Gateway config.
+
+The helper commands above work even before the allowlist is configured. Other
+commands and non-command traffic still require the normal allowlist rules.
 
 Private chats default to command-only. Group chats default to mention-or-command.
 Action and event changes always require `/openpet` or `/op`.
@@ -38,6 +44,8 @@ bundled plugin runtime.
 
 ## Commands
 
+- `/openpet whoami`
+- `/openpet chatid`
 - `/openpet say <text>`
 - `/openpet action <actionId>`
 - `/openpet event <type> <message>`
@@ -45,6 +53,9 @@ bundled plugin runtime.
 - `/op ...` as the short alias
 
 ## Privacy
+
+Helper replies may include raw Telegram user ids and chat ids in Telegram chat.
+Control Center, plugin health, and plugin logs keep those identifiers redacted.
 
 The plugin does not persist raw IM text, attachments, transcripts, tokens, full
 platform payloads, or local file paths. Health and logs are limited to adapter
