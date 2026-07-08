@@ -204,7 +204,7 @@ P1 work:
 
 P2/P3:
 
-- Streaming replies and cancel generation.
+- Streaming replies and cancel generation. Next bounded design: `docs/superpowers/specs/2026-07-09-ai-talk-streaming-cancel-development-design.md`; implementation plan: `docs/superpowers/plans/2026-07-09-ai-talk-streaming-cancel.md`.
 - Multiple conversations per pet-pack.
 - LLM history summarization.
 - Embedding/vector memory retrieval.
