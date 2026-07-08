@@ -1350,3 +1350,145 @@ test('ai service discovers vision models with an override-scoped catalog', async
     source: 'saved'
   })
 })
+
+test('ai service streamComplete parses OpenAI-compatible SSE deltas', async () => {
+  const chunks = [
+    'data: {"choices":[{"delta":{"content":"Hel"},"finish_reason":null}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"lo"},"finish_reason":"stop"}]}\n\n',
+    'data: [DONE]\n\n'
+  ]
+  const body = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      controller.close()
+    }
+  })
+  const requests = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        body
+      }
+    }
+  })
+  const deltas = []
+
+  const result = await service.streamComplete({
+    requestId: 'stream-test-1',
+    messages: [{ role: 'user', content: 'Say hello' }],
+    onDelta: (delta) => deltas.push(delta)
+  })
+
+  assert.equal(requests[0].url, 'https://stream.example.test/v1/chat/completions')
+  assert.equal(JSON.parse(requests[0].options.body).stream, true)
+  assert.deepEqual(deltas, ['Hel', 'lo'])
+  assert.equal(result.reply, 'Hello')
+  assert.equal(result.streaming, true)
+  assert.equal(result.fallback, false)
+  assert.equal(result.chunkCount, 2)
+  assert.equal(result.finishReason, 'stop')
+})
+
+test('ai service streamComplete honors abort signal', async () => {
+  const controller = new AbortController()
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => {
+      controller.abort()
+      if (options.signal?.aborted) {
+        const error = new Error('The operation was aborted')
+        error.name = 'AbortError'
+        throw error
+      }
+      throw new Error('abort signal was not propagated')
+    }
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-abort-1',
+      messages: [{ role: 'user', content: 'Long reply' }],
+      signal: controller.signal,
+      onDelta: () => {}
+    }),
+    /aborted|timed out/i
+  )
+})
+
+test('ai service streamComplete falls back before chunks when streaming is unsupported', async () => {
+  let callCount = 0
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => {
+      callCount += 1
+      const body = JSON.parse(options.body)
+      if (body.stream) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: { message: 'stream is not supported', code: 'unsupported_stream' } })
+        }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'Fallback reply' }, finish_reason: 'stop' }] })
+      }
+    }
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-fallback-1',
+    messages: [{ role: 'user', content: 'Say hello' }],
+    onDelta: () => {}
+  })
+
+  assert.equal(callCount, 2)
+  assert.equal(result.reply, 'Fallback reply')
+  assert.equal(result.streaming, false)
+  assert.equal(result.fallback, true)
+  assert.equal(result.fallbackReason, 'unsupported-stream')
+})

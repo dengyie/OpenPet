@@ -335,6 +335,72 @@ const createProviderError = ({ message, status, code }) => {
   return error
 }
 
+const isStreamingUnsupportedError = (error) => {
+  const status = Number(error?.providerStatus || error?.status || 0)
+  const code = String(error?.providerCode || error?.code || '').toLowerCase()
+  const message = String(error?.message || '').toLowerCase()
+  return status === 404 || code.includes('unsupported') || message.includes('stream')
+}
+
+const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
+  const timeout = createTimeoutController(timeoutMs)
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  if (externalSignal?.aborted || timeout.signal.aborted) controller.abort()
+  externalSignal?.addEventListener?.('abort', abort, { once: true })
+  timeout.signal.addEventListener?.('abort', abort, { once: true })
+  return {
+    signal: controller.signal,
+    clear: () => {
+      externalSignal?.removeEventListener?.('abort', abort)
+      timeout.signal.removeEventListener?.('abort', abort)
+      timeout.clear()
+    }
+  }
+}
+
+const readStreamTextChunks = async function * (body) {
+  if (!body) return
+  if (typeof body.getReader === 'function') {
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        yield decoder.decode(value, { stream: true })
+      }
+      const tail = decoder.decode()
+      if (tail) yield tail
+    } finally {
+      reader.releaseLock?.()
+    }
+    return
+  }
+  for await (const chunk of body) {
+    if (Buffer.isBuffer(chunk)) {
+      yield chunk.toString('utf8')
+    } else if (chunk instanceof Uint8Array) {
+      yield new TextDecoder().decode(chunk)
+    } else {
+      yield String(chunk || '')
+    }
+  }
+}
+
+const parseOpenAiStreamLine = (line) => {
+  const trimmed = String(line || '').trim()
+  if (!trimmed || !trimmed.startsWith('data:')) return null
+  const payload = trimmed.slice(5).trim()
+  if (!payload || payload === '[DONE]') return { done: true }
+  const parsed = JSON.parse(payload)
+  const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : null
+  return {
+    delta: typeof choice?.delta?.content === 'string' ? choice.delta.content : '',
+    finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason : ''
+  }
+}
+
 const isOptionalModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
 
 const extractDiscoveredModelIds = (body) => {
@@ -825,6 +891,164 @@ const createAiService = ({
     }
   }
 
+  const streamComplete = async ({ messages, tools = [], configOverride = null, requestId = '', signal = null, onDelta = null } = {}) => {
+    if (Array.isArray(tools) && tools.length) {
+      const result = await complete({ messages, tools, configOverride })
+      return {
+        ...result,
+        streaming: false,
+        fallback: true,
+        fallbackReason: 'tools-not-supported',
+        chunkCount: 0,
+        finishReason: ''
+      }
+    }
+
+    const config = normalizeCompletionConfig(configOverride || getRawConfig())
+    const apiKey = secretService.getSecretValue(config.apiKeyRef)
+    const startedAt = Date.now()
+    const baseDetails = {
+      requestId: typeof requestId === 'string' ? requestId.trim().slice(0, 120) : '',
+      configSource: configOverride ? 'override' : 'chat',
+      provider: config.provider,
+      model: config.model,
+      endpoint: normalizeEndpointForLog(config.baseUrl),
+      messagesCount: Array.isArray(messages) ? messages.length : 0,
+      toolsCount: Array.isArray(tools) ? tools.length : 0,
+      timeoutMs: requestTimeoutMs,
+      hasApiKey: Boolean(apiKey)
+    }
+    recordLog({
+      level: 'info',
+      event: 'ai.provider.stream.started',
+      message: 'AI provider stream started',
+      details: baseDetails
+    })
+
+    let response
+    let linkedSignal = null
+    let reply = ''
+    let chunkCount = 0
+    let finishReason = ''
+    try {
+      if (!apiKey) throw new Error('AI API key is not configured')
+      if (config.provider !== 'openai-compatible') {
+        throw new Error(`Unsupported AI provider: ${config.provider}`)
+      }
+      if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
+
+      linkedSignal = createLinkedAbortSignal(signal, requestTimeoutMs)
+      response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: linkedSignal.signal,
+        body: JSON.stringify({
+          model: config.model,
+          messages,
+          stream: true
+        })
+      })
+
+      if (!response.ok) {
+        const data = await response.json?.().catch(() => ({}))
+        const providerError = createProviderError({
+          message: data?.error?.message || `AI provider stream failed with status ${response.status}`,
+          status: response.status,
+          code: data?.error?.code
+        })
+        if (isStreamingUnsupportedError(providerError)) {
+          linkedSignal.clear()
+          linkedSignal = null
+          const fallbackResult = await complete({ messages, tools, configOverride })
+          return {
+            ...fallbackResult,
+            streaming: false,
+            fallback: true,
+            fallbackReason: 'unsupported-stream',
+            chunkCount: 0,
+            finishReason: ''
+          }
+        }
+        throw providerError
+      }
+
+      let buffer = ''
+      let done = false
+      for await (const textChunk of readStreamTextChunks(response.body)) {
+        if (linkedSignal.signal.aborted) {
+          const error = new Error('AI provider stream aborted')
+          error.name = 'AbortError'
+          throw error
+        }
+        buffer += textChunk
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          const event = parseOpenAiStreamLine(line)
+          if (!event) continue
+          if (event.done) {
+            done = true
+            break
+          }
+          if (event.finishReason) finishReason = event.finishReason
+          if (!event.delta) continue
+          chunkCount += 1
+          reply += event.delta
+          if (typeof onDelta === 'function') onDelta(event.delta)
+        }
+        if (done) break
+      }
+
+      recordLog({
+        level: 'info',
+        event: 'ai.provider.stream.completed',
+        message: 'AI provider stream completed',
+        details: {
+          ...baseDetails,
+          status: response.status,
+          elapsedMs: Date.now() - startedAt,
+          chunkCount,
+          replyChars: reply.length,
+          finishReason
+        }
+      })
+      return {
+        reply,
+        behaviorIntent: null,
+        elapsedMs: Date.now() - startedAt,
+        streaming: true,
+        fallback: false,
+        fallbackReason: '',
+        chunkCount,
+        finishReason
+      }
+    } catch (error) {
+      recordLog({
+        level: 'error',
+        event: 'ai.provider.stream.failed',
+        message: 'AI provider stream failed',
+        details: {
+          ...baseDetails,
+          status: error?.providerStatus || response?.status || 0,
+          providerCode: error?.providerCode || '',
+          elapsedMs: Date.now() - startedAt,
+          chunkCount,
+          partialReplyChars: reply.length,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: error?.providerStatus
+            ? 'AI provider returned an error response'
+            : sanitizeDiagnosticText(error?.message)
+        }
+      })
+      throw error
+    } finally {
+      linkedSignal?.clear()
+    }
+  }
+
   const chat = async ({ message, conversationId }) => {
     const normalizedConversationId = assertValidConversationId(normalizeConversationId(conversationId))
     return enqueueConversation(normalizedConversationId, async () => {
@@ -1169,6 +1393,7 @@ const createAiService = ({
     clearConversation,
     chat,
     complete,
+    streamComplete,
     testConnection,
     discoverModels,
     discoverVisionModels
