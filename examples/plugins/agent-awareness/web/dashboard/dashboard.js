@@ -78,16 +78,20 @@ const createDashboardRuntime = ({
       return normalizeDashboardQuery(Object.fromEntries(query.entries()))
     }
     if (!query || typeof query !== 'object') {
-      return { view: '', sessionId: '' }
+      return { view: 'overview', sessionId: '' }
     }
     const normalizedView = normalizeQueryText(query.view, 32).toLowerCase()
+    const currentView = normalizedView === 'details'
+      ? 'sessions'
+      : ['overview', 'sessions', 'stats', 'usage'].includes(normalizedView) ? normalizedView : 'overview'
     return {
-      view: ['details', 'stats'].includes(normalizedView) ? normalizedView : '',
+      view: currentView,
       sessionId: normalizeQueryText(query.sessionId, 128)
     }
   }
 
   const buildDetailHref = (sessionId = '') => `?view=details&sessionId=${encodeURIComponent(normalizeQueryText(sessionId, 128))}`
+  const buildSessionHref = (sessionId = '') => `?view=sessions&sessionId=${encodeURIComponent(normalizeQueryText(sessionId, 128))}`
 
   const getCurrentDashboardQuery = () => normalizeDashboardQuery(locationRef?.search || '')
 
@@ -286,8 +290,44 @@ const createDashboardRuntime = ({
     return !['idle', 'completed', 'failed'].includes(status)
   }).length
 
+  const buildSelectedSession = ({ selectedSummary = null, liveSessions = [] } = {}) => {
+    if (!selectedSummary) return null
+    const liveSession = liveSessions.find((session) => String(session.sessionId || '') === String(selectedSummary.sessionId || '')) || null
+    const timelineSource = Array.isArray(selectedSummary.timelineTail) && selectedSummary.timelineTail.length
+      ? selectedSummary.timelineTail
+      : (Array.isArray(liveSession?.history) ? liveSession.history.slice(-6) : [])
+
+    return {
+      detailHref: buildSessionHref(selectedSummary.sessionId || ''),
+      sessionId: sanitizeDisplayText(selectedSummary.sessionId || ''),
+      project: sanitizeDisplayText(selectedSummary.project || liveSession?.project || 'Unknown project'),
+      status: getStatusMeta(selectedSummary.status || liveSession?.status || ''),
+      phase: sanitizeDisplayText(selectedSummary.phase || liveSession?.phase || ''),
+      toolName: sanitizeDisplayText(selectedSummary.toolName || liveSession?.toolName || ''),
+      approvalState: sanitizeDisplayText(selectedSummary.approvalState || liveSession?.approvalState || ''),
+      firstSeenAt: formatTimestamp(selectedSummary.firstSeenAt || ''),
+      lastSeenAt: formatTimestamp(selectedSummary.lastSeenAt || liveSession?.timestamp || ''),
+      eventCount: Number(selectedSummary.eventCount) || (Array.isArray(liveSession?.history) ? liveSession.history.length : 0),
+      summaryTitle: sanitizeDisplayText(selectedSummary.summary?.title || liveSession?.summary?.title || selectedSummary.project || ''),
+      currentStep: sanitizeDisplayText(selectedSummary.summary?.currentStep || liveSession?.summary?.currentStep || selectedSummary.phase || ''),
+      progressHint: sanitizeDisplayText(selectedSummary.summary?.recentProgressHint || liveSession?.summary?.recentProgressHint || liveSession?.message || ''),
+      usageText: describeUsage(selectedSummary.usageLatest || liveSession?.usage || {}),
+      usagePeakText: describeUsage(selectedSummary.usagePeak || {}),
+      gitText: describeGit(selectedSummary.gitLatest || liveSession?.git || {}),
+      timeline: timelineSource.slice(-6).reverse().map((entry) => ({
+        type: entry.type || 'session.updated',
+        status: getStatusMeta(entry.status),
+        message: sanitizeDisplayText(entry.message || 'No sanitized message'),
+        timestamp: formatTimestamp(entry.timestamp)
+      }))
+    }
+  }
+
   const buildDashboardViewModel = ({ health = {}, sessionsPayload = {}, query = {} } = {}) => {
-    const sessions = Array.isArray(sessionsPayload.sessions) ? sessionsPayload.sessions : []
+    const sessions = Array.isArray(sessionsPayload.liveSessions)
+      ? sessionsPayload.liveSessions
+      : (Array.isArray(sessionsPayload.sessions) ? sessionsPayload.sessions : [])
+    const sessionSummaries = Array.isArray(sessionsPayload.sessionSummaries) ? sessionsPayload.sessionSummaries : []
     const diagnostics = health.diagnostics || {}
     const hookMode = health.hookMode || {}
     const codexPoller = health.codexPoller || {}
@@ -296,8 +336,9 @@ const createDashboardRuntime = ({
       ? Number(diagnostics.activeSessionCount)
       : getActiveSessionCount(sessions)
     const normalizedQuery = normalizeDashboardQuery(query)
-    const detailMode = normalizedQuery.view === 'details'
-    const statsMode = normalizedQuery.view === 'stats'
+    const currentView = normalizedQuery.view || 'overview'
+    const detailMode = currentView === 'sessions'
+    const statsMode = currentView === 'stats' || currentView === 'usage'
     const requestedSessionId = normalizedQuery.sessionId
     const hasRequestedSessionId = detailMode && Boolean(requestedSessionId)
     const visibleSessions = hasRequestedSessionId
@@ -317,13 +358,17 @@ const createDashboardRuntime = ({
     const attentionDetail = attentionSession
       ? [attentionSession.project, attentionSession.reason].filter(Boolean).join(' · ')
       : 'No active attention session'
+    const selectedSessionId = requestedSessionId || sessions[0]?.sessionId || sessionSummaries[0]?.sessionId || ''
+    const selectedSummary = sessionSummaries.find((item) => String(item.sessionId || '') === String(selectedSessionId)) || null
 
     return {
+      currentView,
       detailFound,
       detailMode,
       detailNotice,
       attentionSession,
       requestedSessionId,
+      selectedSession: buildSelectedSession({ selectedSummary, liveSessions: sessions }),
       serviceOk: health.ok === true,
       statsMode,
       usageStats: formatUsageStatsRows(usageStatsRecords),

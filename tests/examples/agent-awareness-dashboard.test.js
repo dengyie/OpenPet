@@ -443,6 +443,91 @@ test('agent awareness dashboard focuses requested session in details mode', () =
   assert.match(viewModel.detailNotice, /Focused Session/)
 })
 
+test('agent awareness dashboard routes details alias into the sessions workbench', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+
+  assert.deepEqual(runtime.normalizeDashboardQuery('?view=details&sessionId=target-session'), {
+    view: 'sessions',
+    sessionId: 'target-session'
+  })
+})
+
+test('agent awareness dashboard builds a selected session workbench from stable summaries', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    query: { view: 'sessions', sessionId: 'target-session' },
+    health: {
+      ok: true,
+      diagnostics: {
+        activeSessionCount: 2,
+        totalEvents: 4,
+        seenCount: 4
+      }
+    },
+    sessionsPayload: {
+      liveSessions: [{
+        sessionId: 'target-session',
+        project: 'OpenPet #111111',
+        status: 'working',
+        type: 'tool.started',
+        timestamp: '2026-07-09T11:00:00.000Z',
+        history: [{
+          type: 'tool.started',
+          status: 'working',
+          message: 'Started tool',
+          timestamp: '2026-07-09T11:00:00.000Z'
+        }]
+      }],
+      sessionSummaries: [{
+        sessionId: 'target-session',
+        project: 'OpenPet #111111',
+        status: 'working',
+        phase: 'tool',
+        toolName: 'apply_patch',
+        firstSeenAt: '2026-07-09T10:00:00.000Z',
+        lastSeenAt: '2026-07-09T11:00:00.000Z',
+        summary: {
+          title: 'OpenPet on codex/dev7',
+          currentStep: 'Tool: apply_patch',
+          recentProgressHint: 'Using tool apply_patch'
+        },
+        usageLatest: {
+          totalTokens: 1500,
+          estimatedCostUsd: 0.012,
+          currency: 'USD',
+          contextUsedPercent: 0.75
+        },
+        usagePeak: {
+          totalTokens: 1500,
+          estimatedCostUsd: 0.012,
+          currency: 'USD',
+          contextUsedPercent: 0.75
+        },
+        gitLatest: {
+          branch: 'codex/dev7',
+          dirty: true,
+          dirtyCount: 2,
+          ahead: 1,
+          behind: 0
+        },
+        eventCount: 6,
+        timelineTail: [{
+          type: 'tool.finished',
+          status: 'working',
+          message: 'Finished tool',
+          timestamp: '2026-07-09T11:00:00.000Z'
+        }]
+      }],
+      dailyUsageRollups: []
+    }
+  })
+
+  assert.equal(viewModel.currentView, 'sessions')
+  assert.equal(viewModel.selectedSession.sessionId, 'target-session')
+  assert.equal(viewModel.selectedSession.currentStep, 'Tool: apply_patch')
+  assert.equal(viewModel.selectedSession.detailHref, '?view=sessions&sessionId=target-session')
+})
+
 test('agent awareness dashboard load applies location detail query', async () => {
   const runtime = createDashboardRuntime({
     documentRef: null,
