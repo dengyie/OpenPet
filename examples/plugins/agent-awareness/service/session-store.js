@@ -7,6 +7,7 @@ const {
   STORE_FILE,
   writeStoreStateAtomically
 } = require('./session-store-schema')
+const { applyUsageSnapshotDelta, pruneRetainedHistory } = require('./usage-rollups')
 
 const DEFAULT_MAX_SESSIONS = 100
 const DEFAULT_MAX_EVENTS = 1000
@@ -35,9 +36,28 @@ const mergeStaleMetadata = (session = {}, eventSession = {}) => {
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
+const mergeUsagePeak = (previousUsagePeak, usageLatest) => {
+  if (!usageLatest) return previousUsagePeak ? clone(previousUsagePeak) : null
+  if (!previousUsagePeak) return clone(usageLatest)
+  return {
+    ...clone(previousUsagePeak),
+    ...clone(usageLatest),
+    totalTokens: Math.max(Number(previousUsagePeak.totalTokens || 0), Number(usageLatest.totalTokens || 0)) || null,
+    inputTokens: Math.max(Number(previousUsagePeak.inputTokens || 0), Number(usageLatest.inputTokens || 0)) || null,
+    outputTokens: Math.max(Number(previousUsagePeak.outputTokens || 0), Number(usageLatest.outputTokens || 0)) || null,
+    cachedInputTokens: Math.max(Number(previousUsagePeak.cachedInputTokens || 0), Number(usageLatest.cachedInputTokens || 0)) || null,
+    estimatedCostUsd: Math.max(Number(previousUsagePeak.estimatedCostUsd || 0), Number(usageLatest.estimatedCostUsd || 0)) || null,
+    contextWindow: Math.max(Number(previousUsagePeak.contextWindow || 0), Number(usageLatest.contextWindow || 0)) || null,
+    contextUsedPercent: Math.max(Number(previousUsagePeak.contextUsedPercent || 0), Number(usageLatest.contextUsedPercent || 0)) || null
+  }
+}
+
 const buildSessionSummary = (session = {}, previousSummary = null) => {
   const history = Array.isArray(session.history) ? session.history : []
   const timelineTail = history.slice(-6).map((entry) => clone(entry))
+  const usageLatest = session.usage ? clone(session.usage) : null
+  const gitLatest = session.git ? clone(session.git) : null
+  const summary = session.summary ? clone(session.summary) : null
   return {
     sessionId: String(session.sessionId || ''),
     project: String(session.project || ''),
@@ -50,14 +70,13 @@ const buildSessionSummary = (session = {}, previousSummary = null) => {
     lastEventType: String(session.type || ''),
     toolName: String(session.toolName || ''),
     approvalState: String(session.approvalState || ''),
-    summary: session.summary ? clone(session.summary) : null,
-    usageLatest: session.usage ? clone(session.usage) : null,
-    usagePeak: previousSummary?.usagePeak
-      ? clone(previousSummary.usagePeak)
-      : (session.usage ? clone(session.usage) : null),
-    gitLatest: session.git ? clone(session.git) : null,
+    summary,
+    usageLatest,
+    usagePeak: mergeUsagePeak(previousSummary?.usagePeak || null, usageLatest),
+    gitLatest,
     eventCount: history.length,
-    timelineTail
+    timelineTail,
+    lastUsageSnapshot: previousSummary?.lastUsageSnapshot ? clone(previousSummary.lastUsageSnapshot) : null
   }
 }
 
@@ -127,6 +146,7 @@ const createSessionStore = ({
       state.sessionSummaries.push(summary)
     }
     state.sessionSummaries.sort((left, right) => toTimestampMs(right.lastSeenAt) - toTimestampMs(left.lastSeenAt))
+    return state.sessionSummaries.find((candidate) => candidate.sessionId === session.sessionId) || summary
   }
 
   return {
@@ -137,7 +157,9 @@ const createSessionStore = ({
       storeSchemaVersion: state.schemaVersion,
       retentionDays: state.retentionDays,
       storeError: state.stats?.storeError || '',
-      retainedSessionSummaryCount: state.sessionSummaries.length
+      retainedSessionSummaryCount: state.sessionSummaries.length,
+      historyWindowStart: state.dailyUsageRollups.at(-1)?.date || '',
+      historyWindowEnd: state.dailyUsageRollups[0]?.date || ''
     }),
     listSessions: () => [...state.liveSessions],
     listLiveSessions: () => [...state.liveSessions],
@@ -162,6 +184,7 @@ const createSessionStore = ({
           session.history.push(createRuntimeHistoryEntry(eventSession))
           state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
           syncSessionSummary(session)
+          state = pruneRetainedHistory({ state, now, retentionDays })
           save()
           return session
         }
@@ -169,7 +192,23 @@ const createSessionStore = ({
       }
       session.history.push(createRuntimeHistoryEntry(session))
       state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
-      syncSessionSummary(session)
+      const summary = syncSessionSummary(session)
+      if (session.usage) {
+        state = applyUsageSnapshotDelta({
+          state,
+          sessionSummary: summary,
+          usage: session.usage,
+          timestamp: session.timestamp,
+          project: session.project
+        })
+        const refreshedSummary = state.sessionSummaries.find((candidate) => candidate.sessionId === session.sessionId)
+        if (refreshedSummary) {
+          refreshedSummary.lastUsageSnapshot = clone(session.usage)
+          refreshedSummary.usageLatest = clone(session.usage)
+          refreshedSummary.usagePeak = mergeUsagePeak(refreshedSummary.usagePeak || null, session.usage)
+        }
+      }
+      state = pruneRetainedHistory({ state, now, retentionDays })
       save()
       return session
     }

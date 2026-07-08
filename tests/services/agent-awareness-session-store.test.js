@@ -72,3 +72,112 @@ test('session store keeps running with sanitized storeError when legacy migratio
   assert.match(status.storeError, /Unable to load retained history/)
   assert.equal(status.storeError.includes('/Users/'), false)
 })
+
+test('session store attributes only positive usage deltas into daily rollups', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-rollups-'))
+  const store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:00:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  store.upsertEvent({
+    sessionId: 'session-a',
+    project: 'OpenPet #111111',
+    status: 'working',
+    type: 'turn.usage',
+    timestamp: '2026-07-08T09:00:00.000Z',
+    usage: {
+      totalTokens: 1000,
+      inputTokens: 700,
+      outputTokens: 250,
+      cachedInputTokens: 50,
+      estimatedCostUsd: 0.01,
+      currency: 'USD',
+      contextUsedPercent: 0.5
+    }
+  })
+  store.upsertEvent({
+    sessionId: 'session-a',
+    project: 'OpenPet #111111',
+    status: 'working',
+    type: 'turn.usage',
+    timestamp: '2026-07-08T10:00:00.000Z',
+    usage: {
+      totalTokens: 1500,
+      inputTokens: 1000,
+      outputTokens: 400,
+      cachedInputTokens: 100,
+      estimatedCostUsd: 0.015,
+      currency: 'USD',
+      contextUsedPercent: 0.75
+    }
+  })
+  store.upsertEvent({
+    sessionId: 'session-a',
+    project: 'OpenPet #111111',
+    status: 'working',
+    type: 'turn.usage',
+    timestamp: '2026-07-09T10:00:00.000Z',
+    usage: {
+      totalTokens: 1700,
+      inputTokens: 1100,
+      outputTokens: 500,
+      cachedInputTokens: 100,
+      estimatedCostUsd: 0.017,
+      currency: 'USD',
+      contextUsedPercent: 0.8
+    }
+  })
+
+  const { dailyUsageRollups, sessionSummaries } = store.getDashboardState()
+  assert.equal(dailyUsageRollups.find((row) => row.date === '2026-07-08').totals.tokenDelta, 1500)
+  assert.equal(dailyUsageRollups.find((row) => row.date === '2026-07-09').totals.tokenDelta, 200)
+  assert.equal(sessionSummaries[0].usageLatest.totalTokens, 1700)
+  assert.equal(sessionSummaries[0].usagePeak.contextUsedPercent, 0.8)
+})
+
+test('session store prunes rollups and summaries older than the 30-day window', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-rollups-prune-'))
+  const store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-31T12:00:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  store.upsertEvent({
+    sessionId: 'old-session',
+    project: 'Old #111111',
+    status: 'completed',
+    type: 'turn.usage',
+    timestamp: '2026-06-01T10:00:00.000Z',
+    usage: {
+      totalTokens: 500,
+      estimatedCostUsd: 0.005,
+      currency: 'USD',
+      contextUsedPercent: 0.3
+    }
+  })
+  store.upsertEvent({
+    sessionId: 'new-session',
+    project: 'New #222222',
+    status: 'working',
+    type: 'turn.usage',
+    timestamp: '2026-07-30T10:00:00.000Z',
+    usage: {
+      totalTokens: 1200,
+      estimatedCostUsd: 0.012,
+      currency: 'USD',
+      contextUsedPercent: 0.7
+    }
+  })
+
+  const status = store.getStatus()
+  assert.equal(store.listSessionSummaries().some((item) => item.sessionId === 'old-session'), false)
+  assert.equal(store.listDailyUsageRollups().some((item) => item.date === '2026-06-01'), false)
+  assert.equal(status.retainedSessionSummaryCount, 1)
+})
