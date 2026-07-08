@@ -994,6 +994,48 @@ test('agent awareness server aggregates bounded usage diagnostics across session
   assert.equal(health.diagnostics.usagePeakContextUsedPercent, 0.8)
 })
 
+test('agent awareness server exposes unified workbench payload and retained-history diagnostics', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-workbench-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true, seenCount: 2, lastScanAt: '2026-07-09T12:00:00.000Z' }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.start(0)
+  await service.handleEvent({
+    sessionId: 'raw-service-session',
+    type: 'turn.usage',
+    status: 'working',
+    project: 'OpenPet #123456',
+    usage: {
+      totalTokens: 1200,
+      estimatedCostUsd: 0.012,
+      currency: 'USD',
+      contextUsedPercent: 0.6
+    },
+    timestamp: '2026-07-09T11:00:00.000Z'
+  }, { initial: false })
+
+  const port = service.server.address().port
+  const health = await fetch(`http://127.0.0.1:${port}/health`).then((response) => response.json())
+  const payload = await fetch(`http://127.0.0.1:${port}/api/sessions`).then((response) => response.json())
+  await service.close()
+
+  assert.equal(health.diagnostics.storeSchemaVersion, 2)
+  assert.equal(health.diagnostics.retentionDays, 30)
+  assert.equal(health.diagnostics.retainedSessionSummaryCount, 1)
+  assert.equal(Array.isArray(payload.liveSessions), true)
+  assert.equal(Array.isArray(payload.sessionSummaries), true)
+  assert.equal(Array.isArray(payload.dailyUsageRollups), true)
+  assert.equal(payload.sessions.length, payload.liveSessions.length)
+  assert.equal(JSON.stringify(payload).includes('/Users/mango'), false)
+})
+
 test('agent awareness diagnostics selects the bounded attention session', () => {
   const diagnostics = buildDiagnostics({
     store: {

@@ -162,23 +162,39 @@ const buildAttentionSession = (sessions = []) => {
 }
 
 const buildDiagnostics = ({ store, rolloutPoller }) => {
-  const sessions = store.getStatus()
-  const trackedSessions = store.listSessions()
+  const status = store.getStatus()
+  const dashboardState = typeof store.getDashboardState === 'function'
+    ? store.getDashboardState()
+    : {
+        liveSessions: store.listSessions(),
+        sessionSummaries: [],
+        dailyUsageRollups: []
+      }
+  const trackedSessions = Array.isArray(dashboardState.liveSessions) ? dashboardState.liveSessions : []
+  const sessionSummaries = Array.isArray(dashboardState.sessionSummaries) ? dashboardState.sessionSummaries : []
   const usageDiagnostics = buildUsageDiagnostics(trackedSessions)
   const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
+  const retainedProjects = new Set(sessionSummaries.map((item) => sanitizeText(item?.project || '', 96)).filter(Boolean))
   return {
-    sessionCount: sessions.sessions || 0,
+    sessionCount: status.sessions || 0,
     activeSessionCount: trackedSessions.filter((session) => !['idle', 'completed', 'failed'].includes(String(session.status || '').toLowerCase())).length,
-    totalEvents: sessions.totalEvents || 0,
+    totalEvents: status.totalEvents || 0,
     seenCount: codexPoller.seenCount || 0,
     ignoredContentRecordCount: codexPoller.ignoredContentRecordCount || 0,
     ignoredMetadataRecordCount: codexPoller.ignoredMetadataRecordCount || 0,
     unknownRecordCount: codexPoller.unknownRecordCount || 0,
     malformedRecordCount: codexPoller.malformedRecordCount || 0,
     unsupportedLifecycleRecordCount: codexPoller.unsupportedLifecycleRecordCount || 0,
+    storeSchemaVersion: status.storeSchemaVersion || 0,
+    retentionDays: status.retentionDays || 0,
+    historyWindowStart: status.historyWindowStart || '',
+    historyWindowEnd: status.historyWindowEnd || '',
+    retainedSessionSummaryCount: status.retainedSessionSummaryCount || sessionSummaries.length,
+    retainedProjectCount: retainedProjects.size,
+    storeError: sanitizeText(status.storeError || '', 160),
     attentionSession: buildAttentionSession(trackedSessions),
     ...usageDiagnostics,
-    lastEventAt: sessions.lastEventAt || '',
+    lastEventAt: status.lastEventAt || '',
     lastScanAt: codexPoller.lastScanAt || '',
     lastError: codexPoller.lastError || ''
   }
@@ -230,9 +246,19 @@ const createAgentAwarenessServer = ({
       return
     }
     if (request.method === 'GET' && url.pathname === '/api/sessions') {
+      const dashboardState = typeof store.getDashboardState === 'function'
+        ? store.getDashboardState()
+        : {
+            liveSessions: store.listSessions(),
+            sessionSummaries: [],
+            dailyUsageRollups: []
+          }
       sendJson(response, 200, {
         ok: true,
-        sessions: store.listSessions()
+        liveSessions: dashboardState.liveSessions,
+        sessionSummaries: dashboardState.sessionSummaries,
+        dailyUsageRollups: dashboardState.dailyUsageRollups,
+        sessions: dashboardState.liveSessions
       })
       return
     }
