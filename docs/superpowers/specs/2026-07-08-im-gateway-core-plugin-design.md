@@ -2,7 +2,7 @@
 
 > Date: 2026-07-08
 > Branch: `dev9`
-> Status: Phase 1 MVP in implementation on `dev9`
+> Status: Phase 1 MVP complete on `dev9`; future work is tracked in `docs/TODO.md`
 > Scope: official privileged core plugin for IM integration with Telegram first, QQ and WeChat deferred
 
 ## 1. Purpose
@@ -60,7 +60,7 @@ Phase 1 is not a full chat bot, and it is not a general third-party IM adapter f
 - Host shared contracts do not get a formal `NormalizedImMessage` in Phase 1.
 - Normal text triggers `pet.say`.
 - `pet.action` and `pet.event` require explicit `/openpet` or `/op` commands.
-- Default behavior requires explicit triggers. Private chats can be configured; group chats require mention, command, or keyword.
+- Default behavior requires explicit triggers. Private chats can be configured; group chats require a direct bot mention or command.
 - Allowlisting supports both `allowedUsers` and `allowedChats`.
 - Private chats are gated by user id.
 - Group chats are gated by both chat id and user id.
@@ -260,7 +260,8 @@ Phase 1 defaults:
 
 - private chat: command-only by default;
 - group chat: mention or command by default;
-- keyword trigger can exist as an internal option but should not be the default;
+- group mention matching should mean a direct mention of the current bot, not any arbitrary `@handle` text;
+- keyword triggers are deferred to a later rule phase and are not part of the Phase 1 shipped policy surface;
 - action/event are command-only;
 - all triggers must pass allowlist checks.
 
@@ -441,9 +442,10 @@ Docs:
 
 - Stage 1 plugin core: committed on `dev9` as `f7137192 feat: add IM gateway plugin core`.
 - Stage 2 host wiring: committed on `dev9` as `3c23532b feat: wire IM gateway host secrets`.
-- Stage 3 Control Center: adds the Plugins pane IM settings card, renderer-safe Telegram token saved state, token save/clear controls, and final verification.
-- Stop condition: after Stage 3 verification and commit, Phase 1 MVP foundation is complete. Do not start Phase 2 without a new approval.
-- Future development stays in the sections below so later IM work is explicit and separated from this MVP.
+- Stage 3 Control Center: committed on `dev9` as `d97d7bf9 feat: add IM gateway control center card`.
+- Post-review hardening on `dev9`: lock group mention triggers to direct bot mentions, propagate adapter `lastErrorCode` into health, and keep the IM Gateway smoke fixture aligned with the shipped schema.
+- Phase 1 MVP foundation is complete on `dev9`; do not start Phase 2 without a new approval.
+- Active follow-up work should be tracked in `docs/TODO.md`, while the longer-term shape stays in the sections below.
 
 ## 18. Future Work
 

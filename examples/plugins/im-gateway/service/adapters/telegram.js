@@ -7,6 +7,39 @@ const toTelegramChatType = (type = '') => {
   return normalized || 'unknown'
 }
 
+const normalizeTelegramHandle = (value = '') => String(value || '').trim().replace(/^@+/, '').toLowerCase()
+
+const toEntityText = (text, entity = {}) => {
+  const offset = Number(entity.offset)
+  const length = Number(entity.length)
+  if (!Number.isInteger(offset) || !Number.isInteger(length) || offset < 0 || length <= 0) return ''
+  return text.slice(offset, offset + length)
+}
+
+const getMentionEntities = (ctx = {}, message = {}) => {
+  if (typeof ctx.entities === 'function') {
+    try {
+      return ctx.entities('mention')
+    } catch (_) {}
+  }
+
+  const text = String(message.text || '')
+  return Array.isArray(message.entities)
+    ? message.entities
+      .filter((entity) => entity?.type === 'mention')
+      .map((entity) => ({
+        ...entity,
+        text: typeof entity?.text === 'string' ? entity.text : toEntityText(text, entity)
+      }))
+    : []
+}
+
+const isDirectBotMention = (ctx = {}, message = {}) => {
+  const botUsername = normalizeTelegramHandle(ctx.me?.username)
+  if (!botUsername) return false
+  return getMentionEntities(ctx, message).some((entity) => normalizeTelegramHandle(entity?.text) === botUsername)
+}
+
 const createTelegramMessage = (ctx = {}, now) => {
   const message = ctx.message || {}
   const chat = ctx.chat || message.chat || {}
@@ -20,7 +53,7 @@ const createTelegramMessage = (ctx = {}, now) => {
     userName: from.username || [from.first_name, from.last_name].filter(Boolean).join(' '),
     messageId: message.message_id,
     text: message.text,
-    isMention: String(message.text || '').includes('@')
+    isMention: isDirectBotMention(ctx, message)
   }, { adapterId: 'telegram', platform: 'telegram', now })
 
   if (typeof ctx.reply === 'function') {

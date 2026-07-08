@@ -9,7 +9,7 @@ const { isMessageAllowed } = require('../../examples/plugins/im-gateway/service/
 const { parseOpenPetCommand } = require('../../examples/plugins/im-gateway/service/core/commands')
 const { createImGateway } = require('../../examples/plugins/im-gateway/service/core/gateway')
 const { createFakeAdapter } = require('../../examples/plugins/im-gateway/service/adapters/fake')
-const { createTelegramAdapter } = require('../../examples/plugins/im-gateway/service/adapters/telegram')
+const { createTelegramAdapter, createTelegramMessage } = require('../../examples/plugins/im-gateway/service/adapters/telegram')
 const { normalizeImGatewayConfig } = require('../../examples/plugins/im-gateway/service/config')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/im-gateway')
@@ -171,6 +171,65 @@ test('im gateway health redacts message content and peer identifiers', async () 
   assert.equal(encoded.includes('secret raw message'), false)
   assert.equal(encoded.includes('1001'), false)
   assert.equal(encoded.includes('msg-secret'), false)
+})
+
+test('im gateway only treats direct bot mentions as group text triggers', async () => {
+  const calls = []
+  const gateway = createImGateway({
+    bridgeClient: {
+      say: async (payload) => calls.push(payload)
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      allowedChats: '-2001',
+      groupChatPolicy: 'mention-or-command'
+    }),
+    now: () => '2026-07-08T00:00:00.000Z'
+  })
+
+  const adapter = { id: 'telegram', platform: 'telegram' }
+  await gateway.handleMessage(adapter, createTelegramMessage({
+    message: {
+      message_id: 1,
+      text: 'hello @someone_else',
+      entities: [{ type: 'mention', offset: 6, length: 13 }]
+    },
+    chat: { id: '-2001', type: 'group' },
+    from: { id: '1001', username: 'allowed-user' },
+    me: { username: 'openpet_bot' }
+  }, () => '2026-07-08T00:00:00.000Z'))
+  await gateway.handleMessage(adapter, createTelegramMessage({
+    message: {
+      message_id: 2,
+      text: 'hello @openpet_bot',
+      entities: [{ type: 'mention', offset: 6, length: 12 }]
+    },
+    chat: { id: '-2001', type: 'group' },
+    from: { id: '1001', username: 'allowed-user' },
+    me: { username: 'openpet_bot' }
+  }, () => '2026-07-08T00:00:01.000Z'))
+
+  assert.deepEqual(calls, [
+    { text: 'hello @openpet_bot', ttlMs: 6000 }
+  ])
+})
+
+test('im gateway health exposes adapter error codes for operator diagnostics', async () => {
+  const adapter = createTelegramAdapter({
+    token: '',
+    config: normalizeImGatewayConfig({ telegramEnabled: true })
+  })
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {}
+  })
+
+  await gateway.start()
+  const health = gateway.getHealth()
+
+  assert.equal(health.adapters.telegram.status, 'missing-token')
+  assert.equal(health.adapters.telegram.lastErrorCode, 'missing-token')
 })
 
 test('telegram adapter is disabled without a token and lazily constructs a grammY bot when provided', async () => {

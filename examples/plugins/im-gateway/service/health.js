@@ -5,17 +5,20 @@ const DISABLED_ADAPTER_HEALTH = {
   status: 'disabled'
 }
 
-const createAdapterHealth = (adapter = {}, state = {}) => ({
-  enabled: adapter.getStatus?.().enabled === true,
-  status: adapter.getStatus?.().status || state.status || 'unknown',
-  mode: adapter.getStatus?.().mode || state.mode || '',
-  lastMessageAt: state.lastMessageAt || '',
-  lastTriggerAt: state.lastTriggerAt || '',
-  triggerCount: state.triggerCount || 0,
-  lastErrorCode: state.lastErrorCode || '',
-  lastChatHash: state.lastChatId ? hashIdentifier(state.lastChatId) : '',
-  lastUserHash: state.lastUserId ? hashIdentifier(state.lastUserId) : ''
-})
+const createAdapterHealth = (adapter = {}, state = {}) => {
+  const adapterStatus = adapter.getStatus?.() || {}
+  return {
+    enabled: adapterStatus.enabled === true,
+    status: adapterStatus.status || state.status || 'unknown',
+    mode: adapterStatus.mode || state.mode || '',
+    lastMessageAt: state.lastMessageAt || '',
+    lastTriggerAt: state.lastTriggerAt || '',
+    triggerCount: state.triggerCount || 0,
+    lastErrorCode: adapterStatus.lastErrorCode || state.lastErrorCode || '',
+    lastChatHash: state.lastChatId ? hashIdentifier(state.lastChatId) : '',
+    lastUserHash: state.lastUserId ? hashIdentifier(state.lastUserId) : ''
+  }
+}
 
 const createGatewayHealth = ({ adapters = [], adapterState = new Map() } = {}) => {
   const health = {

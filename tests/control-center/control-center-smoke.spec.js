@@ -2345,7 +2345,7 @@ test.describe('Control Center smoke', () => {
               properties: [
                 { key: 'telegramEnabled', title: 'Telegram enabled', type: 'boolean' },
                 { key: 'telegramMode', title: 'Telegram mode', type: 'string', enum: ['polling'] },
-                { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'trigger-keyword'] },
+                { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'any-text'] },
                 { key: 'groupChatPolicy', title: 'Group chats', type: 'string', enum: ['mention-or-command', 'command-only'] },
                 { key: 'allowedUsers', title: 'Allowed users', type: 'string' },
                 { key: 'allowedChats', title: 'Allowed chats', type: 'string' },
@@ -2353,7 +2353,7 @@ test.describe('Control Center smoke', () => {
                 { key: 'allowAllGroupChats', title: 'Allow all group chats', type: 'boolean' },
                 { key: 'commandAliases', title: 'Command aliases', type: 'string' },
                 { key: 'petSayTtlMs', title: 'Pet say TTL', type: 'number' },
-                { key: 'receiptMode', title: 'Receipt mode', type: 'string', enum: ['commands-only', 'never'] }
+                { key: 'receiptMode', title: 'Receipt mode', type: 'string', enum: ['commands-only', 'none'] }
               ]
             },
             config: {
