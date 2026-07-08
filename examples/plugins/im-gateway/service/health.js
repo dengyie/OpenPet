@@ -18,6 +18,9 @@ const createAdapterHealth = (adapter = {}, state = {}) => {
     lastAiReplyAt: state.lastAiReplyAt || '',
     aiReplyCount: state.aiReplyCount || 0,
     lastAiErrorCode: state.lastAiErrorCode || '',
+    lastAllowlistReason: state.lastAllowlistReason || '',
+    lastDiagnosticCode: state.lastDiagnosticCode || '',
+    lastDiagnosticAt: state.lastDiagnosticAt || '',
     lastChatHash: state.lastChatId ? hashIdentifier(state.lastChatId) : '',
     lastUserHash: state.lastUserId ? hashIdentifier(state.lastUserId) : ''
   }

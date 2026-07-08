@@ -8,6 +8,7 @@ const { sanitizeReceiptText } = require('../log-safety')
 
 const PRIVATE_BUSY_NOTICE = 'Still thinking about your last message. Please send one more message in a moment.'
 const PRIVATE_FAILURE_NOTICE = 'I could not reply just now. Please try again in a moment.'
+const HELPER_COMMANDS = new Set(['whoami', 'chatid'])
 
 const createEmptyState = () => ({
   lastMessageAt: '',
@@ -18,7 +19,10 @@ const createEmptyState = () => ({
   lastUserId: '',
   lastAiReplyAt: '',
   aiReplyCount: 0,
-  lastAiErrorCode: ''
+  lastAiErrorCode: '',
+  lastAllowlistReason: '',
+  lastDiagnosticCode: '',
+  lastDiagnosticAt: ''
 })
 
 const createImGateway = ({
@@ -88,7 +92,38 @@ const createImGateway = ({
     state.lastUserId = message.userId || ''
   }
 
+  const markDiagnostic = (adapter, message, code, extra = {}) => {
+    const state = getState(adapter)
+    state.lastDiagnosticCode = String(code || '')
+    state.lastDiagnosticAt = now()
+    state.lastChatId = message.chatId || ''
+    state.lastUserId = message.userId || ''
+    if (extra.lastAllowlistReason) state.lastAllowlistReason = String(extra.lastAllowlistReason || '')
+  }
+
+  const buildWhoamiReply = (message = {}) => {
+    const parts = [`Telegram user id: ${String(message.userId || '').trim() || 'unknown'}`]
+    if (String(message.userName || '').trim()) parts.push(`username: ${String(message.userName || '').trim()}`)
+    return parts.join(' | ')
+  }
+
+  const buildChatIdReply = (message = {}) => ([
+    `chat type: ${String(message.chatType || '').trim() || 'unknown'}`,
+    `chat id: ${String(message.chatId || '').trim() || 'unknown'}`
+  ]).join(' | ')
+  const isHelperCommand = (command = {}) => command.matched === true && HELPER_COMMANDS.has(String(command.name || ''))
+
   const handleCommand = async (adapter, message, command) => {
+    if (command.name === 'whoami') {
+      await sendDirectReply(adapter, message, buildWhoamiReply(message))
+      markDiagnostic(adapter, message, 'helper-whoami')
+      return
+    }
+    if (command.name === 'chatid') {
+      await sendDirectReply(adapter, message, buildChatIdReply(message))
+      markDiagnostic(adapter, message, 'helper-chatid')
+      return
+    }
     if (command.name === 'say' && command.text) {
       await bridgeClient.say?.({ text: command.text, ttlMs: config.petSayTtlMs })
       markTrigger(adapter, message)
@@ -116,10 +151,20 @@ const createImGateway = ({
 
   const handleMessage = async (adapter, message) => {
     markMessage(adapter, message)
-    const allowlist = isMessageAllowed(message, config)
-    if (!allowlist.allowed) return
-
     const command = parseOpenPetCommand(message.text, config)
+    if (isHelperCommand(command)) {
+      await handleCommand(adapter, message, command)
+      return
+    }
+
+    const allowlist = isMessageAllowed(message, config)
+    if (!allowlist.allowed) {
+      markDiagnostic(adapter, message, 'allowlist-miss', {
+        lastAllowlistReason: allowlist.reason
+      })
+      return
+    }
+
     if (command.matched) {
       await handleCommand(adapter, message, command)
       return

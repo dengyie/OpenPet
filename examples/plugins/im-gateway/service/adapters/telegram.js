@@ -78,6 +78,12 @@ const resolveGrammy = (grammy) => {
   return require('grammy')
 }
 
+const classifyTelegramStartError = (error) => {
+  const message = String(error?.message || '').toLowerCase()
+  if (message.includes('terminated by other getupdates request')) return 'telegram-polling-conflict'
+  return 'telegram-polling-failed'
+}
+
 const createTelegramAdapter = ({
   token = process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || '',
   config = {},
@@ -117,9 +123,9 @@ const createTelegramAdapter = ({
         .then(() => {
           if (status === 'connected') status = 'stopped'
         })
-        .catch(() => {
+        .catch((error) => {
           status = 'failed'
-          lastErrorCode = 'telegram-polling-failed'
+          lastErrorCode = classifyTelegramStartError(error)
         })
       status = 'connected'
       lastErrorCode = ''

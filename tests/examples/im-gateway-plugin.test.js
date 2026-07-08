@@ -108,6 +108,86 @@ test('im gateway command parser accepts openpet aliases without leaking ordinary
   assert.deepEqual(parseOpenPetCommand('ordinary hello', config), { matched: false })
 })
 
+test('im gateway command parser recognizes onboarding helper commands', () => {
+  const config = normalizeImGatewayConfig({ commandAliases: '/openpet,/op' })
+
+  assert.deepEqual(parseOpenPetCommand('/openpet whoami', config), {
+    matched: true,
+    name: 'whoami',
+    args: []
+  })
+  assert.deepEqual(parseOpenPetCommand('/op chatid', config), {
+    matched: true,
+    name: 'chatid',
+    args: []
+  })
+})
+
+test('im gateway helper commands bypass allowlist while non-helper commands still block', async () => {
+  const replies = []
+  const adapter = {
+    id: 'telegram',
+    platform: 'telegram',
+    sendReceipt: async (_message, text) => replies.push(text)
+  }
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {},
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: '1001',
+      allowedChats: '-2001'
+    }),
+    now: () => '2026-07-09T01:00:00.000Z'
+  })
+
+  await gateway.handleMessage(adapter, {
+    platform: 'telegram',
+    adapterId: 'telegram',
+    chatType: 'private',
+    chatId: '9001',
+    userId: '9001',
+    userName: 'new-user',
+    messageId: 'who-1',
+    text: '/openpet whoami',
+    receivedAt: '2026-07-09T01:00:00.000Z'
+  })
+  await gateway.handleMessage(adapter, {
+    platform: 'telegram',
+    adapterId: 'telegram',
+    chatType: 'group',
+    chatId: '-3001',
+    userId: '9001',
+    userName: 'new-user',
+    messageId: 'chat-1',
+    text: '/openpet chatid',
+    receivedAt: '2026-07-09T01:00:01.000Z'
+  })
+  await gateway.handleMessage(adapter, {
+    platform: 'telegram',
+    adapterId: 'telegram',
+    chatType: 'group',
+    chatId: '-3001',
+    userId: '9001',
+    userName: 'new-user',
+    messageId: 'status-1',
+    text: '/openpet status',
+    receivedAt: '2026-07-09T01:00:02.000Z'
+  })
+
+  const health = gateway.getHealth()
+  const encoded = JSON.stringify(health)
+
+  assert.equal(replies.length, 2)
+  assert.equal(replies[0].includes('9001'), true)
+  assert.equal(replies[1].includes('-3001'), true)
+  assert.equal(health.adapters.telegram.lastAllowlistReason, 'group-chat-not-allowed')
+  assert.equal(health.adapters.telegram.lastDiagnosticCode, 'allowlist-miss')
+  assert.equal(health.adapters.telegram.lastDiagnosticAt, '2026-07-09T01:00:00.000Z')
+  assert.equal(encoded.includes('9001'), false)
+  assert.equal(encoded.includes('-3001'), false)
+})
+
 test('im gateway routes allowed command and text triggers through the pet bridge with short receipts', async () => {
   const calls = []
   const adapter = createFakeAdapter({ id: 'fake', platform: 'telegram' })
@@ -580,4 +660,26 @@ test('telegram adapter reports connected without awaiting the long polling loop 
   assert.equal(result, 'started')
   assert.equal(adapter.getStatus().status, 'connected')
   await adapter.stop()
+})
+
+test('telegram adapter classifies polling conflicts for operator diagnostics', async () => {
+  class ConflictBot {
+    on() {}
+    start() {
+      return Promise.reject(new Error('409: terminated by other getUpdates request'))
+    }
+    stop() {}
+  }
+
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: ConflictBot }
+  })
+
+  await adapter.start()
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(adapter.getStatus().status, 'failed')
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-polling-conflict')
 })

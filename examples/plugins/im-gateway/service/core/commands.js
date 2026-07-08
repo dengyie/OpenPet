@@ -9,6 +9,8 @@ const isOpenPetAlias = (token, aliases = []) => {
   return aliases.map(normalizeCommandToken).includes(normalizedToken)
 }
 
+const SIMPLE_COMMANDS = new Set(['status', 'whoami', 'chatid'])
+
 const parseOpenPetCommand = (text = '', config = {}) => {
   const trimmed = String(text || '').trim()
   if (!trimmed) return { matched: false }
@@ -26,7 +28,7 @@ const parseOpenPetCommand = (text = '', config = {}) => {
   if (name === 'event') {
     return { matched: true, name, args, type: args[0] || '', message: args.slice(1).join(' ') }
   }
-  if (name === 'status') {
+  if (SIMPLE_COMMANDS.has(name)) {
     return { matched: true, name, args }
   }
   return { matched: true, name, args }
