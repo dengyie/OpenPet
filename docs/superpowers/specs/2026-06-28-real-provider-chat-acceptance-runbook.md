@@ -25,8 +25,8 @@
 
 不包含：
 
-- 流式回复
-- 新窗口形态
+- 流式回复和取消生成的自动化 smoke 只验证 service/report 链路；桌面阅读体感仍需人工确认
+- 新窗口形态的完整产品体验
 - 插件 / HTTP / MCP 的 `intent` 扩展
 - 长期记忆或 persona 新能力
 
@@ -69,6 +69,71 @@ node scripts/run-ai-talk-local-smoke.js \
 - `bubbleDispatch.petSayReceived === true`
 - `bubbleDispatch.bubbleStateVisible === true`
 - 日志中包含 `pet-bubble-chat.message.displayed`
+
+### 3. Streaming 回复烟测
+
+执行：
+
+```bash
+npm run run-ai-talk-local-smoke -- \
+  --message "请用三句话慢慢回复，用于 streaming 验收" \
+  --stream \
+  --output-dir ai-talk-streaming-smoke
+```
+
+通过标准：
+
+- 返回 `ok: true`
+- `chat.streaming === true`
+- `streamingAcceptance.requestId` 非空
+- `streamingAcceptance.completed === true`
+- `streamingAcceptance.canceled === false`
+- `streamingAcceptance.chunkCount` 大于等于 1
+- `streamingAcceptance.firstDeltaLatencyMs` 大于等于 0
+- 结果 JSON 不包含 API key、raw prompt、raw provider chunk、raw memory
+
+重点检查输出文件 `ai-talk-local-smoke-result.json` 中以下字段：
+
+```json
+{
+  "streamingAcceptance": {
+    "requestId": "chat-...",
+    "chunkCount": 12,
+    "firstDeltaLatencyMs": 420,
+    "providerLatencyMs": 2340,
+    "completed": true,
+    "canceled": false,
+    "memoryExtractionScheduled": true,
+    "behaviorDecisionScheduled": false
+  }
+}
+```
+
+### 4. Cancel 生成烟测
+
+执行：
+
+```bash
+npm run run-ai-talk-local-smoke -- \
+  --message "请生成一段较长回复，用于 cancel 验收" \
+  --stream \
+  --cancel-after-ms 500 \
+  --output-dir ai-talk-streaming-cancel-smoke
+```
+
+通过标准：
+
+- 返回 `ok: true`
+- `chat.streaming === true`
+- `chat.canceled === true`
+- `streamingAcceptance.completed === false`
+- `streamingAcceptance.canceled === true`
+- `streamingAcceptance.memoryExtractionScheduled === false`
+- `streamingAcceptance.behaviorDecisionScheduled === false`
+- `bubbleDispatch.attempted === false`
+- 结果 JSON 不包含 API key、raw prompt、raw provider chunk、raw memory、partial reply 全文
+
+注意：cancel smoke 证明 OpenPet 主进程进入取消状态并保持副作用隔离；它不单独证明上游 provider 已经物理停止生成。真实 provider 若继续发送 late chunk，必须通过 `requestId` 日志检查是否被安全忽略。
 
 重点检查输出文件 `ai-talk-local-smoke-result.json` 中以下字段：
 

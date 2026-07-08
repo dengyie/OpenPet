@@ -43,7 +43,9 @@ test('parseArgs accepts message, output dir, skip flag and log limit', () => {
     '--user-data-dir', '/tmp/user-data',
     '--output-dir', '/tmp/output',
     '--skip-connection-test',
-    '--log-limit', '12'
+    '--log-limit', '12',
+    '--stream',
+    '--cancel-after-ms', '25'
   ])
 
   assert.equal(options.message, 'hello')
@@ -51,6 +53,8 @@ test('parseArgs accepts message, output dir, skip flag and log limit', () => {
   assert.equal(options.outputDir, path.resolve('/tmp/output'))
   assert.equal(options.skipConnectionTest, true)
   assert.equal(options.logLimit, 12)
+  assert.equal(options.stream, true)
+  assert.equal(options.cancelAfterMs, 25)
 })
 
 test('createSessionPaths creates deterministic artifact paths', () => {
@@ -107,6 +111,7 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
     }
   }, null, 2))
 
+  let streamedRequestId = ''
   const result = await runAiTalkLocalSmoke({
     message: '用一句话回复烟测完成',
     userDataDir,
@@ -240,6 +245,202 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.equal(persisted.config.baseUrl, '[redacted-local-url]')
   assert.doesNotMatch(JSON.stringify(persisted), /Library\/Application Support\/ibot/)
   assert.doesNotMatch(JSON.stringify(persisted), /127\.0\.0\.1/)
+})
+
+test('runAiTalkLocalSmoke writes sanitized streaming acceptance fields', async () => {
+  const userDataDir = createTempDir('openpet-ai-talk-stream-user-data-')
+  const outputDir = createTempDir('openpet-ai-talk-stream-output-')
+  fs.writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5'
+    },
+    petPacks: {
+      activePackId: 'legacy-cat',
+      installed: {}
+    }
+  }, null, 2))
+  fs.writeFileSync(path.join(userDataDir, 'secrets.json'), JSON.stringify({
+    secrets: {
+      'ai.default': {
+        label: 'AI API Key',
+        value: 'sk-test-secret',
+        updatedAt: '2026-06-28T12:00:00.000Z'
+      }
+    }
+  }, null, 2))
+
+  const result = await runAiTalkLocalSmoke({
+    message: 'secret user message',
+    stream: true,
+    userDataDir,
+    outputDir,
+    now: () => new Date('2026-06-28T12:34:56.789Z'),
+    createSecretServiceImpl: () => ({
+      getSecretValue: () => 'sk-test-secret'
+    }),
+    createAiServiceImpl: () => ({
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        hasApiKey: true
+      }),
+      testConnection: async () => ({ ok: true, code: 'ok', message: 'ok', elapsedMs: 1, reply: 'ok' })
+    }),
+    createAiTalkStoreImpl: () => ({}),
+    createPetUtteranceLogServiceImpl: () => ({}),
+    createPetPackServiceImpl: () => ({
+      getActivePetPack: () => ({
+        manifest: {
+          id: 'legacy-cat',
+          displayName: 'Legacy Cat'
+        }
+      })
+    }),
+    createAiTalkServiceImpl: () => ({
+      streamChat: async ({ requestId, onState }) => {
+        streamedRequestId = requestId
+        onState({ requestId, status: 'streaming', partialReply: 'secret partial text', partialReplyChars: 19, chunkCount: 1, canCancel: true })
+        onState({ requestId, status: 'completed', partialReply: 'safe final', partialReplyChars: 10, chunkCount: 2, canCancel: false })
+        return {
+          requestId,
+          conversationId: 'control-center:legacy-cat:main',
+          reply: 'safe final',
+          bubbleSegments: ['safe final'],
+          messages: [{ role: 'user', content: 'secret user message' }, { role: 'assistant', content: 'safe final' }],
+          behaviorIntent: { intent: 'comfort', actionId: 'idle' },
+          providerLatencyMs: 900
+        }
+      },
+      flushMemoryJobs: async () => {},
+      getTraceExport: () => ({
+        petPackId: 'legacy-cat',
+        traces: [{
+          id: 'stream-trace-1',
+          type: 'ai-talk-chat',
+          success: true,
+          status: 'completed',
+          provider: 'openai-compatible',
+          model: 'gpt-5.5',
+          requestId: streamedRequestId,
+          messagesCount: 2,
+          memoryContextCount: 0,
+          recentPetActivityCount: 0,
+          replyChars: 10,
+          bubbleSegmentCount: 1,
+          chunkCount: 2,
+          memoryExtractionScheduled: false,
+          behaviorDecisionScheduled: true,
+          errorCode: ''
+        }]
+      })
+    })
+  })
+
+  const serialized = JSON.stringify(result)
+  assert.equal(result.ok, true)
+  assert.equal(result.chat.streaming, true)
+  assert.equal(result.streamingAcceptance.completed, true)
+  assert.equal(result.streamingAcceptance.canceled, false)
+  assert.match(result.streamingAcceptance.requestId, /^chat-/)
+  assert.equal(result.streamingAcceptance.chunkCount, 2)
+  assert.equal(result.streamingAcceptance.firstDeltaLatencyMs >= 0, true)
+  assert.equal(result.streamingAcceptance.providerLatencyMs, 900)
+  assert.equal(result.streamingAcceptance.memoryExtractionScheduled, false)
+  assert.equal(result.streamingAcceptance.behaviorDecisionScheduled, true)
+  assert.equal(serialized.includes('secret user message'), false)
+  assert.equal(serialized.includes('secret partial text'), false)
+  assert.equal(serialized.includes('sk-test-secret'), false)
+})
+
+test('runAiTalkLocalSmoke records canceled streaming smoke without side effects', async () => {
+  const userDataDir = createTempDir('openpet-ai-talk-stream-cancel-user-data-')
+  const outputDir = createTempDir('openpet-ai-talk-stream-cancel-output-')
+  fs.writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5'
+    },
+    petPacks: {
+      activePackId: 'legacy-cat',
+      installed: {}
+    }
+  }, null, 2))
+
+  let cancelPayload = null
+  const aiTalkService = {
+    streamChat: async ({ requestId, onState }) => {
+      onState({ requestId, status: 'streaming', partialReply: 'partial should not persist', partialReplyChars: 26, chunkCount: 1, canCancel: true })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      onState({ requestId, status: 'canceled', partialReply: 'partial should not persist', partialReplyChars: 26, chunkCount: 1, canCancel: false })
+      return {
+        canceled: true,
+        requestId,
+        conversationId: 'control-center:legacy-cat:main',
+        reply: '',
+        partialReply: 'partial should not persist',
+        providerLatencyMs: 0
+      }
+    },
+    cancelRequest: (payload) => {
+      cancelPayload = payload
+      return { canceled: true, requestId: payload.requestId, reason: payload.reason }
+    },
+    flushMemoryJobs: async () => {},
+    getTraceExport: () => ({ petPackId: 'legacy-cat', traces: [] })
+  }
+
+  const result = await runAiTalkLocalSmoke({
+    message: 'cancel secret prompt',
+    stream: true,
+    cancelAfterMs: 1,
+    userDataDir,
+    outputDir,
+    now: () => new Date('2026-06-28T12:34:56.789Z'),
+    createSecretServiceImpl: () => ({ getSecretValue: () => 'sk-test-secret' }),
+    createAiServiceImpl: () => ({
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5',
+        hasApiKey: true
+      }),
+      testConnection: async () => ({ ok: true, code: 'ok', message: 'ok', elapsedMs: 1, reply: 'ok' })
+    }),
+    createAiTalkStoreImpl: () => ({}),
+    createPetUtteranceLogServiceImpl: () => ({}),
+    createPetPackServiceImpl: () => ({
+      getActivePetPack: () => ({
+        manifest: {
+          id: 'legacy-cat',
+          displayName: 'Legacy Cat'
+        }
+      })
+    }),
+    createAiTalkServiceImpl: () => aiTalkService
+  })
+
+  const serialized = JSON.stringify(result)
+  assert.equal(result.ok, true)
+  assert.equal(result.chat.ok, true)
+  assert.equal(result.chat.canceled, true)
+  assert.equal(result.bubbleDispatch.attempted, false)
+  assert.equal(result.streamingAcceptance.completed, false)
+  assert.equal(result.streamingAcceptance.canceled, true)
+  assert.equal(result.streamingAcceptance.memoryExtractionScheduled, false)
+  assert.equal(result.streamingAcceptance.behaviorDecisionScheduled, false)
+  assert.equal(result.streamingAcceptance.chunkCount, 1)
+  assert.equal(cancelPayload.reason, 'smoke-cancel-after-ms')
+  assert.match(cancelPayload.requestId, /^chat-/)
+  assert.equal(serialized.includes('cancel secret prompt'), false)
+  assert.equal(serialized.includes('partial should not persist'), false)
 })
 
 test('runAiTalkLocalSmoke stays green when connection test fails but real chat and bubble dispatch succeed', async () => {

@@ -3,7 +3,7 @@
 > Date: 2026-07-09
 > Scope: AI Talk 流式回复、取消生成、桌面聊天状态同步
 > Baseline: `dev6` branch, based on local `main@b557fd4f`
-> Status: Phase 1 core and Phase 2 IPC/window/renderer wiring are implemented on `dev6`; Phase 2 renderer work is currently in the working tree and must be committed before merge; smoke/runbook closeout remains pending.
+> Status: Phase 1 core, Phase 2 IPC/window/renderer wiring, and Phase 4 smoke/runbook closeout are implemented on `dev6`; real-provider desktop feel remains Manual-required.
 
 ## 1. 文档定位
 
@@ -55,9 +55,9 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 | Phase 1 | Provider streaming adapter | Implemented | `fccabdae feat(phase-1): add provider streaming adapter` |
 | Phase 1 | AI Talk streaming lifecycle | Implemented | `e90b33be feat(phase-1): add ai talk streaming lifecycle` |
 | Phase 2 | IPC stream/cancel contract | Implemented | `f78e56c2 feat(phase-2): add ai talk streaming ipc contract` |
-| Phase 2 | Bubble Chat and PetChat renderer states | Implemented in working tree | Needs commit before merge |
-| Phase 3 | Cancel/failure recovery hardening | Mostly covered by Phase 1/2 tests | Needs real-provider smoke confirmation |
-| Phase 4 | Smoke/runbook/evidence closeout | Not implemented | Next bounded phase |
+| Phase 2 | Bubble Chat and PetChat renderer states | Implemented | `e3d0782b feat(phase-2): render ai talk streaming state` |
+| Phase 3 | Cancel/failure recovery hardening | Covered by service/window/smoke tests | Needs real-provider manual confirmation |
+| Phase 4 | Smoke/runbook/evidence closeout | Implemented | Current phase |
 
 ### Landed Or Implemented On `dev6`
 
@@ -82,30 +82,14 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 - Bubble Chat renderer displays partial assistant text and a cancel button for cancellable states.
 - PetChat renderer displays one transient assistant message with `data-request-id` and `data-status`.
 
-### Not Yet Implemented
+### Remaining Manual-required
 
-- Streaming/cancel smoke flags in `scripts/run-ai-talk-local-smoke.js`.
 - Real provider streaming/cancel evidence archive.
 - Human desktop acceptance for long replies, cancel hit target, auto-hide behavior, and failure recovery copy.
 
 ### Working Tree Note
 
-At the time this document was updated, Phase 2 renderer/window code existed as uncommitted changes in these files:
-
-- `src/main/ipc.js`
-- `src/main/pet-bubble-chat-preload.js`
-- `src/main/pet-bubble-chat-window.js`
-- `src/main/pet-bubble-chat/renderer.js`
-- `src/main/pet-chat-preload.js`
-- `src/main/pet-chat-window.js`
-- `src/main/pet-chat/renderer.js`
-- `tests/main/pet-bubble-chat-renderer.test.js`
-- `tests/main/pet-bubble-chat-window.test.js`
-- `tests/main/pet-chat-ipc.test.js`
-- `tests/main/pet-chat-renderer.test.js`
-- `tests/main/pet-chat-window.test.js`
-
-Do not stage `tmp/`. Commit Phase 2 renderer/window work separately before starting Phase 4.
+Do not stage `tmp/`. Local smoke output belongs in temporary output directories unless explicitly archived through the release-evidence helper.
 
 ## 5. Architecture Boundaries
 
@@ -338,7 +322,7 @@ Renderer behavior in `src/main/pet-chat/renderer.js`:
 
 ## 13. Smoke And Evidence Requirements
 
-Phase 4 should extend `scripts/run-ai-talk-local-smoke.js` with explicit streaming and cancel options:
+`scripts/run-ai-talk-local-smoke.js` supports explicit streaming and cancel options:
 
 ```bash
 npm run run-ai-talk-local-smoke -- \

@@ -62,6 +62,8 @@ const usage = () => [
   '  --user-data-dir <dir>    OpenPet/ibot userData directory. Defaults to desktop conventions.',
   '  --output-dir <dir>       Directory for smoke session artifacts. Default: release/ai-talk-local-smoke',
   '  --skip-connection-test   Skip aiService.testConnection() and only run chat.',
+  '  --stream                 Use AiTalkService.streamChat() and record streaming acceptance fields.',
+  '  --cancel-after-ms <n>    With --stream, cancel the request after n milliseconds.',
   '  --log-limit <n>          Number of recent redacted log entries to include. Default: 20',
   '  --help',
   '',
@@ -241,6 +243,8 @@ const parseArgs = (argv) => {
     userDataDir: defaultUserDataDir(),
     outputDir: DEFAULT_OUTPUT_DIR,
     skipConnectionTest: false,
+    stream: false,
+    cancelAfterMs: 0,
     logLimit: DEFAULT_LOG_LIMIT,
     help: false
   }
@@ -267,6 +271,11 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--skip-connection-test') {
       options.skipConnectionTest = true
+    } else if (arg === '--stream') {
+      options.stream = true
+    } else if (arg === '--cancel-after-ms') {
+      options.cancelAfterMs = Number(readValue(index, arg))
+      index += 1
     } else if (arg === '--help' || arg === '-h') {
       options.help = true
     } else {
@@ -280,11 +289,18 @@ const parseArgs = (argv) => {
   if (!Number.isFinite(options.logLimit) || options.logLimit <= 0) {
     throw new Error('--log-limit must be a positive number')
   }
+  if (!Number.isFinite(options.cancelAfterMs) || options.cancelAfterMs < 0) {
+    throw new Error('--cancel-after-ms must be zero or a positive number')
+  }
+  if (options.cancelAfterMs > 0 && !options.stream) {
+    throw new Error('--cancel-after-ms requires --stream')
+  }
 
   options.message = String(options.message || '').trim()
   options.userDataDir = path.resolve(options.userDataDir)
   options.outputDir = path.resolve(options.outputDir)
   options.logLimit = Math.round(options.logLimit)
+  options.cancelAfterMs = Math.round(options.cancelAfterMs)
   return options
 }
 
@@ -499,11 +515,37 @@ const createBubbleDispatchHarness = ({
   }
 }
 
+const createStreamingAcceptance = ({
+  requestId = '',
+  result = {},
+  streamingEvents = [],
+  firstDeltaLatencyMs = 0
+} = {}) => {
+  const safeEvents = Array.isArray(streamingEvents) ? streamingEvents : []
+  const maxChunkCount = safeEvents.reduce((max, event) => (
+    Math.max(max, Number(event?.chunkCount) || 0)
+  ), 0)
+  const completed = result?.canceled !== true
+  const canceled = result?.canceled === true || safeEvents.some((event) => event?.status === 'canceled')
+  return {
+    requestId: sanitizeText(result?.requestId || requestId || '', 120),
+    chunkCount: Math.max(maxChunkCount, Number(result?.chunkCount) || 0),
+    firstDeltaLatencyMs: Math.max(0, Number(firstDeltaLatencyMs) || 0),
+    providerLatencyMs: Number(result?.providerLatencyMs) || 0,
+    completed: completed && !canceled,
+    canceled,
+    memoryExtractionScheduled: completed && !canceled,
+    behaviorDecisionScheduled: completed && !canceled && Boolean(result?.behaviorIntent)
+  }
+}
+
 const runAiTalkLocalSmoke = async ({
   message,
   userDataDir = defaultUserDataDir(),
   outputDir = DEFAULT_OUTPUT_DIR,
   skipConnectionTest = false,
+  stream = false,
+  cancelAfterMs = 0,
   logLimit = DEFAULT_LOG_LIMIT,
   now = () => new Date(),
   projectRoot = path.join(__dirname, '..'),
@@ -589,8 +631,11 @@ const runAiTalkLocalSmoke = async ({
     },
     chat: {
       ok: false,
-      messageChars: content.length
+      messageChars: content.length,
+      streaming: Boolean(stream),
+      canceled: false
     },
+    streamingAcceptance: null,
     bubbleDispatch: {
       attempted: false,
       petSayReceived: false,
@@ -626,7 +671,55 @@ const runAiTalkLocalSmoke = async ({
     }
 
     const requestId = createBubbleRequestId()
-    const result = await aiTalkService.chat({ message: content, entrypoint: 'control-center', requestId })
+    let result
+    if (stream) {
+      if (typeof aiTalkService.streamChat !== 'function') {
+        throw new Error('AI Talk streaming is not available')
+      }
+      const streamingEvents = []
+      const startedAt = Date.now()
+      let firstDeltaLatencyMs = 0
+      const pending = aiTalkService.streamChat({
+        message: content,
+        entrypoint: 'bubble-chat-smoke',
+        requestId,
+        onState: (state = {}) => {
+          const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(state.status)
+            ? state.status
+            : 'streaming'
+          const partialReplyChars = Number(state.partialReplyChars) || String(state.partialReply || '').length
+          streamingEvents.push({
+            requestId: sanitizeText(state.requestId || requestId, 120),
+            status,
+            partialReplyChars,
+            chunkCount: Number(state.chunkCount) || 0,
+            canCancel: state.canCancel === true && (status === 'started' || status === 'streaming')
+          })
+          if (!firstDeltaLatencyMs && status === 'streaming' && partialReplyChars > 0) {
+            firstDeltaLatencyMs = Date.now() - startedAt
+          }
+        }
+      })
+      let cancelTimer = null
+      if (cancelAfterMs > 0 && typeof aiTalkService.cancelRequest === 'function') {
+        cancelTimer = setTimeout(() => {
+          aiTalkService.cancelRequest({ requestId, reason: 'smoke-cancel-after-ms', sourceSurface: 'local-smoke' })
+        }, cancelAfterMs)
+      }
+      try {
+        result = await pending
+      } finally {
+        if (cancelTimer) clearTimeout(cancelTimer)
+      }
+      summary.streamingAcceptance = createStreamingAcceptance({
+        requestId,
+        result,
+        streamingEvents,
+        firstDeltaLatencyMs
+      })
+    } else {
+      result = await aiTalkService.chat({ message: content, entrypoint: 'control-center', requestId })
+    }
     summary.chat = {
       ok: true,
       conversationId: sanitizeText(result.conversationId || '', 160),
@@ -635,7 +728,9 @@ const runAiTalkLocalSmoke = async ({
       bubbleSegments: Array.isArray(result.bubbleSegments) ? result.bubbleSegments.map((segment) => sanitizeText(segment, 120)) : [],
       messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
       behaviorIntentIntent: sanitizeText(result.behaviorIntent?.intent || '', 80),
-      behaviorActionId: sanitizeText(result.behaviorIntent?.actionId || '', 80)
+      behaviorActionId: sanitizeText(result.behaviorIntent?.actionId || '', 80),
+      streaming: Boolean(stream),
+      canceled: result.canceled === true
     }
     summary.bubbleAcceptance = {
       requestId: sanitizeText(result.requestId || requestId || '', 120),
@@ -649,7 +744,15 @@ const runAiTalkLocalSmoke = async ({
       desktopFeelNotes: '',
       requestId: summary.bubbleAcceptance.requestId
     }
-    summary.bubbleDispatch = bubbleDispatchHarness.dispatchAiReply(result)
+    summary.bubbleDispatch = result.canceled === true
+      ? {
+          attempted: false,
+          reason: 'stream-canceled',
+          requestId: summary.bubbleAcceptance.requestId,
+          petSayReceived: false,
+          bubbleStateVisible: false
+        }
+      : bubbleDispatchHarness.dispatchAiReply(result)
 
     if (typeof aiTalkService.flushMemoryJobs === 'function') {
       await aiTalkService.flushMemoryJobs()
@@ -664,17 +767,34 @@ const runAiTalkLocalSmoke = async ({
             provider: sanitizeText(trace.provider || '', 80),
             model: sanitizeText(trace.model || '', 120),
             requestId: sanitizeText(trace.requestId || '', 120),
+            status: sanitizeText(trace.status || '', 80),
             messagesCount: Number(trace.messagesCount) || 0,
             memoryContextCount: Number(trace.memoryContextCount) || 0,
             recentPetActivityCount: Number(trace.recentPetActivityCount) || 0,
+            chunkCount: Number(trace.chunkCount) || 0,
             replyChars: Number(trace.replyChars) || 0,
             bubbleSegmentCount: Number(trace.bubbleSegmentCount) || 0,
+            memoryExtractionScheduled: trace.memoryExtractionScheduled === true,
+            behaviorDecisionScheduled: trace.behaviorDecisionScheduled === true,
             errorCode: sanitizeText(trace.errorCode || '', 80)
           }))
         : []
       summary.traceRequestIds = summary.traces
         .map((trace) => trace.requestId)
         .filter(Boolean)
+      if (summary.streamingAcceptance?.requestId) {
+        const matchingTrace = summary.traces.find((trace) => trace.requestId === summary.streamingAcceptance.requestId)
+        if (matchingTrace) {
+          summary.streamingAcceptance = {
+            ...summary.streamingAcceptance,
+            chunkCount: Math.max(summary.streamingAcceptance.chunkCount, Number(matchingTrace.chunkCount) || 0),
+            completed: matchingTrace.status ? matchingTrace.status === 'completed' : summary.streamingAcceptance.completed,
+            canceled: matchingTrace.status ? matchingTrace.status === 'canceled' : summary.streamingAcceptance.canceled,
+            memoryExtractionScheduled: matchingTrace.memoryExtractionScheduled === true,
+            behaviorDecisionScheduled: matchingTrace.behaviorDecisionScheduled === true
+          }
+        }
+      }
     }
 
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
@@ -683,7 +803,7 @@ const runAiTalkLocalSmoke = async ({
       summary.bubbleDispatch?.petSayReceived &&
       summary.bubbleDispatch?.bubbleStateVisible
     )
-    summary.ok = Boolean(summary.chat.ok && bubbleDispatchOk)
+    summary.ok = Boolean(summary.chat.ok && (summary.chat.canceled === true || bubbleDispatchOk))
   } catch (error) {
     summary.error = sanitizeError(error)
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
