@@ -598,6 +598,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
 
   const pendingMemoryJobs = new Set()
   const conversationQueues = new Map()
+  const streamingRequests = new Map()
 
   const enqueueConversation = (conversationKey, task) => {
     if (!conversationKey) return task()
@@ -608,6 +609,68 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     })
     conversationQueues.set(conversationKey, marker)
     return queued
+  }
+
+  const emitStreamState = (state = {}, callback = null) => {
+    const status = normalizeString(state.status) || 'streaming'
+    const partialReply = normalizeString(state.partialReply)
+    const view = {
+      requestId: normalizeString(state.requestId).slice(0, 120),
+      conversationId: normalizeString(state.conversationId),
+      petPackId: normalizeString(state.petPackId),
+      entrypoint: normalizeString(state.entrypoint) || 'control-center',
+      status,
+      partialReply,
+      partialReplyChars: partialReply.length,
+      chunkCount: Math.max(0, Number(state.chunkCount) || 0),
+      canCancel: status === 'started' || status === 'streaming',
+      errorMessage: sanitizeDiagnosticText(state.errorMessage)
+    }
+    if (typeof callback === 'function') {
+      try {
+        callback(view)
+      } catch (error) {
+        recordLog({
+          level: 'warn',
+          event: 'ai-talk.stream.state-callback.failed',
+          message: 'AI talk stream state callback failed',
+          details: {
+            requestId: view.requestId,
+            conversationId: view.conversationId,
+            petPackId: view.petPackId,
+            status: view.status,
+            partialReplyChars: view.partialReplyChars,
+            errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+            errorMessage: sanitizeDiagnosticText(error?.message)
+          }
+        })
+      }
+    }
+    return view
+  }
+
+  const cancelRequest = ({ requestId, reason = 'user-cancel' } = {}) => {
+    const key = normalizeString(requestId).slice(0, 120)
+    const request = streamingRequests.get(key)
+    if (!request) return { canceled: false, requestId: key, reason: 'not-found' }
+    if (['completed', 'canceled', 'failed'].includes(request.status)) {
+      return { canceled: false, requestId: key, reason: 'already-terminal', status: request.status }
+    }
+    request.status = 'canceling'
+    request.cancelReason = normalizeString(reason) || 'user-cancel'
+    request.controller.abort()
+    recordLog({
+      level: 'info',
+      event: 'ai-talk.stream.cancel-requested',
+      message: 'AI talk stream cancel requested',
+      details: {
+        requestId: key,
+        conversationId: request.conversationId,
+        petPackId: request.petPackId,
+        cancelReason: request.cancelReason
+      }
+    })
+    return { canceled: true, requestId: key, reason: request.cancelReason }
   }
 
   const resolvePersona = (manifest, petPackId) => {
@@ -1195,6 +1258,358 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     }
   }
 
+  const streamChat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId, skipUserAppend = false, onState = null } = {}) => {
+    const startedAt = Date.now()
+    const controller = new AbortController()
+    const safeRequestId = (normalizeString(requestId) || `chat-${Date.now().toString(36)}`).slice(0, 120)
+    const normalizedBatch = Array.isArray(messageBatch)
+      ? messageBatch.map(normalizeString).filter(Boolean)
+      : []
+    const content = normalizeString(message)
+    const userContents = normalizedBatch.length ? normalizedBatch : [content].filter(Boolean)
+    const diagnostics = {
+      entrypoint,
+      requestId: safeRequestId,
+      messageChars: userContents.join('\n').length,
+      messageCount: userContents.length
+    }
+    let registryEntry = null
+    let partialReply = ''
+    let chunkCount = 0
+    let terminalStatus = 'failed'
+    let cancelReason = ''
+    let providerLatencyMs = 0
+    let finishReason = ''
+    let traceContext = {
+      petPackId: '',
+      conversationPublicId: '',
+      personaHash: '',
+      provider: '',
+      baseUrl: '',
+      model: '',
+      historyCount: 0,
+      messagesCount: 0,
+      memoryContextCount: 0,
+      memoryIdsInjected: [],
+      recentPetActivityCount: 0,
+      toolsCount: 0,
+      persistedMessageCount: 0
+    }
+
+    try {
+      if (!userContents.length) throw new Error('AI chat message is empty')
+      if (userContents.some((item) => item.length > MAX_USER_MESSAGE_CHARS)) throw new Error('AI chat message is too long')
+      const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
+      Object.assign(diagnostics, {
+        provider: normalizeString(config.provider),
+        model: normalizeString(config.model)
+      })
+      if (!config.enabled) throw new Error('AI chat is disabled')
+      if (typeof aiService.streamComplete !== 'function') throw new Error('AI streaming is not available')
+
+      const { manifest, petPackId } = resolveActivePack()
+      diagnostics.petPackId = petPackId
+      const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
+      diagnostics.personaHash = personaHash
+      migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
+      const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({
+        entrypoint,
+        petPackId,
+        personaHash
+      })
+      migrateLegacyConversationIfNeeded({
+        sessionId,
+        conversationId,
+        petPackId
+      })
+      const conversationPublicId = `${sessionId}:${conversationId}`
+      diagnostics.conversationId = conversationPublicId
+
+      return await enqueueConversation(conversationPublicId, async () => {
+        const history = aiTalkStore.getMessages(sessionId, conversationId)
+        const userMessages = userContents.map((entry) => ({ role: 'user', content: entry }))
+        const memoryContext = getMemoryContext({ petPackId, userMessage: userContents.join('\n'), history })
+        const memoryIdsInjected = memoryContext.map((memory) => memory.id).filter(Boolean)
+        const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
+        const recentPetActivity = getRecentPetActivity(petPackId)
+        const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
+        const actionCandidates = getCurrentActionCandidates(manifest)
+        const tools = config.behavior?.enabled && config.behavior?.useTools !== false
+          ? [getBehaviorToolDefinition({ actions: actionCandidates })]
+          : []
+        const messages = [
+          { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
+          ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
+          ...(recentPetActivityPrompt ? [{ role: 'system', content: recentPetActivityPrompt }] : []),
+          ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
+          ...(skipUserAppend ? [] : userMessages)
+        ]
+        if (!skipUserAppend) {
+          aiTalkStore.appendMessages(sessionId, conversationId, userMessages)
+        }
+        Object.assign(diagnostics, {
+          historyCount: history.length,
+          messagesCount: messages.length,
+          memoryContextCount: memoryContext.length,
+          recentPetActivityCount: recentPetActivity.length,
+          actionCandidateCount: actionCandidates.length,
+          toolsCount: tools.length,
+          memoryEnabled: config.memory?.enabled === true,
+          behaviorEnabled: config.behavior?.enabled === true
+        })
+        traceContext = {
+          petPackId,
+          conversationPublicId,
+          personaHash,
+          provider: normalizeString(config.provider),
+          baseUrl: sanitizeProviderBaseUrl(config.baseUrl),
+          model: normalizeString(config.model),
+          historyCount: history.length,
+          messagesCount: messages.length,
+          memoryContextCount: memoryContext.length,
+          memoryIdsInjected,
+          recentPetActivityCount: recentPetActivity.length,
+          toolsCount: tools.length,
+          persistedMessageCount: aiTalkStore.getMessages(sessionId, conversationId).length
+        }
+
+        registryEntry = {
+          requestId: safeRequestId,
+          conversationId: conversationPublicId,
+          petPackId,
+          entrypoint,
+          status: 'started',
+          controller,
+          cancelReason: ''
+        }
+        streamingRequests.set(safeRequestId, registryEntry)
+        emitStreamState({ ...registryEntry, partialReply, chunkCount }, onState)
+        recordLog({
+          level: 'info',
+          event: 'ai-talk.stream.started',
+          message: 'AI talk stream started',
+          details: diagnostics
+        })
+
+        const result = await aiService.streamComplete({
+          messages,
+          tools,
+          requestId: safeRequestId,
+          signal: controller.signal,
+          onDelta: (delta) => {
+            if (registryEntry.status === 'canceling' || registryEntry.status === 'canceled') {
+              recordLog({
+                level: 'warn',
+                event: 'ai-talk.stream.late-chunk-ignored',
+                message: 'AI talk stream late chunk ignored',
+                details: {
+                  requestId: safeRequestId,
+                  conversationId: conversationPublicId,
+                  petPackId
+                }
+              })
+              return
+            }
+            const text = normalizeString(delta)
+            if (!text) return
+            registryEntry.status = 'streaming'
+            chunkCount += 1
+            partialReply += text
+            emitStreamState({ ...registryEntry, partialReply, chunkCount }, onState)
+            recordLog({
+              level: 'debug',
+              event: 'ai-talk.stream.delta',
+              message: 'AI talk stream delta received',
+              details: {
+                requestId: safeRequestId,
+                conversationId: conversationPublicId,
+                petPackId,
+                chunkCount,
+                partialReplyChars: partialReply.length
+              }
+            })
+          }
+        })
+
+        if (registryEntry.status === 'canceling') {
+          const error = new Error('AI talk stream canceled')
+          error.name = 'AbortError'
+          throw error
+        }
+
+        providerLatencyMs = Number.isFinite(Number(result.elapsedMs)) ? Number(result.elapsedMs) : 0
+        finishReason = normalizeString(result.finishReason)
+        const reply = normalizeString(result.reply || partialReply)
+        if (!reply) throw new Error('AI provider returned an empty response')
+        const bubbleSegments = createBubbleSegments(reply)
+        const bubble = createReplyBubble({ reply, behaviorIntent: result.behaviorIntent })
+        const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [{ role: 'assistant', content: reply }])
+        markMemoryContextUsed({ petPackId, conversationId: conversationPublicId, memories: memoryContext })
+        const sourceMessages = nextMessages.slice(-(userMessages.length + 1))
+        const memoryExtractionScheduled = config.memory?.enabled === true && typeof aiTalkStore.applyMemoryOperations === 'function'
+        scheduleMemoryExtraction({
+          config,
+          petPackId,
+          conversationPublicId,
+          sourceMessages,
+          userMessage: userContents.join('\n'),
+          assistantReply: reply,
+          persona
+        })
+        terminalStatus = 'completed'
+        registryEntry.status = 'completed'
+        streamingRequests.delete(safeRequestId)
+        recordLog({
+          level: 'info',
+          event: 'ai-talk.stream.completed',
+          message: 'AI talk stream completed',
+          details: {
+            ...diagnostics,
+            elapsedMs: Date.now() - startedAt,
+            providerLatencyMs,
+            chunkCount: Number.isFinite(Number(result.chunkCount)) ? Number(result.chunkCount) : chunkCount,
+            replyChars: reply.length,
+            persistedMessageCount: nextMessages.length,
+            finishReason,
+            hasBehaviorIntent: Boolean(result.behaviorIntent)
+          }
+        })
+        recordChatTrace({
+          requestId: safeRequestId,
+          type: 'ai-talk-chat',
+          petPackId,
+          conversationId: conversationPublicId,
+          personaHash,
+          provider: normalizeString(config.provider),
+          baseUrl: sanitizeProviderBaseUrl(config.baseUrl),
+          model: normalizeString(config.model),
+          entrypoint,
+          historyCount: history.length,
+          messagesCount: messages.length,
+          messageChars: userContents.join('\n').length,
+          memoryContextCount: memoryContext.length,
+          memoryIdsInjected,
+          recentPetActivityCount: recentPetActivity.length,
+          toolsCount: tools.length,
+          streaming: result.streaming !== false,
+          status: terminalStatus,
+          chunkCount: Number.isFinite(Number(result.chunkCount)) ? Number(result.chunkCount) : chunkCount,
+          partialReplyChars: partialReply.length,
+          elapsedMs: Date.now() - startedAt,
+          providerLatencyMs,
+          finishReason,
+          cancelReason: '',
+          memoryExtractionScheduled,
+          behaviorDecisionScheduled: Boolean(result.behaviorIntent),
+          replyChars: reply.length,
+          bubbleSegmentCount: bubbleSegments.length,
+          hasBehaviorIntent: Boolean(result.behaviorIntent),
+          behaviorIntentIntent: normalizeString(result.behaviorIntent?.intent),
+          behaviorIntentDisplayMode: normalizeBubbleDisplayMode(result.behaviorIntent?.displayMode),
+          behavior: {
+            providerIntent: result.behaviorIntent ? summarizeBehavior(result.behaviorIntent) : null,
+            finalDecision: null
+          },
+          persistedMessageCount: nextMessages.length,
+          displayMode: normalizeBubbleDisplayMode(bubble.displayMode || result.behaviorIntent?.displayMode),
+          success: true,
+          errorCode: ''
+        })
+        emitStreamState({ ...registryEntry, partialReply: reply, chunkCount }, onState)
+        return {
+          conversationId: conversationPublicId,
+          reply,
+          bubble,
+          bubbleSegments,
+          behaviorIntent: result.behaviorIntent || undefined,
+          messages: nextMessages,
+          requestId: safeRequestId,
+          providerLatencyMs
+        }
+      })
+    } catch (error) {
+      const canceled = registryEntry?.status === 'canceling' || error?.name === 'AbortError'
+      terminalStatus = canceled ? 'canceled' : 'failed'
+      cancelReason = registryEntry?.cancelReason || (canceled ? 'user-cancel' : '')
+      if (registryEntry) {
+        registryEntry.status = terminalStatus
+        emitStreamState({
+          ...registryEntry,
+          status: terminalStatus,
+          partialReply,
+          chunkCount,
+          errorMessage: canceled ? '' : sanitizeDiagnosticText(error?.message)
+        }, onState)
+        streamingRequests.delete(safeRequestId)
+      }
+      recordLog({
+        level: canceled ? 'info' : 'error',
+        event: canceled ? 'ai-talk.stream.canceled' : 'ai-talk.stream.failed',
+        message: canceled ? 'AI talk stream canceled' : 'AI talk stream failed',
+        details: {
+          ...diagnostics,
+          elapsedMs: Date.now() - startedAt,
+          providerLatencyMs,
+          chunkCount,
+          partialReplyChars: partialReply.length,
+          cancelReason,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: canceled
+            ? ''
+            : (error?.providerStatus ? 'AI provider returned an error response' : sanitizeDiagnosticText(error?.message)),
+          providerStatus: error?.providerStatus || 0,
+          providerCode: error?.providerCode || ''
+        }
+      })
+      recordChatTrace({
+        requestId: safeRequestId,
+        type: 'ai-talk-chat',
+        petPackId: traceContext.petPackId || diagnostics.petPackId || '',
+        conversationId: traceContext.conversationPublicId || diagnostics.conversationId || '',
+        personaHash: traceContext.personaHash || diagnostics.personaHash || '',
+        provider: traceContext.provider || diagnostics.provider || '',
+        baseUrl: traceContext.baseUrl || '',
+        model: traceContext.model || diagnostics.model || '',
+        entrypoint,
+        historyCount: traceContext.historyCount || 0,
+        messagesCount: traceContext.messagesCount || 0,
+        messageChars: userContents.join('\n').length,
+        memoryContextCount: traceContext.memoryContextCount || 0,
+        memoryIdsInjected: traceContext.memoryIdsInjected || [],
+        recentPetActivityCount: traceContext.recentPetActivityCount || 0,
+        toolsCount: traceContext.toolsCount || 0,
+        streaming: true,
+        status: terminalStatus,
+        chunkCount,
+        partialReplyChars: partialReply.length,
+        elapsedMs: Date.now() - startedAt,
+        providerLatencyMs,
+        finishReason,
+        cancelReason,
+        memoryExtractionScheduled: false,
+        behaviorDecisionScheduled: false,
+        replyChars: 0,
+        bubbleSegmentCount: 0,
+        hasBehaviorIntent: false,
+        persistedMessageCount: traceContext.persistedMessageCount || 0,
+        success: false,
+        errorCode: canceled ? 'stream_canceled' : resolveTraceErrorCode(error),
+        providerStatus: error?.providerStatus || 0
+      })
+      if (canceled) {
+        return {
+          canceled: true,
+          conversationId: traceContext.conversationPublicId || diagnostics.conversationId || '',
+          reply: '',
+          partialReply,
+          requestId: safeRequestId,
+          providerLatencyMs
+        }
+      }
+      throw error
+    }
+  }
+
   const chat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId, skipUserAppend = false } = {}) => {
     const startedAt = Date.now()
     const normalizedBatch = Array.isArray(messageBatch)
@@ -1437,6 +1852,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
 
   return {
     appendUserMessages,
+    cancelRequest,
     chat,
     compilePersonaPrompt,
     compileMemoryContextPrompt,
@@ -1454,7 +1870,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     getPersonaProfile,
     mergePersona,
     recordTraceBehaviorOutcome,
-    savePersonaOverride
+    savePersonaOverride,
+    streamChat
   }
 }
 

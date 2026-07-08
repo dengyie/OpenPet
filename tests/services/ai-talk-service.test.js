@@ -1615,3 +1615,156 @@ test('ai talk service returns a safe latest trace summary without prompt or raw 
   assert.equal(serialized.includes('Mochi starts coding sessions with a gentle focus check-in.'), false)
   assert.equal(serialized.includes('Always answer in concise Chinese.'), false)
 })
+
+test('ai talk service streamChat appends only final assistant reply', async () => {
+  const store = createStore()
+  const states = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async ({ onDelta }) => {
+        onDelta('Hel')
+        onDelta('lo')
+        return { reply: 'Hello', elapsedMs: 12, streaming: true, fallback: false, chunkCount: 2, finishReason: 'stop' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  const result = await service.streamChat({
+    message: 'Hi',
+    requestId: 'stream-chat-1',
+    entrypoint: 'bubble-chat',
+    onState: (state) => states.push(state)
+  })
+
+  assert.equal(result.reply, 'Hello')
+  assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['Hi', 'Hello'])
+  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === 'Hel'), true)
+  assert.equal(states.at(-1).status, 'completed')
+})
+
+test('ai talk service cancelRequest prevents assistant persistence and side effects', async () => {
+  const store = createStore()
+  let memoryRequestCount = 0
+  const states = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: true }
+      }),
+      streamComplete: async ({ requestId, onDelta, signal }) => {
+        onDelta('Partial')
+        service.cancelRequest({ requestId, reason: 'user-cancel' })
+        assert.equal(signal.aborted, true)
+        const error = new Error('The operation was aborted')
+        error.name = 'AbortError'
+        throw error
+      },
+      complete: async () => {
+        memoryRequestCount += 1
+        return { reply: 'memory extracted' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  const result = await service.streamChat({
+    message: 'Please write long',
+    requestId: 'stream-cancel-1',
+    entrypoint: 'bubble-chat',
+    onState: (state) => states.push(state)
+  })
+
+  assert.equal(result.canceled, true)
+  assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['Please write long'])
+  assert.equal(memoryRequestCount, 0)
+  assert.equal(states.at(-1).status, 'canceled')
+})
+
+test('ai talk service streamChat records redacted streaming trace summary', async () => {
+  const store = createStore()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async ({ onDelta }) => {
+        onDelta('secret partial')
+        return { reply: 'secret final', elapsedMs: 20, streaming: true, fallback: false, chunkCount: 1, finishReason: 'stop' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  await service.streamChat({ message: 'secret user prompt', requestId: 'stream-trace-1' })
+  const exported = service.exportTraceDiagnostics({ filters: { petPackId: 'mochi-cat' } })
+  const serialized = exported
+  const parsed = JSON.parse(exported)
+
+  assert.match(serialized, /stream-trace-1/)
+  assert.equal(parsed.traces[0].streaming, true)
+  assert.equal(parsed.traces[0].chunkCount, 1)
+  assert.equal(serialized.includes('secret user prompt'), false)
+  assert.equal(serialized.includes('secret partial'), false)
+  assert.equal(serialized.includes('secret final'), false)
+})
+
+test('ai talk service streamChat state callback failures do not abort completion', async () => {
+  const store = createStore()
+  const logs = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async ({ onDelta }) => {
+        onDelta('safe partial')
+        return { reply: 'safe final', elapsedMs: 20, streaming: true, fallback: false, chunkCount: 1, finishReason: 'stop' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null }),
+    appLogService: {
+      record: (entry) => logs.push(entry)
+    }
+  })
+
+  const result = await service.streamChat({
+    message: 'hello',
+    requestId: 'stream-callback-failure-1',
+    onState: () => {
+      throw new Error('renderer window unavailable')
+    }
+  })
+
+  assert.equal(result.reply, 'safe final')
+  assert.deepEqual(store.getMessages('control-center:mochi-cat', 'main').map((message) => message.content), ['hello', 'safe final'])
+  assert.equal(logs.some((entry) => entry.event === 'ai-talk.stream.state-callback.failed'), true)
+  assert.equal(JSON.stringify(logs).includes('hello'), false)
+  assert.equal(JSON.stringify(logs).includes('safe partial'), false)
+  assert.equal(JSON.stringify(logs).includes('safe final'), false)
+})
