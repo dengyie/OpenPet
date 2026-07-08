@@ -394,6 +394,88 @@ test('pet chat does not record ai say events as pet utterances while still showi
   assert.equal(state.bubble.text, '正式回复')
 })
 
+test('pet chat and bubble chat cancel handlers cancel the shared ai talk request', async () => {
+  const cancelCalls = []
+  const ipcMain = registerPetChatHandlers({
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      getConversation: () => [],
+      cancelRequest: (payload) => {
+        cancelCalls.push(payload)
+        return { canceled: true }
+      }
+    }
+  })
+
+  assert.equal(ipcMain.handlers.has(IPC.PET_CHAT_CANCEL_MESSAGE), true)
+  assert.equal(ipcMain.handlers.has(IPC.PET_BUBBLE_CHAT_CANCEL_MESSAGE), true)
+  assert.equal(await ipcMain.handlers.get(IPC.PET_CHAT_CANCEL_MESSAGE)({}, { requestId: 'chat-1' }), true)
+  assert.equal(await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_CANCEL_MESSAGE)({}, { requestId: 'chat-2' }), true)
+  assert.deepEqual(cancelCalls, [
+    { requestId: 'chat-1', reason: 'user-cancel', sourceSurface: 'pet-chat' },
+    { requestId: 'chat-2', reason: 'user-cancel', sourceSurface: 'bubble-chat' }
+  ])
+})
+
+test('pet chat IPC broadcasts streaming state to both chat surfaces', async () => {
+  const bubbleStates = []
+  const chatStates = []
+  const ipcMain = registerPetChatHandlers({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        hasApiKey: true,
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-5.5'
+      })
+    },
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
+      getConversation: () => [],
+      streamChat: async ({ onState }) => {
+        onState({
+          requestId: 'chat-stream-1',
+          conversationId: 'control-center:legacy-cat:main',
+          petPackId: 'legacy-cat',
+          status: 'streaming',
+          partialReply: 'Hel',
+          partialReplyChars: 3,
+          canCancel: true
+        })
+        return {
+          requestId: 'chat-stream-1',
+          conversationId: 'control-center:legacy-cat:main',
+          reply: 'Hello',
+          bubbleSegments: ['Hello'],
+          messages: [{ id: 'a1', role: 'assistant', content: 'Hello', createdAt: '2026-06-24T00:00:01.000Z' }]
+        }
+      }
+    },
+    petBubbleChatWindowService: {
+      applyStreamState: (state) => {
+        bubbleStates.push(state)
+        return { streaming: state }
+      },
+      refreshItems: () => ({ visible: true })
+    },
+    petChatWindowService: {
+      applyStreamState: (state) => {
+        chatStates.push(state)
+        return { streaming: state }
+      },
+      getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true })
+    }
+  })
+
+  await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: 'hello' })
+
+  assert.equal(bubbleStates.length, 1)
+  assert.equal(chatStates.length, 1)
+  assert.equal(bubbleStates[0].partialReply, 'Hel')
+  assert.equal(chatStates[0].requestId, 'chat-stream-1')
+})
+
 test('pet bubble chat IPC delegates state, open, local message, hide, pin and interaction updates', async () => {
   const calls = []
   const conversationMessages = [

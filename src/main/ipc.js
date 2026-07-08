@@ -197,6 +197,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     appService.quit()
   }
 
+  const broadcastAiTalkStreamState = (state = {}) => {
+    petBubbleChatWindowService?.applyStreamState?.(state)
+    petChatWindowService?.applyStreamState?.(state)
+  }
+
   const runAiChatRequest = async (payload, { source = 'control-center', entrypoint } = {}) => {
     const requestPayload = entrypoint && !payload?.entrypoint
       ? { ...payload, entrypoint }
@@ -224,7 +229,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       }
     })
     try {
-      const result = await (aiTalkService || aiService).chat(requestPayload)
+      const result = typeof aiTalkService?.streamChat === 'function'
+        ? await aiTalkService.streamChat({
+            ...requestPayload,
+            onState: broadcastAiTalkStreamState
+          })
+        : await (aiTalkService || aiService).chat(requestPayload)
       const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent, result.bubbleSegments)
       const bubble = bubbleText
         ? petChatFacade.captureBubble({ text: bubbleText, source: 'ai' }, { notify: false })
@@ -437,6 +447,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return petChatFacade.dragBubbleChatWindowTo(payload)
   })
 
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_CANCEL_MESSAGE, (_event, payload = {}) => {
+    const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : ''
+    const result = aiTalkService?.cancelRequest?.({ requestId, reason: 'user-cancel', sourceSurface: 'bubble-chat' })
+    return Boolean(result?.canceled)
+  })
+
   ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE, async (_event, payload = {}) => {
     const startedAt = Date.now()
     const message = typeof payload?.message === 'string' ? payload.message.trim() : ''
@@ -595,6 +611,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   ipcMainService.on(IPC.PET_CHAT_OPEN_SETTINGS, () => {
     petChatWindowService?.openSettings?.()
+  })
+
+  ipcMainService.handle(IPC.PET_CHAT_CANCEL_MESSAGE, (_event, payload = {}) => {
+    const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : ''
+    const result = aiTalkService?.cancelRequest?.({ requestId, reason: 'user-cancel', sourceSurface: 'pet-chat' })
+    return Boolean(result?.canceled)
   })
 
   ipcMainService.handle(IPC.PET_CHAT_SEND_MESSAGE, async (_event, payload = {}) => {
