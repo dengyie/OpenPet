@@ -293,6 +293,103 @@ test('session store reapplies live session retention on load without new events'
   assert.equal(status.totalEvents, 4)
 })
 
+test('session store self-heals stale v2 stats on load without requiring retention changes', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-stats-heal-load-'))
+  fs.writeFileSync(path.join(dataDir, 'sessions.json'), `${JSON.stringify({
+    schemaVersion: 2,
+    updatedAt: '2026-07-09T09:59:00.000Z',
+    retentionDays: 30,
+    liveSessions: [{
+      sessionId: 'session-a',
+      project: 'OpenPet #111111',
+      status: 'working',
+      type: 'approval.requested',
+      timestamp: '2026-07-09T10:03:00.000Z',
+      history: [
+        { type: 'session.discovered', timestamp: '2026-07-09T10:01:00.000Z' },
+        { type: 'tool.started', timestamp: '2026-07-09T10:02:00.000Z' },
+        { type: 'approval.requested', timestamp: '2026-07-09T10:03:00.000Z' }
+      ]
+    }],
+    sessionSummaries: [{
+      sessionId: 'session-a',
+      project: 'OpenPet #111111',
+      firstSeenAt: '2026-07-09T10:01:00.000Z',
+      lastSeenAt: '2026-07-09T10:05:00.000Z',
+      status: 'working',
+      phase: 'approval',
+      lastEventType: 'approval.requested',
+      eventCount: 5,
+      timelineTail: [
+        { type: 'session.discovered', timestamp: '2026-07-09T10:01:00.000Z' },
+        { type: 'tool.started', timestamp: '2026-07-09T10:02:00.000Z' },
+        { type: 'approval.requested', timestamp: '2026-07-09T10:03:00.000Z' },
+        { type: 'tool.completed', timestamp: '2026-07-09T10:04:00.000Z' },
+        { type: 'approval.requested', timestamp: '2026-07-09T10:05:00.000Z' }
+      ]
+    }],
+    dailyUsageRollups: [],
+    stats: {
+      totalEvents: 3,
+      lastEventAt: '2026-07-09T10:03:00.000Z'
+    }
+  }, null, 2)}\n`)
+
+  const store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:00:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  const status = store.getStatus()
+  const persisted = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions.json'), 'utf-8'))
+  assert.equal(status.totalEvents, 5)
+  assert.equal(status.lastEventAt, '2026-07-09T10:05:00.000Z')
+  assert.equal(persisted.stats.totalEvents, 5)
+  assert.equal(persisted.stats.lastEventAt, '2026-07-09T10:05:00.000Z')
+})
+
+test('session store keeps live and retained timelines ordered when an older event arrives late', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-timeline-order-'))
+  const store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-09T12:00:00.000Z',
+    retentionDays: 30,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  store.upsertEvent({
+    sessionId: 'session-a',
+    project: 'OpenPet #111111',
+    status: 'waiting',
+    type: 'approval.requested',
+    message: 'Codex needs approval.',
+    timestamp: '2026-07-09T10:05:00.000Z'
+  })
+  store.upsertEvent({
+    sessionId: 'session-a',
+    project: 'OpenPet #111111',
+    status: 'idle',
+    type: 'session.discovered',
+    message: '',
+    timestamp: '2026-07-09T10:01:00.000Z'
+  })
+
+  const state = store.getDashboardState()
+  assert.deepEqual(state.liveSessions[0].history.map((entry) => entry.timestamp), [
+    '2026-07-09T10:01:00.000Z',
+    '2026-07-09T10:05:00.000Z'
+  ])
+  assert.deepEqual(state.sessionSummaries[0].timelineTail.map((entry) => entry.timestamp), [
+    '2026-07-09T10:01:00.000Z',
+    '2026-07-09T10:05:00.000Z'
+  ])
+  assert.equal(state.sessionSummaries[0].timelineTail.at(-1).type, 'approval.requested')
+})
+
 test('session store keeps retained summary counts when live history is evicted', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-rollups-evict-'))
   const store = createSessionStore({

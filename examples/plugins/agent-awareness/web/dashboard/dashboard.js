@@ -590,7 +590,9 @@ const createDashboardRuntime = ({
     const selectedSessionId = requestedSessionId || liveSessions[0]?.sessionId || sessionSummaries[0]?.sessionId || ''
     const selectedSummary = sessionSummaries.find((item) => String(item.sessionId || '') === String(selectedSessionId)) || null
     const usageWorkbench = buildUsageWorkbenchViewModel({ dailyUsageRollups, sessionSummaries })
-    const trackedSessionCount = sessionSummaries.length || liveSessions.length
+    const trackedSessionCount = Number.isFinite(Number(diagnostics.sessionCount))
+      ? Number(diagnostics.sessionCount)
+      : (sessionSummaries.length || liveSessions.length)
 
     return {
       currentView,

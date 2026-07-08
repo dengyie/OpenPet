@@ -1036,6 +1036,42 @@ test('agent awareness server exposes unified workbench payload and retained-hist
   assert.equal(JSON.stringify(payload).includes('/Users/mango'), false)
 })
 
+test('agent awareness diagnostics prefer retained tracked session counts over current live sessions', () => {
+  const diagnostics = buildDiagnostics({
+    store: {
+      getStatus: () => ({
+        sessions: 2,
+        totalEvents: 4,
+        lastEventAt: '2026-07-09T10:05:00.000Z',
+        storeSchemaVersion: 2,
+        retentionDays: 30,
+        retainedSessionSummaryCount: 4
+      }),
+      getDashboardState: () => ({
+        liveSessions: [
+          { sessionId: 'session-a', project: 'OpenPet #111111', status: 'working', timestamp: '2026-07-09T10:05:00.000Z' },
+          { sessionId: 'session-b', project: 'Docs #222222', status: 'idle', timestamp: '2026-07-09T10:04:00.000Z' }
+        ],
+        sessionSummaries: [
+          { sessionId: 'session-a', project: 'OpenPet #111111' },
+          { sessionId: 'session-b', project: 'Docs #222222' },
+          { sessionId: 'session-c', project: 'Notes #333333' },
+          { sessionId: 'session-d', project: 'Site #444444' }
+        ],
+        dailyUsageRollups: []
+      }),
+      listSessions: () => []
+    },
+    rolloutPoller: {
+      getStatus: () => ({ enabled: true, seenCount: 4 })
+    }
+  })
+
+  assert.equal(diagnostics.sessionCount, 4)
+  assert.equal(diagnostics.liveSessionCount, 2)
+  assert.equal(diagnostics.retainedSessionSummaryCount, 4)
+})
+
 test('agent awareness diagnostics selects the bounded attention session', () => {
   const diagnostics = buildDiagnostics({
     store: {
@@ -1163,9 +1199,14 @@ test('agent awareness server does not let older poller discovery downgrade newer
   assert.equal(session.phase, 'approval')
   assert.equal(session.approvalState, 'requested')
   assert.equal(session.message, 'Codex is waiting for exec_command approval.')
-  assert.equal(session.history.at(-1).type, 'session.discovered')
-  assert.equal(session.history.at(-1).status, 'idle')
-  assert.equal(session.history.at(-1).message, '')
+  assert.deepEqual(session.history.map((entry) => entry.timestamp), [
+    '2026-07-03T00:00:00.000Z',
+    '2026-07-03T00:00:10.000Z'
+  ])
+  assert.equal(session.history[0].type, 'session.discovered')
+  assert.equal(session.history[0].status, 'idle')
+  assert.equal(session.history[0].message, '')
+  assert.equal(session.history.at(-1).status, 'waiting')
 })
 
 test('agent awareness server reports installed hook mode when current hook assets still exist', async () => {

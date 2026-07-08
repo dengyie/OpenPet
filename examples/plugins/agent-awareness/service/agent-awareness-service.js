@@ -175,8 +175,11 @@ const buildDiagnostics = ({ store, rolloutPoller }) => {
   const usageDiagnostics = buildUsageDiagnostics(trackedSessions)
   const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
   const retainedProjects = new Set(sessionSummaries.map((item) => sanitizeText(item?.project || '', 96)).filter(Boolean))
+  const liveSessionCount = status.sessions || trackedSessions.length
+  const retainedSessionCount = status.retainedSessionSummaryCount || sessionSummaries.length || liveSessionCount
   return {
-    sessionCount: status.sessions || 0,
+    sessionCount: retainedSessionCount,
+    liveSessionCount,
     activeSessionCount: trackedSessions.filter((session) => !['idle', 'completed', 'failed'].includes(String(session.status || '').toLowerCase())).length,
     totalEvents: status.totalEvents || 0,
     seenCount: codexPoller.seenCount || 0,
@@ -189,7 +192,7 @@ const buildDiagnostics = ({ store, rolloutPoller }) => {
     retentionDays: status.retentionDays || 0,
     historyWindowStart: status.historyWindowStart || '',
     historyWindowEnd: status.historyWindowEnd || '',
-    retainedSessionSummaryCount: status.retainedSessionSummaryCount || sessionSummaries.length,
+    retainedSessionSummaryCount: retainedSessionCount,
     retainedProjectCount: retainedProjects.size,
     storeError: sanitizeText(status.storeError || '', 160),
     attentionSession: buildAttentionSession(trackedSessions),
