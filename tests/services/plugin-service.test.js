@@ -5104,6 +5104,46 @@ test('plugin service marks non-2xx service health responses unhealthy', async ()
   assert.equal(settingsService.get().plugins.logs[0].message, 'Service health unhealthy')
 })
 
+test('plugin service summarizes IM Gateway health diagnostics without leaking raw identifiers', async () => {
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'openpet.im-gateway': true } }
+    }),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name) => String(name || '').toLowerCase() === 'content-type' ? 'application/json' : ''
+      },
+      text: async () => JSON.stringify({
+        ok: true,
+        service: 'openpet.im-gateway',
+        adapters: {
+          telegram: {
+            enabled: true,
+            status: 'failed',
+            lastErrorCode: 'telegram-polling-conflict',
+            lastDiagnosticCode: 'allowlist-miss',
+            lastAllowlistReason: 'group-chat-not-allowed',
+            lastChatHash: 'abc123',
+            lastUserHash: 'def456'
+          }
+        }
+      })
+    })
+  })
+
+  const result = await service.checkServiceHealth('openpet.im-gateway', 'im-gateway')
+  const encoded = JSON.stringify(result)
+
+  assert.equal(result.health.message, 'Telegram polling conflict')
+  assert.equal(encoded.includes('1001'), false)
+  assert.equal(encoded.includes('telegram-token'), false)
+})
+
 test('plugin service times out slow service health checks', async () => {
   const settingsService = createSettingsService({
     plugins: { enabled: { 'weather-declaration': true } }

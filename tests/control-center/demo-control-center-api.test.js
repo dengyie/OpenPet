@@ -359,6 +359,33 @@ test('demo API IM Gateway phase 2 AI reply config fields save and reload through
   assert.equal(refreshed.configSchema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
 })
 
+test('demo API preserves IM Gateway onboarding diagnostics fixtures', async () => {
+  const plugin = createImGatewayPhase2DemoPlugin()
+  plugin.nativeExecutionApproved = false
+  plugin.entries.services = [{
+    id: 'im-gateway',
+    title: 'IM Gateway Service',
+    command: 'node ./service/im-gateway-service.js',
+    cwd: '.',
+    health: { type: 'http', url: 'http://127.0.0.1:8796/health' },
+    runtime: {
+      status: 'running',
+      pid: 3210,
+      health: {
+        status: 'healthy',
+        checkedAt: '2026-07-09T02:00:00.000Z',
+        url: 'http://127.0.0.1:8796/health',
+        statusCode: 200,
+        message: 'Recent Telegram message blocked by allowlist'
+      }
+    },
+    healthPolicy: { enabled: false, intervalMs: 30000 }
+  }]
+
+  const stored = await upsertDemoPlugin(plugin)
+  assert.equal(stored.entries.services[0].runtime.health.message, 'Recent Telegram message blocked by allowlist')
+})
+
 test('demo API chat mock appends user and assistant messages', async () => {
   const response = await demoControlCenterAPI.chat({ message: 'hello demo cat' })
 

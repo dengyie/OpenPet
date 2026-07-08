@@ -77,6 +77,12 @@ const sanitizePluginHealthDetailValue = (value = '') => sanitizePluginCommandTex
 const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
 const IM_GATEWAY_SERVICE_ID = 'im-gateway'
 const IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID = 'im.telegram.botToken'
+const IM_GATEWAY_HEALTH_MESSAGES = new Map([
+  ['missing-token', 'Telegram token missing'],
+  ['telegram-polling-conflict', 'Telegram polling conflict'],
+  ['telegram-polling-failed', 'Telegram polling failed'],
+  ['allowlist-miss', 'Recent Telegram message blocked by allowlist']
+])
 const DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS = 5000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS = 15 * 60 * 1000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES = 24
@@ -181,11 +187,22 @@ const isAgentAwarenessHealthTarget = ({ pluginId = '', serviceId = '' } = {}) =>
   serviceId === AGENT_AWARENESS_SERVICE_ID
 )
 
+const isImGatewayHealthTarget = ({ pluginId = '', serviceId = '' } = {}) => (
+  pluginId === IM_GATEWAY_PLUGIN_ID &&
+  serviceId === IM_GATEWAY_SERVICE_ID
+)
+
 const isAgentAwarenessHealthBody = (body) => (
   isRecord(body) &&
   body.service === 'agent-awareness' &&
   body.ok === true &&
   isRecord(body.diagnostics)
+)
+
+const isImGatewayHealthBody = (body) => (
+  isRecord(body) &&
+  body.service === IM_GATEWAY_PLUGIN_ID &&
+  isRecord(body.adapters)
 )
 
 const summarizeAgentAwarenessHealthBody = (body) => {
@@ -230,6 +247,14 @@ const createAgentAwarenessHealthDetails = (body) => {
   const peakContext = formatHealthPercent(diagnostics.usagePeakContextUsedPercent)
   if (peakContext) details.push({ label: 'Peak Context', value: peakContext })
   return details
+}
+
+const summarizeImGatewayHealthBody = (body) => {
+  if (!isImGatewayHealthBody(body)) return ''
+  const telegram = isRecord(body.adapters?.telegram) ? body.adapters.telegram : null
+  if (!telegram) return ''
+  const code = String(telegram.lastErrorCode || telegram.lastDiagnosticCode || '').trim()
+  return IM_GATEWAY_HEALTH_MESSAGES.get(code) || ''
 }
 
 const resolveCodexSignalHome = ({
@@ -310,6 +335,11 @@ const readServiceHealthResponse = async (response, { pluginId = '', serviceId = 
       return {
         details: createAgentAwarenessHealthDetails(body),
         message: summarizeAgentAwarenessHealthBody(body) || fallbackMessage
+      }
+    }
+    if (isImGatewayHealthTarget({ pluginId, serviceId })) {
+      return {
+        message: summarizeImGatewayHealthBody(body) || fallbackMessage
       }
     }
     return { message: fallbackMessage }

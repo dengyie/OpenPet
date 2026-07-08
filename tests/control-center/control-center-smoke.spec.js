@@ -2443,6 +2443,85 @@ test.describe('Control Center smoke', () => {
     await expect(imCard.getByRole('button', { name: 'Clear Telegram Token' })).toBeDisabled()
   })
 
+  test('shows IM Gateway onboarding guidance and redacted diagnostics in the Plugins pane', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [{
+          id: 'openpet.im-gateway',
+          name: 'IM Gateway',
+          version: '0.2.0-demo',
+          source: 'bundled',
+          enabled: true,
+          runnable: true,
+          requiresNativeExecution: true,
+          nativeExecutionApproved: true,
+          permissions: ['pet:say', 'pet:action', 'pet:event', 'ai:chat'],
+          commands: [],
+          entries: {
+            setup: [],
+            commands: [],
+            services: [{
+              id: 'im-gateway',
+              title: 'IM Gateway Service',
+              command: 'node ./service/im-gateway-service.js',
+              cwd: '.',
+              health: { type: 'http', url: 'http://127.0.0.1:8796/health' },
+              runtime: {
+                status: 'running',
+                pid: 4321,
+                health: {
+                  status: 'healthy',
+                  checkedAt: '2026-07-09T02:00:00.000Z',
+                  url: 'http://127.0.0.1:8796/health',
+                  statusCode: 200,
+                  message: 'Recent Telegram message blocked by allowlist'
+                }
+              },
+              healthPolicy: {
+                enabled: false,
+                intervalMs: 30000
+              }
+            }],
+            dashboards: []
+          },
+          configSchema: {
+            title: 'IM Gateway Settings',
+            description: 'Public IM trigger policy. Tokens are stored by the host.',
+            properties: []
+          },
+          config: {
+            telegramMode: 'polling'
+          },
+          storage: { keyCount: 0, byteSize: 2, valid: true },
+          signatureStatus: {
+            status: 'bundled',
+            label: 'Bundled plugin',
+            signer: 'openpet',
+            algorithm: '',
+            verified: true,
+            errors: []
+          },
+          blockStatus: { blocked: false, reasons: [] }
+        }],
+        secrets: {
+          imGatewayTelegramBotToken: true
+        },
+        pluginLogs: []
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const pluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
+    const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
+
+    await expect(imCard).toContainText('/openpet whoami')
+    await expect(imCard).toContainText('/openpet chatid')
+    await expect(imCard).toContainText('Recent Telegram message blocked by allowlist')
+    await expect(imCard).not.toContainText('1001')
+  })
+
   test('opens agent-awareness Codex details from the Plugins pane with the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({

@@ -25,6 +25,9 @@ interface PluginConfigField {
   hidden?: boolean
 }
 
+const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
+const IM_GATEWAY_SERVICE_ID = 'im-gateway'
+
 export interface PluginsPaneProps {
   plugins: PluginViewState[]
   logs: PluginLogEntry[]
@@ -110,6 +113,33 @@ const toConfigFields = (plugin: PluginViewState) => (
     ? plugin.configSchema.properties.filter(isPluginConfigField).filter((field) => field.hidden !== true)
     : []
 )
+
+const getPluginService = (plugin: PluginViewState, serviceId: string) => (
+  plugin.entries?.services?.find((service) => service.id === serviceId) || null
+)
+
+const getImGatewayOnboardingNotes = (
+  plugin: PluginViewState,
+  imGatewaySecretState: ImGatewaySecretState
+) => {
+  const service = getPluginService(plugin, IM_GATEWAY_SERVICE_ID)
+  const runtimeStatus = service?.runtime?.status || 'stopped'
+  const healthMessage = typeof service?.runtime?.health?.message === 'string'
+    ? service.runtime.health.message.trim()
+    : ''
+  const notes = [
+    imGatewaySecretState.hasTelegramBotToken
+      ? 'Telegram Bot Token 已保存，接下来可以直接验证机器人回包。'
+      : '先保存 Telegram Bot Token，再启动 IM Gateway Service。',
+    plugin.nativeExecutionApproved
+      ? runtimeStatus === 'running'
+        ? 'IM Gateway Service 已运行，可以马上去 Telegram 验证 allowlist 和回包。'
+        : '打开“允许原生进程执行”后，启动 IM Gateway Service 让 Telegram polling 生效。'
+      : '先打开“允许原生进程执行”，否则 Setup / Service 不会真正启动。'
+  ]
+  if (healthMessage && healthMessage !== 'OK') notes.push(`最近诊断：${healthMessage}`)
+  return notes
+}
 
 const formatDiff = (diff?: PermissionDiffState) => {
   const added = diff?.added?.length ? `新增 ${diff.added.join(', ')}` : ''
@@ -621,14 +651,22 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                   })}
                 </div>
               ) : null}
-              {plugin.id === 'openpet.im-gateway' ? (
+              {plugin.id === IM_GATEWAY_PLUGIN_ID ? (
                 <div className="plugin-config-panel" aria-label="IM Gateway 设置">
+                  {(() => {
+                    const imGatewayService = getPluginService(plugin, IM_GATEWAY_SERVICE_ID)
+                    const onboardingNotes = getImGatewayOnboardingNotes(plugin, imGatewaySecretState)
+                    const runtimeStatus = imGatewayService?.runtime?.status || 'stopped'
+                    const healthStatus = imGatewayService?.runtime?.health?.status || 'unknown'
+                    return (
+                      <>
                   <div className="plugin-config-header">
                     <strong>IM Gateway</strong>
                     <span className="field-note">
                       Telegram token: {imGatewaySecretState.hasTelegramBotToken ? 'saved' : 'not saved'}
                     </span>
                   </div>
+                  <div className="field-note">Service: {runtimeStatus} · Health: {healthStatus}</div>
                   <div className="plugin-config-grid">
                     <div className="plugin-config-field">
                       <span>Telegram</span>
@@ -642,6 +680,20 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       <span>WeChat</span>
                       <small>WeChat: disabled</small>
                     </div>
+                  </div>
+                  <div aria-label="IM Gateway onboarding">
+                    <div className="plugin-config-header">
+                      <strong>Telegram onboarding</strong>
+                    </div>
+                    <div className="field-note">
+                      在 Telegram 私聊机器人发送 <code>/openpet whoami</code> 获取 user id。
+                    </div>
+                    <div className="field-note">
+                      在目标群消息下回复 <code>/openpet chatid</code> 获取当前 chat id。
+                    </div>
+                    {onboardingNotes.map((note) => (
+                      <div className="field-note" key={note}>{note}</div>
+                    ))}
                   </div>
                   <label className="plugin-config-field" htmlFor="im-gateway-telegram-bot-token">
                     <span>Telegram Bot Token</span>
@@ -673,6 +725,9 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       {clearingImGatewayTelegramToken ? 'Clearing Telegram Token' : 'Clear Telegram Token'}
                     </button>
                   </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ) : null}
               {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (
