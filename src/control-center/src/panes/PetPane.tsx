@@ -22,6 +22,7 @@ export interface PetPaneProps {
   onImportCursor: () => void | Promise<void>
   onResizeCursor: (cursorId: string, sizePercent: number) => void | Promise<void>
   onDeleteCursor: (cursorId: string) => void | Promise<void>
+  onResetCursorSize: (cursorId: string) => void | Promise<void>
   onSave: () => void | Promise<void>
   onReset: () => void
 }
@@ -69,6 +70,7 @@ export function PetPane({
   onSave,
   onReset,
   cursorOptions,
+  onResetCursorSize,
   saving
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
@@ -281,6 +283,16 @@ export function PetPane({
                     <span>{selectedScalableCursor.name}</span>
                     <span>{pendingCursorSizePercent === selectedCursorSizePercent ? formatCursorSize(selectedScalableCursor) : `${pendingCursorSizePercent}%`}</span>
                   </div>
+                  {selectedScalableCursor.canResetSize === true ? (
+                    <button
+                      type="button"
+                      className="ghost accent"
+                      onClick={() => onResetCursorSize(selectedScalableCursor.id)}
+                      disabled={saving}
+                    >
+                      恢复默认大小
+                    </button>
+                  ) : null}
                 </>
               ) : (
                 <div>

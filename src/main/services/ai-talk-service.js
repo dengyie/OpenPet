@@ -31,6 +31,7 @@ const MEMORY_TOKEN_ALIAS_GROUPS = [
 ]
 
 const normalizeString = (value) => (typeof value === 'string' ? value.trim() : '')
+const normalizeProviderText = (value) => (typeof value === 'string' ? value : '')
 
 const sanitizeProviderBaseUrl = (value) => normalizeString(value).slice(0, 500)
 
@@ -613,7 +614,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
 
   const emitStreamState = (state = {}, callback = null) => {
     const status = normalizeString(state.status) || 'streaming'
-    const partialReply = normalizeString(state.partialReply)
+    const partialReply = normalizeProviderText(state.partialReply)
     const view = {
       requestId: normalizeString(state.requestId).slice(0, 120),
       conversationId: normalizeString(state.conversationId),
@@ -1449,8 +1450,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
 
         providerLatencyMs = Number.isFinite(Number(result.elapsedMs)) ? Number(result.elapsedMs) : 0
         finishReason = normalizeString(result.finishReason)
-        const reply = normalizeString(result.reply || partialReply)
-        if (!reply) throw new Error('AI provider returned an empty response')
+        const reply = normalizeProviderText(result.reply || partialReply)
+        if (!reply.trim()) throw new Error('AI provider returned an empty response')
         const bubbleSegments = createBubbleSegments(reply)
         const bubble = createReplyBubble({ reply, behaviorIntent: result.behaviorIntent })
         const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [{ role: 'assistant', content: reply }])

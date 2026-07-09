@@ -43,7 +43,8 @@ const createBuiltinCursor = ({
   createdAt: 'builtin',
   canDelete: false,
   canRename: false,
-  canRestore: false
+  canRestore: false,
+  canResetSize: false
 })
 
 export const SYSTEM_CURSOR_PREVIEW_URL = svgDataUrl(`
@@ -256,7 +257,8 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     baseHotspotY,
     canDelete: source === 'uploaded',
     canRename: source === 'uploaded',
-    canRestore: false
+    canRestore: false,
+    canResetSize: false
   }
 }
 
@@ -387,7 +389,8 @@ export const listCursorOptions = (
       createdAt: 'builtin',
       canDelete: false,
       canRename: false,
-      canRestore: false
+      canRestore: false,
+      canResetSize: false
     },
     ...BUILTIN_CURSORS
       .map((cursor) => {
@@ -400,7 +403,8 @@ export const listCursorOptions = (
             source: 'builtin' as const,
             canDelete: false,
             canRename: false,
-            canRestore: false
+            canRestore: false,
+            canResetSize: true
           }
         : cursor
     }),

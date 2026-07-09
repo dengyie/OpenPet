@@ -132,14 +132,12 @@ Current state:
 
 - The cursor picker already supports selecting cursors, importing uploaded custom cursors, resizing non-system cursors, and deleting uploaded custom cursors from the card UI.
 - Deleting the currently selected uploaded custom cursor now falls back to `system` through the existing settings save path while keeping the current picker behavior of hiding the `system` card.
-- Built-in cursor size overrides are persisted through `customCursors`, so deletion rules must distinguish uploaded custom cursors from built-in override records.
+- Built-in cursor size overrides are persisted through `customCursors`; built-in cards are non-deletable, and overridden built-ins expose an explicit reset-to-default-size action instead of overloading delete.
 - The approved design for the next cursor-management slice is documented in `docs/superpowers/specs/2026-07-03-cursor-card-delete-management-design.md`.
 
 P1 work:
 
 - Decide whether the next cursor milestone should keep hiding the `system` card or make system state explicit in the card rail.
-- Add an explicit built-in cursor reset-to-default-size interaction instead of overloading delete.
-- Keep built-in cursor cards and system default non-deletable.
 
 P2/P3:
 

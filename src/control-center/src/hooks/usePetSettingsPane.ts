@@ -15,6 +15,7 @@ import {
   normalizeCustomCursorScope,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,
+  removeStoredCursorRecord,
   resizeCustomCursorRecord
 } from '../../../shared/cursor-library.ts'
 import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
@@ -284,6 +285,37 @@ export function usePetSettingsPane() {
     }))
   }
 
+  const onResetCursorSize = async (cursorId: string) => {
+    const previousSettings = settings
+    const targetCursor = cursorOptions.find((cursor) => cursor.id === cursorId)
+    if (!targetCursor || targetCursor.canResetSize !== true || !getBuiltinCursorById(cursorId)) {
+      setStatus('未找到要恢复默认大小的内置指针')
+      return
+    }
+
+    const nextCursorState = removeStoredCursorRecord({
+      selectedCursorId: settings.selectedCursorId,
+      cursorId,
+      customCursors: settings.customCursors
+    })
+    const nextSettings = applyCursorState(settings, {
+      selectedCursorId: nextCursorState.selectedCursorId,
+      customCursors: nextCursorState.customCursors
+    })
+    setSettings(nextSettings)
+    const savedSettings = await persistSettings(
+      nextSettings,
+      `已恢复 ${targetCursor.name} 的默认大小`,
+      '指针默认大小恢复失败'
+    )
+    setSettings((current) => resolvePersistedCursorMutation({
+      previous: previousSettings,
+      optimistic: nextSettings,
+      current,
+      saved: savedSettings
+    }))
+  }
+
   const paneProps = {
     settings,
     originalSettings,
@@ -296,6 +328,7 @@ export function usePetSettingsPane() {
     onImportCursor,
     onResizeCursor,
     onDeleteCursor,
+    onResetCursorSize,
     onSave,
     onReset
   } satisfies PetPaneProps

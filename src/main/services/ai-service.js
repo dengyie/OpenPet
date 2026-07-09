@@ -348,6 +348,14 @@ const isStreamingUnsupportedError = (error) => {
   return status === 404 || code.includes('unsupported') || message.includes('stream')
 }
 
+const isStreamingUnsupportedProviderResponse = ({ status, code, message } = {}) => (
+  isStreamingUnsupportedError({
+    providerStatus: status,
+    providerCode: code,
+    message
+  })
+)
+
 const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
   const timeout = createTimeoutController(timeoutMs)
   const controller = new AbortController()
@@ -996,12 +1004,18 @@ const createAiService = ({
 
       if (!response.ok) {
         const data = await response.json?.().catch(() => ({}))
+        const providerMessage = typeof data?.error?.message === 'string' ? data.error.message : ''
+        const providerCode = typeof data?.error?.code === 'string' ? data.error.code : ''
         const providerError = createProviderError({
-          message: data?.error?.message || `AI provider stream failed with status ${response.status}`,
+          message: providerMessage || `AI provider stream failed with status ${response.status}`,
           status: response.status,
-          code: data?.error?.code
+          code: providerCode
         })
-        if (isStreamingUnsupportedError(providerError)) {
+        if (isStreamingUnsupportedProviderResponse({
+          status: response.status,
+          code: providerCode,
+          message: providerMessage
+        })) {
           linkedSignal.clear()
           linkedSignal = null
           const fallbackResult = await complete({ messages, tools, configOverride, signal })

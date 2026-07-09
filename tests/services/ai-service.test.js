@@ -1558,7 +1558,7 @@ test('ai service streamComplete falls back before chunks when streaming is unsup
         return {
           ok: false,
           status: 400,
-          json: async () => ({ error: { message: 'stream is not supported', code: 'unsupported_stream' } })
+          json: async () => ({ error: { message: 'stream is not supported' } })
         }
       }
       return {

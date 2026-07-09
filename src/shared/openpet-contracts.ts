@@ -73,6 +73,7 @@ export interface CursorOption {
   canDelete?: boolean
   canRename?: boolean
   canRestore?: boolean
+  canResetSize?: boolean
 }
 
 export interface CustomCursorRecord extends CursorOption {

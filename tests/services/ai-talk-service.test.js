@@ -1664,9 +1664,9 @@ test('ai talk service streamChat preserves whitespace across streamed deltas', a
         memory: { enabled: false }
       }),
       streamComplete: async ({ onDelta }) => {
-        onDelta('Hello')
-        onDelta(' world')
-        return { reply: 'Hello world', elapsedMs: 12, streaming: true, fallback: false, chunkCount: 2, finishReason: 'stop' }
+        onDelta('\n  Hello')
+        onDelta(' world  ')
+        return { reply: '\n  Hello world  ', elapsedMs: 12, streaming: true, fallback: false, chunkCount: 2, finishReason: 'stop' }
       }
     },
     aiTalkStore: store,
@@ -1680,8 +1680,8 @@ test('ai talk service streamChat preserves whitespace across streamed deltas', a
     onState: (state) => states.push(state)
   })
 
-  assert.equal(result.reply, 'Hello world')
-  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === 'Hello world'), true)
+  assert.equal(result.reply, '\n  Hello world  ')
+  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === '\n  Hello world  '), true)
 })
 
 test('ai talk service cancelRequest prevents assistant persistence and side effects', async () => {
