@@ -284,6 +284,16 @@ export interface AiTalkTraceSummaryViewState {
     } | null
   }
   result: {
+    streaming: boolean
+    status: string
+    chunkCount: number
+    partialReplyChars: number
+    elapsedMs: number
+    providerLatencyMs: number
+    finishReason: string
+    cancelReason: string
+    memoryExtractionScheduled: boolean
+    behaviorDecisionScheduled: boolean
     replyChars: number
     persistedMessageCount: number
     bubbleSegmentCount: number

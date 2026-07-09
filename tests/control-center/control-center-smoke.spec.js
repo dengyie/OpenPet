@@ -344,6 +344,10 @@ test.describe('Control Center smoke', () => {
     await expect(summary).toContainText('openai-compatible')
     await expect(summary).toContainText('消息数')
     await expect(summary).toContainText('reply chars')
+    await expect(summary).toContainText('流式摘要')
+    await expect(summary).toContainText('mode standard')
+    await expect(summary).toContainText('status completed')
+    await expect(summary).toContainText('provider 120ms / total 120ms')
   })
 
   test('supports provider presets, model discovery, and image compatibility hints in the AI pane', async ({ page }) => {

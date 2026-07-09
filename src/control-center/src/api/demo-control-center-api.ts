@@ -528,6 +528,16 @@ const createDemoAiTalkTraceSummary = (
       finalDecision: null
     },
     result: {
+      streaming: false,
+      status: lastAssistantMessage ? 'completed' : '',
+      chunkCount: 0,
+      partialReplyChars: 0,
+      elapsedMs: lastAssistantMessage ? 120 : 0,
+      providerLatencyMs: lastAssistantMessage ? 120 : 0,
+      finishReason: lastAssistantMessage ? 'stop' : '',
+      cancelReason: '',
+      memoryExtractionScheduled: false,
+      behaviorDecisionScheduled: demoState.aiConfig.behavior.enabled === true,
       replyChars: lastAssistantMessage?.content?.length || 0,
       persistedMessageCount: messages.length,
       bubbleSegmentCount: lastAssistantMessage?.content ? 1 : 0,

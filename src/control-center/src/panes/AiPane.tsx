@@ -950,6 +950,16 @@ export function AiPane({
     ...(preset.model ? { model: preset.model } : {})
   })
   const traceScopeLabel = (scopes: string[]) => scopes.length ? scopes.join(' / ') : 'none'
+  const traceModeLabel = (summary: AiTalkTraceSummaryViewState) => (summary.result.streaming ? 'streaming' : 'standard')
+  const traceStatusLabel = (summary: AiTalkTraceSummaryViewState) => summary.result.status || (summary.result.replyChars > 0 ? 'completed' : 'unknown')
+  const traceLatencyLabel = (summary: AiTalkTraceSummaryViewState) => {
+    const providerLatency = Number(summary.result.providerLatencyMs) || 0
+    const elapsed = Number(summary.result.elapsedMs) || 0
+    if (providerLatency > 0 && elapsed > 0) return `provider ${providerLatency}ms / total ${elapsed}ms`
+    if (providerLatency > 0) return `provider ${providerLatency}ms`
+    if (elapsed > 0) return `total ${elapsed}ms`
+    return 'latency n/a'
+  }
   const applyImageProviderPreset = (preset: typeof imageProviderPresets[number]) => onChangeImageGeneration({
     provider: 'openai-compatible',
     baseUrl: preset.baseUrl,
@@ -2011,6 +2021,24 @@ export function AiPane({
                 {traceSummary
                   ? `reply chars ${traceSummary.result.replyChars} · persisted ${traceSummary.result.persistedMessageCount} · bubble segments ${traceSummary.result.bubbleSegmentCount}`
                   : '暂无结果摘要'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>流式摘要</strong>
+              <span>
+                {traceSummary
+                  ? [
+                      `mode ${traceModeLabel(traceSummary)}`,
+                      `status ${traceStatusLabel(traceSummary)}`,
+                      `chunks ${traceSummary.result.chunkCount}`,
+                      `partial chars ${traceSummary.result.partialReplyChars}`,
+                      traceLatencyLabel(traceSummary),
+                      `finish ${traceSummary.result.finishReason || 'n/a'}`,
+                      `cancel ${traceSummary.result.cancelReason || 'none'}`,
+                      `memory job ${traceSummary.result.memoryExtractionScheduled ? 'scheduled' : 'none'}`,
+                      `behavior job ${traceSummary.result.behaviorDecisionScheduled ? 'scheduled' : 'none'}`
+                    ].join(' · ')
+                  : '暂无流式状态'}
               </span>
             </div>
           </div>

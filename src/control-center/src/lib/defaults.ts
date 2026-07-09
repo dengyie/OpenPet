@@ -191,6 +191,16 @@ export const defaultAiTalkTraceSummary = {
     finalDecision: null
   },
   result: {
+    streaming: false,
+    status: '',
+    chunkCount: 0,
+    partialReplyChars: 0,
+    elapsedMs: 0,
+    providerLatencyMs: 0,
+    finishReason: '',
+    cancelReason: '',
+    memoryExtractionScheduled: false,
+    behaviorDecisionScheduled: false,
     replyChars: 0,
     persistedMessageCount: 0,
     bubbleSegmentCount: 0,

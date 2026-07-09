@@ -1250,6 +1250,16 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           : null
       },
       result: {
+        streaming: trace?.result?.streaming === true,
+        status: normalizeString(trace?.result?.status),
+        chunkCount: Number.isFinite(Number(trace?.result?.chunkCount)) ? Number(trace.result.chunkCount) : 0,
+        partialReplyChars: Number.isFinite(Number(trace?.result?.partialReplyChars)) ? Number(trace.result.partialReplyChars) : 0,
+        elapsedMs: Number.isFinite(Number(trace?.result?.elapsedMs)) ? Number(trace.result.elapsedMs) : 0,
+        providerLatencyMs: Number.isFinite(Number(trace?.result?.providerLatencyMs)) ? Number(trace.result.providerLatencyMs) : 0,
+        finishReason: normalizeString(trace?.result?.finishReason),
+        cancelReason: normalizeString(trace?.result?.cancelReason),
+        memoryExtractionScheduled: trace?.result?.memoryExtractionScheduled === true,
+        behaviorDecisionScheduled: trace?.result?.behaviorDecisionScheduled === true,
         replyChars: Number.isFinite(Number(trace?.result?.replyChars)) ? Number(trace.result.replyChars) : 0,
         persistedMessageCount: Number.isFinite(Number(trace?.result?.persistedMessageCount)) ? Number(trace.result.persistedMessageCount) : 0,
         bubbleSegmentCount,
