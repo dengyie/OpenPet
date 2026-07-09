@@ -115,7 +115,7 @@ Commit `00ea5bf9 fix(ai-talk): harden streaming cancel semantics` closes the pro
   - `behaviorDecisionScheduled = false`
   - final bubble dispatch is intentionally skipped with `bubbleDispatch.reason = stream-canceled`
 - Both archived reports passed redaction checks for API keys, Authorization/Bearer headers, raw smoke prompts, and local user-data paths in the persisted report.
-- Connection test status is still `network_error` in both reports even though real chat/cancel paths succeeded; keep this as a provider-gateway probe discrepancy to investigate separately, not as a failed chat-path result.
+- Follow-up provider smoke after the harness fix reports `connectionTest.ok = true`, `chat.ok = true`, and Bubble Chat dispatch success against the saved local provider configuration; the prior `network_error` was traced to the smoke file-backed SettingsService missing the production `update()` interface while model catalog persistence ran after a successful `/models` probe.
 - Human desktop acceptance remains pending for visibility duration, hit target comfort, reading experience, and failure/cancel copy.
 
 ### Working Tree Note

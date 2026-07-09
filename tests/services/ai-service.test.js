@@ -1011,6 +1011,59 @@ test('ai service testConnection degrades safely when models probe is unavailable
   assert.equal(result.currentModelDiscovered, false)
 })
 
+test('ai service testConnection keeps chat success when optional models probe parsing fails', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: false,
+        provider: 'openai-compatible',
+        baseUrl: 'https://models-json-error.example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (url) => {
+      if (url.endsWith('/chat/completions')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ choices: [{ message: { content: 'ok' } }] })
+        }
+      }
+      if (url.endsWith('/models')) {
+        return {
+          ok: true,
+          status: 200,
+          json: () => {
+            throw new Error('models payload is not JSON')
+          }
+        }
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'ok')
+  assert.equal(result.reply, 'ok')
+  assert.equal(result.modelsProbe, 'failed')
+  assert.deepEqual(result.availableModels, [])
+  assert.equal(result.currentModelDiscovered, false)
+  assert.deepEqual(logs.map((entry) => entry.event).filter((event) => event.startsWith('ai.settings.')), [
+    'ai.settings.connection-test.started',
+    'ai.settings.connection-test.completed'
+  ])
+})
+
 test('ai service testConnection returns missing key failure metadata', async () => {
   const service = createAiService({
     settingsService: createSettingsService({

@@ -306,11 +306,17 @@ const parseArgs = (argv) => {
 
 const createFileBackedSettingsService = ({ settingsPath }) => {
   let currentSettings = createSmokeSettingsSnapshot(readJsonIfExists(settingsPath))
+  const cloneCurrentSettings = () => JSON.parse(JSON.stringify(currentSettings))
   return {
-    get: () => JSON.parse(JSON.stringify(currentSettings)),
+    get: cloneCurrentSettings,
     save: (nextSettings) => {
       currentSettings = createSmokeSettingsSnapshot(nextSettings)
-      return JSON.parse(JSON.stringify(currentSettings))
+      return cloneCurrentSettings()
+    },
+    update: (updater) => {
+      const nextSettings = typeof updater === 'function' ? updater(cloneCurrentSettings()) : updater
+      currentSettings = createSmokeSettingsSnapshot(nextSettings)
+      return cloneCurrentSettings()
     }
   }
 }

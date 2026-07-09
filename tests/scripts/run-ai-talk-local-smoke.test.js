@@ -13,6 +13,7 @@ const {
   sanitizeArchiveSummary,
   runAiTalkLocalSmoke
 } = require('../../scripts/run-ai-talk-local-smoke')
+const { createAiService } = require('../../src/main/services/ai-service')
 
 const createTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 const resolveOutputPath = (outputDir, sessionId, recordedPath) => (
@@ -245,6 +246,105 @@ test('runAiTalkLocalSmoke writes a redacted smoke summary using injected host se
   assert.equal(persisted.config.baseUrl, '[redacted-local-url]')
   assert.doesNotMatch(JSON.stringify(persisted), /Library\/Application Support\/ibot/)
   assert.doesNotMatch(JSON.stringify(persisted), /127\.0\.0\.1/)
+})
+
+test('runAiTalkLocalSmoke real ai service supports model catalog updates in file-backed settings', async () => {
+  const userDataDir = createTempDir('openpet-ai-talk-user-data-real-ai-')
+  const outputDir = createTempDir('openpet-ai-talk-output-real-ai-')
+  fs.writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'http://127.0.0.1:8317/v1',
+      model: 'gpt-5.5'
+    },
+    petPacks: {
+      activePackId: 'legacy-cat',
+      installed: {}
+    }
+  }, null, 2))
+  fs.writeFileSync(path.join(userDataDir, 'secrets.json'), JSON.stringify({
+    secrets: {
+      'ai.default': {
+        label: 'AI API Key',
+        value: 'sk-test-secret',
+        updatedAt: '2026-06-28T12:00:00.000Z'
+      }
+    }
+  }, null, 2))
+
+  const result = await runAiTalkLocalSmoke({
+    message: '真实 AiService 连接测试',
+    userDataDir,
+    outputDir,
+    now: () => new Date('2026-07-09T00:21:15.389Z'),
+    createSecretServiceImpl: () => ({
+      getSecretValue: () => 'sk-test-secret'
+    }),
+    createAiServiceImpl: ({ settingsService, secretService, appLogService }) => createAiService({
+      settingsService,
+      secretService,
+      appLogService,
+      fetchImpl: async (url) => {
+        if (String(url).endsWith('/chat/completions')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ choices: [{ message: { content: 'ok' } }] })
+          }
+        }
+        if (String(url).endsWith('/models')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data: [{ id: 'gpt-5.5' }, { id: 'gpt-5.4' }] })
+          }
+        }
+        throw new Error(`Unexpected url: ${url}`)
+      }
+    }),
+    createAiTalkStoreImpl: () => ({}),
+    createPetUtteranceLogServiceImpl: () => ({}),
+    createPetPackServiceImpl: () => ({
+      getActivePetPack: () => ({
+        manifest: {
+          id: 'legacy-cat',
+          displayName: 'Legacy Cat'
+        }
+      })
+    }),
+    createAiTalkServiceImpl: ({ appLogService }) => ({
+      chat: async ({ requestId }) => {
+        appLogService.record({
+          scope: 'ai-talk',
+          level: 'info',
+          event: 'ai-talk.chat.completed',
+          message: 'AI talk chat completed',
+          details: { replyChars: 2 }
+        })
+        return {
+          requestId,
+          conversationId: 'control-center:legacy-cat:main',
+          reply: 'ok',
+          bubbleSegments: ['ok'],
+          messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'ok' }],
+          behaviorIntent: { intent: 'comfort', actionId: 'idle' },
+          providerLatencyMs: 120
+        }
+      },
+      flushMemoryJobs: async () => {},
+      getTraceExport: () => ({ petPackId: 'legacy-cat', traces: [] })
+    })
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.connectionTest.ok, true)
+  assert.equal(result.connectionTest.code, 'ok')
+  assert.equal(result.logs.some((entry) => (
+    entry.event === 'ai.settings.connection-test.completed' &&
+    entry.details?.modelsProbe === 'ok' &&
+    entry.details?.availableModelsCount === 2
+  )), true)
 })
 
 test('runAiTalkLocalSmoke writes sanitized streaming acceptance fields', async () => {

@@ -428,6 +428,17 @@ const extractDiscoveredModelIds = (body) => {
   )).sort()
 }
 
+const readJsonBody = async (response) => {
+  if (!response || typeof response.json !== 'function') {
+    return { ok: false, body: {} }
+  }
+  try {
+    return { ok: true, body: await response.json() }
+  } catch (_) {
+    return { ok: false, body: {} }
+  }
+}
+
 const classifyConnectionError = (error) => {
   if (error?.message === 'AI API key is not configured') {
     return { code: 'missing_api_key', message: 'AI API key is not configured' }
@@ -497,6 +508,14 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
     timeout.clear()
   }
 
+  if (!response || typeof response.ok !== 'boolean') {
+    return {
+      modelsProbe: 'failed',
+      availableModels: [],
+      currentModelDiscovered: false
+    }
+  }
+
   if (!response.ok) {
     if ([401, 403, 404, 405, 501].includes(Number(response.status) || 0)) {
       return {
@@ -512,9 +531,16 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
     }
   }
 
-  const data = await response.json().catch(() => ({}))
-  const availableModels = Array.isArray(data?.data)
-    ? data.data
+  const parsed = await readJsonBody(response)
+  if (!parsed.ok) {
+    return {
+      modelsProbe: 'failed',
+      availableModels: [],
+      currentModelDiscovered: false
+    }
+  }
+  const availableModels = Array.isArray(parsed.body?.data)
+    ? parsed.body.data
       .map((entry) => (typeof entry?.id === 'string' ? entry.id.trim() : ''))
       .filter(Boolean)
     : []
