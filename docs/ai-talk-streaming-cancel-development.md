@@ -99,6 +99,25 @@ Commit `00ea5bf9 fix(ai-talk): harden streaming cancel semantics` closes the pro
 - Real provider streaming/cancel evidence archive.
 - Human desktop acceptance for long replies, cancel hit target, auto-hide behavior, and failure recovery copy.
 
+### Current Real-provider Evidence
+
+- Completed streaming archive: `docs/release-evidence/ai-talk-local-smoke/2026-07-09T00-03-49-088Z-streaming/`
+  - `streamingAcceptance.completed = true`
+  - `chunkCount = 34`
+  - `firstDeltaLatencyMs = 1877`
+  - `providerLatencyMs = 2259`
+  - `bubbleDispatch.petSayReceived = true`
+  - `bubbleDispatch.bubbleStateVisible = true`
+- Canceled streaming archive: `docs/release-evidence/ai-talk-local-smoke/2026-07-09T00-04-20-568Z-streaming-cancel/`
+  - `streamingAcceptance.canceled = true`
+  - `completed = false`
+  - `memoryExtractionScheduled = false`
+  - `behaviorDecisionScheduled = false`
+  - final bubble dispatch is intentionally skipped with `bubbleDispatch.reason = stream-canceled`
+- Both archived reports passed redaction checks for API keys, Authorization/Bearer headers, raw smoke prompts, and local user-data paths in the persisted report.
+- Connection test status is still `network_error` in both reports even though real chat/cancel paths succeeded; keep this as a provider-gateway probe discrepancy to investigate separately, not as a failed chat-path result.
+- Human desktop acceptance remains pending for visibility duration, hit target comfort, reading experience, and failure/cancel copy.
+
 ### Working Tree Note
 
 Do not stage `tmp/`. Local smoke output belongs in temporary output directories unless explicitly archived through the release-evidence helper.

@@ -200,11 +200,12 @@ Current state:
 - Packaged runtime smoke evidence now aligns with the real lightweight chat surface: it records Bubble Chat visibility/item evidence, can capture a dedicated Bubble Chat screenshot, and treats the old renderer `#bubble` as a hidden compatibility node rather than the primary speech surface.
 - The AI Talk smoke and Bubble Chat acceptance path proves request correlation and popup dispatch, but it does not by itself prove that placement, dwell time, and transparent hit-testing have passed a fresh human desktop feel review.
 - The same smoke entrypoint now supports `--stream` and `--cancel-after-ms` for sanitized streaming/cancel acceptance fields without storing raw prompt, provider chunk, memory text, API keys, or local private paths.
+- Real-provider streaming/cancel smoke evidence is archived under `docs/release-evidence/ai-talk-local-smoke/2026-07-09T00-03-49-088Z-streaming/` and `docs/release-evidence/ai-talk-local-smoke/2026-07-09T00-04-20-568Z-streaming-cancel/`. The completed run recorded `chunkCount = 34`, `firstDeltaLatencyMs = 1877`, `providerLatencyMs = 2259`, and visible Bubble Chat dispatch. The canceled run recorded `canceled = true`, `completed = false`, no memory extraction, no behavior decision, and intentionally skipped final bubble dispatch.
 
 P1 work:
 
 - Keep future trace UX aligned if trace volume or streaming surfaces expand beyond the current export and filter model.
-- Run and archive real-provider streaming/cancel smoke when the local OpenPet gateway is available, then update the runbook/manual acceptance notes with the observed latency, chunking, and cancel behavior.
+- Investigate why the smoke connection-test probe reports `network_error` while the real chat streaming/cancel paths succeed against the same saved provider configuration.
 
 P2/P3:
 
@@ -216,7 +217,7 @@ P2/P3:
 
 Manual-required:
 
-- Real provider latency and streaming behavior checks once streaming is introduced.
+- Human review of the archived real-provider streaming/cancel behavior in the desktop app, including visible reading time, cancel hit target, and recovery copy.
 - Real desktop-product validation for bubble placement, transparent hit-testing, reading time, and whether the desktop chat can safely be demoted to an extended panel without harming power-user workflows.
 
 ### 2A. Chat Surface Convergence Direction
