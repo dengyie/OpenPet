@@ -3,7 +3,7 @@
 > Date: 2026-07-09
 > Scope: AI Talk 流式回复、取消生成、桌面聊天状态同步
 > Baseline: `dev6` branch, based on local `main@b557fd4f`
-> Status: Phase 1 core, Phase 2 IPC/window/renderer wiring, and Phase 4 smoke/runbook closeout are implemented on `dev6`; real-provider desktop feel remains Manual-required.
+> Status: Phase 1 core, Phase 2 IPC/window/renderer wiring, Phase 4 smoke/runbook closeout, and post-review streaming hardening are implemented on `dev6`; real-provider desktop feel remains Manual-required.
 
 ## 1. 文档定位
 
@@ -64,8 +64,9 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 - `AiService.streamComplete()` exists in `src/main/services/ai-service.js`.
 - OpenAI-compatible SSE streaming deltas are parsed into normalized text deltas.
 - Provider streaming supports abort signal and request timeout coordination.
+- Provider timeout and user cancel are now separated: timeout surfaces as failed provider timeout, while user cancel remains canceled and side-effect-free.
 - Streaming unsupported before any chunk falls back to existing `complete()`.
-- Tool-enabled requests fall back to non-streaming for v1, preserving behavior tool support.
+- Tool-enabled requests fall back to non-streaming for v1, preserving behavior tool support while still receiving the caller abort signal.
 - `AiTalkService.streamChat()` exists in `src/main/services/ai-talk-service.js`.
 - `AiTalkService.cancelRequest()` owns request cancellation through a main-process registry.
 - User message is persisted at request start; assistant message is persisted only on final success.
@@ -80,7 +81,18 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 - Bubble Chat preload exposes `cancelMessage({ requestId })`.
 - PetChat preload exposes `cancelMessage({ requestId })`.
 - Bubble Chat renderer displays partial assistant text and a cancel button for cancellable states.
+- Bubble Chat renderer rerenders partial updates for the same request/status by including chunk/partial counters in the transient item identity.
 - PetChat renderer displays one transient assistant message with `data-request-id` and `data-status`.
+
+### Post-review Hardening On `dev6`
+
+Commit `00ea5bf9 fix(ai-talk): harden streaming cancel semantics` closes the production review findings from the first streaming implementation pass:
+
+- Internal provider timeout no longer appears as user cancellation.
+- Non-streaming fallback paths used for tools or unsupported streaming now receive the same abort signal.
+- Bubble Chat partial text updates refresh even when `requestId` and status stay unchanged.
+- Streaming delta accumulation preserves provider whitespace instead of trimming every chunk.
+- Regression coverage was added for all four cases.
 
 ### Remaining Manual-required
 
@@ -204,12 +216,13 @@ Forbidden in trace/log/export:
 `AiService.streamComplete()` must keep these semantics:
 
 - Sends OpenAI-compatible `/chat/completions` with `stream: true`.
-- Calls `onDelta(text)` only with normalized text deltas.
+- Calls `onDelta(text)` only with provider text deltas; deltas must preserve provider whitespace.
 - Returns `{ reply, streaming, fallback, fallbackReason, chunkCount, finishReason, elapsedMs }`.
 - If tools are present, uses non-streaming fallback with `fallbackReason: 'tools-not-supported'`.
 - If provider returns unsupported-stream style failure before any chunk, falls back to non-streaming completion.
 - If chunks have already started and stream fails, does not transparently fallback, because fallback could duplicate or contradict visible partial output.
 - Abort errors bubble to AI Talk as cancellation when the request registry says cancellation was requested.
+- Timeout errors bubble to AI Talk as failed provider timeout, not cancellation.
 
 ## 10. AI Talk Lifecycle
 
@@ -428,6 +441,13 @@ Current known verification from Phase 2 working tree:
 - `npm run check:syntax` passed.
 - `npm run test:core` passed with 1172 tests.
 - Existing `MODULE_TYPELESS_PACKAGE_JSON` warnings are pre-existing and non-blocking.
+
+Current known verification after post-review hardening:
+
+- `node --test tests/services/ai-service.test.js tests/services/ai-talk-service.test.js tests/services/ai-talk-store.test.js tests/main/pet-chat-ipc.test.js tests/main/pet-bubble-chat-window.test.js tests/main/pet-bubble-chat-renderer.test.js tests/main/pet-chat-renderer.test.js tests/main/pet-chat-window.test.js tests/scripts/run-ai-talk-local-smoke.test.js` passed with 191 tests.
+- `npm run test:core` passed with 1177 tests.
+- `npm run check:syntax` passed, including Node syntax check, TypeScript `tsc --noEmit`, and Control Center Vite build.
+- `git diff --check` passed.
 
 ## 16. Production Review Checklist
 

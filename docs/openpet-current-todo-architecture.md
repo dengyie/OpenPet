@@ -195,16 +195,19 @@ Current state:
 - Desktop chat is connected to the same chat state rather than a separate AI implementation.
 - User-facing chat entry wording now reflects the intended split: Bubble Chat is the default lightweight surface, while `PetChatWindow` is labeled as an extended panel rather than a parallel primary chat entry.
 - Chat surface convergence is implemented around one lightweight visible Bubble Chat surface, one extended desktop chat panel, one shared `AiTalkService` brain, and `PetService.say()` as the speech ingress.
+- Streaming replies and cancel generation are implemented on the shared AI Talk brain: `AiService.streamComplete()` handles OpenAI-compatible SSE, timeout/cancel separation, abortable fallback, and sanitized diagnostics; `AiTalkService.streamChat()` owns transient partial state, cancel side-effect isolation, final-only assistant persistence, and redacted trace summaries; Bubble Chat and PetChatWindow render the same `requestId` lifecycle with cancel controls.
+- Streaming hardening now covers the previously risky edge cases: provider timeout is reported as failed instead of user-canceled, tools/unsupported-stream fallback receives the same abort signal, Bubble Chat rerenders partial updates for the same request/status, and streamed deltas preserve provider whitespace.
 - Packaged runtime smoke evidence now aligns with the real lightweight chat surface: it records Bubble Chat visibility/item evidence, can capture a dedicated Bubble Chat screenshot, and treats the old renderer `#bubble` as a hidden compatibility node rather than the primary speech surface.
 - The AI Talk smoke and Bubble Chat acceptance path proves request correlation and popup dispatch, but it does not by itself prove that placement, dwell time, and transparent hit-testing have passed a fresh human desktop feel review.
+- The same smoke entrypoint now supports `--stream` and `--cancel-after-ms` for sanitized streaming/cancel acceptance fields without storing raw prompt, provider chunk, memory text, API keys, or local private paths.
 
 P1 work:
 
 - Keep future trace UX aligned if trace volume or streaming surfaces expand beyond the current export and filter model.
+- Run and archive real-provider streaming/cancel smoke when the local OpenPet gateway is available, then update the runbook/manual acceptance notes with the observed latency, chunking, and cancel behavior.
 
 P2/P3:
 
-- Streaming replies and cancel generation. Next bounded design: `docs/superpowers/specs/2026-07-09-ai-talk-streaming-cancel-development-design.md`; implementation plan: `docs/superpowers/plans/2026-07-09-ai-talk-streaming-cancel.md`.
 - Multiple conversations per pet-pack.
 - LLM history summarization.
 - Embedding/vector memory retrieval.
