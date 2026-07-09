@@ -326,6 +326,45 @@ test('bubble chat renderer displays streaming partial reply and cancels by reque
   assert.equal(apiCalls.cancelMessage[0].requestId, 'chat-stream-1')
 })
 
+test('bubble chat renderer rerenders streaming partial updates for the same request and status', async () => {
+  const harness = await createHarness({
+    initialState: {
+      streaming: {
+        requestId: 'chat-stream-1',
+        conversationId: 'control-center:legacy-cat:main',
+        petPackId: 'legacy-cat',
+        status: 'streaming',
+        partialReply: 'Hel',
+        partialReplyChars: 3,
+        chunkCount: 1,
+        canCancel: true
+      },
+      sending: true,
+      awaitingReply: true
+    }
+  })
+  const { apiStateListeners, elements } = harness
+
+  assert.match(elements['bubble-items'].textContent, /Hel/)
+
+  apiStateListeners[0]({
+    streaming: {
+      requestId: 'chat-stream-1',
+      conversationId: 'control-center:legacy-cat:main',
+      petPackId: 'legacy-cat',
+      status: 'streaming',
+      partialReply: 'Hello',
+      partialReplyChars: 5,
+      chunkCount: 2,
+      canCancel: true
+    },
+    sending: true,
+    awaitingReply: true
+  })
+
+  assert.match(elements['bubble-items'].textContent, /Hello/)
+})
+
 test('bubble chat renderer sends mini input on Enter and collapses interaction after success', async () => {
   const harness = await createHarness()
   const { apiCalls, elements, focusState } = harness

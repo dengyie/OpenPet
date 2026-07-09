@@ -1651,6 +1651,39 @@ test('ai talk service streamChat appends only final assistant reply', async () =
   assert.equal(states.at(-1).status, 'completed')
 })
 
+test('ai talk service streamChat preserves whitespace across streamed deltas', async () => {
+  const store = createStore()
+  const states = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async ({ onDelta }) => {
+        onDelta('Hello')
+        onDelta(' world')
+        return { reply: 'Hello world', elapsedMs: 12, streaming: true, fallback: false, chunkCount: 2, finishReason: 'stop' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  const result = await service.streamChat({
+    message: 'Hi',
+    requestId: 'stream-whitespace-1',
+    entrypoint: 'bubble-chat',
+    onState: (state) => states.push(state)
+  })
+
+  assert.equal(result.reply, 'Hello world')
+  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === 'Hello world'), true)
+})
+
 test('ai talk service cancelRequest prevents assistant persistence and side effects', async () => {
   const store = createStore()
   let memoryRequestCount = 0
@@ -1692,6 +1725,42 @@ test('ai talk service cancelRequest prevents assistant persistence and side effe
   assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['Please write long'])
   assert.equal(memoryRequestCount, 0)
   assert.equal(states.at(-1).status, 'canceled')
+})
+
+test('ai talk service streamChat treats provider timeout as failure instead of cancel', async () => {
+  const store = createStore()
+  const states = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async () => {
+        const error = new Error('AI provider request timed out')
+        error.name = 'TimeoutError'
+        throw error
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  await assert.rejects(
+    () => service.streamChat({
+      message: 'Please write long',
+      requestId: 'stream-timeout-1',
+      entrypoint: 'bubble-chat',
+      onState: (state) => states.push(state)
+    }),
+    /timed out/
+  )
+  assert.equal(states.at(-1).status, 'failed')
+  assert.equal(states.at(-1).errorMessage, 'AI provider request timed out')
+  assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['Please write long'])
 })
 
 test('ai talk service streamChat records redacted streaming trace summary', async () => {

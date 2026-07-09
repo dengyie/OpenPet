@@ -1410,7 +1410,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
               })
               return
             }
-            const text = normalizeString(delta)
+            const text = typeof delta === 'string' ? delta : ''
             if (!text) return
             registryEntry.status = 'streaming'
             chunkCount += 1

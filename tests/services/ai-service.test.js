@@ -1445,6 +1445,42 @@ test('ai service streamComplete honors abort signal', async () => {
   )
 })
 
+test('ai service streamComplete classifies internal timeout separately from caller abort', async () => {
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    requestTimeoutMs: 5,
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal?.addEventListener?.('abort', () => {
+        const error = new Error('The operation was aborted')
+        error.name = 'AbortError'
+        reject(error)
+      }, { once: true })
+    })
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-timeout-1',
+      messages: [{ role: 'user', content: 'Long reply' }],
+      onDelta: () => {}
+    }),
+    (error) => error?.name === 'TimeoutError' && error?.message === 'AI provider request timed out'
+  )
+})
+
 test('ai service streamComplete falls back before chunks when streaming is unsupported', async () => {
   let callCount = 0
   const service = createAiService({
@@ -1491,4 +1527,46 @@ test('ai service streamComplete falls back before chunks when streaming is unsup
   assert.equal(result.streaming, false)
   assert.equal(result.fallback, true)
   assert.equal(result.fallbackReason, 'unsupported-stream')
+})
+
+test('ai service streamComplete propagates abort signal to tools fallback completion', async () => {
+  const controller = new AbortController()
+  let signalFromFallback = null
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async (_url, options) => {
+      signalFromFallback = options.signal
+      await new Promise((resolve) => setImmediate(resolve))
+      assert.equal(signalFromFallback.aborted, true)
+      const error = new Error('The operation was aborted')
+      error.name = 'AbortError'
+      throw error
+    }
+  })
+  controller.abort()
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-tools-abort-1',
+      messages: [{ role: 'user', content: 'Long reply' }],
+      tools: [{ type: 'function', function: { name: 'openpet_behavior', parameters: {} } }],
+      signal: controller.signal,
+      onDelta: () => {}
+    }),
+    /aborted|timed out/i
+  )
+  assert.ok(signalFromFallback)
 })

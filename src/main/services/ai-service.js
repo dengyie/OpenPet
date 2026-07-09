@@ -239,6 +239,12 @@ const createTimeoutController = (timeoutMs) => {
   }
 }
 
+const createTimeoutError = () => {
+  const error = new Error('AI provider request timed out')
+  error.name = 'TimeoutError'
+  return error
+}
+
 const sanitizeBaseUrlForDisplay = (value) => {
   const raw = typeof value === 'string' ? value.trim() : ''
   if (!raw) return ''
@@ -345,15 +351,25 @@ const isStreamingUnsupportedError = (error) => {
 const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
   const timeout = createTimeoutController(timeoutMs)
   const controller = new AbortController()
-  const abort = () => controller.abort()
-  if (externalSignal?.aborted || timeout.signal.aborted) controller.abort()
-  externalSignal?.addEventListener?.('abort', abort, { once: true })
-  timeout.signal.addEventListener?.('abort', abort, { once: true })
+  let abortReason = ''
+  const abortFromExternal = () => {
+    if (!abortReason) abortReason = 'external'
+    controller.abort()
+  }
+  const abortFromTimeout = () => {
+    if (!abortReason) abortReason = 'timeout'
+    controller.abort()
+  }
+  if (externalSignal?.aborted) abortFromExternal()
+  else if (timeout.signal.aborted) abortFromTimeout()
+  externalSignal?.addEventListener?.('abort', abortFromExternal, { once: true })
+  timeout.signal.addEventListener?.('abort', abortFromTimeout, { once: true })
   return {
     signal: controller.signal,
+    isTimeout: () => abortReason === 'timeout',
     clear: () => {
-      externalSignal?.removeEventListener?.('abort', abort)
-      timeout.signal.removeEventListener?.('abort', abort)
+      externalSignal?.removeEventListener?.('abort', abortFromExternal)
+      timeout.signal.removeEventListener?.('abort', abortFromTimeout)
       timeout.clear()
     }
   }
@@ -790,7 +806,7 @@ const createAiService = ({
     return []
   }
 
-  const complete = async ({ messages, tools = [], configOverride = null } = {}) => {
+  const complete = async ({ messages, tools = [], configOverride = null, signal = null } = {}) => {
     const config = normalizeCompletionConfig(configOverride || getRawConfig())
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     const startedAt = Date.now()
@@ -811,6 +827,7 @@ const createAiService = ({
       details: baseDetails
     })
     let response
+    let linkedSignal = null
     try {
       if (!apiKey) throw new Error('AI API key is not configured')
       if (config.provider !== 'openai-compatible') {
@@ -818,7 +835,7 @@ const createAiService = ({
       }
       if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
 
-      const timeout = createTimeoutController(requestTimeoutMs)
+      linkedSignal = createLinkedAbortSignal(signal, requestTimeoutMs)
       const body = {
         model: config.model,
         messages
@@ -832,18 +849,17 @@ const createAiService = ({
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
-          signal: timeout.signal,
+          signal: linkedSignal.signal,
           body: JSON.stringify(body)
         })
       } catch (error) {
         if (error?.name === 'AbortError') {
-          const timeoutError = new Error('AI provider request timed out')
-          timeoutError.name = 'AbortError'
-          throw timeoutError
+          if (linkedSignal?.isTimeout?.()) throw createTimeoutError()
+          throw error
         }
         throw error
       } finally {
-        timeout.clear()
+        linkedSignal?.clear()
       }
 
       const data = await response.json().catch(() => ({}))
@@ -893,7 +909,7 @@ const createAiService = ({
 
   const streamComplete = async ({ messages, tools = [], configOverride = null, requestId = '', signal = null, onDelta = null } = {}) => {
     if (Array.isArray(tools) && tools.length) {
-      const result = await complete({ messages, tools, configOverride })
+      const result = await complete({ messages, tools, configOverride, signal })
       return {
         ...result,
         streaming: false,
@@ -962,7 +978,7 @@ const createAiService = ({
         if (isStreamingUnsupportedError(providerError)) {
           linkedSignal.clear()
           linkedSignal = null
-          const fallbackResult = await complete({ messages, tools, configOverride })
+          const fallbackResult = await complete({ messages, tools, configOverride, signal })
           return {
             ...fallbackResult,
             streaming: false,
@@ -979,9 +995,10 @@ const createAiService = ({
       let done = false
       for await (const textChunk of readStreamTextChunks(response.body)) {
         if (linkedSignal.signal.aborted) {
-          const error = new Error('AI provider stream aborted')
-          error.name = 'AbortError'
-          throw error
+          if (linkedSignal.isTimeout()) throw createTimeoutError()
+          const abortError = new Error('AI provider stream aborted')
+          abortError.name = 'AbortError'
+          throw abortError
         }
         buffer += textChunk
         const lines = buffer.split(/\r?\n/)
@@ -1026,24 +1043,27 @@ const createAiService = ({
         finishReason
       }
     } catch (error) {
+      const reportedError = error?.name === 'AbortError' && linkedSignal?.isTimeout?.()
+        ? createTimeoutError()
+        : error
       recordLog({
         level: 'error',
         event: 'ai.provider.stream.failed',
         message: 'AI provider stream failed',
         details: {
           ...baseDetails,
-          status: error?.providerStatus || response?.status || 0,
-          providerCode: error?.providerCode || '',
+          status: reportedError?.providerStatus || response?.status || 0,
+          providerCode: reportedError?.providerCode || '',
           elapsedMs: Date.now() - startedAt,
           chunkCount,
           partialReplyChars: reply.length,
-          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
-          errorMessage: error?.providerStatus
+          errorName: sanitizeDiagnosticText(reportedError?.name || 'Error'),
+          errorMessage: reportedError?.providerStatus
             ? 'AI provider returned an error response'
-            : sanitizeDiagnosticText(error?.message)
+            : sanitizeDiagnosticText(reportedError?.message)
         }
       })
-      throw error
+      throw reportedError
     } finally {
       linkedSignal?.clear()
     }

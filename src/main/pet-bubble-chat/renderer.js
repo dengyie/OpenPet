@@ -69,13 +69,18 @@ const getRenderableItems = (state = {}) => {
   const statusText = status === 'canceled'
     ? '已取消'
     : (status === 'failed' ? (streaming.errorMessage || '回复失败') : '正在回复...')
+  const partialReply = String(streaming.partialReply || statusText)
+  const partialReplyChars = Number.isFinite(Number(streaming.partialReplyChars))
+    ? Number(streaming.partialReplyChars)
+    : partialReply.length
+  const chunkCount = Math.max(0, Number(streaming.chunkCount) || 0)
   return [
     ...withLocalUser,
     {
-      id: `stream:${streaming.requestId}:${status}`,
+      id: `stream:${streaming.requestId}:${status}:${chunkCount}:${partialReplyChars}`,
       kind: 'dialogue',
       role: 'pet',
-      text: String(streaming.partialReply || statusText),
+      text: partialReply,
       source: 'ai',
       sourceLabel: 'Pet',
       createdAt: '',
