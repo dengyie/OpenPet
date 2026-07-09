@@ -11,6 +11,9 @@ const {
 } = require('../../scripts/create-plugin-real-world-submission-rehearsal')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/weather-status')
+const resolveOutputPath = (outputDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(outputDir, recordedPath)
+)
 
 test('parseArgs accepts source, output, reviewer, decision, notes, and json flags', () => {
   const options = parseArgs([
@@ -68,22 +71,22 @@ test('createPluginRealWorldSubmissionRehearsal packages an existing plugin throu
   assert.equal(summary.approval.validation.ok, true)
   assert.equal(summary.approval.record.decision, 'approved')
   assert.equal(summary.approval.record.approvalReady, true)
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.checklist), true)
-  assert.equal(fs.existsSync(summary.files.commands), true)
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.packagePath), true)
-  assert.equal(fs.existsSync(summary.submission.bundleDir), true)
-  assert.equal(fs.existsSync(summary.approval.record.files.markdown), true)
-  assert.equal(fs.existsSync(summary.approval.record.files.json), true)
-  assert.equal(summary.outputDir, outputDir)
+  assert.equal(summary.outputDir, 'plugin-real-world-submission-rehearsal')
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.readme)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.checklist)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.commands)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.files.summary)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.packagePath)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(outputDir, summary.submission.bundleDir)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(path.join(outputDir, summary.submission.bundleDir), summary.approval.record.files.markdown)), true)
+  assert.equal(fs.existsSync(resolveOutputPath(path.join(outputDir, summary.submission.bundleDir), summary.approval.record.files.json)), true)
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(resolveOutputPath(outputDir, summary.files.readme), 'utf-8')
   assert.match(readme, /OpenPet Plugin Real-World Submission Rehearsal/)
   assert.match(readme, /openpet\.example\.weather-status/)
   assert.match(readme, /create-plugin-maintainer-approval/)
 
-  const commands = JSON.parse(fs.readFileSync(summary.files.commands, 'utf-8')).commands
+  const commands = JSON.parse(fs.readFileSync(resolveOutputPath(outputDir, summary.files.commands), 'utf-8')).commands
   assert.equal(commands.some((command) => command.includes('create-plugin-submission-bundle')), true)
   assert.equal(commands.some((command) => command.includes('validate-plugin-maintainer-approval')), true)
 })

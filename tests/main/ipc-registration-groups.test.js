@@ -163,6 +163,7 @@ test('registerPetRuntimeIpc wires pet movement and focus handlers', () => {
 test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', async () => {
   const ipcMain = createIpcMainStub()
   const dryRunCalls = []
+  const behaviorAdapterCalls = []
 
   registerAiIpc({
     ipcMainService: ipcMain,
@@ -210,16 +211,45 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
     createAiMemoryProfileView: (profile) => ({ kind: 'memory-profile', profile }),
     createImageGenerationConfigView: (config) => ({ kind: 'image-config', config }),
     createImageGenerationApiKeyResult: (result) => ({ kind: 'image-key', result }),
-    createImageGenerationHealthCheckResult: (result) => ({ kind: 'image-health', result })
+    createImageGenerationHealthCheckResult: (result) => ({ kind: 'image-health', result }),
+    createAiBehaviorConfigView: (config) => {
+      behaviorAdapterCalls.push(['config', config])
+      return { kind: 'behavior-config', config }
+    },
+    createAiBehaviorResultView: (result) => {
+      behaviorAdapterCalls.push(['result', result])
+      return { kind: 'behavior-result', result }
+    },
+    createAiBehaviorDecisionListView: (decisions) => {
+      behaviorAdapterCalls.push(['decisions', decisions])
+      return { kind: 'behavior-decisions', decisions }
+    }
   })
 
   const config = await ipcMain.handlers.get(IPC.AI_GET_CONFIG)()
   const chat = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi' })
   const dryRun = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_DRY_RUN)(null, { reply: 'wave' })
+  const behaviorConfig = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_GET)()
+  const savedBehavior = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_SAVE)(null, { enabled: false })
+  const replay = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_REPLAY_DECISION)(null, { decisionId: 7 })
+  const cleared = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_CLEAR_DECISIONS)()
+  const exported = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_EXPORT_DIAGNOSTICS)()
 
   assert.deepEqual(config, { kind: 'ai-config', config: { enabled: true, model: 'gpt-5.5' } })
   assert.deepEqual(chat, { payload: { message: 'hi' }, options: { source: 'control-center' } })
-  assert.deepEqual(dryRun, { matched: false })
+  assert.deepEqual(dryRun, { kind: 'behavior-result', result: { matched: false } })
+  assert.deepEqual(behaviorConfig, { kind: 'behavior-config', config: { enabled: true, decisions: [{ id: 'd1' }] } })
+  assert.deepEqual(savedBehavior, { kind: 'behavior-config', config: { enabled: false } })
+  assert.deepEqual(replay, { kind: 'behavior-result', result: { decisionId: 7, actions: [{ id: 'wave' }] } })
+  assert.deepEqual(cleared, { kind: 'behavior-decisions', decisions: { ok: true } })
+  assert.deepEqual(exported, { ok: true })
+  assert.deepEqual(behaviorAdapterCalls, [
+    ['result', { matched: false }],
+    ['config', { enabled: true, decisions: [{ id: 'd1' }] }],
+    ['config', { enabled: false }],
+    ['result', { decisionId: 7, actions: [{ id: 'wave' }] }],
+    ['decisions', { ok: true }]
+  ])
   assert.deepEqual(dryRunCalls, [{ reply: 'wave', actions: [{ id: 'wave' }] }])
   assert.ok(ipcMain.handlers.has(IPC.AI_GET_PERSONA_PROFILE))
   assert.ok(ipcMain.handlers.has(IPC.IMAGE_GENERATION_CHECK_HEALTH))

@@ -3300,7 +3300,10 @@ test('plugin service runs enabled setup entries without shell expansion', async 
   assert.equal(path.basename(spawned[0].options.cwd), 'weather-declaration')
   assert.equal(spawned[0].options.shell, false)
   assert.equal(spawned[0].options.detached, false)
-  assert.deepEqual(Object.keys(spawned[0].options.env).sort(), ['PATH'].filter((key) => process.env[key]).sort())
+  assert.deepEqual(
+    Object.keys(spawned[0].options.env).sort(),
+    ['NODE_PATH', 'PATH'].sort()
+  )
   assert.equal(settingsService.get().plugins.logs[0].message, 'Setup started')
 
   child.stdout.write('ready\n')

@@ -1,10 +1,17 @@
 # Creator Studio Example Extension
 
-Creator Studio is a hybrid OpenPet extension that demonstrates the end-to-end pet creation workflow planned for hatch-pet style generation.
+Creator Studio is a hybrid OpenPet extension that now carries the landed end-to-end pet creation workflow for OpenPet's ordinary-user and advanced creator paths.
 
 The fixture backend creates a deterministic `codex-pet` output for local development. Provider generation uses the host-owned image model bridge, then either creates a reviewable pet-pack atlas for full-pet runs or a reviewable transparent PNG frame sequence for `single-action` runs.
 
 Legacy `cloud` and `local` backend inputs are normalized into the same `provider` path. If host model settings or the bridge are unavailable, the run still fails explicitly instead of silently falling back to fixture output.
+
+Current full-pet policy:
+
+- QA/import requires real `idle` and `waving` coverage.
+- Host-side extra pose generation is intentionally limited to `waving`.
+- Other atlas rows may fall back from the validated base pose.
+- The currently verified shortest real-user path is one clean front-facing reference image on the saved `gpt-image-2` gateway path.
 
 Current commands:
 

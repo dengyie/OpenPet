@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
+const { sanitizeLogText } = require('../src/main/services/log-safety')
 const { createBasicBehaviorPlugin } = require('../src/main/plugins/official/basic-behavior')
 const { getLegacyPetAnimations } = require('../src/main/pet-pack/loader')
 const { LEGACY_USER_DATA_DIR_NAME } = require('../src/main/user-data-path')
@@ -36,6 +37,9 @@ const DEFAULT_REFERENCE_IMAGE_CANDIDATES = [
   ['cat_anime', 'flames', 'bai_no_bg', '01_no_bg.png'],
   ['cat_anime', 'flames', 'eat_no_bg', '01_no_bg.png']
 ]
+const DEFAULT_SOURCE_USER_DATA_LABEL = '[redacted-local-user-data]'
+const DEFAULT_REFERENCE_IMAGE_LABEL = 'reference.png'
+const DEFAULT_SESSION_DIR_LABEL = 'creator-workflow-host-smoke'
 
 const usage = () => [
   'Usage: node scripts/run-creator-workflow-host-smoke.js [options]',
@@ -176,6 +180,10 @@ const prepareSeedSettings = (settings = {}) => ({
     enabled: {
       ...(isObject(settings.plugins?.enabled) ? settings.plugins.enabled : {}),
       'official.basic-behavior': settings.plugins?.enabled?.['official.basic-behavior'] !== false,
+      [CREATOR_STUDIO_PLUGIN_ID]: true
+    },
+    nativeExecutionApproved: {
+      ...(isObject(settings.plugins?.nativeExecutionApproved) ? settings.plugins.nativeExecutionApproved : {}),
       [CREATOR_STUDIO_PLUGIN_ID]: true
     },
     config: isObject(settings.plugins?.config) ? settings.plugins.config : {},
@@ -356,6 +364,84 @@ const toRelativePath = ({ rootDir, targetPath }) => {
   return relative.split(path.sep).join('/')
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  if (!targetPath) return fallback || ''
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeSessionPath = ({ sessionDir, targetPath, fallback }) => {
+  const normalizedTargetPath = String(targetPath || '').trim()
+  if (!normalizedTargetPath) return fallback || ''
+  if (isSafeRelativePath(normalizedTargetPath)) return toPosixPath(normalizedTargetPath)
+  const relative = toRelativePath({ rootDir: sessionDir, targetPath })
+  if (relative) return relative
+  const absolutePath = path.resolve(normalizedTargetPath)
+  return createSafeProjectPath(absolutePath, path.basename(absolutePath) || fallback)
+}
+
+const sanitizeText = (value, maxChars = 240) => sanitizeLogText(String(value || ''), { maxChars })
+
+const sanitizeReportPathValue = ({ sessionDir, key, value }) => {
+  const rawValue = String(value || '').trim()
+  if (!rawValue) return ''
+  if (key === 'assetUrl') return undefined
+  if (key === 'userDataDir' || key === 'sourceUserDataDir') return DEFAULT_SOURCE_USER_DATA_LABEL
+  return createSafeSessionPath({
+    sessionDir,
+    targetPath: rawValue,
+    fallback: key === 'referenceImagePath' || key === 'assetPath'
+      ? (path.basename(rawValue) || DEFAULT_REFERENCE_IMAGE_LABEL)
+      : key === 'pluginDataDir'
+        ? 'plugin-data'
+        : key === 'workspaceRoot' || key === 'rootPath'
+          ? 'workspace'
+          : key === 'runRecordPath'
+            ? 'run.json'
+            : (path.basename(rawValue) || key)
+  })
+}
+
+const isReportPathKey = (key) => (
+  key === 'rootPath'
+  || key === 'assetPath'
+  || key === 'assetUrl'
+  || /(?:Path|Dir|Root)$/.test(String(key || ''))
+)
+
+const sanitizeReportValue = (value, { sessionDir, key = '', depth = 0 } = {}) => {
+  if (value == null) return value
+  if (depth >= 6) return '[truncated]'
+  if (typeof value === 'string') {
+    if (isReportPathKey(key)) return sanitizeReportPathValue({ sessionDir, key, value })
+    return sanitizeText(value, 500)
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => sanitizeReportValue(entry, { sessionDir, key, depth: depth + 1 }))
+      .filter((entry) => entry !== undefined)
+  }
+  if (!isObject(value)) return undefined
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([entryKey, entryValue]) => [
+        entryKey,
+        sanitizeReportValue(entryValue, { sessionDir, key: entryKey, depth: depth + 1 })
+      ])
+      .filter(([, entryValue]) => entryValue !== undefined)
+  )
+}
+
 const readRunRecordSummary = ({ pluginDataDir, runId }) => {
   if (!pluginDataDir || !runId) return { runRecord: null, runRecordPath: '' }
   const runRecordPath = path.join(pluginDataDir, 'runs', runId, 'run.json')
@@ -372,7 +458,7 @@ const readRunRecordSummary = ({ pluginDataDir, runId }) => {
       currentStep: String(runRecord.currentStep || ''),
       backend: String(runRecord.backend || runRecord.input?.backend || ''),
       reviewStatus: String(runRecord.reviewStatus || ''),
-      error: String(runRecord.error || ''),
+      error: sanitizeText(runRecord.error || '', 500),
       artifacts: isObject(runRecord.artifacts) ? Object.keys(runRecord.artifacts) : [],
       conditioning: conditioning ? {
         mode: String(conditioning.mode || ''),
@@ -509,14 +595,23 @@ const summarizeVerification = (verification = {}, sessionDir) => {
   const artifactPaths = isObject(verification?.artifactPaths)
     ? Object.fromEntries(Object.entries(verification.artifactPaths).map(([key, value]) => [
         key,
-        toRelativePath({ rootDir: sessionDir, targetPath: value }) || String(value || '')
+        createSafeSessionPath({ sessionDir, targetPath: value, fallback: `${key}.artifact` })
       ]))
     : {}
   return {
     ok: Boolean(verification?.ok),
-    message: String(verification?.message || ''),
+    message: sanitizeText(verification?.message || '', 500),
     artifactPaths
   }
+}
+
+const approveScenarioReferenceImage = ({ runtime, referenceImagePath } = {}) => {
+  const approval = runtime?.creatorWorkflowService?.approveReferenceSourcePath?.(referenceImagePath)
+  const referenceImageToken = String(approval?.referenceToken || '').trim()
+  if (!referenceImageToken) {
+    throw new Error('Creator workflow did not approve the reference image')
+  }
+  return referenceImageToken
 }
 
 const runScenarioWorkflow = async ({
@@ -525,27 +620,32 @@ const runScenarioWorkflow = async ({
   repoRoot,
   sourceUserDataDir,
   referenceImagePath,
-  logLimit = DEFAULT_LOG_LIMIT
+  logLimit = DEFAULT_LOG_LIMIT,
+  createSmokeRuntimeImpl = createSmokeRuntime
 } = {}) => {
   const userDataDir = path.join(scenarioDir, 'user-data')
   const workspaceRoot = path.join(scenarioDir, 'workspace')
   prepareScenarioWorkspace({ repoRoot, workspaceRoot })
   const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir })
-  const runtime = createSmokeRuntime({ repoRoot, workspaceRoot, userDataDir })
+  const runtime = createSmokeRuntimeImpl({ repoRoot, workspaceRoot, userDataDir })
+  const seededProviderConfig = typeof runtime.imageGenerationModelService?.getConfig === 'function'
+    ? runtime.imageGenerationModelService.getConfig()
+    : {}
   const startedAt = new Date().toISOString()
   const startedAtMs = Date.now()
   try {
     const stateBefore = await runtime.creatorWorkflowService.getState()
+    const referenceImageToken = approveScenarioReferenceImage({ runtime, referenceImagePath })
     const result = scenario === 'new-character'
       ? await runtime.creatorWorkflowService.generateNewCharacter({
           characterName: DEFAULT_NEW_CHARACTER_NAME,
           stylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
-          referenceImagePath
+          referenceImageToken
         })
       : await runtime.creatorWorkflowService.generateExistingAction({
           actionName: DEFAULT_EXISTING_ACTION_NAME,
           motionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
-          referenceImagePath
+          referenceImageToken
         })
     const stateAfter = await runtime.creatorWorkflowService.getState()
     const pluginDataDir = runtime.pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
@@ -571,8 +671,8 @@ const runScenarioWorkflow = async ({
       runRecord,
       seededSettingsSummary: {
         activePackId: String(seededSettings?.petPacks?.activePackId || ''),
-        provider: String(seededSettings?.models?.imageGeneration?.provider || ''),
-        model: String(seededSettings?.models?.imageGeneration?.model || '')
+        provider: String(seededProviderConfig?.provider || ''),
+        model: String(seededProviderConfig?.model || '')
       },
       appLogs: runtime.appLogService.read({ limit: logLimit }),
       pluginLogs: runtime.pluginService.getLogs({ pluginId: CREATOR_STUDIO_PLUGIN_ID }).slice(-logLimit)
@@ -588,20 +688,40 @@ const summarizeScenarioForReport = (scenarioResult, sessionDir) => {
     ok: Boolean(scenarioResult.ok),
     startedAt: scenarioResult.startedAt,
     durationMs: Number(scenarioResult.durationMs) || 0,
-    referenceImagePath: toRelativePath({ rootDir: sessionDir, targetPath: scenarioResult.referenceImagePath }) || scenarioResult.referenceImagePath,
-    userDataDir: toRelativePath({ rootDir: sessionDir, targetPath: scenarioResult.userDataDir }) || scenarioResult.userDataDir,
-    workspaceRoot: toRelativePath({ rootDir: sessionDir, targetPath: scenarioResult.workspaceRoot }) || scenarioResult.workspaceRoot,
-    pluginDataDir: toRelativePath({ rootDir: sessionDir, targetPath: scenarioResult.pluginDataDir }) || scenarioResult.pluginDataDir,
-    providerBefore: scenarioResult.providerBefore,
-    providerAfter: scenarioResult.providerAfter,
-    result: scenarioResult.result,
+    referenceImagePath: createSafeSessionPath({
+      sessionDir,
+      targetPath: scenarioResult.referenceImagePath,
+      fallback: path.basename(String(scenarioResult.referenceImagePath || '').trim()) || DEFAULT_REFERENCE_IMAGE_LABEL
+    }),
+    userDataDir: createSafeSessionPath({
+      sessionDir,
+      targetPath: scenarioResult.userDataDir,
+      fallback: DEFAULT_SOURCE_USER_DATA_LABEL
+    }),
+    workspaceRoot: createSafeSessionPath({
+      sessionDir,
+      targetPath: scenarioResult.workspaceRoot,
+      fallback: 'workspace'
+    }),
+    pluginDataDir: createSafeSessionPath({
+      sessionDir,
+      targetPath: scenarioResult.pluginDataDir,
+      fallback: 'plugin-data'
+    }),
+    providerBefore: sanitizeReportValue(scenarioResult.providerBefore, { sessionDir }),
+    providerAfter: sanitizeReportValue(scenarioResult.providerAfter, { sessionDir }),
+    result: sanitizeReportValue(scenarioResult.result, { sessionDir }),
     verification: summarizeVerification(scenarioResult.verification, sessionDir),
     conditioningVerification: summarizeVerification(scenarioResult.conditioningVerification, sessionDir),
-    runRecordPath: toRelativePath({ rootDir: sessionDir, targetPath: scenarioResult.runRecordPath }) || scenarioResult.runRecordPath,
-    runRecord: scenarioResult.runRecord,
+    runRecordPath: createSafeSessionPath({
+      sessionDir,
+      targetPath: scenarioResult.runRecordPath,
+      fallback: 'run.json'
+    }),
+    runRecord: sanitizeReportValue(scenarioResult.runRecord, { sessionDir }),
     seededSettingsSummary: scenarioResult.seededSettingsSummary,
-    appLogs: Array.isArray(scenarioResult.appLogs) ? scenarioResult.appLogs : [],
-    pluginLogs: Array.isArray(scenarioResult.pluginLogs) ? scenarioResult.pluginLogs : []
+    appLogs: sanitizeReportValue(Array.isArray(scenarioResult.appLogs) ? scenarioResult.appLogs : [], { sessionDir }),
+    pluginLogs: sanitizeReportValue(Array.isArray(scenarioResult.pluginLogs) ? scenarioResult.pluginLogs : [], { sessionDir })
   }
 }
 
@@ -638,10 +758,13 @@ const runCreatorWorkflowHostSmoke = async ({
       })
       scenarioResults.push(scenarioResult)
       if (!scenarioResult.ok) {
-        errors.push(`${scenarioName}: ${scenarioResult.verification?.message || scenarioResult.result?.message || 'workflow failed'}`)
+        errors.push(sanitizeText(
+          `${scenarioName}: ${scenarioResult.verification?.message || scenarioResult.result?.message || 'workflow failed'}`,
+          500
+        ))
       }
     } catch (error) {
-      errors.push(`${scenarioName}: ${error.message || String(error)}`)
+      errors.push(sanitizeText(`${scenarioName}: ${error.message || String(error)}`, 500))
       scenarioResults.push({
         scenario: scenarioName,
         ok: false,
@@ -656,7 +779,7 @@ const runCreatorWorkflowHostSmoke = async ({
         result: null,
         verification: {
           ok: false,
-          message: error.message || String(error)
+          message: sanitizeText(error.message || String(error), 500)
         },
         runRecordPath: '',
         runRecord: null,
@@ -674,10 +797,17 @@ const runCreatorWorkflowHostSmoke = async ({
     generatedAt: now().toISOString(),
     claimBoundary: 'Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and records evidence that the run-local canonical reference image was sent into the provider request as an image-edit conditioning input. It does not guarantee the provider visually obeyed that conditioning.',
     sessionId: sessionPaths.sessionId,
-    sessionDir: sessionPaths.sessionDir,
-    reportPath: sessionPaths.reportPath,
-    sourceUserDataDir: path.resolve(sourceUserDataDir),
-    referenceImagePath: path.resolve(resolvedReferenceImagePath),
+    sessionDir: createSafeProjectPath(sessionPaths.sessionDir, `${DEFAULT_SESSION_DIR_LABEL}/${sessionPaths.sessionId}`),
+    reportPath: createSafeSessionPath({
+      sessionDir: sessionPaths.sessionDir,
+      targetPath: sessionPaths.reportPath,
+      fallback: 'creator-workflow-host-smoke-report.json'
+    }),
+    sourceUserDataDir: DEFAULT_SOURCE_USER_DATA_LABEL,
+    referenceImagePath: createSafeProjectPath(
+      path.resolve(resolvedReferenceImagePath),
+      path.basename(path.resolve(resolvedReferenceImagePath)) || DEFAULT_REFERENCE_IMAGE_LABEL
+    ),
     scenarios: scenarioResults.map((entry) => summarizeScenarioForReport(entry, sessionPaths.sessionDir)),
     errors
   }
@@ -732,5 +862,7 @@ module.exports = {
   resolveImportedPetRoot,
   verifyNewCharacterScenario,
   verifyScenarioResult,
+  approveScenarioReferenceImage,
+  runScenarioWorkflow,
   runCreatorWorkflowHostSmoke
 }

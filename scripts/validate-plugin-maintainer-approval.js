@@ -23,6 +23,18 @@ const usage = () => [
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0
+const isAbsoluteLocalPath = (value) => {
+  const text = String(value || '').trim()
+  return Boolean(text) && (path.isAbsolute(text) || /^[A-Za-z]:[\\/]/.test(text))
+}
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
 
 const parseArgs = (argv) => {
   const options = {
@@ -158,8 +170,11 @@ const validateMaintainerApproval = (approvalBundle, options = {}) => {
       errors.push('plugin-maintainer-approval.md is not an OpenPet maintainer approval record')
     }
 
-    if (path.resolve(String(approval.sourceBundleDir || '')) !== approvalBundle.bundleDir) {
+    if (isAbsoluteLocalPath(approval.sourceBundleDir) && path.resolve(String(approval.sourceBundleDir || '')) !== approvalBundle.bundleDir) {
       warnings.push('approval.sourceBundleDir does not match the current bundle directory; the bundle may have been moved')
+    }
+    if (!isAbsoluteLocalPath(approval.sourceBundleDir) && hasText(approval.sourceBundleDir) && !isSafeRelativePath(approval.sourceBundleDir)) {
+      warnings.push('approval.sourceBundleDir should be a safe relative path')
     }
   }
 

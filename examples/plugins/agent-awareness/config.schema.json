@@ -1,0 +1,13 @@
+{
+  "title": "Agent Awareness",
+  "description": "Control how OpenPet watches Codex activity for the bundled Agent Awareness companion.",
+  "type": "object",
+  "properties": {
+    "autoStartOnCodexSignal": {
+      "type": "boolean",
+      "title": "Auto-start on Codex activity",
+      "description": "Automatically start the bundled Agent Awareness service when recent Codex session activity is detected after native execution approval.",
+      "default": false
+    }
+  }
+}

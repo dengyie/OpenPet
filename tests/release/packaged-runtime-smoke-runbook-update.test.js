@@ -110,6 +110,18 @@ test('createRunbook documents every required packaged runtime check', () => {
   }
 })
 
+test('createRunbook falls back to a safe report filename outside the repository', () => {
+  const report = createPendingReport()
+  const runbook = createRunbook({
+    report,
+    reportPath: '/tmp/private/packaged-runtime-smoke-report.json',
+    generatedAt: new Date('2026-06-16T01:30:00.000Z')
+  })
+
+  assert.match(runbook, /Report: `packaged-runtime-smoke-report\.json`/)
+  assert.doesNotMatch(runbook, /\/tmp\/private/)
+})
+
 test('createRunbook rejects structurally invalid reports', () => {
   const report = createPendingReport()
   report.checks = report.checks.filter((check) => check.id !== 'packaged-launch')
@@ -167,14 +179,20 @@ test('update parseArgs rejects incomplete or unsafe flag combinations', () => {
 })
 
 test('updateReport updates environment, artifact, fixtures, linked evidence, and selected check evidence', () => {
+  const absoluteScreenshot = path.join(os.tmpdir(), 'transparent.png')
+  const absoluteRecording = path.join(os.tmpdir(), 'runtime.mov')
   const updated = updateReport(createPendingReport(), {
     envUpdates: [{ key: 'machine', value: 'mac-runtime-host-2' }],
-    artifactUpdates: [{ key: 'signed', value: 'true' }, { key: 'signatureStatus', value: 'Valid' }],
-    fixtureUpdates: [{ key: 'pluginPackage', value: 'fixtures/focus.openpet-plugin.zip' }],
-    builtInPackUpdates: [{ key: 'doro', value: 'assets/pet-packs/doro/' }],
-    linkedEvidenceUpdates: [{ key: 'desktopPickerSmokeReport', value: 'release/desktop-picker-smoke-report.json' }],
-    screenshots: ['release/screenshots/transparent.png'],
-    recordings: ['release/recordings/runtime.mov'],
+    artifactUpdates: [
+      { key: 'signed', value: 'true' },
+      { key: 'signatureStatus', value: 'Valid' },
+      { key: 'releaseDir', value: '/tmp/custom-release' }
+    ],
+    fixtureUpdates: [{ key: 'pluginPackage', value: '/tmp/focus.openpet-plugin.zip' }],
+    builtInPackUpdates: [{ key: 'doro', value: '/tmp/doro-pack' }],
+    linkedEvidenceUpdates: [{ key: 'desktopPickerSmokeReport', value: '/tmp/desktop-picker-smoke-report.json' }],
+    screenshots: [absoluteScreenshot],
+    recordings: [absoluteRecording],
     checkId: 'transparent-background',
     status: 'pass',
     evidence: 'Transparent screenshot observed',
@@ -184,11 +202,12 @@ test('updateReport updates environment, artifact, fixtures, linked evidence, and
   assert.equal(updated.environment.machine, 'mac-runtime-host-2')
   assert.equal(updated.artifact.signed, true)
   assert.equal(updated.artifact.signatureStatus, 'Valid')
-  assert.equal(updated.fixtures.pluginPackage, 'fixtures/focus.openpet-plugin.zip')
-  assert.equal(updated.fixtures.builtInPacks.doro, 'assets/pet-packs/doro/')
-  assert.equal(updated.linkedEvidence.desktopPickerSmokeReport, 'release/desktop-picker-smoke-report.json')
-  assert.deepEqual(updated.linkedEvidence.screenshots, ['release/screenshots/transparent.png'])
-  assert.deepEqual(updated.linkedEvidence.recordings, ['release/recordings/runtime.mov'])
+  assert.equal(updated.artifact.releaseDir, 'release')
+  assert.equal(updated.fixtures.pluginPackage, 'focus.openpet-plugin.zip')
+  assert.equal(updated.fixtures.builtInPacks.doro, 'doro-pack')
+  assert.equal(updated.linkedEvidence.desktopPickerSmokeReport, 'desktop-picker-smoke-report.json')
+  assert.deepEqual(updated.linkedEvidence.screenshots, ['transparent.png'])
+  assert.deepEqual(updated.linkedEvidence.recordings, ['runtime.mov'])
   const check = updated.checks.find((item) => item.id === 'transparent-background')
   assert.equal(check.status, 'pass')
   assert.equal(check.evidence, 'Transparent screenshot observed')

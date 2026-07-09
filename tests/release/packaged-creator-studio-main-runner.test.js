@@ -130,6 +130,68 @@ test('runPackagedCreatorStudioEvidence writes packaged Creator Studio runtime ar
   assert.equal(quitCalled, false)
 })
 
+test('runPackagedCreatorStudioEvidence can request provider backend when explicitly configured', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-creator-studio-main-provider-'))
+  const outputPath = path.join(tempDir, 'packaged-creator-studio-runtime.json')
+
+  const calls = []
+  const pluginService = {
+    listPlugins: () => [{
+      id: 'openpet.creator-studio',
+      enabled: true,
+      entries: {
+        dashboards: [{ id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }],
+        services: [{ id: 'studio', title: 'Creator Studio Service', runtime: { status: 'running' } }]
+      }
+    }],
+    startService: () => ({ ok: true, runtime: { status: 'running' } }),
+    checkServiceHealth: async () => ({
+      ok: true,
+      runtime: {
+        status: 'running',
+        health: { status: 'healthy' }
+      }
+    }),
+    runCommand: async (pluginId, commandId, payload) => {
+      calls.push(['runCommand', pluginId, commandId, payload])
+      return {
+        ok: true,
+        result: {
+          ok: true,
+          run: {
+            runId: 'run-packaged-creator-provider-2',
+            status: 'draft',
+            taskStatus: 'ready_for_confirmation',
+            generationTask: {
+              mode: 'single-action'
+            }
+          }
+        }
+      }
+    },
+    stopService: () => ({ ok: true, runtime: { status: 'stopped' } })
+  }
+
+  const artifact = await runPackagedCreatorStudioEvidence({
+    app: { getAppPath: () => '/Applications/OpenPet.app', quit: () => {} },
+    pluginService,
+    env: {
+      OPENPET_PACKAGED_CREATOR_STUDIO_EVIDENCE: '1',
+      OPENPET_PACKAGED_CREATOR_STUDIO_OUTPUT: outputPath,
+      OPENPET_PACKAGED_CREATOR_STUDIO_BACKEND: 'provider',
+      OPENPET_PACKAGED_CREATOR_STUDIO_QUIT_DELAY_MS: '0'
+    }
+  })
+
+  assert.equal(artifact.command.backend, 'provider')
+  assert.deepEqual(calls, [
+    ['runCommand', 'openpet.creator-studio', 'draft-task', {
+      prompt: '新增一个自定义动作：原地打滚，动作要循环。',
+      backend: 'provider'
+    }]
+  ])
+})
+
 test('runPackagedCreatorStudioEvidence records missing bundled Creator Studio conservatively', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-creator-studio-main-missing-'))
   const outputPath = path.join(tempDir, 'packaged-creator-studio-runtime.json')

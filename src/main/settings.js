@@ -55,6 +55,7 @@ const defaultSettings = {
   selectedCursorId: SYSTEM_CURSOR_ID,
   customCursor: createDefaultCursorSettings(),
   customCursors: [],
+  hiddenCursorIds: [],
   petBehavior: {
     grounded: false,
     home: {

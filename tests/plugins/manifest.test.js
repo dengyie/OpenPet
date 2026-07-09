@@ -436,6 +436,22 @@ test('rejects plugin manifests with unknown permissions', () => {
   }), /Unknown plugin permission/)
 })
 
+test('rejects plugin manifests with non-array command and permission fields', () => {
+  assert.throws(() => normalizePluginManifest({
+    id: 'bad-permissions-shape',
+    name: 'Bad Permissions Shape',
+    version: '1.0.0',
+    permissions: { commands: ['pet:say'] }
+  }), /Plugin permissions must be an array/)
+
+  assert.throws(() => normalizePluginManifest({
+    id: 'bad-commands-shape',
+    name: 'Bad Commands Shape',
+    version: '1.0.0',
+    commands: { start: { title: 'Start' } }
+  }), /Plugin commands must be an array/)
+})
+
 test('rejects unknown plugin profiles', () => {
   assert.throws(() => normalizePluginManifest({
     id: 'bad-profile',

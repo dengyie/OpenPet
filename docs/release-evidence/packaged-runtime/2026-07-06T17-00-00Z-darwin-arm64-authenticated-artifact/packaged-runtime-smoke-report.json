@@ -1,0 +1,144 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "generatedAt": "2026-07-06T16:34:37.749Z",
+  "source": "scripts/create-packaged-runtime-smoke-report.js",
+  "environment": {
+    "osRelease": "25.5.0",
+    "machine": "mangodeMacBook-Air.local",
+    "runner": "",
+    "evidence": ""
+  },
+  "artifact": {
+    "version": "1.0.1-rc.3",
+    "releaseDir": "release",
+    "appPath": "OpenPet.app",
+    "installer": "OpenPet-1.0.1-rc.3-mac-arm64.dmg",
+    "zip": "OpenPet-1.0.1-rc.3-mac-arm64.zip",
+    "latestYml": "latest-mac.yml",
+    "files": [
+      {
+        "name": "OpenPet.app",
+        "size": 96
+      },
+      {
+        "name": "OpenPet-1.0.1-rc.3-mac-arm64.dmg",
+        "size": 142561691
+      },
+      {
+        "name": "OpenPet-1.0.1-rc.3-mac-arm64.zip",
+        "size": 142009235
+      },
+      {
+        "name": "latest-mac.yml",
+        "size": 529
+      }
+    ],
+    "signed": false,
+    "signatureStatus": "Unknown",
+    "signatureEvidence": "/tmp/openpet-macos-rc3-release-dir/OpenPet.app: code has no resources but signature indicates they must be present"
+  },
+  "fixtures": {
+    "builtInPacks": {
+      "legacy-cat": "cat_anime/",
+      "doro": "assets/pet-packs/doro/",
+      "duodong": "assets/pet-packs/duodong/",
+      "chispa": "assets/pet-packs/chispa/"
+    },
+    "pluginPackage": "Use a valid .openpet-plugin.zip fixture.",
+    "petPackZip": "Use a valid .codex-pet.zip or .openpet-pet.zip fixture.",
+    "invalidPackage": "Use a deliberately invalid plugin or pet package fixture."
+  },
+  "linkedEvidence": {
+    "desktopPickerSmokeReport": "",
+    "desktopPickerSmokeRunbook": "",
+    "screenshots": [],
+    "recordings": []
+  },
+  "checks": [
+    {
+      "id": "packaged-launch",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Packaged OpenPet launches and stays running. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "pet-window-created",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Pet BrowserWindow is created from the packaged app. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "transparent-background",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Pet window transparent background renders correctly. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "sprite-visible",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Pet sprite is visible and not fully transparent. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "speech-bubble-rendered",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Floating BubbleChatWindow renders and the old inline bubble stays hidden. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "default-action-playback",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Default action plays in the packaged renderer. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "pack-switch-legacy-cat",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Built-in pet pack legacy-cat can be activated and rendered. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "pack-switch-doro",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Built-in pet pack doro can be activated and rendered. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "pack-switch-duodong",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Built-in pet pack duodong can be activated and rendered. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "pack-switch-chispa",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Built-in pet pack chispa can be activated and rendered. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "plugin-picker-evidence-linked",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Plugin package native picker smoke evidence is linked. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "pet-picker-evidence-linked",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Pet pack native picker smoke evidence is linked. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "invalid-package-feedback",
+      "status": "pending",
+      "evidence": "",
+      "notes": "Invalid plugin or pet package shows a visible error. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    },
+    {
+      "id": "state-after-runtime-smoke",
+      "status": "pending",
+      "evidence": "",
+      "notes": "State remains consistent after packaged runtime smoke checks. Fill with evidence from a real packaged OpenPet runtime smoke validation run."
+    }
+  ]
+}

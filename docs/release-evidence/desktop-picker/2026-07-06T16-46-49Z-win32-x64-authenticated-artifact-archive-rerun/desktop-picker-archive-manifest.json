@@ -1,0 +1,101 @@
+{
+  "generatedAt": "2026-07-06T16:46:49.000Z",
+  "requireSigned": true,
+  "ok": false,
+  "releaseReady": false,
+  "archive": {
+    "archiveDir": "docs/release-evidence/desktop-picker/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun",
+    "outputPath": "docs/release-evidence/desktop-picker/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun/desktop-picker-archive-manifest.json"
+  },
+  "files": [
+    {
+      "role": "report",
+      "path": "desktop-picker-smoke-report.json",
+      "exists": true,
+      "bytes": 3711,
+      "sha256": "80467c4eb7edfba531d8e9ee791c6326afc3e304b2a4a160220448cea3a5abbf"
+    },
+    {
+      "role": "runbook",
+      "path": "desktop-picker-smoke-runbook.md",
+      "exists": true,
+      "bytes": 5991,
+      "sha256": "3404cf165bd9277d6c5c2f49ea5dc2a8a6301d26498ca3d8a7963e6042214231"
+    },
+    {
+      "role": "summary",
+      "path": "desktop-picker-evidence-summary.md",
+      "exists": true,
+      "bytes": 1936,
+      "sha256": "d78ff1d89ca03370fc9ec0f9a5576d4eb826c486df77cc7b1e52a0eb3740ef62"
+    }
+  ],
+  "evidence": {
+    "evidenceDir": "desktop-picker-evidence",
+    "ok": true,
+    "files": [
+      {
+        "file": "notes.txt",
+        "path": "desktop-picker-evidence/notes.txt",
+        "bytes": 175,
+        "sha256": "dc250184ffaac2b1373feba6d89ac1f471b05a45394861ce29b939b227416ce3"
+      }
+    ]
+  },
+  "summary": {
+    "path": "desktop-picker-evidence-summary.md",
+    "format": "markdown",
+    "matchesComputedSummary": true
+  },
+  "report": {
+    "path": "desktop-picker-smoke-report.json",
+    "platform": "win32",
+    "arch": "x64",
+    "generatedAt": "2026-07-06T16:46:49.000Z",
+    "structuralValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+        "artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 9,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    },
+    "readinessValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+        "artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness",
+        "packaged-launch must pass before desktop picker smoke readiness can be claimed",
+        "control-center-open must pass before desktop picker smoke readiness can be claimed",
+        "plugin-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+        "plugin-picker-zip-review must pass before desktop picker smoke readiness can be claimed",
+        "plugin-install-disabled must pass before desktop picker smoke readiness can be claimed",
+        "invalid-package-feedback must pass before desktop picker smoke readiness can be claimed",
+        "action-frame-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+        "pet-pack-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+        "state-after-picker-smoke must pass before desktop picker smoke readiness can be claimed"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 9,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    }
+  },
+  "errors": [
+    "report: artifact.signed must be true when --require-signed is used",
+    "report: artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+    "report: artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness"
+  ],
+  "warnings": []
+}

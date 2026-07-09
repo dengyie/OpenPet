@@ -97,8 +97,11 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     getConfig: () => ({}),
     saveConfig: (config) => config,
     saveApiKey: () => ({ ok: true }),
+    saveVisionApiKey: () => ({ ok: true }),
+    clearVisionApiKey: () => ({ ok: true }),
     testConnection: () => ({ ok: true }),
     discoverModels: () => ({ ok: true, models: [] }),
+    discoverVisionModels: () => ({ ok: true, models: [] }),
     getConversation: () => [],
     chat: () => ({ reply: 'ok' })
   },
@@ -135,6 +138,7 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     checkForUpdates: () => ({ ok: true })
   },
   actionService: {
+    applyCreatorActionMutation: (payload) => ({ defaultAction: payload.defaultAction || '', clickAction: payload.clickAction || '', actions: [] }),
     acceptTriggerProposal: (proposal) => ({
       ok: true,
       applied: proposal.type === 'click',
@@ -528,6 +532,14 @@ test('ai provider settings IPC delegates config save key save and connection tes
         calls.push(['saveApiKey', apiKey])
         return { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' }
       },
+      saveVisionApiKey: (apiKey) => {
+        calls.push(['saveVisionApiKey', apiKey])
+        return { apiKeyRef: 'ai.vision', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' }
+      },
+      clearVisionApiKey: () => {
+        calls.push(['clearVisionApiKey'])
+        return { apiKeyRef: 'ai.vision', hasApiKey: false }
+      },
       testConnection: () => {
         calls.push(['testConnection'])
         return {
@@ -548,6 +560,8 @@ test('ai provider settings IPC delegates config save key save and connection tes
   const config = await ipcMain.handlers.get(IPC.AI_GET_CONFIG)()
   const savedConfig = await ipcMain.handlers.get(IPC.AI_SAVE_CONFIG)(null, { model: 'next-model' })
   const savedKey = await ipcMain.handlers.get(IPC.AI_SAVE_API_KEY)(null, 'sk-demo-secret')
+  const savedVisionKey = await ipcMain.handlers.get(IPC.AI_SAVE_VISION_API_KEY)(null, 'sk-vision-secret')
+  const clearedVisionKey = await ipcMain.handlers.get(IPC.AI_CLEAR_VISION_API_KEY)()
   const connection = await ipcMain.handlers.get(IPC.AI_TEST_CONNECTION)()
 
   assert.deepEqual(config, {
@@ -565,7 +579,31 @@ test('ai provider settings IPC delegates config save key save and connection tes
       rules: [{ id: 'rule-1' }],
       decisions: []
     },
-    hasApiKey: false
+    vision: {
+      mode: 'follow-chat',
+      provider: '',
+      baseUrl: '',
+      model: '',
+      apiKeyRef: '',
+      hasApiKey: false,
+      modelCatalog: {
+        cacheKey: '',
+        models: [],
+        fetchedAt: '',
+        source: 'none'
+      },
+      effectiveProvider: '',
+      effectiveBaseUrl: '',
+      effectiveModel: '',
+      effectiveHasApiKey: false
+    },
+    hasApiKey: false,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(savedConfig, {
     enabled: false,
@@ -582,9 +620,35 @@ test('ai provider settings IPC delegates config save key save and connection tes
       rules: [],
       decisions: []
     },
-    hasApiKey: false
+    vision: {
+      mode: 'follow-chat',
+      provider: '',
+      baseUrl: '',
+      model: '',
+      apiKeyRef: '',
+      hasApiKey: false,
+      modelCatalog: {
+        cacheKey: '',
+        models: [],
+        fetchedAt: '',
+        source: 'none'
+      },
+      effectiveProvider: '',
+      effectiveBaseUrl: '',
+      effectiveModel: '',
+      effectiveHasApiKey: false
+    },
+    hasApiKey: false,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(savedKey, { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
+  assert.deepEqual(savedVisionKey, { apiKeyRef: 'ai.vision', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
+  assert.deepEqual(clearedVisionKey, { apiKeyRef: 'ai.vision', hasApiKey: false })
   assert.deepEqual(connection, {
     ok: true,
     provider: 'openai-compatible',
@@ -599,6 +663,8 @@ test('ai provider settings IPC delegates config save key save and connection tes
     ['getConfig'],
     ['saveConfig', { model: 'next-model' }],
     ['saveApiKey', 'sk-demo-secret'],
+    ['saveVisionApiKey', 'sk-vision-secret'],
+    ['clearVisionApiKey'],
     ['testConnection']
   ])
 })
@@ -624,12 +690,26 @@ test('ai provider settings IPC delegates model discovery', async () => {
           code: 'ok',
           message: 'AI provider model discovery succeeded'
         }
+      },
+      discoverVisionModels: () => {
+        calls.push(['discoverVisionModels'])
+        return {
+          ok: true,
+          provider: 'openai-compatible',
+          baseUrl: 'https://vision.example.test/v1',
+          model: 'gpt-4.1-mini',
+          hasApiKey: true,
+          models: ['gpt-4.1-mini'],
+          code: 'ok',
+          message: 'Vision provider model discovery succeeded'
+        }
       }
     },
     ipcMainService: ipcMain
   })
 
   const result = await ipcMain.handlers.get(IPC.AI_DISCOVER_MODELS)()
+  const visionResult = await ipcMain.handlers.get(IPC.AI_DISCOVER_VISION_MODELS)()
 
   assert.deepEqual(result, {
     ok: true,
@@ -641,7 +721,17 @@ test('ai provider settings IPC delegates model discovery', async () => {
     code: 'ok',
     message: 'AI provider model discovery succeeded'
   })
-  assert.deepEqual(calls, [['discoverModels']])
+  assert.deepEqual(visionResult, {
+    ok: true,
+    provider: 'openai-compatible',
+    baseUrl: 'https://vision.example.test/v1',
+    model: 'gpt-4.1-mini',
+    hasApiKey: true,
+    models: ['gpt-4.1-mini'],
+    code: 'ok',
+    message: 'Vision provider model discovery succeeded'
+  })
+  assert.deepEqual(calls, [['discoverModels'], ['discoverVisionModels']])
 })
 
 test('service:get-status returns Control Center service status shape', async () => {
@@ -872,7 +962,13 @@ test('image generation handlers delegate to the model service', async () => {
     maxConcurrentJobs: 2,
     hasApiKey: true,
     apiKeyPreview: '',
-    apiKeyLabel: 'Image API Key'
+    apiKeyLabel: 'Image API Key',
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(saved, {
     provider: '',
@@ -885,7 +981,13 @@ test('image generation handlers delegate to the model service', async () => {
     maxConcurrentJobs: 0,
     hasApiKey: false,
     apiKeyPreview: '',
-    apiKeyLabel: 'Image API Key'
+    apiKeyLabel: 'Image API Key',
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
   assert.deepEqual(savedApiKey, {
     apiKeyRef: 'secret:model.image.openai.apiKey',
@@ -1047,21 +1149,30 @@ test('action mutation handlers return contract-shaped results and refreshed anim
           sourceCommandId: proposal.sourceCommandId || ''
         }
       },
-      setTriggerRuleStatus: (ruleId, status) => {
-        calls.push(['set-trigger-rule-status', ruleId, status])
+      updateTriggerRule: (ruleId, updates = {}) => {
+        calls.push(['update-trigger-rule', ruleId, updates])
         return {
           animations,
           rule: {
             id: ruleId,
             actionId: 'wave',
             type: 'state',
-            status,
+            status: updates.status || 'active',
             sourceProposalId: 'proposal:state:wave:test',
             sourcePluginId: 'openpet.creator-studio',
             sourceRunId: 'run-1',
             sourceCommandId: 'import-approved-action',
             message: 'updated',
             preview: 'State trigger rule can play wave when a host state condition matches.',
+            ruleSpec: {
+              schemaVersion: 1,
+              type: 'state',
+              summary: 'Use Wave when focus mode is idle.',
+              state: {
+                predicate: 'focus.mode === idle',
+                source: 'host'
+              }
+            },
             createdAt: '2026-06-22T10:00:00.000Z',
             updatedAt: '2026-06-22T10:01:00.000Z'
           }
@@ -1086,6 +1197,10 @@ test('action mutation handlers return contract-shaped results and refreshed anim
             updatedAt: '2026-06-22T10:01:00.000Z'
           }
         }
+      },
+      applyCreatorActionMutation: (payload) => {
+        calls.push(['apply-action-mutation', payload])
+        return { ...animations, internal: 'service-only' }
       }
     },
     ipcMainService: ipcMain
@@ -1124,7 +1239,14 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   })
   const updatedRuleResult = await ipcMain.handlers.get(IPC.ACTIONS_UPDATE_TRIGGER_RULE)(null, {
     ruleId: 'rule:state:wave:test',
-    status: 'disabled'
+    status: 'disabled',
+    ruleSpec: {
+      summary: 'Use Wave when focus mode is idle.',
+      state: {
+        predicate: 'focus.mode === idle',
+        source: 'host'
+      }
+    }
   })
   const deletedRuleResult = await ipcMain.handlers.get(IPC.ACTIONS_DELETE_TRIGGER_RULE)(null, {
     ruleId: 'rule:state:wave:test'
@@ -1200,6 +1322,15 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceCommandId: 'import-approved-action',
       message: 'updated',
       preview: 'State trigger rule can play wave when a host state condition matches.',
+      ruleSpec: {
+        schemaVersion: 1,
+        type: 'state',
+        summary: 'Use Wave when focus mode is idle.',
+        state: {
+          predicate: 'focus.mode === idle',
+          source: 'host'
+        }
+      },
       createdAt: '2026-06-22T10:00:00.000Z',
       updatedAt: '2026-06-22T10:01:00.000Z'
     }
@@ -1234,7 +1365,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
     ['import', sourceDir, 'wave', 'Wave hello'],
     ['inspect', sourceDir, 'broken'],
     ['inspect', sourceDir, 'broken'],
-    ['save', { defaultAction: 'idle', clickAction: 'wave' }],
+    ['apply-action-mutation', { defaultAction: 'idle', clickAction: 'wave' }],
     ['trigger', {
       actionId: 'wave',
       type: 'click',
@@ -1251,7 +1382,16 @@ test('action mutation handlers return contract-shaped results and refreshed anim
       sourceRunId: 'run-1',
       sourceCommandId: 'import-approved-action'
     }],
-    ['set-trigger-rule-status', 'rule:state:wave:test', 'disabled'],
+    ['update-trigger-rule', 'rule:state:wave:test', {
+      status: 'disabled',
+      ruleSpec: {
+        summary: 'Use Wave when focus mode is idle.',
+        state: {
+          predicate: 'focus.mode === idle',
+          source: 'host'
+        }
+      }
+    }],
     ['delete-trigger-rule', 'rule:state:wave:test'],
     ['delete', 'wave']
   ])
@@ -1282,6 +1422,11 @@ test('actions save config IPC surfaces trigger rule validation failures', async 
         throw new Error('Trigger rule action does not exist: missing')
       },
       deleteAction: () => ({ ok: true })
+    },
+    actionService: {
+      applyCreatorActionMutation: () => {
+        throw new Error('Trigger rule action does not exist: missing')
+      }
     },
     ipcMainService: ipcMain
   })
@@ -1332,6 +1477,9 @@ test('actions save config IPC refreshes trigger rule runtime after saving edited
       importActionFrames: () => ({ ok: true }),
       updateActionConfig: async () => ({ ok: true }),
       deleteAction: () => ({ ok: true })
+    },
+    actionService: {
+      applyCreatorActionMutation: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [] })
     },
     triggerRuleRuntimeService: {
       refresh: () => { refreshCalls += 1 }
@@ -1742,6 +1890,247 @@ test('plugin mutation handlers return plugin mutation result with refreshed plug
   ])
 })
 
+test('plugin state mutation handlers return normalized plugin view results', async () => {
+  const ipcMain = createIpcMainStub()
+  const calls = []
+  const rawPlugin = {
+    id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    profile: 'hybrid',
+    source: 'local',
+    enabled: 1,
+    runnable: 'yes',
+    requiresNativeExecution: 1,
+    nativeExecutionApproved: 'yes',
+    permissions: ['pet:say', 42],
+    commands: [
+      { id: 'announce', title: 'Announce', internal: 'ignore-me' },
+      { title: 'missing-id' }
+    ],
+    entries: {
+      setup: [
+        {
+          id: 'install-deps',
+          title: 'Install deps',
+          command: 'npm install',
+          cwd: '/repo/demo',
+          runtime: { status: 'succeeded', exitCode: '0', internal: 'ignore-me' }
+        }
+      ],
+      commands: [
+        { id: 'announce', title: 'Announce', command: 'node cli.js', cwd: '/repo/demo', timeoutMs: '5000' }
+      ],
+      services: [
+        {
+          id: 'companion',
+          title: 'Companion',
+          command: 'node service.js',
+          cwd: '/repo/demo',
+          health: { type: 'http', url: 'http://127.0.0.1:8787/health', internal: 'ignore-me' },
+          healthPolicy: { enabled: 1, intervalMs: '30000', internal: 'ignore-me' },
+          runtime: { status: 'stopped', pid: '0', internal: 'ignore-me' }
+        }
+      ],
+      dashboards: [
+        { id: 'main', title: 'Main Dashboard', url: 'http://127.0.0.1:8787' }
+      ]
+    },
+    configSchema: {
+      properties: [{ key: 'tone', title: 'Tone', type: 'string', required: 1, secretPath: '/private/secret' }]
+    },
+    config: { tone: 'soft', hidden: () => 'ignore-me' },
+    storage: { keyCount: '2', byteSize: '512', internalPath: '/private/storage.json' },
+    signatureStatus: { label: 'Unsigned' },
+    privateRuntime: { pid: 1234 }
+  }
+  const expectedPlugin = {
+    id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    profile: 'hybrid',
+    source: 'local',
+    enabled: true,
+    runnable: true,
+    requiresNativeExecution: true,
+    nativeExecutionApproved: true,
+    permissions: ['pet:say'],
+    commands: [
+      { id: 'announce', title: 'Announce' }
+    ],
+    entries: {
+      setup: [
+        {
+          id: 'install-deps',
+          title: 'Install deps',
+          command: 'npm install',
+          cwd: '/repo/demo',
+          runtime: {
+            status: 'succeeded',
+            lastRunAt: '',
+            exitCode: 0,
+            error: ''
+          }
+        }
+      ],
+      commands: [
+        {
+          id: 'announce',
+          title: 'Announce',
+          command: 'node cli.js',
+          cwd: '/repo/demo',
+          timeoutMs: 5000
+        }
+      ],
+      services: [
+        {
+          id: 'companion',
+          title: 'Companion',
+          command: 'node service.js',
+          cwd: '/repo/demo',
+          health: { type: 'http', url: 'http://127.0.0.1:8787/health' },
+          healthPolicy: { enabled: true, intervalMs: 30000 },
+          runtime: {
+            status: 'stopped',
+            pid: 0,
+            startedAt: '',
+            stoppedAt: '',
+            command: '',
+            cwd: '',
+            exitCode: null,
+            signal: '',
+            error: '',
+            health: {
+              status: 'not-configured',
+              checkedAt: '',
+              url: '',
+              statusCode: null,
+              message: ''
+            }
+          }
+        }
+      ],
+      dashboards: [
+        { id: 'main', title: 'Main Dashboard', url: 'http://127.0.0.1:8787' }
+      ]
+    },
+    configSchema: {
+      properties: [{ key: 'tone', title: 'Tone', type: 'string', required: true }]
+    },
+    config: { tone: 'soft' },
+    storage: { keyCount: 2, byteSize: 512 },
+    signatureStatus: {
+      status: '',
+      label: 'Unsigned',
+      signer: '',
+      algorithm: '',
+      verified: false,
+      errors: []
+    }
+  }
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        setEnabled: (pluginId, enabled) => {
+          calls.push(['setEnabled', pluginId, enabled])
+          return { ...rawPlugin, enabled }
+        },
+        setNativeExecutionApproved: (pluginId, approved) => {
+          calls.push(['setNativeExecutionApproved', pluginId, approved])
+          return { ...rawPlugin, nativeExecutionApproved: approved }
+        },
+        saveConfig: (pluginId, config) => {
+          calls.push(['saveConfig', pluginId, config])
+          return { ...rawPlugin, config }
+        },
+        saveServiceHealthPolicy: (pluginId, serviceId, policy) => {
+          calls.push(['saveServiceHealthPolicy', pluginId, serviceId, policy])
+          return {
+            ...rawPlugin,
+            entries: {
+              ...rawPlugin.entries,
+              services: rawPlugin.entries.services.map((service) => (
+                service.id === serviceId ? { ...service, healthPolicy: policy } : service
+              ))
+            }
+          }
+        },
+        clearStorage: (pluginId) => {
+          calls.push(['clearStorage', pluginId])
+          return { ...rawPlugin, storage: { keyCount: 0, byteSize: 0, internalPath: '/private/storage.json' } }
+        }
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const enabled = await ipcMain.handlers.get(IPC.PLUGINS_SET_ENABLED)(null, {
+    pluginId: 'weather-declaration',
+    enabled: true
+  })
+  const nativeApproved = await ipcMain.handlers.get(IPC.PLUGINS_SET_NATIVE_EXECUTION_APPROVED)(null, {
+    pluginId: 'weather-declaration',
+    approved: false
+  })
+  const savedConfig = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_CONFIG)(null, {
+    pluginId: 'weather-declaration',
+    config: { tone: 'direct', hidden: () => 'ignore-me' }
+  })
+  const savedPolicy = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY)(null, {
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    policy: { enabled: false, intervalMs: '45000' }
+  })
+  const clearedStorage = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_STORAGE)(null, {
+    pluginId: 'weather-declaration'
+  })
+
+  assert.deepEqual(enabled, expectedPlugin)
+  assert.deepEqual(nativeApproved, {
+    ...expectedPlugin,
+    nativeExecutionApproved: false
+  })
+  assert.deepEqual(savedConfig, {
+    ...expectedPlugin,
+    config: { tone: 'direct' }
+  })
+  assert.deepEqual(savedPolicy, {
+    ...expectedPlugin,
+    entries: {
+      ...expectedPlugin.entries,
+      services: [{
+        ...expectedPlugin.entries.services[0],
+        healthPolicy: { enabled: false, intervalMs: 45000 }
+      }]
+    }
+  })
+  assert.deepEqual(clearedStorage, {
+    ...expectedPlugin,
+    storage: { keyCount: 0, byteSize: 0 }
+  })
+  assert.equal(calls.length, 5)
+  assert.deepEqual(calls[0], ['setEnabled', 'weather-declaration', true])
+  assert.deepEqual(calls[1], ['setNativeExecutionApproved', 'weather-declaration', false])
+  assert.equal(calls[2][0], 'saveConfig')
+  assert.equal(calls[2][1], 'weather-declaration')
+  assert.equal(calls[2][2].tone, 'direct')
+  assert.equal(typeof calls[2][2].hidden, 'function')
+  assert.deepEqual(calls[3], ['saveServiceHealthPolicy', 'weather-declaration', 'companion', { enabled: false, intervalMs: '45000' }])
+  assert.deepEqual(calls[4], ['clearStorage', 'weather-declaration'])
+})
+
 test('plugin github inspection handler delegates to github import service', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []
@@ -1815,9 +2204,9 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
       },
       pluginService: {
         listPlugins: () => [],
-        openDashboard: async (pluginId, dashboardId) => {
-          calls.push([pluginId, dashboardId])
-          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/' }
+        openDashboard: async (pluginId, dashboardId, options) => {
+          calls.push([pluginId, dashboardId, options])
+          return { ok: true, pluginId, dashboardId, url: 'http://127.0.0.1:8787/?sessionId=abc123&view=details' }
         }
       },
       dialogService: {
@@ -1829,16 +2218,31 @@ test('plugin dashboard open handler delegates to plugin service', async () => {
 
   const result = await ipcMain.handlers.get(IPC.PLUGINS_OPEN_DASHBOARD)(null, {
     pluginId: 'weather-declaration',
-    dashboardId: 'main'
+    dashboardId: 'main',
+    options: {
+      query: {
+        sessionId: 'abc123',
+        view: 'details'
+      }
+    }
   })
 
   assert.deepEqual(result, {
     ok: true,
     pluginId: 'weather-declaration',
     dashboardId: 'main',
-    url: 'http://127.0.0.1:8787/'
+    url: 'http://127.0.0.1:8787/?sessionId=abc123&view=details'
   })
-  assert.deepEqual(calls, [['weather-declaration', 'main']])
+  assert.deepEqual(calls, [[
+    'weather-declaration',
+    'main',
+    {
+      query: {
+        sessionId: 'abc123',
+        view: 'details'
+      }
+    }
+  ]])
 })
 
 test('creator studio default flow handler delegates to the host runtime service', async () => {
@@ -1897,13 +2301,43 @@ test('plugin service lifecycle handlers delegate to plugin service', async () =>
       },
       pluginService: {
         listPlugins: () => [],
-        startService: (pluginId, serviceId) => {
+        startService: async (pluginId, serviceId) => {
           calls.push(['start', pluginId, serviceId])
-          return { ok: true, pluginId, serviceId, runtime: { status: 'running', pid: 4321 } }
+          return {
+            ok: 1,
+            pluginId,
+            serviceId,
+            runtime: {
+              status: 'running',
+              pid: '4321',
+              startedAt: 9,
+              stoppedAt: null,
+              command: 'node service.js',
+              cwd: '/repo/demo',
+              exitCode: '0',
+              signal: 7,
+              error: null,
+              health: {
+                status: 'healthy',
+                checkedAt: 10,
+                url: 'http://127.0.0.1:8787/health',
+                statusCode: '200',
+                message: 7
+              }
+            }
+          }
         },
         stopService: (pluginId, serviceId) => {
           calls.push(['stop', pluginId, serviceId])
-          return { ok: true, pluginId, serviceId, runtime: { status: 'stopped' } }
+          return {
+            ok: true,
+            pluginId,
+            serviceId,
+            runtime: {
+              status: 'stopped',
+              pid: '0'
+            }
+          }
         }
       },
       dialogService: {
@@ -1926,13 +2360,47 @@ test('plugin service lifecycle handlers delegate to plugin service', async () =>
     ok: true,
     pluginId: 'weather-declaration',
     serviceId: 'companion',
-    runtime: { status: 'running', pid: 4321 }
+    runtime: {
+      status: 'running',
+      pid: 4321,
+      startedAt: '',
+      stoppedAt: '',
+      command: 'node service.js',
+      cwd: '/repo/demo',
+      exitCode: 0,
+      signal: '',
+      error: '',
+      health: {
+        status: 'healthy',
+        checkedAt: '',
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: 200,
+        message: ''
+      }
+    }
   })
   assert.deepEqual(stopResult, {
     ok: true,
     pluginId: 'weather-declaration',
     serviceId: 'companion',
-    runtime: { status: 'stopped' }
+    runtime: {
+      status: 'stopped',
+      pid: 0,
+      startedAt: '',
+      stoppedAt: '',
+      command: '',
+      cwd: '',
+      exitCode: null,
+      signal: '',
+      error: '',
+      health: {
+        status: 'not-configured',
+        checkedAt: '',
+        url: '',
+        statusCode: null,
+        message: ''
+      }
+    }
   })
   assert.deepEqual(calls, [
     ['start', 'weather-declaration', 'companion'],
@@ -1957,7 +2425,17 @@ test('plugin setup handler delegates to plugin service', async () => {
         listPlugins: () => [],
         runSetup: (pluginId, setupId) => {
           calls.push({ pluginId, setupId })
-          return { ok: true, pluginId, setupId, runtime: { status: 'succeeded' } }
+          return {
+            ok: 1,
+            pluginId,
+            setupId,
+            runtime: {
+              status: 'succeeded',
+              lastRunAt: 9,
+              exitCode: '0',
+              error: 7
+            }
+          }
         }
       },
       dialogService: {
@@ -1977,7 +2455,12 @@ test('plugin setup handler delegates to plugin service', async () => {
     ok: true,
     pluginId: 'weather-declaration',
     setupId: 'install-deps',
-    runtime: { status: 'succeeded' }
+    runtime: {
+      status: 'succeeded',
+      lastRunAt: '',
+      exitCode: 0,
+      error: ''
+    }
   })
 })
 
@@ -1999,11 +2482,24 @@ test('plugin service health handler delegates to plugin service', async () => {
         checkServiceHealth: (pluginId, serviceId) => {
           calls.push([pluginId, serviceId])
           return {
-            ok: true,
+            ok: 1,
             pluginId,
             serviceId,
-            health: { status: 'healthy', url: 'http://127.0.0.1:8787/health', statusCode: 200 },
-            runtime: { status: 'running', health: { status: 'healthy' } }
+            health: {
+              status: 'healthy',
+              checkedAt: 10,
+              url: 'http://127.0.0.1:8787/health',
+              statusCode: '200',
+              message: 7
+            },
+            runtime: {
+              status: 'running',
+              pid: '4321',
+              health: {
+                status: 'healthy',
+                statusCode: '200'
+              }
+            }
           }
         }
       },
@@ -2023,8 +2519,31 @@ test('plugin service health handler delegates to plugin service', async () => {
     ok: true,
     pluginId: 'weather-declaration',
     serviceId: 'companion',
-    health: { status: 'healthy', url: 'http://127.0.0.1:8787/health', statusCode: 200 },
-    runtime: { status: 'running', health: { status: 'healthy' } }
+    health: {
+      status: 'healthy',
+      checkedAt: '',
+      url: 'http://127.0.0.1:8787/health',
+      statusCode: 200,
+      message: ''
+    },
+    runtime: {
+      status: 'running',
+      pid: 4321,
+      startedAt: '',
+      stoppedAt: '',
+      command: '',
+      cwd: '',
+      exitCode: null,
+      signal: '',
+      error: '',
+      health: {
+        status: 'healthy',
+        checkedAt: '',
+        url: '',
+        statusCode: 200,
+        message: ''
+      }
+    }
   })
   assert.deepEqual(calls, [['weather-declaration', 'companion']])
 })
@@ -2048,9 +2567,23 @@ test('plugin service health policy handler delegates to plugin service', async (
           calls.push({ pluginId, serviceId, policy })
           return {
             id: pluginId,
+            name: 'Weather Declaration',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            permissions: [],
+            commands: [],
             entries: {
+              setup: [],
+              commands: [],
               services: [{ id: serviceId, healthPolicy: policy }]
-            }
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 0 },
+            signatureStatus: { label: 'Unsigned' },
+            privateRuntime: { pid: 4321 }
           }
         }
       },
@@ -2074,8 +2607,35 @@ test('plugin service health policy handler delegates to plugin service', async (
   }])
   assert.deepEqual(result, {
     id: 'weather-declaration',
+    name: 'Weather Declaration',
+    version: '1.0.0',
+    source: 'local',
+    enabled: true,
+    runnable: true,
+    permissions: [],
+    commands: [],
     entries: {
-      services: [{ id: 'companion', healthPolicy: { enabled: true, intervalMs: 30000 } }]
+      setup: [],
+      commands: [],
+      services: [{
+        id: 'companion',
+        title: '',
+        command: '',
+        cwd: '',
+        healthPolicy: { enabled: true, intervalMs: 30000 }
+      }],
+      dashboards: []
+    },
+    configSchema: { properties: [] },
+    config: {},
+    storage: { keyCount: 0, byteSize: 0 },
+    signatureStatus: {
+      status: '',
+      label: 'Unsigned',
+      signer: '',
+      algorithm: '',
+      verified: false,
+      errors: []
     }
   })
 })
@@ -2491,11 +3051,13 @@ test('plugins:run-command delegates payloads to plugin service', async () => {
   const ipcMain = createIpcMainStub()
   const calls = []
   const commandResult = {
-    ok: true,
+    ok: 1,
     pluginId: 'weather-declaration',
     commandId: 'announce',
-    exitCode: 0,
-    result: { ok: true }
+    exitCode: '0',
+    stdout: ['bad'],
+    stderr: null,
+    result: { ok: true, hidden: () => 'ignore-me' }
   }
 
   registerIpcHandlers({
@@ -2527,12 +3089,115 @@ test('plugins:run-command delegates payloads to plugin service', async () => {
     payload: { city: 'Shanghai' }
   })
 
-  assert.deepEqual(result, commandResult)
+  assert.deepEqual(result, {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    result: {
+      ok: true
+    }
+  })
   assert.deepEqual(calls, [{
     pluginId: 'weather-declaration',
     commandId: 'announce',
     payload: { city: 'Shanghai' }
   }])
+})
+
+test('plugins:run-command preserves deep structured creator command results through IPC adapters', async () => {
+  const ipcMain = createIpcMainStub()
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: {
+        listPlugins: () => [],
+        runCommand: () => ({
+          ok: true,
+          pluginId: 'openpet.creator-studio',
+          commandId: 'import-approved-action',
+          exitCode: 0,
+          result: {
+            ok: true,
+            message: 'Imported action shy-spin from run run-demo-action-123',
+            run: {
+              runId: 'run-demo-action-123',
+              status: 'imported',
+              currentStep: 'imported',
+              importedActionId: 'shy-spin',
+              artifacts: {
+                actionFrames: {
+                  framesDir: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin',
+                  pipeline: {
+                    paths: {
+                      manifest: {
+                        bundle: '/tmp/openpet/runs/run-demo-action-123/outputs/shy-spin.openpet-action.zip'
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            triggerProposalSubmission: {
+              ok: true,
+              proposal: {
+                id: 'proposal:click:shy-spin:test'
+              }
+            },
+            hiddenCallback: () => 'ignore-me'
+          }
+        })
+      },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PLUGINS_RUN_COMMAND)(null, {
+    pluginId: 'openpet.creator-studio',
+    commandId: 'import-approved-action',
+    payload: { runId: 'run-demo-action-123' }
+  })
+
+  assert.deepEqual(result.result, {
+    ok: true,
+    message: 'Imported action shy-spin from run run-demo-action-123',
+    run: {
+      runId: 'run-demo-action-123',
+      status: 'imported',
+      currentStep: 'imported',
+      importedActionId: 'shy-spin',
+      artifacts: {
+        actionFrames: {
+          framesDir: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin',
+          pipeline: {
+            paths: {
+              manifest: {
+                bundle: '/tmp/openpet/runs/run-demo-action-123/outputs/shy-spin.openpet-action.zip'
+              }
+            }
+          }
+        }
+      }
+    },
+    triggerProposalSubmission: {
+      ok: true,
+      proposal: {
+        id: 'proposal:click:shy-spin:test'
+      }
+    }
+  })
 })
 
 test('plugins:inspect-package and plugins:install handle a selected .openpet-plugin.zip through main-process IPC', async () => {

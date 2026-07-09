@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-07-06T16:45:00.000Z",
+  "outputDir": "docs/release-evidence/plugin-community-source-discovery-report/2026-07-06T16-45-00Z-github-code-search-rerun",
+  "status": "compatible-source-not-found",
+  "nextAction": "find-or-invite-compatible-plugin-json-package",
+  "searchResults": [
+    {
+      "query": "GitHub code search: filename:plugin.json \"openpet.\" language:JSON",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No public GitHub code-search hits for a root plugin.json carrying an openpet.* id outside the current repository snapshot."
+    },
+    {
+      "query": "GitHub code search: filename:plugin.json \"configSchema\"",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No public GitHub code-search hits for root plugin.json files using the current configSchema-shaped model."
+    },
+    {
+      "query": "GitHub code search: filename:plugin.json \"pet:say\"",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No public GitHub code-search hits for current permission strings such as pet:say in root plugin.json files."
+    },
+    {
+      "query": "GitHub code search: filename:plugin.json \"network\" \"allowlist\"",
+      "tool": "gh search code",
+      "resultCount": 0,
+      "notes": "No public GitHub code-search hits for the current network allowlist shape in root plugin.json files."
+    }
+  ],
+  "candidates": [],
+  "candidateCounts": {
+    "total": 0,
+    "not-inspected": 0,
+    "ready-for-community-evidence": 0,
+    "incompatible-package-model": 0,
+    "not-found": 0
+  },
+  "notes": "2026-07-06 rerun widened public discovery from topic pages and npm packages to direct GitHub code search for current-model root plugin.json signatures. No external candidates were found.",
+  "boundaries": [
+    "Discovery records search and candidate source observations only.",
+    "Discovery does not prove OpenPet plugin compatibility.",
+    "Discovery does not prove signing trust, catalog publication, runtime safety, or release readiness.",
+    "Only compatible plugin.json package candidates should continue into Phase 100, Phase 103, and Phase 99."
+  ],
+  "files": {
+    "summary": "plugin-community-source-discovery-summary.json",
+    "readme": "README-community-source-discovery.md"
+  }
+}

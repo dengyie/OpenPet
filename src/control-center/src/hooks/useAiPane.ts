@@ -18,12 +18,22 @@ import {
 import { downloadTextFile } from '../lib/download'
 import { messageFromError } from '../lib/errors'
 import {
+  buildProviderConfigSavePayload,
+  buildImageGenerationConfigSavePayload,
   formatActiveProviderSummary,
   getProviderConfigChanges,
+  getImageGenerationConfigChanges,
+  hasImageGenerationConfigChanges,
   hasProviderConfigChanges,
   normalizeProviderBaseUrl,
+  validateImageProviderConfig,
   validateProviderConfig
 } from '../lib/ai-provider-config'
+import {
+  applySavedAiConfigState,
+  applySavedImageGenerationConfigState
+} from '../lib/provider-config-state'
+import { formatProviderModelCatalogMeta } from '../lib/provider-model-catalog'
 import type {
   AiBehaviorConfig,
   AiBehaviorResult,
@@ -40,7 +50,8 @@ import type {
   ImageGenerationHealthCheckResult,
   ImageGenerationConfigViewState,
   ProviderModelDiscoveryResult,
-  PetChatStateViewState
+  PetChatStateViewState,
+  VisionConfigViewState
 } from '../../../shared/openpet-contracts'
 import type { AiPaneProps } from '../panes/AiPane'
 
@@ -74,58 +85,6 @@ const normalizePersonaListText = (value: string) => (
     .map((item) => item.trim())
     .filter(Boolean)
 )
-
-const pickImageGenerationComparableFields = (config: ImageGenerationConfigViewState) => JSON.stringify({
-  provider: String(config.provider || '').trim(),
-  baseUrl: String(config.baseUrl || '').trim(),
-  model: String(config.model || '').trim(),
-  timeoutMs: Number(config.timeoutMs || 0),
-  maxConcurrentJobs: Number(config.maxConcurrentJobs || 0),
-  hasApiKey: Boolean(config.hasApiKey)
-})
-
-const validateImageProviderConfig = (config: ImageGenerationConfigViewState): string => {
-  const baseUrl = String(config.baseUrl || '').trim()
-  const model = String(config.model || '').trim()
-  if (!baseUrl) return '图片 Base URL 不能为空'
-  try {
-    const parsed = new URL(baseUrl)
-    if (!['http:', 'https:'].includes(parsed.protocol)) return '图片 Base URL 只支持 http 或 https'
-    if (parsed.username || parsed.password) return '图片 Base URL 不能包含用户名或密码，请把凭证放在图片 API Key 中'
-    if (parsed.search || parsed.hash) return '图片 Base URL 不能包含 query 或 hash，请仅保留 API 根路径'
-  } catch (_) {
-    return '图片 Base URL 不是有效 URL'
-  }
-  if (!model) return '图片 Model 不能为空'
-  if (!Number.isFinite(Number(config.timeoutMs)) || Number(config.timeoutMs) < 1000) return '图片 Timeout 至少为 1000ms'
-  if (!Number.isFinite(Number(config.maxConcurrentJobs)) || Number(config.maxConcurrentJobs) < 1) return '图片最大并发至少为 1'
-  return ''
-}
-
-const buildAiConfigSavePayload = (config: AiConfigViewState, activeConfig: AiConfigViewState) => {
-  const payload: Partial<AiConfigViewState> = {}
-
-  if (Boolean(config.enabled) !== Boolean(activeConfig.enabled)) {
-    payload.enabled = Boolean(config.enabled)
-  }
-  if (String(config.provider || '') !== String(activeConfig.provider || '')) {
-    payload.provider = String(config.provider || '')
-  }
-  if (normalizeProviderBaseUrl(config.baseUrl || '') !== normalizeProviderBaseUrl(activeConfig.baseUrl || '')) {
-    payload.baseUrl = normalizeProviderBaseUrl(config.baseUrl || '')
-  }
-  if (String(config.model || '').trim() !== String(activeConfig.model || '').trim()) {
-    payload.model = String(config.model || '').trim()
-  }
-  if (String(config.systemPrompt || '') !== String(activeConfig.systemPrompt || '')) {
-    payload.systemPrompt = String(config.systemPrompt || '')
-  }
-  if (Boolean(config.memory?.enabled) !== Boolean(activeConfig.memory?.enabled)) {
-    payload.memory = { enabled: Boolean(config.memory?.enabled) }
-  }
-
-  return payload
-}
 
 const buildPersonaOverrideFromDraft = (draft: ReturnType<typeof personaToDraft>): AiPersonaOverride => {
   const override: AiPersonaOverride = {}
@@ -196,6 +155,14 @@ const formatConnectionStatus = ({
     const unavailable = '聊天 Provider 可达，但模型列表探测不可用；请手动确认模型名称。'
     return notice ? `${notice} ${unavailable}` : unavailable
   }
+  if (result.ok && result.modelsProbe === 'timed_out') {
+    const timedOut = '聊天 Provider 可达，但模型列表探测超时。'
+    return notice ? `${notice} ${timedOut}` : timedOut
+  }
+  if (result.ok && result.modelsProbe === 'failed') {
+    const failed = '聊天 Provider 可达，但模型列表探测失败。'
+    return notice ? `${notice} ${failed}` : failed
+  }
   const details = result.ok
     ? `连接正常：${context}${result.reply ? ` · ${result.reply}` : ''}`
     : `连接失败：${localizedMessage || result.code || 'Unknown error'} · ${context}`
@@ -238,6 +205,7 @@ const formatImageGenerationHealthStatus = (result: ImageGenerationHealthCheckRes
 }
 
 const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscoveryResult) => {
+  const code = String(result.code || '').trim().toLowerCase()
   if (result.ok) {
     if (result.code === 'provider_reachable_models_unavailable') {
       return `${label} 可达，但模型列表探测不可用；请手动填写模型名。`
@@ -247,8 +215,56 @@ const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscover
     }
     return `${label} 探测完成，但 provider 没有返回可用模型。`
   }
+  if (code.includes('timeout')) {
+    return `${label} 模型探测超时：${result.message || result.code || 'unknown error'}`
+  }
   return `${label} 模型探测失败：${result.message || result.code || 'unknown error'}`
 }
+
+const createChatModelDiscoveryFromConnectionTest = (result: AiConnectionTestResult): ProviderModelDiscoveryResult => ({
+  ok: result.modelsProbe === 'ok' || result.modelsProbe === 'unavailable',
+  provider: String(result.provider || '').trim(),
+  baseUrl: String(result.baseUrl || '').trim(),
+  model: String(result.model || '').trim(),
+  hasApiKey: Boolean(result.hasApiKey),
+  models: Array.isArray(result.availableModels) ? result.availableModels : [],
+  code: result.modelsProbe === 'unavailable'
+    ? 'provider_reachable_models_unavailable'
+    : result.modelsProbe === 'timed_out'
+      ? 'timeout'
+      : result.modelsProbe === 'failed'
+        ? 'probe_failed'
+        : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
+  message: result.modelsProbe === 'timed_out'
+    ? 'AI provider model discovery timed out'
+    : result.modelsProbe === 'failed'
+      ? 'AI provider model discovery failed'
+      : String(result.message || '').trim()
+})
+
+const createImageModelDiscoveryFromHealth = (
+  result: ImageGenerationHealthCheckResult,
+  activeConfig: ImageGenerationConfigViewState
+): ProviderModelDiscoveryResult => ({
+  ok: result.modelsProbe === 'ok' || result.modelsProbe === 'unavailable',
+  provider: String(activeConfig.provider || '').trim(),
+  baseUrl: String(activeConfig.baseUrl || '').trim(),
+  model: String(activeConfig.model || '').trim(),
+  hasApiKey: Boolean(activeConfig.hasApiKey),
+  models: Array.isArray(result.availableModels) ? result.availableModels : [],
+  code: result.modelsProbe === 'unavailable'
+    ? 'provider_reachable_models_unavailable'
+    : result.modelsProbe === 'timed_out'
+      ? 'timeout'
+      : result.modelsProbe === 'failed'
+        ? 'probe_failed'
+        : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
+  message: result.modelsProbe === 'timed_out'
+    ? 'Image Provider model discovery timed out after 25000ms'
+    : result.modelsProbe === 'failed'
+      ? 'Image Provider model discovery failed'
+      : String(result.message || '').trim()
+})
 
 const getImageTransparencyCompatibilityHint = (model: string) => {
   const normalizedModel = String(model || '').trim()
@@ -272,9 +288,11 @@ export function useAiPane(activeTab = 'ai') {
   const [imageGenerationConfig, setImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [activeImageGenerationConfig, setActiveImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [visionApiKeyDraft, setVisionApiKeyDraft] = useState('')
   const [imageApiKeyDraft, setImageApiKeyDraft] = useState('')
   const [status, setStatus] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('')
+  const [visionStatus, setVisionStatus] = useState('')
   const [connectionTestResult, setConnectionTestResult] = useState<AiConnectionTestResult | null>(null)
   const [imageStatus, setImageStatus] = useState('')
   const [imageHealthStatus, setImageHealthStatus] = useState('')
@@ -282,6 +300,8 @@ export function useAiPane(activeTab = 'ai') {
   const [chatStatus, setChatStatus] = useState('')
   const [chatModelDiscovery, setChatModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
   const [chatModelDiscoveryStatus, setChatModelDiscoveryStatus] = useState('')
+  const [visionModelDiscovery, setVisionModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
+  const [visionModelDiscoveryStatus, setVisionModelDiscoveryStatus] = useState('')
   const [imageModelDiscovery, setImageModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
   const [imageModelDiscoveryStatus, setImageModelDiscoveryStatus] = useState('')
   const [chatDraft, setChatDraft] = useState('')
@@ -320,6 +340,28 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
+
+  const loadAiConfig = async ({ preserveDraft = false } = {}) => {
+    const nextConfig = cloneAiConfig(await api.getAiConfig())
+    setConfig((current) => applySavedAiConfigState({
+      draftConfig: current,
+      savedConfig: nextConfig,
+      preserveDraft
+    }).config)
+    setActiveConfig(nextConfig)
+    return nextConfig
+  }
+
+  const loadImageGenerationConfig = async ({ preserveDraft = false } = {}) => {
+    const nextConfig = cloneImageGenerationConfig(await api.getImageGenerationConfig())
+    setImageGenerationConfig((current) => applySavedImageGenerationConfigState({
+      draftConfig: current,
+      savedConfig: nextConfig,
+      preserveDraft
+    }).imageGenerationConfig)
+    setActiveImageGenerationConfig(nextConfig)
+    return nextConfig
+  }
 
   const loadAiTalkTraceSummary = async (conversationId?: string) => {
     try {
@@ -474,7 +516,7 @@ export function useAiPane(activeTab = 'ai') {
     const validationError = validateProviderConfig(config)
     if (validationError) throw new Error(validationError)
     const changedFields = getProviderConfigChanges(config, activeConfig)
-    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildAiConfigSavePayload(config, activeConfig)))
+    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildProviderConfigSavePayload(config, activeConfig)))
     setConfig(savedConfig)
     setActiveConfig(savedConfig)
     return { savedConfig, changedFields }
@@ -495,7 +537,8 @@ export function useAiPane(activeTab = 'ai') {
 
   const hasUnsavedConfigChanges = hasProviderConfigChanges(config, activeConfig)
   const hasUnsavedApiKeyDraft = Boolean(apiKeyDraft.trim())
-  const hasUnsavedImageGenerationChanges = pickImageGenerationComparableFields(imageGenerationConfig) !== pickImageGenerationComparableFields(activeImageGenerationConfig)
+  const hasUnsavedVisionApiKeyDraft = Boolean(visionApiKeyDraft.trim())
+  const hasUnsavedImageGenerationChanges = hasImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
   const hasUnsavedImageApiKeyDraft = Boolean(imageApiKeyDraft.trim())
 
   const onSave = async () => {
@@ -506,6 +549,10 @@ export function useAiPane(activeTab = 'ai') {
       const { changedFields } = await saveProviderConfigDraft()
       await loadPetChatState()
       setConnectionTestResult(null)
+      setChatModelDiscovery(null)
+      setChatModelDiscoveryStatus('')
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus('')
       setConnectionStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
     } catch (error) {
       setConnectionStatus(messageFromError(error, '保存失败'))
@@ -522,10 +569,15 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const validationError = validateImageProviderConfig(imageGenerationConfig)
       if (validationError) throw new Error(validationError)
-      const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(imageGenerationConfig))
+      const changedFields = getImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
+      const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(
+        buildImageGenerationConfigSavePayload(imageGenerationConfig, activeImageGenerationConfig)
+      ))
       setImageGenerationConfig(savedConfig)
       setActiveImageGenerationConfig(savedConfig)
-      setImageStatus('图片 Provider 配置已保存')
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
+      setImageStatus(changedFields.length ? `图片 Provider 配置已保存：${changedFields.join(' / ')}` : '图片 Provider 配置已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 Provider 配置保存失败'))
     } finally {
@@ -617,6 +669,11 @@ export function useAiPane(activeTab = 'ai') {
         setConnectionStatus('API Key 未修改')
       } else {
         await loadPetChatState()
+        setConnectionTestResult(null)
+        setChatModelDiscovery(null)
+        setChatModelDiscoveryStatus('')
+        setVisionModelDiscovery(null)
+        setVisionModelDiscoveryStatus('')
         setConnectionStatus(result.updatedAt ? `API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'API Key 已保存')
       }
     } catch (error) {
@@ -643,9 +700,67 @@ export function useAiPane(activeTab = 'ai') {
       setImageGenerationConfig(applyKeyResult)
       setActiveImageGenerationConfig(applyKeyResult)
       setImageApiKeyDraft('')
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageStatus('图片 API Key 已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveVisionApiKey = async () => {
+    setSaving(true)
+    setVisionStatus('保存 Vision API Key 中')
+    try {
+      const key = visionApiKeyDraft.trim()
+      if (!key) throw new Error('Vision API Key 不能为空')
+      const result = await api.saveAiVisionApiKey(key)
+      const applyResult = (current: AiConfigViewState) => cloneAiConfig({
+        ...current,
+        vision: {
+          ...current.vision,
+          apiKeyRef: result.apiKeyRef,
+          hasApiKey: result.hasApiKey,
+          effectiveHasApiKey: current.vision.mode === 'override' ? result.hasApiKey : current.vision.effectiveHasApiKey
+        }
+      })
+      setConfig(applyResult)
+      setActiveConfig(applyResult)
+      setVisionApiKeyDraft('')
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus('')
+      setVisionStatus(result.updatedAt ? `Vision API Key 已保存 · ${new Date(result.updatedAt).toLocaleString()}` : 'Vision API Key 已保存')
+    } catch (error) {
+      setVisionStatus(messageFromError(error, 'Vision API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onClearVisionApiKey = async () => {
+    setSaving(true)
+    setVisionStatus('清除 Vision API Key 中')
+    try {
+      const result = await api.clearAiVisionApiKey()
+      const applyResult = (current: AiConfigViewState) => cloneAiConfig({
+        ...current,
+        vision: {
+          ...current.vision,
+          apiKeyRef: result.apiKeyRef,
+          hasApiKey: result.hasApiKey,
+          effectiveHasApiKey: current.vision.mode === 'override' ? result.hasApiKey : current.vision.effectiveHasApiKey
+        }
+      })
+      setConfig(applyResult)
+      setActiveConfig(applyResult)
+      setVisionApiKeyDraft('')
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus('')
+      setVisionStatus('Vision API Key 已清除')
+    } catch (error) {
+      setVisionStatus(messageFromError(error, 'Vision API Key 清除失败'))
     } finally {
       setSaving(false)
     }
@@ -666,6 +781,8 @@ export function useAiPane(activeTab = 'ai') {
       setImageGenerationConfig(applyKeyResult)
       setActiveImageGenerationConfig(applyKeyResult)
       setImageApiKeyDraft('')
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageStatus('图片 API Key 已清除')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 API Key 清除失败'))
@@ -680,15 +797,28 @@ export function useAiPane(activeTab = 'ai') {
       setImageHealthResult(null)
       return
     }
+    if (hasUnsavedImageApiKeyDraft) {
+      setImageHealthStatus('当前图片 API Key 草稿未保存；请先保存图片密钥后再检查健康。')
+      setImageHealthResult(null)
+      return
+    }
     setSaving(true)
     setImageHealthStatus('图片 Provider 健康检查中')
     setImageHealthResult(null)
     try {
       const result = await api.checkImageGenerationHealth({})
+      const nextActiveImageConfig = result.modelsProbe === 'ok'
+        ? await loadImageGenerationConfig({ preserveDraft: true })
+        : activeImageGenerationConfig
       setImageHealthResult(result)
+      const discovery = createImageModelDiscoveryFromHealth(result, nextActiveImageConfig)
+      setImageModelDiscovery(discovery)
+      setImageModelDiscoveryStatus(`${formatModelDiscoveryStatus('图片 Provider', discovery)} ${formatProviderModelCatalogMeta(nextActiveImageConfig.modelCatalog)}`.trim())
       setImageHealthStatus(formatImageGenerationHealthStatus(result))
     } catch (error) {
       setImageHealthResult(null)
+      setImageModelDiscovery(null)
+      setImageModelDiscoveryStatus('')
       setImageHealthStatus(messageFromError(error, '图片模型健康检查失败'))
     } finally {
       setSaving(false)
@@ -704,11 +834,40 @@ export function useAiPane(activeTab = 'ai') {
     setChatModelDiscoveryStatus('聊天模型探测中')
     try {
       const result = await api.discoverAiModels()
+      const nextActiveConfig = result.ok && result.code === 'ok'
+        ? await loadAiConfig({ preserveDraft: true })
+        : activeConfig
       setChatModelDiscovery(result)
-      setChatModelDiscoveryStatus(formatModelDiscoveryStatus('聊天 Provider', result))
+      setChatModelDiscoveryStatus(`${formatModelDiscoveryStatus('聊天 Provider', result)} ${formatProviderModelCatalogMeta(nextActiveConfig.modelCatalog)}`.trim())
     } catch (error) {
       setChatModelDiscovery(null)
       setChatModelDiscoveryStatus(messageFromError(error, '聊天模型探测失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onDiscoverVisionModels = async () => {
+    if (config.vision.mode !== 'override') {
+      setVisionModelDiscoveryStatus('当前 Vision 跟随聊天模型；无需单独刷新模型列表。')
+      return
+    }
+    if (hasUnsavedConfigChanges || hasUnsavedVisionApiKeyDraft) {
+      setVisionModelDiscoveryStatus('当前 Vision Provider 配置有未保存修改；请先保存聊天 Provider 和 Vision 密钥后再刷新模型。')
+      return
+    }
+    setSaving(true)
+    setVisionModelDiscoveryStatus('Vision 模型探测中')
+    try {
+      const result = await api.discoverAiVisionModels()
+      const nextActiveConfig = result.ok && result.code === 'ok'
+        ? await loadAiConfig({ preserveDraft: true })
+        : activeConfig
+      setVisionModelDiscovery(result)
+      setVisionModelDiscoveryStatus(`${formatModelDiscoveryStatus('Vision Provider', result)} ${formatProviderModelCatalogMeta(nextActiveConfig.vision.modelCatalog)}`.trim())
+    } catch (error) {
+      setVisionModelDiscovery(null)
+      setVisionModelDiscoveryStatus(messageFromError(error, 'Vision 模型探测失败'))
     } finally {
       setSaving(false)
     }
@@ -723,8 +882,11 @@ export function useAiPane(activeTab = 'ai') {
     setImageModelDiscoveryStatus('图片模型探测中')
     try {
       const result = await api.discoverImageGenerationModels()
+      const nextActiveImageConfig = result.ok && result.code === 'ok'
+        ? await loadImageGenerationConfig({ preserveDraft: true })
+        : activeImageGenerationConfig
       setImageModelDiscovery(result)
-      setImageModelDiscoveryStatus(formatModelDiscoveryStatus('图片 Provider', result))
+      setImageModelDiscoveryStatus(`${formatModelDiscoveryStatus('图片 Provider', result)} ${formatProviderModelCatalogMeta(nextActiveImageConfig.modelCatalog)}`.trim())
     } catch (error) {
       setImageModelDiscovery(null)
       setImageModelDiscoveryStatus(messageFromError(error, '图片模型探测失败'))
@@ -739,7 +901,13 @@ export function useAiPane(activeTab = 'ai') {
     setConnectionTestResult(null)
     try {
       const result = await api.testAiConnection()
+      const nextActiveConfig = result.modelsProbe === 'ok'
+        ? await loadAiConfig({ preserveDraft: true })
+        : activeConfig
       setConnectionTestResult(result)
+      const discovery = createChatModelDiscoveryFromConnectionTest(result)
+      setChatModelDiscovery(discovery)
+      setChatModelDiscoveryStatus(`${formatModelDiscoveryStatus('聊天 Provider', discovery)} ${formatProviderModelCatalogMeta(nextActiveConfig.modelCatalog)}`.trim())
       setConnectionStatus(formatConnectionStatus({
         result,
         hasUnsavedConfigChanges,
@@ -963,6 +1131,8 @@ export function useAiPane(activeTab = 'ai') {
     connectionTestResult,
     chatModelDiscovery,
     chatModelDiscoveryStatus,
+    visionModelDiscovery,
+    visionModelDiscoveryStatus,
     imageProviderValidationError: validateImageProviderConfig(imageGenerationConfig),
     imageModelDiscovery,
     imageModelDiscoveryStatus,
@@ -970,16 +1140,20 @@ export function useAiPane(activeTab = 'ai') {
     saving,
     status,
     connectionStatus,
+    visionStatus,
     imageStatus,
     imageHealthStatus,
     imageHealthResult,
     chatStatus,
     hasUnsavedConfigChanges,
     hasUnsavedApiKeyDraft,
+    hasUnsavedVisionApiKeyDraft,
     hasUnsavedImageGenerationChanges,
     hasUnsavedImageApiKeyDraft,
     apiKeyDraft,
     setApiKeyDraft,
+    visionApiKeyDraft,
+    setVisionApiKeyDraft,
     imageApiKeyDraft,
     setImageApiKeyDraft,
     onChangePersonaDraft,
@@ -1005,6 +1179,24 @@ export function useAiPane(activeTab = 'ai') {
     setBehaviorRulesText,
     onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => setBehavior({ ...behavior, ...partial }),
     onChange: (partial: Partial<AiConfigViewState>) => setConfig({ ...config, ...partial }),
+    onChangeVision: (partial: Partial<VisionConfigViewState>) => setConfig((current) => {
+      const shouldHydrateFromChat = partial.mode === 'override' && current.vision.mode !== 'override'
+      const baseVision = shouldHydrateFromChat
+        ? {
+            ...current.vision,
+            provider: current.provider,
+            baseUrl: current.baseUrl,
+            model: current.model
+          }
+        : current.vision
+      return cloneAiConfig({
+        ...current,
+        vision: {
+          ...baseVision,
+          ...partial
+        }
+      })
+    }),
     onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => setImageGenerationConfig((current) => cloneImageGenerationConfig({
       ...current,
       ...partial
@@ -1018,10 +1210,13 @@ export function useAiPane(activeTab = 'ai') {
     onDismissGeneratedPersonaDraft: () => setGeneratedPersonaDraft(null),
     onSaveBehavior,
     onSaveApiKey,
+    onSaveVisionApiKey,
+    onClearVisionApiKey,
     onSaveImageGenerationApiKey,
     onClearImageGenerationApiKey,
     onCheckImageGenerationHealth,
     onDiscoverAiModels,
+    onDiscoverVisionModels,
     onDiscoverImageGenerationModels,
     onTest,
     onDryRunBehavior,

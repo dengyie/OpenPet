@@ -107,7 +107,7 @@ test('toCommandResultPreview includes queued trigger proposal details for Creato
     { label: '步骤', value: 'imported' },
     { label: '已导入动作', value: 'shy-spin' },
     { label: '触发建议', value: 'click' },
-    { label: '入队状态', value: 'pending' }
+    { label: '入队状态', value: '已提交' }
   ])
 })
 
@@ -148,7 +148,8 @@ test('toCommandResultPreview falls back to trigger proposal submission details f
     { label: '步骤', value: 'imported' },
     { label: '已导入动作', value: 'shy-spin' },
     { label: '动作目录', value: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin' },
-    { label: '入队状态', value: 'submitted · proposal:click:shy-spin:test' }
+    { label: '触发建议', value: 'click' },
+    { label: '入队状态', value: '已提交 · proposal:click:shy-spin:test' }
   ])
 })
 

@@ -7,10 +7,10 @@ This evidence records a sanitized real-provider AI Talk smoke run against the sa
 ## Scope
 
 - Provider: `openai-compatible`
-- Base URL: `http://127.0.0.1:8317/v1`
+- Base URL: `[redacted-local-url]`
 - Chat model: `gpt-5.5`
 - Active pet-pack during the run: `duodong`
-- Prompt: `你好，请用一句简短中文回复，用于 bubble chat 验收`
+- Prompt: not recorded in the archive README
 - Raw API key: not recorded
 - Local user-data path: redacted in the persisted report
 
@@ -20,13 +20,23 @@ This evidence records a sanitized real-provider AI Talk smoke run against the sa
 | --- | --- | --- |
 | Connection test | pass | Saved chat Provider configuration completed a connection test in `2656ms`. |
 | AI Talk chat | pass | `gpt-5.5` returned `你好呀，我在这儿陪你～🐾` with `providerLatencyMs = 2141`. |
-| Bubble dispatch | pass | `bubbleAcceptance.requestId = chat-mqxyb5gj-6tvex3h5`, `bubbleDispatch.petSayReceived = true`, and `bubbleDispatch.bubbleStateVisible = true`. |
-| Bubble telemetry | pass | Correlated logs include `ai-talk.chat.started`, `ai-talk.chat.completed`, `pet-bubble-chat.message.displayed`, and `pet-bubble-chat.items.updated`; the displayed bubble used `ttlMs = 9835` before auto-hide. |
+| Bubble dispatch | pass | `bubbleAcceptance.requestId = chat-mqxyb5gj-6tvex3h5`, `bubbleDispatch.petSayReceived = true`, `bubbleDispatch.bubbleStateVisible = true`, and `ttlMs = 9835`. |
+| Bubble telemetry | pass | Correlated logs include `ai-talk.chat.started`, `ai-talk.chat.completed`, `pet-bubble-chat.message.displayed`, `pet-bubble-chat.items.updated`; the displayed bubble recorded popup telemetry in `logs/openpet-app.jsonl`. |
 
 ## Artifacts
 
 - Report: `ai-talk-local-smoke-result.json`
 - Redacted logs: `logs/openpet-app.jsonl`
+
+## Manual Acceptance
+
+| Review area | Status |
+| --- | --- |
+| Bubble visible long enough | pending |
+| Input usable | pending |
+
+- Notes: _none recorded_
+- Request ID: `chat-mqxyb5gj-6tvex3h5`
 
 ## Claim Boundary
 
@@ -37,5 +47,7 @@ It does not by itself prove that transparent popup placement, dwell time comfort
 ## Reproduction Command
 
 ```bash
-npm run run-ai-talk-local-smoke -- --message "你好，请用一句简短中文回复，用于 bubble chat 验收" --output-dir tmp/real-provider-chat-acceptance
+npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir ai-talk-local-smoke
+npm run create-ai-talk-local-smoke-archive -- --session-dir ai-talk-local-smoke/2026-06-28T15-35-59-210Z --archive-dir docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z
+npm run update-ai-talk-local-smoke-report -- docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json --bubble-visible-long-enough true --input-usable true --desktop-feel-notes "Record the desktop interaction review here." --validate-complete
 ```

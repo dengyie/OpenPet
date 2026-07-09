@@ -1,0 +1,10 @@
+{
+  "commands": [
+    "curl -L --fail --output <archive.zip> 'https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main'",
+    "unzip -qq <archive.zip> -d <extract-dir>",
+    "npm run validate:plugin -- <extract-dir>/'.'",
+    "npm run create-plugin-community-source-intake-report -- --archive-url 'https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main' --plugin-path '.' --community-source-url 'https://github.com/alvinunreal/openpets-plugin-starter' --submitter 'alvinunreal/openpets-plugin-starter' --notes '2026-07-06 intake: public starter repo uses openpets.plugin.json at the archive root rather than the current OpenPet plugin.json package model.' --output-dir 'docs/release-evidence/plugin-community-source-intake-report/2026-07-06T10-20-00Z-openpets-plugin-starter'",
+    "Review the intake output. If status is ready-for-community-evidence, continue into Phase 99 with a separate submission-evidence archive:",
+    "npm run create-plugin-community-source-submission-evidence -- --archive-url 'https://codeload.github.com/alvinunreal/openpets-plugin-starter/zip/refs/heads/main' --plugin-path '.' --community-source-url 'https://github.com/alvinunreal/openpets-plugin-starter' --submitter 'alvinunreal/openpets-plugin-starter' --independence-notes '2026-07-06 intake: public starter repo uses openpets.plugin.json at the archive root rather than the current OpenPet plugin.json package model.' --output-dir docs/release-evidence/plugin-community-source-submission-evidence/<session>"
+  ]
+}

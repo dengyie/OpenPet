@@ -15,7 +15,47 @@ const DEFAULT_PACKAGED_RUNTIME_REPORT = 'packaged-runtime-smoke-report.json'
 const DEFAULT_MACOS_CODESIGN_EVIDENCE = 'macos-codesign.txt'
 const DEFAULT_MACOS_NOTARIZATION_EVIDENCE = 'macos-notarization.txt'
 const DEFAULT_MACOS_GATEKEEPER_EVIDENCE = 'macos-gatekeeper.txt'
+const DEFAULT_MACOS_ARTIFACT_MANIFEST = 'macos-release-evidence-artifact-manifest.json'
 const DEFAULT_MANIFEST_NAME = 'release-evidence-archive-manifest.json'
+
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeArchiveDirPath = (archiveDir) => createSafeProjectPath(archiveDir, DEFAULT_ARCHIVE_DIR)
+
+const createSafeArchiveFilePath = ({ filePath, archiveDir, fallback }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
+const createSafeArchiveOutputPath = ({ outputPath, archiveDir, safeArchiveDir }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(outputPath || '').trim()))
+  if (isSafeRelativePath(relative)) return joinPosixPath(safeArchiveDir, relative)
+  return createSafeProjectPath(outputPath, joinPosixPath(safeArchiveDir, DEFAULT_MANIFEST_NAME))
+}
+
+const sanitizeMessage = (message, replacements) => replacements.reduce((text, [unsafeValue, safeValue]) => {
+  if (!unsafeValue || !safeValue) return text
+  return String(text || '').split(String(unsafeValue)).join(String(safeValue))
+}, String(message || ''))
 
 const usage = () => [
   'Usage: node scripts/create-release-evidence-archive-manifest.js [--archive-dir <dir>] [options]',
@@ -29,6 +69,7 @@ const usage = () => [
   '  --macos-codesign <evidence.txt>',
   '  --macos-notarization <evidence.txt>',
   '  --macos-gatekeeper <evidence.txt>',
+  '  --macos-artifact-manifest <manifest.json>',
   '  --output <manifest.json>',
   '  --require-signed',
   '  --json',
@@ -47,6 +88,7 @@ const parseArgs = (argv) => {
     macosCodesignPath: null,
     macosNotarizationPath: null,
     macosGatekeeperPath: null,
+    macosArtifactManifestPath: null,
     outputPath: null,
     requireSigned: false,
     json: false,
@@ -90,6 +132,9 @@ const parseArgs = (argv) => {
     } else if (arg === '--macos-gatekeeper') {
       options.macosGatekeeperPath = readValue(index, arg)
       index += 1
+    } else if (arg === '--macos-artifact-manifest') {
+      options.macosArtifactManifestPath = readValue(index, arg)
+      index += 1
     } else if (arg === '--output') {
       options.outputPath = readValue(index, arg)
       index += 1
@@ -116,6 +161,7 @@ const resolveArchivePaths = ({
   macosCodesignPath = null,
   macosNotarizationPath = null,
   macosGatekeeperPath = null,
+  macosArtifactManifestPath = null,
   outputPath = null
 } = {}) => {
   const absoluteArchiveDir = path.resolve(archiveDir)
@@ -130,24 +176,25 @@ const resolveArchivePaths = ({
     macosCodesignPath: macosCodesignPath ? path.resolve(macosCodesignPath) : insideArchive(DEFAULT_MACOS_CODESIGN_EVIDENCE),
     macosNotarizationPath: macosNotarizationPath ? path.resolve(macosNotarizationPath) : insideArchive(DEFAULT_MACOS_NOTARIZATION_EVIDENCE),
     macosGatekeeperPath: macosGatekeeperPath ? path.resolve(macosGatekeeperPath) : insideArchive(DEFAULT_MACOS_GATEKEEPER_EVIDENCE),
+    macosArtifactManifestPath: macosArtifactManifestPath ? path.resolve(macosArtifactManifestPath) : insideArchive(DEFAULT_MACOS_ARTIFACT_MANIFEST),
     outputPath: outputPath ? path.resolve(outputPath) : insideArchive(DEFAULT_MANIFEST_NAME)
   }
 }
 
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
-const describeFile = ({ role, filePath, fsImpl = fs }) => {
+const describeFile = ({ role, filePath, displayPath = filePath, fsImpl = fs }) => {
   if (!fsImpl.existsSync(filePath)) {
-    return { role, path: filePath, exists: false, bytes: 0, sha256: '' }
+    return { role, path: displayPath, exists: false, bytes: 0, sha256: '' }
   }
   const stat = fsImpl.statSync(filePath)
   if (!stat.isFile()) {
-    return { role, path: filePath, exists: false, bytes: 0, sha256: '', error: 'path is not a file' }
+    return { role, path: displayPath, exists: false, bytes: 0, sha256: '', error: 'path is not a file' }
   }
   const content = fsImpl.readFileSync(filePath)
   return {
     role,
-    path: filePath,
+    path: displayPath,
     exists: true,
     bytes: content.length,
     sha256: sha256(content)
@@ -163,12 +210,38 @@ const normalizeLinkedReportPath = (linkedPath, archiveDir) => {
   return path.resolve(archiveDir, trimmed)
 }
 
-const validateReportFile = ({ role, filePath, validateReport, requireSigned, fsImpl = fs }) => {
-  const file = describeFile({ role, filePath, fsImpl })
+const resolveManifestReferenceCandidates = ({ referencePath, manifestFilePath, expectedReportPath }) => {
+  if (!referencePath || typeof referencePath !== 'string') return []
+  const trimmed = referencePath.trim()
+  if (!trimmed) return []
+  if (path.isAbsolute(trimmed)) return [path.resolve(trimmed)]
+
+  const candidates = [
+    path.resolve(path.dirname(manifestFilePath), trimmed)
+  ]
+
+  if (expectedReportPath) {
+    candidates.push(path.resolve(path.dirname(expectedReportPath), trimmed))
+  }
+
+  candidates.push(path.resolve(process.cwd(), trimmed))
+  return [...new Set(candidates)]
+}
+
+const validateReportFile = ({
+  role,
+  filePath,
+  displayPath,
+  validateReport,
+  requireSigned,
+  sanitize = (value) => value,
+  fsImpl = fs
+}) => {
+  const file = describeFile({ role, filePath, displayPath, fsImpl })
   const errors = []
   const warnings = []
   if (!file.exists) {
-    errors.push(`missing ${role}: ${filePath}`)
+    errors.push(`missing ${role}: ${displayPath}`)
     return { file, report: null, structuralValidation: null, readinessValidation: null, releaseReady: false, errors, warnings }
   }
 
@@ -195,7 +268,7 @@ const validateReportFile = ({ role, filePath, validateReport, requireSigned, fsI
       warnings
     }
   } catch (err) {
-    errors.push(`${role} could not be parsed: ${err.message || err}`)
+    errors.push(`${role} could not be parsed: ${sanitize(err.message || err)}`)
     return { file, report: null, structuralValidation: null, readinessValidation: null, releaseReady: false, errors, warnings }
   }
 }
@@ -207,12 +280,15 @@ const findFileByRole = (files, role) => Array.isArray(files)
 const validateLinkedArchiveManifestFile = ({
   role,
   filePath,
+  displayPath,
   reportFile: expectedReportFile,
+  expectedReportPath = '',
   reportRoleLabel,
   requireSigned,
+  sanitize = (value) => value,
   fsImpl = fs
 }) => {
-  const file = describeFile({ role, filePath, fsImpl })
+  const file = describeFile({ role, filePath, displayPath, fsImpl })
   const errors = []
   const warnings = []
   const details = {
@@ -229,7 +305,7 @@ const validateLinkedArchiveManifestFile = ({
   }
 
   if (!file.exists) {
-    errors.push(`missing ${role}: ${filePath}`)
+    errors.push(`missing ${role}: ${displayPath}`)
     return { file, ...details, errors, warnings }
   }
 
@@ -238,13 +314,17 @@ const validateLinkedArchiveManifestFile = ({
     const archiveReportFile = findFileByRole(manifest.files, 'report')
     const reportedPath = manifest.report?.path || archiveReportFile?.path || ''
     const reportedSha256 = archiveReportFile?.sha256 || ''
-    const expectedPath = expectedReportFile?.path ? path.resolve(expectedReportFile.path) : ''
-    const actualPath = reportedPath ? path.resolve(reportedPath) : ''
-    const pathMatches = Boolean(actualPath && expectedPath && actualPath === expectedPath)
+    const expectedPath = expectedReportPath ? path.resolve(expectedReportPath) : ''
+    const candidatePaths = resolveManifestReferenceCandidates({
+      referencePath: reportedPath,
+      manifestFilePath: filePath,
+      expectedReportPath
+    })
+    const pathMatches = Boolean(expectedPath && candidatePaths.some((candidatePath) => candidatePath === expectedPath))
     const hashMatches = Boolean(reportedSha256 && expectedReportFile?.sha256 && reportedSha256 === expectedReportFile.sha256)
     const matchesReport = Boolean(pathMatches && hashMatches)
 
-    details.path = path.resolve(filePath)
+    details.path = displayPath
     details.archiveDir = manifest.archive?.archiveDir || ''
     details.outputPath = manifest.archive?.outputPath || ''
     details.reportPath = reportedPath
@@ -269,7 +349,7 @@ const validateLinkedArchiveManifestFile = ({
       warnings.push(`${role} does not prove signed ${reportRoleLabel} archive readiness`)
     }
   } catch (err) {
-    errors.push(`${role} could not be parsed: ${err.message || err}`)
+    errors.push(`${role} could not be parsed: ${sanitize(err.message || err)}`)
   }
 
   return { file, ...details, errors, warnings }
@@ -277,27 +357,34 @@ const validateLinkedArchiveManifestFile = ({
 
 const macosEvidenceStatus = ({ content, kind }) => {
   const text = String(content || '')
+  const trimmed = text.trim()
   if (kind === 'codesign') {
-    return /valid on disk/i.test(text) && /satisfies its Designated Requirement/i.test(text) ? 'pass' : 'pending'
+    if (/valid on disk/i.test(text) && /satisfies its Designated Requirement/i.test(text)) return 'pass'
+    if (/codesign evidence pending/i.test(text)) return 'pending'
+    return trimmed ? 'fail' : 'pending'
   }
   if (kind === 'notarization') {
-    return /(^|\n)\s*status\s*:\s*accepted\s*(\r?\n|$)/i.test(text) ? 'pass' : 'pending'
+    if (/(^|\n)\s*status\s*:\s*accepted\s*(\r?\n|$)/i.test(text)) return 'pass'
+    if (/(^|\n)\s*status\s*:\s*(in progress|submitted|pending)\s*(\r?\n|$)/i.test(text)) return 'pending'
+    return trimmed ? 'fail' : 'pending'
   }
   if (kind === 'gatekeeper') {
     const accepted = /(^|\n).*:\s*accepted\s*(\r?\n|$)/i.test(text) || /(^|\n)\s*accepted\s*(\r?\n|$)/i.test(text)
-    return accepted && !/\bnot accepted\b/i.test(text) ? 'pass' : 'pending'
+    if (accepted && !/\bnot accepted\b/i.test(text)) return 'pass'
+    if (/gatekeeper evidence pending/i.test(text)) return 'pending'
+    return trimmed ? 'fail' : 'pending'
   }
   return 'pending'
 }
 
-const validateMacosEvidenceFile = ({ role, filePath, kind, requireSigned, fsImpl = fs }) => {
-  const file = describeFile({ role, filePath, fsImpl })
+const validateMacosEvidenceFile = ({ role, filePath, displayPath, kind, requireSigned, fsImpl = fs }) => {
+  const file = describeFile({ role, filePath, displayPath, fsImpl })
   const errors = []
   const warnings = []
   let status = 'missing'
 
   if (!file.exists) {
-    const message = `missing ${role}: ${filePath}`
+    const message = `missing ${role}: ${displayPath}`
     if (requireSigned) errors.push(message)
     else warnings.push(message)
     return { file, status, releaseReady: false, errors, warnings }
@@ -314,6 +401,90 @@ const validateMacosEvidenceFile = ({ role, filePath, kind, requireSigned, fsImpl
   return { file, status, releaseReady: status === 'pass', errors, warnings }
 }
 
+const validateMacosArtifactManifestFile = ({
+  role,
+  filePath,
+  displayPath,
+  archiveDir,
+  expectedFilesByRole,
+  sanitize = (value) => value,
+  fsImpl = fs
+}) => {
+  const file = describeFile({ role, filePath, displayPath, fsImpl })
+  const errors = []
+  const warnings = []
+  const details = {
+    path: displayPath,
+    archiveDir: '',
+    outputPath: '',
+    artifactName: '',
+    releaseTag: '',
+    workflowRunUrl: '',
+    ok: false,
+    releaseReady: false,
+    macosEvidenceReady: false,
+    matchesMacosEvidence: false
+  }
+
+  if (!file.exists) {
+    return { file, ...details, errors, warnings }
+  }
+
+  try {
+    const manifest = loadJsonFile(filePath, fsImpl)
+    const requiredRoles = ['macosCodesignEvidence', 'macosNotarizationEvidence', 'macosGatekeeperEvidence']
+    const matches = requiredRoles.map((entryRole) => {
+      const manifestEntry = findFileByRole(manifest.files, entryRole)
+      const expectedFile = expectedFilesByRole[entryRole]
+      if (!manifestEntry) {
+        errors.push(`${role} does not record ${entryRole}`)
+        return false
+      }
+      if (!manifestEntry.sha256 || manifestEntry.sha256 !== expectedFile?.sha256) {
+        errors.push(`${role} records a stale ${entryRole} hash`)
+        return false
+      }
+
+      const recordedPath = manifestEntry.archivedPath || manifestEntry.fileName || ''
+      if (!recordedPath) {
+        errors.push(`${role} does not record the archived path for ${entryRole}`)
+        return false
+      }
+
+      const expectedPath = expectedFile ? path.resolve(archiveDir, expectedFile.path) : ''
+      const candidatePaths = resolveManifestReferenceCandidates({
+        referencePath: recordedPath,
+        manifestFilePath: filePath,
+        expectedReportPath: expectedPath
+      })
+      if (expectedPath && !candidatePaths.some((candidatePath) => candidatePath === expectedPath)) {
+        errors.push(`${role} references a different ${entryRole} path: ${recordedPath}`)
+        return false
+      }
+      return true
+    })
+
+    details.archiveDir = manifest.archive?.archiveDir || ''
+    details.outputPath = manifest.archive?.outputPath || ''
+    details.artifactName = manifest.source?.artifactName || ''
+    details.releaseTag = manifest.source?.releaseTag || ''
+    details.workflowRunUrl = manifest.source?.workflowRunUrl || ''
+    details.macosEvidenceReady = manifest.macosEvidenceReady === true
+    details.matchesMacosEvidence = matches.every(Boolean)
+    details.ok = manifest.ok === true && details.matchesMacosEvidence
+    details.releaseReady = details.ok && details.macosEvidenceReady
+
+    if (manifest.ok !== true) errors.push(`${role} is not valid`)
+    if (details.ok && details.macosEvidenceReady !== true) {
+      warnings.push(`${role} is archived but its imported macOS evidence is not ready`)
+    }
+  } catch (err) {
+    errors.push(`${role} could not be parsed: ${sanitize(err.message || err)}`)
+  }
+
+  return { file, ...details, errors, warnings }
+}
+
 const createReleaseEvidenceArchiveManifest = ({
   archiveDir = DEFAULT_ARCHIVE_DIR,
   windowsSmokeReportPath = null,
@@ -324,6 +495,7 @@ const createReleaseEvidenceArchiveManifest = ({
   macosCodesignPath = null,
   macosNotarizationPath = null,
   macosGatekeeperPath = null,
+  macosArtifactManifestPath = null,
   outputPath = null,
   requireSigned = false,
   now = () => new Date(),
@@ -339,8 +511,74 @@ const createReleaseEvidenceArchiveManifest = ({
     macosCodesignPath,
     macosNotarizationPath,
     macosGatekeeperPath,
+    macosArtifactManifestPath,
     outputPath
   })
+  const safeArchiveDir = createSafeArchiveDirPath(paths.archiveDir)
+  const safeWindowsSmokeReportPath = createSafeArchiveFilePath({
+    filePath: paths.windowsSmokeReportPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_WINDOWS_SMOKE_REPORT
+  })
+  const safeWindowsSmokeArchiveManifestPath = createSafeArchiveFilePath({
+    filePath: paths.windowsSmokeArchiveManifestPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_WINDOWS_SMOKE_ARCHIVE_MANIFEST
+  })
+  const safeDesktopPickerReportPath = createSafeArchiveFilePath({
+    filePath: paths.desktopPickerReportPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_DESKTOP_PICKER_REPORT
+  })
+  const safeDesktopPickerArchiveManifestPath = createSafeArchiveFilePath({
+    filePath: paths.desktopPickerArchiveManifestPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_DESKTOP_PICKER_ARCHIVE_MANIFEST
+  })
+  const safePackagedRuntimeReportPath = createSafeArchiveFilePath({
+    filePath: paths.packagedRuntimeReportPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_PACKAGED_RUNTIME_REPORT
+  })
+  const safeMacosCodesignPath = createSafeArchiveFilePath({
+    filePath: paths.macosCodesignPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_MACOS_CODESIGN_EVIDENCE
+  })
+  const safeMacosNotarizationPath = createSafeArchiveFilePath({
+    filePath: paths.macosNotarizationPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_MACOS_NOTARIZATION_EVIDENCE
+  })
+  const safeMacosGatekeeperPath = createSafeArchiveFilePath({
+    filePath: paths.macosGatekeeperPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_MACOS_GATEKEEPER_EVIDENCE
+  })
+  const safeMacosArtifactManifestPath = createSafeArchiveFilePath({
+    filePath: paths.macosArtifactManifestPath,
+    archiveDir: paths.archiveDir,
+    fallback: DEFAULT_MACOS_ARTIFACT_MANIFEST
+  })
+  const safeOutputPath = createSafeArchiveOutputPath({
+    outputPath: paths.outputPath,
+    archiveDir: paths.archiveDir,
+    safeArchiveDir
+  })
+  const messagePathReplacements = [
+    [paths.outputPath, safeOutputPath],
+    [paths.macosArtifactManifestPath, safeMacosArtifactManifestPath],
+    [paths.macosGatekeeperPath, safeMacosGatekeeperPath],
+    [paths.macosNotarizationPath, safeMacosNotarizationPath],
+    [paths.macosCodesignPath, safeMacosCodesignPath],
+    [paths.packagedRuntimeReportPath, safePackagedRuntimeReportPath],
+    [paths.desktopPickerArchiveManifestPath, safeDesktopPickerArchiveManifestPath],
+    [paths.desktopPickerReportPath, safeDesktopPickerReportPath],
+    [paths.windowsSmokeArchiveManifestPath, safeWindowsSmokeArchiveManifestPath],
+    [paths.windowsSmokeReportPath, safeWindowsSmokeReportPath],
+    [paths.archiveDir, safeArchiveDir]
+  ].sort((left, right) => String(right[0]).length - String(left[0]).length)
+  const sanitize = (message) => sanitizeMessage(message, messagePathReplacements)
   const errors = []
   const warnings = []
 
@@ -348,22 +586,28 @@ const createReleaseEvidenceArchiveManifest = ({
     windowsSmoke: validateReportFile({
       role: 'windowsSmokeReport',
       filePath: paths.windowsSmokeReportPath,
+      displayPath: safeWindowsSmokeReportPath,
       validateReport: validateWindowsSmokeReport,
       requireSigned,
+      sanitize,
       fsImpl
     }),
     desktopPicker: validateReportFile({
       role: 'desktopPickerReport',
       filePath: paths.desktopPickerReportPath,
+      displayPath: safeDesktopPickerReportPath,
       validateReport: validateDesktopPickerSmokeReport,
       requireSigned,
+      sanitize,
       fsImpl
     }),
     packagedRuntime: validateReportFile({
       role: 'packagedRuntimeReport',
       filePath: paths.packagedRuntimeReportPath,
+      displayPath: safePackagedRuntimeReportPath,
       validateReport: validatePackagedRuntimeSmokeReport,
       requireSigned,
+      sanitize,
       fsImpl
     })
   }
@@ -372,6 +616,7 @@ const createReleaseEvidenceArchiveManifest = ({
     codesign: validateMacosEvidenceFile({
       role: 'macosCodesignEvidence',
       filePath: paths.macosCodesignPath,
+      displayPath: safeMacosCodesignPath,
       kind: 'codesign',
       requireSigned,
       fsImpl
@@ -379,6 +624,7 @@ const createReleaseEvidenceArchiveManifest = ({
     notarization: validateMacosEvidenceFile({
       role: 'macosNotarizationEvidence',
       filePath: paths.macosNotarizationPath,
+      displayPath: safeMacosNotarizationPath,
       kind: 'notarization',
       requireSigned,
       fsImpl
@@ -386,29 +632,53 @@ const createReleaseEvidenceArchiveManifest = ({
     gatekeeper: validateMacosEvidenceFile({
       role: 'macosGatekeeperEvidence',
       filePath: paths.macosGatekeeperPath,
+      displayPath: safeMacosGatekeeperPath,
       kind: 'gatekeeper',
       requireSigned,
       fsImpl
-    })
+    }),
+    artifactArchive: null
   }
+
+  const expectedMacosFilesByRole = {
+    macosCodesignEvidence: macos.codesign.file,
+    macosNotarizationEvidence: macos.notarization.file,
+    macosGatekeeperEvidence: macos.gatekeeper.file
+  }
+  macos.artifactArchive = validateMacosArtifactManifestFile({
+    role: 'macosReleaseEvidenceArtifactManifest',
+    filePath: paths.macosArtifactManifestPath,
+    displayPath: safeMacosArtifactManifestPath,
+    archiveDir: paths.archiveDir,
+    expectedFilesByRole: expectedMacosFilesByRole,
+    sanitize,
+    fsImpl
+  })
 
   const archives = {
     windowsSmoke: validateLinkedArchiveManifestFile({
       role: 'windowsSmokeArchiveManifest',
       filePath: paths.windowsSmokeArchiveManifestPath,
+      displayPath: safeWindowsSmokeArchiveManifestPath,
       reportFile: reports.windowsSmoke.file,
+      expectedReportPath: paths.windowsSmokeReportPath,
       reportRoleLabel: 'Windows smoke report',
       requireSigned,
+      sanitize,
       fsImpl
     }),
     desktopPicker: validateLinkedArchiveManifestFile({
       role: 'desktopPickerArchiveManifest',
       filePath: paths.desktopPickerArchiveManifestPath,
+      displayPath: safeDesktopPickerArchiveManifestPath,
       reportFile: reports.desktopPicker.file,
+      expectedReportPath: paths.desktopPickerReportPath,
       reportRoleLabel: 'desktop picker report',
       requireSigned,
+      sanitize,
       fsImpl
-    })
+    }),
+    macosArtifact: macos.artifactArchive
   }
 
   for (const section of [...Object.values(reports), ...Object.values(macos), ...Object.values(archives)]) {
@@ -424,13 +694,20 @@ const createReleaseEvidenceArchiveManifest = ({
     )
     const expectedPickerPath = path.resolve(paths.desktopPickerReportPath)
     if (linkedPickerPath && linkedPickerPath !== expectedPickerPath) {
-      errors.push(`packagedRuntimeReport links a different desktop picker report: ${linkedPickerPath}`)
+      const linkedPickerDisplayPath = createSafeArchiveFilePath({
+        filePath: linkedPickerPath,
+        archiveDir: paths.archiveDir,
+        fallback: DEFAULT_DESKTOP_PICKER_REPORT
+      })
+      errors.push(`packagedRuntimeReport links a different desktop picker report: ${linkedPickerDisplayPath}`)
     }
   }
 
-  const macosReady = Object.values(macos).every((section) => section.releaseReady)
+  const macosReady = [macos.codesign, macos.notarization, macos.gatekeeper].every((section) => section.releaseReady)
   const reportsReady = Object.values(reports).every((section) => section.releaseReady)
-  const archivesReady = Object.values(archives).every((section) => section.releaseReady)
+  const archivesReady = archives.windowsSmoke.releaseReady
+    && archives.desktopPicker.releaseReady
+    && (!archives.macosArtifact.file.exists || archives.macosArtifact.releaseReady)
   const releaseReady = requireSigned && errors.length === 0 && macosReady && reportsReady && archivesReady
 
   const manifest = {
@@ -439,8 +716,8 @@ const createReleaseEvidenceArchiveManifest = ({
     ok: errors.length === 0,
     releaseReady,
     archive: {
-      archiveDir: paths.archiveDir,
-      outputPath: paths.outputPath
+      archiveDir: safeArchiveDir,
+      outputPath: safeOutputPath
     },
     files: [
       reports.windowsSmoke.file,
@@ -450,13 +727,15 @@ const createReleaseEvidenceArchiveManifest = ({
       reports.packagedRuntime.file,
       macos.codesign.file,
       macos.notarization.file,
-      macos.gatekeeper.file
+      macos.gatekeeper.file,
+      macos.artifactArchive.file
     ],
     macos: {
       releaseReady: macosReady,
       codesign: { status: macos.codesign.status, file: macos.codesign.file },
       notarization: { status: macos.notarization.status, file: macos.notarization.file },
-      gatekeeper: { status: macos.gatekeeper.status, file: macos.gatekeeper.file }
+      gatekeeper: { status: macos.gatekeeper.status, file: macos.gatekeeper.file },
+      artifactArchive: macos.artifactArchive
     },
     reports: {
       releaseReady: reportsReady,
@@ -467,7 +746,8 @@ const createReleaseEvidenceArchiveManifest = ({
     archives: {
       releaseReady: archivesReady,
       windowsSmoke: archives.windowsSmoke,
-      desktopPicker: archives.desktopPicker
+      desktopPicker: archives.desktopPicker,
+      macosArtifact: archives.macosArtifact
     },
     errors,
     warnings

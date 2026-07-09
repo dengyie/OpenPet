@@ -7,6 +7,7 @@ const { REQUIRED_CHECKS } = require('./validate-desktop-picker-smoke-report')
 
 const DEFAULT_RELEASE_DIR = path.join(__dirname, '..', 'release')
 const DEFAULT_OUTPUT_PATH = path.join(DEFAULT_RELEASE_DIR, 'desktop-picker-smoke-report.json')
+const DEFAULT_RELEASE_DIR_LABEL = 'release'
 
 const usage = () => [
   'Usage: node scripts/create-desktop-picker-smoke-report.js [--platform <darwin|win32>] [--release-dir <dir>] [--output <report.json>] [--allow-any-platform]',
@@ -22,6 +23,20 @@ const createPendingChecks = () => REQUIRED_CHECKS.map((check) => ({
   notes: `${check.label}. Fill with evidence from a real packaged-app native picker smoke validation run.`
 }))
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
 const hasPlatformToken = (fileName, tokens) => {
   const lowerName = String(fileName || '').toLowerCase()
   return tokens.some((token) => new RegExp(`(^|[-_.\\s])${token}([-_.\\s]|$)`).test(lowerName))
@@ -29,6 +44,36 @@ const hasPlatformToken = (fileName, tokens) => {
 
 const hasMacToken = (fileName) => hasPlatformToken(fileName, ['darwin', 'mac', 'macos'])
 const hasWindowsToken = (fileName) => hasPlatformToken(fileName, ['win', 'win32', 'windows'])
+const normalizeArchToken = (value) => {
+  const token = String(value || '').toLowerCase()
+  if (token === 'x86_64') return 'x64'
+  if (token === 'aarch64') return 'arm64'
+  return token
+}
+
+const inferArchFromFileName = (fileName) => {
+  const match = String(fileName || '').toLowerCase().match(/(^|[-_.\/\s])(x64|arm64|aarch64|x86_64|ia32)(?=$|[-_.\/\s])/)
+  return match ? normalizeArchToken(match[2]) : ''
+}
+
+const inferArtifactArch = ({ artifact, files }) => {
+  const candidates = [
+    artifact?.appPath,
+    artifact?.installer,
+    artifact?.zip,
+    artifact?.latestYml,
+    ...(artifact?.blockmaps || []),
+    ...(artifact?.files || []).map((file) => file?.name),
+    ...(files || [])
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    const inferred = inferArchFromFileName(candidate)
+    if (inferred) return inferred
+  }
+
+  return ''
+}
 
 const listReleaseFiles = (releaseDir, fsImpl = fs) => {
   if (!fsImpl.existsSync(releaseDir)) return []
@@ -177,10 +222,11 @@ const createDesktopPickerSmokeReport = ({
   const artifact = pickArtifacts({ releaseDir: absoluteReleaseDir, platform, files, fsImpl })
   const packageJson = JSON.parse(fsImpl.readFileSync(packageJsonPath, 'utf-8'))
   const signature = getSignatureEvidence({ releaseDir: absoluteReleaseDir, platform, artifact, execFile })
+  const resolvedArch = inferArtifactArch({ artifact, files }) || arch
 
   return {
     platform,
-    arch,
+    arch: resolvedArch,
     generatedAt: now().toISOString(),
     source: 'scripts/create-desktop-picker-smoke-report.js',
     environment: {
@@ -191,7 +237,7 @@ const createDesktopPickerSmokeReport = ({
     },
     artifact: {
       version: packageJson.version || '',
-      releaseDir: absoluteReleaseDir,
+      releaseDir: createSafeProjectPath(absoluteReleaseDir, DEFAULT_RELEASE_DIR_LABEL),
       ...artifact,
       ...signature
     },

@@ -2,6 +2,9 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  createAiBehaviorConfigView,
+  createAiBehaviorDecisionListView,
+  createAiBehaviorResultView,
   createAiConfigView,
   createAiMemoryProfileView,
   createAiPersonaDraftView,
@@ -17,7 +20,12 @@ const {
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 } = require('../../src/main/control-center-adapters')
@@ -39,6 +47,24 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       decisions: ['bad'],
       internal: 'ignore-me'
     },
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: 99,
+      model: 'gpt-4.1-mini',
+      apiKeyRef: null,
+      hasApiKey: 1,
+      modelCatalog: {
+        cacheKey: 'vision-cache',
+        models: ['gpt-4.1-mini', 42],
+        fetchedAt: '2026-07-04T08:00:00.000Z',
+        source: 'saved'
+      },
+      effectiveProvider: 'openai-compatible',
+      effectiveBaseUrl: 'https://vision.example.test/v1',
+      effectiveModel: 'gpt-4.1-mini',
+      effectiveHasApiKey: 'yes'
+    },
     hasApiKey: 'yes',
     secretValue: 'sk-hidden'
   }), {
@@ -56,8 +82,206 @@ test('createAiConfigView normalizes AI config payloads for Control Center', () =
       rules: [{ id: 'rule-1' }],
       decisions: [],
     },
-    hasApiKey: true
+    vision: {
+      mode: 'override',
+      provider: 'openai-compatible',
+      baseUrl: '',
+      model: 'gpt-4.1-mini',
+      apiKeyRef: '',
+      hasApiKey: true,
+      modelCatalog: {
+        cacheKey: 'vision-cache',
+        models: ['gpt-4.1-mini'],
+        fetchedAt: '2026-07-04T08:00:00.000Z',
+        source: 'saved'
+      },
+      effectiveProvider: 'openai-compatible',
+      effectiveBaseUrl: 'https://vision.example.test/v1',
+      effectiveModel: 'gpt-4.1-mini',
+      effectiveHasApiKey: true
+    },
+    hasApiKey: true,
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
+})
+
+test('AI behavior adapters normalize config, decisions, and results for Control Center', () => {
+  assert.equal(createAiBehaviorConfigView({}).useTools, true)
+
+  const config = createAiBehaviorConfigView({
+    enabled: 1,
+    useTools: false,
+    cooldownMs: '2500',
+    rules: [{
+      id: '',
+      enabled: false,
+      priority: '7',
+      when: {
+        intent: 'wave',
+        minConfidence: '0.6',
+        contains: ['hello', 42],
+        actionKind: 'gesture',
+        raw: 'ignore-me'
+      },
+      then: {
+        type: 'playAction',
+        text: 99,
+        actionId: 'wave',
+        event: null,
+        message: 'ok',
+        internal: 'ignore-me'
+      },
+      serviceOnly: 'ignore-me'
+    }, 'bad-rule'],
+    decisions: [{
+      id: '9',
+      timestamp: '2026-07-07T00:00:00.000Z',
+      matched: 1,
+      type: 'playAction',
+      ruleId: 'rule-wave',
+      reason: 'matched',
+      actionId: 'wave',
+      label: 7,
+      kind: 'gesture',
+      event: null,
+      intent: 'wave',
+      providerReason: 42,
+      displayMode: 'bubble',
+      inputSummary: 'reply:5 chars',
+      cooldown: '',
+      fallback: 'yes',
+      blockedReason: null,
+      replay: {
+        reply: 'hello',
+        behaviorIntent: {
+          intent: 'wave',
+          actionId: 'wave',
+          bubbleText: 'hi',
+          confidence: '0.75',
+          reason: 'provider says wave',
+          displayMode: 'bubble',
+          secretValue: 'sk-hidden'
+        },
+        rawProviderPayload: 'ignore-me'
+      },
+      rawProviderPayload: 'ignore-me'
+    }],
+    secretValue: 'sk-hidden'
+  })
+
+  assert.deepEqual(config, {
+    enabled: true,
+    useTools: false,
+    cooldownMs: 2500,
+    rules: [{
+      id: 'rule-1',
+      enabled: false,
+      priority: 7,
+      when: {
+        intent: 'wave',
+        minConfidence: 0.6,
+        contains: ['hello'],
+        actionKind: 'gesture'
+      },
+      then: {
+        type: 'playAction',
+        text: '',
+        actionId: 'wave',
+        event: '',
+        message: 'ok'
+      }
+    }],
+    decisions: [{
+      id: 9,
+      timestamp: '2026-07-07T00:00:00.000Z',
+      matched: true,
+      type: 'playAction',
+      ruleId: 'rule-wave',
+      reason: 'matched',
+      actionId: 'wave',
+      label: '',
+      kind: 'gesture',
+      event: '',
+      intent: 'wave',
+      displayMode: 'bubble',
+      inputSummary: 'reply:5 chars',
+      cooldown: false,
+      fallback: true,
+      blockedReason: '',
+      replay: {
+        reply: 'hello',
+        behaviorIntent: {
+          intent: 'wave',
+          actionId: 'wave',
+          bubbleText: 'hi',
+          confidence: 0.75,
+          reason: 'provider says wave',
+          displayMode: 'bubble'
+        }
+      }
+    }]
+  })
+
+  assert.deepEqual(createAiBehaviorResultView({
+    matched: 1,
+    reason: 'matched',
+    type: 'playAction',
+    ruleId: 8,
+    actionId: 'wave',
+    label: 'Wave',
+    kind: null,
+    event: 'done',
+    intent: 'wave',
+    providerReason: 7,
+    displayMode: 'action',
+    cooldown: '',
+    fallback: 'yes',
+    blockedReason: null,
+    replayOf: '9',
+    raw: 'ignore-me'
+  }), {
+    matched: true,
+    reason: 'matched',
+    type: 'playAction',
+    ruleId: '',
+    actionId: 'wave',
+    label: 'Wave',
+    kind: '',
+    event: 'done',
+    intent: 'wave',
+    displayMode: 'action',
+    cooldown: false,
+    fallback: true,
+    blockedReason: '',
+    replayOf: 9
+  })
+
+  assert.deepEqual(createAiBehaviorDecisionListView([{ id: '2', matched: 0, reason: 'cleared' }, 'bad']), [{
+    id: 2,
+    timestamp: '',
+    matched: false,
+    type: '',
+    ruleId: '',
+    reason: 'cleared',
+    actionId: '',
+    label: '',
+    kind: '',
+    event: '',
+    intent: '',
+    inputSummary: '',
+    cooldown: false,
+    fallback: false,
+    blockedReason: '',
+    replay: {
+      reply: '',
+      behaviorIntent: null
+    }
+  }])
 })
 
 test('AI talk persona adapters normalize payloads for Control Center', () => {
@@ -239,7 +463,13 @@ test('image generation adapters normalize provider payloads for Control Center',
     maxConcurrentJobs: 2,
     hasApiKey: true,
     apiKeyPreview: '',
-    apiKeyLabel: 'Image API Key'
+    apiKeyLabel: 'Image API Key',
+    modelCatalog: {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
   })
 
   assert.deepEqual(createImageGenerationApiKeyResult({
@@ -273,6 +503,24 @@ test('image generation adapters normalize provider payloads for Control Center',
     availableModels: ['gpt-image-2'],
     currentModelDiscovered: true,
     usage: { estimatedCostUsd: 0.02 }
+  })
+
+  assert.deepEqual(createImageGenerationHealthCheckResult({
+    ok: false,
+    provider: 'openai-compatible',
+    code: 'provider_unhealthy',
+    message: 'Image Provider health check timed out after 25000ms',
+    modelsProbe: 'timed_out',
+    availableModels: [],
+    currentModelDiscovered: false
+  }), {
+    ok: false,
+    provider: 'openai-compatible',
+    code: 'provider_unhealthy',
+    message: 'Image Provider health check timed out after 25000ms',
+    modelsProbe: 'timed_out',
+    availableModels: [],
+    currentModelDiscovered: false
   })
 })
 
@@ -635,6 +883,418 @@ test('createPluginMutationResult normalizes plugin view payloads for Control Cen
       },
       blockStatus: { blocked: false, reasons: [] }
     }]
+  })
+})
+
+test('createPluginViewState normalizes native execution and runtime metadata', () => {
+  assert.deepEqual(createPluginViewState({
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    profile: 'hybrid',
+    source: 'local',
+    enabled: 1,
+    runnable: 'yes',
+    requiresNativeExecution: 1,
+    nativeExecutionApproved: 'yes',
+    permissions: ['pet:say', 42],
+    commands: [
+      { id: 'announce', title: 'Announce', internal: 'ignore-me' },
+      { title: 'missing-id' }
+    ],
+    entries: {
+      setup: [
+        {
+          id: 'install-deps',
+          title: 'Install deps',
+          command: 'npm install',
+          cwd: '/tmp/demo',
+          runtime: {
+            status: 'succeeded',
+            lastRunAt: 42,
+            exitCode: '0',
+            error: null,
+            internal: 'ignore-me'
+          }
+        },
+        { title: 'missing-id' }
+      ],
+      commands: [
+        {
+          id: 'announce',
+          title: 'Announce',
+          command: 'node cli.js',
+          cwd: '/repo/demo',
+          timeoutMs: '5000',
+          hiddenEnv: 'ignore-me'
+        },
+        { title: 'missing-id' }
+      ],
+      services: [
+        {
+          id: 'companion',
+          title: 'Companion',
+          command: 'node service.js',
+          cwd: '/repo/demo',
+          platforms: {
+            darwin: { command: 'npm run mac', cwd: '/repo/mac' },
+            linux: { command: 7, cwd: null }
+          },
+          health: {
+            type: 'http',
+            url: 'http://127.0.0.1:8787/health',
+            internal: 'ignore-me'
+          },
+          healthPolicy: {
+            enabled: 1,
+            intervalMs: '30000',
+            internal: 'ignore-me'
+          },
+          runtime: {
+            status: 'running',
+            pid: '4321',
+            startedAt: 99,
+            stoppedAt: null,
+            command: 'node service.js',
+            cwd: '/repo/demo',
+            exitCode: '0',
+            signal: 9,
+            error: null,
+            health: {
+              status: 'healthy',
+              checkedAt: 10,
+              url: 'http://127.0.0.1:8787/health',
+              statusCode: '200',
+              message: 7,
+              internal: 'ignore-me'
+            }
+          }
+        },
+        { title: 'missing-id' }
+      ],
+      dashboards: [
+        { id: 'main', title: 'Main Dashboard', url: 'http://127.0.0.1:8787', internal: 'ignore-me' },
+        { title: 'missing-id' }
+      ]
+    },
+    configSchema: { properties: [] },
+    config: { tone: 'soft', retry: 2, hidden: () => 'ignore-me' },
+    storage: { keyCount: '2', byteSize: '512' },
+    signatureStatus: { label: 'Unsigned' },
+    privateRuntime: { pid: 99 }
+  }), {
+    id: 'openpet.demo',
+    name: 'Demo',
+    version: '1.0.0',
+    profile: 'hybrid',
+    source: 'local',
+    enabled: true,
+    runnable: true,
+    requiresNativeExecution: true,
+    nativeExecutionApproved: true,
+    permissions: ['pet:say'],
+    commands: [
+      { id: 'announce', title: 'Announce' }
+    ],
+    entries: {
+      setup: [
+        {
+          id: 'install-deps',
+          title: 'Install deps',
+          command: 'npm install',
+          cwd: '/tmp/demo',
+          runtime: {
+            status: 'succeeded',
+            lastRunAt: '',
+            exitCode: 0,
+            error: ''
+          }
+        }
+      ],
+      commands: [
+        {
+          id: 'announce',
+          title: 'Announce',
+          command: 'node cli.js',
+          cwd: '/repo/demo',
+          timeoutMs: 5000
+        }
+      ],
+      services: [
+        {
+          id: 'companion',
+          title: 'Companion',
+          command: 'node service.js',
+          cwd: '/repo/demo',
+          platforms: {
+            darwin: { command: 'npm run mac', cwd: '/repo/mac' }
+          },
+          health: {
+            type: 'http',
+            url: 'http://127.0.0.1:8787/health'
+          },
+          healthPolicy: {
+            enabled: true,
+            intervalMs: 30000
+          },
+          runtime: {
+            status: 'running',
+            pid: 4321,
+            startedAt: '',
+            stoppedAt: '',
+            command: 'node service.js',
+            cwd: '/repo/demo',
+            exitCode: 0,
+            signal: '',
+            error: '',
+            health: {
+              status: 'healthy',
+              checkedAt: '',
+              url: 'http://127.0.0.1:8787/health',
+              statusCode: 200,
+              message: ''
+            }
+          }
+        }
+      ],
+      dashboards: [
+        { id: 'main', title: 'Main Dashboard', url: 'http://127.0.0.1:8787' }
+      ]
+    },
+    configSchema: { properties: [] },
+    config: { tone: 'soft', retry: 2 },
+    storage: { keyCount: 2, byteSize: 512 },
+    signatureStatus: {
+      status: '',
+      label: 'Unsigned',
+      signer: '',
+      algorithm: '',
+      verified: false,
+      errors: []
+    }
+  })
+})
+
+test('plugin runtime result adapters normalize command, setup, and service payloads', () => {
+  assert.deepEqual(createPluginCommandRunResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: '0',
+    stdout: ['bad'],
+    stderr: null,
+    result: { ok: true, nested: ['safe'], hidden: () => 'ignore-me' }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    result: { ok: true, nested: ['safe'] }
+  })
+
+  assert.deepEqual(createPluginCommandRunResult({
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'import-approved-action',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: 'Imported action shy-spin from run run-demo-action-123',
+      run: {
+        runId: 'run-demo-action-123',
+        status: 'imported',
+        currentStep: 'imported',
+        importedActionId: 'shy-spin',
+        artifacts: {
+          actionFrames: {
+            framesDir: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin',
+            pipeline: {
+              paths: {
+                manifest: {
+                  bundle: '/tmp/openpet/runs/run-demo-action-123/outputs/shy-spin.openpet-action.zip'
+                }
+              }
+            }
+          }
+        }
+      },
+      triggerProposalSubmission: {
+        ok: true,
+        proposal: {
+          id: 'proposal:click:shy-spin:test'
+        }
+      },
+      hiddenCallback: () => 'ignore-me'
+    }
+  }), {
+    ok: true,
+    pluginId: 'openpet.creator-studio',
+    commandId: 'import-approved-action',
+    exitCode: 0,
+    result: {
+      ok: true,
+      message: 'Imported action shy-spin from run run-demo-action-123',
+      run: {
+        runId: 'run-demo-action-123',
+        status: 'imported',
+        currentStep: 'imported',
+        importedActionId: 'shy-spin',
+        artifacts: {
+          actionFrames: {
+            framesDir: '/tmp/openpet/runs/run-demo-action-123/frames/actions/shy-spin',
+            pipeline: {
+              paths: {
+                manifest: {
+                  bundle: '/tmp/openpet/runs/run-demo-action-123/outputs/shy-spin.openpet-action.zip'
+                }
+              }
+            }
+          }
+        }
+      },
+      triggerProposalSubmission: {
+        ok: true,
+        proposal: {
+          id: 'proposal:click:shy-spin:test'
+        }
+      }
+    }
+  })
+
+  assert.deepEqual(createPluginSetupRunResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: {
+      status: 'bad',
+      lastRunAt: 9,
+      exitCode: '0',
+      error: 7
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    setupId: 'install-deps',
+    runtime: {
+      status: 'not-run',
+      lastRunAt: '',
+      exitCode: 0,
+      error: ''
+    }
+  })
+
+  assert.deepEqual(createPluginServiceControlResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: {
+      status: 'running',
+      pid: '4321',
+      startedAt: 9,
+      stoppedAt: null,
+      command: 'node service.js',
+      cwd: '/repo/demo',
+      exitCode: '0',
+      signal: 7,
+      error: null,
+      health: {
+        status: 'healthy',
+        checkedAt: 10,
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: '200',
+        message: 9
+      }
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    runtime: {
+      status: 'running',
+      pid: 4321,
+      startedAt: '',
+      stoppedAt: '',
+      command: 'node service.js',
+      cwd: '/repo/demo',
+      exitCode: 0,
+      signal: '',
+      error: '',
+      health: {
+        status: 'healthy',
+        checkedAt: '',
+        url: 'http://127.0.0.1:8787/health',
+        statusCode: 200,
+        message: ''
+      }
+    }
+  })
+
+  assert.deepEqual(createPluginServiceHealthCheckResult({
+    ok: 1,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: {
+      status: 'bad',
+      checkedAt: 10,
+      url: 'http://127.0.0.1:8787/health',
+      statusCode: '503',
+      message: 7,
+      details: [
+        { label: 'Usage Tokens', value: '1,500' },
+        { label: 'Secret token=bridge-secret', value: 'token=bridge-secret /Users/mango/private/file.txt' },
+        { label: 'Empty Value', value: '' },
+        { label: 42, value: 'ignored' }
+      ]
+    },
+    runtime: {
+      status: 'failed',
+      error: 'Exited',
+      health: {
+        status: 'unhealthy',
+        statusCode: '503',
+        details: [
+          { label: 'Observed Events', value: '1,250' }
+        ]
+      }
+    }
+  }), {
+    ok: true,
+    pluginId: 'weather-declaration',
+    serviceId: 'companion',
+    health: {
+      status: 'unknown',
+      checkedAt: '',
+      url: 'http://127.0.0.1:8787/health',
+      statusCode: 503,
+      message: '',
+      details: [
+        { label: 'Usage Tokens', value: '1,500' },
+        { label: 'Secret [redacted-token]=[redacted-secret]', value: '[redacted-token]=[redacted-secret] [redacted-path]' }
+      ]
+    },
+    runtime: {
+      status: 'failed',
+      pid: 0,
+      startedAt: '',
+      stoppedAt: '',
+      command: '',
+      cwd: '',
+      exitCode: null,
+      signal: '',
+      error: 'Exited',
+      health: {
+        status: 'unhealthy',
+        checkedAt: '',
+        url: '',
+        statusCode: 503,
+        message: '',
+        details: [
+          { label: 'Observed Events', value: '1,250' }
+        ]
+      }
+    }
   })
 })
 

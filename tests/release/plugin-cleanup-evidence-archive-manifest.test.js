@@ -129,6 +129,26 @@ test('createPluginCleanupEvidenceArchiveManifest records a complete pending arch
   assert.match(manifest.warnings.join('\n'), /does not prove plugin cleanup readiness/)
 })
 
+test('createPluginCleanupEvidenceArchiveManifest stores archive-safe relative paths in its contract', () => {
+  const { archiveDir } = createArchive()
+
+  const manifest = createPluginCleanupEvidenceArchiveManifest({ archiveDir, now: fixedNow })
+
+  assert.equal(path.isAbsolute(manifest.archive.archiveDir), false)
+  assert.equal(path.isAbsolute(manifest.archive.outputPath), false)
+  assert.equal(path.isAbsolute(manifest.report.path), false)
+  assert.equal(path.isAbsolute(manifest.collector.path), false)
+  assert.equal(path.isAbsolute(manifest.evidence.evidenceDir), false)
+  assert.deepEqual(
+    manifest.files.map((file) => file.path),
+    [
+      'plugin-cleanup-evidence-report.json',
+      'plugin-cleanup-evidence-collector.sh'
+    ]
+  )
+  assert.ok(manifest.evidence.files.every((file) => file.path.startsWith('plugin-cleanup-evidence-collected/')))
+})
+
 test('createPluginCleanupEvidenceArchiveManifest fails when required evidence files are missing', () => {
   const { archiveDir, evidenceDir } = createArchive()
   fs.unlinkSync(path.join(evidenceDir, 'manual-checks.md'))
@@ -208,5 +228,7 @@ test('writeManifest writes a pretty JSON plugin cleanup archive manifest', () =>
   const manifest = createPluginCleanupEvidenceArchiveManifest({ archiveDir, outputPath, now: fixedNow })
 
   assert.equal(writeManifest({ manifest, outputPath }), outputPath)
-  assert.equal(JSON.parse(fs.readFileSync(outputPath, 'utf-8')).cleanupReady, false)
+  const written = JSON.parse(fs.readFileSync(outputPath, 'utf-8'))
+  assert.equal(written.cleanupReady, false)
+  assert.equal(written.archive.outputPath, 'plugin-cleanup-evidence-archive/manifest/plugin-cleanup-evidence-archive-manifest.json')
 })

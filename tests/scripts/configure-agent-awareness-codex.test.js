@@ -124,6 +124,7 @@ test('configureCodexAgentAwareness writes token, hook sender, hooks.json, and ba
   assert.equal(fs.existsSync(result.tokenPath), true)
   assert.equal(fs.existsSync(result.instructionsPath), true)
   assert.equal(fs.existsSync(result.hookScriptPath), true)
+  assert.equal(fs.existsSync(path.join(dataDir, 'hook-install-state.json')), true)
   assert.equal(fs.existsSync(result.backupPath), true)
   assert.equal(script.includes(fs.readFileSync(result.tokenPath, 'utf-8').trim()), false)
   assert.equal(JSON.stringify(hooksConfig).includes(fs.readFileSync(result.tokenPath, 'utf-8').trim()), false)
@@ -131,6 +132,7 @@ test('configureCodexAgentAwareness writes token, hook sender, hooks.json, and ba
   assert.equal(result.serviceUrl, 'http://127.0.0.1:8796/api/events')
   assert.match(hooksConfig.hooks.SessionStart.at(-1).matcher, /startup/)
   assert.equal(hooksConfig.hooks.UserPromptSubmit.at(-1).matcher, undefined)
+  assert.equal(result.statePath, path.join(dataDir, 'hook-install-state.json'))
 })
 
 test('configureCodexAgentAwareness is idempotent after initial write', () => {

@@ -141,6 +141,7 @@ const createPluginRuntimeBridgeServer = ({
       }
 
       const nextServer = createServer(handleRequest)
+      nextServer.requestTimeout = 0
       server = nextServer
 
       await new Promise((resolve, reject) => {

@@ -2,6 +2,7 @@ import type {
   JsonValue,
   PaginatedLogsViewState,
   PermissionDiffState,
+  PluginDashboardOpenOptions,
   PluginLogEntry,
   PluginLogFilters,
   PluginPackageReviewViewState,
@@ -70,7 +71,7 @@ export interface PluginsPaneProps {
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
   onRunCreatorStudioDefaultFlow: () => void | Promise<void>
   onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>
-  onOpenDashboard: (pluginId: string, dashboardId: string) => void | Promise<void>
+  onOpenDashboard: (pluginId: string, dashboardId: string, options?: PluginDashboardOpenOptions) => void | Promise<void>
   onStartService: (pluginId: string, serviceId: string) => void | Promise<void>
   onStopService: (pluginId: string, serviceId: string) => void | Promise<void>
   onCheckServiceHealth: (pluginId: string, serviceId: string) => void | Promise<void>
@@ -341,6 +342,17 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     const serviceKey = `${plugin.id}:${service.id}`
                     const runtimeStatus = service.runtime?.status || 'stopped'
                     const healthStatus = service.runtime?.health?.status || (service.health?.url ? 'unknown' : 'not-configured')
+                    const healthMessage = typeof service.runtime?.health?.message === 'string' ? service.runtime.health.message : ''
+                    const healthDetails = plugin.id === 'openpet.agent-awareness' && service.id === 'agent-awareness' && Array.isArray(service.runtime?.health?.details)
+                      ? service.runtime.health.details.filter((detail) => typeof detail.label === 'string' && typeof detail.value === 'string')
+                      : []
+                    const healthNoteTone = healthStatus === 'healthy'
+                      ? 'success'
+                      : healthStatus === 'unhealthy'
+                        ? 'danger'
+                        : healthStatus === 'checking'
+                          ? 'info'
+                          : 'neutral'
                     const policy = service.healthPolicy || { enabled: false, intervalMs: 30000 }
                     const policyEnabled = Boolean(policy.enabled)
                     const running = runtimeStatus === 'running'
@@ -351,6 +363,20 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       <div className="plugin-service-control" key={service.id}>
                         <span>Service status: {runtimeStatus}{service.runtime?.pid ? ` · pid ${service.runtime.pid}` : ''}</span>
                         <span>Health: {healthStatus}</span>
+                        {healthMessage ? <span className={`plugin-service-note plugin-service-note-${healthNoteTone}`}>Health note: {healthMessage}</span> : null}
+                        {healthDetails.length ? (
+                          <div className="agent-awareness-health-details" aria-label="Agent Awareness 原生详情">
+                            <strong>Agent Awareness 原生详情</strong>
+                            <dl>
+                              {healthDetails.map((detail) => (
+                                <div key={`${detail.label}:${detail.value}`}>
+                                  <dt>{detail.label}</dt>
+                                  <dd>{detail.value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           className="ghost"
@@ -471,6 +497,24 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     </button>
                   </div>
                   <div className="field-note">高级入口：查看任务详情 / 手动逐步执行</div>
+                </div>
+              ) : null}
+              {plugin.id === 'openpet.agent-awareness' ? (
+                <div className="plugin-config-panel" aria-label="Agent Awareness 详情入口">
+                  <div className="plugin-config-header">
+                    <strong>Codex Awareness</strong>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || openingDashboard === `${plugin.id}:main`}
+                      onClick={() => onOpenDashboard(plugin.id, 'main', { query: { view: 'details' } })}
+                    >
+                      查看 Codex 详情
+                    </button>
+                  </div>
+                  <div className="field-note">
+                    快速入口会复用 Agent Awareness dashboard，并直接打开当前 Codex 详情视图。
+                  </div>
                 </div>
               ) : null}
               {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (

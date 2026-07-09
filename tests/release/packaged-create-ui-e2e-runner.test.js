@@ -133,3 +133,68 @@ test('createPackagedCreateUiSmokeRun preserves orchestration failures in summary
   assert.match(result.errors.join('\n'), /timed out waiting for packaged create ui smoke evidence/)
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-create-ui-smoke-summary.json')), true)
 })
+
+test('createPackagedCreateUiSmokeRun accepts a provider-ready packaged create state without treating it as a gating failure', async () => {
+  const archiveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-create-ui-provider-ready-'))
+
+  const result = await createPackagedCreateUiSmokeRun({
+    appPath: '/Applications/OpenPet.app',
+    archiveDir,
+    now: () => new Date('2026-07-06T13:00:00.000Z'),
+    orchestratePackagedAppImpl: ({ archiveDir: runArchiveDir }) => {
+      const runtimeArtifactPath = path.join(runArchiveDir, 'packaged-create-ui-smoke.json')
+      const stdoutPath = path.join(runArchiveDir, 'packaged-create-ui-smoke-stdout.txt')
+      const stderrPath = path.join(runArchiveDir, 'packaged-create-ui-smoke-stderr.txt')
+      const runtimeArtifact = {
+        schemaVersion: 1,
+        generatedAt: '2026-07-06T13:00:00.000Z',
+        hostApp: 'OpenPet.app',
+        controlCenter: {
+          opened: true,
+          createTabActivated: true,
+          pluginsTabActivated: true
+        },
+        initialCreate: {
+          visible: true,
+          providerReady: true,
+          providerText: 'Image Provider ready',
+          providerCode: 'provider_healthy',
+          providerModel: 'gpt-image-2',
+          creatorStudioReady: false,
+          creatorStudioText: 'Creator Studio not ready',
+          generateButtonDisabled: true
+        },
+        afterStudioStart: {
+          pluginEnabled: true,
+          serviceStarted: true,
+          visible: true,
+          providerReady: true,
+          providerText: 'Image Provider ready',
+          providerCode: 'provider_healthy',
+          providerModel: 'gpt-image-2',
+          creatorStudioReady: true,
+          creatorStudioText: '',
+          generateButtonDisabled: false
+        }
+      }
+      fs.writeFileSync(runtimeArtifactPath, `${JSON.stringify(runtimeArtifact, null, 2)}\n`)
+      fs.writeFileSync(stdoutPath, 'packaged create ui smoke completed\n')
+      fs.writeFileSync(stderrPath, '')
+      return {
+        runtimeArtifact,
+        runtimeArtifactPath,
+        stdoutPath,
+        stderrPath,
+        userDataDir: path.join(runArchiveDir, 'user-data-provider-ready'),
+        errors: []
+      }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.summary.controlCenterReady, true)
+  assert.equal(result.summary.initialGatingOk, true)
+  assert.equal(result.summary.studioActivationOk, true)
+  assert.equal(result.summary.providerReadyAfterStudioStart, true)
+  assert.equal(result.summary.providerStateTruthful, true)
+})

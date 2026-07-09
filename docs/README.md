@@ -1,6 +1,8 @@
 # OpenPet Documentation Map
 
-This is the maintainer entry point for project documentation. The goal is to keep a small set of live operating docs current and treat the rest of `docs/` as background or audit history.
+This is the maintainer entry point for project documentation. It answers: Where should I read next?
+
+The goal is to keep a small set of live operating docs current and treat the rest of `docs/` as background or audit history.
 
 ## Current Docs
 
@@ -11,17 +13,21 @@ This is the maintainer entry point for project documentation. The goal is to kee
 | Single active work queue | [`TODO.md`](./TODO.md) |
 | Local development workflow | [`development-workflow.md`](./development-workflow.md) |
 | Test scope and merge-time validation | [`testing-strategy.md`](./testing-strategy.md) |
+| Release evidence index | [`release-evidence/README.md`](./release-evidence/README.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
 | Compact product and release snapshot | [`project-status-review.md`](./project-status-review.md) |
+
+Use the live docs above for current truth. Phase, review, and old Superpowers plan/spec files are audit records unless this map explicitly lists them as active runbooks.
 
 ## Product Areas
 
 | Area | Canonical docs |
 | --- | --- |
-| Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md) |
+| Agent Awareness current program | [`agent-awareness-development-design.md`](./agent-awareness-development-design.md), [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md), [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) |
+| Agent Awareness implementation history | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md), [`superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](./superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md), [`superpowers/plans/2026-07-07-agent-awareness-visible-info-foundation.md`](./superpowers/plans/2026-07-07-agent-awareness-visible-info-foundation.md), [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md), [`phases/phase-107-agent-awareness-bundled-plugin.md`](./phases/phase-107-agent-awareness-bundled-plugin.md), [`reviews/phase-107-agent-awareness-bundled-plugin-review.md`](./reviews/phase-107-agent-awareness-bundled-plugin-review.md) |
+| Extension authoring and ecosystem rules | [`plugin-development.md`](./plugin-development.md), [`plugin-ecosystem-rules.md`](./plugin-ecosystem-rules.md), [`plugin-submission-workflow-playbook.md`](./plugin-submission-workflow-playbook.md), [`phases/phase-104-plugin-community-source-discovery-report.md`](./phases/phase-104-plugin-community-source-discovery-report.md), [`phases/phase-105-plugin-community-source-invitation-kit.md`](./phases/phase-105-plugin-community-source-invitation-kit.md) |
 | Plugin sandbox posture | [`plugin-sandbox-evaluation.md`](./plugin-sandbox-evaluation.md) |
-| Agent awareness plugin | [`agent-awareness-plugin-design.md`](./agent-awareness-plugin-design.md) |
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
 | AI Talk and pet dialogue | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md), [`superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md`](./superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md), [`superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md`](./superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md) |
 | Control Center visual design notes | [`design-system/cursor-settings.md`](./design-system/cursor-settings.md) |
@@ -45,7 +51,7 @@ This is the maintainer entry point for project documentation. The goal is to kee
 - [`archive/`](./archive/) stores superseded one-off root-level reports and status snapshots.
 - [`phases/`](./phases/) records what each phase delivered.
 - [`reviews/`](./reviews/) records production review notes for completed phase work.
-- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports.
+- [`release-evidence/`](./release-evidence/) stores archived evidence artifacts and reports, including provider smoke archives under `ai-provider-smoke/`, Bubble Chat acceptance archives under `ai-talk-local-smoke/`, `agent-awareness-local-smoke/`, and `creator-studio-provider-smoke/`, public release metadata snapshots under `release-public-assets/`, macOS public-asset checks under `macos-release-evidence/`, authenticated macOS workflow-artifact imports under `macos-release-evidence-archive/`, Windows smoke artifact imports under `windows-smoke/`, community-source discovery archives under `plugin-community-source-discovery-report/`, invitation drafts under `plugin-community-source-invitation-kit/`, packaged runtime smoke archives under `packaged-runtime/`, and release-claim closure archives under `signed-release-closure/`.
 - [`release-notes/`](./release-notes/) stores GitHub Release body drafts.
 - [`superpowers/plans/`](./superpowers/plans/) and [`superpowers/specs/`](./superpowers/specs/) preserve implementation plans and design notes.
 

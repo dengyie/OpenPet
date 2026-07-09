@@ -1,6 +1,7 @@
 const path = require('path')
 const electron = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { PET_VIEWPORT } = require('./window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_BUBBLE_WIDTH = 340
@@ -9,7 +10,12 @@ const MIN_BUBBLE_HEIGHT = 176
 const MIN_BUBBLE_WIDTH = 240
 const MAX_BUBBLE_WIDTH = 380
 const MAX_BUBBLE_HEIGHT = 360
-const BUBBLE_GAP = 8
+const BUBBLE_GAP_ABOVE = 2
+const BUBBLE_GAP_BELOW = 8
+const BUBBLE_GAP_SIDE = 4
+const BUBBLE_HEAD_ANCHOR_RATIO_X = 0.5
+const BUBBLE_SIDE_ANCHOR_RATIO_Y = 0.3
+const BUBBLE_SIDE_WINDOW_OFFSET_RATIO_Y = 0.42
 const WORK_AREA_MARGIN = 8
 const MIN_TTL_MS = 6000
 const MAX_TTL_MS = 30000
@@ -25,6 +31,7 @@ const BUBBLE_ANCHOR_MODE = Object.freeze({
   ANCHORED: 'anchored',
   DETACHED_TEMPORARY: 'detached-temporary'
 })
+const BUBBLE_ANCHOR_PROFILE = 'tight-head-anchor-v1'
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -75,6 +82,40 @@ const getWorkAreaForPetBounds = (screenService, petBounds) => {
   return display?.workArea || fallback
 }
 
+const getPetVisibleBounds = (petWindow) => {
+  if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return null
+  const bounds = normalizePetBounds(petWindow.getBounds())
+  if (!bounds) return null
+  const viewport = petWindow[PET_VIEWPORT] || petWindow.__openPetViewport
+  const topInset = Math.max(0, Math.round(Number(viewport?.topInset) || 0))
+  if (!topInset || topInset >= bounds.height) return bounds
+  return {
+    ...bounds,
+    y: bounds.y + topInset,
+    height: Math.max(1, bounds.height - topInset)
+  }
+}
+
+const getPetAnchorDetails = (petWindow) => {
+  if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return {}
+  const rawBounds = normalizePetBounds(petWindow.getBounds())
+  if (!rawBounds) return {}
+  const viewport = petWindow[PET_VIEWPORT] || petWindow.__openPetViewport
+  const topInset = Math.max(0, Math.round(Number(viewport?.topInset) || 0))
+  const visibleBounds = getPetVisibleBounds(petWindow)
+  return {
+    petWindowX: rawBounds.x,
+    petWindowY: rawBounds.y,
+    petWindowWidth: rawBounds.width,
+    petWindowHeight: rawBounds.height,
+    petViewportTopInset: topInset,
+    petVisibleX: visibleBounds?.x ?? rawBounds.x,
+    petVisibleY: visibleBounds?.y ?? rawBounds.y,
+    petVisibleWidth: visibleBounds?.width ?? rawBounds.width,
+    petVisibleHeight: visibleBounds?.height ?? rawBounds.height
+  }
+}
+
 const clampBubbleWindowPosition = ({ bounds, workArea } = {}) => {
   const area = workArea || { x: 0, y: 0, width: 1440, height: 900 }
   const width = Math.round(clamp(Number(bounds?.width) || DEFAULT_BUBBLE_WIDTH, MIN_BUBBLE_WIDTH, Math.max(MIN_BUBBLE_WIDTH, area.width - WORK_AREA_MARGIN * 2)))
@@ -105,19 +146,20 @@ const resolveBubbleBounds = ({ petBounds, workArea, width = DEFAULT_BUBBLE_WIDTH
   const maxX = Math.max(minX, area.x + area.width - resolvedWidth - WORK_AREA_MARGIN)
   const minY = area.y + WORK_AREA_MARGIN
   const maxY = Math.max(minY, area.y + area.height - resolvedHeight - WORK_AREA_MARGIN)
-  const preferredX = anchor.x + Math.round((anchor.width - resolvedWidth) / 2)
-  const preferredY = anchor.y + Math.round((anchor.height - resolvedHeight) / 2)
-  const aboveY = anchor.y - resolvedHeight - BUBBLE_GAP
-  const belowY = anchor.y + anchor.height + BUBBLE_GAP
-  const leftX = anchor.x - resolvedWidth - BUBBLE_GAP
-  const rightX = anchor.x + anchor.width + BUBBLE_GAP
-  const centeredX = Math.round(clamp(preferredX, minX, maxX))
-  const centeredY = Math.round(clamp(preferredY, minY, maxY))
+  const headAnchorX = anchor.x + Math.round(anchor.width * BUBBLE_HEAD_ANCHOR_RATIO_X)
+  const sideAnchorY = anchor.y + Math.round(anchor.height * BUBBLE_SIDE_ANCHOR_RATIO_Y)
+  const aboveX = Math.round(clamp(headAnchorX - resolvedWidth / 2, minX, maxX))
+  const belowX = Math.round(clamp(headAnchorX - resolvedWidth / 2, minX, maxX))
+  const aboveY = anchor.y - resolvedHeight - BUBBLE_GAP_ABOVE
+  const belowY = anchor.y + anchor.height + BUBBLE_GAP_BELOW
+  const leftX = anchor.x - resolvedWidth - BUBBLE_GAP_SIDE
+  const rightX = anchor.x + anchor.width + BUBBLE_GAP_SIDE
+  const sideY = Math.round(clamp(sideAnchorY - resolvedHeight * BUBBLE_SIDE_WINDOW_OFFSET_RATIO_Y, minY, maxY))
   const candidates = [
-    { placement: 'above', x: centeredX, y: aboveY, fits: aboveY >= minY },
-    { placement: 'below', x: centeredX, y: belowY, fits: belowY <= maxY },
-    { placement: 'right', x: rightX, y: centeredY, fits: rightX <= maxX },
-    { placement: 'left', x: leftX, y: centeredY, fits: leftX >= minX }
+    { placement: 'above', x: aboveX, y: aboveY, fits: aboveY >= minY },
+    { placement: 'below', x: belowX, y: belowY, fits: belowY <= maxY },
+    { placement: 'right', x: rightX, y: sideY, fits: rightX <= maxX },
+    { placement: 'left', x: leftX, y: sideY, fits: leftX >= minX }
   ]
   const candidate = candidates.find((item) => item.fits)
   if (candidate) {
@@ -131,10 +173,10 @@ const resolveBubbleBounds = ({ petBounds, workArea, width = DEFAULT_BUBBLE_WIDTH
   }
 
   const availableSpaces = [
-    { placement: 'above', space: Math.max(0, anchor.y - BUBBLE_GAP - minY), x: centeredX, y: aboveY },
-    { placement: 'below', space: Math.max(0, maxY - belowY), x: centeredX, y: belowY },
-    { placement: 'right', space: Math.max(0, maxX - rightX), x: rightX, y: centeredY },
-    { placement: 'left', space: Math.max(0, leftX - minX), x: leftX, y: centeredY }
+    { placement: 'above', space: Math.max(0, anchor.y - BUBBLE_GAP_ABOVE - minY), x: aboveX, y: aboveY },
+    { placement: 'below', space: Math.max(0, maxY - belowY), x: belowX, y: belowY },
+    { placement: 'right', space: Math.max(0, maxX - rightX), x: rightX, y: sideY },
+    { placement: 'left', space: Math.max(0, leftX - minX), x: leftX, y: sideY }
   ].sort((a, b) => b.space - a.space)[0]
   return {
     x: Math.round(clamp(availableSpaces.x, minX, maxX)),
@@ -158,9 +200,19 @@ const normalizeMessagePayload = (payload = {}) => {
   }
 }
 
-const classifyBubbleChatKind = ({ source } = {}) => (
-  String(source || '').trim() === 'ai' ? 'dialogue' : 'notice'
-)
+const classifyBubbleChatKind = ({ source } = {}) => {
+  const normalizedSource = String(source || '').trim()
+  if (
+    normalizedSource === 'ai' ||
+    normalizedSource.startsWith('ai:') ||
+    normalizedSource === 'pet' ||
+    normalizedSource.startsWith('pet-') ||
+    normalizedSource.startsWith('pet:')
+  ) {
+    return 'dialogue'
+  }
+  return 'notice'
+}
 
 const createBubbleItemId = ({ kind, source, createdAt, text }) => {
   const seed = `${kind}:${source || ''}:${createdAt || ''}:${text || ''}`
@@ -169,6 +221,12 @@ const createBubbleItemId = ({ kind, source, createdAt, text }) => {
     hash = ((hash << 5) - hash + seed.charCodeAt(index)) | 0
   }
   return `bubble:${kind}:${Math.abs(hash).toString(36)}`
+}
+
+const normalizeSourceLabel = ({ source = '' } = {}) => {
+  const normalizedSource = String(source || '').trim()
+  if (normalizedSource.startsWith('plugin:openpet.agent-awareness')) return 'Codex'
+  return ''
 }
 
 const createBubbleRequestId = () => `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -189,6 +247,7 @@ const normalizeBubbleChatItem = (payload = {}) => {
     role,
     text: message.text,
     source: message.source || (kind === 'dialogue' ? 'ai' : 'pet'),
+    sourceLabel: normalizeSourceLabel({ source: message.source }),
     sourceSurface: message.sourceSurface || message.source || (kind === 'dialogue' ? 'ai' : 'pet'),
     createdAt,
     conversationId: typeof payload.conversationId === 'string' ? payload.conversationId : '',
@@ -320,6 +379,7 @@ const createPetBubbleChatWindowManager = ({
     visible: false,
     hasWindow: false,
     pinned: false,
+    autoPinned: false,
     interacting: false,
     message: null,
     items: [],
@@ -349,6 +409,8 @@ const createPetBubbleChatWindowManager = ({
     }
   }
 
+  const isPinned = () => Boolean(state.pinned || state.autoPinned)
+
   const sanitizeLogText = (value, maxLength = 120) => String(value || '').slice(0, maxLength)
 
   const getStateLogDetails = (extra = {}) => {
@@ -362,7 +424,8 @@ const createPetBubbleChatWindowManager = ({
       source: sanitizeLogText(extra.source || message.source || ''),
       sourceSurface: sanitizeLogText(extra.sourceSurface || message.sourceSurface || extra.source || message.source || ''),
       interactive: Boolean(state.hitTestInteractive),
-      pinned: Boolean(state.pinned),
+      pinned: isPinned(),
+      autoPinned: Boolean(state.autoPinned),
       interacting: Boolean(state.interacting),
       visible: Boolean(state.visible),
       awaitingReply: Boolean(state.awaitingReply),
@@ -441,13 +504,13 @@ const createPetBubbleChatWindowManager = ({
 
   const shouldHoldVisible = () => {
     const settings = getSettings()
-    return state.pinned || state.interacting || state.awaitingReply || Boolean(state.error) || settings.autoHide === false
+    return isPinned() || state.interacting || state.awaitingReply || Boolean(state.error) || settings.autoHide === false
   }
 
   const getHoldVisibleReason = () => {
     const settings = getSettings()
     if (settings.autoHide === false) return 'auto-hide-disabled'
-    if (state.pinned) return 'pinned'
+    if (isPinned()) return state.autoPinned && !state.pinned ? 'auto-pinned' : 'pinned'
     if (state.interacting) return 'interacting'
     if (state.awaitingReply) return 'awaiting-reply'
     if (state.error) return 'error'
@@ -593,9 +656,10 @@ const createPetBubbleChatWindowManager = ({
 
   const getPetBounds = () => {
     const petWindow = getPetWindow()
-    if (!petWindow || petWindow.isDestroyed?.() || typeof petWindow.getBounds !== 'function') return null
-    return normalizePetBounds(petWindow.getBounds())
+    return getPetVisibleBounds(petWindow)
   }
+
+  const getPetLogDetails = () => getPetAnchorDetails(getPetWindow())
 
   const applyWindowBounds = (bounds) => {
     if (!bubbleWindow || bubbleWindow.isDestroyed?.() || !bounds) return
@@ -661,7 +725,9 @@ const createPetBubbleChatWindowManager = ({
           y: anchoredBounds.y,
           width: anchoredBounds.width,
           height: anchoredBounds.height,
-          placement: anchoredBounds.placement
+          placement: anchoredBounds.placement,
+          anchorProfile: BUBBLE_ANCHOR_PROFILE,
+          ...getPetLogDetails()
         })
       })
     }
@@ -707,7 +773,8 @@ const createPetBubbleChatWindowManager = ({
           y: nextBounds.y,
           width: nextBounds.width,
           height: nextBounds.height,
-          placement: 'detached-temporary'
+          placement: 'detached-temporary',
+          ...getPetLogDetails()
         })
       })
     }
@@ -771,7 +838,8 @@ const createPetBubbleChatWindowManager = ({
           y: movedBounds.y,
           width: movedBounds.width,
           height: movedBounds.height,
-          placement: 'detached-temporary'
+          placement: 'detached-temporary',
+          ...getPetLogDetails()
         })
       })
     })
@@ -803,7 +871,9 @@ const createPetBubbleChatWindowManager = ({
         width: bounds.width,
         height: bounds.height,
         placement: bounds.placement,
-        reason: 'window-created'
+        anchorProfile: BUBBLE_ANCHOR_PROFILE,
+        reason: 'window-created',
+        ...getPetLogDetails()
       })
     })
     return bubbleWindow
@@ -848,7 +918,13 @@ const createPetBubbleChatWindowManager = ({
       level: 'info',
       event: 'pet-bubble-chat.window.open-requested',
       message: 'Pet bubble chat window open requested',
-      details: getStateLogDetails({ source, focus: Boolean(focus), reason: focus ? 'manual-focus' : 'manual-open' })
+      details: getStateLogDetails({
+        source,
+        focus: Boolean(focus),
+        anchorProfile: BUBBLE_ANCHOR_PROFILE,
+        reason: focus ? 'manual-focus' : 'manual-open',
+        ...getPetLogDetails()
+      })
     })
     return getState()
   }
@@ -890,10 +966,7 @@ const createPetBubbleChatWindowManager = ({
       .map((item) => normalizePendingUserMessage(item))
       .filter(Boolean)
       .map((item) => createPendingBubbleItem(item))
-    const dialoguePresent = visibleDialogueItems.length > 0 || pendingItems.length > 0
-    const displayNotices = normalizedNotices
-      .filter((item) => !(dialoguePresent && item.source === 'pet-renderer'))
-      .slice(-MAX_NOTICE_ITEMS)
+    const displayNotices = normalizedNotices.slice(-MAX_NOTICE_ITEMS)
     const items = sortBubbleItems([
       ...visibleDialogueItems,
       ...pendingItems,
@@ -1027,7 +1100,7 @@ const createPetBubbleChatWindowManager = ({
   }
 
   const setPinned = (pinned, { source = 'pet-bubble-chat-renderer' } = {}) => {
-    patchState({ pinned: Boolean(pinned) })
+    patchState({ pinned: Boolean(pinned), autoPinned: false })
     syncToPetWindow()
     recordLog({
       level: 'info',
@@ -1041,13 +1114,24 @@ const createPetBubbleChatWindowManager = ({
   }
 
   const setInteracting = (interacting, { source = 'pet-bubble-chat-renderer' } = {}) => {
-    patchState({ interacting: Boolean(interacting) })
+    const nextInteracting = Boolean(interacting)
+    const settings = getSettings()
+    const shouldAutoPin = settings.pinOnInteraction !== false && nextInteracting && !state.pinned
+    const shouldReleaseAutoPin = !nextInteracting && state.autoPinned
+    patchState({
+      interacting: nextInteracting,
+      autoPinned: shouldAutoPin ? true : (shouldReleaseAutoPin ? false : state.autoPinned)
+    })
     syncToPetWindow()
     recordLog({
       level: 'debug',
       event: 'pet-bubble-chat.interaction.changed',
       message: 'Pet bubble chat interaction state changed',
-      details: getStateLogDetails({ source, interacting: Boolean(interacting), reason: Boolean(interacting) ? 'interaction-started' : 'interaction-ended' })
+      details: getStateLogDetails({
+        source,
+        interacting: nextInteracting,
+        reason: nextInteracting ? (shouldAutoPin ? 'interaction-started-auto-pinned' : 'interaction-started') : (shouldReleaseAutoPin ? 'interaction-ended-auto-unpinned' : 'interaction-ended')
+      })
     })
     scheduleAutoHide('interaction-changed')
     scheduleHistoryPrune()
@@ -1244,6 +1328,7 @@ const createPetBubbleChatWindowManager = ({
 
   const getState = () => ({
     ...state,
+    pinned: isPinned(),
     hasWindow: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.()),
     visible: Boolean(bubbleWindow && !bubbleWindow.isDestroyed?.() && bubbleWindow.isVisible?.() !== false && state.visible)
   })

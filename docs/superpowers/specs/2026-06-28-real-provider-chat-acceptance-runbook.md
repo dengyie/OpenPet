@@ -58,7 +58,7 @@ npm run check:syntax
 ```bash
 node scripts/run-ai-talk-local-smoke.js \
   --message "你好，请用一句简短中文回复，用于 bubble chat 验收" \
-  --output-dir tmp/real-provider-chat-acceptance
+  --output-dir ai-talk-local-smoke
 ```
 
 通过标准：
@@ -122,7 +122,26 @@ npm start
 
 ## 人工记录模板
 
-把下面字段填回 smoke 结果里的 `manualAcceptanceTemplate`，或单独记录在验收备注中：
+把下面字段填回 smoke 结果里的 `manualAcceptanceTemplate`。推荐直接使用更新命令，而不是手改 JSON：
+
+```bash
+npm run update-ai-talk-local-smoke-report -- \
+  docs/release-evidence/ai-talk-local-smoke/<session>/ai-talk-local-smoke-result.json \
+  --bubble-visible-long-enough true \
+  --input-usable true \
+  --desktop-feel-notes "回复停留时间足够，hover 后不会消失；输入区点击命中正常。" \
+  --validate-complete
+```
+
+然后结果会同时写回：
+
+- `ai-talk-local-smoke-result.json`
+- 同目录 `README.md`
+- 如已存在，同目录 `ai-talk-local-smoke-archive-result.json`
+
+CLI 会拒绝包含 raw path、Authorization/Bearer 文本、或 secret-like token 的备注，避免人工回填把归档边界写穿。
+
+示例：
 
 ```json
 {

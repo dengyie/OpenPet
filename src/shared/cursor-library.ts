@@ -29,7 +29,8 @@ const createBuiltinCursor = ({
   height?: number
 }): CursorOption => ({
   id,
-  type: 'builtin',
+  type: 'custom',
+  source: 'builtin',
   name,
   assetPath: `builtin://${id}`,
   assetUrl: svgDataUrl(svg),
@@ -39,7 +40,10 @@ const createBuiltinCursor = ({
   byteSize: 0,
   hotspotX,
   hotspotY,
-  createdAt: 'builtin'
+  createdAt: 'builtin',
+  canDelete: true,
+  canRename: false,
+  canRestore: false
 })
 
 export const SYSTEM_CURSOR_PREVIEW_URL = svgDataUrl(`
@@ -149,6 +153,14 @@ const normalizeNumber = (value: unknown, fallback = 0) => {
   return Number.isFinite(number) ? number : fallback
 }
 
+const normalizeHiddenCursorIds = (hiddenCursorIds: unknown): string[] => (
+  Array.from(new Set(
+    (Array.isArray(hiddenCursorIds) ? hiddenCursorIds : [])
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value) => Boolean(value) && value !== SYSTEM_CURSOR_ID)
+  ))
+)
+
 const clampCursorSizePercent = (value: unknown) => {
   const normalized = normalizeNumber(value, 100)
   const stepped = Math.round(normalized / CUSTOM_CURSOR_SIZE_STEP_PERCENT) * CUSTOM_CURSOR_SIZE_STEP_PERCENT
@@ -226,9 +238,11 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     ? Math.round((width / baseWidth) * 100)
     : 100
   const sizePercent = clampCursorSizePercent(cursor.sizePercent ?? derivedSizePercent)
+  const source = cursor.source === 'builtin' ? 'builtin' : 'uploaded'
   return {
     id,
     type: 'custom',
+    source,
     name,
     assetPath: typeof cursor.assetPath === 'string' ? cursor.assetPath : '',
     assetUrl,
@@ -243,7 +257,10 @@ export const normalizeCustomCursorRecord = (cursor: Partial<CustomCursorRecord> 
     baseWidth,
     baseHeight,
     baseHotspotX,
-    baseHotspotY
+    baseHotspotY,
+    canDelete: source === 'uploaded',
+    canRename: source === 'uploaded',
+    canRestore: false
   }
 }
 
@@ -280,6 +297,7 @@ export const createPersistedCursorRecord = (
   return normalizeCustomCursorRecord({
     ...cursor,
     type: 'custom',
+    source: cursor.source === 'builtin' ? 'builtin' : 'uploaded',
     createdAt: typeof cursor.createdAt === 'string' && cursor.createdAt ? cursor.createdAt : 'builtin'
   })
 }
@@ -311,9 +329,10 @@ export const resolveSelectedCursor = ({
 
 export const normalizeCursorSettingsState = (
   settings: Partial<ControlCenterSettings> & { customCursor?: Partial<CustomCursorSettings> | null } = {}
-): Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursors' | 'customCursor'> => {
+): Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursors' | 'customCursor' | 'hiddenCursorIds'> => {
   const legacyCustomCursor = normalizeRuntimeCursor(settings.customCursor)
   const customCursors = normalizeCustomCursorCollection(settings.customCursors)
+  const hiddenCursorIds = normalizeHiddenCursorIds(settings.hiddenCursorIds)
   const migratedLegacyCursor = migrateLegacyCustomCursorRecord(settings.customCursor)
   const nextCustomCursors = migratedLegacyCursor && customCursors.length === 0
     ? [migratedLegacyCursor, ...customCursors]
@@ -327,13 +346,14 @@ export const normalizeCursorSettingsState = (
   }
 
   const cursorExists = selectedCursorId === SYSTEM_CURSOR_ID
-    || Boolean(getBuiltinCursorById(selectedCursorId))
+    || (Boolean(getBuiltinCursorById(selectedCursorId)) && !hiddenCursorIds.includes(selectedCursorId))
     || nextCustomCursors.some((cursor) => cursor.id === selectedCursorId)
 
   if (!cursorExists) selectedCursorId = SYSTEM_CURSOR_ID
 
   return {
     selectedCursorId,
+    hiddenCursorIds,
     customCursors: nextCustomCursors,
     customCursor: resolveSelectedCursor({
       selectedCursorId,
@@ -342,8 +362,12 @@ export const normalizeCursorSettingsState = (
   }
 }
 
-export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecord> | null | undefined> = []): CursorOption[] => {
+export const listCursorOptions = (
+  customCursors: Array<Partial<CustomCursorRecord> | null | undefined> = [],
+  hiddenCursorIds: string[] = []
+): CursorOption[] => {
   const normalizedCustomCursors = normalizeCustomCursorCollection(customCursors)
+  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
   const customCursorById = new Map(normalizedCustomCursors.map((cursor) => [cursor.id, cursor]))
   const builtinIds = new Set(BUILTIN_CURSORS.map((cursor) => cursor.id))
 
@@ -351,6 +375,7 @@ export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecor
     {
       id: SYSTEM_CURSOR_ID,
       type: 'system',
+      source: 'system',
       name: '系统默认',
       assetPath: '',
       assetUrl: SYSTEM_CURSOR_PREVIEW_URL,
@@ -360,14 +385,41 @@ export const listCursorOptions = (customCursors: Array<Partial<CustomCursorRecor
       byteSize: 0,
       hotspotX: 0,
       hotspotY: 0,
-      createdAt: 'builtin'
+      createdAt: 'builtin',
+      canDelete: false,
+      canRename: false,
+      canRestore: false
     },
-    ...BUILTIN_CURSORS.map((cursor) => {
+    ...BUILTIN_CURSORS
+      .filter((cursor) => !hiddenCursorIdSet.has(cursor.id))
+      .map((cursor) => {
       const overrideCursor = customCursorById.get(cursor.id)
-      return overrideCursor ? { ...cursor, ...overrideCursor, type: 'builtin' as const } : cursor
+      return overrideCursor
+        ? {
+            ...cursor,
+            ...overrideCursor,
+            type: 'custom' as const,
+            source: 'builtin' as const,
+            canDelete: true,
+            canRename: false,
+            canRestore: false
+          }
+        : cursor
     }),
-    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id))
+    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id) && !hiddenCursorIdSet.has(cursor.id))
   ]
+}
+
+export const listHiddenBuiltinCursorOptions = (hiddenCursorIds: string[] = []): CursorOption[] => {
+  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
+  return BUILTIN_CURSORS
+    .filter((cursor) => hiddenCursorIdSet.has(cursor.id))
+    .map((cursor) => ({
+      ...cursor,
+      canDelete: false,
+      canRename: false,
+      canRestore: true
+    }))
 }
 
 export const resizeCustomCursorRecord = (

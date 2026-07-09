@@ -19,13 +19,53 @@ const moveIfExists = (sourcePath, targetPath) => {
   return true
 }
 
-const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
+const createActionImportService = ({
+  framesRoot,
+  spritesDir,
+  configPath,
+  configType = 'animations',
+  spriteRelativeDir = 'cat_anime/sprites'
+}) => {
+  const usesPetPackManifest = configType === 'pet-pack'
+  const configRoot = path.dirname(configPath)
+
+  const writeCurrentConfig = (config) => {
+    fs.mkdirSync(path.dirname(configPath), { recursive: true })
+    fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf-8')
+  }
+
   const readCurrentConfig = () => {
     try {
       return JSON.parse(fs.readFileSync(configPath, 'utf-8'))
     } catch (_) {
       return {}
     }
+  }
+
+  const toActionConfig = (config = {}) => ({
+    defaultAction: String(config.defaultAction || ''),
+    clickAction: String(config.clickAction || ''),
+    actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
+    ...(Array.isArray(config.triggerProposalInbox) ? { triggerProposalInbox: config.triggerProposalInbox } : {}),
+    ...(Array.isArray(config.triggerRules) ? { triggerRules: config.triggerRules } : {})
+  })
+
+  const resolveConfigRelativePath = (relativePath, fieldName) => {
+    const normalized = String(relativePath || '').replace(/\\/g, '/')
+    if (
+      !normalized ||
+      normalized.includes('\0') ||
+      path.posix.isAbsolute(normalized) ||
+      normalized.split('/').includes('..')
+    ) {
+      throw new Error(`${fieldName} must be a safe relative path`)
+    }
+    const targetPath = path.resolve(configRoot, normalized)
+    const rootPath = path.resolve(configRoot)
+    if (targetPath !== rootPath && !targetPath.startsWith(`${rootPath}${path.sep}`)) {
+      throw new Error(`${fieldName} must stay inside the pet pack directory`)
+    }
+    return targetPath
   }
 
   const getExistingLabels = () => Object.fromEntries(
@@ -74,6 +114,8 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
   }
 
   const regenerate = async (overrides = {}) => {
+    if (usesPetPackManifest) return updatePetPackActionConfig(overrides)
+
     const currentConfig = readCurrentConfig()
     const { generateSpritesFromFrames } = loadSpriteGenerator()
     const generated = await generateSpritesFromFrames({
@@ -82,11 +124,40 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       configPath,
       defaultAction: overrides.defaultAction ?? currentConfig.defaultAction,
       clickAction: overrides.clickAction ?? currentConfig.clickAction,
-      labels: getExistingLabels()
+      labels: getExistingLabels(),
+      spriteRelativeDir
     })
     const preserved = preserveHostActionMetadata(currentConfig, generated)
-    fs.writeFileSync(configPath, JSON.stringify(preserved, null, 2), 'utf-8')
+    writeCurrentConfig(preserved)
     return preserved
+  }
+
+  const updatePetPackActionConfig = (overrides = {}) => {
+    const currentConfig = readCurrentConfig()
+    const actions = Array.isArray(currentConfig.actions)
+      ? currentConfig.actions.map((action) => ({ ...action }))
+      : []
+    const actionIds = new Set(actions.map((action) => action.id))
+    const nextDefaultAction = overrides.defaultAction
+      ? String(overrides.defaultAction)
+      : currentConfig.defaultAction ?? actions[0]?.id ?? ''
+    const nextClickAction = overrides.clickAction
+      ? String(overrides.clickAction)
+      : currentConfig.clickAction ?? actions.find((action) => action.id !== nextDefaultAction)?.id ?? nextDefaultAction
+    if (nextDefaultAction && !actionIds.has(nextDefaultAction)) {
+      throw new Error(`Default action does not exist: ${nextDefaultAction}`)
+    }
+    if (nextClickAction && !actionIds.has(nextClickAction)) {
+      throw new Error(`Click action does not exist: ${nextClickAction}`)
+    }
+    const nextConfig = {
+      ...currentConfig,
+      defaultAction: nextDefaultAction,
+      clickAction: nextClickAction,
+      actions
+    }
+    writeCurrentConfig(nextConfig)
+    return toActionConfig(nextConfig)
   }
 
   const importActionFrames = async ({ sourceDir, actionId, label }) => {
@@ -100,18 +171,63 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
 
     const targetDir = path.join(framesRoot, actionId)
     const currentConfig = readCurrentConfig()
+    const labels = { ...getExistingLabels(), ...(label ? { [actionId]: label } : {}) }
+    const { generateSpritesFromFrames, processActionFolder } = loadSpriteGenerator()
+
+    if (usesPetPackManifest) {
+      const importedSpritePath = path.join(spritesDir, `${actionId}.png`)
+      let copiedFrames = false
+      try {
+        fs.mkdirSync(spritesDir, { recursive: true })
+        copyDirectory(sourceDir, targetDir)
+        copiedFrames = true
+        const generatedAction = await processActionFolder({
+          folderEntry: { name: actionId },
+          framesRoot,
+          spritesDir,
+          labels,
+          spriteRelativeDir
+        })
+        if (!generatedAction) throw new Error(`Imported action was not generated: ${actionId}`)
+        const generated = {
+          ...toActionConfig(currentConfig),
+          actions: [
+            ...(Array.isArray(currentConfig.actions) ? currentConfig.actions.map((action) => ({ ...action })) : []),
+            generatedAction
+          ]
+        }
+        const config = preserveHostActionMetadata(currentConfig, {
+          ...generated,
+          defaultAction: generated.defaultAction || currentConfig.defaultAction || actionId,
+          clickAction: generated.clickAction || currentConfig.clickAction || actionId
+        })
+        const importedAction = config.actions.find((action) => action.id === actionId)
+        if (!importedAction) throw new Error(`Imported action is missing from generated config: ${actionId}`)
+        writeCurrentConfig({ ...currentConfig, ...config })
+        return { ...config, importedAction }
+      } catch (error) {
+        if (copiedFrames) fs.rmSync(targetDir, { recursive: true, force: true })
+        fs.rmSync(importedSpritePath, { recursive: true, force: true })
+        throw error
+      }
+    }
+
     copyDirectory(sourceDir, targetDir)
-    const { generateSpritesFromFrames } = loadSpriteGenerator()
     const generated = await generateSpritesFromFrames({
       framesRoot,
       spritesDir,
       configPath,
       defaultAction: currentConfig.defaultAction,
       clickAction: currentConfig.clickAction,
-      labels: { ...getExistingLabels(), ...(label ? { [actionId]: label } : {}) }
+      labels,
+      spriteRelativeDir
     })
-    const config = preserveHostActionMetadata(currentConfig, generated)
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    const config = preserveHostActionMetadata(currentConfig, {
+      ...generated,
+      defaultAction: generated.defaultAction || currentConfig.defaultAction || actionId,
+      clickAction: generated.clickAction || currentConfig.clickAction || actionId
+    })
+    writeCurrentConfig(config)
     const importedAction = config.actions.find((action) => action.id === actionId)
     return { ...config, importedAction }
   }
@@ -131,6 +247,8 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
 
   const deleteAction = async (actionId) => {
     if (!isSafeActionId(actionId)) throw new Error('Invalid action id')
+    if (usesPetPackManifest) return deletePetPackAction(actionId)
+
     const validActionIds = await getValidActionIds()
     if (validActionIds.includes(actionId) && validActionIds.length <= 1) {
       throw new Error('Cannot delete the last action')
@@ -148,6 +266,53 @@ const createActionImportService = ({ framesRoot, spritesDir, configPath }) => {
       const result = await regenerate()
       fs.rmSync(backupRoot, { recursive: true, force: true })
       return result
+    } catch (error) {
+      if (movedFrames) moveIfExists(backupFramesDir, targetDir)
+      if (movedSprite) moveIfExists(backupSpritePath, spritePath)
+      fs.rmSync(backupRoot, { recursive: true, force: true })
+      throw error
+    }
+  }
+
+  const deletePetPackAction = (actionId) => {
+    const currentConfig = readCurrentConfig()
+    const currentActions = Array.isArray(currentConfig.actions)
+      ? currentConfig.actions.map((action) => ({ ...action }))
+      : []
+    const action = currentActions.find((item) => item.id === actionId)
+    if (!action) throw new Error(`Action does not exist: ${actionId}`)
+    if (currentActions.length <= 1) throw new Error('Cannot delete the last action')
+
+    const remainingActions = currentActions.filter((item) => item.id !== actionId)
+    const targetDir = path.join(framesRoot, actionId)
+    const spritePath = action.sprite ? resolveConfigRelativePath(action.sprite, 'Action sprite') : ''
+    const spriteIsShared = Boolean(action.sprite && remainingActions.some((item) => item.sprite === action.sprite))
+    const backupRoot = path.join(configRoot, '.openpet-delete-backups', `${actionId}-${Date.now()}`)
+    const backupFramesDir = path.join(backupRoot, 'frames')
+    const backupSpritePath = path.join(backupRoot, path.basename(spritePath || `${actionId}.png`))
+    const movedFrames = moveIfExists(targetDir, backupFramesDir)
+    const movedSprite = spritePath && !spriteIsShared ? moveIfExists(spritePath, backupSpritePath) : false
+
+    try {
+      const nextDefaultAction = currentConfig.defaultAction === actionId
+        ? remainingActions[0]?.id || ''
+        : currentConfig.defaultAction
+      const nextClickAction = currentConfig.clickAction === actionId
+        ? remainingActions.find((item) => item.id !== nextDefaultAction)?.id || nextDefaultAction
+        : currentConfig.clickAction
+      const remainingActionIds = new Set(remainingActions.map((item) => item.id))
+      const nextConfig = {
+        ...currentConfig,
+        defaultAction: nextDefaultAction,
+        clickAction: nextClickAction,
+        actions: remainingActions,
+        ...(Array.isArray(currentConfig.triggerRules)
+          ? { triggerRules: currentConfig.triggerRules.filter((rule) => remainingActionIds.has(rule.actionId)) }
+          : {})
+      }
+      writeCurrentConfig(nextConfig)
+      fs.rmSync(backupRoot, { recursive: true, force: true })
+      return toActionConfig(nextConfig)
     } catch (error) {
       if (movedFrames) moveIfExists(backupFramesDir, targetDir)
       if (movedSprite) moveIfExists(backupSpritePath, spritePath)

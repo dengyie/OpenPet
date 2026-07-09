@@ -14,6 +14,7 @@ export interface ControlCenterSettings {
   selectedCursorId: string
   customCursor: CustomCursorSettings
   customCursors: CustomCursorRecord[]
+  hiddenCursorIds: string[]
   grounded: boolean
   home: ControlCenterPetHomeSettings
   petBubbleChat: PetBubbleChatSettings
@@ -37,11 +38,13 @@ export interface CustomCursorSettings {
   hotspotY: number
 }
 
-export type CursorOptionType = 'system' | 'builtin' | 'custom'
+export type CursorOptionType = 'system' | 'custom'
+export type CursorOptionSource = 'system' | 'builtin' | 'uploaded'
 
 export interface CursorOption {
   id: string
   type: CursorOptionType
+  source: CursorOptionSource
   name: string
   assetPath: string
   assetUrl: string
@@ -57,6 +60,9 @@ export interface CursorOption {
   baseHeight?: number
   baseHotspotX?: number
   baseHotspotY?: number
+  canDelete?: boolean
+  canRename?: boolean
+  canRestore?: boolean
 }
 
 export interface CustomCursorRecord extends CursorOption {
@@ -78,8 +84,7 @@ export interface ControlCenterPetHomeSettings {
   hasAnchor: boolean
 }
 
-export interface AiBehaviorRule {
-  id?: string
+export interface AiBehaviorIntent {
   label?: string
   kind?: string
   actionId?: string
@@ -88,6 +93,29 @@ export interface AiBehaviorRule {
   displayMode?: 'none' | 'bubble' | 'action' | 'event'
   intent?: string
   confidence?: number
+}
+
+export interface AiBehaviorRuleCondition {
+  intent?: string
+  minConfidence?: number
+  contains?: string[]
+  actionKind?: string
+}
+
+export interface AiBehaviorRuleAction {
+  type?: 'say' | 'playAction' | 'setEvent'
+  text?: string
+  actionId?: string
+  event?: string
+  message?: string
+}
+
+export interface AiBehaviorRule {
+  id?: string
+  enabled?: boolean
+  priority?: number
+  when?: AiBehaviorRuleCondition
+  then?: AiBehaviorRuleAction
 }
 
 export interface AiBehaviorDecision {
@@ -110,7 +138,7 @@ export interface AiBehaviorDecision {
   blockedReason?: string
   replay?: {
     reply?: string
-    behaviorIntent?: AiBehaviorRule | null
+    behaviorIntent?: AiBehaviorIntent | null
   }
   replayRedacted?: boolean
 }
@@ -448,6 +476,81 @@ export interface CreatorStudioProviderSmokeReport {
   }
 }
 
+export type ManualAcceptanceStatus = 'pass' | 'fail' | 'pending'
+
+export interface LocalSmokeArchiveFileSummary {
+  role: string
+  path: string
+  bytes: number
+  sha256: string
+}
+
+export interface AiTalkLocalSmokeArchiveManualAcceptance {
+  bubbleVisibleLongEnough: ManualAcceptanceStatus
+  inputUsable: ManualAcceptanceStatus
+  desktopFeelNotesPresent: boolean
+  requestId: string
+}
+
+export interface AiTalkLocalSmokeArchiveResult {
+  generatedAt: string
+  ok: boolean
+  source: {
+    sessionDir: string
+    resultPath: string
+    logPath: string
+  }
+  archive: {
+    archiveDir: string
+    outputPath: string
+    sessionId: string
+  }
+  smoke: {
+    generatedAt: string
+    provider: string
+    baseUrl: string
+    model: string
+    activePetPackId: string
+    requestId: string
+    providerLatencyMs: number
+    bubbleVisible: boolean
+    manualAcceptanceTemplatePresent: boolean
+    manualAcceptance: AiTalkLocalSmokeArchiveManualAcceptance
+  }
+  files: LocalSmokeArchiveFileSummary[]
+  warnings: string[]
+}
+
+export interface AgentAwarenessLocalSmokeArchiveManualAcceptance {
+  dashboardUseful: ManualAcceptanceStatus
+  petSpeechNoiseAcceptable: ManualAcceptanceStatus
+  redactionLooksSafe: ManualAcceptanceStatus
+  notesPresent: boolean
+}
+
+export interface AgentAwarenessLocalSmokeArchiveResult {
+  generatedAt: string
+  ok: boolean
+  source: {
+    sessionDir: string
+    resultPath: string
+  }
+  archive: {
+    archiveDir: string
+    outputPath: string
+  }
+  smoke: {
+    sanitizedSignalDetected: boolean
+    sessionCount: number
+    activeSessionCount: number
+    totalEvents: number
+    unsupportedLifecycleRecordCount: number
+    manualAcceptanceTemplatePresent: boolean
+    manualAcceptance: AgentAwarenessLocalSmokeArchiveManualAcceptance
+  }
+  files: LocalSmokeArchiveFileSummary[]
+}
+
 export interface AiConfigViewState {
   enabled: boolean
   provider: string
@@ -457,7 +560,29 @@ export interface AiConfigViewState {
   systemPrompt: string
   memory: AiMemoryConfig
   behavior: AiBehaviorConfig
+  vision: VisionConfigViewState
   hasApiKey: boolean
+  modelCatalog: ProviderModelCatalogViewState
+}
+
+export type VisionProviderMode = 'follow-chat' | 'override'
+
+export interface VisionConfigViewState {
+  mode: VisionProviderMode
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  hasApiKey: boolean
+  modelCatalog: ProviderModelCatalogViewState
+  effectiveProvider: string
+  effectiveBaseUrl: string
+  effectiveModel: string
+  effectiveHasApiKey: boolean
+}
+
+export type AiConfigSaveRequest = Partial<Omit<AiConfigViewState, 'vision'>> & {
+  vision?: Partial<VisionConfigViewState>
 }
 
 export interface ServiceLogEntry {
@@ -753,6 +878,12 @@ export interface ActionsMutationResult {
   animations: ActionsConfigViewState
   proposal?: ActionTriggerProposalInboxItem
   triggerProposal?: ActionTriggerProposalAcceptanceResult
+}
+
+export interface ActionTriggerRuleUpdateRequest {
+  ruleId: string
+  status?: ActionTriggerRuleStatus
+  ruleSpec?: ActionTriggerRuleSpecInput
 }
 
 export interface ActionTriggerRuleMutationResult {
@@ -1283,6 +1414,133 @@ export interface PluginRemoteSourceSubmissionRehearsalSummary {
   files: PluginRemoteSourceSubmissionRehearsalFiles
 }
 
+export type PluginCommunitySourceIntakeStatus = 'ready-for-community-evidence' | 'incompatible-package-model'
+export type PluginCommunitySourceIntakeReasonCode =
+  | 'openpet-plugin-package'
+  | 'plugin-json-missing'
+  | 'plugin-json-invalid'
+  | 'plugin-path-not-found'
+
+export interface PluginCommunitySourceIntakeMetadata {
+  kind: 'community-source'
+  url: string
+  submitter: string
+}
+
+export interface PluginCommunitySourceIntakeArchive {
+  kind: 'https-archive'
+  archiveUrl: string
+  finalUrl: string
+  archiveSha256: string
+  archiveByteSize: number
+  pluginPath: string
+  archivePluginPath: string
+  extractedFileHashes: Record<string, string>
+}
+
+export interface PluginCommunitySourceIntakeCompatibility {
+  ok: boolean
+  reasonCode: PluginCommunitySourceIntakeReasonCode
+  summary: string
+}
+
+export interface PluginCommunitySourceIntakeFiles {
+  readme: string
+  checklist: string
+  commands: string
+  intake: string
+  summary: string
+}
+
+export interface PluginCommunitySourceIntakeSummary {
+  generatedAt: string
+  outputDir: string
+  communitySource: PluginCommunitySourceIntakeMetadata
+  archive: PluginCommunitySourceIntakeArchive
+  plugin: PluginSubmissionSourcePlugin | null
+  compatibility: PluginCommunitySourceIntakeCompatibility
+  status: PluginCommunitySourceIntakeStatus
+  notes: string
+  files: PluginCommunitySourceIntakeFiles
+}
+
+export type PluginCommunitySourceDiscoveryCandidateStatus =
+  | 'not-inspected'
+  | 'not-found'
+  | 'incompatible-package-model'
+  | 'ready-for-community-evidence'
+
+export type PluginCommunitySourceDiscoveryStatus =
+  | 'community-evidence-ready'
+  | 'compatible-source-found'
+  | 'compatible-source-not-found'
+
+export type PluginCommunitySourceDiscoveryNextAction =
+  | 'review-community-evidence-for-release-claims'
+  | 'route-ready-intake-through-phase-103'
+  | 'find-or-invite-compatible-plugin-json-package'
+
+export interface PluginCommunitySourceDiscoverySearchResult {
+  query: string
+  tool: string
+  resultCount: number
+  notes: string
+}
+
+export interface PluginCommunitySourceDiscoveryCandidate {
+  sourceUrl: string
+  archiveUrl: string
+  submitter: string
+  status: PluginCommunitySourceDiscoveryCandidateStatus
+  reasonCode: string
+  intakeReport: string
+  phase99Evidence: string
+  notes: string
+}
+
+export interface PluginCommunitySourceDiscoveryCandidateCounts {
+  total: number
+  'not-inspected': number
+  'ready-for-community-evidence': number
+  'incompatible-package-model': number
+  'not-found': number
+}
+
+export interface PluginCommunitySourceDiscoveryFiles {
+  summary: string
+  readme: string
+}
+
+export interface PluginCommunitySourceDiscoverySummary {
+  generatedAt: string
+  outputDir: string
+  status: PluginCommunitySourceDiscoveryStatus
+  nextAction: PluginCommunitySourceDiscoveryNextAction
+  searchResults: PluginCommunitySourceDiscoverySearchResult[]
+  candidates: PluginCommunitySourceDiscoveryCandidate[]
+  candidateCounts: PluginCommunitySourceDiscoveryCandidateCounts
+  notes: string
+  boundaries: string[]
+  files: PluginCommunitySourceDiscoveryFiles
+}
+
+export interface PluginCommunitySourceEvidenceFromIntakeBridgeSection {
+  intakeSummary: string
+  intakeOutputDir: string
+  intakeStatus: PluginCommunitySourceIntakeStatus
+  intakeReasonCode: PluginCommunitySourceIntakeReasonCode
+  sourcePlugin: PluginSubmissionSourcePlugin
+  sourceArchive: PluginCommunitySourceIntakeArchive
+  communitySource: PluginCommunitySourceIntakeMetadata
+  boundaries: string[]
+}
+
+export interface PluginCommunitySourceEvidenceFromIntakeSummary {
+  generatedAt: string
+  bridge: PluginCommunitySourceEvidenceFromIntakeBridgeSection
+  submission: PluginCommunitySourceSubmissionEvidenceSummary
+}
+
 export type PluginCommunitySourceRelation = 'independent-third-party' | 'external-community' | 'unknown'
 
 export interface PluginCommunitySourceMetadata {
@@ -1638,6 +1896,28 @@ export interface CreatorImportedActionViewState {
   label: string
 }
 
+export interface CreatorClickActionChangeViewState {
+  previousActionId: string
+  currentActionId: string
+  importedActionId: string
+  canRestore: boolean
+}
+
+export interface CreatorBasicActionRowViewState {
+  actionId: string
+  sourceActionId: string
+  sourceRelativePath: string
+  fallback: boolean
+}
+
+export interface CreatorBasicActionCoverageViewState {
+  requiredRealActionIds: string[]
+  realActionIds: string[]
+  fallbackActionIds: string[]
+  missingRequiredActionIds: string[]
+  rows: CreatorBasicActionRowViewState[]
+}
+
 export interface CreatorStateViewState extends OkResponse {
   provider: CreatorProviderStateViewState
   editableTarget: CreatorEditableTargetViewState
@@ -1655,6 +1935,12 @@ export interface CreatorReferencePickerResult extends OkResponse {
   canceled: boolean
   referenceToken: string
   fileName: string
+}
+
+export interface CreatorBindReferenceRequest {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  referenceToken: string
 }
 
 export interface CreatorGenerateNewCharacterRequest {
@@ -1700,7 +1986,13 @@ export interface CreatorWorkflowResult extends OkResponse {
   activePet?: PetPackSummary | null
   importedAction?: CreatorImportedActionViewState | null
   clickAction?: string
+  clickActionChange?: CreatorClickActionChangeViewState | null
+  basicActions?: CreatorBasicActionCoverageViewState | null
   diagnostics?: CreatorWorkflowDiagnosticsViewState | null
+}
+
+export interface CreatorLastRunResult extends OkResponse {
+  run: CreatorLastRunViewState | null
 }
 
 export interface PetActionPlaybackResult extends OkResponse {
@@ -1728,6 +2020,7 @@ export interface PluginServiceHealthViewState {
   url?: string
   statusCode?: number | null
   message?: string
+  details?: Array<{ label: string, value: string }>
 }
 
 export interface PluginServiceHealthPolicyViewState {
@@ -1759,6 +2052,10 @@ export interface PluginServiceHealthCheckResult extends OkResponse {
   serviceId: string
   health: PluginServiceHealthViewState
   runtime: PluginServiceRuntimeViewState
+}
+
+export interface PluginUninstallOptions {
+  removeStorage?: boolean
 }
 
 export interface PluginCleanupEvidenceReport {
@@ -2360,6 +2657,8 @@ export interface PetChatBubbleViewState {
 export interface PetBubbleChatWindowStateViewState {
   visible: boolean
   hasWindow: boolean
+  pinned: boolean
+  placement: string
 }
 
 export interface PetChatStateViewState {
@@ -2409,7 +2708,7 @@ export interface AiConnectionTestResult {
   reply?: string
   code?: string
   message?: string
-  modelsProbe?: 'ok' | 'unavailable' | 'failed'
+  modelsProbe?: 'ok' | 'unavailable' | 'failed' | 'timed_out'
   availableModels?: string[]
   currentModelDiscovered?: boolean
 }
@@ -2425,6 +2724,13 @@ export interface ProviderModelDiscoveryResult {
   message: string
 }
 
+export interface ProviderModelCatalogViewState {
+  cacheKey: string
+  models: string[]
+  fetchedAt: string
+  source: 'none' | 'saved'
+}
+
 export interface ImageGenerationConfigViewState {
   provider: string
   baseUrl: string
@@ -2437,6 +2743,7 @@ export interface ImageGenerationConfigViewState {
   hasApiKey: boolean
   apiKeyPreview: string
   apiKeyLabel: string
+  modelCatalog: ProviderModelCatalogViewState
 }
 
 export interface ImageGenerationSaveApiKeyResult {
@@ -2450,7 +2757,7 @@ export interface ImageGenerationHealthCheckResult {
   provider: string
   code: string
   message: string
-  modelsProbe?: 'ok' | 'unavailable' | 'failed'
+  modelsProbe?: 'ok' | 'unavailable' | 'failed' | 'timed_out'
   availableModels?: string[]
   currentModelDiscovered?: boolean
   usage?: {
@@ -2502,6 +2809,8 @@ export interface AiChatResponse {
   messages?: ChatMessage[]
   bubble?: PetChatBubbleViewState
   state?: PetChatStateViewState
+  bubbleSegments?: string[]
+  providerLatencyMs?: number
   behavior?: Partial<AiBehaviorDecision>
   action?: {
     actionId?: string
@@ -2515,14 +2824,27 @@ export interface AiBehaviorDryRunRequest {
   behavior: AiBehaviorConfig
 }
 
-export interface AiBehaviorResult extends Partial<AiBehaviorDecision> {
+export interface AiBehaviorResult {
   matched: boolean
   reason: string
+  type?: AiBehaviorDecision['type']
+  ruleId?: AiBehaviorDecision['ruleId']
   actionId?: string
+  label?: AiBehaviorDecision['label']
+  kind?: AiBehaviorDecision['kind']
+  event?: AiBehaviorDecision['event']
+  intent?: AiBehaviorDecision['intent']
+  providerReason?: AiBehaviorDecision['providerReason']
+  displayMode?: AiBehaviorDecision['displayMode']
+  cooldown?: AiBehaviorDecision['cooldown']
+  fallback?: AiBehaviorDecision['fallback']
+  blockedReason?: AiBehaviorDecision['blockedReason']
   replayOf?: number
 }
 
 export interface ServiceLogFilters {
+  query?: string
+  status?: string
   format?: 'json' | 'csv'
   [key: string]: unknown
 }
@@ -2780,6 +3102,22 @@ export interface ReleaseEvidenceLinkedArchiveSection {
   warnings: string[]
 }
 
+export interface MacosReleaseEvidenceArtifactArchiveSection {
+  file: ReleaseEvidenceArchiveFile
+  path: string
+  archiveDir: string
+  outputPath: string
+  artifactName: string
+  releaseTag: string
+  workflowRunUrl: string
+  ok: boolean
+  releaseReady: boolean
+  macosEvidenceReady: boolean
+  matchesMacosEvidence: boolean
+  errors: string[]
+  warnings: string[]
+}
+
 export type MacosReleaseEvidenceStatus = 'missing' | 'pending' | 'pass'
 
 export interface MacosReleaseEvidenceFileStatus {
@@ -2864,6 +3202,7 @@ export interface ReleaseEvidenceArchiveManifest {
     codesign: MacosReleaseEvidenceFileStatus
     notarization: MacosReleaseEvidenceFileStatus
     gatekeeper: MacosReleaseEvidenceFileStatus
+    artifactArchive: MacosReleaseEvidenceArtifactArchiveSection
   }
   reports: {
     releaseReady: boolean
@@ -2875,6 +3214,7 @@ export interface ReleaseEvidenceArchiveManifest {
     releaseReady: boolean
     windowsSmoke: ReleaseEvidenceLinkedArchiveSection
     desktopPicker: ReleaseEvidenceLinkedArchiveSection
+    macosArtifact: MacosReleaseEvidenceArtifactArchiveSection
   }
   errors: string[]
   warnings: string[]
@@ -2944,6 +3284,7 @@ export interface ControlCenterApi {
   acceptActionTriggerProposal: (proposalId: string) => Promise<ActionsMutationResult>
   rejectActionTriggerProposal: (proposalId: string, reason?: string) => Promise<ActionsMutationResult>
   setActionTriggerRuleStatus: (ruleId: string, status: ActionTriggerRuleStatus) => Promise<ActionTriggerRuleMutationResult>
+  updateActionTriggerRule: (payload: ActionTriggerRuleUpdateRequest) => Promise<ActionTriggerRuleMutationResult>
   deleteActionTriggerRule: (ruleId: string) => Promise<ActionTriggerRuleMutationResult>
   deleteAction: (actionId: string) => Promise<ActionsMutationResult>
   listPetPacks: () => Promise<PetPacksViewState>
@@ -2955,10 +3296,13 @@ export interface ControlCenterApi {
   onActivePetPackChanged?: (listener: (event: ActivePetPackChangedEvent) => void) => () => void
   removePetPack: (packId: string) => Promise<PetPackMutationResult>
   getAiConfig: () => Promise<AiConfigViewState>
-  saveAiConfig: (config: Partial<AiConfigViewState>) => Promise<AiConfigViewState>
+  saveAiConfig: (config: AiConfigSaveRequest) => Promise<AiConfigViewState>
   saveAiApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
+  saveAiVisionApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
+  clearAiVisionApiKey: () => Promise<AiSaveApiKeyResult>
   testAiConnection: () => Promise<AiConnectionTestResult>
   discoverAiModels: () => Promise<ProviderModelDiscoveryResult>
+  discoverAiVisionModels: () => Promise<ProviderModelDiscoveryResult>
   getAiPersonaProfile: () => Promise<AiPersonaProfileViewState>
   generateAiPersonaDraft: (request?: AiPersonaGenerateRequest) => Promise<AiPersonaDraftViewState>
   saveAiPersonaOverride: (override: AiPersonaOverride) => Promise<AiPersonaProfileViewState>
@@ -2987,16 +3331,16 @@ export interface ControlCenterApi {
   exportAiBehaviorDiagnostics: () => Promise<string>
   clearAiBehaviorDecisions: () => Promise<AiBehaviorDecision[]>
   getPlugins: () => Promise<PluginViewState[]>
-  setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<Partial<PluginViewState>>
-  setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<Partial<PluginViewState>>
-  savePluginConfig: (pluginId: string, config: JsonObject) => Promise<Partial<PluginViewState>>
+  setPluginEnabled: (pluginId: string, enabled: boolean) => Promise<PluginViewState>
+  setPluginNativeExecutionApproved: (pluginId: string, approved: boolean) => Promise<PluginViewState>
+  savePluginConfig: (pluginId: string, config: JsonObject) => Promise<PluginViewState>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   getCreatorState: () => Promise<CreatorStateViewState>
   pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>
-  bindCreatorReference: (payload: { targetType: CreatorReferenceTargetType; targetId: string; referenceToken: string }) => Promise<CreatorBindReferenceResult>
+  bindCreatorReference: (payload: CreatorBindReferenceRequest) => Promise<CreatorBindReferenceResult>
   generateCreatorNewCharacter: (payload: CreatorGenerateNewCharacterRequest) => Promise<CreatorWorkflowResult>
   generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
-  getCreatorLastRun: () => Promise<{ ok: boolean; run: CreatorLastRunViewState | null }>
+  getCreatorLastRun: () => Promise<CreatorLastRunResult>
   playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
@@ -3010,11 +3354,11 @@ export interface ControlCenterApi {
   clearPluginSelection: (selectionId: string) => Promise<OkResponse>
   installPlugin: (selectionId: string) => Promise<PluginMutationResult>
   updatePlugin: (selectionId: string) => Promise<PluginMutationResult>
-  uninstallPlugin: (pluginId: string, options?: { removeStorage?: boolean }) => Promise<PluginMutationResult>
+  uninstallPlugin: (pluginId: string, options?: PluginUninstallOptions) => Promise<PluginMutationResult>
   getPluginLogs: (filters?: PluginLogPageRequest) => Promise<PaginatedLogsViewState<PluginLogEntry>>
   exportPluginLogs: (filters?: PluginLogFilters) => Promise<string>
   clearPluginLogs: () => Promise<PluginLogEntry[]>
-  clearPluginStorage: (pluginId: string) => Promise<Partial<PluginViewState>>
+  clearPluginStorage: (pluginId: string) => Promise<PluginViewState>
   getServiceStatus: () => Promise<ServiceStatusViewState>
   saveServiceConfig: (config: Partial<LocalHttpConfigViewState>) => Promise<ServiceStatusViewState>
   getServiceLogs: (filters?: ServiceLogPageRequest) => Promise<PaginatedLogsViewState<ServiceLogEntry>>

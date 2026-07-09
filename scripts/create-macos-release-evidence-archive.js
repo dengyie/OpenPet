@@ -6,6 +6,7 @@ const { macosEvidenceStatus } = require('./create-release-evidence-archive-manif
 
 const DEFAULT_OUTPUT_ROOT = path.join('docs', 'release-evidence', 'macos-release-evidence-archive')
 const DEFAULT_MANIFEST_NAME = 'macos-release-evidence-artifact-manifest.json'
+const DEFAULT_ARTIFACT_DIR_LABEL = 'downloaded-artifact'
 
 const REQUIRED_FILES = [
   { role: 'macosCodesignEvidence', fileName: 'macos-codesign.txt', kind: 'codesign' },
@@ -91,6 +92,40 @@ const sessionIdFromDate = (date) => date.toISOString().replace(/[:.]/g, '-').rep
 
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeArchiveDirPath = (archiveDir) => createSafeProjectPath(archiveDir, DEFAULT_OUTPUT_ROOT)
+
+const createSafeArchiveFilePath = ({ filePath, archiveDir, fallback }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
+const createSafeArchiveOutputPath = ({ outputPath, archiveDir, safeArchiveDir }) => {
+  const relative = toPosixPath(path.relative(archiveDir, String(outputPath || '').trim()))
+  if (isSafeRelativePath(relative)) return joinPosixPath(safeArchiveDir, relative)
+  return createSafeProjectPath(outputPath, joinPosixPath(safeArchiveDir, DEFAULT_MANIFEST_NAME))
+}
+
 const safeChildPath = (rootDir, fileName) => {
   const root = path.resolve(rootDir)
   const filePath = path.resolve(root, fileName)
@@ -174,6 +209,13 @@ const createMacosReleaseEvidenceArchive = ({
   const absoluteArtifactDir = path.resolve(artifactDir)
   const absoluteArchiveDir = path.resolve(archiveDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt))))
   const absoluteOutputPath = path.resolve(outputPath || path.join(absoluteArchiveDir, DEFAULT_MANIFEST_NAME))
+  const safeArchiveDir = createSafeArchiveDirPath(absoluteArchiveDir)
+  const safeArtifactDir = createSafeProjectPath(absoluteArtifactDir, DEFAULT_ARTIFACT_DIR_LABEL)
+  const safeOutputPath = createSafeArchiveOutputPath({
+    outputPath: absoluteOutputPath,
+    archiveDir: absoluteArchiveDir,
+    safeArchiveDir
+  })
 
   const artifactStat = fsImpl.statSync(absoluteArtifactDir)
   if (!artifactStat.isDirectory()) throw new Error(`artifactDir must be a directory: ${absoluteArtifactDir}`)
@@ -219,21 +261,31 @@ const createMacosReleaseEvidenceArchive = ({
     ? ['macOS evidence files look passing; official release readiness still requires release archive and signed closure validation']
     : ['macOS evidence is archived but does not prove official signed release readiness']
 
+  const files = [...requiredFiles, ...optionalFiles].map((file) => ({
+    ...file,
+    sourcePath: file.fileName,
+    archivedPath: createSafeArchiveFilePath({
+      filePath: file.archivedPath,
+      archiveDir: absoluteArchiveDir,
+      fallback: file.fileName
+    })
+  }))
+
   const manifest = {
     generatedAt,
     ok: true,
     macosEvidenceReady,
     archive: {
-      archiveDir: absoluteArchiveDir,
-      outputPath: absoluteOutputPath
+      archiveDir: safeArchiveDir,
+      outputPath: safeOutputPath
     },
     source: {
-      artifactDir: absoluteArtifactDir,
+      artifactDir: safeArtifactDir,
       artifactName,
       releaseTag,
       workflowRunUrl
     },
-    files: [...requiredFiles, ...optionalFiles],
+    files,
     warnings
   }
 

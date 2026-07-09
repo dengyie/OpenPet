@@ -1,95 +1,53 @@
-# OpenPet Agent Awareness Bundled Plugin Design
+# OpenPet Agent Awareness Implementation Reference
 
-This document describes the current design and implementation status of the
-official bundled `openpet.agent-awareness` plugin.
+> Date: 2026-07-05
+> Scope: shipped implementation map for the bundled `openpet.agent-awareness` plugin
 
-Status:
+This document is the maintainer-facing implementation companion for Agent Awareness. For product scope, current baseline, privacy boundary, and roadmap, start with [`docs/agent-awareness-development-design.md`](./agent-awareness-development-design.md).
 
-- generic service-scoped bridge support is implemented in OpenPet core;
-- `examples/plugins/agent-awareness/` now contains the bundled official plugin;
-- Codex awareness is explicit and manual: OpenPet generates setup instructions
-  but does not edit `~/.codex` or any external agent configuration;
-- real Codex hook wiring and desktop feel validation remain Manual-required.
+## Canonical Doc Roles
 
-## Product Goal
+| Doc | Role |
+| --- | --- |
+| [`agent-awareness-development-design.md`](./agent-awareness-development-design.md) | Canonical overview and current development route. |
+| [`superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](./superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md) | Forward-looking parity roadmap for the next major milestone set. |
+| [`../examples/plugins/agent-awareness/README.md`](../examples/plugins/agent-awareness/README.md) | Shipped plugin runtime contract and operator-facing behavior. |
+| [`superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](./superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md) | Real-session smoke and manual desktop acceptance. |
 
-OpenPet should reflect local AI coding-agent activity as pet state without
-hardcoding Codex, Claude, Gemini, or other agent-specific behavior into core.
+## What This Doc Covers
 
-The pet can:
+This file exists to answer three practical maintainer questions:
 
-- receive bounded `agent:*` events through `PetService.setEvent`;
-- speak short sanitized status messages through `PetService.say`;
-- show recent sanitized agent sessions in a local dashboard.
+1. Which files make up the shipped Agent Awareness surface?
+2. Which core modules outside the plugin package participate in that surface?
+3. Which helper files are present in the repo but are not part of the current official contract?
 
-The first adapter target is Codex. The plugin structure leaves room for future
-adapters without changing OpenPet core again.
-
-## Non-Goals
-
-The current implementation intentionally does not add:
-
-- `AgentRuntimeService` or agent-specific watchers in OpenPet core;
-- automatic writes to `~/.codex`, `~/.claude`, or other agent config;
-- raw prompt, tool input, terminal transcript, stdout/stderr, API key, or full
-  path capture;
-- creator bridge routes for long-running services;
-- permission approval bubbles for agent tool calls;
-- copied code or assets from Clawd on Desk or similar projects.
-
-External projects may inform product direction, but implementation must remain
-original and license-clean.
-
-## Architecture
-
-```text
-Local agent hook/log source
-  -> adapter-specific event normalizer
-  -> openpet.agent-awareness service
-  -> local ingest token check
-  -> session store + state mapper
-  -> service-scoped OpenPet bridge
-  -> PetService.say / PetService.setEvent
-  -> Agent Awareness dashboard
-```
-
-OpenPet core remains a platform:
-
-- sync bundled official plugins;
-- validate manifests;
-- start/stop declaration services;
-- inject service bridge credentials and plugin data/cache/log dirs;
-- enforce bridge token lifetime and manifest permissions;
-- route pet mutations through `PetService`.
-
-Agent-specific behavior lives in the plugin:
-
-- Codex hook instruction generation;
-- Codex event normalization;
-- session persistence;
-- state-to-pet mapping;
-- dashboard rendering;
-- local ingestion token management.
-
-## Current Package Layout
+## Shipped Package Layout
 
 ```text
 examples/plugins/agent-awareness/
+  config.schema.json
   plugin.json
   README.md
   commands/
     command-io.js
+    codex-hook-config.js
     codex-hook-plan.js
+    doctor.js
     install-codex-hooks.js
     uninstall-codex-hooks.js
-    doctor.js
   service/
     agent-awareness-service.js
     bridge-client.js
+    git-summary.js
+    runtime-session.js
     session-store.js
     state-mapper.js
+    usage-summary.js
     adapters/
       codex.js
+      codex-hook.js
+      codex-rollout-poller.js
   web/
     dashboard/
       index.html
@@ -97,211 +55,99 @@ examples/plugins/agent-awareness/
       styles.css
 ```
 
-The first version is dependency-free and uses Node built-ins only.
+## Current Official Runtime Surface
 
-There is no `config.schema.json` in the current version. The host does not yet
-inject saved plugin config into service processes, so exposing service config in
-Control Center would create a misleading UI. Service configuration should be a
-separate future milestone if needed.
+The current official, user-visible plugin surface is whatever is declared in [`examples/plugins/agent-awareness/plugin.json`](../examples/plugins/agent-awareness/plugin.json).
 
-## Manifest Contract
+That means the active contract today is:
 
-The bundled plugin declares:
+- plugin id `openpet.agent-awareness`
+- permissions `pet:say`, `pet:event`
+- config field `autoStartOnCodexSignal` (default `false`)
+- commands `doctor`, `codex-hook-plan`, `install-codex-hooks`, `uninstall-codex-hooks`
+- service `agent-awareness`
+- dashboard `main`
 
-- id: `openpet.agent-awareness`;
-- profile: `runtime`;
-- permissions: `pet:say`, `pet:event`;
-- commands:
-  - `install-codex-hooks`;
-  - `uninstall-codex-hooks`;
-  - `doctor`;
-- service:
-  - `agent-awareness`;
-  - health URL `http://127.0.0.1:8795/health`;
-- dashboard:
-  - `http://127.0.0.1:8795`.
+Anything not exposed from `plugin.json` should not be treated as current product behavior, even if helper code exists on disk.
 
-It does not request `pet:action` yet because the current state mapper does not
-assume a stable action id exists in every pet pack.
+## File Responsibilities
 
-## Service Contract
+### Plugin Package
 
-The service listens on loopback only:
-
-```text
-GET  /health
-GET  /api/sessions
-POST /api/events
-GET  /
-```
-
-`POST /api/events` requires:
-
-```text
-Authorization: Bearer <OPENPET_DATA_DIR/ingest-token.txt>
-Content-Type: application/json
-```
-
-The token is generated only when the user explicitly runs
-`install-codex-hooks`. If the token is missing, ingestion fails closed and tells
-the user to run the setup command.
-
-## Event Contract
-
-Accepted input is intentionally small:
-
-```json
-{
-  "adapter": "codex",
-  "sessionId": "local-session-id",
-  "type": "turn.completed",
-  "status": "completed",
-  "message": "Tests passed",
-  "cwd": "/path/to/project",
-  "toolName": "shell"
-}
-```
-
-Stored event fields:
-
-| Input | Stored value |
+| Path | Responsibility |
 | --- | --- |
-| `adapter` | `codex` |
-| `sessionId` | safe opaque id, or hash when unsafe |
-| `type` | short sanitized event type |
-| `status` | canonical status |
-| `message` | short redacted text |
-| `cwd` | basename plus hash, never full path |
-| `toolName` | short sanitized name |
-| `timestamp` | provided timestamp or service time |
+| `examples/plugins/agent-awareness/config.schema.json` | Declares the explicit auto-start opt-in field exposed through the Control Center. |
+| `examples/plugins/agent-awareness/plugin.json` | Defines the authoritative manifest surface. |
+| `examples/plugins/agent-awareness/README.md` | Documents the shipped plugin behavior, privacy boundary, and operator notes. |
+| `examples/plugins/agent-awareness/commands/codex-hook-config.js` | Owns reversible hook install/uninstall logic shared by plugin commands and the repo helper script. |
+| `examples/plugins/agent-awareness/commands/doctor.js` | Produces sanitized setup and health diagnostics. |
+| `examples/plugins/agent-awareness/commands/codex-hook-plan.js` | Writes the read-only future hook plan and plugin-owned token file. |
+| `examples/plugins/agent-awareness/commands/install-codex-hooks.js` | Installs bounded OpenPet-owned Codex hook handlers and writes hook install state. |
+| `examples/plugins/agent-awareness/commands/uninstall-codex-hooks.js` | Removes only the OpenPet-owned Codex hook handlers and clears hook install state. |
+| `examples/plugins/agent-awareness/service/agent-awareness-service.js` | Hosts `/health`, `/api/sessions`, `/api/events`, dashboard assets, aggregate usage diagnostics, and bounded attention-session diagnostics. |
+| `examples/plugins/agent-awareness/service/adapters/codex-rollout-poller.js` | Reads bounded Codex rollout JSONL signal and counts ignored/unknown/malformed records. |
+| `examples/plugins/agent-awareness/service/adapters/codex.js` | Sanitizes rollout events, hashes session ids, and redacts project paths. |
+| `examples/plugins/agent-awareness/service/adapters/codex-hook.js` | Maps bounded hook payloads into the shared runtime-event shape. |
+| `examples/plugins/agent-awareness/service/git-summary.js` | Derives safe branch, dirty, ahead, and behind metadata from a local cwd without storing the cwd. |
+| `examples/plugins/agent-awareness/service/usage-summary.js` | Normalizes safe token/context/cost metadata from hook and rollout events for per-session and aggregate diagnostics. |
+| `examples/plugins/agent-awareness/service/runtime-session.js` | Reconciles hook and poller events into one canonical runtime session model with bounded current-step and metadata-derived progress summaries. |
+| `examples/plugins/agent-awareness/service/session-store.js` | Persists bounded runtime session summaries to plugin-owned storage. |
+| `examples/plugins/agent-awareness/service/state-mapper.js` | Emits `agent:<status>` events, routine visual-only updates, rate-limited urgent/summary speech, and bounded internal notification decisions for cooldown/noise policy testing. |
+| `examples/plugins/agent-awareness/web/dashboard/*` | Renders the read-only dashboard using display-time redaction, including aggregate usage tokens/cost/context, dedicated `view=stats` daily totals from sanitized history, bounded attention-session focus markers, per-session usage, git, current-step, recent-progress, and generated session-summary metadata, bounded `view=details&sessionId=<sanitized-id>` focus, and per-session `Focus` links. |
 
-Dropped fields include prompts, tool input, transcripts, stdout, stderr,
-environment variables, credentials, and arbitrary nested payloads.
+### Core Touchpoints Outside The Plugin
 
-## State Mapping
+| Path | Responsibility |
+| --- | --- |
+| `src/main/bootstrap/create-plugin-services.js` | Includes Agent Awareness in bundled plugin sync. |
+| `src/main/services/bundled-plugin-sync-service.js` | Copies the bundled plugin into the user's plugin directory while preserving user plugins. |
+| `src/main/services/plugin-service.js` | Requires native execution approval before service start, owns explicit Codex-signal auto-start gating, and formats the reserved `X active · Y sessions · Z events` health note plus Agent Awareness-only health details for the real bundled service. |
+| `src/main/services/plugin-command-runner.js` | Applies command-output redaction rules used by Agent Awareness command responses. |
+| `src/control-center/src/hooks/usePluginsPane.ts` + `src/control-center/src/panes/PluginsPane.tsx` | Provide the first-class `查看 Codex 详情` Control Center entry, reuse the shared dashboard deep-link path, and render the compact Agent Awareness-native detail summary when reserved health details are available. |
+| `src/main/pet-bubble-chat-preload.js` + `src/main/pet-bubble-chat/renderer.js` | Provide the pet-side `Codex 详情` quick-open entry from Bubble Chat using the same bounded dashboard route. |
+| `package.json` | Preserves the runtime bundle inclusion and helper script entrypoints. |
 
-Canonical statuses:
+## Non-Canonical Helper Paths
 
-```text
-idle
-thinking
-working
-waiting
-blocked
-completed
-failed
-```
+There are a few files that exist for development convenience or for future roadmap work but are not part of the current manifest-declared runtime surface.
 
-Every accepted event emits a bounded pet event:
+### Repository Helper Script
 
-```text
-agent:<status>
-```
+`scripts/configure-agent-awareness-codex.js` now reuses the same shared hook-config library as the shipped plugin commands. That keeps local operator scripting aligned with the manifest contract without making the repo helper itself part of the plugin runtime surface.
 
-Speech is rate-limited by session/status. The mapper speaks immediately when a
-session status changes and suppresses repeated same-status messages until the
-minimum interval passes.
+Before reviving any of these paths as official surface area, update all of the following together:
 
-## Codex Setup Strategy
+- `plugin.json`
+- `examples/plugins/agent-awareness/README.md`
+- `docs/agent-awareness-development-design.md`
+- `docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`
+- acceptance runbook and evidence expectations
+- relevant runtime and docs-drift tests
 
-Default behavior is zero-config local awareness. The Agent Awareness service
-polls local Codex rollout JSONL metadata from:
+## Test Map
 
-```text
-~/.codex/sessions
-~/.codex/archived_sessions
-```
+| Test file | What it protects |
+| --- | --- |
+| `tests/examples/agent-awareness-plugin.test.js` | Manifest contract, sanitization, hook normalization, rollout polling, visible metadata extraction, runtime session store, service behavior, and the full hook command surface. |
+| `tests/services/agent-awareness-plugin-service.test.js` | Plugin discovery, native execution approval, Codex-signal auto-start gating, health-note formatting, command redaction, and command results. |
+| `tests/services/agent-awareness-bundled-integration.test.js` | Bundled sync behavior, enabled-by-default discovery, config-backed auto-start opt-in, stopped-by-default service state, and start/stop lifecycle. |
+| `tests/examples/agent-awareness-dashboard.test.js` | Dashboard state rendering, usage stats, and redaction logic. |
+| `tests/examples/agent-awareness-dashboard-browser.test.js` | Browser-level dashboard smoke against the real local service. |
+| `tests/control-center/control-center-smoke.spec.js` | Control Center Agent Awareness approval gating, native health detail summary, and the first-class detail entry surface. |
+| `tests/main/pet-bubble-chat-renderer.test.js` | Pet-side quick-open button behavior for the Bubble Chat detail entry. |
+| `tests/scripts/run-agent-awareness-local-smoke.test.js` | Real-session smoke runner output shape, bounded notification-policy evidence, and redaction checks. |
+| `tests/scripts/check-docs-drift.test.js` | Live-doc truth baseline for Agent Awareness terminology and indexed docs. |
 
-This path does not require Codex hook trust. It intentionally ignores
-`user_message`, `response_item`, function-call arguments, command output,
-terminal transcripts, and full stored session content. It only derives bounded
-status events such as `session.started`, `turn.started`, `turn.completed`, and
-`failed`, which are then normalized through the same adapter boundary as HTTP
-hook events.
+## Update Checklist
 
-The hook path remains an enhanced real-time mode:
+When touching Agent Awareness behavior, walk this checklist before calling the work complete:
 
-`npm run configure-agent-awareness:codex` provides the local one-command Codex
-setup path. It:
+1. Does `plugin.json` still match the README and the tests?
+2. Does the change preserve the privacy boundary described in the canonical development doc?
+3. If the command or service surface changed, did you update `doctor` / `codex-hook-plan` / hook install-uninstall documentation and tests together?
+4. If helper scripts became official, did you promote them into the manifest and acceptance runbook instead of leaving them half-documented?
+5. Did you rerun `npm run check:docs-drift` after editing live docs?
 
-```text
-~/.codex/hooks.json
-~/.codex/hooks/openpet-agent-awareness.js
-OPENPET_DATA_DIR/ingest-token.txt
-OPENPET_DATA_DIR/codex-hooks.manual.md
-```
+## Practical Maintenance Rule
 
-The script preserves unrelated Codex hooks, replaces older OpenPet hook
-handlers to stay idempotent, and backs up an existing `hooks.json` before
-writing changes. The generated Codex hook sender reads the ingest token from
-`OPENPET_DATA_DIR` at runtime; the token is not embedded in `hooks.json`.
-
-Codex still requires reviewing and trusting the new hook with `/hooks` before it
-runs. This is a Codex runtime trust gate, not an OpenPet limitation.
-
-`install-codex-hooks` remains the manual setup helper and writes:
-
-```text
-OPENPET_DATA_DIR/ingest-token.txt
-OPENPET_DATA_DIR/codex-hooks.manual.md
-```
-
-The generated Markdown contains a `curl` example with the local bearer token.
-The command does not edit Codex config. The user must manually connect the
-snippet to the current Codex hook mechanism.
-
-`uninstall-codex-hooks` writes:
-
-```text
-OPENPET_DATA_DIR/codex-hooks.removal.md
-```
-
-It does not delete external Codex config because OpenPet did not create that
-config automatically.
-
-`doctor` verifies plugin data dir and setup artifact availability. It does not
-mutate external files.
-
-## Security And Privacy Requirements
-
-Current implementation satisfies:
-
-- service listens on `127.0.0.1`;
-- ingestion is bearer-token gated;
-- request body size is bounded;
-- event payload is normalized before persistence;
-- full cwd is reduced to basename plus hash;
-- token-looking strings are redacted from messages;
-- dashboard renders session fields with DOM text nodes, not `innerHTML`;
-- service bridge token is separate from ingestion token and is never exposed to
-  the dashboard;
-- service bridge routes are only context/pet routes, never creator routes.
-
-Residual risks:
-
-- local processes that can read `OPENPET_DATA_DIR/ingest-token.txt` can submit
-  sanitized events;
-- real Codex hook format is Manual-required and not proven by tests;
-- dashboard/UI experience has not had a real desktop feel review.
-
-## Verification
-
-Relevant automated checks:
-
-```bash
-node --test tests/examples/agent-awareness-plugin.test.js
-node --test tests/main/main-scale-injection.test.js tests/services/bundled-plugin-sync-service.test.js
-node --test tests/services/plugin-service.test.js tests/services/plugin-command-bridge-server.test.js tests/services/plugin-command-runner.test.js tests/plugins/plugin-bridge-docs.test.js
-npm run check:syntax
-git diff --check
-```
-
-## Future Backlog
-
-- Inject saved plugin config into service processes through a generic host
-  contract, then make service port/speech policy configurable.
-- Add a real Codex hook fixture once the supported Codex hook schema is pinned.
-- Add Claude/Gemini adapters as plugin-local modules.
-- Add optional `pet:action` mapping only after action ids are configurable or
-  discoverable.
-- Add a richer dashboard setup/status panel after real hook validation.
+If you are unsure whether a behavior is "real" or just "present in the repo," trust the manifest and the tests first, then reconcile the docs to that truth.

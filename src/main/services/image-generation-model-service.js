@@ -1,6 +1,12 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
+const { sanitizeLogText } = require('./log-safety')
+const {
+  createSavedProviderModelCatalog,
+  getScopedProviderModelCatalog,
+  uniqueModelIds
+} = require('./provider-model-catalog')
 
 const DEFAULT_CONFIG = {
   provider: 'openai-compatible',
@@ -82,6 +88,15 @@ const normalizeConfig = (config = {}) => {
     timeoutMs: Math.max(1000, Number(preferLegacy ? legacy.timeoutMs : (config?.timeoutMs ?? legacy.timeoutMs ?? DEFAULT_CONFIG.timeoutMs)) || DEFAULT_CONFIG.timeoutMs),
     maxConcurrentJobs: Math.max(1, Number(preferLegacy ? legacy.maxConcurrentJobs : (config?.maxConcurrentJobs ?? legacy.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs)) || DEFAULT_CONFIG.maxConcurrentJobs)
   }
+}
+
+const withRuntimeModelOverride = (config = {}, overrideModel = '') => {
+  const normalizedModel = String(overrideModel || '').trim()
+  if (!normalizedModel) return config
+  return normalizeConfig({
+    ...config,
+    model: normalizedModel
+  })
 }
 
 const toPersistedConfig = (config = {}) => {
@@ -239,6 +254,10 @@ const getErrorMessage = async (response) => {
   }
 }
 
+const sanitizeModelId = (value) => String(value || '')
+  .replace(/[\u0000-\u001F\u007F]/g, '')
+  .trim()
+
 const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
   if (Array.isArray(body.data)) return ''
@@ -257,9 +276,9 @@ const extractDiscoveredModels = (body) => {
       : []
   const models = []
   for (const entry of source) {
-    const modelId = typeof entry === 'string'
-      ? entry.trim()
-      : String(entry?.id || '').trim()
+    const modelId = sanitizeModelId(typeof entry === 'string'
+      ? entry
+      : entry?.id)
     if (!modelId || models.includes(modelId)) continue
     models.push(modelId)
   }
@@ -324,24 +343,57 @@ const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
   return payload
 }
 
-const buildProviderEditFormData = ({ model, prompt, constraints, referenceImages = [] }) => {
-  const form = new FormData()
+const createMultipartBoundary = () => `----OpenPetFormBoundary${crypto.randomBytes(12).toString('hex')}`
+
+const sanitizeMultipartToken = (value, fallback) => {
+  const normalized = String(value || '').replace(/[\r\n"]/g, '').trim()
+  return normalized || fallback
+}
+
+const appendMultipartTextPart = (buffers, boundary, name, value) => {
+  buffers.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${sanitizeMultipartToken(name, 'field')}"\r\n\r\n` +
+    `${String(value)}\r\n`
+  ))
+}
+
+const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
+  const fieldName = sanitizeMultipartToken(name, 'image')
+  const fileName = sanitizeMultipartToken(referenceImage.fileName, 'reference.png')
+  const mimeType = sanitizeMultipartToken(referenceImage.mimeType, 'application/octet-stream')
+  buffers.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${fileName}"\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n`
+  ))
+  buffers.push(referenceImage.bytes)
+  buffers.push(Buffer.from('\r\n'))
+}
+
+const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
+  const boundary = createMultipartBoundary()
+  const buffers = []
   const imageField = referenceImages.length > 1 ? 'image[]' : 'image'
   for (const referenceImage of referenceImages) {
-    form.append(
-      imageField,
-      new Blob([referenceImage.bytes], { type: referenceImage.mimeType }),
-      referenceImage.fileName
-    )
+    appendMultipartFilePart(buffers, boundary, imageField, referenceImage)
   }
-  form.append('model', model)
-  form.append('prompt', prompt)
-  form.append('size', `${constraints.width}x${constraints.height}`)
+  appendMultipartTextPart(buffers, boundary, 'model', model)
+  appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
+  appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
   if (model !== 'gpt-image-2') {
-    form.append('background', constraints.transparent ? 'transparent' : 'white')
-    form.append('response_format', 'b64_json')
+    appendMultipartTextPart(buffers, boundary, 'background', constraints.transparent ? 'transparent' : 'white')
+    appendMultipartTextPart(buffers, boundary, 'response_format', 'b64_json')
   }
-  return form
+  buffers.push(Buffer.from(`--${boundary}--\r\n`))
+  const body = Buffer.concat(buffers)
+  return {
+    body,
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': String(body.byteLength)
+    }
+  }
 }
 
 const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
@@ -390,7 +442,27 @@ const createImageGenerationModelService = ({
   const queuedProviderJobs = []
 
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
+  const getStoredImageGenerationState = () => (
+    isPlainObject(settingsService.get().models?.imageGeneration)
+      ? settingsService.get().models.imageGeneration
+      : {}
+  )
+  const getModelCatalog = (config = getStoredConfig(), storedState = getStoredImageGenerationState()) => (
+    getScopedProviderModelCatalog({
+      capability: 'image',
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      catalog: storedState.modelCatalog
+    })
+  )
   const getProviderTimeoutMs = (config) => Math.max(1, Number(cloudGenerationTimeoutMs ?? providerGenerationTimeoutMs ?? config.timeoutMs ?? PROVIDER_GENERATION_TIMEOUT_MS) || PROVIDER_GENERATION_TIMEOUT_MS)
+  const getConfigLogDetails = (config) => ({
+    provider: config.provider,
+    model: config.model,
+    baseUrlHost: getUrlHost(config.baseUrl),
+    timeoutMs: Number(config.timeoutMs) || DEFAULT_CONFIG.timeoutMs,
+    maxConcurrentJobs: getMaxConcurrentJobs(config)
+  })
 
   const recordLog = (entry) => {
     try {
@@ -484,26 +556,53 @@ const createImageGenerationModelService = ({
     })
   }
 
+  const persistModelCatalog = (config, models) => {
+    const nextCatalog = createSavedProviderModelCatalog({
+      capability: 'image',
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      models: uniqueModelIds(models),
+      fetchedAt: now().toISOString()
+    })
+    const current = getStoredImageGenerationState()
+    saveStoredConfig({
+      ...toPersistedConfig(current),
+      modelCatalog: nextCatalog
+    })
+    return nextCatalog
+  }
+
   const getConfig = () => {
     const config = getStoredConfig()
+    const storedState = getStoredImageGenerationState()
     const secretValue = secretService.getSecretValue(config.apiKeyRef)
     return {
       ...config,
       hasApiKey: Boolean(secretValue),
       apiKeyPreview: maskSecret(secretValue),
-      apiKeyLabel: 'Image API Key'
+      apiKeyLabel: 'Image API Key',
+      modelCatalog: getModelCatalog(config, storedState)
     }
   }
 
   const saveConfig = (partialConfig = {}) => {
     const current = getStoredConfig()
+    const currentState = getStoredImageGenerationState()
     const next = toPersistedConfig({
       ...current,
       ...(isPlainObject(partialConfig) ? partialConfig : {}),
       apiKeyRef: current.apiKeyRef
     })
+    next.modelCatalog = currentState.modelCatalog
     next.baseUrl = assertProviderBaseUrl(next.baseUrl)
     saveStoredConfig(next)
+    recordLog({
+      scope: 'image-generation-settings',
+      level: 'info',
+      event: 'imageGeneration.settings.saved',
+      message: 'Image Provider settings saved',
+      details: getConfigLogDetails(next)
+    })
     return getConfig()
   }
 
@@ -513,6 +612,16 @@ const createImageGenerationModelService = ({
       id: config.apiKeyRef,
       value: String(apiKey || ''),
       label: 'Image API Key'
+    })
+    recordLog({
+      scope: 'image-generation-settings',
+      level: 'info',
+      event: 'imageGeneration.settings.api-key.saved',
+      message: 'Image Provider API key saved',
+      details: {
+        ...getConfigLogDetails(config),
+        apiKeyRef: config.apiKeyRef
+      }
     })
     const saved = getConfig()
     return {
@@ -525,6 +634,16 @@ const createImageGenerationModelService = ({
   const clearProviderApiKey = () => {
     const config = getStoredConfig()
     secretService.deleteSecret(config.apiKeyRef)
+    recordLog({
+      scope: 'image-generation-settings',
+      level: 'info',
+      event: 'imageGeneration.settings.api-key.cleared',
+      message: 'Image Provider API key cleared',
+      details: {
+        ...getConfigLogDetails(config),
+        apiKeyRef: config.apiKeyRef
+      }
+    })
     return {
       apiKeyRef: config.apiKeyRef,
       hasApiKey: false,
@@ -621,6 +740,7 @@ const createImageGenerationModelService = ({
         body = await response.json()
       } catch (_) {}
       const availableModels = extractDiscoveredModels(body)
+      persistModelCatalog(config, availableModels)
       return completeHealth(
         {
           ok: true,
@@ -739,11 +859,13 @@ const createImageGenerationModelService = ({
           { status, modelsProbe: 'failed', providerMessage: extractProviderBusinessError(body) }
         )
       }
+      const discoveredModels = extractDiscoveredModels(body)
+      persistModelCatalog(config, discoveredModels)
       return completeDiscovery(
         {
           ok: true,
           ...baseResult,
-          models: extractDiscoveredModels(body),
+          models: discoveredModels,
           code: 'ok',
           message: 'Image Provider model discovery succeeded'
         },
@@ -761,7 +883,7 @@ const createImageGenerationModelService = ({
           baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: 'model_discovery_error',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error
@@ -804,21 +926,25 @@ const createImageGenerationModelService = ({
     })
     let response
     try {
-      const requestBody = normalizedReferenceImages.length > 0
-        ? buildProviderEditFormData({
+      const multipartRequest = normalizedReferenceImages.length > 0
+        ? buildProviderEditMultipartRequest({
             model: config.model,
             prompt,
             constraints,
             referenceImages: normalizedReferenceImages
           })
+        : null
+      const requestBody = multipartRequest
+        ? multipartRequest.body
         : JSON.stringify(buildProviderGenerationPayload({
             model: config.model,
             prompt,
             constraints
           }))
-      const headers = normalizedReferenceImages.length > 0
+      const headers = multipartRequest
         ? {
-            Authorization: `Bearer ${apiKey}`
+            Authorization: `Bearer ${apiKey}`,
+            ...multipartRequest.headers
           }
         : {
             Authorization: `Bearer ${apiKey}`,
@@ -851,7 +977,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           timeoutMs,
           errorCode: /timed out/i.test(String(error?.message || '')) ? 'provider_timeout' : 'provider_request_error',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error
@@ -874,7 +1000,7 @@ const createImageGenerationModelService = ({
           requestMode: conditioning.mode,
           referenceImageCount: normalizedReferenceImages.length,
           errorCode: 'provider_http_error',
-          errorMessage
+          errorMessage: sanitizeLogText(errorMessage, { maxChars: 240 })
         }
       })
       throw new Error(`Image Provider generation failed with HTTP ${status}`)
@@ -900,7 +1026,7 @@ const createImageGenerationModelService = ({
             referenceImageCount: normalizedReferenceImages.length,
             outputCount: 0,
             errorCode: 'provider_business_error',
-            errorMessage: businessError
+            errorMessage: sanitizeLogText(businessError, { maxChars: 240 })
           }
         })
         throw new Error(businessError)
@@ -921,7 +1047,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
-          errorMessage: 'Image Provider generation returned no outputs'
+          errorMessage: sanitizeLogText('Image Provider generation returned no outputs', { maxChars: 240 })
         }
       })
       throw new Error('Image Provider generation returned no outputs')
@@ -958,7 +1084,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           outputCount: 0,
           errorCode: 'provider_invalid_response',
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error
@@ -996,8 +1122,8 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [] }) => {
-    const config = getStoredConfig()
+  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
+    const config = withRuntimeModelOverride(getStoredConfig(), model)
     const requestId = idFactory()
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({
@@ -1056,7 +1182,7 @@ const createImageGenerationModelService = ({
           provider: config.provider,
           model: config.model,
           durationMs: nowMs() - startedMs,
-          errorMessage: String(error?.message || error).slice(0, 240)
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
       throw error

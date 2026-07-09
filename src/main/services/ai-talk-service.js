@@ -1,4 +1,6 @@
 const crypto = require('crypto')
+const fs = require('fs')
+const path = require('path')
 const { getBehaviorToolDefinition } = require('./ai-service')
 
 const FALLBACK_PERSONA = Object.freeze({
@@ -269,6 +271,29 @@ const parsePersonaDraft = (reply) => {
   return normalizePersonaOverride(candidate)
 }
 
+const getMimeTypeForImagePath = (filePath) => {
+  const extension = path.extname(String(filePath || '')).toLowerCase()
+  if (extension === '.png') return 'image/png'
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg'
+  if (extension === '.gif') return 'image/gif'
+  if (extension === '.webp') return 'image/webp'
+  return ''
+}
+
+const readImageAsDataUrl = (filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) return null
+  const mimeType = getMimeTypeForImagePath(filePath)
+  if (!mimeType) return null
+  const buffer = fs.readFileSync(filePath)
+  if (!buffer.length) return null
+  return {
+    dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
+    mimeType,
+    byteLength: buffer.length,
+    fileName: path.basename(filePath)
+  }
+}
+
 const hashText = (value) => crypto.createHash('sha256').update(value).digest('hex')
 
 const getRecentMessages = (messages, limit = MAX_CONTEXT_MESSAGES) => {
@@ -515,6 +540,60 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     return { pack, manifest, petPackId }
   }
 
+  const resolvePersonaDraftReferenceImage = () => {
+    const { pack, manifest } = resolveActivePack()
+    const rootPath = normalizeString(pack?.rootPath)
+    const spritePath = normalizeString(manifest?.spritesheetPath)
+    if (!rootPath || !spritePath) return null
+    const absolutePath = path.join(rootPath, spritePath)
+    const image = readImageAsDataUrl(absolutePath)
+    if (!image) return null
+    return {
+      ...image,
+      source: 'spritesheet',
+      relativePath: spritePath
+    }
+  }
+
+  const buildPersonaGenerationRequest = ({ instruction, profile, referenceImage }) => {
+    const messages = buildPersonaGenerationMessages({ instruction, profile })
+    if (!referenceImage) {
+      return {
+        messages,
+        usesVisionConfig: false,
+        referenceImageSummary: null
+      }
+    }
+    return {
+      messages: [
+        messages[0],
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: messages[1].content
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: referenceImage.dataUrl
+              }
+            }
+          ]
+        }
+      ],
+      usesVisionConfig: true,
+      referenceImageSummary: {
+        source: referenceImage.source,
+        fileName: referenceImage.fileName,
+        relativePath: referenceImage.relativePath,
+        mimeType: referenceImage.mimeType,
+        byteLength: referenceImage.byteLength
+      }
+    }
+  }
+
   const getCurrentActionCandidates = (manifest = {}) => normalizeActionCandidates(manifest.actions)
 
   const pendingMemoryJobs = new Set()
@@ -636,6 +715,12 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
   const generatePersonaDraft = async ({ instruction = '' } = {}) => {
     const profile = getPersonaProfile()
     const instructionText = normalizeString(instruction).slice(0, 2000)
+    const referenceImage = resolvePersonaDraftReferenceImage()
+    const generationRequest = buildPersonaGenerationRequest({
+      instruction: instructionText,
+      profile,
+      referenceImage
+    })
     recordLog({
       level: 'info',
       event: 'ai-talk.persona.draft.started',
@@ -648,17 +733,22 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         effectivePersona: profile.effectivePersona,
         personaHash: hashText(profile.compiledPersonaPrompt),
         extras: {
-          instructionChars: instructionText.length
+          instructionChars: instructionText.length,
+          usesVisionConfig: generationRequest.usesVisionConfig,
+          referenceImageSource: normalizeString(generationRequest.referenceImageSummary?.source),
+          referenceImageMimeType: normalizeString(generationRequest.referenceImageSummary?.mimeType),
+          referenceImageBytes: Number(generationRequest.referenceImageSummary?.byteLength) || 0
         }
       })
     })
     try {
+      const visionConfig = generationRequest.usesVisionConfig && typeof aiService.getEffectiveVisionConfig === 'function'
+        ? aiService.getEffectiveVisionConfig()
+        : null
       const result = await aiService.complete({
-        messages: buildPersonaGenerationMessages({
-          instruction: instructionText,
-          profile
-        }),
-        tools: []
+        messages: generationRequest.messages,
+        tools: [],
+        ...(visionConfig ? { configOverride: visionConfig } : {})
       })
       const draftPersona = parsePersonaDraft(result.reply)
       if (!Object.keys(draftPersona).length) {
@@ -678,7 +768,11 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           effectivePersona,
           personaHash: hashText(compiledPersonaPrompt),
           extras: {
-            instructionChars: instructionText.length
+            instructionChars: instructionText.length,
+            usesVisionConfig: generationRequest.usesVisionConfig,
+            referenceImageSource: normalizeString(generationRequest.referenceImageSummary?.source),
+            referenceImageMimeType: normalizeString(generationRequest.referenceImageSummary?.mimeType),
+            referenceImageBytes: Number(generationRequest.referenceImageSummary?.byteLength) || 0
           }
         })
       })
@@ -702,6 +796,10 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           personaHash: hashText(profile.compiledPersonaPrompt),
           extras: {
             instructionChars: instructionText.length,
+            usesVisionConfig: generationRequest.usesVisionConfig,
+            referenceImageSource: normalizeString(generationRequest.referenceImageSummary?.source),
+            referenceImageMimeType: normalizeString(generationRequest.referenceImageSummary?.mimeType),
+            referenceImageBytes: Number(generationRequest.referenceImageSummary?.byteLength) || 0,
             errorName: sanitizeDiagnosticText(error?.name || 'Error'),
             errorMessage: sanitizeDiagnosticText(error?.message)
           }

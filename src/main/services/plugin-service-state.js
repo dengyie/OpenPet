@@ -1,3 +1,38 @@
+const PLUGIN_SETUP_RUNTIME_STATUSES = new Set(['not-run', 'running', 'stopping', 'succeeded', 'failed'])
+const PLUGIN_SERVICE_RUNTIME_STATUSES = new Set(['stopped', 'starting', 'running', 'stopping', 'exited', 'failed'])
+
+const toNonNegativeInteger = (value) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : 0
+}
+
+const toNullableNumber = (value) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+const toText = (value) => (typeof value === 'string' ? value : '')
+
+/**
+ * @param {unknown} value
+ * @returns {import('../../shared/openpet-contracts').PluginSetupRuntimeStatus}
+ */
+const toSetupRuntimeStatus = (value) => (
+  typeof value === 'string' && PLUGIN_SETUP_RUNTIME_STATUSES.has(value)
+    ? /** @type {import('../../shared/openpet-contracts').PluginSetupRuntimeStatus} */ (value)
+    : 'not-run'
+)
+
+/**
+ * @param {unknown} value
+ * @returns {import('../../shared/openpet-contracts').PluginServiceRuntimeStatus}
+ */
+const toServiceRuntimeStatus = (value) => (
+  typeof value === 'string' && PLUGIN_SERVICE_RUNTIME_STATUSES.has(value)
+    ? /** @type {import('../../shared/openpet-contracts').PluginServiceRuntimeStatus} */ (value)
+    : 'stopped'
+)
+
 const getSignatureStatus = (manifest = {}) => {
   if (manifest.source === 'official') {
     return { status: 'official', label: 'Official plugin', signer: 'openpet', algorithm: 'bundled' }
@@ -69,32 +104,55 @@ const getPluginStorageStats = (pluginId, { getPluginStorage, getJsonByteSize }) 
   }
 }
 
+/**
+ * @param {Record<string, any> | undefined} runtime
+ * @param {Record<string, any>} [serviceEntry]
+ * @param {(health?: Record<string, any>, serviceEntry?: Record<string, any>) => import('../../shared/openpet-contracts').PluginServiceHealthViewState} createServiceHealthView
+ * @returns {import('../../shared/openpet-contracts').PluginServiceRuntimeViewState}
+ */
 const createRuntimeView = (runtime, serviceEntry = {}, createServiceHealthView) => {
   if (!runtime) {
     return {
       status: 'stopped',
+      pid: 0,
+      startedAt: '',
+      stoppedAt: '',
+      command: '',
+      cwd: '',
+      exitCode: null,
+      signal: '',
+      error: '',
       health: createServiceHealthView({}, serviceEntry)
     }
   }
   return {
-    status: runtime.status || 'stopped',
-    pid: runtime.pid || 0,
-    startedAt: runtime.startedAt || '',
-    stoppedAt: runtime.stoppedAt || '',
-    command: runtime.command || '',
-    cwd: runtime.cwd || '',
-    exitCode: Number.isFinite(runtime.exitCode) ? runtime.exitCode : null,
-    signal: runtime.signal || '',
-    error: runtime.error || '',
-    health: createServiceHealthView(runtime.health || {}, serviceEntry)
+    status: toServiceRuntimeStatus(runtime.status),
+    pid: toNonNegativeInteger(runtime.pid),
+    startedAt: toText(runtime.startedAt),
+    stoppedAt: toText(runtime.stoppedAt),
+    command: toText(runtime.command),
+    cwd: toText(runtime.cwd),
+    exitCode: toNullableNumber(runtime.exitCode),
+    signal: toText(runtime.signal),
+    error: toText(runtime.error),
+    health: createServiceHealthView(
+      runtime.health && typeof runtime.health === 'object' && !Array.isArray(runtime.health)
+        ? runtime.health
+        : {},
+      serviceEntry
+    )
   }
 }
 
+/**
+ * @param {Record<string, any>} [runtime]
+ * @returns {import('../../shared/openpet-contracts').PluginSetupRuntimeViewState}
+ */
 const createSetupRuntimeView = (runtime = {}) => ({
-  status: runtime.status || 'not-run',
-  lastRunAt: runtime.lastRunAt || '',
-  exitCode: Number.isFinite(runtime.exitCode) ? runtime.exitCode : null,
-  error: runtime.error || ''
+  status: toSetupRuntimeStatus(runtime.status),
+  lastRunAt: toText(runtime.lastRunAt),
+  exitCode: toNullableNumber(runtime.exitCode),
+  error: toText(runtime.error)
 })
 
 const decorateEntriesWithRuntime = ({

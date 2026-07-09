@@ -11,6 +11,7 @@ const PET_BASE_SCALE = 0.5
 const CONTROL_CENTER_WIDTH = 900
 const CONTROL_CENTER_HEIGHT = 640
 const RESIZE_ANCHOR = Symbol('openpet.resizeAnchor')
+const PET_VIEWPORT = Symbol('openpet.viewport')
 
 const toFiniteNumber = (value, fallback) => (
   Number.isFinite(Number(value)) ? Number(value) : fallback
@@ -94,6 +95,10 @@ const applyWindowScale = (petWindow, scale) => {
 const applyPetViewport = (petWindow, viewport) => {
   if (!petWindow || petWindow.isDestroyed()) return
   const { width, height } = normalizeViewportSize(viewport)
+  petWindow[PET_VIEWPORT] = {
+    ...viewport,
+    topInset: Math.max(0, Math.round(toFiniteNumber(viewport?.topInset, 0)))
+  }
   resizeWindowAroundBottomCenter(petWindow, width, height)
 }
 
@@ -215,4 +220,4 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
   return settingsWindow
 }
 
-module.exports = { BASE_WIDTH, BASE_HEIGHT, PET_BASE_SCALE, applyPetViewport, applyWindowScale, applyNavigationLock, createWindow, createSettingsWindow, loadPetWindow }
+module.exports = { BASE_WIDTH, BASE_HEIGHT, PET_BASE_SCALE, PET_VIEWPORT, applyPetViewport, applyWindowScale, applyNavigationLock, createWindow, createSettingsWindow, loadPetWindow }

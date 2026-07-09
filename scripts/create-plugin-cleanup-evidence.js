@@ -8,6 +8,7 @@ const DEFAULT_OUTPUT_ROOT = path.join('docs', 'release-evidence', 'plugin-cleanu
 const DEFAULT_JSON_NAME = 'plugin-cleanup-evidence.json'
 const DEFAULT_MARKDOWN_NAME = 'plugin-cleanup-evidence.md'
 const DEFAULT_TIMEOUT_MS = 4000
+const DEFAULT_OUTPUT_DIR_LABEL = 'plugin-cleanup-evidence'
 
 const usage = () => [
   'Usage: node scripts/create-plugin-cleanup-evidence.js [options]',
@@ -171,6 +172,26 @@ const renderMarkdownCleanupEvidence = (report) => [
   ...report.warnings.map((warning) => `- ${warning}`)
 ].join('\n') + '\n'
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const assertOutputDoesNotExist = ({ outputDir, fsImpl = fs }) => {
   for (const fileName of [DEFAULT_JSON_NAME, DEFAULT_MARKDOWN_NAME]) {
     const outputPath = path.join(outputDir, fileName)
@@ -186,8 +207,8 @@ const writeCleanupEvidence = ({ report, outputDir, fsImpl = fs }) => {
   const reportWithFiles = {
     ...report,
     files: {
-      json: jsonPath,
-      markdown: markdownPath
+      json: createSafeOutputFilePath({ filePath: jsonPath, outputDir, fallback: DEFAULT_JSON_NAME }),
+      markdown: createSafeOutputFilePath({ filePath: markdownPath, outputDir, fallback: DEFAULT_MARKDOWN_NAME })
     }
   }
   fsImpl.writeFileSync(jsonPath, `${JSON.stringify(reportWithFiles, null, 2)}\n`)
@@ -235,6 +256,7 @@ const createPluginCleanupEvidence = async ({
     const liveDescendantPidsAfter = descendantPidsBefore.filter((pid) => isPidRunning(pid, killProcessImpl))
     const report = {
       generatedAt,
+      outputDir: createSafeProjectPath(absoluteOutputDir, DEFAULT_OUTPUT_DIR_LABEL),
       ok: cleanupAttempted && rootExit.exited && liveDescendantPidsAfter.length === 0,
       phase: 86,
       platform,

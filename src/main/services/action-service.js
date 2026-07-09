@@ -27,6 +27,8 @@ const emptyPetPack = {
   }
 }
 
+const LEGACY_PACK_ID = 'legacy-cat'
+
 const normalizeActionId = (value, fieldName = 'action id') => {
   if (typeof value !== 'string' || !SAFE_ACTION_ID_PATTERN.test(value)) {
     throw new Error(`Creator ${fieldName} must be a safe id`)
@@ -213,6 +215,39 @@ const normalizeTriggerRuleSpec = ({ type, actionId, value, proposal = {} }) => {
   return spec
 }
 
+const mergeTriggerRuleSpecInput = (currentSpec, nextSpec) => {
+  const current = currentSpec && typeof currentSpec === 'object' ? currentSpec : {}
+  const incoming = nextSpec && typeof nextSpec === 'object' ? nextSpec : {}
+  return {
+    ...current,
+    ...incoming,
+    ...(incoming.schedule && typeof incoming.schedule === 'object'
+      ? {
+          schedule: {
+            ...(current.schedule && typeof current.schedule === 'object' ? current.schedule : {}),
+            ...incoming.schedule
+          }
+        }
+      : {}),
+    ...(incoming.state && typeof incoming.state === 'object'
+      ? {
+          state: {
+            ...(current.state && typeof current.state === 'object' ? current.state : {}),
+            ...incoming.state
+          }
+        }
+      : {}),
+    ...(incoming.event && typeof incoming.event === 'object'
+      ? {
+          event: {
+            ...(current.event && typeof current.event === 'object' ? current.event : {}),
+            ...incoming.event
+          }
+        }
+      : {})
+  }
+}
+
 const normalizeTriggerProposalId = (value, fieldName = 'trigger proposal id') => {
   if (typeof value !== 'string' || !SAFE_TRIGGER_PROPOSAL_ID_PATTERN.test(value)) {
     throw new Error(`Creator ${fieldName} must be a safe id`)
@@ -364,6 +399,22 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
   const persistMutableConfig = (nextConfig) => {
     const persistedConfig = normalizePersistedCreatorConfig(nextConfig)
     assertTriggerRulesReferenceActions(persistedConfig)
+    const petPack = getPetPack()
+    const sourceType = petPack.source?.type || ''
+    const isLegacyBuiltInPack = sourceType === 'built-in' && (petPack.manifest?.id || '') === LEGACY_PACK_ID
+
+    if (sourceType === 'user-installed') {
+      if (!petPackService?.updateActivePetPackManifest) {
+        throw new Error('Installed pet pack persistence is not available')
+      }
+      petPackService.updateActivePetPackManifest(persistedConfig)
+      return reload()
+    }
+
+    if (sourceType === 'built-in' && !isLegacyBuiltInPack) {
+      throw new Error('Built-in pet packs are read-only for action persistence')
+    }
+
     if (typeof saveLegacyAnimations === 'function') {
       legacyConfigOverride = persistedConfig
       saveLegacyAnimations(persistedConfig)
@@ -775,13 +826,21 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     return { current, index, rule: current.triggerRules[index] }
   }
 
-  const setTriggerRuleStatus = (ruleId, status) => {
-    const nextStatus = normalizeTriggerRuleStatus(status)
+  const updateTriggerRule = (ruleId, updates = {}) => {
+    const hasStatusUpdate = updates.status !== undefined
+    const hasRuleSpecUpdate = updates.ruleSpec && typeof updates.ruleSpec === 'object'
+    if (!hasStatusUpdate && !hasRuleSpecUpdate) {
+      throw new Error('Trigger rule update must include status or ruleSpec')
+    }
     const { current, index, rule } = findTriggerRuleItem(ruleId)
     const updatedAt = now()
+    const mergedRuleSpec = hasRuleSpecUpdate
+      ? mergeTriggerRuleSpecInput(rule.ruleSpec, updates.ruleSpec)
+      : rule.ruleSpec
     const nextRule = normalizeTriggerRuleItem({
       ...rule,
-      status: nextStatus,
+      ...(hasStatusUpdate ? { status: normalizeTriggerRuleStatus(updates.status) } : {}),
+      ...(hasRuleSpecUpdate ? { ruleSpec: mergedRuleSpec } : {}),
       updatedAt
     })
     const triggerRules = current.triggerRules.map((item, itemIndex) => (
@@ -793,6 +852,8 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     })
     return { rule: nextRule, animations }
   }
+
+  const setTriggerRuleStatus = (ruleId, status) => updateTriggerRule(ruleId, { status })
 
   const deleteTriggerRule = (ruleId) => {
     const { current, index, rule } = findTriggerRuleItem(ruleId)
@@ -818,6 +879,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     submitTriggerProposal,
     acceptTriggerProposalItem,
     rejectTriggerProposalItem,
+    updateTriggerRule,
     setTriggerRuleStatus,
     deleteTriggerRule
   }

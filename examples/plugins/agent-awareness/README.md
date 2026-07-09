@@ -1,74 +1,131 @@
 # Agent Awareness
 
-Agent Awareness is an official bundled OpenPet extension that lets a local AI
-coding agent report sanitized activity into OpenPet.
+Agent Awareness is a bundled OpenPet runtime plugin that reflects local AI coding-agent activity through bounded pet events, low-frequency pet speech, and a local dashboard.
 
-The extension is intentionally service-based. OpenPet core only starts/stops the
-service and provides a small service bridge for pet speech/events. Codex-specific
-hook guidance, event normalization, session storage, and dashboard state live in
-this extension.
+## Documentation Guide
+
+- Start here for the full live program overview: [`../../../docs/agent-awareness-development-design.md`](../../../docs/agent-awareness-development-design.md)
+- Current executable Phase A plan: [`../../../docs/superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md`](../../../docs/superpowers/plans/2026-07-05-agent-awareness-phase2-claudepet-parity-foundation.md)
+- ClaudePet parity expansion roadmap: [`../../../docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md`](../../../docs/superpowers/specs/2026-07-05-agent-awareness-claudepet-parity-design.md)
+- Implementation reference: [`../../../docs/agent-awareness-plugin-design.md`](../../../docs/agent-awareness-plugin-design.md)
+- Real-session acceptance runbook: [`../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`](../../../docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md)
+
+## Current Scope
+
+- Dual-channel Codex ingestion: zero-config rollout polling under `~/.codex/sessions` / `~/.codex/archived_sessions` plus optional shipped hooks.
+- Explicit `install-codex-hooks` / `uninstall-codex-hooks` commands for reversible, backup-safe Codex hook management.
+- Sanitized unified runtime storage under `OPENPET_DATA_DIR/sessions.json` with `liveSessions`, `sessionSummaries`, and `dailyUsageRollups`.
+- A 30-day rolling retained history window for per-session workbench state and usage rollups.
+- Safe visible metadata when available: token/context/cost numbers, git branch/dirty state, generated session summaries, and metadata-derived progress hints.
+- Plugin-internal notification policy for low-frequency pet speech: urgent transitions can interrupt, repeated status chatter is cooled, and pet events are still emitted when speech is suppressed.
+- Explicit service start and stop through OpenPet's existing plugin lifecycle, plus optional trusted auto-start after approval and explicit opt-in.
+- A local dashboard with canonical `overview`, `sessions`, and `usage` workbench routes, a compact Control Center-native detail summary, a first-class Control Center detail entry, a pet-side quick-open detail entry, and a read-only `codex-hook-plan` command for future hook setup guidance.
+
+The current shipped scope does not auto-install hooks during discovery or app boot, does not trust the hook inside Codex on the user's behalf, does not expose user-configurable persistent noise controls, and does not store prompts, model responses, tool arguments, terminal transcript, stdout, stderr, or full local paths.
 
 ## Privacy Boundary
 
-By default, the service works in zero-config mode: it scans local Codex rollout
-JSONL metadata under `~/.codex/sessions` and `~/.codex/archived_sessions`.
-This does not require Codex hook trust. It only derives session status, cwd
-basename/hash, and timestamps; raw prompts, tool inputs, terminal transcripts,
-stdout, and stderr are ignored.
+Stored and displayed data is intentionally narrow:
 
-The optional HTTP hook path accepts only a small event shape:
+- session id hash;
+- bounded status;
+- bounded runtime phase;
+- bounded event type;
+- project basename plus short hash;
+- numeric token/context/cost metadata when Codex exposes it as metadata;
+- git branch, dirty state, dirty count, and ahead/behind counts;
+- generated session summary title, current step, and recent progress hint;
+- bounded tool name;
+- bounded approval state;
+- bounded progress label, step, and counts;
+- short sanitized status text when one exists;
+- bounded source marker (`hook` or `poller`);
+- timestamp.
 
-```json
-{
-  "adapter": "codex",
-  "sessionId": "local-session-id",
-  "type": "turn.completed",
-  "status": "completed",
-  "message": "Tests passed",
-  "cwd": "/path/to/project"
-}
-```
+The plugin ignores raw content-bearing fields and only uses safe top-level lifecycle and metadata hints to derive pet-visible status, current step, and recent progress text.
 
-Stored and displayed data is sanitized. The extension does not store raw prompts,
-tool input, terminal transcripts, stdout, stderr, API keys, or full local paths.
+Additional hardening in the current MVP:
 
-## Codex Setup
+- raw session ids are hashed before persistence or display;
+- project paths are reduced to `basename + short hash`;
+- `GET /health` does not expose plugin store paths or `codexHome`;
+- poller `lastError` is sanitized before it leaves the service;
+- the dashboard applies display-time redaction as defense in depth;
+- command outputs avoid raw plugin-data paths and loopback URLs.
 
-No Codex setup is required for basic status awareness. Start the `Agent
-Awareness Service` entry and open the dashboard.
+## Runtime
 
-For richer real-time hook events, run:
-
-```sh
-npm run configure-agent-awareness:codex
-```
-
-The script creates or updates `~/.codex/hooks.json`, installs a best-effort
-sender at `~/.codex/hooks/openpet-agent-awareness.js`, and creates an ingestion
-token at `OPENPET_DATA_DIR/ingest-token.txt`. It preserves unrelated Codex
-hooks and backs up an existing `hooks.json` before changing it.
-
-Preview changes without writing files:
-
-```sh
-npm run configure-agent-awareness:codex -- --dry-run
-```
-
-Codex requires reviewing and trusting new command hooks before they run. After
-configuration, open a new Codex session and run `/hooks` once to trust the
-OpenPet hook. This step is only for the hook-enhanced path, not for the default
-zero-config scanner.
-
-For manual setup instead, run the `Prepare Codex Hook Instructions` command from
-Control Center. It writes manual setup notes into
-`OPENPET_DATA_DIR/codex-hooks.manual.md` and creates an ingestion token at
-`OPENPET_DATA_DIR/ingest-token.txt`. The command does not modify `~/.codex` or
-any external agent config.
-
-Start the `Agent Awareness Service` entry before sending hook events. The service
-listens on `http://127.0.0.1:8795` and exposes:
+When the `agent-awareness` service is started, it exposes:
 
 - `GET /health`
 - `GET /api/sessions`
-- `POST /api/events` with `Authorization: Bearer <ingest token>`
 - dashboard at `/`
+
+This bundled plugin is normally synchronized into OpenPet's plugin directory and enabled by default. You can always start `agent-awareness` explicitly from Control Center -> Plugins. If you enable the `autoStartOnCodexSignal` config and grant native execution approval, OpenPet can also auto-start the service after recent Codex activity is detected.
+
+## Commands
+
+### `doctor`
+
+Reports a sanitized snapshot of:
+
+- plugin data-dir availability;
+- Codex polling directory availability;
+- hook-plan/token-file presence;
+- service health;
+- aggregate diagnostics such as session count, event count, ignored-content count, malformed count, and last scan time.
+
+Safety rules:
+
+- check values are reduced to safe labels such as `plugin-data-dir`, `codex:sessions`, `codex:archived_sessions`, `codex-hook-plan.md`, and `plugin-auth-file`;
+- `serviceHealth` is reduced to `ok`, `url`, `statusCode`, and optional `error`;
+- loopback URLs are redacted to `[local-url]`;
+- no raw `serviceHealth.body` is returned.
+
+### `codex-hook-plan`
+
+Creates a review-only future-hook plan inside the plugin data directory:
+
+- `agent-awareness-token.txt`
+- `codex-hook-plan.md`
+
+It does not modify `~/.codex`, install hooks, or write outside plugin-owned storage. Command-mode output intentionally returns safe labels such as `plugin-auth-file` and `codex-hook-plan.md` instead of raw local paths.
+
+### `install-codex-hooks`
+
+Installs the OpenPet-owned bounded Codex hook handlers into `~/.codex/hooks.json`.
+
+Behavior:
+
+- creates a timestamped backup before hook-file mutation;
+- preserves unrelated existing Codex hooks;
+- writes `hook-install-state.json` under plugin-owned storage;
+- writes or refreshes `agent-awareness-token.txt` and `codex-hook-plan.md`;
+- does not trust the hook in Codex for you.
+
+### `uninstall-codex-hooks`
+
+Removes only the OpenPet-owned bounded Codex hook handlers and hook sender script.
+
+Behavior:
+
+- preserves unrelated existing Codex hooks;
+- clears `hook-install-state.json`;
+- keeps plugin-owned planning assets available for a future reinstall.
+
+## Control Center Notes
+
+- The Plugins pane can show a compact health note for the real bundled `openpet.agent-awareness` service in the form `X active · Y sessions · Z events`.
+- When the real bundled service returns reserved diagnostics, the Plugins pane can also show `Agent Awareness 原生详情` with active/tracked session counts, observed events, usage tokens, estimated cost, and peak context.
+- Those summaries are reserved for `pluginId === openpet.agent-awareness` and `serviceId === agent-awareness`; other plugins do not inherit them by returning similarly shaped JSON.
+- The plugin exposes one config field today: `autoStartOnCodexSignal`, which is off by default and must be enabled explicitly.
+- The Plugins pane also provides a first-class `查看 Codex 详情` entry that opens the Agent Awareness session workbench.
+- Bubble Chat provides a pet-side `Codex 详情` quick-open button that reuses the same bounded session-workbench route.
+- `/health` diagnostics include a bounded attention session selected from safe status and recency metadata.
+- The dashboard canonical routes are `?view=overview`, `?view=sessions&sessionId=<sanitized-id>`, and `?view=usage`.
+- The dashboard still accepts legacy `view=details` and `view=stats` links during the compatibility migration, but new links should target `sessions` and `usage`.
+- The Sessions workbench focuses one retained safe session hash, shows a bounded empty state when the requested session is absent, and keeps focus links inside sanitized session IDs only.
+- The Usage workbench shows rolling 30-day totals plus top sessions, top projects, and retained daily deltas from sanitized history.
+- Each session card exposes a `Focus` link into the bounded session workbench.
+- The dashboard is read-only and focuses on sanitized session status, bounded attention focus, recent timeline, hook-plan state, aggregate usage tokens/cost/context, retained daily usage stats, per-session usage metadata, git metadata, current-step summaries, metadata-derived recent progress hints, generated session summaries, and diagnostics.
+- Local smoke reports include bounded `notificationPolicyEvidence` from a synthetic state-mapper sequence, including proof that routine `thinking`/`working` updates stay visual-only while urgent and summary transitions can still speak. It proves the report/archive chain carries low-noise policy evidence, but it does not replace human desktop speech-noise acceptance.

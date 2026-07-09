@@ -1,0 +1,36 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+
+const {
+  buildProviderCacheKey,
+  getScopedProviderModelCatalog
+} = require('../../src/main/services/provider-model-catalog')
+
+test('buildProviderCacheKey strips credentials and query fragments from provider URLs', () => {
+  assert.equal(
+    buildProviderCacheKey('chat', 'openai-compatible', 'https://user:pass@example.test/v1?token=secret#frag'),
+    'chat:openai-compatible:https://example.test/v1'
+  )
+})
+
+test('getScopedProviderModelCatalog only returns catalogs that match the sanitized owner key', () => {
+  assert.deepEqual(
+    getScopedProviderModelCatalog({
+      capability: 'chat',
+      provider: 'openai-compatible',
+      baseUrl: 'https://example.test/v1',
+      catalog: {
+        cacheKey: 'chat:openai-compatible:https://user:pass@example.test/v1?token=secret',
+        models: ['gpt-5.5'],
+        fetchedAt: '2026-07-04T08:00:00.000Z',
+        source: 'saved'
+      }
+    }),
+    {
+      cacheKey: '',
+      models: [],
+      fetchedAt: '',
+      source: 'none'
+    }
+  )
+})

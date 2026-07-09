@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-07-06T15:58:17.315Z",
+  "ok": true,
+  "releaseReady": false,
+  "appPath": "OpenPet.app",
+  "outputDir": "docs/release-evidence/macos-release-evidence/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-asset-check",
+  "statuses": {
+    "codesign": "pending",
+    "notarization": "pending",
+    "gatekeeper": "pending"
+  },
+  "files": {
+    "codesign": "macos-codesign.txt",
+    "notarization": "macos-notarization.txt",
+    "gatekeeper": "macos-gatekeeper.txt",
+    "markdownSummary": "macos-release-evidence-summary.md",
+    "jsonSummary": "macos-release-evidence-summary.json"
+  },
+  "evidenceFiles": [
+    {
+      "role": "macosCodesignEvidence",
+      "path": "macos-codesign.txt",
+      "exists": true,
+      "bytes": 116,
+      "sha256": "4f30c8a21a05acea160f7f6acf9d23916d3bbb4a554e2f15cc8ceeffe8c67c91"
+    },
+    {
+      "role": "macosNotarizationEvidence",
+      "path": "macos-notarization.txt",
+      "exists": true,
+      "bytes": 485,
+      "sha256": "2ce398dbf4495f7fe46541bbb6725b748cc109bb5aae2bdee04c36fba40713e2"
+    },
+    {
+      "role": "macosGatekeeperEvidence",
+      "path": "macos-gatekeeper.txt",
+      "exists": true,
+      "bytes": 116,
+      "sha256": "4f30c8a21a05acea160f7f6acf9d23916d3bbb4a554e2f15cc8ceeffe8c67c91"
+    }
+  ],
+  "commands": [],
+  "warnings": [
+    "macOS evidence is archived but does not prove official signed release readiness"
+  ]
+}

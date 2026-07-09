@@ -1,6 +1,7 @@
 const shell = document.getElementById('bubble-shell')
 const bubbleCard = document.querySelector('.bubble-card')
 const closeButton = document.getElementById('close-button')
+const codexDetailsButton = document.getElementById('codex-details-button')
 const bubbleStream = document.getElementById('bubble-stream')
 const bubbleItems = document.getElementById('bubble-items')
 const newMessageButton = document.getElementById('new-message-button')
@@ -23,12 +24,19 @@ const DRAG_START_DISTANCE_PX = 4
 
 const hasTextSelection = () => Boolean(String(window.getSelection?.() || '').trim())
 
+const normalizeSourceLabel = (source = '') => {
+  const normalizedSource = String(source || '').trim()
+  if (normalizedSource.startsWith('plugin:openpet.agent-awareness')) return 'Codex'
+  return ''
+}
+
 const createFallbackItem = (message = {}) => ({
   id: message.id || `fallback:${message.createdAt || ''}:${message.source || ''}:${message.text || ''}`,
   kind: message.kind === 'dialogue' ? 'dialogue' : 'notice',
   role: ['user', 'pet', 'system'].includes(message.role) ? message.role : 'pet',
   text: String(message.text || ''),
   source: message.source || 'Pet',
+  sourceLabel: message.sourceLabel || normalizeSourceLabel(message.source),
   createdAt: message.createdAt || '',
   flowState: message.flowState || ''
 })
@@ -59,6 +67,10 @@ const getItemKey = (item = {}, index = 0) => (
 )
 
 const getSourceLabel = (item = {}) => {
+  const sourceLabel = String(item.sourceLabel || '').trim()
+  if (sourceLabel) return sourceLabel
+  const normalizedSourceLabel = normalizeSourceLabel(item.source)
+  if (normalizedSourceLabel) return normalizedSourceLabel
   if (!item?.text) return 'Pet'
   if (item.kind === 'notice') return item.source || '提示'
   if (item.role === 'user') return '你'
@@ -110,6 +122,16 @@ const shouldAcceptHitTest = () => {
 const scrollToLatest = () => {
   if (!bubbleStream) return
   bubbleStream.scrollTop = bubbleStream.scrollHeight || 0
+}
+
+const isNearLatest = () => {
+  if (!bubbleStream) return true
+  const scrollHeight = Number(bubbleStream.scrollHeight) || 0
+  const scrollTop = Math.max(0, Number(bubbleStream.scrollTop) || 0)
+  const clientHeight = Math.max(0, Number(bubbleStream.clientHeight) || 0)
+  if (scrollHeight <= 0) return true
+  const remaining = scrollHeight - clientHeight - scrollTop
+  return remaining <= 28
 }
 
 const isComposerTarget = (target) => {
@@ -250,6 +272,7 @@ const renderBubbleItems = (items = []) => {
 }
 
 const renderState = (state = {}) => {
+  const wasNearLatest = isNearLatest()
   const nextAwaitingReply = Object.prototype.hasOwnProperty.call(state, 'awaitingReply')
     ? Boolean(state.awaitingReply)
     : (state.sending === false ? false : currentState.awaitingReply)
@@ -265,7 +288,11 @@ const renderState = (state = {}) => {
   let itemsChanged = false
   if (signature !== lastItemSignature) {
     itemsChanged = true
-    localUnseenCount = 0
+    if (holdScroll && !wasNearLatest) {
+      localUnseenCount += Math.max(1, items.length - lastItemCount)
+    } else {
+      localUnseenCount = 0
+    }
     lastItemSignature = signature
     lastItemCount = items.length
   } else if (!holdScroll) {
@@ -285,7 +312,7 @@ const renderState = (state = {}) => {
   sendButton.disabled = !miniInput.value.trim()
   sendButton.textContent = currentState.awaitingReply ? '继续发送' : '发送'
   shell.hidden = !items.length && !currentState.error && !currentState.sending && !currentState.awaitingReply
-  if (itemsChanged || !holdScroll) scrollToLatest()
+  if ((itemsChanged && (!holdScroll || wasNearLatest)) || !holdScroll) scrollToLatest()
   updateUnseenButton()
 }
 
@@ -358,6 +385,25 @@ closeButton?.addEventListener('click', (event) => {
   event.preventDefault?.()
   event.stopPropagation?.()
   window.petBubbleChatAPI.hide({ source: 'bubble-close-button' })
+})
+
+codexDetailsButton?.addEventListener('click', async (event) => {
+  event.preventDefault?.()
+  event.stopPropagation?.()
+  expanded = true
+  setInteracting(true)
+  setHitTestMode(true, 'renderer-codex-details')
+  try {
+    await window.petBubbleChatAPI.openAgentAwarenessDetails?.()
+    if (currentState.error) renderState({ ...currentState, error: '' })
+  } catch (error) {
+    renderState({
+      ...currentState,
+      error: error?.message || 'Codex 详情暂时不可用。'
+    })
+  } finally {
+    syncUiInteractionState()
+  }
 })
 
 bubbleCard?.addEventListener('pointerdown', (event) => {
@@ -443,7 +489,9 @@ document.addEventListener('dblclick', () => {
 newMessageButton?.addEventListener('click', (event) => {
   event.stopPropagation()
   localUnseenCount = 0
+  scrollingHistory = false
   scrollToLatest()
+  syncUiInteractionState()
   updateUnseenButton()
 })
 

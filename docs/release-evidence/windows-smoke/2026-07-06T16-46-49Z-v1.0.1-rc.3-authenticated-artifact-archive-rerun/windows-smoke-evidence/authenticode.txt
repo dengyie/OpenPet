@@ -1,0 +1,9 @@
+Get-AuthenticodeSignature failed: Command failed: powershell -NoProfile -ExecutionPolicy Bypass -Command Get-AuthenticodeSignature -LiteralPath "D:\\a\\OpenPet\\OpenPet\\release\\OpenPet-1.0.1-rc.3-win-x64-unsigned.exe" | Format-List
+Get-AuthenticodeSignature : The 'Get-AuthenticodeSignature' command was found in the module
+'Microsoft.PowerShell.Security', but the module could not be loaded. For more information, run 'Import-Module
+Microsoft.PowerShell.Security'.
+At line:1 char:1
++ Get-AuthenticodeSignature -LiteralPath "D:\\a\\OpenPet\\OpenPet\\rele ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Get-AuthenticodeSignature:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CouldNotAutoloadMatchingModule

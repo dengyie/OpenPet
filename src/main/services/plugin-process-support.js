@@ -54,9 +54,28 @@ const parsePluginProcessCommand = (command, { platform = process.platform } = {}
   return { file, args }
 }
 
-const createPluginProcessEnv = ({ env = process.env, platform = process.platform } = {}) => {
+const createPluginProcessEnv = ({
+  env = process.env,
+  platform = process.platform,
+  modulePaths = module.paths,
+  pathDelimiter = path.delimiter,
+  existsSync = fs.existsSync
+} = {}) => {
   const nextEnv = {}
   if (env.PATH) nextEnv.PATH = env.PATH
+  const nodePathEntries = new Set()
+  const rawNodePath = typeof env.NODE_PATH === 'string' ? env.NODE_PATH : ''
+  for (const entry of rawNodePath.split(pathDelimiter).map((value) => value.trim()).filter(Boolean)) {
+    nodePathEntries.add(entry)
+  }
+  for (const entry of Array.isArray(modulePaths) ? modulePaths : []) {
+    if (typeof entry === 'string' && entry && existsSync(entry)) {
+      nodePathEntries.add(entry)
+    }
+  }
+  if (nodePathEntries.size > 0) {
+    nextEnv.NODE_PATH = Array.from(nodePathEntries).join(pathDelimiter)
+  }
   if (platform === 'win32') {
     if (env.SystemRoot) nextEnv.SystemRoot = env.SystemRoot
     if (env.WINDIR) nextEnv.WINDIR = env.WINDIR

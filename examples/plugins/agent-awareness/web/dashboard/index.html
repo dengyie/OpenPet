@@ -3,24 +3,68 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenPet Agent Awareness</title>
+    <title>Agent Awareness</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">OpenPet Official Plugin</p>
-        <h1>Agent Awareness</h1>
-        <p>Sanitized local coding-agent activity, reflected through your desktop pet.</p>
-      </section>
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Recent Sessions</h2>
+    <main class="page">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">OpenPet Plugin Dashboard</p>
+          <h1>Agent Awareness</h1>
+          <p class="summary">Sanitized local coding-agent state with session status, recent timeline, and diagnostics only.</p>
+        </div>
+        <div class="hero-actions">
+          <p id="status-line" class="status-line">Loading dashboard…</p>
           <button id="refresh" type="button">Refresh</button>
         </div>
-        <div id="sessions" class="sessions">Loading...</div>
+      </header>
+
+      <nav class="view-tabs" aria-label="Dashboard views">
+        <a data-view-link="overview" href="/">Overview</a>
+        <a data-view-link="sessions" href="?view=sessions">Sessions</a>
+        <a data-view-link="usage" href="?view=usage">Usage</a>
+      </nav>
+
+      <section class="panel" data-section="summary">
+        <h2>Summary</h2>
+        <div id="summary" class="metrics" data-testid="agent-summary">Loading…</div>
+      </section>
+
+      <section class="panel" data-section="usage-stats">
+        <h2>Recent Usage</h2>
+        <div id="usage-stats" class="usage-stats-shell" data-testid="agent-usage-stats">Loading…</div>
+      </section>
+
+      <section class="panel" data-section="diagnostics">
+        <h2>Diagnostics</h2>
+        <div id="health" class="health-grid" data-testid="agent-health">Loading…</div>
+      </section>
+
+      <section class="panel" data-section="sessions">
+        <div class="panel-header">
+          <h2>Sessions</h2>
+          <p class="panel-note">Project labels and session hashes only. No transcripts, stdout, or raw paths.</p>
+        </div>
+        <div id="sessions" class="sessions" data-testid="agent-sessions">Loading…</div>
+      </section>
+
+      <section class="panel" data-section="session-workbench" hidden>
+        <div class="panel-header">
+          <h2>Focused Session</h2>
+          <p class="panel-note">Retained per-session metadata only. No transcripts, stdout, or raw tool payloads.</p>
+        </div>
+        <div id="session-workbench" class="workbench" data-testid="agent-session-workbench">Loading…</div>
+      </section>
+
+      <section class="panel" data-section="usage-workbench" hidden>
+        <div class="panel-header">
+          <h2>30-Day Usage Workbench</h2>
+          <p class="panel-note">Rolling retained history across sessions and sanitized projects.</p>
+        </div>
+        <div id="usage-workbench" class="workbench" data-testid="agent-usage-workbench">Loading…</div>
       </section>
     </main>
-    <script src="/dashboard.js"></script>
+    <script src="/dashboard.js" defer></script>
   </body>
 </html>

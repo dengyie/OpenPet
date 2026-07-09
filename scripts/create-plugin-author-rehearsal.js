@@ -71,6 +71,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeMetadataPath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeMetadataPath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeMetadataPath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const isInside = (parent, child) => {
   const relative = path.relative(parent, child)
   return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative)
@@ -190,6 +210,7 @@ const createPluginAuthorRehearsal = ({
   if (!TEMPLATES.includes(submissionTemplate)) throw new Error(`Unknown submission template: ${submissionTemplate}`)
   const generatedAt = now().toISOString()
   const absoluteOutputDir = assertSafeRehearsalOutputDir(outputDir)
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, path.basename(DEFAULT_OUTPUT_DIR))
   const scaffoldDir = path.join(absoluteOutputDir, 'scaffolded')
   const packagesDir = path.join(absoluteOutputDir, 'packages')
   const bundleDir = path.join(absoluteOutputDir, 'submission-bundle')
@@ -207,7 +228,12 @@ const createPluginAuthorRehearsal = ({
     const validation = validatePluginPackage(result.pluginDir)
     return {
       template,
-      pluginDir: result.pluginDir,
+      absolutePluginDir: result.pluginDir,
+      pluginDir: createSafeOutputFilePath({
+        filePath: result.pluginDir,
+        outputDir: absoluteOutputDir,
+        fallback: path.basename(result.pluginDir)
+      }),
       plugin: result.plugin,
       validation: {
         ok: validation.ok,
@@ -220,7 +246,7 @@ const createPluginAuthorRehearsal = ({
 
   const selected = templates.find((item) => item.template === submissionTemplate)
   const packagePath = zipPluginDirectory({
-    pluginDir: selected.pluginDir,
+    pluginDir: selected.absolutePluginDir,
     outputDir: packagesDir,
     pluginId: selected.plugin.id,
     execFile,
@@ -235,19 +261,37 @@ const createPluginAuthorRehearsal = ({
   })
   const bundleValidation = validateBundle(loadBundle({ bundleDir, fsImpl }), { requireReady: true })
   const commands = commandList({
-    outputDir: absoluteOutputDir,
+    outputDir: safeOutputDir,
     selectedPluginDir: selected.pluginDir,
-    zipPath: packagePath,
-    bundleDir
+    zipPath: createSafeOutputFilePath({
+      filePath: packagePath,
+      outputDir: absoluteOutputDir,
+      fallback: path.basename(packagePath)
+    }),
+    bundleDir: createSafeOutputFilePath({
+      filePath: bundleDir,
+      outputDir: absoluteOutputDir,
+      fallback: 'submission-bundle'
+    })
   })
+  const outputFiles = {
+    readme: path.join(absoluteOutputDir, 'README.md'),
+    checklist: path.join(absoluteOutputDir, 'submission-checklist.md'),
+    commands: path.join(absoluteOutputDir, 'commands.json'),
+    summary: path.join(absoluteOutputDir, 'plugin-author-rehearsal-summary.json')
+  }
   const summary = {
     generatedAt,
-    outputDir: absoluteOutputDir,
-    templates,
+    outputDir: safeOutputDir,
+    templates: templates.map(({ absolutePluginDir, ...item }) => item),
     submission: {
       template: selected.template,
       plugin: selected.plugin,
-      packagePath,
+      packagePath: createSafeOutputFilePath({
+        filePath: packagePath,
+        outputDir: absoluteOutputDir,
+        fallback: path.basename(packagePath)
+      }),
       packageValidation: {
         ok: packageValidation.ok,
         warnings: packageValidation.warnings,
@@ -255,22 +299,30 @@ const createPluginAuthorRehearsal = ({
         riskLevel: packageValidation.review.riskLevel,
         sha256: packageValidation.review.packageHash
       },
-      bundleDir,
+      bundleDir: createSafeOutputFilePath({
+        filePath: bundleDir,
+        outputDir: absoluteOutputDir,
+        fallback: 'submission-bundle'
+      }),
       bundle,
       bundleValidation
     },
     files: {
-      readme: path.join(absoluteOutputDir, 'README.md'),
-      checklist: path.join(absoluteOutputDir, 'submission-checklist.md'),
-      commands: path.join(absoluteOutputDir, 'commands.json'),
-      summary: path.join(absoluteOutputDir, 'plugin-author-rehearsal-summary.json')
+      readme: createSafeOutputFilePath({ filePath: outputFiles.readme, outputDir: absoluteOutputDir, fallback: 'README.md' }),
+      checklist: createSafeOutputFilePath({ filePath: outputFiles.checklist, outputDir: absoluteOutputDir, fallback: 'submission-checklist.md' }),
+      commands: createSafeOutputFilePath({ filePath: outputFiles.commands, outputDir: absoluteOutputDir, fallback: 'commands.json' }),
+      summary: createSafeOutputFilePath({
+        filePath: outputFiles.summary,
+        outputDir: absoluteOutputDir,
+        fallback: 'plugin-author-rehearsal-summary.json'
+      })
     }
   }
 
-  writeText(summary.files.readme, renderAuthorReadme({ generatedAt, templates, submission: summary.submission, commands }), fsImpl)
-  writeText(summary.files.checklist, renderChecklist({ templates, submission: summary.submission }), fsImpl)
-  writeJson(summary.files.commands, { commands }, fsImpl)
-  writeJson(summary.files.summary, summary, fsImpl)
+  writeText(outputFiles.readme, renderAuthorReadme({ generatedAt, templates: summary.templates, submission: summary.submission, commands }), fsImpl)
+  writeText(outputFiles.checklist, renderChecklist({ templates: summary.templates, submission: summary.submission }), fsImpl)
+  writeJson(outputFiles.commands, { commands }, fsImpl)
+  writeJson(outputFiles.summary, summary, fsImpl)
   return summary
 }
 

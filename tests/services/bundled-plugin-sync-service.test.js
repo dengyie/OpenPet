@@ -117,3 +117,69 @@ test('syncBundledPlugins leaves current bundled plugin copies unchanged', () => 
   assert.deepEqual(result.synced, [])
   assert.equal(fs.statSync(targetFile).mtimeMs, firstMtimeMs)
 })
+
+test('syncBundledPlugins copies bundled plugins even when fs.cpSync cannot copy the source tree directly', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-bundled-plugin-fallback-'))
+  const pluginDir = path.join(root, 'plugins')
+  const bundledRoot = path.join(root, 'bundled')
+  const settingsService = createSettingsService()
+  const bundledPlugin = writePlugin({ root: bundledRoot, folderName: 'creator-studio', marker: 'asar-safe-copy' })
+  const originalCpSync = fs.cpSync
+
+  fs.cpSync = (sourceDir, targetDir, options) => {
+    if (path.resolve(sourceDir) === path.resolve(bundledPlugin)) {
+      const error = new Error(`ENOENT, ${path.basename(sourceDir)} not found in ${sourceDir}`)
+      error.code = 'ENOENT'
+      throw error
+    }
+    return originalCpSync(sourceDir, targetDir, options)
+  }
+
+  try {
+    const result = syncBundledPlugins({
+      pluginDir,
+      bundledPluginDirs: [bundledPlugin],
+      settingsService
+    })
+
+    const targetDir = path.join(pluginDir, 'openpet.creator-studio')
+    assert.equal(result.synced.length, 1)
+    assert.equal(
+      fs.readFileSync(path.join(targetDir, 'commands', 'create-run.js'), 'utf8'),
+      'module.exports = "asar-safe-copy"\n'
+    )
+  } finally {
+    fs.cpSync = originalCpSync
+  }
+})
+
+test('syncBundledPlugins prefers fs.cpSync when direct recursive copy succeeds', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-bundled-plugin-cpsync-'))
+  const pluginDir = path.join(root, 'plugins')
+  const bundledRoot = path.join(root, 'bundled')
+  const settingsService = createSettingsService()
+  const bundledPlugin = writePlugin({ root: bundledRoot, folderName: 'creator-studio', marker: 'native-copy' })
+  const originalCpSync = fs.cpSync
+  let cpSyncCalls = 0
+
+  fs.cpSync = (sourceDir, targetDir, options) => {
+    cpSyncCalls += 1
+    return originalCpSync(sourceDir, targetDir, options)
+  }
+
+  try {
+    syncBundledPlugins({
+      pluginDir,
+      bundledPluginDirs: [bundledPlugin],
+      settingsService
+    })
+
+    assert.equal(cpSyncCalls, 1)
+    assert.equal(
+      fs.readFileSync(path.join(pluginDir, 'openpet.creator-studio', 'commands', 'create-run.js'), 'utf8'),
+      'module.exports = "native-copy"\n'
+    )
+  } finally {
+    fs.cpSync = originalCpSync
+  }
+})

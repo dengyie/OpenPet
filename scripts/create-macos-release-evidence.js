@@ -11,6 +11,7 @@ const NOTARIZATION_FILE = 'macos-notarization.txt'
 const GATEKEEPER_FILE = 'macos-gatekeeper.txt'
 const SUMMARY_MD = 'macos-release-evidence-summary.md'
 const SUMMARY_JSON = 'macos-release-evidence-summary.json'
+const DEFAULT_APP_PATH_LABEL = 'OpenPet.app'
 
 const usage = () => [
   'Usage: node scripts/create-macos-release-evidence.js [options]',
@@ -92,6 +93,28 @@ const sessionIdFromDate = (date) => date.toISOString().replace(/[:.]/g, '-').rep
 
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeOutputDirPath = (outputDir) => createSafeProjectPath(outputDir, DEFAULT_OUTPUT_ROOT)
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const ensureTrailingNewline = (value) => String(value || '').endsWith('\n') ? String(value || '') : `${String(value || '')}\n`
 
 const executeEvidenceCommand = (command, args) => {
@@ -167,11 +190,11 @@ const writeText = ({ filePath, content, fsImpl = fs }) => {
   fsImpl.writeFileSync(filePath, ensureTrailingNewline(content))
 }
 
-const describeFile = ({ role, filePath, fsImpl = fs }) => {
+const describeFile = ({ role, filePath, displayPath = filePath, fsImpl = fs }) => {
   const content = fsImpl.readFileSync(filePath)
   return {
     role,
-    path: filePath,
+    path: displayPath,
     exists: true,
     bytes: content.length,
     sha256: sha256(content)
@@ -195,11 +218,30 @@ const createMacosReleaseEvidence = ({
 } = {}) => {
   const generatedAt = now().toISOString()
   const absoluteOutputDir = path.resolve(outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt))))
+  const safeOutputDir = createSafeOutputDirPath(absoluteOutputDir)
   fsImpl.mkdirSync(absoluteOutputDir, { recursive: true })
 
   const codesignPath = path.join(absoluteOutputDir, CODESIGN_FILE)
   const notarizationPath = path.join(absoluteOutputDir, NOTARIZATION_FILE)
   const gatekeeperPath = path.join(absoluteOutputDir, GATEKEEPER_FILE)
+  const safeCodesignPath = createSafeOutputFilePath({ filePath: codesignPath, outputDir: absoluteOutputDir, fallback: CODESIGN_FILE })
+  const safeNotarizationPath = createSafeOutputFilePath({ filePath: notarizationPath, outputDir: absoluteOutputDir, fallback: NOTARIZATION_FILE })
+  const safeGatekeeperPath = createSafeOutputFilePath({ filePath: gatekeeperPath, outputDir: absoluteOutputDir, fallback: GATEKEEPER_FILE })
+  const safeMarkdownSummaryPath = createSafeOutputFilePath({
+    filePath: path.join(absoluteOutputDir, SUMMARY_MD),
+    outputDir: absoluteOutputDir,
+    fallback: SUMMARY_MD
+  })
+  const safeJsonSummaryPath = createSafeOutputFilePath({
+    filePath: path.join(absoluteOutputDir, SUMMARY_JSON),
+    outputDir: absoluteOutputDir,
+    fallback: SUMMARY_JSON
+  })
+  const absoluteMarkdownSummaryPath = path.join(absoluteOutputDir, SUMMARY_MD)
+  const absoluteJsonSummaryPath = path.join(absoluteOutputDir, SUMMARY_JSON)
+  const safeAppPath = appPath
+    ? createSafeProjectPath(path.resolve(appPath), path.basename(appPath) || DEFAULT_APP_PATH_LABEL)
+    : ''
 
   const commands = []
 
@@ -253,32 +295,32 @@ const createMacosReleaseEvidence = ({
   }
   const releaseReady = statuses.codesign === 'pass' && statuses.notarization === 'pass' && statuses.gatekeeper === 'pass'
   const evidenceFiles = [
-    describeFile({ role: 'macosCodesignEvidence', filePath: codesignPath, fsImpl }),
-    describeFile({ role: 'macosNotarizationEvidence', filePath: notarizationPath, fsImpl }),
-    describeFile({ role: 'macosGatekeeperEvidence', filePath: gatekeeperPath, fsImpl })
+    describeFile({ role: 'macosCodesignEvidence', filePath: codesignPath, displayPath: safeCodesignPath, fsImpl }),
+    describeFile({ role: 'macosNotarizationEvidence', filePath: notarizationPath, displayPath: safeNotarizationPath, fsImpl }),
+    describeFile({ role: 'macosGatekeeperEvidence', filePath: gatekeeperPath, displayPath: safeGatekeeperPath, fsImpl })
   ]
 
   const summary = {
     generatedAt,
     ok: true,
     releaseReady,
-    appPath: appPath ? path.resolve(appPath) : '',
-    outputDir: absoluteOutputDir,
+    appPath: safeAppPath,
+    outputDir: safeOutputDir,
     statuses,
     files: {
-      codesign: codesignPath,
-      notarization: notarizationPath,
-      gatekeeper: gatekeeperPath,
-      markdownSummary: path.join(absoluteOutputDir, SUMMARY_MD),
-      jsonSummary: path.join(absoluteOutputDir, SUMMARY_JSON)
+      codesign: safeCodesignPath,
+      notarization: safeNotarizationPath,
+      gatekeeper: safeGatekeeperPath,
+      markdownSummary: safeMarkdownSummaryPath,
+      jsonSummary: safeJsonSummaryPath
     },
     evidenceFiles,
     commands,
     warnings: releaseReady ? [] : ['macOS evidence is archived but does not prove official signed release readiness']
   }
 
-  writeSummary({ summary, outputPath: summary.files.markdownSummary, fsImpl })
-  writeSummary({ summary, outputPath: summary.files.jsonSummary, json: true, fsImpl })
+  writeSummary({ summary, outputPath: absoluteMarkdownSummaryPath, fsImpl })
+  writeSummary({ summary, outputPath: absoluteJsonSummaryPath, json: true, fsImpl })
 
   return summary
 }

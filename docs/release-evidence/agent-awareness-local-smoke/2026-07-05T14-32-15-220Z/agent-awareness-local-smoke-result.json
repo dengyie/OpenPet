@@ -1,0 +1,119 @@
+{
+  "ok": true,
+  "generatedAt": "2026-07-05T14:32:15.222Z",
+  "source": "scripts/run-agent-awareness-local-smoke.js",
+  "codexHome": "[redacted-local-codex-home]",
+  "sessionId": "2026-07-05T14-32-15-220Z",
+  "sessionDir": "release/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z",
+  "pluginDataDir": "release/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z/plugin-data",
+  "resultPath": "release/agent-awareness-local-smoke/2026-07-05T14-32-15-220Z/agent-awareness-local-smoke-result.json",
+  "scanTimeoutMs": 12000,
+  "sampleLimit": 5,
+  "sanitizedSignalDetected": true,
+  "timedOut": false,
+  "healthUrl": "[local-url]",
+  "hookPlan": {
+    "ok": true,
+    "serviceUrl": "[local-url]",
+    "authFile": "plugin-auth-file",
+    "instructionsFile": "codex-hook-plan.md",
+    "externalWrites": false,
+    "dataDirConfigured": true
+  },
+  "health": {
+    "ok": true,
+    "service": "agent-awareness",
+    "hookMode": {
+      "installed": false,
+      "mode": "not-installed",
+      "planAvailable": true,
+      "tokenConfigured": true,
+      "ingestAuthRequired": true
+    },
+    "diagnostics": {
+      "sessionCount": 24,
+      "activeSessionCount": 2,
+      "totalEvents": 913,
+      "seenCount": 913,
+      "ignoredContentRecordCount": 2032,
+      "ignoredMetadataRecordCount": 552,
+      "unknownRecordCount": 0,
+      "malformedRecordCount": 24,
+      "unsupportedLifecycleRecordCount": 0,
+      "lastEventAt": "2026-07-05T14:32:14.912Z",
+      "lastScanAt": "2026-07-05T14:32:15.231Z",
+      "lastError": ""
+    },
+    "codexPoller": {
+      "enabled": true,
+      "lastScanAt": "2026-07-05T14:32:15.231Z",
+      "lastError": "",
+      "seenCount": 913,
+      "ignoredContentRecordCount": 2032,
+      "ignoredMetadataRecordCount": 552,
+      "unknownRecordCount": 0,
+      "malformedRecordCount": 24,
+      "unsupportedLifecycleRecordCount": 0
+    }
+  },
+  "sessions": [
+    {
+      "sessionId": "c769bb02d6f5",
+      "status": "working",
+      "type": "tool.started",
+      "project": "OpenPet #262c94",
+      "message": "Codex started a tool call.",
+      "timestamp": "2026-07-05T14:32:14.912Z",
+      "eventCount": 6
+    },
+    {
+      "sessionId": "d6cbb8caed23",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #ea29a6",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-07-05T13:55:15.209Z",
+      "eventCount": 43
+    },
+    {
+      "sessionId": "a61ca1ca52e9",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #00d409",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-07-05T13:36:50.096Z",
+      "eventCount": 52
+    },
+    {
+      "sessionId": "7d80d0d286c1",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "awesome-skills #961c50",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-07-05T05:40:09.615Z",
+      "eventCount": 56
+    },
+    {
+      "sessionId": "fe3a82c03cfc",
+      "status": "failed",
+      "type": "turn.failed",
+      "project": "OpenPet #19b550",
+      "message": "Codex stopped before completion.",
+      "timestamp": "2026-07-04T20:49:41.461Z",
+      "eventCount": 44
+    }
+  ],
+  "redactionChecks": {
+    "sessionIdsHashed": true,
+    "projectLabelsRedacted": true,
+    "noRawPaths": true,
+    "noLoopbackUrls": true,
+    "noSecrets": true
+  },
+  "manualAcceptanceTemplate": {
+    "dashboardUseful": true,
+    "petSpeechNoiseAcceptable": true,
+    "redactionLooksSafe": true,
+    "notes": "Separate live-app verification outside this archived smoke run confirmed the dev7 app health endpoint showed hook installed; the automated smoke evidence in this report still reflects plan-only hook mode."
+  }
+}

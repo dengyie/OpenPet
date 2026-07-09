@@ -90,6 +90,26 @@ const writeText = ({ outputPath, content, fsImpl = fs }) => {
   return absoluteOutputPath
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
+const createSafeBundleFilePath = ({ filePath, bundleDir, fallback }) => {
+  const relative = toPosixPath(path.relative(bundleDir, String(filePath || '').trim()))
+  if (isSafeRelativePath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const createPluginSubmissionBundle = ({
   sourcePath,
   outputDir = '',
@@ -115,15 +135,33 @@ const createPluginSubmissionBundle = ({
   const report = createPluginSubmissionReport(commonOptions)
   const pr = createPluginSubmissionPr(commonOptions)
   const absoluteOutputDir = path.resolve(outputDir || defaultOutputDir(sourcePath))
-  const files = {
+  const outputFiles = {
     report: path.join(absoluteOutputDir, 'plugin-submission-report.md'),
     pr: path.join(absoluteOutputDir, 'plugin-submission-pr.md'),
     summary: path.join(absoluteOutputDir, 'plugin-submission-summary.json')
   }
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, DEFAULT_BUNDLE_DIR_NAME)
+  const files = {
+    report: createSafeBundleFilePath({
+      filePath: outputFiles.report,
+      bundleDir: absoluteOutputDir,
+      fallback: 'plugin-submission-report.md'
+    }),
+    pr: createSafeBundleFilePath({
+      filePath: outputFiles.pr,
+      bundleDir: absoluteOutputDir,
+      fallback: 'plugin-submission-pr.md'
+    }),
+    summary: createSafeBundleFilePath({
+      filePath: outputFiles.summary,
+      bundleDir: absoluteOutputDir,
+      fallback: 'plugin-submission-summary.json'
+    })
+  }
   const summary = {
     generatedAt,
     sourcePath: report.sourcePath,
-    outputDir: absoluteOutputDir,
+    outputDir: safeOutputDir,
     readyForHumanReview: report.readyForHumanReview && pr.readyForHumanReview,
     decision: report.readyForHumanReview && pr.readyForHumanReview ? 'ready-for-human-review' : 'blocked-before-review',
     plugin: report.plugin,
@@ -143,9 +181,9 @@ const createPluginSubmissionBundle = ({
     ]
   }
 
-  writeText({ outputPath: files.report, content: renderMarkdownSubmissionReport(report), fsImpl })
-  writeText({ outputPath: files.pr, content: renderMarkdownPr(pr), fsImpl })
-  writeText({ outputPath: files.summary, content: JSON.stringify(summary, null, 2), fsImpl })
+  writeText({ outputPath: outputFiles.report, content: renderMarkdownSubmissionReport(report), fsImpl })
+  writeText({ outputPath: outputFiles.pr, content: renderMarkdownPr(pr), fsImpl })
+  writeText({ outputPath: outputFiles.summary, content: JSON.stringify(summary, null, 2), fsImpl })
 
   return summary
 }

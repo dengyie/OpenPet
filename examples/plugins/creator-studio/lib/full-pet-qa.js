@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { getMissingRequiredRealActionIds } = require('./full-pet-basic-actions')
 
 const assertExistingPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   if (!targetPath) throw new Error(`${label} must stay inside the Creator Studio data directory`)
@@ -36,6 +37,11 @@ const assertPositiveInteger = ({ value, label, operation }) => {
 const normalizeQaRelativePath = (value) => {
   if (typeof value !== 'string') return ''
   return value.trim().replace(/\\/g, '/')
+}
+
+const getMissingRequiredBasicActions = (basicActions) => {
+  if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) return []
+  return getMissingRequiredRealActionIds(basicActions)
 }
 
 const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/import' }) => {
@@ -81,6 +87,10 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
   assertPositiveInteger({ value: sourceQa.visiblePixels, label: 'source visible pixels', operation })
   if (typeof sourceQa.sourceRelativePath !== 'string' || !sourceQa.sourceRelativePath.trim()) {
     throw new Error(`Full-pet QA source path must be valid before ${operation}`)
+  }
+  const missingRequiredBasicActions = getMissingRequiredBasicActions(atlasQa.basicActions)
+  if (missingRequiredBasicActions.length > 0) {
+    throw new Error(`Full-pet QA missing required real basic actions before ${operation}: ${missingRequiredBasicActions.join(', ')}`)
   }
 
   return { atlasQa, sourceQa }

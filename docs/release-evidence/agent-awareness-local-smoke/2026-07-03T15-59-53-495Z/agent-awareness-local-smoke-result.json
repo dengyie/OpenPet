@@ -1,0 +1,119 @@
+{
+  "ok": true,
+  "generatedAt": "2026-07-03T15:59:53.497Z",
+  "source": "scripts/run-agent-awareness-local-smoke.js",
+  "codexHome": "[redacted-local-codex-home]",
+  "sessionId": "2026-07-03T15-59-53-495Z",
+  "sessionDir": "agent-awareness-local-smoke/2026-07-03T15-59-53-495Z",
+  "pluginDataDir": "plugin-data",
+  "resultPath": "agent-awareness-local-smoke-result.json",
+  "scanTimeoutMs": 12000,
+  "sampleLimit": 5,
+  "sanitizedSignalDetected": true,
+  "timedOut": false,
+  "healthUrl": "[local-url]",
+  "hookPlan": {
+    "ok": true,
+    "serviceUrl": "[local-url]",
+    "authFile": "plugin-auth-file",
+    "instructionsFile": "codex-hook-plan.md",
+    "externalWrites": false,
+    "dataDirConfigured": true
+  },
+  "health": {
+    "ok": true,
+    "service": "agent-awareness",
+    "hookMode": {
+      "installed": false,
+      "mode": "not-installed",
+      "planAvailable": true,
+      "tokenConfigured": true,
+      "ingestAuthRequired": true
+    },
+    "diagnostics": {
+      "sessionCount": 20,
+      "activeSessionCount": 3,
+      "totalEvents": 1000,
+      "seenCount": 1374,
+      "ignoredContentRecordCount": 3024,
+      "ignoredMetadataRecordCount": 791,
+      "unknownRecordCount": 3,
+      "malformedRecordCount": 0,
+      "unsupportedLifecycleRecordCount": 0,
+      "lastEventAt": "2026-07-03T15:59:52.758Z",
+      "lastScanAt": "2026-07-03T15:59:57.808Z",
+      "lastError": ""
+    },
+    "codexPoller": {
+      "enabled": true,
+      "lastScanAt": "2026-07-03T15:59:57.808Z",
+      "lastError": "",
+      "seenCount": 1374,
+      "ignoredContentRecordCount": 3024,
+      "ignoredMetadataRecordCount": 791,
+      "unknownRecordCount": 3,
+      "malformedRecordCount": 0,
+      "unsupportedLifecycleRecordCount": 0
+    }
+  },
+  "sessions": [
+    {
+      "sessionId": "c769bb02d6f5",
+      "status": "working",
+      "type": "tool.started",
+      "project": "OpenPet #262c94",
+      "message": "Codex started a tool call.",
+      "timestamp": "2026-07-03T15:59:52.758Z",
+      "eventCount": 62
+    },
+    {
+      "sessionId": "e2b6e7df2708",
+      "status": "working",
+      "type": "tool.started",
+      "project": "OpenPet #586229",
+      "message": "Codex started a tool call.",
+      "timestamp": "2026-07-03T15:59:40.592Z",
+      "eventCount": 71
+    },
+    {
+      "sessionId": "04863673f289",
+      "status": "working",
+      "type": "tool.started",
+      "project": "OpenPet #834bd8",
+      "message": "Codex started a tool call.",
+      "timestamp": "2026-07-03T15:59:29.714Z",
+      "eventCount": 70
+    },
+    {
+      "sessionId": "16b03e6e8010",
+      "status": "failed",
+      "type": "turn.failed",
+      "project": "OpenPet #586229",
+      "message": "Codex stopped before completion.",
+      "timestamp": "2026-07-03T15:09:48.912Z",
+      "eventCount": 60
+    },
+    {
+      "sessionId": "a61ca1ca52e9",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #00d409",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-07-03T14:58:28.622Z",
+      "eventCount": 66
+    }
+  ],
+  "redactionChecks": {
+    "sessionIdsHashed": true,
+    "projectLabelsRedacted": true,
+    "noRawPaths": true,
+    "noLoopbackUrls": true,
+    "noSecrets": true
+  },
+  "manualAcceptanceTemplate": {
+    "dashboardUseful": null,
+    "petSpeechNoiseAcceptable": null,
+    "redactionLooksSafe": true,
+    "notes": ""
+  }
+}

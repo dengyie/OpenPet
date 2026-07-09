@@ -124,6 +124,7 @@ test('runPackagedCreatorStudioUiE2e writes a packaged UI artifact for the fixtur
   assert.deepEqual(artifact.dashboard, {
     loaded: true,
     title: 'Creator Studio',
+    backend: 'fixture',
     draftOk: true,
     questionAnswered: true,
     confirmed: true,
@@ -148,6 +149,67 @@ test('runPackagedCreatorStudioUiE2e writes a packaged UI artifact for the fixtur
   assert.equal(fs.existsSync(stderrPath), true)
   assert.match(fs.readFileSync(stdoutPath, 'utf-8'), /packaged creator studio ui e2e completed/i)
   assert.equal(fs.readFileSync(stderrPath, 'utf-8'), '')
+})
+
+test('runPackagedCreatorStudioUiE2e can request provider backend when explicitly configured', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-creator-studio-ui-main-provider-'))
+  const outputPath = path.join(tempDir, 'packaged-creator-studio-ui-e2e.json')
+
+  const artifact = await runPackagedCreatorStudioUiE2e({
+    app: { getAppPath: () => '/Applications/OpenPet.app', quit: () => {} },
+    pluginService: {
+      listPlugins: () => [{
+        id: 'openpet.creator-studio',
+        enabled: true,
+        entries: {
+          dashboards: [{ id: 'main', title: 'Creator Studio', url: 'http://127.0.0.1:8794' }],
+          services: [{ id: 'studio', title: 'Creator Studio Service', runtime: { status: 'running' } }]
+        }
+      }]
+    },
+    openControlCenter: () => ({ id: 'control-center-window' }),
+    createDashboardWindow: () => ({ id: 'dashboard-window' }),
+    driveControlCenterBootstrapImpl: async () => ({
+      opened: true,
+      pluginsTabActivated: true,
+      pluginEnabledAfter: true,
+      serviceStarted: true,
+      serviceHealthOk: true,
+      dashboardOpenRequested: true,
+      dashboardUrl: 'http://127.0.0.1:8794'
+    }),
+    driveDashboardImpl: async ({ backend }) => ({
+      loaded: true,
+      title: 'Creator Studio',
+      backend,
+      draftOk: true,
+      questionAnswered: true,
+      confirmed: true,
+      generated: true,
+      approved: true,
+      runId: 'run-packaged-ui-provider-2',
+      status: 'approved',
+      taskStatus: 'confirmed',
+      importCommand: 'import-approved-action',
+      qaSummary: 'Frame QA written: action-frame-validation.json',
+      handoffSummary: 'Approved. Ready for host-owned import: Import Approved Action'
+    }),
+    driveControlCenterImportImpl: async () => ({
+      importRequested: true,
+      importCommandId: 'import-approved-action',
+      importOk: true,
+      importedActionId: 'roll-over',
+      triggerProposalSummary: '已提交 · proposal:click:roll-over:test'
+    }),
+    env: {
+      OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E: '1',
+      OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_OUTPUT: outputPath,
+      OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_BACKEND: 'provider',
+      OPENPET_PACKAGED_CREATOR_STUDIO_UI_E2E_QUIT_DELAY_MS: '0'
+    }
+  })
+
+  assert.equal(artifact.dashboard.backend, 'provider')
 })
 
 test('runPackagedCreatorStudioUiE2e records missing bundled Creator Studio conservatively', async () => {

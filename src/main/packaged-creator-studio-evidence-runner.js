@@ -6,8 +6,10 @@ const DEFAULT_COMMAND_ID = 'draft-task'
 const DEFAULT_SERVICE_ID = 'studio'
 const DEFAULT_DASHBOARD_ID = 'main'
 const DEFAULT_HEALTH_TIMEOUT_MS = 3000
+const VALID_BACKENDS = new Set(['fixture', 'provider'])
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const normalizeBackend = (value) => (VALID_BACKENDS.has(value) ? value : 'fixture')
 
 const isPackagedCreatorStudioEvidenceEnabled = (env = process.env) => env.OPENPET_PACKAGED_CREATOR_STUDIO_EVIDENCE === '1'
 
@@ -75,6 +77,7 @@ const createEmptyArtifact = ({ pluginId, hostApp }) => ({
   command: {
     requested: false,
     commandId: DEFAULT_COMMAND_ID,
+    backend: 'fixture',
     ok: false,
     runId: '',
     status: '',
@@ -98,6 +101,7 @@ const runPackagedCreatorStudioEvidence = async ({
   const dashboardId = env.OPENPET_PACKAGED_CREATOR_STUDIO_DASHBOARD_ID || DEFAULT_DASHBOARD_ID
   const hostApp = env.OPENPET_PACKAGED_CREATOR_STUDIO_APP_PATH || app?.getAppPath?.() || 'OpenPet packaged app'
   const healthTimeoutMs = Math.max(100, Number(env.OPENPET_PACKAGED_CREATOR_STUDIO_HEALTH_TIMEOUT_MS || DEFAULT_HEALTH_TIMEOUT_MS) || DEFAULT_HEALTH_TIMEOUT_MS)
+  const backend = normalizeBackend(env.OPENPET_PACKAGED_CREATOR_STUDIO_BACKEND || 'fixture')
   const stdout = []
   const stderr = []
   const artifact = createEmptyArtifact({ pluginId, hostApp })
@@ -147,9 +151,10 @@ const runPackagedCreatorStudioEvidence = async ({
     }
 
     artifact.command.requested = true
+    artifact.command.backend = backend
     const commandResult = await pluginService.runCommand?.(pluginId, DEFAULT_COMMAND_ID, {
       prompt: '新增一个自定义动作：原地打滚，动作要循环。',
-      backend: 'fixture'
+      backend
     })
     const run = commandResult?.result?.run || {}
     artifact.command.ok = Boolean(commandResult?.ok && commandResult?.result?.ok)

@@ -1,0 +1,143 @@
+{
+  "generatedAt": "2026-07-06T16:46:49.000Z",
+  "requireSigned": true,
+  "ok": false,
+  "releaseReady": false,
+  "evidence": {
+    "evidenceDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/windows-smoke/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-artifact-archive-rerun/windows-smoke-evidence",
+    "requiredFiles": [
+      "environment.txt",
+      "authenticode.txt",
+      "process.txt",
+      "install-registry.txt",
+      "manual-checks.md",
+      "update-report-commands.md"
+    ],
+    "presentFiles": [
+      {
+        "file": "environment.txt",
+        "bytes": 420,
+        "sha256": "e9c9c7dca06c0040b0ee64e14c6017de2fc7031ef733a0cc0d5d237b8df57d82"
+      },
+      {
+        "file": "authenticode.txt",
+        "bytes": 773,
+        "sha256": "c1abc6e03f7c75f3b3cb352de738cd6406fa3f2a07c17eb6ed096313f93394ab"
+      },
+      {
+        "file": "process.txt",
+        "bytes": 187,
+        "sha256": "985765335a725a8ff01175875e523078db1ba3c7409eb91c966284b596131749"
+      },
+      {
+        "file": "install-registry.txt",
+        "bytes": 186,
+        "sha256": "817274dfc380680f8ca9d6cf7b5986db520ece4517b21f9225749c63f6d04699"
+      },
+      {
+        "file": "manual-checks.md",
+        "bytes": 2781,
+        "sha256": "daa43d78806f49175d693308ec3e0347c5ad06bda1bf4718a425544e1e1a6fff"
+      },
+      {
+        "file": "update-report-commands.md",
+        "bytes": 1056,
+        "sha256": "49ab90dcd580e449bca697d28715dde4fee86adc6f345fa50d5a18b00c4e919f"
+      }
+    ],
+    "presentCount": 6,
+    "requiredCount": 6,
+    "signed": false
+  },
+  "report": {
+    "reportPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/windows-smoke/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-artifact-archive-rerun/windows-smoke-report.json",
+    "platform": "win32",
+    "arch": "x64",
+    "generatedAt": "2026-06-23T22:22:30.455Z",
+    "artifact": {
+      "version": "1.0.1-rc.3",
+      "installer": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+      "zip": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+      "latestYml": "latest.yml",
+      "signed": false,
+      "authenticodeStatus": "Unknown"
+    },
+    "checks": {
+      "total": 13,
+      "present": 13,
+      "counts": {
+        "pass": 0,
+        "fail": 0,
+        "pending": 13,
+        "blocked": 0
+      },
+      "byStatus": {
+        "pass": [],
+        "fail": [],
+        "pending": [
+          "install",
+          "launch",
+          "transparent-window",
+          "drag-bounds",
+          "control-center-tabs",
+          "pet-actions",
+          "pet-pack-import",
+          "plugin-runner",
+          "local-http-default-off",
+          "local-http-token-gated",
+          "api-key-isolation",
+          "about-update-assets",
+          "uninstall"
+        ],
+        "blocked": []
+      }
+    },
+    "structuralValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 13,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    },
+    "readinessValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+        "install must pass before Windows release readiness can be claimed",
+        "launch must pass before Windows release readiness can be claimed",
+        "transparent-window must pass before Windows release readiness can be claimed",
+        "drag-bounds must pass before Windows release readiness can be claimed",
+        "control-center-tabs must pass before Windows release readiness can be claimed",
+        "pet-actions must pass before Windows release readiness can be claimed",
+        "pet-pack-import must pass before Windows release readiness can be claimed",
+        "plugin-runner must pass before Windows release readiness can be claimed",
+        "local-http-default-off must pass before Windows release readiness can be claimed",
+        "local-http-token-gated must pass before Windows release readiness can be claimed",
+        "api-key-isolation must pass before Windows release readiness can be claimed",
+        "about-update-assets must pass before Windows release readiness can be claimed",
+        "uninstall must pass before Windows release readiness can be claimed"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 13,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    }
+  },
+  "errors": [
+    "authenticode.txt must contain Authenticode evidence with Status : Valid when --require-signed is used",
+    "report: artifact.signed must be true when --require-signed is used",
+    "report: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used"
+  ],
+  "warnings": []
+}

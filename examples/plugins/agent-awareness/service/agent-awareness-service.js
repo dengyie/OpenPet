@@ -1,28 +1,31 @@
-const http = require('http')
 const fs = require('fs')
+const http = require('http')
 const path = require('path')
-const crypto = require('crypto')
-const { normalizeCodexEvent } = require('./adapters/codex')
+const { createBridgeClient } = require('./bridge-client')
+const { normalizeCodexEvent, sanitizeText } = require('./adapters/codex')
+const { isCodexHookPayload, normalizeCodexHookEvent } = require('./adapters/codex-hook')
 const { createCodexRolloutPoller } = require('./adapters/codex-rollout-poller')
-const { createServiceBridgeClient } = require('./bridge-client')
-const { createSessionStore } = require('./session-store')
 const { createAgentStateMapper } = require('./state-mapper')
+const { createSessionStore } = require('./session-store')
+const { TOKEN_FILE } = require('../commands/codex-hook-plan')
+const { readHookMode } = require('../lib/hook-mode')
 
 const DEFAULT_PORT = 8795
-const MAX_BODY_BYTES = 64 * 1024
-const INGEST_TOKEN_FILE = 'ingest-token.txt'
 
 const sendJson = (response, statusCode, body) => {
-  response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+  response.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  })
   response.end(JSON.stringify(body))
 }
 
-const sendText = (response, statusCode, text, contentType) => {
-  response.writeHead(statusCode, { 'Content-Type': contentType, 'Cache-Control': 'no-store' })
-  response.end(text)
+const sendEmpty = (response, statusCode = 204) => {
+  response.writeHead(statusCode, { 'Cache-Control': 'no-store' })
+  response.end()
 }
 
-const readJsonBody = (request, maxBytes = MAX_BODY_BYTES) => new Promise((resolve, reject) => {
+const readJsonBody = (request, maxBytes = 64 * 1024) => new Promise((resolve, reject) => {
   let body = ''
   request.on('data', (chunk) => {
     body += chunk
@@ -32,8 +35,9 @@ const readJsonBody = (request, maxBytes = MAX_BODY_BYTES) => new Promise((resolv
     }
   })
   request.on('end', () => {
+    if (!body.trim()) return resolve({})
     try {
-      resolve(body.trim() ? JSON.parse(body) : {})
+      resolve(JSON.parse(body))
     } catch (_) {
       reject(new Error('Request body must be valid JSON'))
     }
@@ -41,142 +45,305 @@ const readJsonBody = (request, maxBytes = MAX_BODY_BYTES) => new Promise((resolv
   request.on('error', reject)
 })
 
-const getDashboardAsset = (dashboardDir, requestPath) => {
-  const assetName = requestPath === '/' ? 'index.html' : requestPath.replace(/^\//, '')
-  if (!['index.html', 'dashboard.js', 'styles.css'].includes(assetName)) return null
-  return path.join(dashboardDir, assetName)
+const sendFile = (response, filePath, contentType) => {
+  response.writeHead(200, {
+    'Content-Type': contentType,
+    'Cache-Control': 'no-store'
+  })
+  response.end(fs.readFileSync(filePath))
 }
 
-const extractBearerToken = (header = '') => {
-  const match = String(header || '').match(/^Bearer\s+(.+)$/i)
-  return match ? match[1] : ''
-}
-
-const readIngestToken = (dataDir) => {
-  const tokenPath = path.join(dataDir || '', INGEST_TOKEN_FILE)
+const readOptionalIngestToken = (dataDir) => {
+  const tokenPath = path.join(dataDir, TOKEN_FILE)
   try {
-    return fs.readFileSync(tokenPath, 'utf-8').trim()
+    const token = fs.readFileSync(tokenPath, 'utf-8').trim()
+    return token || ''
   } catch (_) {
     return ''
   }
 }
 
-const assertIngestAuthorized = ({ request, dataDir }) => {
-  const expected = readIngestToken(dataDir)
-  if (!expected) throw new Error('Agent Awareness ingest token is not configured. Run Prepare Codex Hook Instructions first.')
-  const actual = extractBearerToken(request.headers.authorization)
-  const actualBuffer = Buffer.from(String(actual || ''))
-  const expectedBuffer = Buffer.from(String(expected || ''))
-  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
-    throw new Error('Unauthorized agent event')
+const isAuthorized = ({ request, token }) => {
+  if (!token) return true
+  const header = String(request.headers.authorization || '')
+  return header === `Bearer ${token}`
+}
+
+const sanitizePollerStatus = (status = {}) => ({
+  ...status,
+  lastError: sanitizeText(status.lastError || '', 160)
+})
+
+const toFiniteNumber = (value) => {
+  if (value == null || value === '') return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+const roundSix = (value) => Math.round(value * 1_000_000) / 1_000_000
+
+const ATTENTION_STATUS = {
+  waiting: { score: 60, reason: 'Waiting for user input' },
+  blocked: { score: 55, reason: 'Blocked and needs review' },
+  failed: { score: 50, reason: 'Failed and needs review' },
+  working: { score: 30, reason: 'Working now' },
+  thinking: { score: 20, reason: 'Thinking through next step' }
+}
+
+const toTimestampMs = (value) => {
+  const numeric = Date.parse(String(value || ''))
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+const buildUsageDiagnostics = (sessions = []) => {
+  const totals = {
+    usageTotalTokens: 0,
+    usageInputTokens: 0,
+    usageOutputTokens: 0,
+    usageCachedInputTokens: 0,
+    usageEstimatedCostUsd: null,
+    usageCurrency: '',
+    usagePeakContextUsedPercent: null
+  }
+  const currencies = new Set()
+  for (const session of sessions) {
+    const usage = session?.usage && typeof session.usage === 'object' ? session.usage : null
+    if (!usage) continue
+    const totalTokens = toFiniteNumber(usage.totalTokens)
+    const inputTokens = toFiniteNumber(usage.inputTokens)
+    const outputTokens = toFiniteNumber(usage.outputTokens)
+    const cachedInputTokens = toFiniteNumber(usage.cachedInputTokens)
+    const estimatedCostUsd = toFiniteNumber(usage.estimatedCostUsd)
+    const contextUsedPercent = toFiniteNumber(usage.contextUsedPercent)
+    if (totalTokens != null) totals.usageTotalTokens += Math.round(totalTokens)
+    if (inputTokens != null) totals.usageInputTokens += Math.round(inputTokens)
+    if (outputTokens != null) totals.usageOutputTokens += Math.round(outputTokens)
+    if (cachedInputTokens != null) totals.usageCachedInputTokens += Math.round(cachedInputTokens)
+    if (estimatedCostUsd != null) totals.usageEstimatedCostUsd = roundSix((totals.usageEstimatedCostUsd || 0) + estimatedCostUsd)
+    if (contextUsedPercent != null) {
+      totals.usagePeakContextUsedPercent = totals.usagePeakContextUsedPercent == null
+        ? contextUsedPercent
+        : Math.max(totals.usagePeakContextUsedPercent, contextUsedPercent)
+    }
+    if (usage.currency) currencies.add(sanitizeText(usage.currency, 8).toUpperCase())
+  }
+  totals.usageCurrency = currencies.size === 1 ? [...currencies][0] : currencies.size > 1 ? 'MIXED' : ''
+  return totals
+}
+
+const buildAttentionSession = (sessions = []) => {
+  const candidates = sessions
+    .map((session) => {
+      const status = sanitizeText(session?.status || '', 32).toLowerCase()
+      const meta = ATTENTION_STATUS[status]
+      return {
+        sessionId: sanitizeText(session?.sessionId || '', 64),
+        project: sanitizeText(session?.project || '', 96),
+        status,
+        reason: meta?.reason || '',
+        score: meta?.score || 0,
+        timestampMs: toTimestampMs(session?.timestamp)
+      }
+    })
+    .filter((session) => session.sessionId && session.score > 0)
+    .sort((left, right) => (
+      right.score - left.score ||
+      right.timestampMs - left.timestampMs ||
+      left.sessionId.localeCompare(right.sessionId)
+    ))
+  const attention = candidates[0]
+  if (!attention) return null
+  return {
+    sessionId: attention.sessionId,
+    project: attention.project,
+    status: attention.status,
+    reason: attention.reason
+  }
+}
+
+const buildDiagnostics = ({ store, rolloutPoller }) => {
+  const status = store.getStatus()
+  const dashboardState = typeof store.getDashboardState === 'function'
+    ? store.getDashboardState()
+    : {
+        liveSessions: store.listSessions(),
+        sessionSummaries: [],
+        dailyUsageRollups: []
+      }
+  const trackedSessions = Array.isArray(dashboardState.liveSessions) ? dashboardState.liveSessions : []
+  const sessionSummaries = Array.isArray(dashboardState.sessionSummaries) ? dashboardState.sessionSummaries : []
+  const usageDiagnostics = buildUsageDiagnostics(trackedSessions)
+  const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
+  const retainedProjects = new Set(sessionSummaries.map((item) => sanitizeText(item?.project || '', 96)).filter(Boolean))
+  const liveSessionCount = status.sessions || trackedSessions.length
+  const retainedSessionCount = status.retainedSessionSummaryCount || sessionSummaries.length || liveSessionCount
+  return {
+    sessionCount: retainedSessionCount,
+    liveSessionCount,
+    activeSessionCount: trackedSessions.filter((session) => !['idle', 'completed', 'failed'].includes(String(session.status || '').toLowerCase())).length,
+    totalEvents: status.totalEvents || 0,
+    seenCount: codexPoller.seenCount || 0,
+    ignoredContentRecordCount: codexPoller.ignoredContentRecordCount || 0,
+    ignoredMetadataRecordCount: codexPoller.ignoredMetadataRecordCount || 0,
+    unknownRecordCount: codexPoller.unknownRecordCount || 0,
+    malformedRecordCount: codexPoller.malformedRecordCount || 0,
+    unsupportedLifecycleRecordCount: codexPoller.unsupportedLifecycleRecordCount || 0,
+    storeSchemaVersion: status.storeSchemaVersion || 0,
+    retentionDays: status.retentionDays || 0,
+    historyWindowStart: status.historyWindowStart || '',
+    historyWindowEnd: status.historyWindowEnd || '',
+    retainedSessionSummaryCount: retainedSessionCount,
+    retainedProjectCount: retainedProjects.size,
+    storeError: sanitizeText(status.storeError || '', 160),
+    attentionSession: buildAttentionSession(trackedSessions),
+    ...usageDiagnostics,
+    lastEventAt: status.lastEventAt || '',
+    lastScanAt: codexPoller.lastScanAt || '',
+    lastError: codexPoller.lastError || ''
   }
 }
 
 const createAgentAwarenessServer = ({
-  dataDir = process.env.OPENPET_DATA_DIR,
-  dashboardDir = path.join(__dirname, '..', 'web', 'dashboard'),
-  bridgeClient = createServiceBridgeClient(),
-  store = createSessionStore({ dataDir }),
-  mapper = createAgentStateMapper(),
-  rolloutPoller = null,
-  autoStartRolloutPoller = process.env.OPENPET_AGENT_AWARENESS_CODEX_POLL !== '0',
-  createRolloutPoller = createCodexRolloutPoller,
-  createServer = http.createServer,
+  dataDir = process.env.OPENPET_DATA_DIR || path.join(process.cwd(), '.agent-awareness-data'),
+  bridgeClient = createBridgeClient(),
+  createRolloutPoller = (options) => createCodexRolloutPoller(options),
   now = () => new Date().toISOString()
 } = {}) => {
-  const handleEvent = async (payload, { notifyPet = true } = {}) => {
-    const event = normalizeCodexEvent(payload, { now })
-    const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId)
-    const update = mapper.mapEvent({ event, previousSession })
+  const dashboardDir = path.resolve(__dirname, '..', 'web', 'dashboard')
+  const store = createSessionStore({ dataDir })
+  const mapper = createAgentStateMapper()
+  let server = null
+  let rolloutPoller = null
+
+  const normalizeIncomingEvent = (rawEvent) => (
+    isCodexHookPayload(rawEvent)
+      ? normalizeCodexHookEvent(rawEvent, { now })
+      : normalizeCodexEvent(rawEvent, { now })
+  )
+
+  const handleEvent = async (rawEvent, { initial = false } = {}) => {
+    const event = normalizeIncomingEvent(rawEvent)
+    const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId) || null
     const session = store.upsertEvent(event)
-    if (notifyPet) {
-      await bridgeClient.event(update.petEvent)
-      if (update.speech) await bridgeClient.say(update.speech)
+    if (!initial) {
+      const mapped = mapper.mapEvent({ event, previousSession })
+      if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
+      if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
     }
     return { event, session }
   }
 
-  const poller = rolloutPoller || (autoStartRolloutPoller
-    ? createRolloutPoller({
-        onEvent: (event, metadata = {}) => handleEvent(event, { notifyPet: !metadata.initial })
-      })
-    : null)
-
   const handleRequest = async (request, response) => {
-    try {
-      const url = new URL(request.url, 'http://127.0.0.1')
-      if (request.method === 'GET' && url.pathname === '/health') {
-        sendJson(response, 200, {
-          ok: true,
-          service: 'agent-awareness',
-          codexPoller: poller?.getStatus?.() || { enabled: false }
-        })
-        return
-      }
-      if (request.method === 'GET' && url.pathname === '/api/sessions') {
-        sendJson(response, 200, { ok: true, sessions: store.listSessions() })
-        return
-      }
-      if (request.method === 'POST' && url.pathname === '/api/events') {
-        assertIngestAuthorized({ request, dataDir })
-        const result = await handleEvent(await readJsonBody(request))
-        sendJson(response, 200, { ok: true, session: result.session, event: result.event })
-        return
-      }
-      if (request.method === 'GET') {
-        const assetPath = getDashboardAsset(dashboardDir, url.pathname)
-        if (assetPath && fs.existsSync(assetPath)) {
-          const ext = path.extname(assetPath)
-          const type = ext === '.js' ? 'application/javascript; charset=utf-8' : ext === '.css' ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8'
-          sendText(response, 200, fs.readFileSync(assetPath, 'utf-8'), type)
+    const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
+    if (request.method === 'GET' && url.pathname === '/health') {
+      const sessions = store.getStatus()
+      const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
+      sendJson(response, 200, {
+        ok: true,
+        service: 'agent-awareness',
+        sessions,
+        codexPoller,
+        hookMode: readHookMode(dataDir),
+        diagnostics: buildDiagnostics({ store, rolloutPoller })
+      })
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/api/sessions') {
+      const dashboardState = typeof store.getDashboardState === 'function'
+        ? store.getDashboardState()
+        : {
+            liveSessions: store.listSessions(),
+            sessionSummaries: [],
+            dailyUsageRollups: []
+          }
+      sendJson(response, 200, {
+        ok: true,
+        liveSessions: dashboardState.liveSessions,
+        sessionSummaries: dashboardState.sessionSummaries,
+        dailyUsageRollups: dashboardState.dailyUsageRollups,
+        sessions: dashboardState.liveSessions
+      })
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/dashboard.js') {
+      sendFile(response, path.join(dashboardDir, 'dashboard.js'), 'application/javascript; charset=utf-8')
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/styles.css') {
+      sendFile(response, path.join(dashboardDir, 'styles.css'), 'text/css; charset=utf-8')
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/favicon.ico') {
+      sendEmpty(response, 204)
+      return
+    }
+    if (request.method === 'GET' && url.pathname === '/') {
+      sendFile(response, path.join(dashboardDir, 'index.html'), 'text/html; charset=utf-8')
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      try {
+        const ingestToken = readOptionalIngestToken(dataDir)
+        if (!isAuthorized({ request, token: ingestToken })) {
+          sendJson(response, 401, { ok: false, error: 'Unauthorized' })
           return
         }
+        const body = await readJsonBody(request)
+        const result = await handleEvent(body)
+        sendJson(response, 200, { ok: true, event: result.event, session: result.session })
+      } catch (error) {
+        sendJson(response, 400, { ok: false, error: error?.message || 'Event ingestion failed' })
       }
-      sendJson(response, 404, { ok: false, error: 'Not found' })
-    } catch (error) {
-      const statusCode = /Unauthorized|token is not configured/i.test(error.message || '')
-        ? 401
-        : (/too large|valid JSON/i.test(error.message || '') ? 400 : 500)
-      sendJson(response, statusCode, {
-        ok: false,
-        error: error.message || 'Agent Awareness service failed'
-      })
+      return
     }
+    sendJson(response, 404, { ok: false, error: 'Not found' })
   }
 
-  const server = createServer(handleRequest)
+  const start = async (port = DEFAULT_PORT) => {
+    if (server) return server
+    rolloutPoller = createRolloutPoller({
+      onEvent: (event, meta) => handleEvent(event, meta)
+    })
+    server = http.createServer((request, response) => {
+      handleRequest(request, response).catch((error) => {
+        sendJson(response, 500, { ok: false, error: error?.message || 'Agent Awareness service failed' })
+      })
+    })
+    await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve))
+    rolloutPoller.start()
+    return server
+  }
+
+  const close = async () => {
+    rolloutPoller?.stop?.()
+    rolloutPoller = null
+    if (!server) return
+    const currentServer = server
+    server = null
+    await new Promise((resolve, reject) => currentServer.close((error) => error ? reject(error) : resolve()))
+  }
+
   return {
+    close,
+    get server() {
+      return server
+    },
     handleEvent,
-    poller,
-    server,
-    start: (port = DEFAULT_PORT, host = '127.0.0.1') => new Promise((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(port, host, () => {
-        server.off?.('error', reject)
-        poller?.start?.()
-        resolve(server.address())
-      })
-    }),
-    close: () => {
-      poller?.stop?.()
-      return new Promise((resolve) => server.close(() => resolve()))
-    }
+    start,
+    store
   }
-}
-
-const parsePort = (argv = process.argv) => {
-  const index = argv.indexOf('--port')
-  const raw = index >= 0 ? argv[index + 1] : process.env.OPENPET_AGENT_AWARENESS_PORT
-  const value = Number(raw || DEFAULT_PORT)
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_PORT
 }
 
 if (require.main === module) {
   const service = createAgentAwarenessServer()
-  service.start(parsePort()).catch((error) => {
-    process.stderr.write(`${error.message || 'Agent Awareness service failed'}\n`)
-    process.exitCode = 1
+  service.start(Number(process.env.PORT) || DEFAULT_PORT).catch((error) => {
+    console.error(error?.message || 'Failed to start Agent Awareness service')
+    process.exit(1)
   })
 }
 
-module.exports = { createAgentAwarenessServer, parsePort }
+module.exports = {
+  DEFAULT_PORT,
+  buildDiagnostics,
+  createAgentAwarenessServer
+}

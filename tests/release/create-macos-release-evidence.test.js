@@ -92,9 +92,22 @@ test('createMacosReleaseEvidence imports unsigned evidence without readiness cla
 
   assert.equal(summary.ok, true)
   assert.equal(summary.releaseReady, false)
-  assert.equal(summary.statuses.codesign, 'pending')
-  assert.equal(summary.statuses.notarization, 'pending')
-  assert.equal(summary.statuses.gatekeeper, 'pending')
+  assert.equal(summary.statuses.codesign, 'fail')
+  assert.equal(summary.statuses.notarization, 'fail')
+  assert.equal(summary.statuses.gatekeeper, 'fail')
+  assert.equal(summary.appPath, 'release/mac-arm64/OpenPet.app')
+  assert.equal(summary.outputDir, 'docs/release-evidence/macos-release-evidence')
+  assert.deepEqual(summary.files, {
+    codesign: 'macos-codesign.txt',
+    notarization: 'macos-notarization.txt',
+    gatekeeper: 'macos-gatekeeper.txt',
+    markdownSummary: 'macos-release-evidence-summary.md',
+    jsonSummary: 'macos-release-evidence-summary.json'
+  })
+  assert.deepEqual(
+    summary.evidenceFiles.map((file) => file.path),
+    ['macos-codesign.txt', 'macos-notarization.txt', 'macos-gatekeeper.txt']
+  )
   assert.equal(fs.existsSync(path.join(outputDir, 'macos-codesign.txt')), true)
   assert.equal(fs.existsSync(path.join(outputDir, 'macos-notarization.txt')), true)
   assert.equal(fs.existsSync(path.join(outputDir, 'macos-gatekeeper.txt')), true)

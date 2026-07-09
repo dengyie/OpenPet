@@ -14,11 +14,13 @@ test('packaged creator studio UI runner parseArgs accepts app, archive dir, and 
   const options = parseArgs([
     '--app', '/Applications/OpenPet.app',
     '--archive-dir', 'docs/release-evidence/creator-studio-packaged-ui/session',
+    '--backend', 'provider',
     '--json'
   ])
 
   assert.equal(options.appPath, '/Applications/OpenPet.app')
   assert.equal(options.archiveDir, 'docs/release-evidence/creator-studio-packaged-ui/session')
+  assert.equal(options.backend, 'provider')
   assert.equal(options.json, true)
 })
 
@@ -111,6 +113,7 @@ test('createPackagedCreatorStudioUiE2eRun persists runtime artifact and summary'
   assert.equal(result.summary.controlCenterReady, true)
   assert.equal(result.summary.dashboardFlowOk, true)
   assert.equal(result.summary.importOk, true)
+  assert.equal(result.summary.backendRequested, 'fixture')
   assert.equal(result.summary.runId, 'run-packaged-ui-creator-1')
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-creator-studio-ui-e2e.json')), true)
   assert.equal(fs.existsSync(path.join(archiveDir, 'packaged-creator-studio-ui-e2e-stdout.txt')), true)
@@ -207,4 +210,74 @@ test('createPackagedCreatorStudioUiE2eRun fails conservatively when dashboard ta
   assert.equal(result.ok, false)
   assert.equal(result.summary.dashboardFlowOk, false)
   assert.match(result.errors.join('\n'), /dashboard fixture packaged UI flow did not complete/i)
+})
+
+test('createPackagedCreatorStudioUiE2eRun records provider backend requests in runtime and summary output', async () => {
+  const archiveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-packaged-creator-studio-ui-provider-'))
+
+  const result = await createPackagedCreatorStudioUiE2eRun({
+    appPath: '/Applications/OpenPet.app',
+    archiveDir,
+    backend: 'provider',
+    now: () => new Date('2026-07-06T13:20:00.000Z'),
+    orchestratePackagedAppImpl: ({ archiveDir: runArchiveDir, backend }) => {
+      const runtimeArtifactPath = path.join(runArchiveDir, 'packaged-creator-studio-ui-e2e.json')
+      const stdoutPath = path.join(runArchiveDir, 'packaged-creator-studio-ui-e2e-stdout.txt')
+      const stderrPath = path.join(runArchiveDir, 'packaged-creator-studio-ui-e2e-stderr.txt')
+      const runtimeArtifact = {
+        schemaVersion: 1,
+        generatedAt: '2026-07-06T13:20:00.000Z',
+        pluginId: 'openpet.creator-studio',
+        pluginFound: true,
+        pluginEnabledBefore: false,
+        controlCenter: {
+          opened: true,
+          pluginsTabActivated: true,
+          pluginEnabledAfter: true,
+          serviceStarted: true,
+          serviceHealthOk: true,
+          dashboardOpenRequested: true,
+          dashboardUrl: 'http://127.0.0.1:8794'
+        },
+        dashboard: {
+          loaded: true,
+          title: 'Creator Studio',
+          backend,
+          draftOk: true,
+          questionAnswered: true,
+          confirmed: true,
+          generated: true,
+          approved: true,
+          runId: 'run-packaged-ui-provider-1',
+          status: 'approved',
+          taskStatus: 'confirmed',
+          importCommand: 'import-approved-action',
+          qaSummary: 'Frame QA written: action-frame-validation.json',
+          handoffSummary: 'Approved. Ready for host-owned import: Import Approved Action'
+        },
+        importResult: {
+          importRequested: true,
+          importCommandId: 'import-approved-action',
+          importOk: true,
+          importedActionId: 'roll-over',
+          triggerProposalSummary: '已提交 · proposal:click:roll-over:test'
+        }
+      }
+      fs.writeFileSync(runtimeArtifactPath, `${JSON.stringify(runtimeArtifact, null, 2)}\n`)
+      fs.writeFileSync(stdoutPath, 'packaged creator studio ui e2e completed\n')
+      fs.writeFileSync(stderrPath, '')
+      return {
+        runtimeArtifact,
+        runtimeArtifactPath,
+        stdoutPath,
+        stderrPath,
+        errors: []
+      }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.runtimeArtifact.dashboard.backend, 'provider')
+  assert.equal(result.summary.backendRequested, 'provider')
+  assert.equal(result.summary.dashboardFlowOk, true)
 })

@@ -12,6 +12,9 @@ const {
 } = require('../../scripts/create-plugin-maintainer-approval')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/focus-timer')
+const resolveBundlePath = (bundleDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(bundleDir, recordedPath)
+)
 
 const createBundle = (options = {}) => {
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-maintainer-approval-bundle-'))
@@ -62,10 +65,11 @@ test('createPluginMaintainerApproval writes markdown and json approval artifacts
 
   assert.equal(approval.approvalReady, true)
   assert.equal(approval.plugin.id, 'openpet.example.focus-timer')
-  assert.equal(fs.existsSync(approval.files.markdown), true)
-  assert.equal(fs.existsSync(approval.files.json), true)
-  assert.match(fs.readFileSync(approval.files.markdown, 'utf-8'), /Plugin Maintainer Approval/)
-  assert.equal(JSON.parse(fs.readFileSync(approval.files.json, 'utf-8')).decision, 'approved')
+  assert.equal(approval.sourceBundleDir, 'submission-bundle')
+  assert.equal(fs.existsSync(resolveBundlePath(bundleDir, approval.files.markdown)), true)
+  assert.equal(fs.existsSync(resolveBundlePath(bundleDir, approval.files.json)), true)
+  assert.match(fs.readFileSync(resolveBundlePath(bundleDir, approval.files.markdown), 'utf-8'), /Plugin Maintainer Approval/)
+  assert.equal(JSON.parse(fs.readFileSync(resolveBundlePath(bundleDir, approval.files.json), 'utf-8')).decision, 'approved')
 })
 
 test('createPluginMaintainerApproval records changes-requested without claiming approvalReady', () => {

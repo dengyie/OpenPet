@@ -29,6 +29,9 @@ const {
   normalizeLocalHttpConfig
 } = require('./ipc/pet-settings-adapter')
 const {
+  createAiBehaviorConfigView,
+  createAiBehaviorDecisionListView,
+  createAiBehaviorResultView,
   createAiConfigView,
   createAiMemoryProfileView,
   createAiPersonaDraftView,
@@ -43,8 +46,13 @@ const {
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
   createPluginListView,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 } = require('./control-center-adapters')
@@ -740,10 +748,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       })
       return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations), { triggerProposal })
     }
-    await actionImportService.updateActionConfig(payload)
-    reloadAndSendAnimations(getPetWindow, petService)
+    if (!actionService?.applyCreatorActionMutation) throw new Error('Action config persistence is not available')
+    actionService.applyCreatorActionMutation(payload)
+    const animations = reloadAndSendAnimations(getPetWindow, petService)
     refreshTriggerRuleRuntime()
-    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService))
+    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations))
   })
 
   ipcMainService.handle(IPC.ACTIONS_PREVIEW_TRIGGER_PROPOSAL, async (_event, payload) => {
@@ -825,8 +834,15 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   ipcMainService.handle(IPC.ACTIONS_UPDATE_TRIGGER_RULE, async (_event, payload) => {
-    if (!actionService?.setTriggerRuleStatus) throw new Error('Action trigger rule management is not available')
-    const result = actionService.setTriggerRuleStatus(payload?.ruleId, payload?.status)
+    const supportsRuleUpdates = typeof actionService?.updateTriggerRule === 'function'
+    const supportsStatusUpdates = typeof actionService?.setTriggerRuleStatus === 'function'
+    if (!supportsRuleUpdates && !supportsStatusUpdates) throw new Error('Action trigger rule management is not available')
+    const result = supportsRuleUpdates
+      ? actionService.updateTriggerRule(payload?.ruleId, {
+          ...(payload?.status !== undefined ? { status: payload.status } : {}),
+          ...(payload?.ruleSpec && typeof payload.ruleSpec === 'object' ? { ruleSpec: payload.ruleSpec } : {})
+        })
+      : actionService.setTriggerRuleStatus(payload?.ruleId, payload?.status)
     recordAppLog({
       scope: 'actions',
       level: 'info',
@@ -837,7 +853,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
         ruleId: result.rule.id,
         actionId: result.rule.actionId,
         type: result.rule.type,
-        status: result.rule.status
+        status: result.rule.status,
+        updatedFields: [
+          ...(payload?.status !== undefined ? ['status'] : []),
+          ...(payload?.ruleSpec && typeof payload.ruleSpec === 'object' ? ['ruleSpec'] : [])
+        ]
       }
     })
     refreshTriggerRuleRuntime()
@@ -972,7 +992,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     createAiMemoryProfileView,
     createImageGenerationConfigView,
     createImageGenerationApiKeyResult,
-    createImageGenerationHealthCheckResult
+    createImageGenerationHealthCheckResult,
+    createAiBehaviorConfigView,
+    createAiBehaviorResultView,
+    createAiBehaviorDecisionListView
   })
 
   registerPluginIpc({
@@ -983,7 +1006,12 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     pluginInstallService,
     pluginGithubImportService,
     createPluginListView,
-    createPluginMutationResult
+    createPluginMutationResult,
+    createPluginViewState,
+    createPluginCommandRunResult,
+    createPluginSetupRunResult,
+    createPluginServiceControlResult,
+    createPluginServiceHealthCheckResult
   })
   registerCreatorIpc({
     ipcMainService,

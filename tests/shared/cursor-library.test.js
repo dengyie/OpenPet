@@ -10,6 +10,7 @@ const {
   createPersistedCursorRecord,
   LEGACY_CUSTOM_CURSOR_ID,
   SYSTEM_CURSOR_ID,
+  listHiddenBuiltinCursorOptions,
   listCursorOptions,
   normalizeCursorSettingsState,
   removeStoredCursorRecord,
@@ -58,6 +59,7 @@ test('listCursorOptions returns system, built-ins, and custom cursors in order',
   const options = listCursorOptions([{
     id: 'custom-lemon',
     name: '柠檬切片',
+    source: 'uploaded',
     assetPath: '/tmp/lemon.png',
     assetUrl: 'file:///tmp/lemon.png',
     fileName: 'lemon.png',
@@ -71,9 +73,32 @@ test('listCursorOptions returns system, built-ins, and custom cursors in order',
 
   assert.equal(options[0].id, SYSTEM_CURSOR_ID)
   assert.equal(options[0].type, 'system')
+  assert.equal(options[0].source, 'system')
   assert.equal(options.at(-1)?.id, 'custom-lemon')
   assert.equal(options.at(-1)?.type, 'custom')
+  assert.equal(options.at(-1)?.source, 'uploaded')
+  assert.equal(options.at(-1)?.canDelete, true)
+  assert.equal(options.at(-1)?.canRestore, false)
   assert.equal(options.length, 8)
+})
+
+test('listCursorOptions can hide deleted built-in cursor cards from the visible picker rail', () => {
+  const hiddenId = BUILTIN_CURSORS[0].id
+  const options = listCursorOptions([], [hiddenId])
+
+  assert.equal(options.some((option) => option.id === hiddenId), false)
+  assert.equal(options.length, 6)
+})
+
+test('listHiddenBuiltinCursorOptions exposes deleted built-in cursors with restore affordance', () => {
+  const hiddenId = BUILTIN_CURSORS[0].id
+  const options = listHiddenBuiltinCursorOptions([hiddenId])
+
+  assert.equal(options.length, 1)
+  assert.equal(options[0].id, hiddenId)
+  assert.equal(options[0].source, 'builtin')
+  assert.equal(options[0].canDelete, false)
+  assert.equal(options[0].canRestore, true)
 })
 
 test('listCursorOptions merges built-in cursor overrides without duplicating cards', () => {
@@ -93,7 +118,10 @@ test('listCursorOptions merges built-in cursor overrides without duplicating car
 
   const matchingOptions = options.filter((option) => option.id === builtin.id)
   assert.equal(matchingOptions.length, 1)
-  assert.equal(matchingOptions[0].type, 'builtin')
+  assert.equal(matchingOptions[0].type, 'custom')
+  assert.equal(matchingOptions[0].source, 'builtin')
+  assert.equal(matchingOptions[0].canDelete, true)
+  assert.equal(matchingOptions[0].canRestore, false)
   assert.equal(matchingOptions[0].width, 72)
   assert.equal(matchingOptions[0].sizePercent, 150)
 })

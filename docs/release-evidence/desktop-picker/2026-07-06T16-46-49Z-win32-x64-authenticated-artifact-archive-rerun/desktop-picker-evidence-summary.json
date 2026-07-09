@@ -1,0 +1,106 @@
+{
+  "generatedAt": "2026-07-06T16:46:49.000Z",
+  "requireSigned": true,
+  "ok": true,
+  "releaseReady": false,
+  "evidence": {
+    "evidenceDir": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/desktop-picker/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun/desktop-picker-evidence",
+    "presentFiles": [
+      {
+        "file": "notes.txt",
+        "path": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/desktop-picker/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun/desktop-picker-evidence/notes.txt",
+        "bytes": 175,
+        "sha256": "dc250184ffaac2b1373feba6d89ac1f471b05a45394861ce29b939b227416ce3"
+      }
+    ],
+    "presentCount": 1
+  },
+  "report": {
+    "reportPath": "/Users/mango/.codex/worktrees/ef96/OpenPet/docs/release-evidence/desktop-picker/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun/desktop-picker-smoke-report.json",
+    "platform": "win32",
+    "arch": "x64",
+    "generatedAt": "2026-07-06T16:46:49.000Z",
+    "artifact": {
+      "version": "1.0.1-rc.3",
+      "appPath": "",
+      "installer": "OpenPet-1.0.1-rc.3-win-x64-unsigned.exe",
+      "zip": "OpenPet-1.0.1-rc.3-win-x64-unsigned.zip",
+      "latestYml": "latest.yml",
+      "signed": false,
+      "signatureStatus": "",
+      "authenticodeStatus": "NotChecked"
+    },
+    "fixtures": {
+      "pluginPackage": "Use a valid .openpet-plugin.zip fixture with a signature.json hash metadata file.",
+      "frameFolder": "Use a folder containing ordered transparent PNG frames.",
+      "petPack": "Use a valid pet pack directory with pet.json and sprite assets."
+    },
+    "checks": {
+      "total": 9,
+      "present": 9,
+      "counts": {
+        "pass": 0,
+        "fail": 0,
+        "pending": 9,
+        "blocked": 0
+      },
+      "byStatus": {
+        "pass": [],
+        "fail": [],
+        "pending": [
+          "packaged-launch",
+          "control-center-open",
+          "plugin-picker-cancel",
+          "plugin-picker-zip-review",
+          "plugin-install-disabled",
+          "invalid-package-feedback",
+          "action-frame-picker-cancel",
+          "pet-pack-picker-cancel",
+          "state-after-picker-smoke"
+        ],
+        "blocked": []
+      }
+    },
+    "structuralValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+        "artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 9,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    },
+    "readinessValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" for signed Windows picker smoke readiness",
+        "artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness",
+        "packaged-launch must pass before desktop picker smoke readiness can be claimed",
+        "control-center-open must pass before desktop picker smoke readiness can be claimed",
+        "plugin-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+        "plugin-picker-zip-review must pass before desktop picker smoke readiness can be claimed",
+        "plugin-install-disabled must pass before desktop picker smoke readiness can be claimed",
+        "invalid-package-feedback must pass before desktop picker smoke readiness can be claimed",
+        "action-frame-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+        "pet-pack-picker-cancel must pass before desktop picker smoke readiness can be claimed",
+        "state-after-picker-smoke must pass before desktop picker smoke readiness can be claimed"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 9,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

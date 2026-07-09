@@ -134,6 +134,7 @@ test('creator workflow service getState falls back quickly when provider health 
 test('creator workflow service imports an existing action and auto-applies clickAction even when the Creator Studio service is stopped', async () => {
   const commandCalls = []
   const copiedRuns = []
+  const logs = []
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-workflow-'))
   const writeRunRecord = (run) => {
     const runDir = path.join(pluginDataDir, 'runs', run.runId)
@@ -351,7 +352,9 @@ test('creator workflow service imports an existing action and auto-applies click
         copiedRuns.push(payload)
         return {}
       }
-    }
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'creator-workflow-1'
   })
 
   const result = await service.generateExistingAction({
@@ -364,6 +367,12 @@ test('creator workflow service imports an existing action and auto-applies click
   assert.equal(result.code, 'action_imported')
   assert.equal(result.importedAction.actionId, 'spin')
   assert.equal(result.clickAction, 'spin')
+  assert.deepEqual(result.clickActionChange, {
+    previousActionId: 'wave',
+    currentActionId: 'spin',
+    importedActionId: 'spin',
+    canRestore: true
+  })
   assert.equal(result.run.runId, 'run-001')
   assert.equal(result.run.importedActionId, 'spin')
   assert.equal(result.diagnostics.runStatus, 'imported')
@@ -384,6 +393,18 @@ test('creator workflow service imports an existing action and auto-applies click
     pluginDataDir,
     runId: 'run-001'
   }])
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'creator.workflow.started',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.stage.completed',
+    'creator.workflow.completed'
+  ])
+  assert.equal(logs[0].details.requestId, 'creator-workflow-1')
+  assert.equal(logs.at(-1).details.importedActionId, 'spin')
+  assert.equal(JSON.stringify(logs).includes('spin quickly'), false)
 })
 
 test('creator workflow service surfaces failed run diagnostics from Creator Studio run records', async () => {
@@ -489,13 +510,102 @@ test('creator workflow service surfaces failed run diagnostics from Creator Stud
   assert.equal(result.diagnostics.conditioning.endpoint, '/images/edits')
 })
 
+test('creator workflow service failure logs do not include raw prompt or file-path error text', async () => {
+  const logs = []
+  const sensitiveError = new Error('Prompt "spin quickly" failed at /Users/mango/private/reference.png')
+  sensitiveError.code = 'provider_failed'
+  const reference = {
+    targetType: EDITABLE_TARGET_TYPE,
+    targetId: EDITABLE_TARGET_ID,
+    assetPath: '/tmp/reference.png',
+    assetUrl: 'file:///tmp/reference.png',
+    fileName: 'reference.png',
+    width: 512,
+    height: 512,
+    contentHash: 'hash',
+    createdAt: '2026-07-02T10:00:00.000Z',
+    updatedAt: '2026-07-02T10:00:00.000Z'
+  }
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      getPluginCreatorDataDir: () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-workflow-log-')),
+      runCommand: async (_pluginId, commandId) => {
+        if (commandId === 'draft-task') {
+          return {
+            commandId,
+            result: {
+              ok: true,
+              message: 'drafted',
+              run: {
+                runId: 'run-unsafe-failure',
+                taskStatus: 'ready_for_confirmation'
+              }
+            }
+          }
+        }
+        throw sensitiveError
+      }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => reference,
+      bindReference: async () => ({ replaced: false, reference }),
+      copyReferenceIntoRun: () => ({})
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'creator-workflow-unsafe-1'
+  })
+
+  const result = await service.generateExistingAction({
+    actionName: 'spin',
+    motionPrompt: 'spin quickly'
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.state, 'review-required')
+  assert.equal(logs.at(-1).event, 'creator.workflow.failed')
+  assert.equal(logs.at(-1).message, 'Creator workflow failed')
+  assert.equal(logs.at(-1).details.errorCode, 'provider_failed')
+  assert.match(logs.at(-1).details.errorMessage, /\[redacted-prompt\]/)
+  assert.match(logs.at(-1).details.errorMessage, /\[redacted-path\]/)
+  assert.equal(JSON.stringify(logs).includes('spin quickly'), false)
+  assert.equal(JSON.stringify(logs).includes('/Users/mango/private/reference.png'), false)
+})
+
 test('creator workflow service binds a new character reference and completes a full-pet import', async () => {
   const bindCalls = []
   const copyCalls = []
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-full-pet-'))
+  const writeAtlasQa = () => {
+    const qaDir = path.join(pluginDataDir, 'runs', 'run-002', 'qa')
+    fs.mkdirSync(qaDir, { recursive: true })
+    fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+      ok: true,
+      basicActions: {
+        requiredRealActionIds: ['idle', 'waving'],
+        realActionIds: ['idle', 'waving'],
+        fallbackActionIds: ['waiting'],
+        missingRequiredActionIds: [],
+        rows: [
+          { actionId: 'idle', sourceActionId: 'idle', sourceRelativePath: 'runs/run-002/frames/base/idle/0001.png', fallback: false },
+          { actionId: 'waving', sourceActionId: 'waving', sourceRelativePath: 'runs/run-002/frames/base/waving/0001.png', fallback: false },
+          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true }
+        ]
+      }
+    }, null, 2)}\n`)
+  }
   const service = createCreatorWorkflowService({
     pluginService: {
       listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
-      getPluginCreatorDataDir: () => '/tmp/openpet-plugin-data',
+      getPluginCreatorDataDir: () => pluginDataDir,
       runCommand: async (_pluginId, commandId) => {
         if (commandId === 'draft-task') {
           return {
@@ -550,6 +660,7 @@ test('creator workflow service binds a new character reference and completes a f
           }
         }
         if (commandId === 'import-approved-pet') {
+          writeAtlasQa()
           return {
             commandId,
             result: {
@@ -631,6 +742,9 @@ test('creator workflow service binds a new character reference and completes a f
   assert.equal(result.code, 'pet_imported')
   assert.equal(result.activePet.id, 'mango-cat')
   assert.equal(result.run.activatedPackId, 'mango-cat')
+  assert.deepEqual(result.basicActions.realActionIds, ['idle', 'waving'])
+  assert.deepEqual(result.basicActions.fallbackActionIds, ['waiting'])
+  assert.deepEqual(result.basicActions.missingRequiredActionIds, [])
   assert.deepEqual(bindCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',
@@ -639,7 +753,7 @@ test('creator workflow service binds a new character reference and completes a f
   assert.deepEqual(copyCalls, [{
     targetType: 'pet-pack',
     targetId: 'mango-cat',
-    pluginDataDir: '/tmp/openpet-plugin-data',
+    pluginDataDir,
     runId: 'run-002'
   }])
 })

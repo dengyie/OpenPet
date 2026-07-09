@@ -9,18 +9,39 @@
  * @typedef {import('../shared/openpet-contracts').ServiceLogEntry} ServiceLogEntry
  * @typedef {import('../shared/openpet-contracts').ServiceStatusViewState} ServiceStatusViewState
  * @typedef {import('../shared/openpet-contracts').PluginMutationResult} PluginMutationResult
+ * @typedef {import('../shared/openpet-contracts').PluginCommandRunResultViewState} PluginCommandRunResultViewState
  * @typedef {import('../shared/openpet-contracts').PluginConfigFieldViewState} PluginConfigFieldViewState
  * @typedef {import('../shared/openpet-contracts').PluginConfigSchemaViewState} PluginConfigSchemaViewState
+ * @typedef {import('../shared/openpet-contracts').PluginCommandViewState} PluginCommandViewState
+ * @typedef {import('../shared/openpet-contracts').PluginCommandEntryViewState} PluginCommandEntryViewState
+ * @typedef {import('../shared/openpet-contracts').PluginSetupRuntimeViewState} PluginSetupRuntimeViewState
+ * @typedef {import('../shared/openpet-contracts').PluginSetupEntryViewState} PluginSetupEntryViewState
+ * @typedef {import('../shared/openpet-contracts').PluginSetupRunResultViewState} PluginSetupRunResultViewState
+ * @typedef {import('../shared/openpet-contracts').PluginDashboardEntryViewState} PluginDashboardEntryViewState
+ * @typedef {import('../shared/openpet-contracts').PluginServiceHealthPolicyViewState} PluginServiceHealthPolicyViewState
+ * @typedef {import('../shared/openpet-contracts').PluginServiceRuntimeViewState} PluginServiceRuntimeViewState
+ * @typedef {import('../shared/openpet-contracts').PluginServiceHealthViewState} PluginServiceHealthViewState
+ * @typedef {import('../shared/openpet-contracts').PluginServiceControlResult} PluginServiceControlResult
+ * @typedef {import('../shared/openpet-contracts').PluginServiceHealthCheckResult} PluginServiceHealthCheckResult
  * @typedef {import('../shared/openpet-contracts').PluginViewState} PluginViewState
  * @typedef {import('../shared/openpet-contracts').ActionFrameImportResult} ActionFrameImportResult
  * @typedef {import('../shared/openpet-contracts').ActionsMutationResult} ActionsMutationResult
  * @typedef {import('../shared/openpet-contracts').ActionsConfigViewState} ActionsConfigViewState
  * @typedef {import('../shared/openpet-contracts').AboutInfoViewState} AboutInfoViewState
  * @typedef {import('../shared/openpet-contracts').AboutUpdateInfo} AboutUpdateInfo
+ * @typedef {import('../shared/openpet-contracts').AiBehaviorConfig} AiBehaviorConfig
+ * @typedef {import('../shared/openpet-contracts').AiBehaviorDecision} AiBehaviorDecision
+ * @typedef {import('../shared/openpet-contracts').AiBehaviorResult} AiBehaviorResult
  * @typedef {import('../shared/openpet-contracts').PetPackMutationResult} PetPackMutationResult
  * @typedef {import('../shared/openpet-contracts').PetPacksViewState} PetPacksViewState
  * @typedef {import('../shared/openpet-contracts').UpdateCheckViewState} UpdateCheckViewState
  */
+
+const {
+  createRuntimeView: buildPluginRuntimeView,
+  createSetupRuntimeView: buildPluginSetupRuntimeView
+} = require('./services/plugin-service-state')
+const { sanitizePluginCommandText } = require('./services/plugin-runtime-safety')
 
 const DEFAULT_LOOPBACK_HOST = '127.0.0.1'
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
@@ -30,9 +51,20 @@ const TRIGGER_PROPOSAL_PREVIEW_CODES = new Set(['will_apply', 'no_binding_requir
 const TRIGGER_RULE_TYPES = new Set(['random', 'state', 'event'])
 const TRIGGER_RULE_STATUSES = new Set(['active', 'disabled'])
 const MAX_TRIGGER_RULE_SPEC_TEXT_LENGTH = 240
+const MAX_JSON_VIEW_DEPTH = 16
 const PLUGIN_PROFILES = new Set(['runtime', 'creator-tools', 'hybrid'])
 const PLUGIN_CONFIG_FIELD_TYPES = new Set(['string', 'number', 'boolean'])
-const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed'])
+const PLUGIN_SERVICE_HEALTH_STATUSES = new Set(['not-configured', 'unknown', 'checking', 'healthy', 'unhealthy'])
+const IMAGE_HEALTH_MODEL_PROBE_STATUSES = new Set(['ok', 'unavailable', 'failed', 'timed_out'])
+const AI_BEHAVIOR_RULE_ACTION_TYPES = new Set(['say', 'playAction', 'setEvent'])
+const AI_BEHAVIOR_DISPLAY_MODES = new Set(['none', 'bubble', 'action', 'event'])
+
+const sanitizePluginServiceHealthDetailLabel = (value = '') => sanitizePluginCommandText(value, {
+  maxLength: 80,
+  redactStandaloneTokenWords: false
+})
+
+const sanitizePluginServiceHealthDetailValue = (value = '') => sanitizePluginCommandText(value, { maxLength: 120 })
 
 /**
  * @param {unknown} value
@@ -64,14 +96,43 @@ const toFiniteNumber = (value) => {
 
 /**
  * @param {unknown} value
- * @param {number} [depth]
- * @returns {value is import('../shared/openpet-contracts').JsonValue}
+ * @returns {value is Record<string, unknown>}
  */
-const isJsonValue = (value, depth = 0) => {
-  if (value == null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true
-  if (depth > 4 || typeof value !== 'object') return false
-  if (Array.isArray(value)) return value.every((item) => isJsonValue(item, depth + 1))
-  return Object.values(value).every((item) => isJsonValue(item, depth + 1))
+const isPlainObject = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+/**
+ * @param {unknown} value
+ * @param {{ depth?: number, seen?: WeakSet<object> }} [state]
+ * @returns {import('../shared/openpet-contracts').JsonValue | undefined}
+ */
+const createJsonValueView = (value, state = {}) => {
+  const depth = state.depth || 0
+  const seen = state.seen || new WeakSet()
+  if (value == null || typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol' || typeof value === 'undefined') {
+    return undefined
+  }
+  if (depth >= MAX_JSON_VIEW_DEPTH) return undefined
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => {
+      const normalizedEntry = createJsonValueView(entry, { depth: depth + 1, seen })
+      return normalizedEntry === undefined ? [] : [normalizedEntry]
+    })
+  }
+  if (!isPlainObject(value)) return undefined
+  if (seen.has(value)) return undefined
+  seen.add(value)
+  const entries = Object.entries(value).flatMap(([key, entryValue]) => {
+    const normalizedValue = createJsonValueView(entryValue, { depth: depth + 1, seen })
+    return normalizedValue === undefined ? [] : [[key, normalizedValue]]
+  })
+  seen.delete(value)
+  return Object.fromEntries(entries)
 }
 
 /**
@@ -80,9 +141,23 @@ const isJsonValue = (value, depth = 0) => {
  */
 const toJsonValueArray = (value) => (
   Array.isArray(value)
-    ? value.filter(isJsonValue)
+    ? value.flatMap((entry) => {
+      const normalizedEntry = createJsonValueView(entry)
+      return normalizedEntry === undefined ? [] : [normalizedEntry]
+    })
     : []
 )
+
+/**
+ * @param {unknown} value
+ * @returns {import('../shared/openpet-contracts').JsonObject}
+ */
+const createJsonObjectView = (value) => {
+  const normalizedValue = createJsonValueView(value)
+  return normalizedValue && typeof normalizedValue === 'object' && !Array.isArray(normalizedValue)
+    ? normalizedValue
+    : {}
+}
 
 /**
  * @param {unknown} value
@@ -241,6 +316,7 @@ const createAiConfigView = (config = {}) => {
   const input = toRecord(config)
   const memory = toRecord(input.memory)
   const behavior = toRecord(input.behavior)
+  const vision = toRecord(input.vision)
   return {
     enabled: Boolean(input.enabled),
     provider: typeof input.provider === 'string' ? input.provider : '',
@@ -258,7 +334,21 @@ const createAiConfigView = (config = {}) => {
       rules: Array.isArray(behavior.rules) ? behavior.rules.filter((item) => item && typeof item === 'object') : [],
       decisions: Array.isArray(behavior.decisions) ? behavior.decisions.filter((item) => item && typeof item === 'object') : []
     },
-    hasApiKey: Boolean(input.hasApiKey)
+    vision: {
+      mode: vision.mode === 'override' ? 'override' : 'follow-chat',
+      provider: typeof vision.provider === 'string' ? vision.provider : '',
+      baseUrl: typeof vision.baseUrl === 'string' ? vision.baseUrl : '',
+      model: typeof vision.model === 'string' ? vision.model : '',
+      apiKeyRef: typeof vision.apiKeyRef === 'string' ? vision.apiKeyRef : '',
+      hasApiKey: Boolean(vision.hasApiKey),
+      modelCatalog: createProviderModelCatalogView(vision.modelCatalog),
+      effectiveProvider: typeof vision.effectiveProvider === 'string' ? vision.effectiveProvider : '',
+      effectiveBaseUrl: typeof vision.effectiveBaseUrl === 'string' ? vision.effectiveBaseUrl : '',
+      effectiveModel: typeof vision.effectiveModel === 'string' ? vision.effectiveModel : '',
+      effectiveHasApiKey: Boolean(vision.effectiveHasApiKey)
+    },
+    hasApiKey: Boolean(input.hasApiKey),
+    modelCatalog: createProviderModelCatalogView(input.modelCatalog)
   }
 }
 
@@ -274,6 +364,197 @@ const uniqueStrings = (items) => {
     values.push(item)
   }
   return values
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+const toViewString = (value) => (typeof value === 'string' ? value : '')
+
+/**
+ * @param {unknown} value
+ * @returns {import('../shared/openpet-contracts').AiBehaviorIntent | null}
+ */
+const createAiBehaviorIntentView = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const input = toRecord(value)
+  return {
+    ...(typeof input.label === 'string' ? { label: input.label } : {}),
+    ...(typeof input.kind === 'string' ? { kind: input.kind } : {}),
+    actionId: toViewString(input.actionId),
+    bubbleText: toViewString(input.bubbleText),
+    ...(typeof input.reason === 'string' ? { reason: input.reason } : {}),
+    ...(typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+      ? { displayMode: /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode) }
+      : {}),
+    intent: toViewString(input.intent),
+    confidence: toFiniteNumber(input.confidence)
+  }
+}
+
+/**
+ * @param {unknown} replay
+ * @returns {{ reply: string, behaviorIntent: import('../shared/openpet-contracts').AiBehaviorIntent | null }}
+ */
+const createAiBehaviorReplayView = (replay) => {
+  const input = toRecord(replay)
+  return {
+    reply: toViewString(input.reply),
+    behaviorIntent: createAiBehaviorIntentView(input.behaviorIntent)
+  }
+}
+
+/**
+ * @param {unknown} rule
+ * @param {number} index
+ * @returns {import('../shared/openpet-contracts').AiBehaviorRule | null}
+ */
+const createAiBehaviorRuleView = (rule, index = 0) => {
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) return null
+  const input = toRecord(rule)
+  const when = toRecord(input.when)
+  const then = toRecord(input.then)
+  return {
+    id: toViewString(input.id) || `rule-${index + 1}`,
+    enabled: input.enabled !== false,
+    priority: toFiniteNumber(input.priority),
+    when: {
+      intent: toViewString(when.intent),
+      minConfidence: toFiniteNumber(when.minConfidence),
+      contains: uniqueStrings(when.contains),
+      actionKind: toViewString(when.actionKind)
+    },
+    then: {
+      type: typeof then.type === 'string' && AI_BEHAVIOR_RULE_ACTION_TYPES.has(then.type)
+        ? /** @type {'say' | 'playAction' | 'setEvent'} */ (then.type)
+        : 'playAction',
+      text: toViewString(then.text),
+      actionId: toViewString(then.actionId),
+      event: toViewString(then.event),
+      message: toViewString(then.message)
+    }
+  }
+}
+
+/**
+ * @param {import('../shared/openpet-contracts').AiBehaviorRule | null} rule
+ * @returns {rule is import('../shared/openpet-contracts').AiBehaviorRule}
+ */
+const isAiBehaviorRuleView = (rule) => Boolean(rule)
+
+/**
+ * @param {unknown} decision
+ * @param {number} index
+ * @returns {AiBehaviorDecision | null}
+ */
+const createAiBehaviorDecisionView = (decision, index = 0) => {
+  if (!decision || typeof decision !== 'object' || Array.isArray(decision)) return null
+  const input = toRecord(decision)
+  const displayMode = typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+    ? /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode)
+    : ''
+  return {
+    id: Number.isFinite(Number(input.id)) ? Number(input.id) : index + 1,
+    timestamp: toViewString(input.timestamp),
+    matched: Boolean(input.matched),
+    type: toViewString(input.type),
+    ruleId: toViewString(input.ruleId),
+    reason: toViewString(input.reason),
+    actionId: toViewString(input.actionId),
+    label: toViewString(input.label),
+    kind: toViewString(input.kind),
+    event: toViewString(input.event),
+    intent: toViewString(input.intent),
+    ...(typeof input.providerReason === 'string' ? { providerReason: input.providerReason } : {}),
+    ...(displayMode ? { displayMode } : {}),
+    inputSummary: toViewString(input.inputSummary),
+    cooldown: Boolean(input.cooldown),
+    fallback: Boolean(input.fallback),
+    blockedReason: toViewString(input.blockedReason),
+    replay: createAiBehaviorReplayView(input.replay),
+    ...(input.replayRedacted !== undefined ? { replayRedacted: Boolean(input.replayRedacted) } : {})
+  }
+}
+
+/**
+ * @param {AiBehaviorDecision | null} decision
+ * @returns {decision is AiBehaviorDecision}
+ */
+const isAiBehaviorDecisionView = (decision) => Boolean(decision)
+
+/**
+ * @param {unknown} decisions
+ * @returns {AiBehaviorDecision[]}
+ */
+const createAiBehaviorDecisionListView = (decisions) => (
+  Array.isArray(decisions)
+    ? decisions
+      .map((decision, index) => createAiBehaviorDecisionView(decision, index))
+      .filter(isAiBehaviorDecisionView)
+    : []
+)
+
+/**
+ * @param {unknown} config
+ * @returns {AiBehaviorConfig}
+ */
+const createAiBehaviorConfigView = (config = {}) => {
+  const input = toRecord(config)
+  return {
+    enabled: Boolean(input.enabled),
+    useTools: input.useTools !== false,
+    cooldownMs: toNonNegativeInteger(input.cooldownMs),
+    rules: Array.isArray(input.rules)
+      ? input.rules
+        .map((rule, index) => createAiBehaviorRuleView(rule, index))
+        .filter(isAiBehaviorRuleView)
+      : [],
+    decisions: createAiBehaviorDecisionListView(input.decisions)
+  }
+}
+
+/**
+ * @param {unknown} result
+ * @returns {AiBehaviorResult}
+ */
+const createAiBehaviorResultView = (result = {}) => {
+  const input = toRecord(result)
+  const replayOf = Number(input.replayOf)
+  const displayMode = typeof input.displayMode === 'string' && AI_BEHAVIOR_DISPLAY_MODES.has(input.displayMode)
+    ? /** @type {'none' | 'bubble' | 'action' | 'event'} */ (input.displayMode)
+    : ''
+  return {
+    matched: Boolean(input.matched),
+    reason: toViewString(input.reason),
+    ...(typeof input.type === 'string' ? { type: input.type } : {}),
+    ...(input.ruleId !== undefined ? { ruleId: toViewString(input.ruleId) } : {}),
+    ...(input.actionId !== undefined ? { actionId: toViewString(input.actionId) } : {}),
+    ...(input.label !== undefined ? { label: toViewString(input.label) } : {}),
+    ...(input.kind !== undefined ? { kind: toViewString(input.kind) } : {}),
+    ...(input.event !== undefined ? { event: toViewString(input.event) } : {}),
+    ...(input.intent !== undefined ? { intent: toViewString(input.intent) } : {}),
+    ...(typeof input.providerReason === 'string' ? { providerReason: input.providerReason } : {}),
+    ...(displayMode ? { displayMode } : {}),
+    ...(input.cooldown !== undefined ? { cooldown: Boolean(input.cooldown) } : {}),
+    ...(input.fallback !== undefined ? { fallback: Boolean(input.fallback) } : {}),
+    ...(input.blockedReason !== undefined ? { blockedReason: toViewString(input.blockedReason) } : {}),
+    ...(Number.isFinite(replayOf) ? { replayOf } : {})
+  }
+}
+
+/**
+ * @param {unknown} catalog
+ * @returns {import('../shared/openpet-contracts').ProviderModelCatalogViewState}
+ */
+const createProviderModelCatalogView = (catalog = {}) => {
+  const input = toRecord(catalog)
+  return {
+    cacheKey: typeof input.cacheKey === 'string' ? input.cacheKey : '',
+    models: Array.isArray(input.models) ? uniqueStrings(input.models) : [],
+    fetchedAt: typeof input.fetchedAt === 'string' ? input.fetchedAt : '',
+    source: input.source === 'saved' ? 'saved' : 'none'
+  }
 }
 
 /**
@@ -422,7 +703,8 @@ const createImageGenerationConfigView = (config = {}) => {
     maxConcurrentJobs: toNonNegativeInteger(input.maxConcurrentJobs),
     hasApiKey: Boolean(input.hasApiKey),
     apiKeyPreview: typeof input.apiKeyPreview === 'string' ? input.apiKeyPreview : '',
-    apiKeyLabel: typeof input.apiKeyLabel === 'string' && input.apiKeyLabel ? input.apiKeyLabel : 'Image API Key'
+    apiKeyLabel: typeof input.apiKeyLabel === 'string' && input.apiKeyLabel ? input.apiKeyLabel : 'Image API Key',
+    modelCatalog: createProviderModelCatalogView(input.modelCatalog)
   }
 }
 
@@ -446,7 +728,7 @@ const createImageGenerationApiKeyResult = (result = {}) => {
 const createImageGenerationHealthCheckResult = (result = {}) => {
   const input = toRecord(result)
   const modelsProbe = typeof input.modelsProbe === 'string' && IMAGE_HEALTH_MODEL_PROBE_STATUSES.has(input.modelsProbe)
-    ? /** @type {'ok' | 'unavailable' | 'failed'} */ (input.modelsProbe)
+    ? /** @type {'ok' | 'unavailable' | 'failed' | 'timed_out'} */ (input.modelsProbe)
     : undefined
   const usage = toRecord(input.usage)
   const estimatedCostUsd = Number(usage.estimatedCostUsd)
@@ -609,6 +891,207 @@ const createPluginConfigSchemaView = (schema = {}) => {
       : []
   }
 }
+
+/**
+ * @param {unknown} command
+ * @returns {PluginCommandViewState | null}
+ */
+const createPluginCommandView = (command) => {
+  const input = toRecord(command)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : ''
+  }
+}
+
+/**
+ * @param {PluginCommandViewState | null} command
+ * @returns {command is PluginCommandViewState}
+ */
+const isPluginCommandView = (command) => Boolean(command)
+
+/**
+ * @param {unknown} command
+ * @returns {PluginCommandEntryViewState | null}
+ */
+const createPluginCommandEntryView = (command) => {
+  const base = createPluginCommandView(command)
+  if (!base) return null
+  const input = toRecord(command)
+  return {
+    ...base,
+    command: typeof input.command === 'string' ? input.command : '',
+    cwd: typeof input.cwd === 'string' ? input.cwd : '',
+    ...(input.timeoutMs !== undefined ? { timeoutMs: toNonNegativeInteger(input.timeoutMs) } : {})
+  }
+}
+
+/**
+ * @param {PluginCommandEntryViewState | null} command
+ * @returns {command is PluginCommandEntryViewState}
+ */
+const isPluginCommandEntryView = (command) => Boolean(command)
+
+/**
+ * @param {unknown} runtime
+ * @returns {PluginSetupRuntimeViewState}
+ */
+const createPluginSetupRuntimeView = (runtime = {}) => {
+  return buildPluginSetupRuntimeView(toRecord(runtime))
+}
+
+/**
+ * @param {unknown} setup
+ * @returns {PluginSetupEntryViewState | null}
+ */
+const createPluginSetupEntryView = (setup) => {
+  const input = toRecord(setup)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    command: typeof input.command === 'string' ? input.command : '',
+    cwd: typeof input.cwd === 'string' ? input.cwd : '',
+    ...(input.runtime !== undefined ? { runtime: createPluginSetupRuntimeView(input.runtime) } : {})
+  }
+}
+
+/**
+ * @param {PluginSetupEntryViewState | null} setup
+ * @returns {setup is PluginSetupEntryViewState}
+ */
+const isPluginSetupEntryView = (setup) => Boolean(setup)
+
+/**
+ * @param {unknown} health
+ * @param {{ defaultStatus?: import('../shared/openpet-contracts').PluginServiceHealthStatus }} [options]
+ * @returns {PluginServiceHealthViewState}
+ */
+const createPluginServiceHealthView = (health = {}, options = {}) => {
+  const input = toRecord(health)
+  const defaultStatus = options.defaultStatus || 'not-configured'
+  const details = Array.isArray(input.details)
+    ? input.details
+      .map(toRecord)
+      .filter((detail) => typeof detail.label === 'string' && typeof detail.value === 'string')
+      .map((detail) => ({
+        label: sanitizePluginServiceHealthDetailLabel(detail.label),
+        value: sanitizePluginServiceHealthDetailValue(detail.value)
+      }))
+      .filter((detail) => detail.label && detail.value)
+      .slice(0, 8)
+    : []
+  /** @type {PluginServiceHealthViewState} */
+  const view = {
+    status: typeof input.status === 'string' && PLUGIN_SERVICE_HEALTH_STATUSES.has(input.status)
+      ? /** @type {import('../shared/openpet-contracts').PluginServiceHealthStatus} */ (input.status)
+      : defaultStatus,
+    checkedAt: typeof input.checkedAt === 'string' ? input.checkedAt : '',
+    url: typeof input.url === 'string' ? input.url : '',
+    statusCode: Number.isFinite(Number(input.statusCode)) ? Number(input.statusCode) : null,
+    message: typeof input.message === 'string' ? input.message : ''
+  }
+  if (details.length) view.details = details
+  return view
+}
+
+/**
+ * @param {unknown} policy
+ * @returns {PluginServiceHealthPolicyViewState}
+ */
+const createPluginServiceHealthPolicyView = (policy = {}) => {
+  const input = toRecord(policy)
+  return {
+    enabled: Boolean(input.enabled),
+    intervalMs: toNonNegativeInteger(input.intervalMs)
+  }
+}
+
+/**
+ * @param {unknown} runtime
+ * @returns {PluginServiceRuntimeViewState}
+ */
+const createPluginServiceRuntimeView = (runtime = {}) => {
+  return buildPluginRuntimeView(toRecord(runtime), {}, createPluginServiceHealthView)
+}
+
+/**
+ * @param {unknown} health
+ * @returns {{ type: string, url?: string } | null | undefined}
+ */
+const createPluginServiceConfigHealthView = (health) => {
+  if (health === null) return null
+  const input = toRecord(health)
+  if (typeof input.type !== 'string' || !input.type) return undefined
+  return {
+    type: input.type,
+    ...(typeof input.url === 'string' ? { url: input.url } : {})
+  }
+}
+
+/**
+ * @param {unknown} platforms
+ * @returns {Record<string, { command: string, cwd: string }> | undefined}
+ */
+const createPluginServicePlatformsView = (platforms) => {
+  const input = toRecord(platforms)
+  const entries = Object.entries(input).filter(([, value]) => {
+    const declaration = toRecord(value)
+    return typeof declaration.command === 'string' && typeof declaration.cwd === 'string'
+  }).map(([platform, value]) => {
+    const declaration = toRecord(value)
+    return [platform, { command: declaration.command, cwd: declaration.cwd }]
+  })
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+/**
+ * @param {unknown} service
+ * @returns {import('../shared/openpet-contracts').PluginServiceEntryViewState | null}
+ */
+const createPluginServiceEntryView = (service) => {
+  const input = toRecord(service)
+  if (typeof input.id !== 'string' || !input.id) return null
+  const platforms = createPluginServicePlatformsView(input.platforms)
+  const health = createPluginServiceConfigHealthView(input.health)
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    command: typeof input.command === 'string' ? input.command : '',
+    cwd: typeof input.cwd === 'string' ? input.cwd : '',
+    ...(platforms ? { platforms } : {}),
+    ...(input.health === null ? { health: null } : (health ? { health } : {})),
+    ...(input.healthPolicy !== undefined ? { healthPolicy: createPluginServiceHealthPolicyView(input.healthPolicy) } : {}),
+    ...(input.runtime !== undefined ? { runtime: createPluginServiceRuntimeView(input.runtime) } : {})
+  }
+}
+
+/**
+ * @param {import('../shared/openpet-contracts').PluginServiceEntryViewState | null} service
+ * @returns {service is import('../shared/openpet-contracts').PluginServiceEntryViewState}
+ */
+const isPluginServiceEntryView = (service) => Boolean(service)
+
+/**
+ * @param {unknown} dashboard
+ * @returns {PluginDashboardEntryViewState | null}
+ */
+const createPluginDashboardEntryView = (dashboard) => {
+  const input = toRecord(dashboard)
+  if (typeof input.id !== 'string' || !input.id) return null
+  return {
+    id: input.id,
+    title: typeof input.title === 'string' ? input.title : '',
+    url: typeof input.url === 'string' ? input.url : ''
+  }
+}
+
+/**
+ * @param {PluginDashboardEntryViewState | null} dashboard
+ * @returns {dashboard is PluginDashboardEntryViewState}
+ */
+const isPluginDashboardEntryView = (dashboard) => Boolean(dashboard)
 
 /**
  * @param {unknown} storage
@@ -806,16 +1289,38 @@ const createPluginViewState = (plugin = {}) => {
     source: typeof input.source === 'string' ? input.source : '',
     enabled: Boolean(input.enabled),
     runnable: Boolean(input.runnable),
+    ...(input.requiresNativeExecution !== undefined ? { requiresNativeExecution: Boolean(input.requiresNativeExecution) } : {}),
+    ...(input.nativeExecutionApproved !== undefined ? { nativeExecutionApproved: Boolean(input.nativeExecutionApproved) } : {}),
     permissions: Array.isArray(input.permissions) ? input.permissions.filter((permission) => typeof permission === 'string') : [],
-    commands: Array.isArray(input.commands) ? input.commands : [],
+    commands: Array.isArray(input.commands)
+      ? input.commands
+        .map(createPluginCommandView)
+        .filter(isPluginCommandView)
+      : [],
     entries: {
-      setup: Array.isArray(input.entries?.setup) ? input.entries.setup : [],
-      commands: Array.isArray(input.entries?.commands) ? input.entries.commands : [],
-      services: Array.isArray(input.entries?.services) ? input.entries.services : [],
-      dashboards: Array.isArray(input.entries?.dashboards) ? input.entries.dashboards : []
+      setup: Array.isArray(input.entries?.setup)
+        ? input.entries.setup
+          .map(createPluginSetupEntryView)
+          .filter(isPluginSetupEntryView)
+        : [],
+      commands: Array.isArray(input.entries?.commands)
+        ? input.entries.commands
+          .map(createPluginCommandEntryView)
+          .filter(isPluginCommandEntryView)
+        : [],
+      services: Array.isArray(input.entries?.services)
+        ? input.entries.services
+          .map(createPluginServiceEntryView)
+          .filter(isPluginServiceEntryView)
+        : [],
+      dashboards: Array.isArray(input.entries?.dashboards)
+        ? input.entries.dashboards
+          .map(createPluginDashboardEntryView)
+          .filter(isPluginDashboardEntryView)
+        : []
     },
     configSchema: createPluginConfigSchemaView(input.configSchema),
-    config: toRecord(input.config),
+    config: createJsonObjectView(input.config),
     storage: createPluginStorageView(input.storage),
     signatureStatus: createPluginSignatureStatusView(input.signatureStatus),
     ...(blockStatus !== undefined ? { blockStatus } : {})
@@ -839,9 +1344,60 @@ const createPluginMutationResult = (result, plugins) => ({
   ok: Boolean(result.ok),
   ...(result.pluginId !== undefined ? { pluginId: result.pluginId } : {}),
   ...(result.installMode !== undefined ? { installMode: result.installMode } : {}),
-  ...(result.disabled !== undefined ? { disabled: result.disabled } : {}),
-  ...(result.storageRemoved !== undefined ? { storageRemoved: result.storageRemoved } : {}),
+  ...(result.disabled !== undefined ? { disabled: Boolean(result.disabled) } : {}),
+  ...(result.storageRemoved !== undefined ? { storageRemoved: Boolean(result.storageRemoved) } : {}),
   plugins: createPluginListView(plugins)
+})
+
+/**
+ * @param {Partial<PluginCommandRunResultViewState>} result
+ * @returns {PluginCommandRunResultViewState}
+ */
+const createPluginCommandRunResult = (result = {}) => ({
+  ok: Boolean(result.ok),
+  ...(result.pluginId !== undefined ? { pluginId: typeof result.pluginId === 'string' ? result.pluginId : '' } : {}),
+  ...(result.commandId !== undefined ? { commandId: typeof result.commandId === 'string' ? result.commandId : '' } : {}),
+  ...(result.exitCode !== undefined ? { exitCode: Number.isFinite(Number(result.exitCode)) ? Number(result.exitCode) : null } : {}),
+  ...(result.stdout !== undefined ? { stdout: typeof result.stdout === 'string' ? result.stdout : '' } : {}),
+  ...(result.stderr !== undefined ? { stderr: typeof result.stderr === 'string' ? result.stderr : '' } : {}),
+  ...(() => {
+    const normalizedResult = createJsonValueView(result.result)
+    return result.result !== undefined && normalizedResult !== undefined ? { result: normalizedResult } : {}
+  })()
+})
+
+/**
+ * @param {Partial<PluginSetupRunResultViewState>} result
+ * @returns {PluginSetupRunResultViewState}
+ */
+const createPluginSetupRunResult = (result = {}) => ({
+  ok: Boolean(result.ok),
+  pluginId: typeof result.pluginId === 'string' ? result.pluginId : '',
+  setupId: typeof result.setupId === 'string' ? result.setupId : '',
+  runtime: createPluginSetupRuntimeView(result.runtime)
+})
+
+/**
+ * @param {Partial<PluginServiceControlResult>} result
+ * @returns {PluginServiceControlResult}
+ */
+const createPluginServiceControlResult = (result = {}) => ({
+  ok: Boolean(result.ok),
+  pluginId: typeof result.pluginId === 'string' ? result.pluginId : '',
+  serviceId: typeof result.serviceId === 'string' ? result.serviceId : '',
+  runtime: createPluginServiceRuntimeView(result.runtime)
+})
+
+/**
+ * @param {Partial<PluginServiceHealthCheckResult>} result
+ * @returns {PluginServiceHealthCheckResult}
+ */
+const createPluginServiceHealthCheckResult = (result = {}) => ({
+  ok: Boolean(result.ok),
+  pluginId: typeof result.pluginId === 'string' ? result.pluginId : '',
+  serviceId: typeof result.serviceId === 'string' ? result.serviceId : '',
+  health: createPluginServiceHealthView(result.health, { defaultStatus: 'unknown' }),
+  runtime: createPluginServiceRuntimeView(result.runtime)
 })
 
 /**
@@ -1107,6 +1663,9 @@ const createUpdateCheckView = (result = {}) => ({
 })
 
 module.exports = {
+  createAiBehaviorConfigView,
+  createAiBehaviorDecisionListView,
+  createAiBehaviorResultView,
   createAiConfigView,
   createAiMemoryProfileView,
   createAiPersonaDraftView,
@@ -1124,8 +1683,13 @@ module.exports = {
   createLocalHttpConfigView,
   createLocalHttpRuntimeView,
   createPetPackMutationResult,
+  createPluginCommandRunResult,
   createPluginListView,
   createPluginMutationResult,
+  createPluginServiceControlResult,
+  createPluginServiceHealthCheckResult,
+  createPluginSetupRunResult,
+  createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
 }

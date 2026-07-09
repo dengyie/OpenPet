@@ -17,12 +17,14 @@ export interface PetPaneProps {
   status: string
   saving: boolean
   cursorOptions: CursorOption[]
+  hiddenCursorOptions: CursorOption[]
   onChange: (partial: Partial<ControlCenterSettings>, previewScale?: boolean) => void
   onSelectCursor: (cursorId: string) => void | Promise<void>
   onImportCursor: () => void | Promise<void>
   onResizeCursor: (cursorId: string, sizePercent: number) => void | Promise<void>
   onRenameCursor: (cursorId: string, nextName: string) => void | Promise<void>
   onDeleteCursor: (cursorId: string) => void | Promise<void>
+  onRestoreCursor: (cursorId: string) => void | Promise<void>
   onSave: () => void | Promise<void>
   onReset: () => void
 }
@@ -39,6 +41,14 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <path d="M10 4v12M4 10h12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M6 6l8 8M14 6l-8 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }
@@ -72,11 +82,13 @@ export function PetPane({
   onSave,
   onReset,
   cursorOptions,
+  hiddenCursorOptions,
+  onRestoreCursor,
   saving
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
   const visibleCursorOptions = cursorOptions.filter((option) => option.id !== SYSTEM_CURSOR_ID)
-  const managedCursorRecords = settings.customCursors
+  const managedCursorOptions = [...visibleCursorOptions, ...hiddenCursorOptions]
   const selectedScalableCursor = visibleCursorOptions.find((cursor) => cursor.id === settings.selectedCursorId) || null
   const selectedCursorSizePercent = Math.round(Number(selectedScalableCursor?.sizePercent) || 100)
   const [pendingCursorSizePercent, setPendingCursorSizePercent] = useState(selectedCursorSizePercent)
@@ -108,12 +120,41 @@ export function PetPane({
   }
 
   const confirmDeleteCursor = (cursor: CustomCursorRecord) => {
-    const builtin = getBuiltinCursorById(cursor.id)
-    const message = builtin
-      ? `重置「${cursor.name}」的自定义尺寸和覆盖设置？`
-      : `删除指针「${cursor.name}」？`
-    if (!window.confirm(message)) return
     onDeleteCursor(cursor.id)
+  }
+
+  const renderCursorActionButtons = (cursor: CursorOption) => {
+    const customRecord = settings.customCursors.find((record) => record.id === cursor.id) || null
+    return (
+      <>
+        {customRecord && cursor.canRename === true ? (
+          <button type="button" className="ghost" onClick={() => promptRenameCursor(customRecord)} disabled={saving}>
+            重命名
+          </button>
+        ) : null}
+        {cursor.canRestore === true ? (
+          <button type="button" className="ghost accent" onClick={() => onRestoreCursor(cursor.id)} disabled={saving}>
+            恢复
+          </button>
+        ) : null}
+        {cursor.canDelete === true ? (
+          <button
+            type="button"
+            className="ghost danger"
+            onClick={() => {
+              if (customRecord) {
+                confirmDeleteCursor(customRecord)
+                return
+              }
+              onDeleteCursor(cursor.id)
+            }}
+            disabled={saving}
+          >
+            删除
+          </button>
+        ) : null}
+      </>
+    )
   }
 
   return (
@@ -202,43 +243,64 @@ export function PetPane({
               <div className="cursor-options-row" role="list" aria-label="可选指针">
                 {visibleCursorOptions.map((option) => {
                   const selected = settings.selectedCursorId === option.id
+                  const removable = option.canDelete === true
                   return (
-                    <button
+                    <div
                       key={option.id}
-                      type="button"
-                      className={`cursor-option-card${selected ? ' selected' : ''}`}
-                      data-cursor-type={option.type}
-                      onClick={() => onSelectCursor(option.id)}
-                      disabled={saving}
+                      className={`cursor-option-card-shell${removable ? ' removable' : ''}`}
                     >
-                      <span className="cursor-card-preview">
-                        <span className="cursor-card-surface" />
-                        <img src={option.assetUrl} alt={`${option.name} 预览`} />
-                      </span>
-                      <span className="cursor-card-label">{option.name}</span>
-                      {selected ? (
-                        <span className="cursor-card-check" aria-hidden="true">
-                          <CheckIcon />
-                        </span>
+                      {removable ? (
+                        <button
+                          type="button"
+                          className="cursor-card-delete"
+                          aria-label={`删除指针 ${option.name}`}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void onDeleteCursor(option.id)
+                          }}
+                          disabled={saving}
+                        >
+                          <CloseIcon />
+                        </button>
                       ) : null}
-                    </button>
+                      <button
+                        type="button"
+                        className={`cursor-option-card${selected ? ' selected' : ''}`}
+                        data-cursor-source={option.source}
+                        onClick={() => onSelectCursor(option.id)}
+                        disabled={saving}
+                      >
+                        <span className="cursor-card-preview">
+                          <span className="cursor-card-surface" />
+                          <img src={option.assetUrl} alt={`${option.name} 预览`} />
+                        </span>
+                        <span className="cursor-card-label">{option.name}</span>
+                        {selected ? (
+                          <span className="cursor-card-check" aria-hidden="true">
+                            <CheckIcon />
+                          </span>
+                        ) : null}
+                      </button>
+                    </div>
                   )
                 })}
 
-                <button
-                  type="button"
-                  className="cursor-option-card add-card"
-                  onClick={onImportCursor}
-                  disabled={saving}
-                >
-                  <span className="cursor-card-preview">
-                    <span className="cursor-card-surface" />
-                    <span className="cursor-card-add-icon" aria-hidden="true">
-                      <PlusIcon />
+                <div className="cursor-option-card-shell add-card-shell">
+                  <button
+                    type="button"
+                    className="cursor-option-card add-card"
+                    onClick={onImportCursor}
+                    disabled={saving}
+                  >
+                    <span className="cursor-card-preview">
+                      <span className="cursor-card-surface" />
+                      <span className="cursor-card-add-icon" aria-hidden="true">
+                        <PlusIcon />
+                      </span>
                     </span>
-                  </span>
-                  <span className="cursor-card-label">添加自定义</span>
-                </button>
+                    <span className="cursor-card-label">添加自定义</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -289,8 +351,8 @@ export function PetPane({
             <div className="cursor-management-panel">
               <div className="cursor-management-header">
                 <div>
-                  <h3>已保存的指针覆盖</h3>
-                  <p>这里会列出你上传的自定义指针，以及对内置指针做过的尺寸覆盖。</p>
+                  <h3>指针库状态</h3>
+                  <p>这里统一管理当前可见指针、上传指针，以及已隐藏的内置指针恢复入口。</p>
                 </div>
                 <div className="cursor-management-actions">
                   <button type="button" className="ghost accent" onClick={onImportCursor} disabled={saving}>
@@ -299,13 +361,16 @@ export function PetPane({
                 </div>
               </div>
 
-              {managedCursorRecords.length > 0 ? (
-                <div className="cursor-library-list" role="list" aria-label="已保存的指针覆盖">
-                  {managedCursorRecords.map((cursor) => {
+              {managedCursorOptions.length > 0 ? (
+                <div className="cursor-library-list" role="list" aria-label="指针库状态">
+                  {managedCursorOptions.map((cursor) => {
                     const active = settings.selectedCursorId === cursor.id
-                    const builtin = getBuiltinCursorById(cursor.id)
                     return (
-                      <div key={cursor.id} className="cursor-library-row" role="listitem">
+                      <div
+                        key={cursor.id}
+                        className={`cursor-library-row${cursor.canRestore === true ? ' hidden-row' : ''}`}
+                        role="listitem"
+                      >
                         <span className="cursor-library-preview">
                           <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
                         </span>
@@ -313,28 +378,23 @@ export function PetPane({
                           <span className="cursor-library-title">
                             <strong>{cursor.name}</strong>
                             {active ? <span className="cursor-usage-badge">使用中</span> : null}
-                            {builtin ? <span className="cursor-usage-badge subtle">内置覆盖</span> : null}
+                            {cursor.source === 'builtin' ? <span className="cursor-usage-badge subtle">内置</span> : null}
+                            {cursor.source === 'uploaded' ? <span className="cursor-usage-badge subtle">已上传</span> : null}
+                            {cursor.canRestore === true ? <span className="cursor-usage-badge hidden">已隐藏</span> : null}
                           </span>
                           <span className="cursor-library-meta">
                             {formatCursorSize(cursor)} · {formatCursorDate(cursor.createdAt)}
                           </span>
                         </span>
                         <span className="cursor-library-actions">
-                          {builtin ? null : (
-                            <button type="button" className="ghost" onClick={() => promptRenameCursor(cursor)} disabled={saving}>
-                              重命名
-                            </button>
-                          )}
-                          <button type="button" className={`ghost${builtin ? '' : ' danger'}`} onClick={() => confirmDeleteCursor(cursor)} disabled={saving}>
-                            {builtin ? '重置' : '删除'}
-                          </button>
+                          {renderCursorActionButtons(cursor)}
                         </span>
                       </div>
                     )
                   })}
                 </div>
               ) : (
-                <div className="cursor-library-empty">还没有保存任何自定义指针或内置覆盖。</div>
+                <div className="cursor-library-empty">当前还没有可管理的指针记录。</div>
               )}
             </div>
           </div>

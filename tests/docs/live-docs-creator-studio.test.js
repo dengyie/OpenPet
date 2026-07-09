@@ -171,6 +171,41 @@ test('live docs mention archived real Creator Studio provider smoke evidence and
   assert.equal(fileExists(`${evidenceDir}/qa/action-frame-validation.json`), true, 'action-frame QA JSON should be archived')
   assert.equal(fileExists(`${evidenceDir}/logs/openpet-app.jsonl`), true, 'redacted image-generation logs should be archived')
 })
+
+test('live docs keep generated pet image quality tied to original-image fidelity', () => {
+  const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
+  const handoff = readText('docs/HANDOFF.md')
+  const todo = readText('docs/TODO.md')
+  const pluginDevelopment = readText('docs/plugin-development.md')
+  const releaseEvidenceReadme = readText('docs/release-evidence/README.md')
+  const combined = [todoArchitecture, handoff, todo, pluginDevelopment, releaseEvidenceReadme].join('\n')
+
+  assert.match(
+    combined,
+    /highly consistent with the user's original image/i,
+    'live docs should require generated output to stay highly consistent with the original pet image'
+  )
+  assert.match(
+    combined,
+    /recognizable identity[\s\S]*silhouette[\s\S]*palette[\s\S]*style[\s\S]*important visual traits/i,
+    'live docs should spell out the visual identity traits that matter for pet fidelity'
+  )
+  assert.match(
+    combined,
+    /Provider smoke[\s\S]*command\/data flow[\s\S]*not final visual fidelity proof/i,
+    'live docs should not treat provider smoke as final visual fidelity proof'
+  )
+  assert.match(
+    combined,
+    /frame\/atlas QA[\s\S]*structural import-readiness[\s\S]*not human visual fidelity proof/i,
+    'live docs should not treat frame or atlas QA as human visual fidelity proof'
+  )
+  assert.match(
+    releaseEvidenceReadme,
+    /generated pets still require human review or a future explicit visual-fidelity gate against the user's original image/i,
+    'release evidence index should keep the manual or future visual-fidelity gate visible'
+  )
+})
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const developmentSummary = readText('docs/development-summary.md')

@@ -67,6 +67,8 @@ test('maps complete packaged cleanup runtime evidence into cleanup report checks
   assert.equal(findCheck(updated, 'service-tree-fallback-cleanup').status, 'pending')
   assert.equal(findCheck(updated, 'service-force-stop').status, 'pending')
   assert.match(findCheck(updated, 'service-process-group-cleanup').evidence, /OpenPet\.app/)
+  assert.doesNotMatch(findCheck(updated, 'setup-exit-confirmed-stop').evidence, /\/tmp\//)
+  assert.match(findCheck(updated, 'setup-exit-confirmed-stop').evidence, /Transcript: setup\.txt/)
 })
 
 test('maps explicit packaged cleanup fallback and force-stop evidence when observed', () => {

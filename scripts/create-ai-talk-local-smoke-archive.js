@@ -6,6 +6,15 @@ const DEFAULT_ARCHIVE_ROOT = path.join('docs', 'release-evidence', 'ai-talk-loca
 const DEFAULT_RESULT_NAME = 'ai-talk-local-smoke-result.json'
 const DEFAULT_LOG_NAME = path.join('logs', 'openpet-app.jsonl')
 const DEFAULT_README_NAME = 'README.md'
+const DEFAULT_ARCHIVE_RESULT_NAME = 'ai-talk-local-smoke-archive-result.json'
+const DEFAULT_SESSION_DIR_LABEL = 'ai-talk-local-smoke'
+
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const formatManualAcceptanceStatus = (value) => {
+  if (value === true) return 'pass'
+  if (value === false) return 'fail'
+  return 'pending'
+}
 
 const usage = () => [
   'Usage: node scripts/create-ai-talk-local-smoke-archive.js --session-dir <dir> [options]',
@@ -87,6 +96,53 @@ const assertDoesNotExist = (targetPath, role, fsImpl = fs) => {
 }
 
 const sanitizeText = (value, maxChars = 240) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxChars)
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const sanitizeRelativePath = (value, fallback, maxChars = 240) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (isSafeRelativePath(normalized)) return sanitizeText(normalized, maxChars)
+  return sanitizeText(fallback, maxChars)
+}
+
+const createSafeArchiveDirPath = (archiveDir, sessionId) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(archiveDir || '').trim()))
+  return sanitizeRelativePath(relative, `${toPosixPath(DEFAULT_ARCHIVE_ROOT)}/${sanitizeText(sessionId, 80)}`)
+}
+
+const createSafeSourceSummary = ({ report, sessionId }) => {
+  const sourceSessionDir = sanitizeRelativePath(
+    report?.sessionDir,
+    `${DEFAULT_SESSION_DIR_LABEL}/${sanitizeText(sessionId, 80)}`
+  )
+  const normalizeSourceChildPath = (value, fallback) => {
+    const normalized = sanitizeRelativePath(value, fallback)
+    if (normalized === sourceSessionDir) return normalized
+    if (normalized.startsWith(`${sourceSessionDir}/`)) return normalized
+    return sanitizeRelativePath(`${sourceSessionDir}/${normalized}`, `${sourceSessionDir}/${fallback}`)
+  }
+  const resultPath = sanitizeRelativePath(
+    normalizeSourceChildPath(report?.resultPath, DEFAULT_RESULT_NAME),
+    `${sourceSessionDir}/${DEFAULT_RESULT_NAME}`
+  )
+  const logPath = sanitizeRelativePath(
+    normalizeSourceChildPath(report?.logPath, toPosixPath(DEFAULT_LOG_NAME)),
+    `${sourceSessionDir}/${toPosixPath(DEFAULT_LOG_NAME)}`
+  )
+  return { sourceSessionDir, resultPath, logPath }
+}
+
+const summarizeManualAcceptance = (manualAcceptance = {}) => ({
+  bubbleVisibleLongEnough: formatManualAcceptanceStatus(manualAcceptance.bubbleVisibleLongEnough),
+  inputUsable: formatManualAcceptanceStatus(manualAcceptance.inputUsable),
+  desktopFeelNotesPresent: String(manualAcceptance.desktopFeelNotes || '').trim().length > 0,
+  requestId: sanitizeText(manualAcceptance.requestId || '', 160)
+})
 
 const requireSanitizedReport = (report) => {
   if (report?.userDataDir !== '[redacted-local-user-data]') {
@@ -107,6 +163,50 @@ const assertNoSensitiveArchiveText = (content, role) => {
   }
   if (/\/Users\/[^"'\s]+/.test(text)) {
     throw new Error(`${role} is not sanitized for archive: local user path found`)
+  }
+  if (/127\.0\.0\.1|localhost|\[::1\]/i.test(text)) {
+    throw new Error(`${role} is not sanitized for archive: loopback address found`)
+  }
+}
+
+const createArchiveResultValue = ({
+  report,
+  absoluteArchiveDir,
+  sessionId,
+  files,
+  now = () => new Date()
+}) => {
+  const safeArchiveDir = createSafeArchiveDirPath(absoluteArchiveDir, sessionId)
+  const safeSource = createSafeSourceSummary({ report, sessionId })
+  return {
+    generatedAt: now().toISOString(),
+    ok: true,
+    source: {
+      sessionDir: safeSource.sourceSessionDir,
+      resultPath: safeSource.resultPath,
+      logPath: safeSource.logPath
+    },
+    archive: {
+      archiveDir: safeArchiveDir,
+      outputPath: `${safeArchiveDir}/${DEFAULT_ARCHIVE_RESULT_NAME}`,
+      sessionId
+    },
+  smoke: {
+    generatedAt: sanitizeText(report?.generatedAt || '', 80),
+    provider: sanitizeText(report?.config?.provider || '', 80),
+    baseUrl: sanitizeText(report?.config?.baseUrl || '', 200),
+    model: sanitizeText(report?.config?.model || '', 120),
+    activePetPackId: sanitizeText(report?.activePetPack?.id || '', 120),
+    requestId: sanitizeText(report?.bubbleAcceptance?.requestId || '', 160),
+    providerLatencyMs: Number(report?.bubbleAcceptance?.providerLatencyMs) || 0,
+    bubbleVisible: report?.bubbleDispatch?.bubbleStateVisible === true,
+    manualAcceptanceTemplatePresent: Boolean(report?.manualAcceptanceTemplate),
+    manualAcceptance: summarizeManualAcceptance(report?.manualAcceptanceTemplate || {})
+  },
+  files,
+  warnings: [
+    'Archive preserves sanitized telemetry evidence only; human desktop-feel acceptance remains manual-required.'
+  ]
   }
 }
 
@@ -133,9 +233,12 @@ const createReadme = ({ report, archiveDir }) => {
   const bubbleTelemetryLine = providerLatencyMs > 0
     ? `Correlated logs include ${logEvents || 'the expected bubble events'}; the displayed bubble recorded popup telemetry in \`logs/openpet-app.jsonl\`.`
     : 'Correlated logs were copied into `logs/openpet-app.jsonl` for popup telemetry review.'
-  const sourceSessionDir = sanitizeText(report?.sessionDir || '', 200) || 'tmp/real-provider-chat-acceptance/<session>'
-  const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : 'tmp/real-provider-chat-acceptance'
-  const archiveSessionDir = sanitizeText(path.relative(process.cwd(), archiveDir) || archiveDir, 240)
+  const sourceSessionDir = sanitizeText(report?.sessionDir || '', 200) || `${DEFAULT_SESSION_DIR_LABEL}/<session>`
+  const smokeOutputDir = sourceSessionDir.includes('/') ? sanitizeText(path.posix.dirname(sourceSessionDir), 200) : DEFAULT_SESSION_DIR_LABEL
+  const archiveSessionDir = sanitizeText(toPosixPath(path.relative(process.cwd(), archiveDir) || archiveDir), 240)
+  const manualAcceptance = report?.manualAcceptanceTemplate || {}
+  const manualNotes = sanitizeText(manualAcceptance.desktopFeelNotes || '', 400)
+  const reportCommandPath = `${archiveSessionDir}/${DEFAULT_RESULT_NAME}`
 
   return [
     '# AI Talk Bubble Chat Smoke Evidence',
@@ -168,6 +271,16 @@ const createReadme = ({ report, archiveDir }) => {
     `- Report: \`${DEFAULT_RESULT_NAME}\``,
     `- Redacted logs: \`${DEFAULT_LOG_NAME}\``,
     '',
+    '## Manual Acceptance',
+    '',
+    '| Review area | Status |',
+    '| --- | --- |',
+    `| Bubble visible long enough | ${formatManualAcceptanceStatus(manualAcceptance.bubbleVisibleLongEnough)} |`,
+    `| Input usable | ${formatManualAcceptanceStatus(manualAcceptance.inputUsable)} |`,
+    '',
+    `- Notes: ${manualNotes ? manualNotes : '_none recorded_'}`,
+    `- Request ID: \`${sanitizeText(manualAcceptance.requestId || '', 160) || 'not-recorded'}\``,
+    '',
     '## Claim Boundary',
     '',
     'This evidence confirms that the saved host-side AI Talk wiring can complete a real-provider chat request, emit a correlated `requestId`, record provider latency, and dispatch the reply into Bubble Chat with visible popup telemetry.',
@@ -179,19 +292,25 @@ const createReadme = ({ report, archiveDir }) => {
     '```bash',
     `npm run run-ai-talk-local-smoke -- --message "<message>" --output-dir ${smokeOutputDir}`,
     `npm run create-ai-talk-local-smoke-archive -- --session-dir ${sourceSessionDir} --archive-dir ${archiveSessionDir}`,
+    `npm run update-ai-talk-local-smoke-report -- ${reportCommandPath} --bubble-visible-long-enough true --input-usable true --desktop-feel-notes "Record the desktop interaction review here." --validate-complete`,
     '```',
     ''
   ].join('\n')
 }
 
-const copyFile = ({ sourcePath, targetPath, role, fsImpl = fs }) => {
+const createSafeArchivedFilePath = (targetPath, archiveDir, fallback) => {
+  const relative = toPosixPath(path.relative(archiveDir, targetPath))
+  return sanitizeRelativePath(relative, fallback)
+}
+
+const copyFile = ({ sourcePath, targetPath, archiveDir, role, fallbackPath, fsImpl = fs }) => {
   assertPlainFile(sourcePath, role, fsImpl)
   const content = fsImpl.readFileSync(sourcePath)
   fsImpl.mkdirSync(path.dirname(targetPath), { recursive: true })
   fsImpl.writeFileSync(targetPath, content)
   return {
     role,
-    path: targetPath,
+    path: createSafeArchivedFilePath(targetPath, archiveDir, fallbackPath),
     bytes: content.length,
     sha256: sha256(content)
   }
@@ -216,7 +335,7 @@ const createAiTalkLocalSmokeArchive = ({
 
   const sessionId = path.basename(absoluteSessionDir)
   const absoluteArchiveDir = path.resolve(archiveDir || path.join(DEFAULT_ARCHIVE_ROOT, sessionId))
-  const absoluteOutputPath = path.resolve(outputPath || path.join(absoluteArchiveDir, 'ai-talk-local-smoke-archive-result.json'))
+  const absoluteOutputPath = path.resolve(outputPath || path.join(absoluteArchiveDir, DEFAULT_ARCHIVE_RESULT_NAME))
   const sourceResultPath = path.join(absoluteSessionDir, DEFAULT_RESULT_NAME)
   const sourceLogPath = path.join(absoluteSessionDir, DEFAULT_LOG_NAME)
   const archivedResultPath = path.join(absoluteArchiveDir, DEFAULT_RESULT_NAME)
@@ -237,48 +356,40 @@ const createAiTalkLocalSmokeArchive = ({
 
   fsImpl.mkdirSync(absoluteArchiveDir, { recursive: true })
   const files = [
-    copyFile({ sourcePath: sourceResultPath, targetPath: archivedResultPath, role: 'aiTalkLocalSmokeResult', fsImpl }),
-    copyFile({ sourcePath: sourceLogPath, targetPath: archivedLogPath, role: 'aiTalkLocalSmokeLog', fsImpl })
+    copyFile({
+      sourcePath: sourceResultPath,
+      targetPath: archivedResultPath,
+      archiveDir: absoluteArchiveDir,
+      role: 'aiTalkLocalSmokeResult',
+      fallbackPath: DEFAULT_RESULT_NAME,
+      fsImpl
+    }),
+    copyFile({
+      sourcePath: sourceLogPath,
+      targetPath: archivedLogPath,
+      archiveDir: absoluteArchiveDir,
+      role: 'aiTalkLocalSmokeLog',
+      fallbackPath: toPosixPath(DEFAULT_LOG_NAME),
+      fsImpl
+    })
   ]
 
   const readme = createReadme({ report, archiveDir: absoluteArchiveDir })
   fsImpl.writeFileSync(archivedReadmePath, readme)
   files.push({
     role: 'archiveReadme',
-    path: archivedReadmePath,
+    path: createSafeArchivedFilePath(archivedReadmePath, absoluteArchiveDir, DEFAULT_README_NAME),
     bytes: Buffer.byteLength(readme),
     sha256: sha256(readme)
   })
 
-  const archiveResult = {
-    generatedAt: now().toISOString(),
-    ok: true,
-    source: {
-      sessionDir: absoluteSessionDir,
-      resultPath: sourceResultPath,
-      logPath: sourceLogPath
-    },
-    archive: {
-      archiveDir: absoluteArchiveDir,
-      outputPath: absoluteOutputPath,
-      sessionId
-    },
-    smoke: {
-      generatedAt: sanitizeText(report?.generatedAt || '', 80),
-      provider: sanitizeText(report?.config?.provider || '', 80),
-      baseUrl: sanitizeText(report?.config?.baseUrl || '', 200),
-      model: sanitizeText(report?.config?.model || '', 120),
-      activePetPackId: sanitizeText(report?.activePetPack?.id || '', 120),
-      requestId: sanitizeText(report?.bubbleAcceptance?.requestId || '', 160),
-      providerLatencyMs: Number(report?.bubbleAcceptance?.providerLatencyMs) || 0,
-      bubbleVisible: report?.bubbleDispatch?.bubbleStateVisible === true,
-      manualAcceptanceTemplatePresent: Boolean(report?.manualAcceptanceTemplate)
-    },
+  const archiveResult = createArchiveResultValue({
+    report,
+    absoluteArchiveDir,
+    sessionId,
     files,
-    warnings: [
-      'Archive preserves sanitized telemetry evidence only; human desktop-feel acceptance remains manual-required.'
-    ]
-  }
+    now
+  })
 
   writeJson({ filePath: absoluteOutputPath, value: archiveResult, fsImpl })
   return archiveResult
@@ -317,11 +428,17 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_ARCHIVE_ROOT,
+  DEFAULT_ARCHIVE_RESULT_NAME,
   DEFAULT_LOG_NAME,
   DEFAULT_README_NAME,
   DEFAULT_RESULT_NAME,
+  assertNoSensitiveArchiveText,
+  createArchiveResultValue,
   createAiTalkLocalSmokeArchive,
   createReadme,
+  formatManualAcceptanceStatus,
   parseArgs,
+  requireSanitizedReport,
+  summarizeManualAcceptance,
   usage
 }

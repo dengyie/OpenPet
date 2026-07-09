@@ -1,0 +1,170 @@
+{
+  "generatedAt": "2026-07-06T16:17:27.000Z",
+  "outputDir": "docs/release-evidence/plugin-community-source-discovery-report/2026-07-06T16-17-27Z-npm-package-model-rerun",
+  "status": "compatible-source-not-found",
+  "nextAction": "find-or-invite-compatible-plugin-json-package",
+  "searchResults": [
+    {
+      "query": "npm search openpets --json",
+      "tool": "npm search openpets --json",
+      "resultCount": 19,
+      "notes": "2026-07-06 registry search surfaced a broader published OpenPets ecosystem, including 13 @openpets/* plugin-like packages worth inspecting for current OpenPet plugin.json compatibility."
+    },
+    {
+      "query": "npm pack tarball inspection for 13 @openpets/* packages",
+      "tool": "npm pack <package> --pack-destination <tmp> && tar -tf <tgz>",
+      "resultCount": 13,
+      "notes": "All inspected tarballs lacked both a root plugin.json and a root openpets.plugin.json, indicating a package.json-based adjacent plugin model rather than the current OpenPet plugin.json package root."
+    }
+  ],
+  "candidates": [
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/bluesky",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/bluesky/-/bluesky-1.0.0.tgz",
+      "submitter": "@openpets/bluesky",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Template plugin tarball contains package.json + commands.json but no root plugin.json or openpets.plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/quo",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/quo/-/quo-1.0.1.tgz",
+      "submitter": "@openpets/quo",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published API plugin tarball contains package.json-based layout without root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/turbopuffer",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/turbopuffer/-/turbopuffer-1.0.0.tgz",
+      "submitter": "@openpets/turbopuffer",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + commands.json but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/openai",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/openai/-/openai-1.0.3.tgz",
+      "submitter": "@openpets/openai",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + commands.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/quickfile",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/quickfile/-/quickfile-1.0.3.tgz",
+      "submitter": "@openpets/quickfile",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/raggle",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/raggle/-/raggle-1.0.2.tgz",
+      "submitter": "@openpets/raggle",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + commands.json but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/x-twitter",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/x-twitter/-/x-twitter-1.0.0.tgz",
+      "submitter": "@openpets/x-twitter",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + commands.json but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/webflow",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/webflow/-/webflow-1.0.2.tgz",
+      "submitter": "@openpets/webflow",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/medplum",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/medplum/-/medplum-1.0.2.tgz",
+      "submitter": "@openpets/medplum",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/athenahealth",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/athenahealth/-/athenahealth-1.0.2.tgz",
+      "submitter": "@openpets/athenahealth",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/redox",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/redox/-/redox-1.0.2.tgz",
+      "submitter": "@openpets/redox",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/openstreetmap",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/openstreetmap/-/openstreetmap-1.0.2.tgz",
+      "submitter": "@openpets/openstreetmap",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains package.json + source files but no root plugin.json."
+    },
+    {
+      "sourceUrl": "https://www.npmjs.com/package/@openpets/gojiberry",
+      "archiveUrl": "https://registry.npmjs.org/@openpets/gojiberry/-/gojiberry-0.0.1.tgz",
+      "submitter": "@openpets/gojiberry",
+      "status": "incompatible-package-model",
+      "reasonCode": "plugin-json-missing",
+      "intakeReport": "",
+      "phase99Evidence": "",
+      "notes": "Published tarball contains only package.json and no root plugin.json."
+    }
+  ],
+  "candidateCounts": {
+    "total": 13,
+    "not-inspected": 0,
+    "ready-for-community-evidence": 0,
+    "incompatible-package-model": 13,
+    "not-found": 0
+  },
+  "notes": "2026-07-06 rerun broadened discovery from GitHub repositories to published npm packages in the adjacent OpenPets ecosystem. None of the inspected package tarballs exposed the current OpenPet root plugin.json package model.",
+  "boundaries": [
+    "Discovery records search and candidate source observations only.",
+    "Discovery does not prove OpenPet plugin compatibility.",
+    "Discovery does not prove signing trust, catalog publication, runtime safety, or release readiness.",
+    "Only compatible plugin.json package candidates should continue into Phase 100, Phase 103, and Phase 99."
+  ],
+  "files": {
+    "summary": "plugin-community-source-discovery-summary.json",
+    "readme": "README-community-source-discovery.md"
+  }
+}

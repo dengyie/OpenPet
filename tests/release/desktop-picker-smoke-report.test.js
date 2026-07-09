@@ -94,6 +94,7 @@ test('createDesktopPickerSmokeReport writes a pending macOS report that passes s
   assert.equal(report.generatedAt, '2026-06-15T00:00:00.000Z')
   assert.equal(report.environment.machine, 'mac-smoke-host')
   assert.equal(report.artifact.version, packageJson.version)
+  assert.equal(report.artifact.releaseDir, 'release')
   assert.equal(report.artifact.appPath, path.join('mac-arm64', 'OpenPet.app'))
   assert.equal(report.artifact.signed, true)
   assert.equal(report.artifact.signatureStatus, 'Valid')
@@ -157,6 +158,29 @@ test('validateReport accepts a signed all-pass Windows picker smoke report', () 
   const result = validateReport(report, { requireSigned: true })
   assert.equal(result.ok, true)
   assert.equal(result.summary.officialReady, true)
+})
+
+test('createDesktopPickerSmokeReport infers Windows artifact arch from release files during cross-platform structure checks', () => {
+  const releaseDir = createReleaseDir()
+  const originalArchDescriptor = Object.getOwnPropertyDescriptor(process, 'arch')
+
+  Object.defineProperty(process, 'arch', {
+    ...originalArchDescriptor,
+    value: 'arm64'
+  })
+
+  try {
+    const report = createDesktopPickerSmokeReport({
+      releaseDir,
+      platform: 'win32',
+      allowAnyPlatform: true,
+      now: () => new Date('2026-07-06T00:00:00.000Z')
+    })
+
+    assert.equal(report.arch, 'x64')
+  } finally {
+    Object.defineProperty(process, 'arch', originalArchDescriptor)
+  }
 })
 
 test('createDesktopPickerSmokeReport rejects unsupported platforms', () => {

@@ -1,9 +1,90 @@
 # AI Provider Settings UX Design
 
-> Date: 2026-06-22
-> Status: implemented
-> Owner surface: Control Center AI pane + main-process AI services
+> Date: 2026-07-04
+> Status: implemented baseline, next-phase redesign planned
+> Owner surface: Control Center AI pane + main-process AI / image-generation / creator workflow services
 > Priority: P1
+
+## Implementation Update: 2026-07-04
+
+This document now also covers the next Provider UX redesign pass that was confirmed after the first unified Provider hub landed.
+
+It also records the confirmed direction for a future `vision / 多模态文本模型` capability:
+
+- default:
+  - `vision` follows the saved `聊天模型` configuration;
+- optional:
+  - operators may enable a host-owned `vision` override and save a separate endpoint/key/model tuple;
+- runtime rule:
+  - when the override is disabled, host-owned multimodal text tasks resolve to `聊天模型`;
+- boundary rule:
+  - `vision` must not become a separate side-channel settings surface outside the Provider hub.
+
+The current implemented baseline remains true:
+
+- one default-open `模型 Provider` section;
+- two capability cards:
+  - `聊天模型`
+  - `图片模型`
+- host-owned config shape:
+  - `Base URL`
+  - `API Key`
+  - `Model`
+- save/test and save/health flows stay separate;
+- `/models` discovery exists and is already visible in diagnostics;
+- logs are structured and redacted for Provider and Creator flows.
+
+The newly confirmed next-phase goals are:
+
+1. Keep `模型 Provider` as one unified page.
+2. Turn `聊天模型` and `图片模型` into summary-first collapsible capability cards.
+3. Replace plain model text inputs with a searchable model selector.
+4. Distinguish model sources as:
+   - `推荐模型`
+   - `缓存模型`
+   - `手动输入`
+5. Persist discovered model lists locally with bounded cache rules instead of keeping them only in page memory.
+6. Preserve OpenAI-compatible flexibility: model selection must never depend on `/models` being available.
+7. Extend the Provider model so a future `vision` capability can inherit `聊天模型` by default while still supporting explicit override.
+
+This next phase is a product and interaction redesign on top of the already-landed host-owned security boundary. It is not a rollback to multiple provider pages, and it does not reintroduce `local` versus `cloud` form splits.
+
+## Implementation Update: 2026-07-03
+
+This document is now the active design-and-development note for the current AI Provider work, not only the original save/test split.
+
+The current landed slice includes:
+
+- one default-open `模型 Provider` section in the AI pane, with two capability cards:
+  - `聊天模型`
+  - `图片模型`
+- chat and image provider settings both using the same host-owned contract shape:
+  - `Base URL`
+  - `API Key`
+  - `Model`
+- no renderer-side distinction between `local` and `cloud`; environment switching is done by changing the saved endpoint/model/key.
+- disclosure-based secondary UI for:
+  - provider boundary copy
+  - provider presets
+  - advanced settings
+- compact active summaries that surface:
+  - active host
+  - active model
+  - key saved state
+  - dirty-draft state
+- structured diagnostics for:
+  - chat saved-config test
+  - image provider health check
+  - optional `/models` discovery
+  - image compatibility hints
+- main-process safe logs for:
+  - chat provider config save
+  - chat provider API key save
+  - image provider config save
+  - image provider API key save / clear
+  - Creator Studio default-flow lifecycle
+  - Creator workflow lifecycle
+- hardened app-log redaction for prompt-like and reply-like fields so provider/Creator diagnostics can be retained without leaking user prompts or provider replies.
 
 ## Implementation Update: 2026-06-23
 
@@ -18,6 +99,180 @@ This design is implemented for the chat provider path:
 - Provider logs intentionally avoid API keys, Authorization headers, prompts, and raw provider response bodies.
 
 The same AI pane now also exposes host-owned Creator Studio image-generation settings. That surface belongs to `ImageGenerationModelService`, not `AiService`: it manages the unified OpenAI-compatible image Provider config, API key storage, health checks, provider invocation, and generated output writes. Creator Studio may still use `fixture` / `cloud` / `local` as run backend vocabulary, but Provider credentials and calls stay host-owned. Future UI work should likely split this into a clearer model-settings card, but the security boundary is already host-owned.
+
+## 0. Current Design Summary
+
+The current design direction is:
+
+1. Put all model-provider settings in one place: `Control Center -> AI -> 模型 Provider`.
+2. Keep one host-owned configuration model for chat and image generation.
+3. Make “saved active config” and “unsaved local draft” visually different.
+4. Keep trust boundaries visible in the UI instead of assuming users understand host/plugin separation.
+5. Add enough structured logging and regression tests that provider failures are diagnosable without leaking secrets or prompt bodies.
+
+In practice, this means the page is no longer “a flat long form”. It is a layered page:
+
+- top summary hub;
+- one chat capability card;
+- one image capability card;
+- diagnostics and compatibility feedback near the card that owns it;
+- secondary/rare settings hidden under disclosures.
+
+## 0B. Next-Phase Redesign Summary
+
+The next phase should move the current page from “two long cards with internal disclosures” to “two compact operational panels”:
+
+- each capability card keeps a permanent summary header;
+- only the editable body is collapsed/expanded;
+- the most common actions stay visible in the header;
+- model selection becomes assisted instead of input-only;
+- model discovery becomes reusable cached data instead of one-off transient diagnostics.
+
+This is not a major architecture rewrite. It is an interaction-system upgrade over the existing Provider hub.
+
+Confirmed product decisions for this redesign:
+
+1. `模型 Provider` remains one page and one ownership boundary.
+2. Capability cards do not disappear completely when collapsed.
+3. `Model` keeps free-text compatibility through fallback manual entry.
+4. Discovered model lists should survive page reloads and app restarts.
+5. Cached model lists must be visibly marked as cached, not treated as authoritative truth.
+
+## 0C. Single Source Of Truth Rules
+
+The Provider redesign is not only a UI consolidation. It is also a hard architecture rule.
+
+1. All text-model consumers must use the saved `聊天模型` Provider configuration as their only persisted model source.
+2. All image-generation consumers must use the saved `图片模型` Provider configuration as their only persisted model source.
+3. No feature, workflow, plugin, renderer pane, or background job may persist an independent host-managed `baseUrl` / `apiKey` / `model` setting outside the Provider ownership boundary.
+4. Renderer state may hold temporary drafts for editing, but drafts do not become runtime truth until the host Provider save path persists them.
+5. Workflow payloads, plugin payloads, task snapshots, run artifacts, and imported pack metadata may record which model was used for a specific run, but they must never become a separate persisted override source for future host-managed runs.
+6. If a future capability needs different routing or more than two capability owners, that must be added by extending the Provider ownership model explicitly rather than creating a side-channel setting.
+
+This means “one Provider page” is only considered complete when it is also “one persisted source of model truth”.
+
+### 0C.1 Vision inheritance rule
+
+`vision / 多模态文本模型` is the first confirmed extension that should not immediately become a third equal-weight top-level provider card.
+
+OpenPet should treat vision as:
+
+1. a text-side capability by default;
+2. a host-owned optional override only when the operator explicitly enables it;
+3. a runtime resolver, not a third unmanaged settings island.
+
+Required rule:
+
+- if `vision` override is disabled, all host-owned vision tasks resolve to the saved `聊天模型` provider;
+- if `vision` override is enabled, host-owned vision tasks resolve to the saved `vision` override config only;
+- no workflow, renderer pane, plugin, or task payload may persist a separate vision provider/model setting outside this provider ownership model.
+
+## 0D. Model Consumer Ownership Matrix
+
+Every current and future model-consuming path must map back to one of the two Provider capability owners.
+
+### `聊天模型` Provider owns
+
+- pet chat replies;
+- bubble chat replies;
+- desktop chat replies;
+- Control Center chat sends;
+- pet-pack persona draft generation;
+- memory extraction and other text-side background AI tasks;
+- behavior or tool-orchestration text reasoning that depends on the host chat model;
+- host-owned vision tasks when `vision` override is disabled;
+- any future text, conversation, summarization, classification, drafting, or reasoning feature.
+
+### Optional `vision` override owns
+
+This is the confirmed future extension path.
+
+When enabled, it owns:
+
+- reference-image understanding for creator workflows;
+- prompt-from-image or image-to-text helper tasks;
+- asset review, image QA, or visual reasoning that should not consume the default chat model;
+- future host-owned multimodal text reasoning tasks.
+
+When disabled, all of the above fall back to `聊天模型`.
+
+### `图片模型` Provider owns
+
+- Creator Studio image generation;
+- action-frame generation;
+- pet or pet-pack image generation;
+- provider-backed asset regeneration or repair flows;
+- any future host-owned image-generation feature.
+
+### Explicitly forbidden persistence patterns
+
+- feature-specific saved model settings in persona, memory, behavior, chat, Creator Studio, Actions, or plugin panes;
+- renderer-owned persisted provider or model settings;
+- plugin-owned persisted provider, API key, or model settings for host-managed chat or image capabilities;
+- workflow or task payloads becoming the next-run persisted model override;
+- workflow or task payloads becoming the next-run persisted vision override;
+- separate “Creator model setting”, “memory model setting”, or “chat window model setting” storage paths that bypass Provider management.
+
+## 0A. Current Code Boundaries
+
+### Renderer / Control Center
+
+- `src/control-center/src/panes/AiPane.tsx`
+  - provider page structure
+  - disclosure layout
+  - active summary and diagnostics rendering
+- `src/control-center/src/styles.css`
+  - provider card layout, status strips, disclosures, compact summaries
+- `src/control-center/src/hooks/useAiPane.ts`
+  - draft state
+  - active state refresh
+  - save/test/health/discovery interaction wiring
+
+### Main process services
+
+- `src/main/services/ai-service.js`
+  - chat provider config save
+  - API key storage via secret service
+  - saved-config connection test
+  - safe settings logs
+- `src/main/services/image-generation-model-service.js`
+  - image provider config save
+  - image API key save/clear
+  - health check and `/models` discovery
+  - host-owned generation settings logs
+- `src/main/services/creator-studio-default-flow-service.js`
+  - host-owned default generate-and-import flow
+  - structured lifecycle logging
+- `src/main/services/creator-workflow-service.js`
+  - workflow orchestration across draft / confirm / generate / approve / import
+  - structured lifecycle logging
+- `src/main/services/app-log-service.js`
+  - safe app-log storage
+  - detail-key redaction and secret-pattern redaction
+
+### Provider ownership enforcement
+
+- `AiService` is the persisted owner for chat-model configuration and chat-model discovery cache.
+- `ImageGenerationModelService` is the persisted owner for image-model configuration and image-model discovery cache.
+- `AiTalkService`, creator workflows, plugin bridges, and renderer hooks are consumers of those saved views, not owners of parallel model settings.
+- future `vision` resolution must stay host-owned and either:
+  - resolve to `AiService` chat config by default; or
+  - resolve to a host-owned vision override stored under the same Provider hub boundary.
+
+### Regression boundaries
+
+- `tests/control-center/control-center-smoke.spec.js`
+  - AI provider pane structure and interaction regression
+- `tests/services/ai-service.test.js`
+  - safe save/test logging
+- `tests/services/image-generation-model-service.test.js`
+  - image provider safe save/clear logging
+- `tests/services/creator-studio-default-flow-service.test.js`
+  - default-flow lifecycle logging
+- `tests/services/creator-workflow-service.test.js`
+  - workflow lifecycle logging
+- `tests/services/app-log-service.test.js`
+  - prompt/reply/reference-path redaction
 
 ## 1. Background
 
@@ -51,14 +306,34 @@ Give users a complete, safe AI provider settings workflow:
 5. Test the active provider configuration and receive actionable feedback.
 6. Avoid accidental confusion between unsaved draft values and active runtime values.
 
+And for maintainers:
+
+7. Diagnose provider and Creator workflow failures from sanitized logs.
+8. Evolve the provider pane without reintroducing long-form UI sprawl.
+
+For the next phase specifically:
+
+9. Make the Provider page shorter without hiding the active runtime state.
+10. Let users choose models from cached/provider-discovered lists instead of always typing exact model ids manually.
+11. Preserve compatibility with providers that do not expose `/models`.
+12. Guarantee that all host-managed model configuration and model discovery flows converge on the current Provider management boundary.
+13. Allow a future vision capability to inherit `聊天模型` by default without cloning or duplicating runtime truth.
+
 ## 3. Non-Goals
 
 - Do not move API keys into renderer state beyond the password draft typed by the user.
 - Do not store API key values in `settings.json`, logs, plugin config, or chat history.
-- Do not add multiple provider families beyond the existing `openai-compatible` path in this phase.
+- Do not add arbitrary provider-family-specific forms in the renderer. The current UX intentionally stays on one OpenAI-compatible contract shape.
 - Do not implement streaming chat responses in this phase.
-- Do not redesign the whole AI pane visual system.
+- Do not turn the AI pane into a giant provider marketplace/catalog.
 - Do not expose provider settings to ordinary plugins.
+- Do not make `/models` discovery a required precondition for saving or testing a Provider.
+- Do not replace the final persisted model string with provider-specific object schemas.
+- Do not create separate AI settings pages for chat and image generation.
+- Do not let non-Provider features persist their own model config for host-managed chat or image capabilities.
+- Do not introduce generic cache-write IPC that allows renderer or plugins to mutate provider discovery cache directly.
+- Do not implement `vision` by copying the current chat config once and then letting the two drift silently.
+- Do not let `vision` introduce a third unmanaged Provider page before there is a real operator need for separate endpoint/key/model routing.
 
 ## 4. Current Implementation Snapshot
 
@@ -74,10 +349,11 @@ Give users a complete, safe AI provider settings workflow:
   - uses one shared `status` string for provider, image generation, chat, and behavior actions.
 
 - `src/control-center/src/panes/AiPane.tsx`
-  - renders Provider, Base URL, Model, API Key, System Prompt, and Memory fields;
-  - shows `已保存` / `未保存` for API key;
-  - has header buttons `测试` and `保存`;
-  - has a separate `保存密钥` button beside the API key field.
+  - renders one `模型 Provider` section with `聊天模型` and `图片模型` capability cards;
+  - renders compact active summaries and provider status strips;
+  - keeps boundary copy, presets, and advanced settings behind `details.provider-disclosure`;
+  - shows separate diagnostics for chat test, image health, model discovery, and compatibility hints;
+  - keeps chat save/test and image save/health flows card-local instead of one shared flat form.
 
 ### Preload and IPC
 
@@ -97,7 +373,23 @@ Give users a complete, safe AI provider settings workflow:
   - normalizes `provider`, `baseUrl`, `model`, `apiKeyRef`, `systemPrompt`, `memory`, and `behavior`;
   - returns `hasApiKey` but not the secret value;
   - stores secrets through `SecretService`;
-  - uses the saved config for `testConnection()` and `complete()`.
+  - uses the saved config for `testConnection()` and `complete()`;
+  - records sanitized settings-save and api-key-save logs.
+
+- `src/main/services/image-generation-model-service.js`
+  - owns host-side image provider config;
+  - stores image API key through `SecretService`;
+  - performs health checks and optional `/models` discovery;
+  - records sanitized settings-save and api-key mutation logs.
+
+- `src/main/services/creator-studio-default-flow-service.js`
+  - records started/stage/blocked/needs-details/completed/failed events with request correlation ids.
+
+- `src/main/services/creator-workflow-service.js`
+  - records workflow lifecycle and stage completion events with request correlation ids.
+
+- `src/main/services/app-log-service.js`
+  - redacts prompt-like, reply-like, path-like, and token-like fields before they can hit disk.
 
 ## 5. UX Problems To Fix
 
@@ -118,7 +410,7 @@ The same `status` string is shared by:
 - chat send;
 - behavior dry run/replay/export.
 
-This causes important provider failures to be overwritten by unrelated actions.
+This was partially reduced by card-local provider feedback, but full status isolation across all AI sub-surfaces is still only partially solved.
 
 ### 5.4 Test result lacks enough context
 
@@ -128,7 +420,54 @@ A success message such as `连接正常：ok` does not say which endpoint/model 
 
 Malformed base URLs, empty model names, and accidental whitespace should be caught before or during save with clear messages.
 
-## 6. Proposed User Flow
+### 5.6 Capability cards are still visually long
+
+Even after moving secondary material behind disclosures, both capability cards still read as large forms. The current layout improves trust and grouping, but it still asks users to visually parse too much content before reaching the fields or action they need.
+
+### 5.7 Model selection is still input-only
+
+Users can already probe `/models`, but they still have to manually type the final model string into the form. This creates three issues:
+
+- users cannot easily reuse discovered models;
+- users cannot easily tell whether a value is recommended, discovered, or custom;
+- users can save a typo even when the provider already returned a usable model list.
+
+### 5.8 Discovery state is not yet treated as a reusable asset
+
+The current implementation already stores discovery state in page-level React state for diagnostics, but that state is currently:
+
+- local to the AI pane session;
+- reset when the app restarts;
+- not explicitly modeled as cache;
+- not presented as a selector source.
+
+That is sufficient for diagnostics, but not sufficient for a selection-first Provider UX.
+
+### 5.9 Cache ownership is too implicit
+
+The redesign already assumes persisted model discovery cache, but without a hard ownership rule it is too easy for renderer code, Creator workflows, or plugin-facing adapters to grow their own cache-write paths. That would recreate the same configuration drift this Provider unification is trying to remove.
+
+### 5.10 Vision needs inheritance, not duplication
+
+If vision is added naively, the easiest implementation mistake is:
+
+- copy `聊天模型` values into a new `vision` config once;
+- let users optionally edit that copy later;
+- accidentally create two independent text-side provider truths.
+
+That would make debugging extremely difficult:
+
+- operators would not know whether a visual reasoning task used the current chat model or a stale copied model;
+- future UI edits to chat would not consistently affect vision;
+- workflow runs could appear non-deterministic when they silently depend on old copied values.
+
+The design must therefore model vision as:
+
+- inherited from chat by default;
+- explicitly overridden only when enabled;
+- resolved at runtime by host logic, not by renderer guesswork.
+
+## 6. Current User Flow
 
 ### 6.1 Initial load
 
@@ -214,6 +553,16 @@ Original design note: this used to propose a combined save/test action. The curr
 
 This avoids hiding two different operations behind one button and makes it clear whether the app is saving configuration or contacting a provider.
 
+### 6.6 Image provider path
+
+Image provider follows the same saved-config mental model:
+
+- edit Base URL / Model / Timeout / Max concurrent jobs;
+- save `图片 Provider`;
+- save or clear `图片 API Key`;
+- run `检查图片健康` against the saved config only;
+- use `/models` discovery and compatibility hints as diagnostics, not as implicit save behavior.
+
 ### 6.6 Test active config
 
 `测试当前已保存配置` should clearly state it ignores unsaved draft fields:
@@ -240,11 +589,20 @@ Failure examples:
 连接失败：无法连接 base URL，请检查地址和端口
 ```
 
-## 7. UI Layout Proposal
+## 7. Current UI Layout
 
 Keep this inside the existing AI pane. Do not create a new settings window.
 
-### 7.1 Provider card
+### 7.1 Provider hub
+
+Top-of-section summary now shows:
+
+- chat model saved state
+- image model saved state
+- latest chat connection state
+- latest image health state
+
+### 7.2 Capability cards
 
 Fields:
 
@@ -258,12 +616,14 @@ Fields:
 
 Header or footer actions:
 
-- `保存配置`
+- `保存聊天 Provider`
 - `保存密钥`
 - `测试已保存配置`
-- `测试当前已保存配置`
+- `保存图片 Provider`
+- `保存图片密钥`
+- `检查图片健康`
 
-### 7.2 Active summary
+### 7.3 Active summary
 
 Add a compact summary block above fields:
 
@@ -276,9 +636,19 @@ API Key: 已保存
 最后测试: 成功，2026-06-22 01:24，耗时 1842ms
 ```
 
-Do not show API key previews for chat keys unless there is a strong product need. `hasApiKey` is enough for phase one.
+Chat keeps `hasApiKey` only. Image may show a bounded preview token like `••••1234` because that was already part of the existing product behavior and helps distinguish “saved vs replaced” in the image flow.
 
-### 7.3 Status separation
+### 7.4 Disclosure strategy
+
+Rarely needed content is intentionally hidden by default:
+
+- boundary copy
+- preset cards
+- advanced settings such as system prompt and image timeout/concurrency
+
+This keeps the AI pane short enough to avoid the original “very long page” problem while still preserving one-place configuration.
+
+### 7.5 Status separation
 
 Split the single `status` into scoped statuses:
 
@@ -292,6 +662,185 @@ type AiPaneStatusState = {
 ```
 
 This prevents a chat send error from overwriting provider test feedback.
+
+### 7.6 Vision UI strategy
+
+Do not introduce a third top-level provider card in the first vision phase.
+
+Recommended UX:
+
+1. Keep one `聊天模型` card.
+2. Inside that card, add a collapsed subsection:
+   - `多模态 / Vision`
+3. The subsection exposes a mode selector:
+   - `跟随聊天模型`
+   - `单独配置`
+4. Only when `单独配置` is selected should the extra Base URL / API Key / Model fields appear.
+
+Why this is preferred:
+
+- most operators do not need a separate vision model;
+- the page stays short;
+- the ownership model stays visually tied to the text-side provider family;
+- future expansion remains possible if vision later becomes operationally distinct enough to deserve its own card.
+
+Required copy:
+
+- in `跟随聊天模型` mode:
+
+```text
+当前多模态任务将直接使用已保存的聊天模型配置。
+```
+
+- in `单独配置` mode:
+
+```text
+当前多模态任务将使用单独保存的 Vision 配置，不再继承聊天模型。
+```
+
+## 7B. Next-Phase UI Layout
+
+### 7B.1 Page shape
+
+The page should keep this top-level structure:
+
+1. `模型 Provider` section
+2. top hub summary
+3. `聊天模型` capability card
+4. `图片模型` capability card
+
+The hub summary still exists because it helps users understand both capabilities at once. The main redesign happens inside each capability card.
+
+### 7B.2 Capability card structure
+
+Each capability card should be split into:
+
+- persistent summary header;
+- collapsible editable body.
+
+#### Persistent header
+
+The header stays visible whether the body is expanded or collapsed.
+
+Header content:
+
+- card title:
+  - `聊天模型`
+  - `图片模型`
+- current active host summary;
+- current active model;
+- key saved/missing state;
+- latest test/health state;
+- main actions:
+  - chat:
+    - `测试已保存配置`
+    - `刷新聊天模型`
+    - expand/collapse
+  - image:
+    - `检查图片健康`
+    - `刷新图片模型`
+    - expand/collapse
+
+This turns each card into an operational status block first and a form second.
+
+#### Collapsible body
+
+The body contains:
+
+- basic editable fields;
+- key save controls;
+- preset content;
+- advanced settings;
+- detailed compatibility and diagnostics sections if they are not already visible in the header.
+
+Recommended default behavior:
+
+- cards are collapsed by default after the first successful load;
+- if validation fails or no config exists yet, keep the relevant card expanded;
+- if the user just clicked a preset, keep the edited card expanded.
+
+### 7B.3 Why not fully collapse the whole card
+
+The card should not fully disappear behind a title-only row because users still need immediate visibility into:
+
+- which host is active;
+- which model is active;
+- whether a key exists;
+- whether the last test/health probe failed.
+
+That information is critical operator state and should remain visible even when the long form is hidden.
+
+### 7B.4 Model selector layout
+
+Replace the current plain `input` for `Model` with a searchable combobox-like selector.
+
+The selector must support three sources:
+
+1. `推荐模型`
+2. `缓存模型`
+3. `手动输入`
+
+#### Recommended models
+
+These come from OpenPet-owned defaults and presets, for example:
+
+- chat:
+  - `gpt-4o-mini`
+  - `gpt-5.5` for the OpenPet 8317 gateway preset
+- image:
+  - `gpt-image-2`
+
+These are not proof that the current provider supports the model. They are safe starting points or known OpenPet defaults.
+
+#### Cached models
+
+These come from the most recent `/models` discovery for the specific capability and endpoint.
+
+The UI should show:
+
+- cache age, for example `10 分钟前探测`;
+- source scope, for example `来自当前聊天 Provider`;
+- whether the current saved model appears in that list.
+
+#### Manual input
+
+Users must still be able to type any model string.
+
+If the typed value is not in `推荐模型` or `缓存模型`, the selector should still accept it and render it as:
+
+- `自定义模型名`
+
+This preserves compatibility for:
+
+- provider aliases;
+- self-hosted gateways;
+- providers without `/models`;
+- models created after the last cache refresh.
+
+### 7B.5 Model selector interaction rules
+
+Rules:
+
+1. Selecting a recommended or cached model updates the draft field value exactly as if it had been typed manually.
+2. Saving persists only the final string value, not the model-source metadata.
+3. Diagnostics may still compare the saved string against the discovered cache.
+4. If discovery is unavailable, the selector still works with:
+   - recommended models;
+   - manual input.
+5. The selector must never block `保存聊天 Provider` or `保存图片 Provider`.
+
+### 7B.6 Discovery affordance
+
+The `刷新模型` action should no longer feel diagnostic-only.
+
+It should:
+
+- update the local cache;
+- refresh the cache-backed selector group;
+- refresh the discovery diagnostic block;
+- update the visible “cache age” label.
+
+This makes model discovery part of the configuration workflow, not just a debug output.
 
 ## 8. Main-Process API Design
 
@@ -352,6 +901,102 @@ Optional addition:
 
 This is useful for UI confirmation but not required for the first implementation.
 
+### 8.4 Model discovery cache contract
+
+The next phase should add an explicit persisted cache contract.
+
+Recommended logical shape:
+
+```ts
+type ProviderCapabilityKey = 'chat' | 'image'
+
+type ProviderDiscoveryCacheEntry = {
+  provider: string
+  baseUrl: string
+  models: string[]
+  code: string
+  message: string
+  discoveredAt: string
+}
+
+type ProviderDiscoveryCacheState = {
+  chat: Record<string, ProviderDiscoveryCacheEntry>
+  image: Record<string, ProviderDiscoveryCacheEntry>
+}
+```
+
+Recommended cache key:
+
+```ts
+`${provider}::${normalizedBaseUrl}`
+```
+
+For example:
+
+- `openai-compatible::http://127.0.0.1:8317/v1`
+- `openai-compatible::https://api.openai.com/v1`
+
+This key should be separated by capability:
+
+- `chat` cache is distinct from `image` cache;
+- `vision` cache, if introduced, is distinct from `chat` and `image`;
+- even when host and provider are the same, the two capability caches may differ.
+
+Important nuance for future vision support:
+
+- when `vision` is in `跟随聊天模型` mode, it should not create a redundant second cache entry if the runtime owner is exactly the chat config;
+- when `vision` is in `单独配置` mode, it may own a distinct `vision` cache namespace because the effective endpoint/model may differ from chat.
+
+### 8.5 Persistence boundary
+
+The cache belongs in host-owned settings, not in ordinary renderer local state and not in plugin storage.
+
+Why:
+
+- it survives restart;
+- it respects the existing settings ownership model;
+- it avoids per-plugin duplication or leakage;
+- it can be TTL-managed centrally.
+
+What is safe to persist:
+
+- provider id;
+- normalized base URL;
+- discovered models;
+- discovered timestamp;
+- probe code/message.
+
+What must not be persisted as part of cache:
+
+- API keys;
+- request bodies;
+- prompt text;
+- raw provider responses.
+
+### 8.6 Discovery cache write ownership
+
+Cache persistence must have explicit write owners.
+
+Write ownership rules:
+
+1. `AiService` is the only write owner for `chat` discovery cache entries.
+2. `ImageGenerationModelService` is the only write owner for `image` discovery cache entries.
+3. Renderer code, `useAiPane`, `AiPane`, `AiTalkService`, Creator workflows, preload adapters, and plugin bridges are read-only consumers of persisted discovery cache.
+4. There must be no generic “save provider cache” IPC exposed to renderer or plugins.
+5. If a future shared cache utility is introduced, it must remain host-internal and preserve the same single-writer ownership by capability.
+
+Future vision rule:
+
+6. If vision override is disabled, vision model discovery should reuse chat ownership semantics and must not create a second independent write path.
+7. If vision override is enabled, the future host-owned vision resolver may write a `vision` discovery cache entry, but only through a dedicated host owner.
+
+Operationally, this means:
+
+- chat `/models` refresh writes flow through `AiService`;
+- image `/models` refresh writes flow through `ImageGenerationModelService`;
+- UI-triggered refresh actions may request discovery, but they do not write cache directly;
+- workflow runs may read the current saved config and current cached hints, but they must not mutate cache as an independent side effect unless routed through the owning service.
+
 ## 9. Data And Security Boundaries
 
 ### 9.1 Allowed in renderer
@@ -375,15 +1020,21 @@ This is useful for UI confirmation but not required for the first implementation
 
 ### 9.3 Logging
 
-Provider settings actions should record app logs:
+Provider settings and Creator workflow actions now record app logs such as:
 
-- `ai.settings.config.save.started`
-- `ai.settings.config.save.completed`
-- `ai.settings.config.save.failed`
-- `ai.settings.api-key.save.completed`
-- `ai.settings.connection-test.started`
-- `ai.settings.connection-test.completed`
-- `ai.settings.connection-test.failed`
+- `ai.settings.saved`
+- `ai.settings.api-key.saved`
+- `imageGeneration.settings.saved`
+- `imageGeneration.settings.api-key.saved`
+- `imageGeneration.settings.api-key.cleared`
+- `creator.default-flow.started`
+- `creator.default-flow.stage.completed`
+- `creator.default-flow.completed`
+- `creator.default-flow.failed`
+- `creator.workflow.started`
+- `creator.workflow.stage.completed`
+- `creator.workflow.completed`
+- `creator.workflow.failed`
 
 Details may include:
 
@@ -402,7 +1053,399 @@ Details must not include:
 - system prompt;
 - Authorization header.
 
-## 10. Implementation Phases
+### 9.4 Cached discovery data
+
+Cached discovery data is allowed to persist because it is not a secret by itself, but it still needs guardrails:
+
+- cache must be namespaced by capability and endpoint;
+- cache entries should have TTL and stale labeling;
+- renderer should treat cache as hinting data, not guaranteed runtime truth;
+- cache should be easy to clear automatically by replacement or expiry.
+
+## 10. Next-Phase Implementation Plan
+
+## 10A. Vision Extension Plan
+
+This section defines the confirmed design for the future `vision / 多模态文本模型` extension.
+
+It is intentionally written before implementation so later work does not accidentally break the Provider ownership model.
+
+### 10A.1 Product goal
+
+Support host-owned multimodal text tasks without forcing every operator to manage a third provider config.
+
+The product goal is:
+
+1. make vision work out of the box by inheriting `聊天模型`;
+2. allow advanced operators to switch vision to a different endpoint/model when needed;
+3. keep one Provider hub and one host-owned source of truth model.
+
+### 10A.2 When OpenPet should use vision
+
+Likely host-owned vision tasks include:
+
+- reference image description for Creator Studio;
+- prompt improvement from image context;
+- image asset inspection or QA summaries;
+- future “look at this image and tell me what is wrong” workflows;
+- future image-conditioned reasoning that returns text rather than generated pixels.
+
+These are not image-generation tasks. They are multimodal text tasks.
+
+### 10A.3 Data model
+
+Recommended persisted view shape:
+
+```ts
+type VisionProviderConfigViewState = {
+  enabledOverride: boolean
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  hasApiKey: boolean
+  modelCatalog: ProviderModelCatalogViewState
+}
+```
+
+Recommended persisted host shape:
+
+```ts
+type VisionProviderStoredConfig = {
+  enabledOverride: boolean
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  modelCatalog?: ProviderModelCatalogStoredState
+}
+```
+
+Notes:
+
+- `enabledOverride` is the key control flag.
+- When `enabledOverride = false`, the stored `provider/baseUrl/model/apiKeyRef` values are inert drafts, not runtime truth.
+- Runtime truth must be resolved by host code from:
+  - chat config, or
+  - enabled vision override.
+
+### 10A.4 Runtime resolution contract
+
+Host code should not ask “what is the raw saved vision config?” when it needs to run a task.
+
+It should ask for:
+
+```ts
+type EffectiveVisionProviderConfig = {
+  source: 'chat' | 'vision-override'
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+}
+```
+
+Runtime rules:
+
+1. If `enabledOverride = false`:
+   - return the current saved `聊天模型` provider config;
+   - mark `source = 'chat'`.
+2. If `enabledOverride = true`:
+   - validate the saved vision override;
+   - return the vision override config;
+   - mark `source = 'vision-override'`.
+3. If `enabledOverride = true` but required fields are incomplete:
+   - fail validation and block save or execution;
+   - do not silently half-fallback to chat.
+
+### 10A.5 Save rules
+
+Save rules must preserve inheritance semantics.
+
+1. Saving the `聊天模型` card must not copy values into the saved vision override.
+2. Saving the vision subsection in `跟随聊天模型` mode should only persist:
+   - `enabledOverride = false`
+   - and any safe retained draft fields only if product intentionally wants to keep them.
+3. Saving the vision subsection in `单独配置` mode should persist only owner-managed fields.
+4. Renderer-only fields such as:
+   - `hasApiKey`
+   - `apiKeyPreview`
+   - transient discovery diagnostics
+   - source badges
+   must never be persisted.
+
+### 10A.6 API key behavior
+
+Recommended operator behavior:
+
+- if `vision` follows chat:
+  - no separate vision key is required;
+  - runtime uses the chat key ref.
+- if `vision` override is enabled:
+  - vision may save its own API key;
+  - that key must remain host-owned and secret-stored exactly like chat/image keys.
+
+Important:
+
+- do not auto-copy the chat key into a separate vision secret ref;
+- do not expose any secret material to renderer;
+- do not let plugins read or set the vision key directly.
+
+### 10A.7 Model discovery behavior
+
+Recommended discovery rules:
+
+1. In `跟随聊天模型` mode:
+   - vision selector may reuse chat recommended models and chat cached models;
+   - do not create a redundant second discover button unless product needs it.
+2. In `单独配置` mode:
+   - vision may expose its own `刷新 Vision 模型`;
+   - discovery cache should be scoped to `vision`.
+3. Manual model entry must remain allowed in both modes.
+
+### 10A.8 Validation rules
+
+Validation should be simple and explicit.
+
+When `enabledOverride = false`:
+
+- vision subsection is valid without additional required fields because runtime inherits chat.
+
+When `enabledOverride = true`:
+
+- `provider` must be supported;
+- `baseUrl` must be a valid normalized `http` or `https` URL;
+- `model` must be non-empty;
+- health/test actions should require a saved key when the provider needs one.
+
+### 10A.9 UI flow
+
+Recommended interaction:
+
+1. User opens `聊天模型` card.
+2. User opens `多模态 / Vision` disclosure.
+3. User chooses:
+   - `跟随聊天模型`
+   - or `单独配置`
+4. If `跟随聊天模型`:
+   - show effective host/model summary from chat;
+   - no extra config fields are required.
+5. If `单独配置`:
+   - show separate editable Base URL / Model / API Key controls;
+   - show source label:
+     - `当前来源：Vision override`
+6. Diagnostics should always state the effective source:
+   - `当前 Vision 来源：聊天模型`
+   - or `当前 Vision 来源：独立 Vision 配置`
+
+### 10A.10 Why not make vision a third primary card yet
+
+At this stage, a third top-level card is probably too much UI weight.
+
+Reasons:
+
+- most users will not need a different multimodal model;
+- vision is conceptually closer to chat than to image generation;
+- inheritance is the important operator concept, not equal visual status;
+- a third card would likely make the Provider page longer before there is enough real usage to justify it.
+
+### 10A.11 Testing requirements
+
+Required test coverage when implemented:
+
+1. renderer state:
+   - `vision` follows chat by default;
+   - switching chat config changes the effective resolved vision config when override is off.
+2. save boundary:
+   - vision save payload persists only owner-managed fields.
+3. fallback correctness:
+   - effective vision source resolves to `chat` when override is disabled.
+4. override correctness:
+   - effective vision source resolves to `vision-override` when enabled and valid.
+5. validation:
+   - invalid override cannot be saved silently.
+6. API key security:
+   - no vision key leaks to renderer or logs.
+7. discovery:
+   - follow-chat mode reuses chat discovery behavior;
+   - override mode isolates its own discovery cache if that path exists.
+
+### 10A.12 Migration strategy
+
+If vision is added after the current chat/image provider baseline:
+
+1. existing installs should default to:
+   - `enabledOverride = false`
+2. no migration should duplicate current chat provider values into vision storage.
+3. UI should therefore show:
+   - `跟随聊天模型`
+   as the default mode immediately after upgrade.
+
+This keeps rollout safe and avoids creating stale copied config on day one.
+
+### 10.1 Scope
+
+This phase covers:
+
+- summary-first collapsible capability cards;
+- searchable model selectors;
+- provider model discovery persistence cache;
+- cache-aware diagnostics and UX copy;
+- regression coverage for the new interaction model.
+
+This phase does not cover:
+
+- provider-family-specific field sets;
+- streaming responses;
+- provider failover/routing;
+- extension/plugin exposure of provider caches.
+
+### 10.2 Renderer changes
+
+#### `AiPane.tsx`
+
+Refactor the capability card rendering into a reusable component such as:
+
+```ts
+type ProviderCapabilityCardProps = {
+  title: string
+  summary: ...
+  actions: ...
+  expanded: boolean
+  onToggleExpanded: () => void
+  body: ReactNode
+}
+```
+
+Add a model selector component, likely:
+
+```ts
+type ProviderModelSelectorProps = {
+  label: string
+  value: string
+  recommendedModels: string[]
+  cachedModels: string[]
+  cachedAt?: string
+  discoveryStatus?: string
+  onChange: (value: string) => void
+}
+```
+
+#### `useAiPane.ts`
+
+Add:
+
+- expanded/collapsed state per capability card;
+- cache-backed model option derivation;
+- load and refresh flows for persisted discovery cache;
+- cache invalidation rules when provider/baseUrl changes.
+
+Recommended derived helpers:
+
+- `buildProviderCacheKey(capability, provider, baseUrl)`
+- `getCachedModelOptions(...)`
+- `mergeRecommendedAndCachedModels(...)`
+- `isCustomModelValue(...)`
+
+### 10.3 Main process changes
+
+Add host-side cache storage and retrieval in the appropriate settings-backed layer.
+
+The simplest path is:
+
+- extend the host settings schema;
+- update AI and image provider discovery save paths to record cache entries;
+- expose getter methods for current cache entries through existing Control Center API adapters.
+
+Required ownership rule:
+
+- `AiService` writes and serves `chat` cache entries.
+- `ImageGenerationModelService` writes and serves `image` cache entries.
+- any helper extracted later, such as a small `ProviderDiscoveryCacheService`, must remain host-internal plumbing under those same capability owners and must not become a generic renderer- or plugin-writable cache surface.
+
+### 10.4 Cache rules
+
+Recommended baseline rules:
+
+1. TTL: 24 hours
+2. Scope:
+   - `chat` cache separate from `image`
+   - cache key includes normalized base URL and provider id
+3. Refresh:
+   - explicit refresh rewrites cache
+   - test/health paths may also refresh cache when `/models` is successfully returned
+4. Invalidation:
+   - switching to another base URL uses another cache key
+   - saving a changed base URL clears in-memory visible cache for the previous active draft
+5. Rendering:
+   - stale cache may still be shown
+   - stale cache must be labeled as cached/stale
+   - stale cache must not block save or test
+
+### 10.5 Recommended UI copy
+
+For the selector group labels:
+
+- `推荐模型`
+- `缓存模型`
+- `自定义输入`
+
+For cache metadata:
+
+- `缓存于 2026-07-04 10:32`
+- `24 小时前缓存，建议刷新`
+- `当前 Provider 未开放 /models；你仍可手动填写模型名`
+
+For custom value display:
+
+- `自定义模型名：<value>`
+
+### 10.6 Failure modes
+
+#### `/models` unavailable
+
+Expected behavior:
+
+- selector still shows recommended models;
+- current saved/custom model still renders;
+- manual input remains allowed;
+- diagnostics explain that the provider is reachable but model discovery is unavailable.
+
+#### Cache stale
+
+Expected behavior:
+
+- stale cache remains usable as hint data;
+- stale label is visible;
+- refresh action remains available;
+- save/test/health still operate on the final saved string.
+
+#### Cached model missing after provider change
+
+Expected behavior:
+
+- the new provider/baseUrl key starts with empty cache;
+- the selector falls back to recommended models plus manual input;
+- the old cache stays isolated under the old key and is not reused silently.
+
+#### User types a value not in cache
+
+Expected behavior:
+
+- value is accepted;
+- selector shows it as custom input;
+- later discovery may show whether it exists in returned `/models`.
+
+### 10.7 Validation and rollout
+
+This phase is low-risk and can be shipped incrementally because:
+
+- persisted config contract for provider/model stays string-based;
+- no API key boundary changes are needed;
+- existing save/test/health IPC surfaces can be extended rather than replaced;
+- the model selector can be introduced without changing how downstream services call providers.
+
+## 11. Historical Implementation Phases
 
 ### Phase A: Provider form state and confirmation
 
@@ -475,15 +1518,19 @@ Likely files:
 - `tests/services/ai-service.test.js`
 - `tests/main/ipc-plugin-install.test.js`
 
-## 11. Test Plan
+## 12. Current Verification Baseline
 
-### Unit tests
+### Service tests
 
 - `AiService.testConnection()` returns success metadata.
 - Missing API key returns or throws a classified `missing_api_key` failure without logging secrets.
 - Provider HTTP error is classified without logging raw prompt text.
 - Base URL normalization preserves expected request URL.
 - `saveAiConfig()` still does not persist derived fields like `hasApiKey`.
+- `ImageGenerationModelService` logs only safe host/model/timeout/concurrency metadata on config save.
+- `CreatorStudioDefaultFlowService` emits correlated lifecycle logs without prompt leakage.
+- `CreatorWorkflowService` emits correlated stage logs without leaking workflow prompt text.
+- `AppLogService` redacts prompt/reply/reference-path keys before disk write.
 
 ### Control Center tests
 
@@ -493,6 +1540,9 @@ Likely files:
 - Saving API key clears password input and switches API key state to saved.
 - Testing the saved config displays tested provider/baseUrl/model.
 - Test-active-config warns when draft changes are unsaved.
+- Provider disclosures stay collapsed until opened.
+- Provider preset interactions still work after the disclosure-based layout change.
+- Image provider advanced fields remain reachable and persist correctly.
 
 ### Manual smoke
 
@@ -514,7 +1564,7 @@ Steps:
 6. Send a pet chat message.
 7. Confirm `ai-chat.ipc.completed`, `ai-talk.chat.completed`, and `ai.provider.request.completed` appear in app logs.
 
-## 12. Acceptance Checklist
+## 13. Acceptance Checklist
 
 - Users can save API key, model, and base URL from the AI pane.
 - Users can confirm what provider settings are currently active.
@@ -522,10 +1572,52 @@ Steps:
 - Users are warned when testing active config while draft changes are unsaved.
 - API key never appears in renderer responses, app logs, plugin config, or settings.
 - Provider failures produce actionable UI messages.
+- Users can collapse Provider card bodies without losing visibility into active host/model/key/status.
+- Users can choose models from recommended models, cached models, or manual input.
+- Cached model lists survive page reload and app restart.
+- Cached model lists do not leak across different base URLs.
+- `/models` unavailability still leaves the page fully operable through recommended and manual values.
 - `npm run check:syntax` passes.
 - Relevant service, IPC, and Control Center tests pass.
 
-## 13. Backlog After This Design
+## 14. Verification Plan For The Next Phase
+
+### Service and contract tests
+
+- cache entry is written after successful chat discovery
+- cache entry is written after successful image discovery
+- cache key isolates by:
+  - capability
+  - provider
+  - normalized base URL
+- stale cache entry is marked stale based on TTL
+- cache persistence never stores secrets
+
+### Control Center tests
+
+- provider cards show summary while collapsed
+- user can expand/collapse chat and image cards independently
+- model selector shows recommended models without discovery
+- model selector shows cached models after refresh
+- user can still type a custom model not in any list
+- saving a changed base URL clears visible stale discovery for the old key
+- reloading the page preserves cached model choices and labels
+
+### Manual smoke
+
+1. Save a valid chat provider.
+2. Refresh models.
+3. Confirm discovered models appear in selector.
+4. Reload the app.
+5. Confirm cached models still appear.
+6. Change to another base URL.
+7. Confirm the previous cache is not shown for the new endpoint.
+8. Switch back to the original base URL.
+9. Confirm the original endpoint cache reappears.
+10. Save a custom model not present in `/models`.
+11. Confirm save/test still work and the value is rendered as custom input.
+
+## 15. Backlog After This Design
 
 - Provider presets for common OpenAI-compatible endpoints.
 - Per-provider model discovery from `/models` where supported.

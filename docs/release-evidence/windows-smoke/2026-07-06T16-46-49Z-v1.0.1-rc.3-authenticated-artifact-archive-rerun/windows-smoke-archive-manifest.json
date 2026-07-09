@@ -1,0 +1,137 @@
+{
+  "generatedAt": "2026-07-06T16:46:49.000Z",
+  "requireSigned": true,
+  "ok": false,
+  "releaseReady": false,
+  "archive": {
+    "archiveDir": "docs/release-evidence/windows-smoke/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-artifact-archive-rerun",
+    "outputPath": "docs/release-evidence/windows-smoke/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-artifact-archive-rerun/windows-smoke-archive-manifest.json"
+  },
+  "files": [
+    {
+      "role": "report",
+      "path": "windows-smoke-report.json",
+      "exists": true,
+      "bytes": 4841,
+      "sha256": "df973e7ba662abdc0d8aa1a29e97fa556a97d5b413b7f85b8cb76de1fe486892"
+    },
+    {
+      "role": "runbook",
+      "path": "windows-smoke-runbook.md",
+      "exists": true,
+      "bytes": 6477,
+      "sha256": "32adb5640a9aac48d9a3bb4393a54155035ae2d5c54e66e9e8c936256ad44f3c"
+    },
+    {
+      "role": "collector",
+      "path": "windows-smoke-collector.ps1",
+      "exists": true,
+      "bytes": 8232,
+      "sha256": "c14271336788c2fc597632bc2b6346d76da1374e5797ebdadbad44336e7eaad3"
+    },
+    {
+      "role": "summary",
+      "path": "windows-smoke-evidence-summary.md",
+      "exists": true,
+      "bytes": 2667,
+      "sha256": "3b8c1843d747f154ca491adf3191c67b4cd627d41d43cda7771328c3acda637f"
+    }
+  ],
+  "evidence": {
+    "evidenceDir": "windows-smoke-evidence",
+    "ok": false,
+    "files": [
+      {
+        "file": "environment.txt",
+        "bytes": 420,
+        "sha256": "e9c9c7dca06c0040b0ee64e14c6017de2fc7031ef733a0cc0d5d237b8df57d82"
+      },
+      {
+        "file": "authenticode.txt",
+        "bytes": 773,
+        "sha256": "c1abc6e03f7c75f3b3cb352de738cd6406fa3f2a07c17eb6ed096313f93394ab"
+      },
+      {
+        "file": "process.txt",
+        "bytes": 187,
+        "sha256": "985765335a725a8ff01175875e523078db1ba3c7409eb91c966284b596131749"
+      },
+      {
+        "file": "install-registry.txt",
+        "bytes": 186,
+        "sha256": "817274dfc380680f8ca9d6cf7b5986db520ece4517b21f9225749c63f6d04699"
+      },
+      {
+        "file": "manual-checks.md",
+        "bytes": 2781,
+        "sha256": "daa43d78806f49175d693308ec3e0347c5ad06bda1bf4718a425544e1e1a6fff"
+      },
+      {
+        "file": "update-report-commands.md",
+        "bytes": 1056,
+        "sha256": "49ab90dcd580e449bca697d28715dde4fee86adc6f345fa50d5a18b00c4e919f"
+      }
+    ],
+    "signed": false
+  },
+  "summary": {
+    "path": "windows-smoke-evidence-summary.md",
+    "format": "markdown",
+    "matchesComputedSummary": true
+  },
+  "report": {
+    "path": "windows-smoke-report.json",
+    "platform": "win32",
+    "arch": "x64",
+    "generatedAt": "2026-06-23T22:22:30.455Z",
+    "structuralValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 13,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    },
+    "readinessValidation": {
+      "ok": false,
+      "errors": [
+        "artifact.signed must be true when --require-signed is used",
+        "artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+        "install must pass before Windows release readiness can be claimed",
+        "launch must pass before Windows release readiness can be claimed",
+        "transparent-window must pass before Windows release readiness can be claimed",
+        "drag-bounds must pass before Windows release readiness can be claimed",
+        "control-center-tabs must pass before Windows release readiness can be claimed",
+        "pet-actions must pass before Windows release readiness can be claimed",
+        "pet-pack-import must pass before Windows release readiness can be claimed",
+        "plugin-runner must pass before Windows release readiness can be claimed",
+        "local-http-default-off must pass before Windows release readiness can be claimed",
+        "local-http-token-gated must pass before Windows release readiness can be claimed",
+        "api-key-isolation must pass before Windows release readiness can be claimed",
+        "about-update-assets must pass before Windows release readiness can be claimed",
+        "uninstall must pass before Windows release readiness can be claimed"
+      ],
+      "warnings": [],
+      "summary": {
+        "passed": 0,
+        "total": 13,
+        "smokeReady": false,
+        "officialReady": false
+      }
+    }
+  },
+  "errors": [
+    "report: artifact.signed must be true when --require-signed is used",
+    "report: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used",
+    "evidence: authenticode.txt must contain Authenticode evidence with Status : Valid when --require-signed is used",
+    "evidence: report: artifact.signed must be true when --require-signed is used",
+    "evidence: report: artifact.authenticodeStatus must be \"Valid\" when --require-signed is used"
+  ],
+  "warnings": []
+}

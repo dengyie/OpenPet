@@ -7,8 +7,10 @@ import type {
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalPreviewResult,
   ActionTriggerRuleSpec,
+  ActionTriggerRuleSpecInput,
   ActionTriggerRule,
   ActionTriggerRuleStatus,
+  ActionTriggerRuleUpdateRequest,
   ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
@@ -50,6 +52,7 @@ export interface ActionsPaneProps {
   onAcceptTriggerProposal: (proposalId: string) => void | Promise<void>
   onRejectTriggerProposal: (proposalId: string) => void | Promise<void>
   onSetTriggerRuleStatus: (ruleId: string, status: ActionTriggerRuleStatus) => void | Promise<void>
+  onUpdateTriggerRule: (payload: ActionTriggerRuleUpdateRequest) => boolean | void | Promise<boolean | void>
   onDeleteTriggerRule: (ruleId: string) => void | Promise<void>
   triggerProposalType: ActionTriggerProposalType
   setTriggerProposalType: (value: ActionTriggerProposalType) => void
@@ -120,6 +123,44 @@ const triggerProposalStatusLabel: Record<ActionTriggerProposalInboxItem['status'
 
 const readSpecText = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : '')
 const readSpecNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+
+const createTriggerRuleEditDraft = (rule: ActionTriggerRule): ActionTriggerRuleSpecInput => {
+  const spec = rule.ruleSpec && typeof rule.ruleSpec === 'object' ? rule.ruleSpec : undefined
+  const summary = readSpecText(spec?.summary)
+  if (rule.type === 'random') {
+    const schedule = spec?.type === 'random' ? spec.schedule : { mode: 'opportunistic' as const }
+    const mode = schedule.mode === 'interval' ? 'interval' : 'opportunistic'
+    const intervalMs = readSpecNumber(schedule.intervalMs)
+    return {
+      type: 'random',
+      summary,
+      schedule: {
+        mode,
+        ...(intervalMs > 0 ? { intervalMs } : {})
+      }
+    }
+  }
+  if (rule.type === 'state') {
+    const state = spec?.type === 'state' ? spec.state : { predicate: 'host.state.available', source: 'host' }
+    return {
+      type: 'state',
+      summary,
+      state: {
+        predicate: readSpecText(state.predicate) || 'host.state.available',
+        source: readSpecText(state.source) || 'host'
+      }
+    }
+  }
+  const event = spec?.type === 'event' ? spec.event : { name: 'openpet.event', source: 'host' }
+  return {
+    type: 'event',
+    summary,
+    event: {
+      name: readSpecText(event.name) || 'openpet.event',
+      source: readSpecText(event.source) || 'host'
+    }
+  }
+}
 
 function TriggerRuleSpecSummary({ spec }: { spec?: ActionTriggerRuleSpec | null }) {
   if (!spec) return null
@@ -243,15 +284,68 @@ function TriggerRulesPanel({
   actions,
   working,
   onSetTriggerRuleStatus,
+  onUpdateTriggerRule,
   onDeleteTriggerRule
 }: {
   rules: ActionTriggerRule[]
   actions: ActionEntry[]
   working: boolean
   onSetTriggerRuleStatus: (ruleId: string, status: ActionTriggerRuleStatus) => void | Promise<void>
+  onUpdateTriggerRule: (payload: ActionTriggerRuleUpdateRequest) => boolean | void | Promise<boolean | void>
   onDeleteTriggerRule: (ruleId: string) => void | Promise<void>
 }) {
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [draftsByRuleId, setDraftsByRuleId] = useState<Record<string, ActionTriggerRuleSpecInput>>({})
   const activeRules = [...rules].sort((left, right) => String(right.updatedAt || right.createdAt).localeCompare(String(left.updatedAt || left.createdAt)))
+
+  useEffect(() => {
+    if (!editingRuleId) return
+    if (activeRules.some((rule) => rule.id === editingRuleId)) return
+    setEditingRuleId(null)
+    setDraftsByRuleId((current) => {
+      const next = { ...current }
+      delete next[editingRuleId]
+      return next
+    })
+  }, [activeRules, editingRuleId])
+
+  const startEditing = (rule: ActionTriggerRule) => {
+    setEditingRuleId(rule.id)
+    setDraftsByRuleId((current) => ({
+      ...current,
+      [rule.id]: createTriggerRuleEditDraft(rule)
+    }))
+  }
+
+  const cancelEditing = (ruleId: string) => {
+    setEditingRuleId((current) => (current === ruleId ? null : current))
+    setDraftsByRuleId((current) => {
+      const next = { ...current }
+      delete next[ruleId]
+      return next
+    })
+  }
+
+  const updateDraft = (ruleId: string, updater: (current: ActionTriggerRuleSpecInput) => ActionTriggerRuleSpecInput) => {
+    setDraftsByRuleId((current) => {
+      const existing = current[ruleId] || { summary: '' }
+      return {
+        ...current,
+        [ruleId]: updater(existing)
+      }
+    })
+  }
+
+  const saveRule = async (rule: ActionTriggerRule) => {
+    const draft = draftsByRuleId[rule.id] || createTriggerRuleEditDraft(rule)
+    const result = await onUpdateTriggerRule({
+      ruleId: rule.id,
+      ruleSpec: draft
+    })
+    if (result === false) return
+    cancelEditing(rule.id)
+  }
+
   if (!activeRules.length) {
     return (
       <div className="trigger-inbox-card" aria-label="触发规则">
@@ -279,6 +373,8 @@ function TriggerRulesPanel({
         {activeRules.map((rule) => {
           const action = actions.find((candidate) => candidate.id === rule.actionId)
           const details = triggerProposalDetails[rule.type]
+          const isEditing = editingRuleId === rule.id
+          const draft = draftsByRuleId[rule.id] || createTriggerRuleEditDraft(rule)
           return (
             <div className={`trigger-inbox-item ${rule.status}`} key={rule.id}>
               <div className="trigger-inbox-main">
@@ -290,28 +386,189 @@ function TriggerRulesPanel({
               </div>
               <p>{rule.preview || details.summary}</p>
               <TriggerRuleSpecSummary spec={rule.ruleSpec} />
+              {isEditing ? (
+                <div className="trigger-review-copy">
+                  <label className="field-row trigger-review-row">
+                    <span className="field-label">规则摘要</span>
+                    <input
+                      aria-label="规则摘要"
+                      className="text-input"
+                      value={draft.summary || ''}
+                      onChange={(event) => updateDraft(rule.id, (current) => ({
+                        ...current,
+                        summary: event.target.value
+                      }))}
+                    />
+                  </label>
+
+                  {rule.type === 'random' ? (
+                    <>
+                      <div className="readonly-row trigger-review-row">
+                        <span>调度模式</span>
+                        <select
+                          aria-label="调度模式"
+                          className="text-input"
+                          value={draft.schedule?.mode === 'interval' ? 'interval' : 'opportunistic'}
+                          onChange={(event) => updateDraft(rule.id, (current) => ({
+                            ...current,
+                            schedule: {
+                              ...(current.schedule || {}),
+                              mode: event.target.value === 'interval' ? 'interval' : 'opportunistic'
+                            }
+                          }))}
+                        >
+                          <option value="opportunistic">机会触发</option>
+                          <option value="interval">固定间隔</option>
+                        </select>
+                      </div>
+                      {(draft.schedule?.mode || 'opportunistic') === 'interval' ? (
+                        <label className="field-row trigger-review-row">
+                          <span className="field-label">间隔毫秒</span>
+                          <input
+                            aria-label="间隔毫秒"
+                            className="text-input"
+                            type="number"
+                            min={1000}
+                            step={1000}
+                            value={draft.schedule?.intervalMs ? String(draft.schedule.intervalMs) : ''}
+                            onChange={(event) => updateDraft(rule.id, (current) => ({
+                              ...current,
+                              schedule: {
+                                ...(current.schedule || {}),
+                                mode: 'interval',
+                                ...(event.target.value.trim() ? { intervalMs: Number(event.target.value) } : {})
+                              }
+                            }))}
+                          />
+                        </label>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {rule.type === 'state' ? (
+                    <>
+                      <label className="field-row trigger-review-row">
+                        <span className="field-label">状态条件</span>
+                        <input
+                          aria-label="状态条件"
+                          className="text-input"
+                          value={draft.state?.predicate || ''}
+                          onChange={(event) => updateDraft(rule.id, (current) => ({
+                            ...current,
+                            state: {
+                              ...(current.state || {}),
+                              predicate: event.target.value
+                            }
+                          }))}
+                        />
+                      </label>
+                      <label className="field-row trigger-review-row">
+                        <span className="field-label">状态来源</span>
+                        <input
+                          aria-label="状态来源"
+                          className="text-input"
+                          value={draft.state?.source || ''}
+                          onChange={(event) => updateDraft(rule.id, (current) => ({
+                            ...current,
+                            state: {
+                              ...(current.state || {}),
+                              source: event.target.value
+                            }
+                          }))}
+                        />
+                      </label>
+                    </>
+                  ) : null}
+
+                  {rule.type === 'event' ? (
+                    <>
+                      <label className="field-row trigger-review-row">
+                        <span className="field-label">事件名</span>
+                        <input
+                          aria-label="事件名"
+                          className="text-input"
+                          value={draft.event?.name || ''}
+                          onChange={(event) => updateDraft(rule.id, (current) => ({
+                            ...current,
+                            event: {
+                              ...(current.event || {}),
+                              name: event.target.value
+                            }
+                          }))}
+                        />
+                      </label>
+                      <label className="field-row trigger-review-row">
+                        <span className="field-label">事件来源</span>
+                        <input
+                          aria-label="事件来源"
+                          className="text-input"
+                          value={draft.event?.source || ''}
+                          onChange={(event) => updateDraft(rule.id, (current) => ({
+                            ...current,
+                            event: {
+                              ...(current.event || {}),
+                              source: event.target.value
+                            }
+                          }))}
+                        />
+                      </label>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="trigger-inbox-meta">
                 <span>Rule：{rule.id}</span>
                 {rule.sourcePluginId ? <span>来源：{rule.sourcePluginId}</span> : null}
                 {rule.sourceRunId ? <span>Run：{rule.sourceRunId}</span> : null}
               </div>
               <div className="inline-action">
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={working}
-                  onClick={() => onSetTriggerRuleStatus(rule.id, rule.status === 'active' ? 'disabled' : 'active')}
-                >
-                  {rule.status === 'active' ? '停用规则' : '启用规则'}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={working}
-                  onClick={() => onDeleteTriggerRule(rule.id)}
-                >
-                  删除规则
-                </button>
+                {isEditing ? (
+                  <>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={working}
+                      onClick={() => void saveRule(rule)}
+                    >
+                      保存规则
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={working}
+                      onClick={() => cancelEditing(rule.id)}
+                    >
+                      取消编辑
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={working}
+                      onClick={() => startEditing(rule)}
+                    >
+                      编辑规则
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={working}
+                      onClick={() => onSetTriggerRuleStatus(rule.id, rule.status === 'active' ? 'disabled' : 'active')}
+                    >
+                      {rule.status === 'active' ? '停用规则' : '启用规则'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={working}
+                      onClick={() => onDeleteTriggerRule(rule.id)}
+                    >
+                      删除规则
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )
@@ -676,6 +933,7 @@ export function ActionsPane({
   onAcceptTriggerProposal,
   onRejectTriggerProposal,
   onSetTriggerRuleStatus,
+  onUpdateTriggerRule,
   onDeleteTriggerRule,
   triggerProposalType,
   setTriggerProposalType,
@@ -854,6 +1112,7 @@ export function ActionsPane({
           actions={actionsConfig.actions}
           working={working}
           onSetTriggerRuleStatus={onSetTriggerRuleStatus}
+          onUpdateTriggerRule={onUpdateTriggerRule}
           onDeleteTriggerRule={onDeleteTriggerRule}
         />
 

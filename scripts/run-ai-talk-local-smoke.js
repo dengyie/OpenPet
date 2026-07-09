@@ -2,6 +2,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { LEGACY_USER_DATA_DIR_NAME } = require('../src/main/user-data-path')
+const { sanitizeLogText } = require('../src/main/services/log-safety')
 const { createAppLogService } = require('../src/main/services/app-log-service')
 const { createSecretService } = require('../src/main/services/secret-service')
 const { createAiService } = require('../src/main/services/ai-service')
@@ -16,6 +17,10 @@ const { createPetBubbleChatWindowManager, createBubbleRequestId } = require('../
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'release', 'ai-talk-local-smoke')
 const DEFAULT_LOG_LIMIT = 20
 const MAX_PET_BUBBLE_CHARS = 80
+const DEFAULT_SESSION_DIR_LABEL = 'ai-talk-local-smoke'
+const DEFAULT_RESULT_PATH_LABEL = 'ai-talk-local-smoke-result.json'
+const DEFAULT_LOG_PATH_LABEL = 'openpet-app.jsonl'
+const DEFAULT_STORE_PATH_LABEL = 'ai-talk-store.json'
 
 const DEFAULT_AI_SETTINGS = {
   enabled: false,
@@ -77,11 +82,7 @@ const defaultUserDataDir = ({ appDataDir = defaultAppDataDir(), legacyDirName = 
   path.join(path.resolve(appDataDir), legacyDirName)
 )
 
-const sanitizeText = (value, maxChars = 240) => String(value || '')
-  .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-secret]')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, maxChars)
+const sanitizeText = (value, maxChars = 240) => sanitizeLogText(String(value || ''), { maxChars })
 
 const sanitizeError = (error) => ({
   name: sanitizeText(error?.name || 'Error', 80),
@@ -92,28 +93,71 @@ const sanitizeError = (error) => ({
   providerCode: sanitizeText(error?.providerCode || '', 80)
 })
 
-const toRepoRelativePath = (filePath, projectRoot) => {
+const toRepoRelativePath = (filePath, projectRoot, fallback = '') => {
   const rawPath = String(filePath || '').trim()
   const rootPath = String(projectRoot || '').trim()
-  if (!rawPath || !rootPath) return sanitizeText(rawPath, 240)
+  if (!rawPath) return fallback || ''
+  if (!rootPath) return fallback || sanitizeText(rawPath, 240)
   const resolvedFilePath = path.resolve(rawPath)
   const resolvedProjectRoot = path.resolve(rootPath)
   if (resolvedFilePath === resolvedProjectRoot) return '.'
-  if (!resolvedFilePath.startsWith(`${resolvedProjectRoot}${path.sep}`)) return sanitizeText(rawPath, 240)
+  if (!resolvedFilePath.startsWith(`${resolvedProjectRoot}${path.sep}`)) return fallback || sanitizeText(rawPath, 240)
   return path.relative(resolvedProjectRoot, resolvedFilePath) || '.'
+}
+
+const toRelativeSessionPath = ({ sessionDir, targetPath, fallback = '' }) => {
+  const rawPath = String(targetPath || '').trim()
+  if (!rawPath) return fallback || ''
+  const root = path.resolve(String(sessionDir || '').trim() || '.')
+  const target = path.resolve(rawPath)
+  const relative = path.relative(root, target)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return fallback || sanitizeText(path.basename(target) || rawPath, 240)
+  }
+  return relative.split(path.sep).join('/')
+}
+
+const sanitizePersistedValue = (value, depth = 0) => {
+  if (value == null) return value
+  if (depth >= 6) return '[truncated]'
+  if (typeof value === 'string') return sanitizeText(value, 500)
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return value.map((entry) => sanitizePersistedValue(entry, depth + 1))
+  if (!isObject(value)) return undefined
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entryValue]) => [key, sanitizePersistedValue(entryValue, depth + 1)])
+      .filter(([, entryValue]) => entryValue !== undefined)
+  )
 }
 
 const sanitizeArchiveSummary = (summary = {}, { projectRoot } = {}) => {
   const userDataMarker = '[redacted-local-user-data]'
-  return {
+  return sanitizePersistedValue({
     ...summary,
     userDataDir: userDataMarker,
-    sessionDir: toRepoRelativePath(summary.sessionDir, projectRoot),
+    sessionDir: toRepoRelativePath(
+      summary.sessionDir,
+      projectRoot,
+      `${DEFAULT_SESSION_DIR_LABEL}/${sanitizeText(summary.sessionId || 'session', 80)}`
+    ),
     liveAiTalkStorePath: `${userDataMarker}/ai-talk-store.json`,
-    tempAiTalkStorePath: toRepoRelativePath(summary.tempAiTalkStorePath, projectRoot),
-    logPath: toRepoRelativePath(summary.logPath, projectRoot),
-    resultPath: toRepoRelativePath(summary.resultPath, projectRoot)
-  }
+    tempAiTalkStorePath: toRelativeSessionPath({
+      sessionDir: summary.sessionDir,
+      targetPath: summary.tempAiTalkStorePath,
+      fallback: DEFAULT_STORE_PATH_LABEL
+    }),
+    logPath: toRelativeSessionPath({
+      sessionDir: summary.sessionDir,
+      targetPath: summary.logPath,
+      fallback: `logs/${DEFAULT_LOG_PATH_LABEL}`
+    }),
+    resultPath: toRelativeSessionPath({
+      sessionDir: summary.sessionDir,
+      targetPath: summary.resultPath,
+      fallback: DEFAULT_RESULT_PATH_LABEL
+    })
+  })
 }
 
 const normalizeMessageText = (value) => String(value || '').trim().replace(/\s+/g, ' ')
@@ -634,7 +678,12 @@ const runAiTalkLocalSmoke = async ({
     }
 
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
-    summary.ok = summary.chat.ok && (summary.connectionTest.skipped || summary.connectionTest.ok)
+    const bubbleDispatchOk = Boolean(
+      summary.bubbleDispatch?.attempted &&
+      summary.bubbleDispatch?.petSayReceived &&
+      summary.bubbleDispatch?.bubbleStateVisible
+    )
+    summary.ok = Boolean(summary.chat.ok && bubbleDispatchOk)
   } catch (error) {
     summary.error = sanitizeError(error)
     summary.logs = readRelevantLogs({ appLogService, limit: logLimit })
@@ -644,7 +693,7 @@ const runAiTalkLocalSmoke = async ({
   summary.resultPath = sessionPaths.resultPath
   const persistedSummary = sanitizeArchiveSummary(summary, { projectRoot })
   fs.writeFileSync(sessionPaths.resultPath, `${JSON.stringify(persistedSummary, null, 2)}\n`, 'utf-8')
-  return summary
+  return persistedSummary
 }
 
 const main = async () => {

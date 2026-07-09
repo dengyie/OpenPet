@@ -1,3 +1,6 @@
+const crypto = require('crypto')
+const { sanitizeLogText } = require('./log-safety')
+
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
 const DEFAULT_CREATOR_STUDIO_COMMAND_ID = 'draft-task'
@@ -75,7 +78,9 @@ const createStructuredResult = ({ state, message, runId = '', lastCommandResult 
 
 const createCreatorStudioDefaultFlowService = ({
   pluginService,
-  imageGenerationModelService
+  imageGenerationModelService,
+  appLogService = null,
+  idFactory = () => crypto.randomUUID()
 }) => {
   if (!pluginService?.listPlugins || !pluginService?.runCommand) {
     throw new Error('Plugin service is required for Creator Studio default flow')
@@ -84,17 +89,52 @@ const createCreatorStudioDefaultFlowService = ({
     throw new Error('Image generation model service is required for Creator Studio default flow')
   }
 
+  const recordLog = (entry) => {
+    try {
+      appLogService?.record?.({
+        scope: 'creator-default-flow',
+        actor: 'system',
+        ...entry
+      })
+    } catch (_) {
+      // Diagnostics must never block the ordinary-user flow.
+    }
+  }
+
   const runDefaultFlow = async ({ prompt }) => {
     const normalizedPrompt = String(prompt || '').trim()
     if (!normalizedPrompt) throw new Error('请先输入 Creator Studio 请求')
+    const requestId = idFactory()
+    const startedAt = Date.now()
 
     const plugin = findPluginById(pluginService.listPlugins(), CREATOR_STUDIO_PLUGIN_ID)
     if (!plugin) throw new Error('未找到 Creator Studio 插件')
     if (!plugin.enabled || !plugin.runnable || plugin.blockStatus?.blocked) {
       throw new Error('请先启用 Creator Studio 插件')
     }
+    recordLog({
+      level: 'info',
+      event: 'creator.default-flow.started',
+      message: 'Creator Studio default flow started',
+      details: {
+        requestId,
+        promptChars: normalizedPrompt.length,
+        serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+      }
+    })
     const health = await imageGenerationModelService.checkHealth({})
     if (!health?.ok) {
+      recordLog({
+        level: 'error',
+          event: 'creator.default-flow.blocked',
+          message: 'Creator Studio default flow blocked by image provider health',
+          details: {
+            requestId,
+            providerCode: String(health?.code || '').trim(),
+            providerMessage: sanitizeLogText(health?.message || '', { maxChars: 240 }),
+            serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
+          }
+        })
       return createStructuredResult({
         state: 'blocked',
         message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成并导入'
@@ -107,6 +147,22 @@ const createCreatorStudioDefaultFlowService = ({
 
     let lastRunId = ''
     let lastCommandResult = null
+    const recordStage = ({ stage, result, run }) => {
+      recordLog({
+        level: 'info',
+        event: 'creator.default-flow.stage.completed',
+        message: `Creator Studio default flow stage completed: ${stage}`,
+        details: {
+          requestId,
+          stage,
+          runId: getCreatorStudioRunId(run),
+          commandId: String(result?.commandId || '').trim(),
+          exitCode: Number(result?.exitCode) || 0,
+          taskStatus: String(run?.taskStatus || '').trim(),
+          runStatus: String(run?.status || '').trim()
+        }
+      })
+    }
 
     try {
       let result = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
@@ -118,6 +174,7 @@ const createCreatorStudioDefaultFlowService = ({
       let runId = getCreatorStudioRunId(run)
       lastRunId = runId
       lastCommandResult = result
+      recordStage({ stage: 'draft', result, run })
 
       while (runId) {
         const pendingQuestions = getCreatorStudioQuestions(run)
@@ -125,6 +182,17 @@ const createCreatorStudioDefaultFlowService = ({
         const question = pendingQuestions[0]
         const answer = resolveCreatorStudioAutoAnswer(question)
         if (!answer) {
+          recordLog({
+            level: 'info',
+            event: 'creator.default-flow.needs-details',
+            message: 'Creator Studio default flow requires manual details',
+            details: {
+              requestId,
+              runId,
+              questionId: String(question?.id || '').trim(),
+              lastCommandId: String(lastCommandResult?.commandId || '').trim()
+            }
+          })
           return createStructuredResult({
             state: 'needs_details',
             runId,
@@ -132,6 +200,17 @@ const createCreatorStudioDefaultFlowService = ({
             message: `生成并导入已暂停：run ${runId} 还需要人工补充信息。请点击“查看任务详情”。`
           })
         }
+        recordLog({
+          level: 'info',
+          event: 'creator.default-flow.question.auto-answered',
+          message: 'Creator Studio default flow auto-answered a safe question',
+          details: {
+            requestId,
+            runId,
+            questionId: String(question?.id || '').trim(),
+            answerStrategy: answer
+          }
+        })
         result = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_ANSWER_COMMAND_ID, {
           runId,
           questionId: String(question?.id || ''),
@@ -141,6 +220,7 @@ const createCreatorStudioDefaultFlowService = ({
         run = getCreatorStudioRun(result)
         runId = getCreatorStudioRunId(run)
         lastRunId = runId
+        recordStage({ stage: 'answer-question', result, run })
       }
 
       if (runId && String(run?.taskStatus || '') !== 'confirmed') {
@@ -149,6 +229,7 @@ const createCreatorStudioDefaultFlowService = ({
         run = getCreatorStudioRun(result)
         runId = getCreatorStudioRunId(run)
         lastRunId = runId
+        recordStage({ stage: 'confirm', result, run })
       }
 
       if (runId) {
@@ -157,6 +238,7 @@ const createCreatorStudioDefaultFlowService = ({
         run = getCreatorStudioRun(result)
         runId = getCreatorStudioRunId(run)
         lastRunId = runId
+        recordStage({ stage: 'generate', result, run })
       }
 
       if (runId && String(run?.status || '') === 'ready_for_review') {
@@ -165,6 +247,7 @@ const createCreatorStudioDefaultFlowService = ({
         run = getCreatorStudioRun(result)
         runId = getCreatorStudioRunId(run)
         lastRunId = runId
+        recordStage({ stage: 'approve', result, run })
       }
 
       if (runId && String(run?.status || '') === 'approved') {
@@ -179,11 +262,23 @@ const createCreatorStudioDefaultFlowService = ({
         run = getCreatorStudioRun(result)
         runId = getCreatorStudioRunId(run) || runId
         lastRunId = runId
+        recordStage({ stage: 'import', result, run })
       }
 
       if (lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID) {
         const triggerProposalSubmission = getCreatorStudioTriggerProposalSubmission(lastCommandResult)
         if (!triggerProposalSubmission) {
+          recordLog({
+            level: 'error',
+            event: 'creator.default-flow.needs-details',
+            message: 'Creator Studio default flow is missing trigger handoff evidence',
+            details: {
+              requestId,
+              runId: lastRunId,
+              lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+              elapsedMs: Date.now() - startedAt
+            }
+          })
           return createStructuredResult({
             state: 'needs_details',
             runId: lastRunId,
@@ -192,6 +287,17 @@ const createCreatorStudioDefaultFlowService = ({
           })
         }
         if (triggerProposalSubmission.ok !== true) {
+          recordLog({
+            level: 'error',
+            event: 'creator.default-flow.needs-details',
+            message: 'Creator Studio default flow trigger handoff failed',
+            details: {
+              requestId,
+              runId: lastRunId,
+              lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+              elapsedMs: Date.now() - startedAt
+            }
+          })
           return createStructuredResult({
             state: 'needs_details',
             runId: lastRunId,
@@ -201,6 +307,17 @@ const createCreatorStudioDefaultFlowService = ({
         }
       }
 
+      recordLog({
+        level: 'info',
+        event: 'creator.default-flow.completed',
+        message: 'Creator Studio default flow completed',
+        details: {
+          requestId,
+          runId: lastRunId,
+          lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+          elapsedMs: Date.now() - startedAt
+        }
+      })
       return createStructuredResult({
         state: 'completed',
         runId: lastRunId,
@@ -208,6 +325,20 @@ const createCreatorStudioDefaultFlowService = ({
         message: getCommandMessage(lastCommandResult, '生成并导入已完成')
       })
     } catch (error) {
+      recordLog({
+        level: 'error',
+        event: 'creator.default-flow.failed',
+        message: 'Creator Studio default flow failed',
+        details: {
+          requestId,
+          runId: lastRunId,
+          lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+          elapsedMs: Date.now() - startedAt,
+          errorName: String(error?.name || '').trim(),
+          errorCode: String(error?.code || '').trim(),
+          errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 })
+        }
+      })
       if (lastRunId) {
         return createStructuredResult({
           state: 'needs_details',

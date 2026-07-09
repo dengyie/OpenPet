@@ -9,6 +9,7 @@ build/*
 !build/notarize.js
 /release/
 playwright-report/
+.playwright-mcp/
 test-results/
 tests/.tmp-main-scale-injection/
 examples/plugins/.openpet/

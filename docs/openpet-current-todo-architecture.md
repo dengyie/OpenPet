@@ -1,7 +1,7 @@
 # OpenPet Current TODO Architecture
 
-> Date: 2026-06-28
-> Baseline: `main@a317ec5` (`feat(chat): unify pet chat surfaces`)
+> Date: 2026-07-09
+> Baseline: local `main@51208a53` / `codex/dev7@51208a53`
 > Status: live TODO entry point
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
 
@@ -35,21 +35,24 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 | Control Center | `src/control-center/src/api/control-center-api.ts`, `src/control-center/src/hooks/`, `src/control-center/src/panes/` | all user-facing configuration surfaces | new config must be operable here |
 | Plugin host | `src/main/services/plugin-service.js`, `src/main/services/plugin-install-service.js`, `src/main/plugins/` | manifest policy, command/service bridge, creator-tools routes | permission-gated, token-gated, no unrestricted plugin access |
 | Creator Studio plugin | `examples/plugins/creator-studio/` | prompt/task workflow, run state, QA, preview, import requests | provider secrets, final imports, and trigger persistence stay host-owned |
+| Agent awareness plugin | `examples/plugins/agent-awareness/`, `src/main/bootstrap/create-plugin-services.js` | Codex rollout polling, optional reversible hook install/uninstall, sanitized session store, state-to-pet mapping, local dashboard | keep agent-specific parsing and redaction in the bundled plugin; no raw prompts/transcripts/full paths in stored or rendered state |
 | Contracts/tests | `src/shared/openpet-contracts.ts`, `src/shared/ipc-channels.*`, `tests/` | IPC/view contracts and regression boundaries | keep JS and TS channel files synchronized |
 
 ## Current Landed Facts
 
 - Chat provider UX has separate `保存聊天 Provider` and `测试已保存配置` actions. Saving does not require a successful test, and testing uses the active saved config.
 - Image generation settings use a host-owned OpenAI-compatible image Provider contract in Control Center. Legacy `fixture` / `cloud` / `local` vocabulary may still appear in Creator Studio run backends, but secrets and provider calls remain host-owned.
-- Control Center AI settings now include chat/image provider presets with explicit claim boundaries: OpenAI/OpenRouter/Together/LM Studio/vLLM/local entries are endpoint templates that require saving plus test or health check before use, while the OpenPet `127.0.0.1:8317/v1` gateway preset is the only preset tied to current archived smoke evidence for `gpt-5.5` chat and `gpt-image-2` Creator Studio provider-path validation. The AI pane also includes optional `/models` discovery with safe fallback wording, chat/image model compatibility hints, safe image generation usage/cost summaries when provider metadata is available, stale-result warnings when chat/image provider drafts are unsaved, and a model-settings-first layout where one `模型 Provider` section opens by default with `聊天模型` / `图片模型` capability cards while secondary memory/persona/behavior/chat sections stay collapsed until expanded.
+- Control Center AI settings now include chat/image provider presets with explicit claim boundaries: OpenAI/OpenRouter/Together/LM Studio/vLLM/local entries are endpoint templates that require saving plus test or health check before use, while the OpenPet `127.0.0.1:8317/v1` gateway preset is the only preset tied to current archived smoke evidence for `gpt-5.5` chat and `gpt-image-2` Creator Studio provider-path validation. The AI pane also includes optional `/models` discovery with safe fallback wording, provider-specific model discovery timeout feedback, chat/image model compatibility hints, safe image generation usage/cost summaries when provider metadata is available, stale-result warnings when chat/image provider drafts are unsaved, and a model-settings-first layout where one `模型 Provider` section opens by default with `聊天模型` / `图片模型` capability cards while secondary memory/persona/behavior/chat sections stay collapsed until expanded.
 - AI Provider smoke evidence now has a repeatable CLI entry point: `npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model> [--include-image] --image-model <model> --output <report.json>`. It probes `/models`, tests chat completions, keeps image generation opt-in, and writes a sanitized report without raw API keys.
 - Creator Studio image Provider smoke evidence now also has a repeatable CLI entry point: `npm run smoke:creator-studio-provider -- --prompt <text> [--user-data-dir <dir>] [--output-dir <dir>] [--width <n>] [--height <n>] [--timeout-ms <n>] [--skip-health-check]`. It reuses the saved host image Provider config and secret, runs the OpenPet prompt builder plus provider image generation plus action-frame QA chain, and writes a sanitized session report without raw API keys.
 - AI Provider smoke evidence for the user's OpenPet development gateway is archived under `docs/release-evidence/ai-provider-smoke/2026-06-28T11-08-10Z-openpet-gateway/`: `/models` exposed `gpt-5.5` and `gpt-image-2`, and `gpt-5.5` passed chat completion smoke; image generation was intentionally skipped.
 - Creator Studio provider smoke evidence for the user's OpenPet development gateway is archived under `docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/`: the saved host-owned `gpt-image-2` configuration passed health check, returned one source PNG after about `265s` using requested `512x512` generation constraints, and passed 16-frame action QA with zero warnings under a temporary `420000ms` timeout override.
+- Provider smoke and frame/atlas QA prove command/data flow and structural import readiness; production-quality pet generation still requires generated output to remain highly consistent with the user's original image, including recognizable identity, silhouette, palette, style, and important visual traits.
 - AI Talk core exists: `AiTalkService`, `AiTalkStore`, pet-pack `persona`, local persona override, generated persona draft, pet-pack isolated main conversations, conservative legacy `settings.ai.conversations.control-center` migration, active pet-pack refresh signals for AI pane and desktop chat, redacted trace diagnostics export with pet-pack and conversation filters, trace-filter rebinding when the active pet-pack changes, background memory extraction, relevance-ranked memory injection with use tracking, compact bubble segmentation, current-pet action candidate tool hints, provider behavior `reason` / `displayMode` preservation through behavior decisions, memory profile UI, delete memory, and clear current pet-pack memories.
 - Desktop chat window exists and routes through the same pet chat state/AI Talk flow instead of introducing a separate product brain.
 - Bubble chat is now the default lightweight pet dialogue surface, with the standalone desktop chat positioned as an extended panel for longer history and advanced interaction.
 - AI Talk also has a repeatable real-provider Bubble Chat smoke path through `npm run run-ai-talk-local-smoke -- --message <text>` plus the runbook `docs/superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md`; the smoke result captures `bubbleAcceptance.requestId`, `providerLatencyMs`, `bubbleDispatch` visibility evidence, and a `manualAcceptanceTemplate` placeholder for later human desktop validation.
+- Archived AI Talk smoke evidence can now be reviewed in place through `npm run update-ai-talk-local-smoke-report -- <report.json> ...`, which updates `manualAcceptanceTemplate`, rewrites the companion README, refreshes any existing archive summary JSON, and still rejects raw local paths or secret-like text from being written back into the archive.
 - AI Talk Bubble Chat smoke sessions can be copied into release evidence with `npm run create-ai-talk-local-smoke-archive -- --session-dir <session-dir>`; the archive helper refuses unsanitized local user-data paths, copies the redacted report/logs, writes hashes, and generates a README that keeps the telemetry-only claim boundary explicit.
 - A fresh archived AI Talk Bubble Chat smoke run now lives under `docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/`: it confirms a real `gpt-5.5` reply reached Bubble Chat with correlated logs, `providerLatencyMs = 2141`, `bubbleDispatch.petSayReceived = true`, `bubbleDispatch.bubbleStateVisible = true`, and popup `ttlMs = 9835` before auto-hide.
 - Creator Studio already has `GenerationTask`, deterministic `conversation-wizard`, task answer/confirm commands, `openpet-prompt-builder`, host model bridge, run persistence, QA artifacts, dashboard-first wizard display, prompt snapshot, wizard-step rail, retry/recover for failed provider runs, sanitized developer-mode prompt provenance, workflow smoke guidance, and structured approved action/pet import command handoff that tells the dashboard which Control Center plugin command to run while preserving command-scoped bridge-token boundaries.
@@ -72,8 +75,76 @@ Current P0 status: no known startup/build blocker in this TODO pass. Creator Stu
 - Image generation Provider IPC payloads now normalize renderer-facing config, API key result, and health-check result shapes through the main-process Control Center adapter: `image-generation:*` settings responses no longer forward legacy backend fields, secret values, or service-only health details.
 - AI Talk persona and memory IPC payloads now normalize renderer-facing profile/draft/memory shapes through the main-process Control Center adapter: persona profile/draft/save and memory profile/delete/clear responses no longer forward provider raw replies, secret-like fields, raw memory evidence, or service-only job details.
 - `PLUGINS_LIST` now normalizes renderer-facing `PluginViewState[]` through the main-process Control Center adapter, so plugin list reads reuse the same safe shape already used by plugin mutation results.
+- Plugin lifecycle/runtime IPC payloads now normalize renderer-facing plugin result shapes through the main-process Control Center adapter: enable/native-approval/config-save/service-health-policy/storage-clear responses reuse the safe `PluginViewState` contract, while command/setup/service start-stop-health responses no longer forward raw runtime/service objects to the renderer.
+- A bundled `openpet.agent-awareness` plugin now syncs beside Creator Studio, stays enabled-by-default, and can start either manually or through trusted Codex-signal auto-start once native execution approval and explicit opt-in are both present.
+- Agent awareness now reconciles privacy-bounded Codex polling plus optional shipped hook events, hashes session ids before persistence/display, reduces project paths to `basename + short hash`, stores only bounded lifecycle/runtime metadata, and never stores prompts, tool args, stdout/stderr, transcripts, or full paths.
+- Agent awareness command and dashboard boundaries are now hardened: `doctor` returns safe labels instead of raw paths, `codex-hook-plan` stays plugin-owned and read-only, `install-codex-hooks` / `uninstall-codex-hooks` mutate only OpenPet-owned Codex hook handlers with backup-safe writes, `/health` sanitizes poller `lastError`, and the Plugins pane reserves the `X active · Y sessions · Z events` health note for the real bundled `openpet.agent-awareness` target.
+- Agent awareness now also has a repeatable real-session smoke path through `npm run run-agent-awareness-local-smoke -- --codex-home <dir>` plus the runbook `docs/superpowers/specs/2026-07-03-agent-awareness-real-codex-acceptance-runbook.md`; the smoke result records sanitized session samples, hook-plan readiness, diagnostics, redaction checks, and a `manualAcceptanceTemplate` placeholder for dashboard usefulness and pet-speech review.
+- Agent awareness smoke sessions can also be copied into release evidence with `npm run create-agent-awareness-local-smoke-archive -- --session-dir <session-dir>`; the archive helper accepts only redacted reports and keeps its README explicit about the remaining human-acceptance boundary.
+- Archived agent-awareness smoke evidence can now be reviewed in place through `npm run update-agent-awareness-local-smoke-report -- <report.json> ...`, which updates `manualAcceptanceTemplate`, rewrites the companion README, refreshes any existing archive summary JSON, and still rejects raw local paths, loopback URLs, or secret-like text from being written back into the archive.
+- A canonical archived real smoke sample lives under `docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/`, proving the current local Codex environment yields sanitized session signal with `unknownRecordCount = 0` and `unsupportedLifecycleRecordCount = 0` while still leaving dashboard usefulness and speech-noise review manual.
+- Agent Awareness Phase A is now merged to local main with reversible hook install/uninstall, hook + polling ingestion, trusted opt-in auto-start, richer runtime state, Control Center and Bubble Chat detail entries, and stale-session merge protection. Its Phase B foundation is also present for safe usage/git/session-summary metadata, usage stats, per-session focus links, and bounded notification-policy evidence.
+
+### 4A. Agent Awareness Plugin
+
+Owner boundary: `examples/plugins/agent-awareness/`, `PluginService`, Control Center Plugins pane.
+
+Current state:
+
+- The bundled plugin is synchronized through `syncBundledPlugins` and discovered through the normal local plugin directory path.
+- The plugin is enabled by default unless a saved setting disables it, and its service stays stopped until explicit user start or trusted auto-start conditions are met.
+- Service start is gated by the same native-execution approval path as other local plugin services.
+- The Codex rollout poller reads only bounded top-level lifecycle hints from `~/.codex/sessions` and `~/.codex/archived_sessions`, optional shipped hooks add bounded freshness metadata, and both paths reconcile into one shared runtime session model.
+- Session ids are hashed, project paths are reduced to `basename + short hash`, and persisted session history is intentionally narrow even after richer `phase` / `tool` / `approval` / `progress` metadata was added.
+- The plugin currently uses only `pet:say` and `pet:event`; semantic pet action mapping is still future work.
+- `doctor`, `codex-hook-plan`, `install-codex-hooks`, and `uninstall-codex-hooks` now avoid raw local paths in their operator-visible outputs, and `/health` plus dashboard rendering sanitize poller error text.
+- The Plugins pane can show a compact health note for the real bundled `agent-awareness` service using `X active · Y sessions · Z events`.
+- Control Center now has a first-class `查看 Codex 详情` entry for the real bundled plugin, and Bubble Chat exposes a pet-side `Codex 详情` quick-open entry that reuses the same bounded dashboard route.
+- Phase B visible-info foundation is present: safe numeric token/context/cost metadata when Codex exposes it, best-effort git branch/dirty/ahead/behind summaries, generated current-step/session summaries, recent progress hints, aggregate usage diagnostics, a dedicated stats dashboard route, and per-session focus links.
+- Runtime reconciliation now preserves fresher hook-derived approval/status details when older poller discovery records arrive, while explicit empty messages can still clear stale visible message text.
+- Retained-history hardening now reapplies live-session bounds on startup, keeps observed-event counts monotonic across live eviction, and aligns overview usage totals with retained daily rollups instead of mixed live-history peaks.
+
+P1 work:
+
+- Keep the new real-session smoke path green against fresh local Codex evidence and archive follow-up notes when a live run exposes new rollout record shapes.
+- Complete the remaining human desktop acceptance for dashboard usefulness and speech-noise expectations.
+- Complete the next bounded Phase B visible-info slice: durable usage rollups beyond the retained sanitized history window, stronger per-session focus/summary polish, and clearer current project/session context without storing raw prompts, transcripts, tool payloads, or full paths.
+
+P2/P3:
+
+- Host-owned semantic pet behavior contract for `idle` / `thinking` / `working` / `waiting` / `completed` / `failed`.
+- Host-level usage stats surfaces that reuse the plugin-owned safe rollups without exposing raw agent content.
+- Session focus/pinning, richer multi-session arbitration, or independent pet windows/session slots.
+- User-configurable notification/persona settings for the companion layer.
+
+Manual-required:
+
+- Human review of real Codex-session status usefulness and pet speech frequency after the smoke run proves sanitized signal.
+- Human sign-off that dashboard and Plugins-pane surfacing feel useful in the full desktop app, even though browser/UI regression coverage now exists for those boundaries.
 
 ## P1 Architecture TODOs
+
+### 0. Cursor Library Management
+
+Owner boundary: Control Center Pet pane, shared cursor library, settings IPC save path.
+
+Current state:
+
+- The cursor picker already supports selecting cursors, importing uploaded custom cursors, resizing non-system cursors, and deleting uploaded custom cursors from the card UI.
+- Deleting the currently selected uploaded custom cursor now falls back to `system` through the existing settings save path while keeping the current picker behavior of hiding the `system` card.
+- Built-in cursor size overrides are persisted through `customCursors`, so deletion rules must distinguish uploaded custom cursors from built-in override records.
+- The approved design for the next cursor-management slice is documented in `docs/superpowers/specs/2026-07-03-cursor-card-delete-management-design.md`.
+
+P1 work:
+
+- Decide whether the next cursor milestone should keep hiding the `system` card or make system state explicit in the card rail.
+- Add an explicit built-in cursor reset-to-default-size interaction instead of overloading delete.
+- Keep built-in cursor cards and system default non-deletable.
+
+P2/P3:
+
+- Custom cursor rename and image replacement.
+- Dedicated cursor management drawer or richer metadata list.
 
 ### 1. AI Provider And Model Settings
 
@@ -86,11 +157,12 @@ Current state:
 - Provider diagnostics are structured and sanitized.
 - Chat provider presets cover OpenAI official, LM Studio, vLLM, OpenRouter, Together, generic local or proxied OpenAI-compatible gateways, and the OpenPet `127.0.0.1:8317/v1` development gateway; image provider presets cover OpenAI official, Together, OpenRouter, generic local or proxied OpenAI-compatible gateways, and the OpenPet `127.0.0.1:8317/v1` development gateway. The common provider presets are conservative endpoint templates, not proof of current account/model reachability; only the OpenPet 8317 preset is tied to the archived OpenPet gateway smoke evidence.
 - Chat/image provider health checks now perform optional `/models` discovery with safe fallback wording when probing is unavailable.
-- Chat/image model compatibility hints are visible in the AI pane, now keyed by provider family plus model where possible; image generation usage/cost summaries surface when safe provider metadata is returned, unsaved chat/image drafts now warn that `/models` and usage results still reflect saved config, and the AI pane foregrounds the chat/image Provider sections before collapsed memory/persona/behavior/chat sections while explicitly restating the host-owned trust and save/test boundaries.
+- Chat/image model compatibility hints are visible in the AI pane, now keyed by provider family plus model where possible; image generation usage/cost summaries surface when safe provider metadata is returned, chat/image model discovery timeout results now surface as explicit model discovery timeout copy instead of generic failure text, unsaved chat/image drafts now warn that `/models` and usage results still reflect saved config, and the AI pane foregrounds the chat/image Provider sections before collapsed memory/persona/behavior/chat sections while explicitly restating the host-owned trust and save/test boundaries.
 - `scripts/run-ai-provider-smoke.js` and `npm run smoke:ai-provider` provide a sanitized real-gateway smoke path for confirming chat model names, image model names, optional `/models` discovery, and opt-in image generation without exposing API keys in the output report.
 - `scripts/run-creator-studio-provider-smoke.js` and `npm run smoke:creator-studio-provider` provide a sanitized host-side smoke path for confirming that the saved Creator Studio image Provider configuration can complete prompt build, provider generation, and action-frame QA using the same main-process services that own secrets and output writes; smoke operators can tune width, height, and a temporary per-run timeout without persisting those overrides back into saved settings.
 - The user's current OpenPet gateway has archived sanitized evidence confirming that `gpt-5.5` and `gpt-image-2` are discoverable model ids and that `gpt-5.5` can complete a chat smoke request.
 - The user's current OpenPet gateway also has archived sanitized Creator Studio smoke evidence confirming that the saved host-owned `gpt-image-2` image Provider path can complete prompt build, real provider generation, and action-frame QA end to end when the smoke run is given a `420000ms` timeout and `512x512` generation constraints.
+- That Creator Studio provider smoke is command/data flow evidence, not final visual fidelity proof; frame/atlas QA is structural import-readiness evidence, not human visual fidelity proof.
 
 P1 work:
 
@@ -106,7 +178,7 @@ P2/P3:
 Manual-required:
 
 - Real cloud/local provider smoke evidence for each supported provider preset.
-- Human review of generated image quality and contact-sheet readability before treating `gpt-image-2` output as production asset-quality evidence.
+- Human review that generated image output stays highly consistent with the user's original image, including recognizable identity, silhouette, palette, style, and important visual traits, before treating `gpt-image-2` output as production asset-quality evidence.
 
 ### 2. AI Talk And Pet Chat
 
@@ -192,7 +264,7 @@ Current state:
 - Trigger-rule persistence validates that every rule references an existing imported action and survives action regeneration.
 - `random`, `state`, and `event` trigger proposals and saved host trigger rules carry a structured `ruleSpec` with scheduler/state/event intent; the shared TypeScript contract now models those specs as a discriminated random/state/event union while keeping request drafts separate, so Creator Studio handoff is aligned with future rule-editor and scheduler contracts without giving plugins direct rule mutation rights.
 - Control Center Actions pane shows a trigger proposal inbox and can accept/reject queued proposals.
-- Control Center Actions pane shows saved host trigger rules for non-click proposal types.
+- Control Center Actions pane shows saved host trigger rules for non-click proposal types and now supports minimal inline editing of the persisted `ruleSpec` fields for `random`, `state`, and `event`.
 - Legacy action regeneration preserves the trigger proposal inbox and trigger rules.
 
 P1 work:
@@ -241,7 +313,7 @@ P2/P3:
 
 Manual-required:
 
-- Human review of generated pet/action quality before claiming production asset quality.
+- Human review of generated pet/action quality before claiming production asset quality, especially original-image fidelity for full-pet generation.
 
 ### 5. Plugin Host Bridge And Security
 
@@ -279,7 +351,8 @@ Current state:
 
 - Evidence tooling exists for packaged runtime, picker, Windows smoke, macOS signing/notarization/Gatekeeper, release archive, and plugin cleanup.
 - Packaged runtime smoke evidence is archived under `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/`; it proves an unsigned macOS packaged runtime launch, transparent rendering, built-in pack switching, and stable-state restoration, but still records `plugin-picker-evidence-linked` and `pet-picker-evidence-linked` as pending and `invalid-package-feedback` as blocked until a reviewed desktop picker smoke report is linked.
-- Signed release closure evidence is archived under `docs/release-evidence/signed-release-closure/2026-06-16T15-00-00Z/`; `officialDesktopRelease`, `macos`, and `windows` all remain `not-ready`, with blockers including missing signed macOS evidence, missing desktop picker evidence, unsigned packaged runtime evidence, and missing signed Windows smoke evidence.
+- A current packaged-runtime pending report also exists under `docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/`; it preserves the current broken macOS signature text, keeps `artifact.signed=false`, and leaves every runtime check pending until a real launched packaged-app run is observed.
+- Signed release closure evidence is now anchored at `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/`; `officialDesktopRelease`, `macos`, and `windows` all remain `not-ready`, with blockers now expressed as current archive truth rather than older missing-file gaps: macOS codesign/notarization/Gatekeeper classify as `fail`, Windows smoke remains unsigned/pending, and the reconstructed Windows smoke and desktop-picker archives remain archived but not signed-ready.
 - Official desktop/macOS/Windows readiness claims remain conservative and must stay aligned with those archived `not-ready` facts until new reviewed evidence replaces them.
 
 P1 work:
@@ -318,7 +391,7 @@ Choose one of these when starting the next development milestone:
 1. TypeScript Adapter Boundary Migration
    - User value: high-drift main-process payloads stay safer as Control Center, AI settings, Creator Studio review snapshots, and evidence tooling keep growing.
    - Main files: `src/main/control-center-adapters.js`, `src/shared/openpet-contracts.ts`, `tests/main/control-center-adapters.test.js`, representative contract fixtures.
-   - Scope rule: migrate or type-check one adapter boundary at a time; do not rewrite the main process or change runtime behavior. The plugin view config/storage/signature slice, action-frame `inspectionResult` slice, pet-pack mutation view slice, catalog state view slice, AI config view slice, image generation Provider settings slice, AI Talk persona/memory view slice, and `PLUGINS_LIST` slice are complete, so choose a different high-drift payload next.
+   - Scope rule: migrate or type-check one adapter boundary at a time; do not rewrite the main process or change runtime behavior. The plugin view config/storage/signature slice, plugin lifecycle/runtime IPC result slice, action-frame `inspectionResult` slice, pet-pack mutation view slice, catalog state view slice, AI config view slice, image generation Provider settings slice, AI Talk persona/memory view slice, and `PLUGINS_LIST` slice are complete, so choose a different high-drift payload next.
 
 2. Release Evidence Closure
    - User value: release readiness claims can be upgraded only when real evidence exists.
@@ -329,6 +402,11 @@ Choose one of these when starting the next development milestone:
    - User value: new plugin/Creator Studio host routes stay permission-gated, documented, and regression-covered instead of silently widening plugin authority.
    - Main files: `src/main/services/plugin-service.js`, `src/main/plugins/`, `docs/plugin-authoring.md`, bridge route/permission regression tests.
    - Scope rule: only start when adding or changing host bridge routes; otherwise keep this as a guardrail, not standalone polish.
+
+4. Agent Awareness Phase B Acceptance And Visible-Info Completion
+   - User value: the pet and dashboard remain useful during real Codex work without becoming noisy or privacy-invasive.
+   - Main files: `examples/plugins/agent-awareness/`, `src/main/services/plugin-service.js`, `src/control-center/src/hooks/usePluginsPane.ts`, `src/control-center/src/panes/PluginsPane.tsx`, `docs/agent-awareness-development-design.md`, and Agent Awareness smoke/evidence scripts.
+   - Scope rule: close acceptance and one visible-info slice at a time. Do not expand into Creator Studio, general plugin contracts, or raw task-content capture.
 
 ## Verification Commands For Future Milestones
 

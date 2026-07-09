@@ -137,7 +137,7 @@ test('createPluginCommunitySourceEvidenceFromIntake routes ready intake into sub
   assert.equal(calls[0].sourceRelation, 'independent-third-party')
   assert.equal(calls[0].independenceNotes, 'Repository is maintained outside OpenPet.')
   assert.equal(result.generatedAt, '2026-06-18T23:50:00.000Z')
-  assert.equal(result.bridge.intakeSummary, path.resolve(summaryPath))
+  assert.equal(result.bridge.intakeSummary, 'plugin-community-source-intake-report-summary.json')
   assert.equal(result.bridge.intakeStatus, 'ready-for-community-evidence')
   assert.equal(result.bridge.intakeReasonCode, 'openpet-plugin-package')
   assert.equal(result.submission.communityEvidenceReady, true)

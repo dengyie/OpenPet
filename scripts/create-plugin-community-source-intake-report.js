@@ -99,6 +99,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeRelativePath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const joinPosixPath = (...segments) => segments
+  .filter((segment) => String(segment || '').trim())
+  .map((segment) => toPosixPath(String(segment).trim()).replace(/^\/+|\/+$/g, ''))
+  .filter(Boolean)
+  .join('/')
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeRelativePath(relative) ? relative : fallback
+}
+
 const SAFE_ARCHIVE_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
 
 const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`
@@ -249,6 +269,20 @@ const renderReadme = ({ generatedAt, summary, commands }) => [
   ''
 ].join('\n')
 
+const renderDirectoryReadme = ({ summary }) => [
+  '# OpenPet Plugin Community-Source Intake Directory',
+  '',
+  'Start with `README-community-intake.md` for the generated intake narrative.',
+  'The structured machine-readable snapshot is `plugin-community-source-intake-report-summary.json`.',
+  '',
+  `- Status: ${summary.status}`,
+  `- Compatibility reason: ${summary.compatibility.reasonCode}`,
+  '',
+  '- This directory records package-model compatibility and archive provenance only.',
+  '- It does not install, enable, run, sign, publish, or trust a plugin.',
+  ''
+].join('\n')
+
 const renderChecklist = ({ summary }) => [
   '# Community-Source Intake Checklist',
   '',
@@ -311,6 +345,7 @@ const createPluginCommunitySourceIntakeReport = async ({
   const generatedAt = now().toISOString()
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
+  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, DEFAULT_OUTPUT_ROOT)
 
   const downloadDir = fsImpl.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-community-intake-download-'))
   const archivePath = path.join(downloadDir, 'candidate.zip')
@@ -344,21 +379,26 @@ const createPluginCommunitySourceIntakeReport = async ({
         compatibility.reasonCode = 'plugin-json-missing'
         compatibility.summary = 'Candidate archive is incompatible with the current OpenPet plugin model because it requires a package rooted by plugin.json.'
       } else {
-        const validation = validatePluginPackage(archivePluginCandidate.absoluteCandidate)
-        if (validation.ok) {
-          plugin = {
-            id: validation.review.plugin.id,
-            name: validation.review.plugin.name,
-            version: validation.review.plugin.version,
-            permissions: validation.review.plugin.permissions,
-            networkAllowlist: validation.review.plugin.network.allowlist
+        try {
+          const validation = validatePluginPackage(archivePluginCandidate.absoluteCandidate)
+          if (validation.ok) {
+            plugin = {
+              id: validation.review.plugin.id,
+              name: validation.review.plugin.name,
+              version: validation.review.plugin.version,
+              permissions: validation.review.plugin.permissions,
+              networkAllowlist: validation.review.plugin.network.allowlist
+            }
+            compatibility.ok = true
+            compatibility.reasonCode = 'openpet-plugin-package'
+            compatibility.summary = 'Candidate archive contains a valid OpenPet plugin package rooted by plugin.json.'
+          } else {
+            compatibility.reasonCode = 'plugin-json-invalid'
+            compatibility.summary = `Candidate package is structurally incompatible with the current OpenPet plugin model: ${validation.errors.join('; ')}`
           }
-          compatibility.ok = true
-          compatibility.reasonCode = 'openpet-plugin-package'
-          compatibility.summary = 'Candidate archive contains a valid OpenPet plugin package rooted by plugin.json.'
-        } else {
+        } catch (error) {
           compatibility.reasonCode = 'plugin-json-invalid'
-          compatibility.summary = `Candidate package is structurally incompatible with the current OpenPet plugin model: ${validation.errors.join('; ')}`
+          compatibility.summary = `Candidate package is structurally incompatible with the current OpenPet plugin model: ${error.message || error}`
         }
       }
     } else {
@@ -368,15 +408,23 @@ const createPluginCommunitySourceIntakeReport = async ({
 
     const status = compatibility.ok ? 'ready-for-community-evidence' : 'incompatible-package-model'
     const files = {
+      directoryReadme: path.join(absoluteOutputDir, 'README.md'),
       readme: path.join(absoluteOutputDir, 'README-community-intake.md'),
       checklist: path.join(absoluteOutputDir, 'community-intake-checklist.md'),
       commands: path.join(absoluteOutputDir, 'community-intake-commands.json'),
       intake: path.join(absoluteOutputDir, 'community-source-intake.json'),
       summary: path.join(absoluteOutputDir, 'plugin-community-source-intake-report-summary.json')
     }
+    const safeFiles = {
+      readme: joinPosixPath(safeOutputDir, 'README-community-intake.md'),
+      checklist: joinPosixPath(safeOutputDir, 'community-intake-checklist.md'),
+      commands: joinPosixPath(safeOutputDir, 'community-intake-commands.json'),
+      intake: joinPosixPath(safeOutputDir, 'community-source-intake.json'),
+      summary: joinPosixPath(safeOutputDir, 'plugin-community-source-intake-report-summary.json')
+    }
     const summary = {
       generatedAt,
-      outputDir: absoluteOutputDir,
+      outputDir: safeOutputDir,
       communitySource: {
         kind: 'community-source',
         url: normalizedCommunitySourceUrl,
@@ -396,7 +444,7 @@ const createPluginCommunitySourceIntakeReport = async ({
       compatibility,
       status,
       notes: notes.trim(),
-      files
+      files: safeFiles
     }
     const commands = commandList({
       archiveUrl: normalizedArchiveUrl,
@@ -404,9 +452,10 @@ const createPluginCommunitySourceIntakeReport = async ({
       communitySourceUrl: normalizedCommunitySourceUrl,
       submitter: summary.communitySource.submitter,
       notes: summary.notes,
-      outputDir: absoluteOutputDir
+      outputDir: safeOutputDir
     })
 
+    writeText(files.directoryReadme, renderDirectoryReadme({ summary }), fsImpl)
     writeText(files.readme, renderReadme({ generatedAt, summary, commands }), fsImpl)
     writeText(files.checklist, renderChecklist({ summary }), fsImpl)
     writeJson(files.commands, { commands }, fsImpl)
@@ -447,6 +496,7 @@ if (require.main === module) {
 module.exports = {
   createPluginCommunitySourceIntakeReport,
   parseArgs,
+  renderDirectoryReadme,
   renderChecklist,
   renderReadme,
   resolvePluginCandidate

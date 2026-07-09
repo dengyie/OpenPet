@@ -420,3 +420,44 @@ test('action frame builder falls back across multiple action-sheet outputs when 
   assert.deepEqual(qa.frames.slice(0, 5).map((frame) => frame.sourceOutputIndex), [0, 0, 0, 0, 0])
   assert.deepEqual(qa.frames.slice(5).map((frame) => frame.sourceOutputIndex), [1, 1, 1])
 })
+
+test('action frame builder reuses the previous valid frame when later single-sheet cells are unusable', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await createActionSheetPng({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 8,
+    omittedFrameIndexes: [5, 6, 7]
+  })
+
+  const result = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }]
+    },
+    action: {
+      actionId: 'wave-recover',
+      name: 'Wave Recover',
+      frameCount: 8,
+      loop: false
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/wave-recover'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  const frame5 = fs.readFileSync(path.join(result.framesDir, '0005.png'))
+  const frame6 = fs.readFileSync(path.join(result.framesDir, '0006.png'))
+  const frame8 = fs.readFileSync(path.join(result.framesDir, '0008.png'))
+  assert.equal(qa.ok, true)
+  assert.equal(qa.frames.length, 8)
+  assert.equal(Array.isArray(qa.warnings), true)
+  assert.equal(qa.warnings.length, 3)
+  assert.match(qa.warnings[0], /Frame 0006\.png reused previous valid frame/i)
+  assert.equal(qa.frames[5].reusedPreviousFrame, true)
+  assert.equal(qa.frames[5].reusedFromFileName, '0005.png')
+  assert.equal(frame5.equals(frame6), true)
+  assert.equal(frame6.equals(frame8), true)
+})

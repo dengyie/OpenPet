@@ -23,6 +23,9 @@ const {
   writeManifest: writeDesktopPickerArchiveManifest
 } = require('../../scripts/create-desktop-picker-archive-manifest')
 const {
+  createMacosReleaseEvidenceArchive
+} = require('../../scripts/create-macos-release-evidence-archive')
+const {
   createWindowsSmokeArchiveManifest,
   writeManifest: writeWindowsSmokeArchiveManifest
 } = require('../../scripts/create-windows-smoke-archive-manifest')
@@ -301,7 +304,7 @@ test('closure report keeps unsigned pending archives not release-ready', () => {
   assert.equal(report.releaseReady, false)
   assert.equal(report.claims.officialDesktopRelease.status, 'not-ready')
   assert.match(report.claims.officialDesktopRelease.claim, /Do not claim official/)
-  assert.match(report.claims.macos.blockers.join('\n'), /macOS codesign evidence/)
+  assert.match(report.claims.macos.blockers.join('\n'), /macOS codesign evidence status is fail/)
   assert.match(report.claims.windows.blockers.join('\n'), /Windows smoke evidence/)
   assert.match(report.smartScreen.claim, /observed result only/)
 })
@@ -368,6 +371,41 @@ test('closure report requires the desktop picker archive manifest evidence chain
   assert.equal(report.releaseReady, false)
 })
 
+test('closure report keeps macOS claim not-ready when imported artifact provenance is stale', () => {
+  const archiveDir = createArchive({
+    signed: true,
+    status: 'pass',
+    pickerPlatform: 'win32',
+    runtimePlatform: 'darwin',
+    includeMacosEvidence: false
+  })
+  const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-macos-closure-artifact-'))
+  fs.writeFileSync(path.join(artifactDir, 'macos-codesign.txt'), 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n')
+  fs.writeFileSync(path.join(artifactDir, 'macos-notarization.txt'), 'status: Accepted\nid: notary\n')
+  fs.writeFileSync(path.join(artifactDir, 'macos-gatekeeper.txt'), 'release/mac-arm64/OpenPet.app: accepted\nsource=Notarized Developer ID\n')
+
+  createMacosReleaseEvidenceArchive({
+    artifactDir,
+    archiveDir,
+    artifactName: 'openpet-macos-release-evidence-v1.0.1',
+    releaseTag: 'v1.0.1',
+    workflowRunUrl: 'https://github.com/dengyie/OpenPet/actions/runs/100',
+    now: fixedNow
+  })
+
+  const artifactManifestPath = path.join(archiveDir, 'macos-release-evidence-artifact-manifest.json')
+  const artifactManifest = JSON.parse(fs.readFileSync(artifactManifestPath, 'utf-8'))
+  artifactManifest.files[0].sha256 = '0'.repeat(64)
+  fs.writeFileSync(artifactManifestPath, `${JSON.stringify(artifactManifest, null, 2)}\n`)
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+  const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
+
+  assert.equal(manifest.releaseReady, false)
+  assert.equal(report.claims.macos.status, 'not-ready')
+  assert.match(report.claims.macos.blockers.join('\n'), /stale macosCodesignEvidence hash/)
+})
+
 test('closure report requires the Windows smoke archive manifest evidence chain', () => {
   const archiveDir = createArchive({
     signed: true,
@@ -412,6 +450,38 @@ test('closure report keeps official desktop not-ready when a signed archive only
   assert.equal(report.claims.windows.status, 'ready')
   assert.match(report.claims.macos.blockers.join('\n'), /not darwin/)
   assert.match(report.claims.officialDesktopRelease.blockers.join('\n'), /not darwin/)
+})
+
+test('closure report can mark official desktop ready when macOS imported evidence and runtime pair with Windows smoke and picker evidence', () => {
+  const archiveDir = createArchive({
+    signed: true,
+    status: 'pass',
+    pickerPlatform: 'win32',
+    runtimePlatform: 'darwin',
+    includeMacosEvidence: false
+  })
+  const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-macos-closure-artifact-'))
+  fs.writeFileSync(path.join(artifactDir, 'macos-codesign.txt'), 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n')
+  fs.writeFileSync(path.join(artifactDir, 'macos-notarization.txt'), 'status: Accepted\nid: notary\n')
+  fs.writeFileSync(path.join(artifactDir, 'macos-gatekeeper.txt'), 'release/mac-arm64/OpenPet.app: accepted\nsource=Notarized Developer ID\n')
+
+  createMacosReleaseEvidenceArchive({
+    artifactDir,
+    archiveDir,
+    artifactName: 'openpet-macos-release-evidence-v1.0.1',
+    releaseTag: 'v1.0.1',
+    workflowRunUrl: 'https://github.com/dengyie/OpenPet/actions/runs/321',
+    now: fixedNow
+  })
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
+  const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
+
+  assert.equal(manifest.releaseReady, true)
+  assert.equal(report.releaseReady, true)
+  assert.equal(report.claims.officialDesktopRelease.status, 'ready')
+  assert.equal(report.claims.macos.status, 'ready')
+  assert.equal(report.claims.windows.status, 'ready')
 })
 
 test('renderMarkdown exposes claim status and blockers', () => {
@@ -474,4 +544,25 @@ test('cli fail-on-not-ready exits non-zero after writing the audit report', () =
   assert.match(result.stdout, /Release-ready: no/)
   assert.equal(fs.existsSync(outputPath), true)
   assert.match(fs.readFileSync(outputPath, 'utf-8'), /Do not claim official signed desktop release readiness/)
+})
+
+test('committed signed-release-closure evidence directories keep companion READMEs for historical context', () => {
+  const archiveRoot = path.join(__dirname, '..', '..', 'docs', 'release-evidence', 'signed-release-closure')
+  const archiveDirs = fs.readdirSync(archiveRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+
+  assert.deepEqual(archiveDirs, [
+    '2026-06-16T15-00-00Z',
+    '2026-07-06T16-40-00Z-v1.0.1-rc.3-authenticated-closure',
+    '2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun',
+    '2026-07-06T17-05-00Z-v1.0.1-rc.3-authenticated-closure-current-reports'
+  ])
+
+  for (const dirName of archiveDirs) {
+    const readmePath = path.join(archiveRoot, dirName, 'README.md')
+    assert.equal(fs.existsSync(readmePath), true, `${dirName} should keep a README.md`)
+    assert.match(fs.readFileSync(readmePath, 'utf-8'), /Signed Release Closure/i)
+  }
 })

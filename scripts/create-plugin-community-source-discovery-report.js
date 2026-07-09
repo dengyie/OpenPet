@@ -112,6 +112,26 @@ const writeText = (filePath, content, fsImpl = fs) => {
   fsImpl.writeFileSync(filePath, content.endsWith('\n') ? content : `${content}\n`)
 }
 
+const toPosixPath = (value) => String(value || '').split(path.sep).join('/')
+const isSafeMetadataPath = (value) => {
+  const normalized = toPosixPath(String(value || '').trim())
+  if (!normalized) return false
+  if (normalized.startsWith('/')) return false
+  if (/^[A-Za-z]:\//.test(normalized)) return false
+  return !normalized.split('/').some((segment) => segment === '..')
+}
+
+const createSafeProjectPath = (targetPath, fallback) => {
+  const relative = toPosixPath(path.relative(process.cwd(), String(targetPath || '').trim()))
+  return isSafeMetadataPath(relative) ? relative : fallback
+}
+
+const createSafeOutputFilePath = ({ filePath, outputDir, fallback }) => {
+  const relative = toPosixPath(path.relative(outputDir, String(filePath || '').trim()))
+  if (isSafeMetadataPath(relative)) return relative
+  return createSafeProjectPath(filePath, fallback)
+}
+
 const normalizeSearchResult = (result = {}, index = 0) => {
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     throw new Error(`Search result ${index + 1} must be an object`)
@@ -235,6 +255,20 @@ const renderReadme = ({ generatedAt, summary }) => [
   ''
 ].join('\n')
 
+const renderDirectoryReadme = ({ summary }) => [
+  '# OpenPet Plugin Community-Source Discovery Directory',
+  '',
+  'Start with `README-community-source-discovery.md` for the generated discovery narrative.',
+  'The structured machine-readable snapshot is `plugin-community-source-discovery-summary.json`.',
+  '',
+  `- Status: ${summary.status}`,
+  `- Next action: ${summary.nextAction}`,
+  '',
+  '- This directory records discovery observations only.',
+  '- It does not prove OpenPet plugin compatibility, signing trust, catalog publication, runtime safety, or release readiness.',
+  ''
+].join('\n')
+
 const createPluginCommunitySourceDiscoveryReport = ({
   searchResults = [],
   candidates = [],
@@ -252,14 +286,27 @@ const createPluginCommunitySourceDiscoveryReport = ({
   const generatedAt = now().toISOString()
   const resolvedOutputDir = outputDir || path.join(DEFAULT_OUTPUT_ROOT, sessionIdFromDate(new Date(generatedAt)))
   const absoluteOutputDir = assertSafeRehearsalOutputDir(resolvedOutputDir)
-  const files = {
+  const outputFiles = {
     summary: path.join(absoluteOutputDir, 'plugin-community-source-discovery-summary.json'),
-    readme: path.join(absoluteOutputDir, 'README-community-source-discovery.md')
+    readme: path.join(absoluteOutputDir, 'README-community-source-discovery.md'),
+    directoryReadme: path.join(absoluteOutputDir, 'README.md')
+  }
+  const files = {
+    summary: createSafeOutputFilePath({
+      filePath: outputFiles.summary,
+      outputDir: absoluteOutputDir,
+      fallback: 'plugin-community-source-discovery-summary.json'
+    }),
+    readme: createSafeOutputFilePath({
+      filePath: outputFiles.readme,
+      outputDir: absoluteOutputDir,
+      fallback: 'README-community-source-discovery.md'
+    })
   }
   const status = discoveryStatus(normalizedCandidates)
   const summary = {
     generatedAt,
-    outputDir: absoluteOutputDir,
+    outputDir: createSafeProjectPath(absoluteOutputDir, path.basename(DEFAULT_OUTPUT_ROOT)),
     status: status.status,
     nextAction: status.nextAction,
     searchResults: normalizedSearchResults,
@@ -275,8 +322,9 @@ const createPluginCommunitySourceDiscoveryReport = ({
     files
   }
 
-  writeText(files.readme, renderReadme({ generatedAt, summary }), fsImpl)
-  writeJson(files.summary, summary, fsImpl)
+  writeText(outputFiles.readme, renderReadme({ generatedAt, summary }), fsImpl)
+  writeText(outputFiles.directoryReadme, renderDirectoryReadme({ summary }), fsImpl)
+  writeJson(outputFiles.summary, summary, fsImpl)
 
   return summary
 }
@@ -310,5 +358,6 @@ module.exports = {
   VALID_CANDIDATE_STATUSES,
   createPluginCommunitySourceDiscoveryReport,
   parseArgs,
+  renderDirectoryReadme,
   renderReadme
 }

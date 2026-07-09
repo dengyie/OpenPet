@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-07-04T16:39:19.924Z",
+  "ok": true,
+  "source": {
+    "sessionDir": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
+    "resultPath": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-result.json",
+    "logPath": "ai-talk-local-smoke/2026-06-28T15-35-59-210Z/logs/openpet-app.jsonl"
+  },
+  "archive": {
+    "archiveDir": "docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z",
+    "outputPath": "docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ai-talk-local-smoke-archive-result.json",
+    "sessionId": "2026-06-28T15-35-59-210Z"
+  },
+  "smoke": {
+    "generatedAt": "2026-06-28T15:35:59.235Z",
+    "provider": "openai-compatible",
+    "baseUrl": "[redacted-local-url]",
+    "model": "gpt-5.5",
+    "activePetPackId": "duodong",
+    "requestId": "chat-mqxyb5gj-6tvex3h5",
+    "providerLatencyMs": 2141,
+    "bubbleVisible": true,
+    "manualAcceptanceTemplatePresent": true,
+    "manualAcceptance": {
+      "bubbleVisibleLongEnough": "pending",
+      "inputUsable": "pending",
+      "desktopFeelNotesPresent": false,
+      "requestId": "chat-mqxyb5gj-6tvex3h5"
+    }
+  },
+  "files": [
+    {
+      "role": "aiTalkLocalSmokeResult",
+      "path": "ai-talk-local-smoke-result.json",
+      "bytes": 11502,
+      "sha256": "eb563555cac1034077c3a7db3a58dea89bd38ec0014af822431d0647f991f631"
+    },
+    {
+      "role": "aiTalkLocalSmokeLog",
+      "path": "logs/openpet-app.jsonl",
+      "bytes": 5437,
+      "sha256": "712c77c5c25dbbeae4a703942ebf17af1bc397056bf3931374d33ffade2222dc"
+    },
+    {
+      "role": "archiveReadme",
+      "path": "README.md",
+      "bytes": 2661,
+      "sha256": "336a6dfe6df2dcce9bbcc5e6bb3a4c61a7e35024c55be0ec75cbda95b2a992bf"
+    }
+  ],
+  "warnings": [
+    "Archive preserves sanitized telemetry evidence only; human desktop-feel acceptance remains manual-required."
+  ]
+}

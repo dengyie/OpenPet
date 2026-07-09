@@ -24,6 +24,17 @@ test('plugin runtime safety redacts command log text consistently', () => {
   assert.match(message, /\[redacted-secret\]/)
 })
 
+test('plugin runtime safety can preserve safe token labels while bounding text', () => {
+  const label = sanitizePluginCommandText('Usage Tokens token=bridge-secret', {
+    redactStandaloneTokenWords: false
+  })
+  const bounded = sanitizePluginCommandText('0123456789abcdef', { maxLength: 10 })
+
+  assert.equal(label, 'Usage Tokens [redacted-token]=[redacted-secret]')
+  assert.equal(label.includes('bridge-secret'), false)
+  assert.equal(bounded, '0123456...')
+})
+
 test('plugin runtime safety redacts output fields and sensitive result values', () => {
   assert.deepEqual(
     sanitizePluginCommandResultValue({

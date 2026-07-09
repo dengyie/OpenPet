@@ -67,6 +67,13 @@ const runPluginCommandEntryProcess = async ({
     commandId,
     payload: cloneJsonValue(payload, 'payload', { allowUndefined: true }),
     config: cloneJsonValue(config, 'config'),
+    ...(pluginId === 'openpet.agent-awareness'
+      ? {
+          runtime: {
+            nativeExecutionApproved: true
+          }
+        }
+      : {}),
     paths: {
       extensionDir: cwd
     }

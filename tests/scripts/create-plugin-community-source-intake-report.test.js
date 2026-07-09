@@ -74,6 +74,30 @@ const createIncompatibleArchiveFixture = () => {
   }
 }
 
+const createInvalidPluginJsonArchiveFixture = () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-community-intake-invalid-plugin-json-'))
+  const archiveRoot = path.join(root, 'foreign-plugin-main')
+  fs.mkdirSync(archiveRoot, { recursive: true })
+  fs.writeFileSync(path.join(archiveRoot, 'plugin.json'), JSON.stringify({
+    id: 'foreign.plugin.example',
+    name: 'Foreign Plugin Example',
+    version: '1.0.0',
+    main: 'index.js',
+    permissions: {
+      commands: ['pet:say']
+    }
+  }, null, 2))
+  fs.writeFileSync(path.join(archiveRoot, 'index.js'), 'module.exports = {}\n')
+
+  const archivePath = path.join(root, 'foreign-plugin-main.zip')
+  execFileSync('zip', ['-qr', archivePath, 'foreign-plugin-main'], { cwd: root })
+  return {
+    archivePath,
+    archiveSha256: sha256(archivePath),
+    archiveByteSize: fs.statSync(archivePath).size
+  }
+}
+
 test('parseArgs accepts community-source intake options', () => {
   const options = parseArgs([
     '--archive-url', 'https://example.test/community-plugin/archive.zip',
@@ -133,12 +157,20 @@ test('createPluginCommunitySourceIntakeReport marks compatible OpenPet plugin ca
   assert.equal(summary.plugin.version, '1.0.0')
   assert.equal(summary.archive.archiveSha256, fixture.archiveSha256)
   assert.equal(summary.archive.archivePluginPath, 'community-plugin-main/plugin')
-  assert.equal(fs.existsSync(summary.files.readme), true)
-  assert.equal(fs.existsSync(summary.files.summary), true)
-  assert.equal(fs.existsSync(summary.files.intake), true)
-  assert.equal(fs.existsSync(summary.files.commands), true)
+  assert.equal(path.isAbsolute(summary.outputDir), false)
+  assert.equal(path.isAbsolute(summary.files.readme), false)
+  assert.equal(fs.existsSync(path.join(outputDir, 'README-community-intake.md')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'README.md')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'plugin-community-source-intake-report-summary.json')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'community-source-intake.json')), true)
+  assert.equal(fs.existsSync(path.join(outputDir, 'community-intake-commands.json')), true)
 
-  const commands = JSON.parse(fs.readFileSync(summary.files.commands, 'utf-8')).commands
+  const directoryReadme = fs.readFileSync(path.join(outputDir, 'README.md'), 'utf-8')
+  assert.match(directoryReadme, /README-community-intake\.md/)
+  assert.match(directoryReadme, /ready-for-community-evidence/)
+  assert.match(directoryReadme, /does not install, enable, run, sign, publish, or trust/i)
+
+  const commands = JSON.parse(fs.readFileSync(path.join(outputDir, 'community-intake-commands.json'), 'utf-8')).commands
   assert.ok(commands.some((command) => command.includes('create-plugin-community-source-intake-report')))
   assert.ok(commands.some((command) => command.includes('create-plugin-community-source-submission-evidence')))
   assert.ok(commands.some((command) => command.includes('docs/release-evidence/plugin-community-source-submission-evidence/<session>')))
@@ -203,7 +235,47 @@ test('createPluginCommunitySourceIntakeReport records incompatible package model
   assert.match(summary.compatibility.summary, /plugin\.json/i)
   assert.equal(summary.plugin, null)
 
-  const readme = fs.readFileSync(summary.files.readme, 'utf-8')
+  const readme = fs.readFileSync(path.join(outputDir, 'README-community-intake.md'), 'utf-8')
   assert.match(readme, /does not prove community plugin compatibility/i)
   assert.match(readme, /requires a package rooted by plugin\.json/i)
+  const directoryReadme = fs.readFileSync(path.join(outputDir, 'README.md'), 'utf-8')
+  assert.match(directoryReadme, /README-community-intake\.md/)
+  assert.match(directoryReadme, /incompatible-package-model/)
+})
+
+test('createPluginCommunitySourceIntakeReport records invalid foreign plugin.json schemas without throwing', async () => {
+  const fixture = createInvalidPluginJsonArchiveFixture()
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-community-intake-report-invalid-plugin-json-'))
+
+  const summary = await createPluginCommunitySourceIntakeReport({
+    archiveUrl: 'https://example.test/foreign-plugin/archive.zip',
+    pluginPath: '.',
+    communitySourceUrl: 'https://example.test/community/submission/foreign-plugin',
+    submitter: 'Foreign Plugin Author',
+    outputDir,
+    notes: 'Candidate source inspected.',
+    now: () => new Date('2026-07-06T11:00:00.000Z'),
+    downloadArchive: ({ archivePath }) => {
+      fs.copyFileSync(fixture.archivePath, archivePath)
+      return {
+        archivePath,
+        finalUrl: 'https://example.test/foreign-plugin/archive.zip',
+        archiveSha256: fixture.archiveSha256,
+        archiveByteSize: fixture.archiveByteSize
+      }
+    }
+  })
+
+  assert.equal(summary.status, 'incompatible-package-model')
+  assert.equal(summary.compatibility.ok, false)
+  assert.equal(summary.compatibility.reasonCode, 'plugin-json-invalid')
+  assert.match(summary.compatibility.summary, /permissions must be an array/i)
+  assert.equal(summary.plugin, null)
+
+  const readme = fs.readFileSync(path.join(outputDir, 'README-community-intake.md'), 'utf-8')
+  assert.match(readme, /structurally incompatible/i)
+  assert.match(readme, /permissions must be an array/i)
+  const directoryReadme = fs.readFileSync(path.join(outputDir, 'README.md'), 'utf-8')
+  assert.match(directoryReadme, /README-community-intake\.md/)
+  assert.match(directoryReadme, /plugin-json-invalid/)
 })

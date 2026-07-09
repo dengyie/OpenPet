@@ -392,6 +392,118 @@ test('action service applies creator action mutations through pet pack persisten
   assert.equal(savedManifest.actions.find((action) => action.id === 'wave').sprite, 'sprites/wave.png')
 })
 
+test('action service prefers active installed pack persistence over legacy save hook', () => {
+  let savedManifest = null
+  let legacySaveCalls = 0
+  const petPackService = {
+    getActivePetPack: () => ({
+      rootPath: '/packs/installed-cat',
+      source: { type: 'user-installed', path: '/packs/installed-cat' },
+      manifest: {
+        id: 'installed-cat',
+        displayName: 'Installed Cat',
+        version: '1.0.0',
+        defaultAction: 'idle',
+        clickAction: 'wave',
+        actions: [
+          { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32, sprite: 'sprites/idle.png' },
+          { id: 'wave', label: 'Wave', kind: 'greeting', loop: false, frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32, sprite: 'sprites/wave.png' }
+        ]
+      }
+    }),
+    updateActivePetPackManifest: (manifest) => {
+      savedManifest = manifest
+      return manifest
+    }
+  }
+  const service = createActionService({
+    petPackService,
+    projectRoot: '/app/openpet',
+    saveLegacyAnimations: () => {
+      legacySaveCalls += 1
+    }
+  })
+
+  service.applyCreatorActionMutation({
+    defaultAction: 'wave',
+    clickAction: 'idle',
+    actions: []
+  })
+
+  assert.equal(legacySaveCalls, 0)
+  assert.equal(savedManifest.defaultAction, 'wave')
+  assert.equal(savedManifest.clickAction, 'idle')
+})
+
+test('action service rejects installed pack mutations when pack persistence is unavailable', () => {
+  let legacySaveCalls = 0
+  const service = createActionService({
+    petPackService: {
+      getActivePetPack: () => ({
+        rootPath: '/packs/installed-cat',
+        source: { type: 'user-installed', path: '/packs/installed-cat' },
+        manifest: {
+          id: 'installed-cat',
+          displayName: 'Installed Cat',
+          version: '1.0.0',
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32, sprite: 'sprites/idle.png' },
+            { id: 'wave', label: 'Wave', kind: 'greeting', loop: false, frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32, sprite: 'sprites/wave.png' }
+          ]
+        }
+      })
+    },
+    projectRoot: '/app/openpet',
+    saveLegacyAnimations: () => {
+      legacySaveCalls += 1
+    }
+  })
+
+  assert.throws(
+    () => service.applyCreatorActionMutation({ defaultAction: 'wave', clickAction: 'idle', actions: [] }),
+    /persistence is not available/
+  )
+  assert.equal(legacySaveCalls, 0)
+})
+
+test('action service rejects action mutations for non-legacy built-in packs instead of writing legacy config', () => {
+  let legacySaveCalls = 0
+  const service = createActionService({
+    petPackService: {
+      getActivePetPack: () => ({
+        rootPath: '/app/openpet/assets/pet-packs/starter',
+        source: { type: 'built-in', path: '/app/openpet/assets/pet-packs/starter' },
+        manifest: {
+          id: 'starter',
+          displayName: 'Starter',
+          version: '1.0.0',
+          defaultAction: 'idle',
+          clickAction: 'wave',
+          actions: [
+            { id: 'idle', label: 'Idle', kind: 'idle', loop: true, frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32, sprite: 'sprites/idle.png' },
+            { id: 'wave', label: 'Wave', kind: 'greeting', loop: false, frameCount: 1, frameMs: 100, frameWidth: 32, frameHeight: 32, sprite: 'sprites/wave.png' }
+          ]
+        }
+      }),
+      updateActivePetPackManifest: () => {
+        throw new Error('should not write bundled pack')
+      }
+    },
+    projectRoot: '/app/openpet',
+    saveLegacyAnimations: () => {
+      legacySaveCalls += 1
+    }
+  })
+
+  assert.throws(
+    () => service.applyCreatorActionMutation({ defaultAction: 'wave', clickAction: 'idle', actions: [] }),
+    /read-only/
+  )
+  assert.equal(legacySaveCalls, 0)
+})
+
 test('action service accepts click trigger proposals by applying clickAction', () => {
   let savedConfig = null
   const service = createActionService({
@@ -868,6 +980,95 @@ test('action service can disable, re-enable, and delete host trigger rules', () 
 
   assert.throws(
     () => service.setTriggerRuleStatus('rule:missing', 'disabled'),
+    /does not exist/
+  )
+})
+
+test('action service updates persisted trigger rule ruleSpec and status through one host-owned mutation path', () => {
+  let savedConfig = {
+    defaultAction: 'idle',
+    clickAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 16,
+        frameMs: 95,
+        frameWidth: 191,
+        frameHeight: 453,
+        sprite: 'cat_anime/sprites/idle.png'
+      },
+      {
+        id: 'wave',
+        label: 'Wave',
+        kind: 'custom',
+        loop: false,
+        frameCount: 8,
+        frameMs: 90,
+        frameWidth: 192,
+        frameHeight: 208,
+        sprite: 'cat_anime/sprites/wave.png'
+      }
+    ],
+    triggerProposalInbox: [],
+    triggerRules: [
+      {
+        id: 'rule:state:wave:test',
+        actionId: 'wave',
+        type: 'state',
+        status: 'active',
+        sourceProposalId: 'proposal:state:wave:test',
+        sourcePluginId: 'openpet.creator-studio',
+        sourceRunId: 'run-99',
+        sourceCommandId: 'import-approved-action',
+        message: 'Play wave when the pet becomes alert.',
+        preview: 'State trigger rule can play wave when a host state condition matches.',
+        createdAt: '2026-06-22T10:04:00.000Z',
+        updatedAt: '2026-06-22T10:04:00.000Z'
+      }
+    ]
+  }
+
+  const timestamps = [
+    '2026-06-22T10:05:00.000Z',
+    '2026-06-22T10:06:00.000Z'
+  ]
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    now: () => timestamps.shift() || '2026-06-22T10:07:00.000Z',
+    loadLegacyAnimations: () => savedConfig,
+    saveLegacyAnimations: (config) => {
+      savedConfig = config
+      return config
+    }
+  })
+
+  const edited = service.updateTriggerRule('rule:state:wave:test', {
+    ruleSpec: {
+      summary: 'Play Wave when focus mode is idle.',
+      state: {
+        predicate: 'focus.mode === idle',
+        source: 'host'
+      }
+    }
+  })
+  assert.equal(edited.rule.ruleSpec.summary, 'Play Wave when focus mode is idle.')
+  assert.equal(edited.rule.ruleSpec.state.predicate, 'focus.mode === idle')
+  assert.equal(edited.rule.ruleSpec.state.source, 'host')
+  assert.equal(savedConfig.triggerRules[0].updatedAt, '2026-06-22T10:05:00.000Z')
+
+  const disabled = service.updateTriggerRule('rule:state:wave:test', {
+    status: 'disabled'
+  })
+  assert.equal(disabled.rule.status, 'disabled')
+  assert.equal(savedConfig.triggerRules[0].status, 'disabled')
+  assert.equal(savedConfig.triggerRules[0].ruleSpec.summary, 'Play Wave when focus mode is idle.')
+  assert.equal(savedConfig.triggerRules[0].updatedAt, '2026-06-22T10:06:00.000Z')
+
+  assert.throws(
+    () => service.updateTriggerRule('rule:missing', { status: 'disabled' }),
     /does not exist/
   )
 })

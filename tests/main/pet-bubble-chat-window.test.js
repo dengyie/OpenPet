@@ -95,7 +95,7 @@ test('calculateBubbleTtlMs scales with message length and clamps explicit ttl va
   assert.equal(clampedHigh, 30000)
 })
 
-test('bubble chat item helpers classify ai as dialogue and other sources as notices', () => {
+test('bubble chat item helpers classify pet-side speech as dialogue and only system notices as notices', () => {
   const {
     buildBubbleChatItems,
     classifyBubbleChatKind,
@@ -104,10 +104,14 @@ test('bubble chat item helpers classify ai as dialogue and other sources as noti
   } = loadModuleWithElectron({ app: { on: () => {} } })
 
   assert.equal(classifyBubbleChatKind({ source: 'ai' }), 'dialogue')
+  assert.equal(classifyBubbleChatKind({ source: 'ai:behavior' }), 'dialogue')
+  assert.equal(classifyBubbleChatKind({ source: 'pet:event' }), 'dialogue')
+  assert.equal(classifyBubbleChatKind({ source: 'pet-renderer' }), 'dialogue')
   assert.equal(classifyBubbleChatKind({ source: 'plugin:weather' }), 'notice')
-  assert.equal(classifyBubbleChatKind({ source: 'ai:behavior' }), 'notice')
 
   const aiItem = normalizeBubbleChatItem({ text: '正式回复', source: 'ai', intent: 'notice' })
+  const behaviorItem = normalizeBubbleChatItem({ text: '行为编排说话', source: 'ai:behavior' })
+  const petRendererItem = normalizeBubbleChatItem({ text: 'Pet 自己说话', source: 'pet-renderer' })
   const noticeItem = normalizeBubbleChatItem({ text: '插件提示', source: 'plugin:weather', intent: 'dialogue' })
   const dialogueItems = createDialogueItemsFromMessages([
     { id: 'u1', role: 'user', content: '你好', createdAt: '2026-06-24T00:00:00.000Z' },
@@ -123,6 +127,10 @@ test('bubble chat item helpers classify ai as dialogue and other sources as noti
 
   assert.equal(aiItem.kind, 'dialogue')
   assert.equal(aiItem.role, 'pet')
+  assert.equal(behaviorItem.kind, 'dialogue')
+  assert.equal(behaviorItem.role, 'pet')
+  assert.equal(petRendererItem.kind, 'dialogue')
+  assert.equal(petRendererItem.role, 'pet')
   assert.equal(noticeItem.kind, 'notice')
   assert.equal(noticeItem.role, 'system')
   assert.deepEqual(dialogueItems.map((item) => [item.kind, item.role, item.source, item.text]), [
@@ -164,18 +172,22 @@ test('createDialogueItemsFromMessages keeps only the latest lightweight dialogue
 
 test('resolveBubbleBounds anchors above pet and flips below when needed', () => {
   const { resolveBubbleBounds } = loadModuleWithElectron({ app: { on: () => {} } })
+  const abovePetBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const belowPetBounds = { x: 10, y: 20, width: 120, height: 120 }
 
   const above = resolveBubbleBounds({
-    petBounds: { x: 300, y: 300, width: 120, height: 120 },
+    petBounds: abovePetBounds,
     workArea: { x: 0, y: 0, width: 900, height: 700 }
   })
   const below = resolveBubbleBounds({
-    petBounds: { x: 10, y: 20, width: 120, height: 120 },
+    petBounds: belowPetBounds,
     workArea: { x: 0, y: 0, width: 900, height: 700 }
   })
 
   assert.equal(above.placement, 'above')
-  assert.equal(above.y, 32)
+  const aboveGap = abovePetBounds.y - (above.y + above.height)
+  assert.ok(above.y > 32)
+  assert.ok(aboveGap >= 0 && aboveGap <= 4)
   assert.equal(above.height, 260)
   assert.equal(below.placement, 'below')
   assert.equal(below.y, 148)
@@ -193,13 +205,17 @@ test('resolveBubbleBounds uses side placement when vertical space would cover th
   })
 
   assert.equal(bounds.placement, 'right')
-  assert.ok(bounds.x >= petBounds.x + petBounds.width + 8)
+  assert.ok(bounds.x >= petBounds.x + petBounds.width + 4)
   assert.ok(bounds.y < petBounds.y + petBounds.height)
   assert.ok(bounds.y + bounds.height > petBounds.y)
+  const oldCenteredY = petBounds.y + Math.round((petBounds.height - bounds.height) / 2)
+  assert.ok(bounds.y < oldCenteredY)
 })
 
 test('pet bubble chat manager opens manually with a chat prompt even when auto popup is disabled', () => {
   const logs = []
+  const petBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const visualTopInset = 64
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -214,7 +230,8 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
     settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: false, autoHide: true } }) },
     getPetWindow: () => ({
       isDestroyed: () => false,
-      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+      getBounds: () => petBounds,
+      __openPetViewport: { topInset: visualTopInset }
     }),
     appLogService: { record: (entry) => logs.push(entry) }
   })
@@ -226,12 +243,19 @@ test('pet bubble chat manager opens manually with a chat prompt even when auto p
   assert.equal(instances[0].focused, true)
   assert.deepEqual(instances[0].setAlwaysOnTopCalls.at(-1), { flag: true, level: 'pop-up-menu' })
   assert.ok(instances[0].bounds.height < 260)
+  const visiblePetTop = petBounds.y + visualTopInset
+  const openGap = visiblePetTop - (instances[0].bounds.y + instances[0].bounds.height)
+  assert.ok(openGap >= 0 && openGap <= 4)
   assert.equal(state.visible, true)
   assert.equal(state.interacting, true)
   assert.equal(state.message.text, '想聊点什么？')
   assert.equal(state.message.kind, 'dialogue')
   assert.equal(state.message.role, 'pet')
-  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.open-requested'), true)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.window.open-requested' &&
+    entry.details.anchorProfile === 'tight-head-anchor-v1'
+  )), true)
+  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.opened' && entry.details.anchorProfile === 'tight-head-anchor-v1'), true)
 })
 
 test('pet bubble chat manager shows latest message and auto hides when idle', () => {
@@ -414,7 +438,7 @@ test('pet bubble chat showMessage appends notices without dropping dialogue item
   assert.equal(state.noticeItems.length, 1)
 })
 
-test('pet bubble chat manager keeps only the latest dialogue slice while preserving a small notice overlay', () => {
+test('pet bubble chat manager keeps pet speech in the dialogue lane while preserving only true notice overlays', () => {
   const { FakeBrowserWindow } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -452,13 +476,45 @@ test('pet bubble chat manager keeps only the latest dialogue slice while preserv
 
   assert.deepEqual(
     state.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
-    ['第1句', '第2句', '第3句', '第4句', '第5句', '第6句', '第7句', '第8句']
+    ['第2句', '第3句', '第4句', '第5句', '第6句', '第7句', '第8句', '提示3']
   )
   assert.deepEqual(
     state.items.filter((item) => item.kind === 'notice').map((item) => item.text),
     ['提示1', '提示2']
   )
-  assert.equal(state.noticeItems.length, 3)
+  assert.equal(state.noticeItems.length, 2)
+})
+
+test('pet bubble chat showMessage treats pet-renderer and ai behavior copy as left-side pet dialogue', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.showMessage({ text: '思考提示', source: 'pet-renderer', createdAt: '2026-06-24T00:00:08.000Z' })
+  const state = manager.showMessage({ text: '行为回复', source: 'ai:behavior', createdAt: '2026-06-24T00:00:09.000Z' })
+
+  assert.deepEqual(
+    state.items.map((item) => [item.kind, item.role, item.text]),
+    [
+      ['dialogue', 'pet', '思考提示'],
+      ['dialogue', 'pet', '行为回复']
+    ]
+  )
+  assert.equal(state.noticeItems.length, 0)
 })
 
 test('pet bubble chat showMessage compatibility path treats ai source as pet dialogue', () => {
@@ -517,6 +573,39 @@ test('pet bubble chat preserves non-ai pet say dialogue in the left-side bubble 
 
   assert.deepEqual(state.items.map((item) => [item.kind, item.role, item.text]), [
     ['dialogue', 'pet', '我先自己说一句']
+  ])
+})
+
+test('pet bubble chat gives agent-awareness bridge messages a user-facing Codex label', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  const state = manager.showMessage({
+    text: '这里需要你确认：Codex needs approval.',
+    source: 'plugin:openpet.agent-awareness:bridge',
+    sourceSurface: 'plugin-bridge',
+    kind: 'dialogue',
+    role: 'pet',
+    createdAt: '2026-06-24T00:00:02.000Z'
+  })
+
+  assert.deepEqual(state.items.map((item) => [item.kind, item.role, item.source, item.sourceLabel]), [
+    ['dialogue', 'pet', 'plugin:openpet.agent-awareness:bridge', 'Codex']
   ])
 })
 
@@ -620,6 +709,101 @@ test('pet bubble chat manager does not show when disabled and holds visible whil
   }
 })
 
+test('pet bubble chat manager auto-pins on interaction when pinOnInteraction is enabled and releases after idle', () => {
+  const logs = []
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  manager.showMessage({ text: '可交互提示', source: 'plugin:test', ttlMs: 6000 })
+  const activeState = manager.setInteracting(true, { source: 'renderer-hover' })
+  const idleState = manager.setInteracting(false, { source: 'renderer-leave' })
+
+  assert.equal(activeState.interacting, true)
+  assert.equal(activeState.pinned, true)
+  assert.equal(activeState.autoPinned, true)
+  assert.equal(idleState.interacting, false)
+  assert.equal(idleState.pinned, false)
+  assert.equal(idleState.autoPinned, false)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.interaction.changed' &&
+    entry.details.reason === 'interaction-started-auto-pinned'
+  )), true)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.interaction.changed' &&
+    entry.details.reason === 'interaction-ended-auto-unpinned'
+  )), true)
+})
+
+test('pet bubble chat manager does not auto-pin on interaction when pinOnInteraction is disabled', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: false } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.showMessage({ text: '仅交互，不自动 pin', source: 'plugin:test', ttlMs: 6000 })
+  const activeState = manager.setInteracting(true, { source: 'renderer-hover' })
+
+  assert.equal(activeState.interacting, true)
+  assert.equal(activeState.pinned, false)
+  assert.equal(activeState.autoPinned, false)
+})
+
+test('pet bubble chat manager clears auto-pin when explicitly unpinned', () => {
+  const { FakeBrowserWindow } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 300, y: 300, width: 120, height: 120 })
+    })
+  })
+
+  manager.showMessage({ text: '可交互提示', source: 'plugin:test', ttlMs: 6000 })
+  manager.setInteracting(true, { source: 'renderer-hover' })
+  const state = manager.setPinned(false, { source: 'renderer-manual-unpin' })
+
+  assert.equal(state.pinned, false)
+  assert.equal(state.autoPinned, false)
+})
+
 test('pet bubble chat manager toggles window-level hit-test passthrough', () => {
   const logs = []
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
@@ -659,6 +843,7 @@ test('pet bubble chat manager toggles window-level hit-test passthrough', () => 
 test('pet bubble chat manager preserves dragged window position until pet moves, then re-anchors', () => {
   const logs = []
   let petBounds = { x: 300, y: 300, width: 120, height: 120 }
+  const visualTopInset = 64
   const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
   const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
     BrowserWindow: FakeBrowserWindow,
@@ -673,7 +858,8 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
     settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: true, autoHide: true } }) },
     getPetWindow: () => ({
       isDestroyed: () => false,
-      getBounds: () => petBounds
+      getBounds: () => petBounds,
+      __openPetViewport: { topInset: visualTopInset }
     }),
     appLogService: { record: (entry) => logs.push(entry) }
   })
@@ -704,8 +890,50 @@ test('pet bubble chat manager preserves dragged window position until pet moves,
   assert.equal(reanchoredState.anchorMode, 'anchored')
   assert.notEqual(reanchoredState.bounds.x, initialBounds.x + 72)
   assert.notEqual(reanchoredState.bounds.y, initialBounds.y + 36)
+  const visiblePetTop = petBounds.y + visualTopInset
+  const reanchorGap = visiblePetTop - (reanchoredState.bounds.y + reanchoredState.bounds.height)
+  assert.ok(reanchorGap >= 0 && reanchorGap <= 4)
   assert.equal(logs.filter((entry) => entry.event === 'pet-bubble-chat.window.detached').length, 1)
-  assert.equal(logs.some((entry) => entry.event === 'pet-bubble-chat.window.reanchored' && entry.details.reason === 'pet-moved'), true)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'pet-bubble-chat.window.reanchored' &&
+    entry.details.reason === 'pet-moved' &&
+    entry.details.anchorProfile === 'tight-head-anchor-v1'
+  )), true)
+})
+
+test('pet bubble chat manager anchors to the visible pet viewport instead of the full pet window top', () => {
+  const visualTopInset = 64
+  const petBounds = { x: 300, y: 300, width: 120, height: 176 }
+  const { FakeBrowserWindow, instances } = createFakeBrowserWindow()
+  const { createPetBubbleChatWindowManager } = loadModuleWithElectron({
+    BrowserWindow: FakeBrowserWindow,
+    app: { on: () => {} },
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const manager = createPetBubbleChatWindowManager({
+    BrowserWindow: FakeBrowserWindow,
+    screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } }) },
+    settingsService: { get: () => ({ petBubbleChat: { enabled: true, autoPopup: false, autoHide: true } }) },
+    getPetWindow: () => ({
+      isDestroyed: () => false,
+      getBounds: () => petBounds,
+      __openPetViewport: { topInset: visualTopInset }
+    }),
+    appLogService: { record: () => {} }
+  })
+
+  manager.open({ source: 'pet-renderer', focus: true })
+
+  assert.equal(instances.length, 1)
+  const bubbleBounds = instances[0].bounds
+  const visiblePetTop = petBounds.y + visualTopInset
+  const visibleGap = visiblePetTop - (bubbleBounds.y + bubbleBounds.height)
+  const rawWindowGap = petBounds.y - (bubbleBounds.y + bubbleBounds.height)
+  assert.ok(visibleGap >= 0 && visibleGap <= 4)
+  assert.ok(rawWindowGap < 0)
+  assert.ok(Math.abs(rawWindowGap - visibleGap) >= 40)
 })
 
 test('pet bubble chat manager supports renderer-driven dragging without a toolbar region', () => {
@@ -912,7 +1140,7 @@ test('pet bubble chat manager preserves recent visible dialogue history across r
 
   assert.deepEqual(
     completed.items.filter((item) => item.kind === 'dialogue').map((item) => item.text),
-    ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答']
+    ['旧问题 1', '旧回答 1', '旧问题 2', '旧回答 2', '新问题', '新回答', '思考提示']
   )
 })
 

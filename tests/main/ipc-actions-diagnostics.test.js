@@ -146,6 +146,18 @@ const createRequiredServices = (overrides = {}) => ({
     updateActionConfig: (payload) => payload,
     deleteAction: () => ({ ok: true })
   },
+  actionService: {
+    applyCreatorActionMutation: (payload) => ({
+      defaultAction: payload?.defaultAction || 'idle',
+      clickAction: payload?.clickAction || 'wave',
+      actions: [
+        { id: 'idle', label: 'Idle', kind: 'idle' },
+        { id: 'wave', label: 'Wave', kind: 'custom' }
+      ],
+      triggerRules: [],
+      triggerProposalInbox: []
+    })
+  },
   applyWindowScale: () => {},
   clampToWorkArea: (_win, x, y) => ({ x, y }),
   getMovementState: () => null,

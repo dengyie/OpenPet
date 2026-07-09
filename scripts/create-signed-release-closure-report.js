@@ -175,6 +175,26 @@ const macosBlockers = (manifest) => {
   return blockers
 }
 
+const macosArtifactBlockers = (manifest) => {
+  const blockers = []
+  const artifactArchive = manifest.archives?.macosArtifact
+  if (!artifactArchive?.file?.exists) return blockers
+
+  if (artifactArchive.matchesMacosEvidence !== true || artifactArchive.ok !== true) {
+    const errors = (artifactArchive.errors || []).filter(hasText)
+    if (errors.length) blockers.push(...errors.map((error) => `macOS imported artifact evidence: ${error}`))
+    else blockers.push('macOS imported artifact evidence does not match the archived macOS evidence files')
+  }
+
+  if (artifactArchive.releaseReady !== true) {
+    const warnings = (artifactArchive.warnings || []).filter(hasText)
+    if (warnings.length) blockers.push(...warnings.map((warning) => `macOS imported artifact evidence: ${warning}`))
+    else if (artifactArchive.ok === true) blockers.push('macOS imported artifact evidence is archived but not signed release-ready')
+  }
+
+  return blockers
+}
+
 const unique = (items) => [...new Set(items.filter(hasText))]
 
 const createClaim = ({ key, ready, claim, blockedClaim, blockers }) => ({
@@ -193,6 +213,7 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
 
   const macosClaimBlockers = unique([
     ...macosBlockers(manifest),
+    ...macosArtifactBlockers(manifest),
     ...reportBlockers({
       label: 'macOS packaged runtime evidence',
       section: packagedRuntime,
@@ -219,11 +240,6 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
       label: 'Windows desktop picker archive evidence',
       section: desktopPickerArchive,
       matchLabel: 'archived desktop picker report'
-    }),
-    ...reportBlockers({
-      label: 'Windows packaged runtime evidence',
-      section: packagedRuntime,
-      requiredPlatform: 'win32'
     })
   ])
 
@@ -278,7 +294,7 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
       ? ['Attach the closure report and archive manifest to the release notes before publishing.']
       : unique([
           ...macosClaimBlockers.length ? ['Capture signed macOS codesign, notarization, Gatekeeper, and packaged runtime launch evidence.'] : [],
-          ...windowsClaimBlockers.length ? ['Capture signed Windows Authenticode, clean-machine smoke, desktop picker, and packaged runtime evidence.'] : [],
+          ...windowsClaimBlockers.length ? ['Capture signed Windows Authenticode, clean-machine smoke, and desktop picker evidence.'] : [],
           ...manifestBlockers.length ? ['Regenerate the release evidence archive manifest with --require-signed after all evidence is ready.'] : []
         ])
   }

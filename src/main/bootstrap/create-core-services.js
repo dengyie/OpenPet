@@ -76,11 +76,35 @@ const createCoreServices = ({
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const aboutService = createAboutService({ app, packageJson })
   const petMovementPolicy = createPetMovementPolicy({ screen })
-  const actionImportService = createActionImportService({
+  const createLegacyActionImportService = () => createActionImportService({
     framesRoot: path.join(projectRoot, 'cat_anime', 'flames'),
     spritesDir: path.join(projectRoot, 'cat_anime', 'sprites'),
     configPath: path.join(projectRoot, 'cat_anime', 'animations.json')
   })
+  const createActiveActionImportService = () => {
+    const activePack = petPackService.getActivePetPack()
+    const sourceType = activePack.source?.type || ''
+    if (sourceType === 'user-installed') {
+      return createActionImportService({
+        framesRoot: path.join(activePack.rootPath, 'frames'),
+        spritesDir: path.join(activePack.rootPath, 'sprites'),
+        configPath: path.join(activePack.rootPath, 'pet.json'),
+        configType: 'pet-pack',
+        spriteRelativeDir: 'sprites'
+      })
+    }
+    if (sourceType === 'built-in' && activePack.manifest?.id === 'legacy-cat') {
+      return createLegacyActionImportService()
+    }
+    throw new Error('Action frame editing is only available for the built-in legacy pack or active installed pet packs')
+  }
+  const actionImportService = {
+    inspectActionFrames: (payload) => createActiveActionImportService().inspectActionFrames(payload),
+    importActionFrames: (payload) => createActiveActionImportService().importActionFrames(payload),
+    regenerate: (payload) => createActiveActionImportService().regenerate(payload),
+    updateActionConfig: (payload) => createActiveActionImportService().updateActionConfig(payload),
+    deleteAction: (actionId) => createActiveActionImportService().deleteAction(actionId)
+  }
   const cursorAssetService = createCursorAssetService({
     cursorDir: path.join(app.getPath('userData'), 'cursors')
   })

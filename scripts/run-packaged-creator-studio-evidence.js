@@ -4,6 +4,7 @@ const { execFileSync, spawn } = require('child_process')
 
 const DEFAULT_EVIDENCE_ROOT = path.join('docs', 'release-evidence', 'creator-studio-packaged')
 const DEFAULT_TIMEOUT_MS = 30000
+const VALID_BACKENDS = new Set(['fixture', 'provider'])
 
 const usage = () => [
   'Usage: node scripts/run-packaged-creator-studio-evidence.js [options]',
@@ -11,6 +12,7 @@ const usage = () => [
   'Options:',
   '  --app <OpenPet.app|exe>         Packaged OpenPet app path.',
   '  --archive-dir <dir>            Output archive directory.',
+  '  --backend <fixture|provider>   Generation backend to request inside the packaged app.',
   '  --json                         Print the generated summary as JSON.',
   '  --help',
   '',
@@ -28,6 +30,7 @@ const parseArgs = (argv) => {
   const options = {
     appPath: '',
     archiveDir: '',
+    backend: 'fixture',
     json: false,
     help: false
   }
@@ -42,11 +45,18 @@ const parseArgs = (argv) => {
     } else if (arg === '--archive-dir') {
       options.archiveDir = readValue(argv, index, arg)
       index += 1
+    } else if (arg === '--backend') {
+      options.backend = readValue(argv, index, arg)
+      index += 1
     } else if (arg === '--json') {
       options.json = true
     } else {
       throw new Error(`Unexpected argument: ${arg}`)
     }
+  }
+
+  if (!VALID_BACKENDS.has(options.backend)) {
+    throw new Error(`Unexpected backend: ${options.backend}`)
   }
 
   return options
@@ -106,6 +116,7 @@ const resolveMacExecutable = (appPath) => {
 const defaultOrchestratePackagedApp = async ({
   archiveDir,
   appPath,
+  backend = 'fixture',
   timeoutMs = DEFAULT_TIMEOUT_MS,
   spawnImpl = spawn,
   fsImpl = fs,
@@ -126,7 +137,8 @@ const defaultOrchestratePackagedApp = async ({
       OPENPET_PACKAGED_CREATOR_STUDIO_OUTPUT: runtimeArtifactPath,
       OPENPET_PACKAGED_CREATOR_STUDIO_STDOUT: stdoutPath,
       OPENPET_PACKAGED_CREATOR_STUDIO_STDERR: stderrPath,
-      OPENPET_PACKAGED_CREATOR_STUDIO_APP_PATH: path.basename(appPath || executable)
+      OPENPET_PACKAGED_CREATOR_STUDIO_APP_PATH: path.basename(appPath || executable),
+      OPENPET_PACKAGED_CREATOR_STUDIO_BACKEND: backend
     },
     stdio: 'ignore',
     detached: false
@@ -157,6 +169,7 @@ const summarizeRuntimeArtifact = (runtimeArtifact, now = () => new Date()) => ({
   commandRequested: Boolean(runtimeArtifact?.command?.requested),
   commandOk: Boolean(runtimeArtifact?.command?.ok),
   commandId: runtimeArtifact?.command?.commandId || 'draft-task',
+  backendRequested: runtimeArtifact?.command?.backend || 'fixture',
   runId: runtimeArtifact?.command?.runId || '',
   taskStatus: runtimeArtifact?.command?.taskStatus || '',
   mode: runtimeArtifact?.command?.mode || ''
@@ -165,12 +178,14 @@ const summarizeRuntimeArtifact = (runtimeArtifact, now = () => new Date()) => ({
 const createPackagedCreatorStudioEvidenceRun = async ({
   appPath,
   archiveDir = '',
+  backend = 'fixture',
   now = () => new Date(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
   orchestratePackagedAppImpl = defaultOrchestratePackagedApp,
   fsImpl = fs
 } = {}) => {
   if (!appPath) throw new Error('--app is required')
+  if (!VALID_BACKENDS.has(backend)) throw new Error(`Unexpected backend: ${backend}`)
 
   const selectedArchiveDir = archiveDir || defaultArchiveDir({ now })
   ensureDir(selectedArchiveDir, fsImpl)
@@ -185,6 +200,7 @@ const createPackagedCreatorStudioEvidenceRun = async ({
     orchestration = await orchestratePackagedAppImpl({
       archiveDir: selectedArchiveDir,
       appPath,
+      backend,
       now,
       timeoutMs,
       fsImpl

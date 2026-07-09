@@ -1,0 +1,2 @@
+Imported workflow artifact did not include a Windows uninstall-registry snapshot.
+This placeholder preserves archive structure only and must not be treated as observed install evidence.

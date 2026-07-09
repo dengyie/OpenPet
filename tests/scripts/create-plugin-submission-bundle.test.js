@@ -12,6 +12,9 @@ const {
 } = require('../../scripts/create-plugin-submission-bundle')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/focus-timer')
+const resolveBundlePath = (bundleDir, recordedPath) => (
+  path.isAbsolute(recordedPath) ? recordedPath : path.join(bundleDir, recordedPath)
+)
 
 test('parseArgs accepts source, output directory, signing, json, update, and blocklist flags', () => {
   const options = parseArgs([
@@ -58,9 +61,11 @@ test('createPluginSubmissionBundle writes report, PR packet, and summary', () =>
   assert.equal(summary.generatedAt, '2026-06-16T00:00:00.000Z')
   assert.equal(summary.readyForHumanReview, true)
   assert.equal(summary.plugin.id, 'openpet.example.focus-timer')
-  assert.match(fs.readFileSync(summary.files.report, 'utf-8'), /Plugin Submission Report/)
-  assert.match(fs.readFileSync(summary.files.pr, 'utf-8'), /Plugin submission: Focus Timer/)
-  assert.equal(JSON.parse(fs.readFileSync(summary.files.summary, 'utf-8')).plugin.id, 'openpet.example.focus-timer')
+  assert.equal(summary.outputDir, 'plugin-submission-bundle')
+  assert.equal(summary.files.report, 'plugin-submission-report.md')
+  assert.match(fs.readFileSync(resolveBundlePath(outputDir, summary.files.report), 'utf-8'), /Plugin Submission Report/)
+  assert.match(fs.readFileSync(resolveBundlePath(outputDir, summary.files.pr), 'utf-8'), /Plugin submission: Focus Timer/)
+  assert.equal(JSON.parse(fs.readFileSync(resolveBundlePath(outputDir, summary.files.summary), 'utf-8')).plugin.id, 'openpet.example.focus-timer')
 })
 
 test('createPluginSubmissionBundle blocks strict signature failures while preserving artifacts', () => {
@@ -74,7 +79,7 @@ test('createPluginSubmissionBundle blocks strict signature failures while preser
   assert.equal(summary.readyForHumanReview, false)
   assert.equal(summary.decision, 'blocked-before-review')
   assert.match(summary.validation.errors.join('\n'), /Signature hash metadata must be verified/)
-  assert.equal(fs.existsSync(summary.files.summary), true)
+  assert.equal(fs.existsSync(resolveBundlePath(outputDir, summary.files.summary)), true)
 })
 
 test('writeText creates parent directories and trailing newline', () => {
