@@ -134,10 +134,6 @@ export const buildVisionConfigSavePayload = (
   return payload
 }
 
-export const formatActiveProviderSummary = (config: AiConfigViewState) => (
-  `${formatProviderDisplayName(config.provider)} · ${normalizeProviderBaseUrl(config.baseUrl)} · ${config.model.trim() || '未设置 Model'} · ${config.hasApiKey ? 'API key saved' : 'API key missing'}`
-)
-
 export const formatConnectionTestStatus = (result: AiConnectionTestResult) => (
   result.ok
     ? `连接测试通过：${formatProviderDisplayName(result.provider)} · ${result.baseUrl} · ${result.model} · ${result.elapsedMs}ms`

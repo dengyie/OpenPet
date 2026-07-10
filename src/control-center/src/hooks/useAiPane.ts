@@ -20,7 +20,6 @@ import { messageFromError } from '../lib/errors'
 import {
   buildProviderConfigSavePayload,
   buildImageGenerationConfigSavePayload,
-  formatActiveProviderSummary,
   getProviderConfigChanges,
   getImageGenerationConfigChanges,
   hasImageGenerationConfigChanges,
@@ -167,22 +166,6 @@ const formatConnectionStatus = ({
     ? `连接正常：${context}${result.reply ? ` · ${result.reply}` : ''}`
     : `连接失败：${localizedMessage || result.code || 'Unknown error'} · ${context}`
   return notice ? `${notice} ${details}` : details
-}
-
-const validateAiConfigDraft = (config: AiConfigViewState) => {
-  const model = String(config.model || '').trim()
-  const baseUrl = String(config.baseUrl || '').trim()
-  if (!model) throw new Error('Model 不能为空')
-  if (!baseUrl) throw new Error('Base URL 不能为空')
-  let parsed
-  try {
-    parsed = new URL(baseUrl)
-  } catch (_) {
-    throw new Error('Base URL 必须是有效的 HTTP 或 HTTPS 地址')
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Base URL 必须使用 HTTP 或 HTTPS')
-  }
 }
 
 const formatImageGenerationHealthStatus = (result: ImageGenerationHealthCheckResult) => {
@@ -1126,7 +1109,6 @@ export function useAiPane(activeTab = 'ai') {
     personaDraft,
     providerConfigDirty: hasProviderConfigChanges(config, activeConfig),
     providerConfigChanges: getProviderConfigChanges(config, activeConfig),
-    activeProviderSummary: formatActiveProviderSummary(activeConfig),
     providerConfigValidationError: validateProviderConfig(config),
     connectionTestResult,
     chatModelDiscovery,

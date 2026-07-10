@@ -578,11 +578,6 @@ button {
   overflow-wrap: anywhere;
 }
 
-.provider-model-pill-muted {
-  background: #f8fafc;
-  color: #334155;
-}
-
 .provider-model-pill.active {
   border-color: #111827;
   background: #111827;
@@ -611,6 +606,17 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.provider-model-status {
+  padding: 8px 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .provider-model-source-badge {

@@ -10,13 +10,6 @@ const uniqueModelOptions = (items: string[]) => {
   return models
 }
 
-export type ProviderModelOptionSource = 'recommended' | 'cached' | 'manual'
-
-export type ProviderModelOption = {
-  id: string
-  source: ProviderModelOptionSource
-}
-
 export type ProviderModelSelectorRow = {
   id: string
   cached: boolean
@@ -27,45 +20,6 @@ export type ProviderModelSelectorGroups = {
   recommended: ProviderModelSelectorRow[]
   cached: ProviderModelSelectorRow[]
   manual: ProviderModelSelectorRow[]
-}
-
-export const mergeRecommendedAndCachedModels = ({
-  currentModel,
-  recommendedModels = [],
-  cachedModels = []
-}: {
-  currentModel: string
-  recommendedModels?: string[]
-  cachedModels?: string[]
-}) => uniqueModelOptions([
-  ...cachedModels,
-  ...recommendedModels,
-  String(currentModel || '').trim()
-])
-
-export const buildProviderModelOptions = ({
-  currentModel,
-  recommendedModels = [],
-  cachedModels = []
-}: {
-  currentModel: string
-  recommendedModels?: string[]
-  cachedModels?: string[]
-}): ProviderModelOption[] => {
-  const normalizedCurrentModel = String(currentModel || '').trim()
-  const recommended = uniqueModelOptions(recommendedModels)
-  const cached = uniqueModelOptions(cachedModels)
-  const all = mergeRecommendedAndCachedModels({
-    currentModel: normalizedCurrentModel,
-    recommendedModels: recommended,
-    cachedModels: cached
-  })
-
-  return all.map((id) => {
-    if (recommended.includes(id)) return { id, source: 'recommended' }
-    if (cached.includes(id)) return { id, source: 'cached' }
-    return { id, source: 'manual' }
-  })
 }
 
 export const describeCurrentModelSource = ({

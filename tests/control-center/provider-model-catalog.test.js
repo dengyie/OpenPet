@@ -1,33 +1,27 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-test('mergeRecommendedAndCachedModels keeps cached models first and preserves current custom model', async () => {
-  const { mergeRecommendedAndCachedModels } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+test('buildProviderModelSelectorGroups dedupes models and keeps current custom model as manual', async () => {
+  const { buildProviderModelSelectorGroups } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
 
-  assert.deepEqual(mergeRecommendedAndCachedModels({
+  assert.deepEqual(buildProviderModelSelectorGroups({
     currentModel: 'custom-gateway-model',
     recommendedModels: ['gpt-4o-mini', 'gpt-5.5'],
     cachedModels: ['gpt-5.5', 'gpt-4o-mini', 'gpt-5.5']
-  }), [
-    'gpt-5.5',
-    'gpt-4o-mini',
-    'custom-gateway-model'
-  ])
+  }), {
+    recommended: [
+      { id: 'gpt-4o-mini', cached: true, selected: false },
+      { id: 'gpt-5.5', cached: true, selected: false }
+    ],
+    cached: [],
+    manual: [
+      { id: 'custom-gateway-model', cached: false, selected: true }
+    ]
+  })
 })
 
-test('buildProviderModelOptions and current source label distinguish recommended cached and manual values', async () => {
-  const { buildProviderModelOptions, describeCurrentModelSource } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
-
-  assert.deepEqual(buildProviderModelOptions({
-    currentModel: 'custom-gateway-model',
-    recommendedModels: ['gpt-4o-mini', 'gpt-5.5'],
-    cachedModels: ['gpt-5.5', 'openpet-chat-test']
-  }), [
-    { id: 'gpt-5.5', source: 'recommended' },
-    { id: 'openpet-chat-test', source: 'cached' },
-    { id: 'gpt-4o-mini', source: 'recommended' },
-    { id: 'custom-gateway-model', source: 'manual' }
-  ])
+test('current source label distinguishes recommended cached and manual values', async () => {
+  const { describeCurrentModelSource } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
 
   assert.deepEqual(describeCurrentModelSource({
     currentModel: 'gpt-5.5',

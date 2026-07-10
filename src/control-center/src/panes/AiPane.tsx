@@ -59,6 +59,7 @@ type ProviderModelSelectorProps = {
   cachedCatalog: ProviderModelCatalogViewState
   recommendedModels?: string[]
   saving?: boolean
+  statusText?: string
   onSelectModel: (model: string) => void
   onRefreshModels?: () => void | Promise<void>
 }
@@ -78,6 +79,7 @@ function ProviderModelSelector({
   cachedCatalog,
   recommendedModels = [],
   saving = false,
+  statusText = '',
   onSelectModel,
   onRefreshModels
 }: ProviderModelSelectorProps) {
@@ -114,6 +116,7 @@ function ProviderModelSelector({
   const listButtonLabel = expanded
     ? '收起模型列表'
     : `查看模型列表${cachedCount ? ` ${cachedCount}` : ''}`
+  const normalizedStatusText = String(statusText || '').trim()
   const getSourceLabel = (source: 'recommended' | 'cached' | 'manual') => {
     if (source === 'recommended') return '推荐模型'
     if (source === 'cached') return '缓存模型'
@@ -172,6 +175,11 @@ function ProviderModelSelector({
         </button>
       </div>
       <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
+      {normalizedStatusText ? (
+        <div className="provider-model-status" data-testid={`${ariaLabel}-status`} aria-live="polite">
+          {normalizedStatusText}
+        </div>
+      ) : null}
       <div className="provider-model-option-groups" id={sourceListId} data-testid={sourceListTestId} hidden={!expanded}>
         <label className="provider-model-filter">
           <span className="field-label">搜索模型</span>
@@ -700,7 +708,6 @@ export interface AiPaneProps {
   }
   providerConfigDirty: boolean
   providerConfigChanges: string[]
-  activeProviderSummary: string
   providerConfigValidationError: string
   connectionTestResult: AiConnectionTestResult | null
   chatModelDiscovery: ProviderModelDiscoveryResult | null
@@ -797,7 +804,6 @@ export function AiPane({
   personaDraft,
   providerConfigDirty,
   providerConfigChanges,
-  activeProviderSummary,
   providerConfigValidationError,
   connectionTestResult,
   chatModelDiscovery,
@@ -1024,6 +1030,7 @@ export function AiPane({
                       cachedCatalog={activeConfig.modelCatalog}
                       recommendedModels={chatRecommendedModels}
                       saving={saving}
+                      statusText={chatModelDiscoveryStatus}
                       onSelectModel={(model) => onChange({ model })}
                       onRefreshModels={onDiscoverAiModels}
                     />
@@ -1096,6 +1103,7 @@ export function AiPane({
                       cachedCatalog={activeImageGenerationConfig.modelCatalog}
                       recommendedModels={imageRecommendedModels}
                       saving={saving}
+                      statusText={imageModelDiscoveryStatus}
                       onSelectModel={(model) => onChangeImageGeneration({ model })}
                       onRefreshModels={onDiscoverImageGenerationModels}
                     />
@@ -1361,6 +1369,7 @@ export function AiPane({
                             cachedCatalog={activeConfig.vision.modelCatalog}
                             recommendedModels={visionRecommendedModels}
                             saving={saving}
+                            statusText={visionModelDiscoveryStatus}
                             onSelectModel={(model) => onChangeVision({ model })}
                             onRefreshModels={onDiscoverVisionModels}
                           />
