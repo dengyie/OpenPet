@@ -244,9 +244,15 @@ const sanitizeRowQa = (qa) => ({
   frameCount: qa.frameCount,
   expectedFrameCount: qa.expectedFrameCount,
   uniqueFrameCount: qa.uniqueFrameCount,
+  alphaMaskUniqueFrameCount: qa.alphaMaskUniqueFrameCount,
+  upperAlphaMaskUniqueFrameCount: qa.upperAlphaMaskUniqueFrameCount,
+  lowerAlphaMaskUniqueFrameCount: qa.lowerAlphaMaskUniqueFrameCount,
   centroidDrift: qa.centroidDrift,
+  centroidYRange: qa.centroidYRange,
   baselineDrift: qa.baselineDrift,
   sizeDrift: qa.sizeDrift,
+  edgeTouchFrameCount: qa.edgeTouchFrameCount,
+  ...(qa.identityReference ? { identityReference: qa.identityReference } : {}),
   errors: qa.errors,
   warnings: qa.warnings,
   ...(qa.stabilization ? {
@@ -313,16 +319,23 @@ const resolveOfficialRowFramePath = ({ dataDir, actionId, frame }) => {
   return realFramePath
 }
 
-const normalizeOfficialRowFrames = ({ dataDir, actionId, frames }) => (
+const normalizeOfficialRowFrames = async ({ dataDir, actionId, frames }) => (
   Array.isArray(frames)
-    ? frames.map((frame, index) => ({
+    ? Promise.all(frames.map(async (frame, index) => {
+        const framePath = resolveOfficialRowFramePath({ dataDir, actionId, frame })
+        const metadata = await sharp(framePath).metadata()
+        if (metadata.width !== CODEX_ATLAS.cellWidth || metadata.height !== CODEX_ATLAS.cellHeight) {
+          throw new Error(`Official full-pet row ${actionId} frame ${index + 1} must be exactly ${CODEX_ATLAS.cellWidth}x${CODEX_ATLAS.cellHeight}`)
+        }
+        return {
         ...(
           frame && typeof frame === 'object' && !Array.isArray(frame)
             ? frame
             : {}
         ),
         index: Number.isInteger(frame?.index) ? frame.index : index,
-        path: resolveOfficialRowFramePath({ dataDir, actionId, frame })
+        path: framePath
+        }
       }))
     : []
 )
@@ -344,12 +357,14 @@ const analyzeOfficialRowWithStableSlots = async ({
   qaDir,
   row,
   frames,
-  sourceKind
+  sourceKind,
+  identityReferenceMeanRgb = null
 }) => {
   const initialQa = await analyzeRowFrames({
     actionId: row.id,
     frames,
-    sourceKind
+    sourceKind,
+    identityReferenceMeanRgb
   })
   if (initialQa.quality !== FULL_PET_ROW_QUALITY.FAILED) {
     return {
@@ -373,7 +388,8 @@ const analyzeOfficialRowWithStableSlots = async ({
   const stabilizedQa = await analyzeRowFrames({
     actionId: row.id,
     frames: stabilized.frames,
-    sourceKind
+    sourceKind,
+    identityReferenceMeanRgb
   })
   return {
     frames: stabilized.frames,
@@ -411,7 +427,7 @@ const buildOfficialAtlasFromRows = async ({
     if (!input) {
       throw new Error(`Official full-pet row package is missing ${row.id}`)
     }
-    const frames = normalizeOfficialRowFrames({
+    const frames = await normalizeOfficialRowFrames({
       dataDir,
       actionId: row.id,
       frames: input.frames
@@ -428,7 +444,8 @@ const buildOfficialAtlasFromRows = async ({
       qaDir,
       row,
       frames,
-      sourceKind
+      sourceKind,
+      identityReferenceMeanRgb: input.identityReferenceMeanRgb || null
     })
     const qa = rowAnalysis.qa
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
@@ -595,7 +612,6 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     }
   }
 
-  const rowCellBuffers = new Map()
   const basicActionRows = []
   const warnings = []
   const inspectEntryVisibility = createEntryVisibilityInspector({
@@ -621,10 +637,6 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
       }
     }
     const previewSource = await preparePreviewSource(resolved.entry)
-    rowCellBuffers.set(row.id, await createPreviewCellBuffers({
-      sourcePath: previewSource.sourceInput,
-      row
-    }))
     basicActionRows.push({
       actionId: row.id,
       sourceActionId: resolved.sourceActionId,
@@ -634,35 +646,16 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     })
   }
   const basicActions = createBasicActionCoverage(basicActionRows)
-  const atlasBuffer = await sharp({
-    create: {
-      width: CODEX_ATLAS.width,
-      height: CODEX_ATLAS.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    }
-  })
-    .composite(createCellComposites(rowCellBuffers))
-    .png()
-    .toBuffer()
-  await sharp(await sanitizeNearTransparentPixels(atlasBuffer))
+  const previewPath = path.join(outputDir, 'base-preview.webp')
+  const previewCell = await createNormalizedCellBuffer(fallbackPreviewSource.sourceInput)
+  await sharp(await sanitizeNearTransparentPixels(previewCell))
     .webp({ lossless: true })
     .toFile(previewPath)
 
-  const atlasVisiblePixels = await countVisiblePixels(spritesheetPath)
-  const frameRows = []
-  for (const row of CODEX_ROWS) {
-    frameRows.push({
-      id: row.id,
-      row: row.row,
-      frameCount: row.durations.length,
-      uniqueFrameCount: await countUniqueRowFrames({ spritesheetPath, row }),
-      sourceQuality: basicActionRows.find((candidate) => candidate.actionId === row.id)?.quality || 'unknown'
-    })
-  }
+  const previewVisiblePixels = await countVisiblePixels(previewPath)
   const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
   const atlasQaPath = path.join(qaDir, 'atlas-validation.json')
-  const atlasSha256 = sha256File(spritesheetPath)
+  const previewSha256 = sha256File(previewPath)
   const sourceSha256 = sha256File(sourcePath)
   writeJson(sourceQaPath, {
     ok: true,
@@ -679,20 +672,18 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
     warnings: []
   })
   writeJson(atlasQaPath, {
-    ok: true,
-    width: CODEX_ATLAS.width,
-    height: CODEX_ATLAS.height,
-    visiblePixels: atlasVisiblePixels,
-    atlasSha256,
+    ok: false,
+    previewOnly: true,
+    reason: 'official_action_rows_required',
+    width: CODEX_ATLAS.cellWidth,
+    height: CODEX_ATLAS.cellHeight,
+    visiblePixels: previewVisiblePixels,
+    previewSha256,
     sourceRelativePath,
     sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
     qualityProfile: createQualityProfileEvidence(qualityProfile),
     basicActions,
-    frame: {
-      width: CODEX_ATLAS.cellWidth,
-      height: CODEX_ATLAS.cellHeight,
-      rows: frameRows
-    },
+    frame: null,
     warnings
   })
 

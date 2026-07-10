@@ -43,7 +43,8 @@ Provider tests showed three useful facts:
 
 - `gpt-image-2` with several separate reference uploads can fail or time out through the current gateway, including an upstream `context canceled` around 300 seconds.
 - `gpt-image-2` with one reference image and a shorter prompt can complete, but direct sprite-sheet generation still has weak identity and action quality.
-- A clean single composite reference board followed by canonical-frame synthesis produced the best technical result so far: six unique frames, stable baseline, low centroid drift, and no excessive deterministic jitter.
+- A clean single composite reference board followed by canonical-frame synthesis produced the best technical result in that earlier experiment: six unique frames, stable baseline, low centroid drift, and no excessive deterministic jitter.
+- Superseded 2026-07-09 update: deliverable action quality must come from a complete provider-generated sprite sheet. Local canonical synthesis is no longer an acceptable completion path; OpenPet may only build reference boards, request provider rows, split frames, and run QA.
 
 The conclusion is that OpenPet should avoid multi-file provider conditioning and avoid asking the model to solve identity, view planning, action planning, and final sprite layout in one step.
 
@@ -54,7 +55,7 @@ This slice does not:
 - guarantee provider art quality without human review;
 - solve provider uptime, quota, or gateway deadlines;
 - require users to upload their own collages or model sheets;
-- replace existing canonical-frame local synthesis;
+- bypass the 2026-07-09 provider-row requirement for deliverable action output;
 - remove Creator Studio advanced controls;
 - rewrite the official row pipeline end to end;
 - claim preview fallback rows as official-quality action rows.
@@ -194,7 +195,7 @@ The action anchor prompt receives the character anchor as the primary reference 
 - same character identity as the character anchor;
 - one or a few clear action key poses, depending on action type;
 - stable lower-center root and unchanged body scale;
-- moving parts clearly separated enough for local synthesis or row generation;
+- moving parts clearly separated enough to guide provider sprite-row generation;
 - no redesign, no new species, no new outfit/accessory unless requested;
 - no scene, props, motion blur, text, labels, or decorative effects.
 
@@ -204,12 +205,12 @@ For locomotion actions such as running, the action anchor should describe in-pla
 
 ## Final Action Generation Contract
 
-Final generation should choose the most stable path by action type:
+Final generation should use the provider row path:
 
-- Single-action default: generate or reuse one action anchor, then produce a canonical source frame and let OpenPet synthesize bounded local frames.
-- Stationary actions: prefer canonical-frame synthesis with local motion patches.
-- Locomotion and official rows: use action anchor plus row-strip prompts when official row generation is explicitly requested.
-- Full-pet preview path: may still produce base/preview output, but must honestly report missing official rows.
+- Single-action default: generate action keyframe/reference evidence, then ask the provider for a complete action sprite sheet.
+- Stationary actions: still require complete provider-generated rows; local patch motion is not deliverable output.
+- Locomotion and official rows: use action anchor plus row-strip prompts with strict QA.
+- Full-pet preview path: may still produce base/preview output, but must honestly report missing official rows and must not claim preview rows as official-quality actions.
 
 Every final action prompt should include:
 

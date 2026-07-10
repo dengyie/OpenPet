@@ -15,30 +15,9 @@ const {
   OFFICIAL_FULL_PET_ROWS
 } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
 const { getActionSheetLayout } = require('../../examples/plugins/creator-studio/lib/action-sheet-layout')
-const {
-  FULL_PET_COMMAND_TIMEOUT_MS,
-  FULL_PET_WORKFLOW_MAX_DURATION_MS
-} = require('../../examples/plugins/creator-studio/lib/full-pet-workflow-contract')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/creator-studio')
 const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))
-const createHumanApprovalEvidence = (overrides = {}) => ({
-  approved: true,
-  source: 'control-center',
-  approvedAt: '2026-07-17T00:00:00.000Z',
-  evidenceVersion: 1,
-  ...overrides
-})
-const assertProviderNeutralImagePrompt = (prompt) => {
-  assert.doesNotMatch(prompt, /\bOpenPet\b/i)
-  assert.doesNotMatch(prompt, /\bProvider\b/i)
-  assert.doesNotMatch(prompt, /\bbackend\b/i)
-  assert.doesNotMatch(prompt, /\b(?:run|action)[-_ ]?id\b/i)
-  assert.doesNotMatch(prompt, /\breference[-_ ]?role\b/i)
-  assert.doesNotMatch(prompt, /\bcheckpoint\b/i)
-  assert.doesNotMatch(prompt, /\bmultipart\b/i)
-  assert.doesNotMatch(prompt, /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\//i)
-}
 const createActionFrameQa = ({
   actionId = 'shy-spin',
   frameCount = 1,
@@ -61,72 +40,26 @@ const createActionFrameQa = ({
   warnings: []
 })
 
-const createGeneratedActionSheetFrameSvg = ({
-  width,
-  height,
-  body,
-  head,
-  pawLift,
-  pawAngle
-}) => `
-  <svg width="${width}" height="${height}" viewBox="0 0 196 212" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="98" cy="130" rx="48" ry="58" fill="${body}" />
-    <circle cx="98" cy="78" r="42" fill="${head}" />
-    <circle cx="72" cy="43" r="16" fill="${head}" />
-    <circle cx="124" cy="43" r="16" fill="${head}" />
-    <ellipse cx="98" cy="146" rx="25" ry="36" fill="#f2dcc0" opacity="0.92" />
-    <ellipse cx="84" cy="80" rx="7" ry="8" fill="#4f8c42" />
-    <ellipse cx="112" cy="80" rx="7" ry="8" fill="#4f8c42" />
-    <ellipse cx="98" cy="96" rx="10" ry="7" fill="#f2dcc0" opacity="0.95" />
-    <circle cx="98" cy="93" r="3" fill="#7b4b2a" />
-    <ellipse cx="75" cy="188" rx="16" ry="9" fill="${body}" />
-    <ellipse cx="121" cy="188" rx="16" ry="9" fill="${body}" />
-    <g transform="rotate(${pawAngle} 132 ${122 - pawLift})">
-      <ellipse cx="132" cy="${122 - pawLift}" rx="11" ry="32" fill="${body}" />
-      <circle cx="132" cy="${92 - pawLift}" r="11" fill="${head}" />
-    </g>
-    <ellipse cx="64" cy="135" rx="11" ry="32" fill="${body}" />
-  </svg>
-`
-
 const createGeneratedActionSheet = async ({ filePath, frameCount = 12, palette } = {}) => {
-  const columns = Math.max(1, Math.min(4, frameCount))
-  const rows = Math.max(1, Math.ceil(frameCount / columns))
-  const cellWidth = 256
-  const cellHeight = 256
-  const colors = Array.isArray(palette) && palette.length > 0
-    ? palette
-    : ['#d89b45', '#e2ad5b']
-  const poses = [
-    { pawLift: 0, pawAngle: 0 },
-    { pawLift: 8, pawAngle: -4 },
-    { pawLift: 18, pawAngle: -10 },
-    { pawLift: 26, pawAngle: -16 },
-    { pawLift: 30, pawAngle: 8 },
-    { pawLift: 22, pawAngle: -8 },
-    { pawLift: 14, pawAngle: 4 },
-    { pawLift: 6, pawAngle: 1 },
-    { pawLift: 0, pawAngle: 0 },
-    { pawLift: 7, pawAngle: -3 },
-    { pawLift: 15, pawAngle: -8 },
-    { pawLift: 3, pawAngle: 1 }
-  ]
-  const body = colors[0] || '#d89b45'
-  const head = colors[1] || body
-  const composites = Array.from({ length: frameCount }, (_entry, index) => {
-    const column = index % columns
-    const row = Math.floor(index / columns)
-    const pose = poses[index % poses.length]
-    return {
-      input: Buffer.from(createGeneratedActionSheetFrameSvg({
-        width: cellWidth,
-        height: cellHeight,
-        body,
-        head,
-        ...pose
-      })),
-      left: column * cellWidth,
-      top: row * cellHeight
+  return writeGoodSubtleWaveSheet({ filePath, frameCount, palette })
+}
+
+const createMockOfficialFrameSvgBuffer = ({ rowIndex, frameIndex }) => Buffer.from(
+  `<svg width="192" height="208" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3)}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
+    <rect x="${78 + frameIndex * 3}" y="${74 + (rowIndex % 4)}" width="12" height="${26 + (frameIndex % 5)}" fill="#1c7ed6"/>
+    <rect x="${90 - (frameIndex % 2)}" y="150" width="${20 + (rowIndex % 3)}" height="8" fill="#2f9e44"/>
+  </svg>`
+)
+
+const writeMockProviderBasePng = async (outputPath) => {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: 512,
+      height: 512,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
     }
   })
     .composite([{
@@ -232,27 +165,6 @@ const writeMockProviderImage = async ({ outputPath, dataRelativeDir }) => {
     return
   }
   await writeMockProviderBasePng(outputPath)
-}
-
-const attachCanonicalReferenceToRun = async ({ dataDir, runId }) => {
-  const runPath = path.join(dataDir, 'runs', runId, 'run.json')
-  const run = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
-  const relativePath = `runs/${runId}/inputs/references/canonical-reference.png`
-  const metadataRelativePath = `runs/${runId}/inputs/references/reference.json`
-  run.input.referenceImage = {
-    targetType: 'editable-action-host',
-    targetId: 'legacy-editable-host',
-    fileName: 'canonical-reference.png',
-    originalFileName: 'canonical-reference.png',
-    width: 512,
-    height: 512,
-    contentHash: 'canonical-reference-hash',
-    relativePath,
-    metadataRelativePath
-  }
-  fs.writeFileSync(runPath, `${JSON.stringify(run, null, 2)}\n`)
-  await writeMockProviderBasePng(path.join(dataDir, relativePath))
-  fs.writeFileSync(path.join(dataDir, metadataRelativePath), `${JSON.stringify({ ok: true }, null, 2)}\n`)
 }
 
 test('creator studio example manifest declares hybrid creator workflow entries', () => {
@@ -438,6 +350,25 @@ test('creator studio generation task validation rejects unsafe trigger proposals
     }),
     /trigger type is invalid/
   )
+})
+
+test('creator studio generation task defaults single actions to canonical provider sprite rows', () => {
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  const task = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'custom-wave',
+      name: 'Custom Wave',
+      motionPrompt: 'Wave one front paw.',
+      frameCount: 6,
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+
+  assert.equal(task.actions[0].synthesisMode, 'canonical-frame')
 })
 
 test('creator studio generation task preserves sanitized action asset protocol fields', () => {
@@ -673,7 +604,7 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.providerPrompt, /programmatically sliced/i)
 })
 
-test('creator studio prompt builder emits canonical source instructions for canonical-frame synthesis', () => {
+test('creator studio prompt builder emits complete sprite-sheet instructions for canonical-frame actions', () => {
   const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
   const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
   const generationTask = normalizeGenerationTask({
@@ -704,11 +635,12 @@ test('creator studio prompt builder emits canonical source instructions for cano
   })
 
   assert.equal(built.actionId, 'wave')
-  assert.match(built.providerPrompt, /canonical full-body source frame/i)
-  assert.match(built.providerPrompt, /OpenPet will synthesize bounded local motion/i)
+  assert.match(built.providerPrompt, /transparent-background animation sprite sheet/i)
+  assert.match(built.providerPrompt, /complete provider-generated action frames/i)
+  assert.doesNotMatch(built.providerPrompt, /OpenPet will synthesize bounded local motion/i)
   assert.match(built.providerPrompt, /source identity panels.*highest identity authority/i)
   assert.match(built.providerPrompt, /action pose panels.*motion guidance/i)
-  assert.doesNotMatch(built.providerPrompt, /3 columns x 2 rows grid/i)
+  assert.match(built.providerPrompt, /3 columns x 2 rows grid/i)
 })
 
 test('creator studio prompt builder emits a generic OpenPet action asset protocol for wave actions', () => {
@@ -1937,11 +1869,10 @@ test('creator studio run-step command uses host bridge for provider generation w
       endMs: 120
     })
     assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
-    assert.match(requests[3].payload.prompt, /animation frame sheet/i)
-    assert.match(requests[3].payload.prompt, /exactly 12 complete full-body character frames/i)
+    assert.match(requests[3].payload.prompt, /sprite sheet/i)
+    assert.match(requests[3].payload.prompt, /12 animation frames/i)
     assert.deepEqual(requests[3].payload.referenceImages.map((reference) => reference.role), ['keyframe-action-reference-board'])
     assert.equal(requests[3].payload.prompt.includes('bridge-token'), false)
-    assert.equal(Object.hasOwn(requests[3].payload, 'model'), false)
     assert.equal(requests[3].payload.timeoutMs, 300000)
     assert.deepEqual(run.modelSnapshot, {
       backend: 'provider',
@@ -2049,8 +1980,8 @@ test('creator studio run-step command fails and persists run state when provider
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /timed out after 120000ms/i)
     assert.match(run.error, /timed out after 120000ms/i)
-    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'image-edit')
-    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 1)
+    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'provider-keyframe-sprite-row')
+    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 0)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.match(run.artifacts.generatedImage.failure.message, /timed out after 120000ms/i)
     assert.equal(Array.isArray(run.artifacts.generatedImage.outputs), true)
@@ -2148,9 +2079,9 @@ test('creator studio run-step command surfaces provider business errors from the
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /旧转发链路已关闭/)
     assert.match(run.error, /旧转发链路已关闭/)
-    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'image-edit')
+    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'provider-keyframe-sprite-row')
     assert.equal(run.artifacts.generatedImage.conditioning.endpoint, '/images/edits')
-    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 1)
+    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 0)
     assert.match(run.artifacts.generatedImage.failure.message, /旧转发链路已关闭/)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.deepEqual(events.map((entry) => entry.event), ['generate.start', 'generate.failed'])
@@ -5154,27 +5085,8 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
-    const publicCompiler = detail.run.developerPrompt.promptBuilder.promptCompiler
-    assert.equal(publicCompiler.visualPlanVersion, 1)
-    assert.equal(publicCompiler.providerImageTaskVersion, 3)
-    assert.equal(publicCompiler.version, 3)
-    assert.equal(publicCompiler.promptRenderer, 'structured-image-edit-v1')
-    assert.equal(publicCompiler.modelCapabilityProfile, 'generic-image-edit-v1:local-custom-sprite-v2')
-    assert.equal(publicCompiler.backgroundStrategy, 'solid-background-then-local-removal')
-    assert.equal(publicCompiler.frameBeatCount, 16)
-    assert.equal(publicCompiler.promptCharacterCount > 0, true)
-    assert.equal(publicCompiler.promptClauseIds.filter((id) => id.startsWith('frame-beat.')).length, 16)
-    assert.equal(detail.run.developerPrompt.conditioning.mode, 'image-edit')
+    assert.equal(detail.run.developerPrompt.conditioning.mode, 'provider-keyframe-sprite-row')
     assert.equal(detail.run.developerPrompt.conditioning.referenceImageCount, 1)
-    const conditioningCompiler = detail.run.developerPrompt.conditioning.promptCompiler
-    assert.equal(conditioningCompiler.visualPlanVersion, 1)
-    assert.equal(conditioningCompiler.providerImageTaskVersion, 3)
-    assert.equal(conditioningCompiler.version, 3)
-    assert.equal(conditioningCompiler.promptRenderer, 'structured-image-edit-v1')
-    assert.equal(conditioningCompiler.modelCapabilityProfile, 'generic-image-edit-v1:local-custom-sprite-v2')
-    assert.equal(conditioningCompiler.backgroundStrategy, 'solid-background-then-local-removal')
-    assert.equal(conditioningCompiler.promptClauseIds.filter((id) => id.startsWith('frame-beat.')).length, 16)
-    assert.deepEqual(detail.run.dashboard.promptProvenance.promptCompiler, publicCompiler)
     assert.equal(detail.run.developerPrompt.promptPreview.truncated, false)
     assert.match(detail.run.developerPrompt.promptPreview.text, /^DELIVERABLE\nCreate one 1024 x 1024 animation frame sheet with exactly 16 complete full-body character frames arranged in 4 columns and 4 rows\./)
     assertProviderNeutralImagePrompt(detail.run.developerPrompt.promptPreview.text)
@@ -6681,7 +6593,7 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(failed.body.run.recovery.canRetryGeneration, true)
     assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
     assert.equal(failed.body.run.recovery.outputCount, 0)
-    assert.equal(failed.body.run.recovery.conditioning.mode, 'image-edit')
+    assert.equal(failed.body.run.recovery.conditioning.mode, 'provider-keyframe-sprite-row')
     assert.equal(failed.body.run.recovery.conditioning.referenceImageCount, 1)
     assert.equal(String(failed.body.run.recovery.attemptFailedAt || '').length > 0, true)
     assert.equal(failed.body.run.wizardState.nextStep.label, 'Retry generation')
@@ -7271,7 +7183,7 @@ test('creator studio service exposes full-pet validation recovery guidance for d
       'The generated source image was empty. Adjust the prompt or model settings, then retry generation on this same run.'
     )
     assert.equal(failed.body.run.recovery.qaFocus, 'Check source image validation expectations before retrying.')
-    assert.equal(imageGenerationRequestCount, 2)
+    assert.equal(imageGenerationRequestCount, 1)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl

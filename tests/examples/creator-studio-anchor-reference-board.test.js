@@ -5,7 +5,10 @@ const os = require('node:os')
 const path = require('node:path')
 const sharp = require('sharp')
 
-const { buildAnchorReferenceBoard } = require('../../examples/plugins/creator-studio/lib/anchor-reference-board')
+const {
+  buildActionSpriteReferenceBoard,
+  buildAnchorReferenceBoard
+} = require('../../examples/plugins/creator-studio/lib/anchor-reference-board')
 
 const makeDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-anchor-board-'))
 
@@ -127,6 +130,22 @@ test('anchor reference board rejects output paths outside the Creator Studio dat
   )
 })
 
+test('anchor reference board rejects source images outside the Creator Studio data directory', async () => {
+  const dataDir = makeDataDir()
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-anchor-board-outside-'))
+  const sourcePath = path.join(outsideDir, 'cat.png')
+  await writeSourceImage(sourcePath)
+
+  await assert.rejects(
+    () => buildAnchorReferenceBoard({
+      dataDir,
+      runId: 'run-anchor',
+      sourceReferences: [{ path: sourcePath, fileName: 'cat.png' }]
+    }),
+    /source image.*stay inside.*data directory/i
+  )
+})
+
 test('anchor reference board renders additional source images as secondary panels in one provider image', async () => {
   const dataDir = makeDataDir()
   const sourcePaths = [
@@ -220,4 +239,82 @@ test('anchor reference board can write a final action conditioning board role wi
     'source-identity-reference',
     'action-pose-reference'
   ])
+})
+
+test('action sprite conditioning board uses a fixed three-panel template instead of a pseudo sprite sheet', async () => {
+  const dataDir = makeDataDir()
+  const identityPath = path.join(dataDir, 'inputs/source/identity.png')
+  const startPath = path.join(dataDir, 'inputs/source/start.png')
+  const peakPath = path.join(dataDir, 'inputs/source/peak.png')
+  await writeSolidSourceImage(identityPath, { r: 224, g: 169, b: 72, alpha: 1 })
+  await writeSolidSourceImage(startPath, { r: 36, g: 112, b: 224, alpha: 1 })
+  await writeSolidSourceImage(peakPath, { r: 52, g: 172, b: 88, alpha: 1 })
+
+  const result = await buildActionSpriteReferenceBoard({
+    dataDir,
+    runId: 'run-conditioning-board',
+    sourceReferences: [{
+      path: identityPath,
+      fileName: 'identity.png',
+      relativePath: 'inputs/source/identity.png',
+      role: 'canonical-reference'
+    }, {
+      path: startPath,
+      fileName: 'start.png',
+      relativePath: 'inputs/source/start.png',
+      role: 'action-start-keyframe'
+    }, {
+      path: peakPath,
+      fileName: 'peak.png',
+      relativePath: 'inputs/source/peak.png',
+      role: 'action-peak-keyframe'
+    }],
+    action: {
+      actionId: 'waving',
+      frameCount: 6
+    },
+    characterBrief: 'Golden British Shorthair with green eyes.'
+  })
+
+  assert.equal(result.role, 'keyframe-action-reference-board')
+  assert.equal(result.relativePath, 'runs/run-conditioning-board/inputs/keyframes/actions/action-row-reference-board.png')
+  const metadata = JSON.parse(fs.readFileSync(result.metadataPath, 'utf-8'))
+  assert.equal(metadata.layoutMode, 'single-conditioning-board')
+  assert.equal(Array.isArray(metadata.frames), false)
+  assert.equal(Array.isArray(metadata.panels), true)
+  assert.equal(metadata.panels.length, 3)
+  assert.deepEqual(metadata.panels.map((panel) => panel.sourceRole), [
+    'canonical-reference',
+    'action-start-keyframe',
+    'action-peak-keyframe'
+  ])
+  assert.deepEqual(metadata.sources.map((source) => source.role), [
+    'canonical-reference',
+    'action-start-keyframe',
+    'action-peak-keyframe'
+  ])
+
+  const mainPanel = metadata.panels[0].layout
+  const startPanel = metadata.panels[1].layout
+  const peakPanel = metadata.panels[2].layout
+  assert.ok(mainPanel.width > startPanel.width)
+  assert.ok(mainPanel.height > startPanel.height)
+  assert.equal(startPanel.top, peakPanel.top)
+  assert.equal(startPanel.height, peakPanel.height)
+
+  assertColorNear(await readPixel({
+    imagePath: result.path,
+    x: mainPanel.left + Math.floor(mainPanel.width / 2),
+    y: mainPanel.top + Math.floor(mainPanel.height / 2)
+  }), { r: 224, g: 169, b: 72, alpha: 255 })
+  assertColorNear(await readPixel({
+    imagePath: result.path,
+    x: startPanel.left + Math.floor(startPanel.width / 2),
+    y: startPanel.top + Math.floor(startPanel.height / 2)
+  }), { r: 36, g: 112, b: 224, alpha: 255 })
+  assertColorNear(await readPixel({
+    imagePath: result.path,
+    x: peakPanel.left + Math.floor(peakPanel.width / 2),
+    y: peakPanel.top + Math.floor(peakPanel.height / 2)
+  }), { r: 52, g: 172, b: 88, alpha: 255 })
 })

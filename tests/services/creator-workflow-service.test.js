@@ -44,111 +44,11 @@ const createPluginView = ({
   }
 })
 
-const createFixedWorkflowHarness = ({ createShadowDecision } = {}) => {
-  const commandCalls = []
-  const logs = []
-  const reference = {
-    targetType: EDITABLE_TARGET_TYPE,
-    targetId: EDITABLE_TARGET_ID,
-    assetPath: '/tmp/reference.png',
-    assetUrl: 'file:///tmp/reference.png',
-    fileName: 'reference.png',
-    width: 512,
-    height: 512,
-    contentHash: 'reference-hash',
-    createdAt: '2026-07-15T00:00:00.000Z',
-    updatedAt: '2026-07-15T00:00:00.000Z'
-  }
-  const service = createCreatorWorkflowService({
-    pluginService: {
-      listPlugins: () => [createPluginView()],
-      getPluginCreatorDataDir: () => '/tmp/openpet-shadow-workflow',
-      runCommand: async (_pluginId, commandId, payload) => {
-        commandCalls.push({ commandId, payload })
-        const runs = {
-          'draft-task': { runId: 'run-shadow', taskStatus: 'ready_for_confirmation' },
-          'confirm-task': { runId: 'run-shadow', taskStatus: 'confirmed' },
-          'run-step': { runId: 'run-shadow', status: 'ready_for_review' },
-          'approve-run': { runId: 'run-shadow', status: 'approved' },
-          'import-approved-action': { runId: 'run-shadow', status: 'imported', importedActionId: 'spin' }
-        }
-        if (!runs[commandId]) throw new Error(`Unexpected command: ${commandId}`)
-        return {
-          commandId,
-          result: {
-            ok: true,
-            message: commandId,
-            run: runs[commandId],
-            ...(commandId === 'import-approved-action' ? {
-              importedAction: { id: 'spin' },
-              triggerProposalSubmission: { ok: true, proposal: { id: 'proposal:shadow:spin' } }
-            } : {})
-          }
-        }
-      }
-    },
-    imageGenerationModelService: {
-      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ready' }),
-      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
-    },
-    actionService: {
-      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
-      acceptTriggerProposalItem: () => ({ animations: { defaultAction: 'idle', clickAction: 'spin', actions: [{ id: 'idle' }, { id: 'spin' }] } })
-    },
-    creatorReferenceService: {
-      getReference: () => reference,
-      bindReference: async () => ({ replaced: false, reference }),
-      copyReferenceIntoRun: () => ({})
-    },
-    hatchPetAgentService: { createShadowDecision },
-    appLogService: { record: (entry) => logs.push(entry) },
-    idFactory: () => 'shadow-workflow-request'
-  })
-  return { commandCalls, logs, service }
-}
-
-test('an unresolved shadow planner does not block the fixed Creator workflow', async () => {
-  const h = createFixedWorkflowHarness({ createShadowDecision: () => new Promise(() => {}) })
-
-  const result = await Promise.race([
-    h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' }),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('fixed workflow waited for shadow planner')), 50))
-  ])
-
-  assert.equal(result.state, 'review-required')
-  assert.deepEqual(h.commandCalls.map((call) => call.commandId), [
-    'draft-task', 'confirm-task', 'run-step'
-  ])
-})
-
-test('shadow planner rejection is contained while the fixed Creator workflow completes', async () => {
-  const h = createFixedWorkflowHarness({ createShadowDecision: async () => { throw new Error('shadow unavailable') } })
-
-  const result = await h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' })
-  await new Promise((resolve) => setImmediate(resolve))
-
-  assert.equal(result.state, 'review-required')
-  assert.equal(h.logs.some((entry) => entry.event === 'creator.workflow.shadow-planning-failed'), true)
-})
-
-test('resolved shadow diagnostics remain additive and never enter fixed command payloads', async () => {
-  const h = createFixedWorkflowHarness({
-    createShadowDecision: async () => ({ status: 'shadow-recorded', code: 'ok', decision: { decision: 'observe' }, decisionId: 'shadow-1' })
-  })
-
-  const result = await h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' })
-
-  assert.equal(result.state, 'review-required')
-  assert.equal(result.diagnostics.hatchPetAgent, null)
-  assert.equal(JSON.stringify(h.commandCalls.slice(1)).includes('shadow-1'), false)
-  assert.equal(JSON.stringify(h.commandCalls.slice(1)).includes('observe'), false)
-})
-
-test('creator workflow treats missing full-pet QA evidence as the required idle row missing', () => {
+test('creator workflow treats missing full-pet QA evidence as all official rows missing', () => {
   const coverage = __testInternals.resolveOfficialActionCoverage(null)
 
   assert.equal(coverage.basicActions, null)
-  assert.deepEqual(coverage.missingOfficialActionIds, ['idle'])
+  assert.deepEqual(coverage.missingOfficialActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
 })
 
 test('creator workflow rejects full-pet coverage from failed QA evidence', () => {
@@ -603,6 +503,7 @@ test('creator workflow service stops an existing action at explicit human review
   assert.equal(commandCalls[0].payload.generationTask.mode, 'single-action')
   assert.equal(commandCalls[0].payload.generationTask.actions[0].frameCount, 6)
   assert.equal(commandCalls[0].payload.generationTask.actions[0].synthesisMode, 'canonical-frame')
+  assert.equal(commandCalls[0].payload.generationTask.actions[0].animationType, 'reaction')
   assert.deepEqual(copiedRuns, [{
     targetType: EDITABLE_TARGET_TYPE,
     targetId: EDITABLE_TARGET_ID,
@@ -996,6 +897,7 @@ test('creator workflow service forwards official row coverage without leaking ab
           }
         }
         if (commandId === 'run-step') {
+          writeAtlasQa()
           return {
             commandId,
             result: { ok: true, message: 'generated', run: { runId: 'run-003', status: 'ready_for_review' } }
@@ -1008,7 +910,6 @@ test('creator workflow service forwards official row coverage without leaking ab
           }
         }
         if (commandId === 'import-approved-pet') {
-          writeAtlasQa()
           return {
             commandId,
             result: {

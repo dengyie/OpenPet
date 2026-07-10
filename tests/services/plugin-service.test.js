@@ -1477,10 +1477,7 @@ test('creator studio example rejects importing a preview-only host pet', async (
     }
   })
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
-  await service.runCommand('openpet.creator-studio', 'approve-run', {
-    runId,
-    humanApproval: createHumanApprovalEvidence()
-  })
+  await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
   await assert.rejects(
     service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true }),
     /pet\.json|preview|official action/i

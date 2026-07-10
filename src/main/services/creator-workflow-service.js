@@ -291,14 +291,13 @@ const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
 }
 
 const resolveOfficialActionCoverage = (basicActions) => {
+  const requiredOfficialActionIds = createUniqueTextList(CODEX_ROWS.map((row) => row.id))
   if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) {
-    return { basicActions: null, missingOfficialActionIds: [] }
+    return {
+      basicActions: null,
+      missingOfficialActionIds: requiredOfficialActionIds
+    }
   }
-  const requiredOfficialActionIds = createUniqueTextList(
-    Array.isArray(basicActions.requiredOfficialActionIds) && basicActions.requiredOfficialActionIds.length > 0
-      ? basicActions.requiredOfficialActionIds
-      : CODEX_ROWS.map((row) => row.id)
-  )
   const realActionIds = new Set(createUniqueTextList(basicActions.realActionIds))
   const reportedMissingActionIds = createUniqueTextList(basicActions.missingRequiredOfficialActionIds)
   const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
@@ -397,8 +396,17 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => {
     actionId: normalizeActionId(actionName, 'custom-action'),
     name: normalizeText(actionName),
     motionPrompt: normalizeText(motionPrompt) || normalizeText(actionName),
+    loop: false
+  }
+  return {
+  mode: 'single-action',
+  targetPet: 'current',
+  styleSource: 'referenceImage',
+  characterBrief: `Keep the current editable OpenPet character identity and style consistent while adding the ${normalizeText(actionName)} action.`,
+  actions: [{
+    ...action,
+    animationType: inferAnimationType(action),
     synthesisMode: 'canonical-frame',
-    loop: false,
     frameCount: 6,
     transparentBackground: true,
     triggerProposal: {
@@ -775,7 +783,11 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         basicActions: generatedBasicActions,
         missingOfficialActionIds
       } = resolveOfficialActionCoverage(generatedCoverage)
-      if (normalizeText(run?.status) === 'ready_for_review' && missingOfficialActionIds.length > 0) {
+      if (
+        importCommandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID &&
+        normalizeText(run?.status) === 'ready_for_review' &&
+        missingOfficialActionIds.length > 0
+      ) {
         const result = createWorkflowResult({
           state: 'preview-ready',
           code: 'preview_ready',

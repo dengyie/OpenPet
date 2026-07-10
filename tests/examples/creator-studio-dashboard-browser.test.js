@@ -62,22 +62,29 @@ const writeTransparentActionSheetPng = async (targetPath, {
       const column = frameIndex % columns
       const left = column * cellWidth
       const top = row * cellHeight
-      const frameIndex = (row * columns) + column
       const sway = frameIndex % 3 - 1
       const pawLift = [0, 7, 15, 11, 4, 10][frameIndex % 6]
       const pawAngle = [-8, -18, -28, 18, 28, 10][frameIndex % 6]
       const eyeOpen = frameIndex % 6 === 3 ? 0.45 : 1
+      const jumpOffsetY = actionId === 'jumping'
+        ? [0, -0.08, -0.16, -0.09, 0, 0][frameIndex % 6] * cellHeight
+        : 0
+      const stride = /^running(?:-|$)/.test(actionId)
+        ? [-0.12, 0, 0.12, 0, -0.08, 0.08][frameIndex % 6] * cellWidth
+        : 0
       const cx = left + (cellWidth / 2) + sway
       const poseTop = top + jumpOffsetY
       poses.push(`
-        <ellipse cx="${cx}" cy="${top + (cellHeight * 0.58)}" rx="${cellWidth * 0.24}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
-        <circle cx="${cx}" cy="${top + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
-        <ellipse cx="${cx - (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
-        <ellipse cx="${cx + (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
-        <g transform="rotate(${pawAngle} ${cx + (cellWidth * 0.19)} ${top + (cellHeight * 0.54) - pawLift})">
-          <ellipse cx="${cx + (cellWidth * 0.19)}" cy="${top + (cellHeight * 0.54) - pawLift}" rx="${cellWidth * 0.055}" ry="${cellHeight * 0.18}" fill="#f19042"/>
-          <circle cx="${cx + (cellWidth * 0.19)}" cy="${top + (cellHeight * 0.39) - pawLift}" r="${cellWidth * 0.055}" fill="#ffaa5a"/>
+        <ellipse cx="${cx}" cy="${poseTop + (cellHeight * 0.58)}" rx="${cellWidth * (0.24 + ((frameIndex % 3) * 0.012))}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
+        <circle cx="${cx}" cy="${poseTop + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
+        <ellipse cx="${cx - (cellWidth * 0.06)}" cy="${poseTop + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <ellipse cx="${cx + (cellWidth * 0.06)}" cy="${poseTop + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <g transform="rotate(${pawAngle} ${cx + (cellWidth * 0.19)} ${poseTop + (cellHeight * 0.54) - pawLift})">
+          <ellipse cx="${cx + (cellWidth * 0.19)}" cy="${poseTop + (cellHeight * 0.54) - pawLift}" rx="${cellWidth * 0.055}" ry="${cellHeight * 0.18}" fill="#f19042"/>
+          <circle cx="${cx + (cellWidth * 0.19)}" cy="${poseTop + (cellHeight * 0.39) - pawLift}" r="${cellWidth * 0.055}" fill="#ffaa5a"/>
         </g>
+        <ellipse cx="${cx - (cellWidth * 0.12) - stride}" cy="${poseTop + (cellHeight * 0.87)}" rx="${cellWidth * 0.08}" ry="${cellHeight * 0.045}" fill="#f19042"/>
+        <ellipse cx="${cx + (cellWidth * 0.12) + stride}" cy="${poseTop + (cellHeight * 0.87)}" rx="${cellWidth * 0.08}" ry="${cellHeight * 0.045}" fill="#f19042"/>
       `)
   }
   const svg = Buffer.from(`
@@ -100,12 +107,42 @@ const writeTransparentActionSheetPng = async (targetPath, {
 }
 
 const getRequestedActionSheetLayout = (prompt = '') => {
-  const match = String(prompt || '').match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i)
-  if (!match) return { columns: 4, rows: 3 }
+  const promptText = String(prompt || '')
+  const match = promptText.match(/Arrange the frames in exactly (\d+) columns x (\d+) rows/i) ||
+    promptText.match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i)
+  const frameCountMatch = promptText.match(/Generate exactly (\d+) animation frames/i)
+  if (!match) return { columns: 4, rows: 3, frameCount: Number(frameCountMatch?.[1]) || 12 }
   return {
     columns: Number(match[1]) || 4,
-    rows: Number(match[2]) || 3
+    rows: Number(match[2]) || 3,
+    frameCount: Number(frameCountMatch?.[1]) || (Number(match[1]) * Number(match[2])) || 12
   }
+}
+
+const attachCanonicalReferenceToRun = async ({ dataDir, runId }) => {
+  const relativePath = `runs/${runId}/inputs/references/canonical-reference.png`
+  await writeTransparentActionSheetPng(path.join(dataDir, relativePath), {
+    columns: 1,
+    rows: 1,
+    cellWidth: 256,
+    cellHeight: 256
+  })
+  const run = readRun({ dataDir, runId })
+  writeRun({
+    dataDir,
+    run: {
+      ...run,
+      input: {
+        ...run.input,
+        referenceImage: {
+          fileName: 'canonical-reference.png',
+          relativePath,
+          metadataRelativePath: `runs/${runId}/inputs/references/reference.json`,
+          contentHash: 'test-reference'
+        }
+      }
+    }
+  })
 }
 
 const seedImportedActionRun = async (dataDir) => {
@@ -2368,7 +2405,9 @@ test('creator studio dashboard shows failed generation recovery and retries the 
         }
         const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        writeTransparentActionSheetPng(generatedPath, getRequestedActionSheetLayout(payload.prompt))
+        writeTransparentActionSheetPng(generatedPath, isActionRow
+          ? { ...getRequestedActionSheetLayout(payload.prompt), cellWidth: 256, cellHeight: 256 }
+          : { columns: 1, rows: 1, cellWidth: 256, cellHeight: 256 })
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -2445,6 +2484,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
 test('creator studio dashboard shows full-pet validation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-retry-'))
   let baseGenerationAttempts = 0
+  let keyframeGenerationAttempts = 0
   let actionRowGenerationAttempts = 0
   let totalGenerationAttempts = 0
   const bridgeServer = http.createServer((request, response) => {
@@ -2467,9 +2507,13 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
       if (request.url.endsWith('/creator/model-image-generate')) {
         totalGenerationAttempts += 1
         const outputDir = String(payload.output?.dataRelativeDir || '')
-        const isActionRow = /\/frames\/base\/[^/]+$/.test(outputDir)
-        if (!isActionRow) baseGenerationAttempts += 1
-        else actionRowGenerationAttempts += 1
+        const actionRowMatch = outputDir.match(/\/frames\/base\/([^/]+)-keyframe-row$/)
+        const isActionRow = Boolean(actionRowMatch)
+        const isActionKeyframe = /\/keyframes\/actions\/[^/]+-(?:start|peak)-keyframe$/.test(outputDir)
+        const isBaseImage = /\/frames\/base$/.test(outputDir)
+        if (isBaseImage) baseGenerationAttempts += 1
+        else if (isActionKeyframe) keyframeGenerationAttempts += 1
+        else if (isActionRow) actionRowGenerationAttempts += 1
         const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
@@ -2553,8 +2597,9 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
     assert.equal(baseGenerationAttempts, 2)
-    assert.equal(actionRowGenerationAttempts, 0)
-    assert.equal(totalGenerationAttempts, 2)
+    assert.equal(keyframeGenerationAttempts, 18)
+    assert.equal(actionRowGenerationAttempts, 9)
+    assert.equal(totalGenerationAttempts, 29)
     assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
     assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {

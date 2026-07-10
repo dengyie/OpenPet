@@ -13,29 +13,32 @@ const {
 } = require('../../examples/plugins/creator-studio/lib/full-pet-basic-actions')
 
 test('full-pet basic action policy keeps generation and qa requirements intentionally different', () => {
-  assert.deepEqual(REQUIRED_REAL_FULL_PET_ACTION_IDS, [])
-  assert.deepEqual(GENERATED_FULL_PET_ACTION_IDS, [])
+  assert.deepEqual(
+    REQUIRED_REAL_FULL_PET_ACTION_IDS,
+    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+  )
+  assert.deepEqual(GENERATED_FULL_PET_ACTION_IDS, REQUIRED_REAL_FULL_PET_ACTION_IDS)
 })
 
-test('full-pet basic action policy keeps optional expansion order explicit without widening the default generation set', () => {
+test('full-pet basic action policy generates every official row by default', () => {
   assert.deepEqual(
     OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
     []
   )
   assert.deepEqual(
     FALLBACK_ONLY_FULL_PET_ACTION_IDS,
-    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+    []
   )
 
   const waitingPolicy = FULL_PET_ACTION_POLICY.find((entry) => entry.actionId === 'waiting')
   const wavingPolicy = FULL_PET_ACTION_POLICY.find((entry) => entry.actionId === 'waving')
-  assert.equal(waitingPolicy.support, FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY)
-  assert.equal(waitingPolicy.attemptGeneratedPose, false)
-  assert.equal(waitingPolicy.expansionRank, null)
-  assert.equal(wavingPolicy.support, FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY)
-  assert.equal(wavingPolicy.attemptGeneratedPose, false)
-  assert.equal(wavingPolicy.expansionRank, null)
-  assert.equal(GENERATED_FULL_PET_ACTION_IDS.includes('waiting'), false)
+  assert.equal(waitingPolicy.support, FULL_PET_ACTION_SUPPORT.REQUIRED_REAL)
+  assert.equal(waitingPolicy.attemptGeneratedPose, true)
+  assert.equal(waitingPolicy.expansionRank, 7)
+  assert.equal(wavingPolicy.support, FULL_PET_ACTION_SUPPORT.REQUIRED_REAL)
+  assert.equal(wavingPolicy.attemptGeneratedPose, true)
+  assert.equal(wavingPolicy.expansionRank, 4)
+  assert.equal(GENERATED_FULL_PET_ACTION_IDS.includes('waiting'), true)
 })
 
 test('full-pet basic action coverage reports base-only rows as preview fallback, not official real actions', () => {
@@ -47,10 +50,16 @@ test('full-pet basic action coverage reports base-only rows as preview fallback,
   ])
 
   assert.equal(coverage.baseIdentityCoverage, true)
-  assert.deepEqual(coverage.requiredRealActionIds, [])
+  assert.deepEqual(
+    coverage.requiredRealActionIds,
+    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+  )
   assert.deepEqual(coverage.realActionIds, [])
   assert.deepEqual(coverage.fallbackActionIds, ['idle', 'waving', 'waiting'])
-  assert.deepEqual(coverage.missingRequiredActionIds, [])
+  assert.deepEqual(
+    coverage.missingRequiredActionIds,
+    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+  )
   assert.deepEqual(
     coverage.requiredOfficialActionIds,
     ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
@@ -79,7 +88,10 @@ test('full-pet basic action qa treats official missing rows separately from lega
     { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-1/frames/base/0001.png', fallback: true, quality: 'base-preview' }
   ])
 
-  assert.deepEqual(getMissingRequiredRealActionIds(coverage), [])
+  assert.deepEqual(
+    getMissingRequiredRealActionIds(coverage),
+    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+  )
   assert.deepEqual(
     coverage.missingRequiredOfficialActionIds,
     ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']

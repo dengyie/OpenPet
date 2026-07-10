@@ -560,9 +560,8 @@ const verifyConditioningEvidence = ({ runRecord, allowedFailedActionIds = [] }) 
   const referencePaths = Array.isArray(conditioning.references)
     ? conditioning.references.map((reference) => String(reference?.relativePath || '')).filter(Boolean)
     : []
-  const allowedFailures = new Set((Array.isArray(allowedFailedActionIds) ? allowedFailedActionIds : []).map(String))
   const failedStage = [...(runRecord?.anchorGenerationStages || []), ...(runRecord?.generationStages || [])]
-    .find((stage) => stage?.ok === false && !allowedFailures.has(String(stage?.actionId || '')))
+    .find((stage) => stage?.ok === false)
   if (failedStage) {
     return { ok: false, message: `Provider generation stage failed: ${failedStage.stage || 'unknown'}` }
   }
@@ -643,9 +642,25 @@ const verifyConditioningEvidence = ({ runRecord, allowedFailedActionIds = [] }) 
   }
 }
 
+const summarizeCandidateSelection = (candidateSelection = {}) => {
+  if (!isObject(candidateSelection)) return null
+  const candidateCount = Math.max(0, Number(candidateSelection.candidateCount) || 0)
+  const selectedCandidateId = sanitizeText(candidateSelection.selectedCandidateId || '', 160)
+  const selectedCandidateRelativePath = sanitizeText(candidateSelection.selectedCandidateRelativePath || '', 500)
+  if (candidateCount <= 0 && !selectedCandidateId && !selectedCandidateRelativePath) return null
+  return {
+    candidateCount,
+    selectedCandidateId,
+    selectedCandidateRelativePath,
+    selectedScore: Math.max(0, Number(candidateSelection.selectedScore) || 0),
+    acceptable: Boolean(candidateSelection.acceptable)
+  }
+}
+
 const summarizeGenerationStages = (stages = []) => (
   Array.isArray(stages)
     ? stages.map((stage) => ({
+      ...(stage?.actionId ? { actionId: String(stage.actionId) } : {}),
       stage: String(stage?.stage || ''),
       ok: Object.hasOwn(stage || {}, 'ok') ? Boolean(stage?.ok) : null,
       referenceRole: String(stage?.referenceRole || ''),
@@ -657,6 +672,10 @@ const summarizeGenerationStages = (stages = []) => (
       model: String(stage?.model || ''),
       outputRelativePath: String(stage?.outputRelativePath || ''),
       promptRelativePath: String(stage?.promptRelativePath || ''),
+      ...(stage?.adopted ? { adopted: true } : {}),
+      ...(summarizeCandidateSelection(stage?.candidateSelection)
+        ? { candidateSelection: summarizeCandidateSelection(stage.candidateSelection) }
+        : {}),
       error: sanitizeText(stage?.error || '', 500)
     }))
     : []
@@ -740,17 +759,9 @@ const verifyPreviewReadyNewCharacterScenario = ({ result }) => {
 
 const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, runRecord }) => {
   if (scenario === 'new-character' && result?.state === 'preview-ready') {
-    const previewVerification = verifyPreviewReadyNewCharacterScenario({ result })
-    if (!previewVerification.ok) return previewVerification
-    const conditioningVerification = verifyConditioningEvidence({ runRecord })
-    if (!conditioningVerification.ok) return conditioningVerification
     return {
-      ok: true,
-      message: `${previewVerification.message}. ${conditioningVerification.message}.`,
-      artifactPaths: {
-        ...(isObject(previewVerification.artifactPaths) ? previewVerification.artifactPaths : {}),
-        ...(isObject(conditioningVerification.artifactPaths) ? conditioningVerification.artifactPaths : {})
-      }
+      ok: false,
+      message: 'New-character workflow stopped at preview-ready; complete provider-generated official action rows are required before this smoke can pass.'
     }
   }
   if (result?.state !== 'completed') {
@@ -759,42 +770,18 @@ const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, ru
       message: `Workflow did not complete successfully: ${result?.state || 'unknown'}`
     }
   }
-  let availableActionIds = []
-  let omittedActionIds = []
   if (scenario === 'new-character') {
-    availableActionIds = Array.isArray(result?.basicActions?.availableActionIds)
-      ? result.basicActions.availableActionIds.map(String).filter((actionId) => OFFICIAL_FULL_PET_ACTION_IDS.includes(actionId))
-      : (result?.basicActions?.realActionIds || []).map(String).filter((actionId) => OFFICIAL_FULL_PET_ACTION_IDS.includes(actionId))
-    omittedActionIds = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !availableActionIds.includes(actionId))
-    if (!availableActionIds.includes('idle')) {
-      return { ok: false, message: 'Completed pet is missing required approved idle action' }
-    }
-    const generationStages = Array.isArray(runRecord?.generationStages) ? runRecord.generationStages : []
-    const oversizedReferenceStage = generationStages.find((stage) => (
-      Array.isArray(stage?.referenceRoles) && stage.referenceRoles.length > 1
-    ))
-    if (oversizedReferenceStage) {
-      return { ok: false, message: `Provider stage ${oversizedReferenceStage.stage || 'unknown'} used more than one reference image` }
-    }
-    if (generationStages.some((stage) => stage?.actionId === 'running-left')) {
-      return { ok: false, message: 'running-left must be derived by mirror and must not have a Provider stage' }
-    }
-    for (const actionId of availableActionIds.filter((candidate) => candidate !== 'running-left')) {
+    const realActionIds = new Set((result?.basicActions?.realActionIds || []).map(String))
+    const missing = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !realActionIds.has(actionId))
+    if (missing.length) return { ok: false, message: `Completed pet is missing provider-generated official actions: ${missing.join(', ')}` }
+    for (const actionId of OFFICIAL_FULL_PET_ACTION_IDS) {
       const stages = (runRecord?.generationStages || []).filter((stage) => stage.actionId === actionId)
-      for (const stageNames of [['action-start-keyframe', 'start-keyframe'], ['action-peak-keyframe', 'peak-keyframe'], ['final-image']]) {
-        const stage = stages.find((candidate) => stageNames.includes(candidate.stage) && candidate.ok === true)
-        const stageName = stageNames[0]
+      for (const stageName of ['start-keyframe', 'peak-keyframe', 'final-image']) {
+        const stage = stages.find((candidate) => candidate.stage === stageName && candidate.ok === true)
         if (!stage) return { ok: false, message: `Official action ${actionId} is missing successful ${stageName} evidence` }
         if (stageName === 'final-image' && !stage.outputRelativePath) {
           return { ok: false, message: `Official action ${actionId} final-image evidence is missing its output path` }
         }
-      }
-    }
-    if (availableActionIds.includes('running-left')) {
-      const mirrorQuality = result?.basicActions?.actionAvailability?.['running-left']?.quality ||
-        (result?.basicActions?.rows || []).find((row) => row?.actionId === 'running-left')?.quality
-      if (mirrorQuality !== 'approved-mirror') {
-        return { ok: false, message: 'Available running-left action is missing approved-mirror evidence' }
       }
     }
   }
