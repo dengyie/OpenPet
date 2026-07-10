@@ -992,122 +992,315 @@ export function AiPane({
               />
               <div className="provider-capability-body">
                 <div className="section provider-summary provider-core-summary" data-testid="ai-provider-summary">
+                  {providerConfigDirty ? (
+                    <div className="provider-warning" data-testid="ai-provider-dirty-warning">
+                      <strong>未保存修改：</strong> {providerConfigChanges.join(' / ') || 'Provider 草稿'}
+                      <br />
+                      保存只写入配置；测试只检查已保存配置，不会偷用草稿。
+                    </div>
+                  ) : null}
+                  {providerConfigValidationError ? (
+                    <div className="provider-warning error" data-testid="ai-provider-validation-error">{providerConfigValidationError}</div>
+                  ) : null}
 
-                {providerConfigDirty ? (
-                  <div className="provider-warning" data-testid="ai-provider-dirty-warning">
-                    <strong>未保存修改：</strong> {providerConfigChanges.join(' / ') || 'Provider 草稿'}
-                    <br />
-                    你有未保存的 Provider 草稿。点击“保存聊天 Provider”只保存配置；点击“测试已保存配置”只测试当前已保存配置，不会偷用草稿。
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input
+                      aria-label="聊天 Base URL"
+                      className="text-input"
+                      value={config.baseUrl}
+                      onChange={(event) => onChange({ baseUrl: event.target.value })}
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <span className="field-label">Model</span>
+                    <ProviderModelSelector
+                      ariaLabel="聊天 Model"
+                      currentModel={config.model}
+                      cachedCatalog={activeConfig.modelCatalog}
+                      recommendedModels={chatRecommendedModels}
+                      saving={saving}
+                      onSelectModel={(model) => onChange({ model })}
+                      onRefreshModels={onDiscoverAiModels}
+                    />
                   </div>
-                ) : null}
-                {providerConfigValidationError ? (
-                  <div className="provider-warning error" data-testid="ai-provider-validation-error">{providerConfigValidationError}</div>
-                ) : null}
+
+                  <div className="field-row">
+                    <div>
+                      <div className="field-label">API Key</div>
+                      <div className="field-note">{config.hasApiKey ? '已保存' : '未保存'}</div>
+                    </div>
+                    <div className="inline-action">
+                      <input
+                        aria-label="聊天 API Key"
+                        className="text-input"
+                        type="password"
+                        value={apiKeyDraft}
+                        placeholder={config.hasApiKey ? '输入新密钥覆盖' : '输入 API Key'}
+                        onChange={(event) => setApiKeyDraft(event.target.value)}
+                      />
+                      <button type="button" className="ghost" aria-label="保存聊天密钥" onClick={onSaveApiKey} disabled={!apiKeyDraftReady || saving}>
+                        保存
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="provider-card-actions provider-card-actions-inline">
+                    <button type="button" className="primary" aria-label="保存聊天 Provider" onClick={onSave} disabled={saveDisabled}>
+                      {saving ? '保存中' : '保存'}
+                    </button>
+                    <div className="provider-card-secondary-actions">
+                      <button type="button" className="ghost" aria-label="测试已保存配置" onClick={onTest} disabled={saving}>
+                        测试
+                      </button>
+                      <button type="button" className="ghost" aria-label="刷新聊天模型" onClick={onDiscoverAiModels} disabled={saving}>
+                        刷新模型
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details className="provider-capability-card provider-capability-panel" data-testid="image-provider-card" open>
+              <ProviderCapabilityPanelSummary
+                title="图片模型"
+                description="用于 Creator Studio 生成宠物立绘、动作帧和导入前图片资产。"
+                hostSummary={activeImageHostSummary}
+                modelSummary={activeImageGenerationConfig.model}
+                draftSummary={imageDraftSummary}
+                hasApiKey={activeImageGenerationConfig.hasApiKey}
+              />
+              <div className="provider-capability-body">
+                <div className="section provider-core-summary">
+                  {imageProviderValidationError ? (
+                    <div className="provider-warning error">{imageProviderValidationError}</div>
+                  ) : null}
+
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input
+                      aria-label="图片 Base URL"
+                      className="text-input"
+                      value={imageGenerationConfig.baseUrl}
+                      onChange={(event) => onChangeImageGeneration({ baseUrl: event.target.value })}
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <span className="field-label">Model</span>
+                    <ProviderModelSelector
+                      ariaLabel="图片 Model"
+                      currentModel={imageGenerationConfig.model}
+                      cachedCatalog={activeImageGenerationConfig.modelCatalog}
+                      recommendedModels={imageRecommendedModels}
+                      saving={saving}
+                      onSelectModel={(model) => onChangeImageGeneration({ model })}
+                      onRefreshModels={onDiscoverImageGenerationModels}
+                    />
+                  </div>
+
+                  <div className="field-row">
+                    <div>
+                      <div className="field-label">API Key</div>
+                      <div className="field-note">
+                        {imageGenerationConfig.hasApiKey ? '已保存' : '未保存'}
+                        {imageGenerationConfig.apiKeyPreview ? ` · ${imageGenerationConfig.apiKeyPreview}` : ''}
+                      </div>
+                    </div>
+                    <div className="inline-action">
+                      <input
+                        aria-label="图片 API Key"
+                        className="text-input"
+                        type="password"
+                        value={imageApiKeyDraft}
+                        placeholder={imageGenerationConfig.hasApiKey ? '输入新密钥覆盖' : '输入图片 API Key'}
+                        onChange={(event) => setImageApiKeyDraft(event.target.value)}
+                      />
+                      <button type="button" className="ghost" aria-label="保存图片密钥" onClick={onSaveImageGenerationApiKey} disabled={!imageApiKeyDraft.trim() || saving}>
+                        保存
+                      </button>
+                      <button type="button" className="danger-text" aria-label="清除图片密钥" onClick={onClearImageGenerationApiKey} disabled={saving || !imageGenerationConfig.hasApiKey}>
+                        清除
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="provider-card-actions provider-card-actions-inline">
+                    <button type="button" className="primary" aria-label="保存图片 Provider" onClick={onSaveImageGeneration} disabled={imageSaveDisabled}>
+                      保存
+                    </button>
+                    <div className="provider-card-secondary-actions">
+                      <button type="button" className="ghost" aria-label="检查图片健康" onClick={onCheckImageGenerationHealth} disabled={saving}>
+                        健康检查
+                      </button>
+                      <button type="button" className="ghost" aria-label="刷新图片模型" onClick={onDiscoverImageGenerationModels} disabled={saving}>
+                        刷新模型
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <details className="provider-disclosure provider-hub-diagnostics" data-testid="provider-hub-diagnostics">
+            <summary>高级 / 诊断</summary>
+            <div className="provider-disclosure-body provider-hub-diagnostics-body">
+              <section className="provider-diagnostics-group" aria-label="聊天 Provider 高级诊断">
+                <h3>聊天 Provider</h3>
+                <div className="provider-status-strip">
+                  <ProviderStatusItem label="当前模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="当前 Endpoint" value={activeConfig.baseUrl || '未设置'} />
+                  <ProviderStatusItem label="密钥状态" value={activeConfig.hasApiKey ? '已保存' : '未保存'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="草稿状态" value={draftSummary || '当前没有未保存修改'} tone={draftSummary ? 'warn' : 'default'} />
+                </div>
+
+                <div className="readonly-row">
+                  <strong>当前生效配置</strong>
+                  <div className="provider-inline-summary" data-testid="ai-provider-active-summary">
+                    <code>{activeChatHostSummary}</code>
+                    <span>{activeConfig.model || '未设置模型'}</span>
+                    <span>{activeConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                  </div>
+                </div>
+
+                <div className="field-row">
+                  <div className="field-label">启用聊天</div>
+                  <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
+                </div>
 
                 <label className="field-row">
-                  <span className="field-label">Base URL</span>
-                  <input
-                    aria-label="聊天 Base URL"
+                  <span className="field-label">Provider</span>
+                  <select
                     className="text-input"
-                    value={config.baseUrl}
-                    onChange={(event) => onChange({ baseUrl: event.target.value })}
-                  />
+                    value={config.provider}
+                    onChange={(event) => onChange({ provider: event.target.value })}
+                  >
+                    <option value="openai-compatible">OpenAI compatible</option>
+                  </select>
                 </label>
 
                 <div className="field-row">
-                  <span className="field-label">Model</span>
-                  <ProviderModelSelector
-                    ariaLabel="聊天 Model"
-                    currentModel={config.model}
-                    cachedCatalog={activeConfig.modelCatalog}
-                    recommendedModels={chatRecommendedModels}
-                    saving={saving}
-                    onSelectModel={(model) => onChange({ model })}
-                    onRefreshModels={onDiscoverAiModels}
+                  <div>
+                    <div className="field-label">长期记忆</div>
+                    <div className="field-note">主回复不阻塞，后台自动抽取用户与宠物关系记忆</div>
+                  </div>
+                  <Toggle
+                    ariaLabel="Enable AI memory"
+                    checked={config.memory.enabled}
+                    onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
                   />
                 </div>
 
-                <div className="field-row">
-                  <div>
-                    <div className="field-label">API Key</div>
-                    <div className="field-note">{config.hasApiKey ? '已保存' : '未保存'}</div>
+                <details className="provider-disclosure">
+                  <summary>查看聊天 Provider 边界</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-feedback" data-testid="chat-provider-boundary">
+                      <strong>聊天 Provider 边界</strong>
+                      <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约；切换环境只需要改 Base URL 和 Model。</span>
+                      <span>“保存聊天 Provider”只写入当前配置；“测试已保存配置”只测试已保存的生效配置，不会偷用草稿。</span>
+                      <span>API Key 只保存在 OpenPet host；renderer、dashboard 和普通插件都不能直接读取。</span>
+                    </div>
                   </div>
-                  <div className="inline-action">
-                    <input
-                      aria-label="聊天 API Key"
-                      className="text-input"
-                      type="password"
-                      value={apiKeyDraft}
-                      placeholder={config.hasApiKey ? '输入新密钥覆盖' : '输入 API Key'}
-                      onChange={(event) => setApiKeyDraft(event.target.value)}
-                    />
-                    <button type="button" className="ghost" onClick={onSaveApiKey} disabled={!apiKeyDraftReady || saving}>
-                      保存密钥
-                    </button>
-                  </div>
-                </div>
-
-                <div className="provider-card-actions provider-card-actions-inline">
-                  <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
-                    {saving ? '保存中' : '保存聊天 Provider'}
-                  </button>
-                  <div className="provider-card-secondary-actions">
-                    <button type="button" className="ghost" onClick={onTest} disabled={saving}>
-                      测试已保存配置
-                    </button>
-                    <button type="button" className="ghost" onClick={onDiscoverAiModels} disabled={saving}>
-                      刷新聊天模型
-                    </button>
-                  </div>
-                </div>
+                </details>
 
                 <details className="provider-disclosure">
-                  <summary>高级 / 诊断</summary>
+                  <summary>显示常用聊天 Provider 预设</summary>
                   <div className="provider-disclosure-body">
-                    <div className="provider-status-strip">
-                      <ProviderStatusItem label="当前模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
-                      <ProviderStatusItem label="当前 Endpoint" value={activeConfig.baseUrl || '未设置'} />
-                      <ProviderStatusItem label="密钥状态" value={activeConfig.hasApiKey ? '已保存' : '未保存'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
-                      <ProviderStatusItem label="草稿状态" value={draftSummary || '当前没有未保存修改'} tone={draftSummary ? 'warn' : 'default'} />
+                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后测试确认。</div>
+                    <div className="provider-preset-grid">
+                      {detailedChatProviderPresets.map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          className="provider-preset-card"
+                          onClick={() => applyChatProviderPreset(preset)}
+                          disabled={saving}
+                        >
+                          <strong>{preset.title}</strong>
+                          <span>{preset.description}</span>
+                          <code>{preset.baseUrl}</code>
+                        </button>
+                      ))}
                     </div>
+                  </div>
+                </details>
 
-                    <div className="readonly-row">
-                      <strong>当前生效配置</strong>
-                      <div className="provider-inline-summary" data-testid="ai-provider-active-summary">
-                        <code>{activeChatHostSummary}</code>
-                        <span>{activeConfig.model || '未设置模型'}</span>
-                        <span>{activeConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
-                      </div>
-                    </div>
-
-                    <div className="field-row">
-                      <div className="field-label">启用聊天</div>
-                      <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
-                    </div>
-
-                    <label className="field-row">
-                      <span className="field-label">Provider</span>
-                      <select
-                        className="text-input"
-                        value={config.provider}
-                        onChange={(event) => onChange({ provider: event.target.value })}
-                      >
-                        <option value="openai-compatible">OpenAI compatible</option>
-                      </select>
-                    </label>
-
-                    <div className="field-row">
-                      <div>
-                        <div className="field-label">长期记忆</div>
-                        <div className="field-note">主回复不阻塞，后台自动抽取用户与宠物关系记忆</div>
-                      </div>
-                      <Toggle
-                        ariaLabel="Enable AI memory"
-                        checked={config.memory.enabled}
-                        onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
+                <details className="provider-disclosure">
+                  <summary>显示高级聊天配置</summary>
+                  <div className="provider-disclosure-body">
+                    <label className="field-row tall">
+                      <span className="field-label">System Prompt</span>
+                      <textarea
+                        aria-label="System Prompt"
+                        className="text-input textarea"
+                        value={config.systemPrompt}
+                        onChange={(event) => onChange({ systemPrompt: event.target.value })}
                       />
-                    </div>
+                    </label>
+                  </div>
+                </details>
 
+                <div className="provider-diagnostics">
+                  <div className="provider-diagnostics-heading">诊断与兼容性</div>
+                  {(connectionStatus || connectionTestResult) ? (
+                    <div
+                      className={`provider-feedback ${connectionTestResult ? ((connectionTestResult.ok && !chatConnectionHasPartialProbeIssue) ? 'ok' : 'error') : ''}`}
+                      data-testid="ai-provider-feedback"
+                      aria-live="polite"
+                    >
+                      <strong>聊天 Provider 状态</strong>
+                      {connectionStatus ? <span>{connectionStatus}</span> : null}
+                      {connectionTestResult ? (
+                        <div className="connection-result" data-testid="ai-connection-result">
+                          <strong>{connectionTestResult.ok ? (chatConnectionHasPartialProbeIssue ? '连接测试部分通过' : '连接测试通过') : '连接测试失败'}</strong>
+                          <span>Provider: {connectionTestResult.provider}</span>
+                          <span>Base URL: {connectionTestResult.baseUrl}</span>
+                          <span>Model: {connectionTestResult.model}</span>
+                          <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
+                          <span>耗时: {connectionTestResult.elapsedMs}ms</span>
+                          {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
+                          {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {(chatModelDiscoveryStatus || chatModelDiscovery) ? (
+                    <div className="readonly-row" data-testid="ai-chat-model-discovery">
+                      <strong>聊天模型探测</strong>
+                      <span>{chatModelDiscoverySummary}</span>
+                    </div>
+                  ) : null}
+
+                  {renderChatModelDiscovery(chatModelDiscovery, config.model, hasUnsavedChatProbeInputs)}
+
+                  <div className="provider-feedback" data-testid="chat-model-compatibility">
+                    <strong>{chatModelCompatibility.title}</strong>
+                    <span>{chatModelCompatibility.summary}</span>
+                  </div>
+                  <div className="provider-preset-grid">
+                    {quickChatProviderPresets.map((preset) => (
+                      <button
+                        type="button"
+                        key={preset.id}
+                        className="provider-preset-card"
+                        onClick={() => applyChatProviderPreset(preset)}
+                        disabled={saving}
+                      >
+                        <strong>{preset.title}</strong>
+                        <span>{preset.description}</span>
+                        <code>{preset.baseUrl}</code>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="provider-diagnostics-group" aria-label="Vision Provider 高级配置">
+                <h3>Vision / 多模态文本模型</h3>
                 <details className="provider-disclosure">
                   <summary>Vision / 多模态文本模型</summary>
                   <div className="provider-disclosure-body">
@@ -1225,217 +1418,30 @@ export function AiPane({
                     ) : null}
                   </div>
                 </details>
+              </section>
 
-                <details className="provider-disclosure">
-                  <summary>查看聊天 Provider 边界</summary>
-                  <div className="provider-disclosure-body">
-                    <div className="provider-feedback" data-testid="chat-provider-boundary">
-                      <strong>聊天 Provider 边界</strong>
-                      <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约；切换环境只需要改 Base URL 和 Model。</span>
-                      <span>“保存聊天 Provider”只写入当前配置；“测试已保存配置”只测试已保存的生效配置，不会偷用草稿。</span>
-                      <span>API Key 只保存在 OpenPet host；renderer、dashboard 和普通插件都不能直接读取。</span>
-                    </div>
-                  </div>
-                </details>
-
-                <details className="provider-disclosure">
-                  <summary>显示常用聊天 Provider 预设</summary>
-                  <div className="provider-disclosure-body">
-                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后测试确认。</div>
-                    <div className="provider-preset-grid">
-                      {detailedChatProviderPresets.map((preset) => (
-                        <button
-                          type="button"
-                          key={preset.id}
-                          className="provider-preset-card"
-                          onClick={() => applyChatProviderPreset(preset)}
-                          disabled={saving}
-                        >
-                          <strong>{preset.title}</strong>
-                          <span>{preset.description}</span>
-                          <code>{preset.baseUrl}</code>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </details>
-
-                <details className="provider-disclosure">
-                  <summary>显示高级聊天配置</summary>
-                  <div className="provider-disclosure-body">
-                    <label className="field-row tall">
-                      <span className="field-label">System Prompt</span>
-                      <textarea
-                        className="text-input textarea"
-                        value={config.systemPrompt}
-                        onChange={(event) => onChange({ systemPrompt: event.target.value })}
-                      />
-                    </label>
-                  </div>
-                </details>
-
-                <div className="provider-diagnostics">
-                <div className="provider-diagnostics-heading">诊断与兼容性</div>
-                {(connectionStatus || connectionTestResult) ? (
-                  <div
-                    className={`provider-feedback ${connectionTestResult ? ((connectionTestResult.ok && !chatConnectionHasPartialProbeIssue) ? 'ok' : 'error') : ''}`}
-                    data-testid="ai-provider-feedback"
-                    aria-live="polite"
-                  >
-                    <strong>聊天 Provider 状态</strong>
-                    {connectionStatus ? <span>{connectionStatus}</span> : null}
-                    {connectionTestResult ? (
-                      <div className="connection-result" data-testid="ai-connection-result">
-                        <strong>{connectionTestResult.ok ? (chatConnectionHasPartialProbeIssue ? '连接测试部分通过' : '连接测试通过') : '连接测试失败'}</strong>
-                        <span>Provider: {connectionTestResult.provider}</span>
-                        <span>Base URL: {connectionTestResult.baseUrl}</span>
-                        <span>Model: {connectionTestResult.model}</span>
-                        <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
-                        <span>耗时: {connectionTestResult.elapsedMs}ms</span>
-                        {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
-                        {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {(chatModelDiscoveryStatus || chatModelDiscovery) ? (
-                  <div className="readonly-row" data-testid="ai-chat-model-discovery">
-                    <strong>聊天模型探测</strong>
-                    <span>{chatModelDiscoverySummary}</span>
-                  </div>
-                ) : null}
-
-                {renderChatModelDiscovery(chatModelDiscovery, config.model, hasUnsavedChatProbeInputs)}
-
-                <div className="provider-feedback" data-testid="chat-model-compatibility">
-                  <strong>{chatModelCompatibility.title}</strong>
-                  <span>{chatModelCompatibility.summary}</span>
-                </div>
-                <div className="provider-preset-grid">
-                  {quickChatProviderPresets.map((preset) => (
-                    <button
-                      type="button"
-                      key={preset.id}
-                      className="provider-preset-card"
-                      onClick={() => applyChatProviderPreset(preset)}
-                      disabled={saving}
-                    >
-                      <strong>{preset.title}</strong>
-                      <span>{preset.description}</span>
-                      <code>{preset.baseUrl}</code>
-                    </button>
-                  ))}
-                </div>
-                </div>
-                  </div>
-                </details>
-              </div>
-              </div>
-            </details>
-
-            <details className="provider-capability-card provider-capability-panel" data-testid="image-provider-card" open>
-              <ProviderCapabilityPanelSummary
-                title="图片模型"
-                description="用于 Creator Studio 生成宠物立绘、动作帧和导入前图片资产。"
-                hostSummary={activeImageHostSummary}
-                modelSummary={activeImageGenerationConfig.model}
-                draftSummary={imageDraftSummary}
-                hasApiKey={activeImageGenerationConfig.hasApiKey}
-              />
-              <div className="provider-capability-body">
-                <div className="section provider-core-summary">
-
-                {imageProviderValidationError ? (
-                  <div className="provider-warning error">{imageProviderValidationError}</div>
-                ) : null}
-
-                <label className="field-row">
-                  <span className="field-label">图片 Base URL</span>
-                  <input
-                    aria-label="图片 Base URL"
-                    className="text-input"
-                    value={imageGenerationConfig.baseUrl}
-                    onChange={(event) => onChangeImageGeneration({ baseUrl: event.target.value })}
-                  />
-                </label>
-
-                <div className="field-row">
-                  <span className="field-label">图片 Model</span>
-                  <ProviderModelSelector
-                    ariaLabel="图片 Model"
-                    currentModel={imageGenerationConfig.model}
-                    cachedCatalog={activeImageGenerationConfig.modelCatalog}
-                    recommendedModels={imageRecommendedModels}
-                    saving={saving}
-                    onSelectModel={(model) => onChangeImageGeneration({ model })}
-                    onRefreshModels={onDiscoverImageGenerationModels}
-                  />
+              <section className="provider-diagnostics-group" aria-label="图片 Provider 高级诊断">
+                <h3>图片 Provider</h3>
+                <div className="provider-status-strip">
+                  <ProviderStatusItem label="当前模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="当前 Endpoint" value={activeImageGenerationConfig.baseUrl || '未设置'} />
+                  <ProviderStatusItem label="密钥状态" value={activeImageGenerationConfig.hasApiKey ? '已保存' : '未保存'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="草稿状态" value={imageDraftSummary || '当前没有未保存修改'} tone={imageDraftSummary ? 'warn' : 'default'} />
                 </div>
 
-                <div className="field-row">
-                  <div>
-                    <div className="field-label">图片 API Key</div>
-                    <div className="field-note">
-                      {imageGenerationConfig.hasApiKey ? '已保存' : '未保存'}
-                      {imageGenerationConfig.apiKeyPreview ? ` · ${imageGenerationConfig.apiKeyPreview}` : ''}
-                    </div>
-                  </div>
-                  <div className="inline-action">
-                    <input
-                      aria-label="图片 API Key"
-                      className="text-input"
-                      type="password"
-                      value={imageApiKeyDraft}
-                      placeholder={imageGenerationConfig.hasApiKey ? '输入新密钥覆盖' : '输入图片 API Key'}
-                      onChange={(event) => setImageApiKeyDraft(event.target.value)}
-                    />
-                    <button type="button" className="ghost" onClick={onSaveImageGenerationApiKey} disabled={!imageApiKeyDraft.trim() || saving}>
-                      保存图片密钥
-                    </button>
-                    <button type="button" className="danger-text" onClick={onClearImageGenerationApiKey} disabled={saving || !imageGenerationConfig.hasApiKey}>
-                      清除图片密钥
-                    </button>
+                <div className="readonly-row">
+                  <strong>图片当前 Provider</strong>
+                  <div className="provider-inline-summary">
+                    <code>{activeImageHostSummary}</code>
+                    <span>{activeImageGenerationConfig.model || '未设置模型'}</span>
+                    <span>{activeImageGenerationConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
                   </div>
                 </div>
 
-                <div className="provider-card-actions provider-card-actions-inline">
-                  <button type="button" className="primary" onClick={onSaveImageGeneration} disabled={imageSaveDisabled}>
-                    保存图片 Provider
-                  </button>
-                  <div className="provider-card-secondary-actions">
-                    <button type="button" className="ghost" onClick={onCheckImageGenerationHealth} disabled={saving}>
-                      检查图片健康
-                    </button>
-                    <button type="button" className="ghost" onClick={onDiscoverImageGenerationModels} disabled={saving}>
-                      刷新图片模型
-                    </button>
-                  </div>
+                <div className="readonly-row">
+                  <strong>生成边界</strong>
+                  <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
                 </div>
-
-                <details className="provider-disclosure">
-                  <summary>高级 / 诊断</summary>
-                  <div className="provider-disclosure-body">
-                    <div className="provider-status-strip">
-                      <ProviderStatusItem label="当前模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
-                      <ProviderStatusItem label="当前 Endpoint" value={activeImageGenerationConfig.baseUrl || '未设置'} />
-                      <ProviderStatusItem label="密钥状态" value={activeImageGenerationConfig.hasApiKey ? '已保存' : '未保存'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
-                      <ProviderStatusItem label="草稿状态" value={imageDraftSummary || '当前没有未保存修改'} tone={imageDraftSummary ? 'warn' : 'default'} />
-                    </div>
-
-                    <div className="readonly-row">
-                      <strong>图片当前 Provider</strong>
-                      <div className="provider-inline-summary">
-                        <code>{activeImageHostSummary}</code>
-                        <span>{activeImageGenerationConfig.model || '未设置模型'}</span>
-                        <span>{activeImageGenerationConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
-                      </div>
-                    </div>
-
-                    <div className="readonly-row">
-                      <strong>生成边界</strong>
-                      <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
-                    </div>
 
                 <details className="provider-disclosure">
                   <summary>查看图片 Provider 边界</summary>
@@ -1509,48 +1515,45 @@ export function AiPane({
                 </details>
 
                 <div className="provider-diagnostics">
-                <div className="provider-diagnostics-heading">诊断与兼容性</div>
-                {imageHealthStatus ? (
-                  <div className="readonly-row">
-                    <strong>图片健康状态</strong>
-                    <span>{imageHealthStatus}</span>
+                  <div className="provider-diagnostics-heading">诊断与兼容性</div>
+                  {imageHealthStatus ? (
+                    <div className="readonly-row">
+                      <strong>图片健康状态</strong>
+                      <span>{imageHealthStatus}</span>
+                    </div>
+                  ) : null}
+
+                  {imageStatus ? (
+                    <div className="provider-feedback" data-testid="ai-image-status" aria-live="polite">
+                      <strong>图片 Provider 状态</strong>
+                      <span>{imageStatus}</span>
+                    </div>
+                  ) : null}
+
+                  {renderImageModelDiscovery(imageModelDiscovery, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
+
+                  {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
+
+                  <div className="provider-feedback" data-testid="image-model-compatibility">
+                    <strong>{imageModelCompatibility.title}</strong>
+                    <span>{imageModelCompatibility.summary}</span>
                   </div>
-                ) : null}
 
-                {imageStatus ? (
-                  <div className="provider-feedback" data-testid="ai-image-status" aria-live="polite">
-                    <strong>图片 Provider 状态</strong>
-                    <span>{imageStatus}</span>
+                  {(imageModelDiscoveryStatus || imageModelDiscovery) ? (
+                    <div className="readonly-row" data-testid="ai-image-model-discovery">
+                      <strong>图片模型探测</strong>
+                      <span>{imageModelDiscoverySummary}</span>
+                    </div>
+                  ) : null}
+
+                  <div className="readonly-row" data-testid="ai-image-compatibility-hint">
+                    <strong>透明背景兼容性</strong>
+                    <span>{imageTransparencyCompatibilityHint}</span>
                   </div>
-                ) : null}
-
-                {renderImageModelDiscovery(imageModelDiscovery, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
-
-                {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
-
-                <div className="provider-feedback" data-testid="image-model-compatibility">
-                  <strong>{imageModelCompatibility.title}</strong>
-                  <span>{imageModelCompatibility.summary}</span>
                 </div>
-
-                {(imageModelDiscoveryStatus || imageModelDiscovery) ? (
-                  <div className="readonly-row" data-testid="ai-image-model-discovery">
-                    <strong>图片模型探测</strong>
-                    <span>{imageModelDiscoverySummary}</span>
-                  </div>
-                ) : null}
-
-                <div className="readonly-row" data-testid="ai-image-compatibility-hint">
-                  <strong>透明背景兼容性</strong>
-                  <span>{imageTransparencyCompatibilityHint}</span>
-                </div>
-                </div>
-                  </div>
-                </details>
-              </div>
-              </div>
-            </details>
-          </div>
+              </section>
+            </div>
+          </details>
         </div>
       </CollapsibleAiSection>
 
