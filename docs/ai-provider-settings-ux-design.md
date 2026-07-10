@@ -114,6 +114,8 @@ Each card body shows only:
 
 Use card context for labels. Inside `生图 Provider`, the label is `Model`, not `图片 Model`. Inside `聊天 Provider`, the label is `Model`, not `聊天模型`.
 
+`API Key` is visible as a password draft input plus saved-state hint. The renderer still never receives or stores the saved secret value.
+
 ### 5.3 Visible Actions
 
 `聊天 Provider`:
@@ -129,6 +131,17 @@ Use card context for labels. Inside `生图 Provider`, the label is `Model`, not
 - `刷新模型`
 
 Longer copy may appear in tooltips, inline errors, or diagnostics, not in button labels.
+
+The `保存` button is a user-facing coordinated save action, not a storage-schema merge.
+
+Implementation rule:
+
+1. Save non-secret provider fields through the existing owner config IPC.
+2. If the API Key draft is non-empty, save it through the existing owner secret IPC.
+3. Never send API Key values through provider config save payloads.
+4. If the API Key draft is empty, keep the existing saved secret unchanged.
+5. Clear the API Key draft only after the secret save succeeds.
+6. Keep any explicit `清除密钥` action as a small API Key row action or advanced action; do not hide the ability where it already exists.
 
 ### 5.4 Collapsing Behavior
 
@@ -192,7 +205,6 @@ Only after clicking `查看模型列表`, show a contained picker:
   gpt-4o-mini
 
 缓存
-  gpt-5.5
   gpt-4o
   openpet-image-test
 ```
@@ -207,6 +219,12 @@ Expanded behavior:
 6. Filtering uses the current search input, not the provider `Base URL`.
 7. Refreshing models updates cache, but does not force the list open.
 8. `/models` being unavailable never disables the input, save button, or manual model flow.
+
+Dedupe display rule:
+
+- if a model appears in both recommended and cached lists, show it once under `推荐`;
+- add a compact `已缓存` badge to that recommended row if the model is also present in cache;
+- source labeling should still tell the user whether the current draft is recommended, cached, or manual.
 
 ### 6.3 Component Contract
 
@@ -269,6 +287,23 @@ The default cards may show short summaries:
 - `有未保存修改`
 
 Full details live in `高级 / 诊断`.
+
+### 7.1 Non-Provider Control Placement
+
+Do not let existing non-provider controls drift back into the default Provider card body.
+
+Current controls should move as follows:
+
+| Control | Target placement | Reason |
+| --- | --- | --- |
+| `Provider` select | Hide in default path while only `openai-compatible` exists; expose in `高级 / 诊断 -> Provider 预设 / 兼容性` if needed | A single-option select is developer noise. |
+| `启用聊天` | Compact header switch or status in `聊天 Provider`, not a main field row | Users need to know whether chat is active, but it is not provider credential setup. |
+| `长期记忆` toggle | Existing `长期记忆` AI section, or `高级 / 诊断 -> 聊天高级` if it must stay near provider save | Memory is a chat behavior feature, not Provider config. |
+| `System Prompt` | `高级 / 诊断 -> 聊天高级` | Advanced behavior tuning. |
+| `Organization` / `Project` | `高级 / 诊断 -> 生图高级` | Provider metadata for specific gateways, not first-run setup. |
+| `图片 Timeout` / `图片最大并发` | `高级 / 诊断 -> 生图高级` | Operational tuning. |
+
+If implementation keeps a compact header switch for `启用聊天`, tests should assert it does not reintroduce a long provider form or extra field rows in the default card body.
 
 ## 8. Runtime Ownership Rules
 
@@ -355,11 +390,19 @@ Selecting a model from cache writes only the local draft. It becomes runtime tru
    - non-empty `Base URL`;
    - valid `http:` or `https:` URL;
    - non-empty `Model`.
-2. Renderer calls the existing save IPC for that provider owner.
+2. Renderer calls the existing config save IPC for that provider owner.
 3. Main process normalizes and persists non-secret config.
-4. Renderer refreshes active config.
-5. Dirty state clears.
-6. API key value is never returned.
+4. If the API Key draft is non-empty, renderer calls the existing API key save IPC for that provider owner.
+5. Main process stores the key through secret storage and returns only redacted metadata such as `hasApiKey`, `apiKeyRef`, `apiKeyPreview`, or `updatedAt`.
+6. Renderer refreshes active config.
+7. Dirty state clears only for the parts that saved successfully.
+8. API key value is never returned.
+
+Partial failure rule:
+
+- if config save succeeds but API Key save fails, keep config saved, keep API Key draft visible, and show a short failure summary;
+- if config save fails, do not attempt API Key save in the same coordinated action;
+- a failed test or health check must never roll back a successful save.
 
 ### 9.3 Refresh Models
 
@@ -397,7 +440,7 @@ Tasks:
 1. Replace `ProviderModelPicker` with `ProviderModelSelector`.
 2. Keep the input always editable.
 3. Hide cached/recommended model rows until `查看模型列表` is clicked.
-4. Add filter, selected state, dedupe, and scroll containment.
+4. Add filter, selected state, dedupe display priority, cached badges, and scroll containment.
 5. Ensure refresh updates cache metadata but does not auto-expand the list.
 
 Acceptance:
@@ -423,6 +466,7 @@ Tasks:
 3. Remove default-visible active config strips and long explanatory copy.
 4. Keep validation and save/test/health behavior unchanged.
 5. Keep cards stacked vertically and responsive.
+6. Preserve the existing separate config-save and API-key-save IPC paths behind the coordinated `保存` UI action.
 
 Acceptance:
 
@@ -444,9 +488,11 @@ Tasks:
 1. Move Vision override under `高级 / 诊断`.
 2. Move System Prompt under `高级 / 诊断`.
 3. Move image timeout and max concurrency under `高级 / 诊断`.
-4. Move provider presets under `高级 / 诊断`.
-5. Move compatibility hints, provider boundary copy, and raw model probe details under `高级 / 诊断`.
-6. Keep short error/success summaries near the owning provider card.
+4. Move image organization/project metadata under `高级 / 诊断`.
+5. Move provider presets under `高级 / 诊断`.
+6. Move compatibility hints, provider boundary copy, and raw model probe details under `高级 / 诊断`.
+7. Move memory behavior controls out of the default provider body.
+8. Keep short error/success summaries near the owning provider card.
 
 Acceptance:
 
@@ -470,10 +516,10 @@ Update or add tests for:
 Expected command:
 
 ```bash
-npm run test:core -- tests/control-center/provider-model-catalog.test.js
+node --test tests/control-center/provider-model-catalog.test.js
 ```
 
-Use the project-correct command if the runner does not support file arguments.
+Use `npm run test:core` for the broader core regression pass after the focused selector tests are green.
 
 ### 11.2 Control Center Smoke Tests
 
@@ -520,14 +566,15 @@ npm run test:control-center
    - `生图 Provider`;
    - collapsed `高级 / 诊断`.
 3. Confirm `聊天 Provider` and `生图 Provider` are vertical, not side-by-side.
-4. In `聊天 Provider`, edit `Base URL`, `API Key`, and `Model`, then click `保存`.
-5. Click `刷新模型`; confirm the model list does not open automatically.
-6. Click `查看模型列表`; confirm models appear in a bounded list.
-7. Select one cached/recommended model; confirm it fills the `Model` input.
-8. Type a custom model manually; confirm it remains accepted even if not in the list.
-9. Repeat the same for `生图 Provider`.
-10. Expand `高级 / 诊断`; confirm Vision, System Prompt, timeout, max concurrency, presets, diagnostics, compatibility hints, and provider boundary notes are still available.
-11. Collapse `高级 / 诊断`; confirm the page returns to the simple provider setup state.
+4. In `聊天 Provider`, edit `Base URL`, `Model`, and optionally enter a new `API Key` draft, then click `保存`.
+5. Confirm config saves through the provider owner and a non-empty API Key draft saves through the secret owner; the key value is not echoed back.
+6. Click `刷新模型`; confirm the model list does not open automatically.
+7. Click `查看模型列表`; confirm models appear in a bounded list.
+8. Select one cached/recommended model; confirm it fills the `Model` input.
+9. Type a custom model manually; confirm it remains accepted even if not in the list.
+10. Repeat the same for `生图 Provider`.
+11. Expand `高级 / 诊断`; confirm Vision, System Prompt, organization/project, timeout, max concurrency, presets, diagnostics, compatibility hints, and provider boundary notes are still available.
+12. Collapse `高级 / 诊断`; confirm the page returns to the simple provider setup state.
 
 ## 13. Non-Goals
 
@@ -564,6 +611,8 @@ This pass must not:
 - Chat and image cards both use the same field/action grammar.
 - Model selector list is collapsed by default.
 - Manual model entry is not blocked by cache or `/models` failure.
+- API Key save still uses secret-owner IPC, never provider config save payloads.
+- Non-provider controls do not reappear as default provider field rows.
 - `AiService` remains the chat config and chat cache owner.
 - `ImageGenerationModelService` remains the image config and image cache owner.
 - Vision default still resolves to chat at runtime.
