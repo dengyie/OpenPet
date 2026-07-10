@@ -6,11 +6,12 @@
   "license": "MIT",
   "main": "main.js",
   "scripts": {
-    "start": "node scripts/cleanup-dev-instances.js && npm run build:control-center && electron .",
+    "start": "node scripts/cleanup-dev-instances.js && npm run build:system-cursor && npm run build:control-center && electron .",
     "dev:control-center": "vite --config src/control-center/vite.config.js --host 127.0.0.1",
+    "build:system-cursor": "node scripts/build-macos-system-cursor-helper.js",
     "build:control-center": "vite build --config src/control-center/vite.config.js",
-    "pack": "npm run build:control-center && electron-builder --dir",
-    "dist": "npm run build:control-center && electron-builder",
+    "pack": "npm run build:system-cursor && npm run build:control-center && electron-builder --dir",
+    "dist": "npm run build:system-cursor && npm run build:control-center && electron-builder",
     "generate-icons": "node scripts/generate-icons.js",
     "prepare-windows-release-assets": "node scripts/prepare-windows-release-assets.js",
     "create-windows-smoke-report": "node scripts/create-windows-smoke-report.js",
@@ -82,7 +83,7 @@
     "check:docs-drift": "node scripts/check-docs-drift.js",
     "check:node": "find main.js preload.js control-center-preload.js renderer.js scripts src/main src/shared tests examples -name '*.js' -type f -print0 | xargs -0 -n 1 node --check",
     "typecheck": "tsc --noEmit",
-    "check:syntax": "npm run check:node && npm run typecheck && npm run build:control-center",
+    "check:syntax": "npm run check:node && npm run typecheck && npm run build:system-cursor && npm run build:control-center",
     "test": "node --test \"tests/**/*.test.js\"",
     "test:core": "node --test \"tests/main/*.test.js\" \"tests/services/*.test.js\" \"tests/shared/*.test.js\" \"tests/pet-pack/*.test.js\" \"tests/plugins/*.test.js\" \"tests/examples/*.test.js\" \"tests/renderer-*.test.js\" \"tests/control-center/*.test.js\"",
     "test:core:all": "npm run test:core && npm run test:control-center",
@@ -104,11 +105,15 @@
       "examples/plugins/creator-studio/**/*",
       "examples/plugins/agent-awareness/**/*",
       "dist/control-center/**/*",
+      "build/native/**/*",
       "src/main/**/*",
       "src/shared/**/*",
       "package.json"
     ],
     "asar": true,
+    "asarUnpack": [
+      "build/native/**/*"
+    ],
     "afterSign": "build/notarize.js",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
