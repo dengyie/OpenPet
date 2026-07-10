@@ -38,6 +38,33 @@ const createSyntheticStrip = async ({ outputPath, frameCount, blocks }) => {
     .toFile(outputPath)
 }
 
+const createOpaqueGrid = async ({ outputPath, actionId = 'jumping', includeUnusedCell = false }) => {
+  const frameCount = actionId === 'jumping' ? 5 : 4
+  const columns = actionId === 'jumping' ? 3 : 2
+  const rows = 2
+  const composites = Array.from({ length: frameCount + (includeUnusedCell ? 1 : 0) }, (_entry, index) => ({
+    input: Buffer.from(
+      `<svg width="${CELL_WIDTH}" height="${CELL_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${CELL_WIDTH}" height="${CELL_HEIGHT}" fill="#faf8f4"/>
+        <rect x="${58 + (index % 3)}" y="${88 - (index % 4)}" width="${58 + (index % 4)}" height="76" fill="#d89b45"/>
+      </svg>`
+    ),
+    left: (index % columns) * CELL_WIDTH,
+    top: Math.floor(index / columns) * CELL_HEIGHT
+  }))
+  await sharp({
+    create: {
+      width: columns * CELL_WIDTH,
+      height: rows * CELL_HEIGHT,
+      channels: 4,
+      background: { r: 250, g: 248, b: 244, alpha: 1 }
+    }
+  })
+    .composite(composites)
+    .png()
+    .toFile(outputPath)
+}
+
 const inspectFrame = async (framePath) => {
   const { data, info } = await sharp(framePath)
     .ensureAlpha()
@@ -90,6 +117,43 @@ test('extracts official row strip into fixed 192x208 png frames', async () => {
     assert.equal(inspected.info.height, CELL_HEIGHT)
     assert.equal(inspected.visiblePixels, 24 * 36)
   }
+})
+
+test('extracts opaque provider grids only after removing the edge background', async () => {
+  const tempDir = createTempDir()
+  const stripPath = path.join(tempDir, 'jumping-grid.png')
+  const outputDir = path.join(tempDir, 'jumping')
+  await createOpaqueGrid({ outputPath: stripPath })
+
+  const result = await extractRowStripFrames({
+    stripPath,
+    actionId: 'jumping',
+    outputDir,
+    layout: { columns: 3, rows: 2 }
+  })
+
+  assert.equal(result.frames.length, 5)
+  for (const frame of result.frames) {
+    assert.equal(await alphaAt({ framePath: frame.path, x: 0, y: 0 }), 0)
+    const inspected = await inspectFrame(frame.path)
+    assert.equal(inspected.visiblePixels < CELL_WIDTH * CELL_HEIGHT * 0.5, true)
+  }
+})
+
+test('rejects visible characters in unused provider grid cells', async () => {
+  const tempDir = createTempDir()
+  const stripPath = path.join(tempDir, 'jumping-extra-cell-grid.png')
+  await createOpaqueGrid({ outputPath: stripPath, includeUnusedCell: true })
+
+  await assert.rejects(
+    extractRowStripFrames({
+      stripPath,
+      actionId: 'jumping',
+      outputDir: path.join(tempDir, 'jumping-extra'),
+      layout: { columns: 3, rows: 2 }
+    }),
+    /unused grid cell contains visible content/i
+  )
 })
 
 test('mirrors running-left frames horizontally without reversing frame order', async () => {

@@ -3,6 +3,8 @@ const path = require('path')
 const crypto = require('crypto')
 const sharp = require('sharp')
 const { removeOpaqueEdgeBackground } = require('./edge-background-cutout')
+const { getActionSheetLayout } = require('./action-sheet-layout')
+const { inferAnimationType, isWavingAction } = require('./action-semantics')
 const { resolveGeneratedImagePath } = require('./real-atlas-builder')
 const { createPlaybackDiagnostics } = require('./action-frame-playback')
 
@@ -15,7 +17,6 @@ const CONTACT_SHEET_THUMB_HEIGHT = 104
 const CONTACT_SHEET_LABEL_HEIGHT = 20
 const CONTACT_SHEET_GAP = 12
 const CONTACT_SHEET_COLUMNS = 4
-const ACTION_SHEET_MAX_COLUMNS = 4
 const VISIBLE_ALPHA_THRESHOLD = 8
 const COLOR_DIFF_THRESHOLD = 18
 const MIN_AVERAGE_CHANGED_PIXEL_RATIO = 0.003
@@ -67,15 +68,6 @@ const writeJson = (filePath, value) => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
 }
 
-const sanitizeWarningText = (value, maxChars = 180) => String(value || '')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, maxChars)
-
-const createFrameReuseWarning = ({ fileName, error }) => (
-  `Frame ${fileName} reused previous valid frame because ${sanitizeWarningText(error?.message || 'the extracted action-sheet cell was unusable')}.`
-)
-
 const getNearestExistingPath = (targetPath) => {
   let currentPath = targetPath
   while (!fs.existsSync(currentPath)) {
@@ -116,16 +108,13 @@ const countVisiblePixels = async (imagePath) => {
   return visiblePixels
 }
 
-const getActionSheetLayout = (frameCount) => {
-  const columns = frameCount === 6 ? 3 : Math.max(1, Math.min(ACTION_SHEET_MAX_COLUMNS, frameCount))
-  const rows = Math.max(1, Math.ceil(frameCount / columns))
-  return { columns, rows }
-}
-
 const resolveGeneratedImageEntries = ({ dataDir, generationResult }) => {
   const outputs = Array.isArray(generationResult?.outputs) ? generationResult.outputs : []
   if (outputs.length === 0) {
     throw new Error('Generated image is missing')
+  }
+  if (outputs.length !== 1) {
+    throw new Error('Deliverable action generation requires one complete provider-generated sprite sheet; multi-output frame sets are not allowed')
   }
   return outputs.map((output) => resolveGeneratedImagePath({
     dataDir,
@@ -147,6 +136,9 @@ const extractVisibleBounds = ({ data, info }) => {
   let visiblePixels = 0
   let sumX = 0
   let sumY = 0
+  let sumR = 0
+  let sumG = 0
+  let sumB = 0
 
   for (let y = 0; y < info.height; y += 1) {
     for (let x = 0; x < info.width; x += 1) {
@@ -156,6 +148,9 @@ const extractVisibleBounds = ({ data, info }) => {
         visiblePixels += 1
         sumX += x
         sumY += y
+        sumR += data[pixelIndex]
+        sumG += data[pixelIndex + 1]
+        sumB += data[pixelIndex + 2]
         if (x < minX) minX = x
         if (y < minY) minY = y
         if (x > maxX) maxX = x
@@ -175,7 +170,35 @@ const extractVisibleBounds = ({ data, info }) => {
     centroidX: Number((sumX / visiblePixels).toFixed(2)),
     centroidY: Number((sumY / visiblePixels).toFixed(2)),
     baselineY: maxY,
+    meanRgb: {
+      r: Number((sumR / visiblePixels).toFixed(2)),
+      g: Number((sumG / visiblePixels).toFixed(2)),
+      b: Number((sumB / visiblePixels).toFixed(2))
+    },
     visiblePixels
+  }
+}
+
+const createAlphaMaskEvidence = ({ data, info }) => {
+  const alphaMask = Buffer.alloc(info.width * info.height)
+  const upperAlphaMask = Buffer.alloc(info.width * info.height)
+  const lowerAlphaMask = Buffer.alloc(info.width * info.height)
+  const splitY = Math.floor(info.height * 0.56)
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const pixelIndex = (y * info.width) + x
+      const alpha = data[(pixelIndex * info.channels) + 3]
+      if (alpha <= VISIBLE_ALPHA_THRESHOLD) continue
+      alphaMask[pixelIndex] = 255
+      if (y < splitY) upperAlphaMask[pixelIndex] = 255
+      else lowerAlphaMask[pixelIndex] = 255
+    }
+  }
+  const hash = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
+  return {
+    alphaMaskSha256: hash(alphaMask),
+    upperAlphaMaskSha256: hash(upperAlphaMask),
+    lowerAlphaMaskSha256: hash(lowerAlphaMask)
   }
 }
 
@@ -189,6 +212,7 @@ const inspectVisibleImage = async (imagePath) => {
     width: decoded.info.width,
     height: decoded.info.height,
     sha256: crypto.createHash('sha256').update(decoded.data).digest('hex'),
+    ...createAlphaMaskEvidence(decoded),
     visiblePixels: bounds?.visiblePixels || 0,
     bounds
   }
@@ -215,7 +239,10 @@ const hydrateFrameEvidenceFromDisk = async ({ frames, framesDir }) => {
       !frame.frameBounds
     const needsRawHash = typeof frame.sha256 !== 'string' || !frame.sha256.trim()
     const needsFileHash = typeof frame.fileSha256 !== 'string' || !frame.fileSha256.trim()
-    if (!needsVisibleEvidence && !needsRawHash && !needsFileHash) {
+    const needsAlphaMaskEvidence = typeof frame.alphaMaskSha256 !== 'string' ||
+      typeof frame.upperAlphaMaskSha256 !== 'string' ||
+      typeof frame.lowerAlphaMaskSha256 !== 'string'
+    if (!needsVisibleEvidence && !needsRawHash && !needsFileHash && !needsAlphaMaskEvidence) {
       hydratedFrames.push(frame)
       continue
     }
@@ -228,6 +255,9 @@ const hydrateFrameEvidenceFromDisk = async ({ frames, framesDir }) => {
       visiblePixels: needsVisibleEvidence ? frameInspection.visiblePixels : frame.visiblePixels,
       frameBounds: needsVisibleEvidence ? frameInspection.bounds : frame.frameBounds,
       sha256: needsRawHash ? frameInspection.sha256 : frame.sha256,
+      alphaMaskSha256: needsAlphaMaskEvidence ? frameInspection.alphaMaskSha256 : frame.alphaMaskSha256,
+      upperAlphaMaskSha256: needsAlphaMaskEvidence ? frameInspection.upperAlphaMaskSha256 : frame.upperAlphaMaskSha256,
+      lowerAlphaMaskSha256: needsAlphaMaskEvidence ? frameInspection.lowerAlphaMaskSha256 : frame.lowerAlphaMaskSha256,
       fileSha256: needsFileHash
         ? crypto.createHash('sha256').update(fs.readFileSync(framePath)).digest('hex')
         : frame.fileSha256
@@ -251,6 +281,7 @@ const inspectVisibleBuffer = async (buffer) => {
     width: decoded.info.width,
     height: decoded.info.height,
     sha256: crypto.createHash('sha256').update(decoded.data).digest('hex'),
+    ...createAlphaMaskEvidence(decoded),
     visiblePixels: bounds?.visiblePixels || 0,
     bounds
   }
@@ -381,8 +412,31 @@ const countPairsAboveRatio = (pairs = [], threshold = 1) => (
     : 0
 )
 
-const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true, allowOpaqueFullFrameTrim = true } = {}) => {
-  const decoded = await sharp(sourceInput)
+const meanRgbDistance = (left = {}, right = {}) => Math.sqrt(
+  ((Number(left.r) || 0) - (Number(right.r) || 0)) ** 2 +
+  ((Number(left.g) || 0) - (Number(right.g) || 0)) ** 2 +
+  ((Number(left.b) || 0) - (Number(right.b) || 0)) ** 2
+)
+
+const resolveIdentityReferenceMeanRgb = (generationResult = {}) => {
+  const values = Array.isArray(generationResult?.keyframeSpriteRow?.keyframes)
+    ? generationResult.keyframeSpriteRow.keyframes
+        .map((keyframe) => keyframe?.quality?.metrics?.meanRgb)
+        .filter((meanRgb) => meanRgb && typeof meanRgb === 'object')
+    : []
+  if (values.length === 0) return null
+  return values.reduce((accumulator, meanRgb) => ({
+    r: accumulator.r + (Number(meanRgb.r) || 0) / values.length,
+    g: accumulator.g + (Number(meanRgb.g) || 0) / values.length,
+    b: accumulator.b + (Number(meanRgb.b) || 0) / values.length
+  }), { r: 0, g: 0, b: 0 })
+}
+
+const prepareFrameSource = async (sourceInput, { removeOpaqueBackground = false, allowOpaqueFullFrame = true } = {}) => {
+  const backgroundRemoval = removeOpaqueBackground
+    ? await removeOpaqueEdgeBackground(sourceInput)
+    : { buffer: sourceInput, removed: false, removedPixelRatio: 0 }
+  const decoded = await sharp(backgroundRemoval.buffer)
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })
@@ -395,61 +449,44 @@ const trimFrameSource = async (sourceInput, { allowOpaqueFullFrame = true, allow
     bounds.width === decoded.info.width &&
     bounds.height === decoded.info.height
   if (!allowOpaqueFullFrame && fullFrameVisible) {
-    if (!allowOpaqueFullFrameTrim) {
-      throw new Error('Generated canonical source is missing a transparent cutout; opaque edge background could not be removed safely.')
-    }
-    const trimAttempt = await sharp(sourceInput)
-      .trim()
-      .png()
-      .toBuffer()
-    const trimMetadata = await sharp(trimAttempt).metadata()
-    if (trimMetadata.width < decoded.info.width || trimMetadata.height < decoded.info.height) {
-      return {
-        buffer: trimAttempt,
-        visiblePixels: bounds.visiblePixels,
-        bounds: {
-          left: 0,
-          top: 0,
-          width: trimMetadata.width,
-          height: trimMetadata.height,
-          right: Math.max(0, trimMetadata.width - 1),
-          bottom: Math.max(0, trimMetadata.height - 1),
-          centroidX: Number(((trimMetadata.width - 1) / 2).toFixed(2)),
-          centroidY: Number(((trimMetadata.height - 1) / 2).toFixed(2)),
-          baselineY: Math.max(0, trimMetadata.height - 1)
-        },
-        fullFrameVisible: false,
-        opaqueFullFrameTrimmed: true
-      }
-    }
-    throw new Error('Generated action sheet cell is missing a cutout-ready sprite silhouette')
+    throw new Error('Generated canonical source is missing a transparent cutout; opaque edge background could not be removed safely.')
   }
-  const trimmed = await sharp(sourceInput)
-    .extract({
-      left: bounds.left,
-      top: bounds.top,
-      width: bounds.width,
-      height: bounds.height
-    })
-    .png()
-    .toBuffer()
   return {
-    buffer: trimmed,
+    buffer: backgroundRemoval.buffer,
+    width: decoded.info.width,
+    height: decoded.info.height,
     visiblePixels: bounds.visiblePixels,
     bounds,
     fullFrameVisible,
-    opaqueFullFrameTrimmed: false
+    sourceBackgroundRemoved: Boolean(backgroundRemoval.removed),
+    sourceBackgroundRemovedRatio: Number(backgroundRemoval.removedPixelRatio || 0)
   }
 }
 
-const createNormalizedFrame = async (sourceInput, options = {}) => {
+const createSharedSequenceCrop = (preparedFrames = []) => {
+  const validFrames = preparedFrames.filter((frame) => frame?.bounds)
+  if (validFrames.length === 0) throw new Error('Generated action sheet contains no visible frame sources')
+  const sourceWidth = Math.min(...validFrames.map((frame) => frame.width))
+  const sourceHeight = Math.min(...validFrames.map((frame) => frame.height))
+  const padding = Math.ceil(Math.min(sourceWidth, sourceHeight) * 0.04)
+  const left = Math.max(0, Math.min(...validFrames.map((frame) => frame.bounds.left)) - padding)
+  const top = Math.max(0, Math.min(...validFrames.map((frame) => frame.bounds.top)) - padding)
+  const right = Math.min(sourceWidth - 1, Math.max(...validFrames.map((frame) => frame.bounds.right)) + padding)
+  const bottom = Math.min(sourceHeight - 1, Math.max(...validFrames.map((frame) => frame.bounds.bottom)) + padding)
+  return {
+    left,
+    top,
+    width: Math.max(1, right - left + 1),
+    height: Math.max(1, bottom - top + 1)
+  }
+}
+
+const createNormalizedFrame = async (preparedFrame, sharedCrop = null) => {
   const maxWidth = Math.floor(FRAME_WIDTH * 0.82)
   const maxHeight = Math.floor(FRAME_HEIGHT * 0.82)
-  const backgroundRemoval = options.removeOpaqueBackground
-    ? await removeOpaqueEdgeBackground(sourceInput)
-    : { buffer: sourceInput, removed: false, removedPixelRatio: 0 }
-  const trimmed = await trimFrameSource(backgroundRemoval.buffer, options)
-  const resized = await sharp(trimmed.buffer)
+  const crop = sharedCrop || createSharedSequenceCrop([preparedFrame])
+  const resized = await sharp(preparedFrame.buffer)
+    .extract(crop)
     .resize({
       width: maxWidth,
       height: maxHeight,
@@ -476,13 +513,13 @@ const createNormalizedFrame = async (sourceInput, options = {}) => {
 
   return {
     frameBuffer,
-    sourceVisiblePixels: trimmed.visiblePixels,
-    sourceBounds: trimmed.bounds,
-    sourceFilledCell: trimmed.fullFrameVisible,
-    sourceFilledFrame: trimmed.fullFrameVisible,
-    sourceOpaqueFullFrameTrimmed: Boolean(trimmed.opaqueFullFrameTrimmed),
-    sourceBackgroundRemoved: Boolean(backgroundRemoval.removed),
-    sourceBackgroundRemovedRatio: Number(backgroundRemoval.removedPixelRatio || 0)
+    sourceVisiblePixels: preparedFrame.visiblePixels,
+    sourceBounds: preparedFrame.bounds,
+    sourceFilledCell: preparedFrame.fullFrameVisible,
+    sourceFilledFrame: preparedFrame.fullFrameVisible,
+    sourceOpaqueFullFrameTrimmed: false,
+    sourceBackgroundRemoved: preparedFrame.sourceBackgroundRemoved,
+    sourceBackgroundRemovedRatio: preparedFrame.sourceBackgroundRemovedRatio
   }
 }
 
@@ -520,180 +557,104 @@ const extractActionSheetCellBuffer = async ({ sourcePath, frameCount, frameIndex
   }
 }
 
-const resolveFrameSource = async ({ dataDir, generationResult, frameCount, frameIndex }) => {
+const inspectActionSheetLayout = async ({ dataDir, generationResult, frameCount }) => {
   const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
-  if (entries.length >= frameCount) {
-    const entry = entries[frameIndex]
-    return {
-      mode: 'multi-output',
-      sourceRelativePath: entry.sourceRelativePath,
-      sourceRelativePaths: entries.slice(0, frameCount).map((candidate) => candidate.sourceRelativePath),
-      normalized: await createNormalizedFrame(entry.sourcePath),
-      extraction: {
-        mode: 'multi-output',
-        outputCount: entries.length
-      }
-    }
+  const layout = getActionSheetLayout(frameCount)
+  const base = {
+    checked: false,
+    capacity: layout.columns * layout.rows,
+    frameCount,
+    unusedCellCount: Math.max(0, (layout.columns * layout.rows) - frameCount),
+    visibleUnusedCellCount: 0,
+    unusedCells: []
   }
+  if (entries.length !== 1 || base.unusedCellCount === 0) return base
 
-  let lastError = null
-  for (const [outputIndex, sheetEntry] of entries.entries()) {
-    try {
-      const extracted = await extractActionSheetCellBuffer({
-        sourcePath: sheetEntry.sourcePath,
-        frameCount,
-        frameIndex
+  const sourcePath = entries[0].sourcePath
+  const sheetBackgroundRemoval = await removeOpaqueEdgeBackground(sourcePath)
+  const sheetInput = sheetBackgroundRemoval?.buffer || sourcePath
+  const metadata = await sharp(sheetInput).metadata()
+  const unusedCells = []
+  for (let index = frameCount; index < base.capacity; index += 1) {
+    const row = Math.floor(index / layout.columns)
+    const column = index % layout.columns
+    const horizontal = splitGridDimension({ size: metadata.width, count: layout.columns, index: column })
+    const vertical = splitGridDimension({ size: metadata.height, count: layout.rows, index: row })
+    const cellBuffer = await sharp(sheetInput)
+      .ensureAlpha()
+      .extract({
+        left: horizontal.start,
+        top: vertical.start,
+        width: horizontal.size,
+        height: vertical.size
       })
-      return {
-        mode: entries.length > 1 ? 'action-sheet-fallback' : 'action-sheet',
-        sourceRelativePath: sheetEntry.sourceRelativePath,
-        sourceRelativePaths: entries.map((candidate) => candidate.sourceRelativePath),
-        normalized: await createNormalizedFrame(extracted.cellBuffer, { allowOpaqueFullFrame: false }),
-        extraction: {
-          mode: entries.length > 1 ? 'action-sheet-fallback' : 'action-sheet',
-          outputCount: entries.length,
-          layout: extracted.layout,
-          sourceCell: extracted.cell,
-          ...(entries.length > 1 ? { sourceOutputIndex: outputIndex } : {})
-        }
-      }
-    } catch (error) {
-      lastError = error
+      .png()
+      .toBuffer()
+    const cellBackgroundRemoval = await removeOpaqueEdgeBackground(cellBuffer)
+    const { data, info } = await sharp(cellBackgroundRemoval?.buffer || cellBuffer)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    let visiblePixels = 0
+    for (let offset = 3; offset < data.length; offset += info.channels) {
+      if (data[offset] > 8) visiblePixels += 1
     }
-  }
-  throw lastError || new Error('Generated action sheet cell could not be extracted')
-}
-
-const resolveFrameSourceWithReuse = async ({
-  dataDir,
-  generationResult,
-  frameCount,
-  frameIndex,
-  fileName,
-  lastSuccessfulFrame,
-  warnings
-}) => {
-  try {
-    const frameSource = await resolveFrameSource({
-      dataDir,
-      generationResult,
-      frameCount,
-      frameIndex
+    const pixelCount = info.width * info.height
+    unusedCells.push({
+      index,
+      row,
+      column,
+      visiblePixels,
+      visibleRatio: pixelCount > 0 ? Number((visiblePixels / pixelCount).toFixed(6)) : 0
     })
-    return {
-      frameSource,
-      lastSuccessfulFrame: {
-        ...frameSource,
-        fileName
-      },
-      reusedPreviousFrame: false,
-      reusedFromFileName: ''
-    }
-  } catch (error) {
-    if (!lastSuccessfulFrame) throw error
-    warnings.push(createFrameReuseWarning({ fileName, error }))
-    return {
-      frameSource: {
-        ...lastSuccessfulFrame,
-        extraction: {
-          ...(lastSuccessfulFrame.extraction || {}),
-          mode: lastSuccessfulFrame.extraction?.mode || 'action-sheet-reuse'
-        }
-      },
-      lastSuccessfulFrame,
-      reusedPreviousFrame: true,
-      reusedFromFileName: lastSuccessfulFrame.fileName
-    }
   }
-}
-
-const clampInteger = (value, min, max) => Math.max(min, Math.min(max, Math.round(value)))
-
-const isCanonicalWaveAction = (action = {}) => /wave|waving|挥手|招手|挥爪|paw\s*wave/i.test(
-  `${action?.name || ''} ${action?.motionPrompt || ''}`
-)
-
-const resolveCanonicalMotionProfile = (action = {}) => (
-  isCanonicalWaveAction(action)
-    ? 'wave-local-appendage'
-    : 'generic-local-motion'
-)
-
-const resolveCanonicalMotionRegion = ({ bounds, action }) => {
-  const visible = bounds || {
-    left: 0,
-    top: 0,
-    width: FRAME_WIDTH,
-    height: FRAME_HEIGHT,
-    right: FRAME_WIDTH - 1,
-    bottom: FRAME_HEIGHT - 1
-  }
-  const wave = isCanonicalWaveAction(action)
-  const relative = wave
-    ? { left: 0.72, top: 0.02, right: 1.0, bottom: 0.46 }
-    : { left: 0.30, top: 0.18, right: 0.70, bottom: 0.64 }
-
-  let left = clampInteger(visible.left + (visible.width * relative.left), 0, FRAME_WIDTH - 1)
-  let top = clampInteger(visible.top + (visible.height * relative.top), 0, FRAME_HEIGHT - 1)
-  let right = clampInteger(visible.left + (visible.width * relative.right), left + 1, FRAME_WIDTH)
-  let bottom = clampInteger(visible.top + (visible.height * relative.bottom), top + 1, FRAME_HEIGHT)
-
-  const minWidth = wave ? 28 : 24
-  const minHeight = wave ? 44 : 32
-  if (right - left < minWidth) {
-    right = clampInteger(left + minWidth, left + 1, FRAME_WIDTH)
-    left = clampInteger(right - minWidth, 0, right - 1)
-  }
-  if (bottom - top < minHeight) {
-    bottom = clampInteger(top + minHeight, top + 1, FRAME_HEIGHT)
-    top = clampInteger(bottom - minHeight, 0, bottom - 1)
-  }
-
   return {
-    left,
-    top,
-    width: Math.max(1, right - left),
-    height: Math.max(1, bottom - top)
+    ...base,
+    checked: true,
+    visibleUnusedCellCount: unusedCells.filter((cell) => cell.visiblePixels > Math.max(4, Math.floor(metadata.width * metadata.height * 0.0002))).length,
+    unusedCells
   }
 }
 
-const createCanonicalMotionOffsets = ({ frameCount, action }) => {
-  if (frameCount <= 1) return [{ x: 0, y: 0 }]
-  if (isCanonicalWaveAction(action) && frameCount === 6) {
-    return [
-      { x: 0, y: 0 },
-      { x: -3, y: -8 },
-      { x: -7, y: -15 },
-      { x: 5, y: -14 },
-      { x: -5, y: -10 },
-      { x: -1, y: -3 }
-    ]
-  }
-  return Array.from({ length: frameCount }, (_entry, index) => {
-    const t = frameCount === 1 ? 0 : index / (frameCount - 1)
-    const cycle = Math.sin(t * Math.PI * 2)
-    const lift = Math.sin(t * Math.PI)
-    return {
-      x: Math.round(cycle * 4),
-      y: -Math.round(lift * 6)
-    }
+const resolveFrameCellSource = async ({ dataDir, generationResult, frameCount, frameIndex }) => {
+  const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
+  const sheetEntry = entries[0]
+  const extracted = await extractActionSheetCellBuffer({
+    sourcePath: sheetEntry.sourcePath,
+    frameCount,
+    frameIndex
   })
+  const prepared = await prepareFrameSource(extracted.cellBuffer, {
+    removeOpaqueBackground: true,
+    allowOpaqueFullFrame: false
+  })
+  return {
+    mode: 'action-sheet',
+    sourceRelativePath: sheetEntry.sourceRelativePath,
+    sourceRelativePaths: [sheetEntry.sourceRelativePath],
+    prepared,
+    extraction: {
+      mode: 'action-sheet',
+      outputCount: 1,
+      layout: extracted.layout,
+      sourceCell: extracted.cell
+    }
+  }
 }
 
-const createCanonicalLocalMotionFrame = async ({ canonicalBuffer, motionRegion, offset }) => {
-  if (!offset || (Number(offset.x || 0) === 0 && Number(offset.y || 0) === 0)) {
-    return Buffer.from(canonicalBuffer)
-  }
-  const patch = await sharp(canonicalBuffer)
-    .extract(motionRegion)
-    .png()
-    .toBuffer()
-  const left = clampInteger(motionRegion.left + Number(offset.x || 0), 0, FRAME_WIDTH - motionRegion.width)
-  const top = clampInteger(motionRegion.top + Number(offset.y || 0), 0, FRAME_HEIGHT - motionRegion.height)
-  return sharp(canonicalBuffer)
-    .composite([{ input: patch, left, top }])
-    .png()
-    .toBuffer()
+const materializeFrameSource = async ({ frameCellSource, sharedCrop = null }) => ({
+  ...frameCellSource,
+  normalized: await createNormalizedFrame(frameCellSource.prepared, sharedCrop)
+})
+
+const resolveFrameSource = async ({ dataDir, generationResult, frameCount, frameIndex }) => {
+  const frameCellSource = await resolveFrameCellSource({
+    dataDir,
+    generationResult,
+    frameCount,
+    frameIndex
+  })
+  return materializeFrameSource({ frameCellSource })
 }
 
 const toDataRelativePath = ({ dataDir, targetPath }) => path
@@ -731,8 +692,9 @@ const sourceBoundsTouchCellEdge = (frame) => {
     bottom >= Number(cell.height || 0) - 1 - tolerance
 }
 
-const createActionFrameQuality = async ({ frames, frameCount, extraction, framesDir }) => {
+const createActionFrameQuality = async ({ frames, frameCount, extraction, framesDir, action = {}, identityReferenceMeanRgb = null, sheetLayout = null }) => {
   const complete = isCompleteFrameEvidence({ frames, frameCount })
+  const animationType = inferAnimationType(action)
   const frameBounds = frames.map((frame) => frame?.frameBounds).filter(Boolean)
   const heights = numericRange(frameBounds.map((bounds) => bounds.height))
   const widths = numericRange(frameBounds.map((bounds) => bounds.width))
@@ -756,6 +718,9 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
       }).length
     : 0
   const uniqueFrameCount = new Set(frames.map((frame) => frame?.sha256).filter(Boolean)).size
+  const alphaMaskUniqueFrameCount = new Set(frames.map((frame) => frame?.alphaMaskSha256).filter(Boolean)).size
+  const upperAlphaMaskUniqueFrameCount = new Set(frames.map((frame) => frame?.upperAlphaMaskSha256).filter(Boolean)).size
+  const lowerAlphaMaskUniqueFrameCount = new Set(frames.map((frame) => frame?.lowerAlphaMaskSha256).filter(Boolean)).size
   const duplicateFrameCount = Math.max(0, frames.length - uniqueFrameCount)
   const reusedFrameCount = frames.filter((frame) => frame?.reusedPreviousFrame).length
   const adjacentFrameDiff = complete
@@ -786,18 +751,40 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
     identityCoreDiff.pairs,
     MAX_IDENTITY_CORE_PAIR_CHANGED_PIXEL_RATIO
   )
-  const actionSheetMode = mode === 'action-sheet' || mode === 'action-sheet-fallback'
+  const actionSheetMode = mode === 'action-sheet' ||
+    mode === 'action-sheet-fallback' ||
+    mode === 'provider-keyframe-row'
   const errors = []
   const warnings = []
+  const identityMeanRgbDistances = identityReferenceMeanRgb
+    ? frames.map((frame) => meanRgbDistance(frame?.meanRgb, identityReferenceMeanRgb))
+    : []
+  const maxIdentityMeanRgbDistance = identityMeanRgbDistances.length > 0
+    ? Math.max(...identityMeanRgbDistances)
+    : 0
+  const centroidYValues = frameBounds.map((bounds) => Number(bounds.centroidY)).filter(Number.isFinite)
+  const startCentroidY = centroidYValues[0] || 0
+  const endCentroidY = centroidYValues[centroidYValues.length - 1] || 0
+  const minimumCentroidY = centroidYValues.length > 0 ? Math.min(...centroidYValues) : 0
+  const verticalMotion = {
+    excursion: Number(Math.max(0, startCentroidY - minimumCentroidY).toFixed(2)),
+    returnDrift: Number(Math.abs(endCentroidY - startCentroidY).toFixed(2))
+  }
 
   if (!complete) {
     errors.push('Action frame QA is incomplete.')
   }
-  if (complete && actionSheetMode && sourceCellEdgeTouchCount >= Math.max(3, Math.ceil(frameCount * 0.5))) {
-    errors.push('Generated action sheet appears cropped or sliced: too many source cells touch grid boundaries.')
+  if (complete && actionSheetMode && sourceCellEdgeTouchCount > 0) {
+    errors.push('Generated action sheet appears cropped or sliced: one or more source cells touch grid boundaries.')
   }
   if (complete && opaqueMultiOutputFrameCount > 0) {
     errors.push('Generated multi-output action frames include opaque full-image backgrounds; frames must be transparent cutout sprites.')
+  }
+  if (complete && identityReferenceMeanRgb && maxIdentityMeanRgbDistance > 120) {
+    errors.push('action_identity_reference_mismatch')
+  }
+  if (complete && sheetLayout?.visibleUnusedCellCount > 0) {
+    errors.push('action_sheet_unused_cell_not_empty')
   }
   if (complete && reusedFrameCount > 0) {
     errors.push('action_reused_frames')
@@ -812,6 +799,21 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   }
   if (complete && adjacentFrameDiff.averageChangedPixelRatio < MIN_AVERAGE_CHANGED_PIXEL_RATIO) {
     errors.push('action_motion_below_minimum')
+  }
+  if (complete && isWavingAction(action) && alphaMaskUniqueFrameCount < Math.min(2, frameCount)) {
+    errors.push('action_silhouette_motion_missing')
+  }
+  if (complete && animationType === 'locomotion_loop' && alphaMaskUniqueFrameCount < Math.min(3, frameCount)) {
+    errors.push('action_locomotion_motion_missing')
+  }
+  if (complete && animationType === 'locomotion_loop' && lowerAlphaMaskUniqueFrameCount < Math.min(3, frameCount)) {
+    errors.push('action_locomotion_lower_body_motion_missing')
+  }
+  if (complete && animationType === 'vertical_bounce' && verticalMotion.excursion < 8) {
+    errors.push('action_vertical_motion_missing')
+  }
+  if (complete && animationType === 'vertical_bounce' && verticalMotion.returnDrift > 6) {
+    errors.push('action_vertical_return_missing')
   }
   if (
     complete &&
@@ -850,6 +852,9 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
     metrics: {
       frameCount: frames.length,
       uniqueFrameCount,
+      alphaMaskUniqueFrameCount,
+      upperAlphaMaskUniqueFrameCount,
+      lowerAlphaMaskUniqueFrameCount,
       duplicateFrameCount,
       reusedFrameCount,
       adjacentFrameDiff,
@@ -861,13 +866,21 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
       opaqueMultiOutputFrameCount,
       largeOpaqueMultiOutputFrameCount,
       visiblePixels,
+      animationType,
+      verticalMotion,
       frameBounds: {
         width: widths,
         height: heights,
         baselineY: baseline,
         centroidX,
         centroidY
-      }
+      },
+      identityReference: {
+        meanRgb: identityReferenceMeanRgb,
+        maxMeanRgbDistance: Number(maxIdentityMeanRgbDistance.toFixed(2)),
+        distances: identityMeanRgbDistances.map((value) => Number(value.toFixed(2)))
+      },
+      sheetLayout
     }
   }
 }
@@ -929,12 +942,23 @@ const writeActionFrameContactSheet = async ({ dataDir, framesDir, qaDir, frames 
   return contactSheetPath
 }
 
+const createExtractionWithMode = ({ extraction, mode }) => {
+  const requestedMode = String(mode || '').trim()
+  if (!requestedMode) return extraction
+  return {
+    ...(extraction || {}),
+    mode: requestedMode,
+    originalMode: extraction?.mode || ''
+  }
+}
+
 const buildActionFramesFromGeneratedImage = async ({
   dataDir,
   generationResult,
   action,
   outputFramesDir,
-  qaDir
+  qaDir,
+  extractionMode = ''
 }) => {
   const actionId = String(action?.actionId || '').trim()
   assertSafeActionId(actionId)
@@ -953,30 +977,40 @@ const buildActionFramesFromGeneratedImage = async ({
   fs.rmSync(safeOutputFramesDir, { recursive: true, force: true })
   fs.mkdirSync(safeOutputFramesDir, { recursive: true })
   fs.mkdirSync(safeQaDir, { recursive: true })
+  const sheetLayout = await inspectActionSheetLayout({
+    dataDir,
+    generationResult,
+    frameCount
+  })
 
   const frames = []
   let sourceRelativePath = ''
   let sourceRelativePaths = []
   let extraction = null
-  const warnings = []
-  let lastSuccessfulFrame = null
+  const frameCellSources = []
   for (let index = 0; index < frameCount; index += 1) {
-    const fileName = `${String(index + 1).padStart(4, '0')}.png`
-    const framePath = path.join(safeOutputFramesDir, fileName)
-    const resolvedFrame = await resolveFrameSourceWithReuse({
+    frameCellSources.push(await resolveFrameCellSource({
       dataDir,
       generationResult,
       frameCount,
-      frameIndex: index,
-      fileName,
-      lastSuccessfulFrame,
-      warnings
+      frameIndex: index
+    }))
+  }
+  const sharedCrop = createSharedSequenceCrop(frameCellSources.map((source) => source.prepared))
+  for (let index = 0; index < frameCount; index += 1) {
+    const fileName = `${String(index + 1).padStart(4, '0')}.png`
+    const framePath = path.join(safeOutputFramesDir, fileName)
+    const frameSource = await materializeFrameSource({
+      frameCellSource: frameCellSources[index],
+      sharedCrop
     })
-    const { frameSource, reusedPreviousFrame, reusedFromFileName } = resolvedFrame
-    lastSuccessfulFrame = resolvedFrame.lastSuccessfulFrame
     sourceRelativePath = sourceRelativePath || frameSource.sourceRelativePath
     sourceRelativePaths = frameSource.sourceRelativePaths
-    extraction = frameSource.extraction
+    const frameExtraction = createExtractionWithMode({
+      extraction: frameSource.extraction,
+      mode: extractionMode
+    })
+    extraction = frameExtraction
     const fileSha256 = crypto.createHash('sha256').update(frameSource.normalized.frameBuffer).digest('hex')
     fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
     const frameInspection = await inspectVisibleImage(framePath)
@@ -985,18 +1019,21 @@ const buildActionFramesFromGeneratedImage = async ({
       width: FRAME_WIDTH,
       height: FRAME_HEIGHT,
       sha256: frameInspection.sha256,
+      alphaMaskSha256: frameInspection.alphaMaskSha256,
+      upperAlphaMaskSha256: frameInspection.upperAlphaMaskSha256,
+      lowerAlphaMaskSha256: frameInspection.lowerAlphaMaskSha256,
       fileSha256,
       visiblePixels: frameInspection.visiblePixels,
       frameBounds: frameInspection.bounds,
+      meanRgb: frameInspection.bounds?.meanRgb || null,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
       sourceBounds: frameSource.normalized.sourceBounds,
       sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
       sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
       sourceBackgroundRemoved: frameSource.normalized.sourceBackgroundRemoved,
       sourceBackgroundRemovedRatio: frameSource.normalized.sourceBackgroundRemovedRatio,
-      ...(reusedPreviousFrame ? { reusedPreviousFrame: true, reusedFromFileName } : {}),
-      ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
-      ...(Number.isInteger(frameSource.extraction?.sourceOutputIndex) ? { sourceOutputIndex: frameSource.extraction.sourceOutputIndex } : {})
+      ...(frameExtraction?.sourceCell ? { sourceCell: frameExtraction.sourceCell } : {}),
+      ...(Number.isInteger(frameExtraction?.sourceOutputIndex) ? { sourceOutputIndex: frameExtraction.sourceOutputIndex } : {})
     })
   }
 
@@ -1014,12 +1051,15 @@ const buildActionFramesFromGeneratedImage = async ({
   const quality = await createActionFrameQuality({
     frames,
     frameCount,
+    action,
     framesDir: safeOutputFramesDir,
     extraction: extraction || {
       mode: 'action-sheet',
       outputCount: 1,
       layout: getActionSheetLayout(frameCount)
-    }
+    },
+    identityReferenceMeanRgb: resolveIdentityReferenceMeanRgb(generationResult),
+    sheetLayout
   })
   writeJson(qaPath, {
     ok: quality.ok,
@@ -1041,7 +1081,7 @@ const buildActionFramesFromGeneratedImage = async ({
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
     frames,
     errors: quality.errors,
-    warnings: [...warnings, ...quality.warnings],
+    warnings: quality.warnings,
     quality
   })
 
@@ -1056,6 +1096,12 @@ const buildActionFramesFromGeneratedImage = async ({
   }
 }
 
+const isProviderKeyframeSpriteRowGeneration = (generationResult = {}) => Boolean(
+  generationResult?.keyframeSpriteRow?.ok === true &&
+  Array.isArray(generationResult.outputs) &&
+  generationResult.outputs.length === 1
+)
+
 const buildCanonicalActionFramesFromGeneratedImage = async ({
   dataDir,
   generationResult,
@@ -1063,127 +1109,26 @@ const buildCanonicalActionFramesFromGeneratedImage = async ({
   outputFramesDir,
   qaDir
 }) => {
-  const actionId = String(action?.actionId || '').trim()
-  assertSafeActionId(actionId)
-  const frameCount = normalizeFrameCount(action?.frameCount || 16)
-  const safeOutputFramesDir = assertWritablePathInsideDataDir({
+  if (!isProviderKeyframeSpriteRowGeneration(generationResult)) {
+    const actionId = String(action?.actionId || 'canonical action').trim()
+    if (generationResult?.keyframeSpriteRow?.ok === true && Array.isArray(generationResult.outputs) && generationResult.outputs.length !== 1) {
+      throw new Error(
+        `Provider keyframe sprite row must be one single provider-generated sprite sheet for ${actionId}; multi-output frame sets are not allowed for deliverable action generation.`
+      )
+    }
+    throw new Error(
+      `Provider keyframe sprite row is required for ${actionId}; local frame synthesis is not allowed for deliverable action generation.`
+    )
+  }
+
+  return buildActionFramesFromGeneratedImage({
     dataDir,
-    targetPath: outputFramesDir,
-    label: 'action frames output directory'
+    generationResult,
+    action,
+    outputFramesDir,
+    qaDir,
+    extractionMode: 'provider-keyframe-row'
   })
-  const safeQaDir = assertWritablePathInsideDataDir({
-    dataDir,
-    targetPath: qaDir,
-    label: 'action QA directory'
-  })
-
-  fs.rmSync(safeOutputFramesDir, { recursive: true, force: true })
-  fs.mkdirSync(safeOutputFramesDir, { recursive: true })
-  fs.mkdirSync(safeQaDir, { recursive: true })
-
-  const [sourceEntry] = resolveGeneratedImageEntries({ dataDir, generationResult })
-  const normalized = await createNormalizedFrame(sourceEntry.sourcePath, {
-    removeOpaqueBackground: true,
-    allowOpaqueFullFrame: false,
-    allowOpaqueFullFrameTrim: false
-  })
-  const canonicalInspection = await inspectVisibleBuffer(normalized.frameBuffer)
-  const motionRegion = resolveCanonicalMotionRegion({
-    bounds: canonicalInspection.bounds,
-    action
-  })
-  const offsets = createCanonicalMotionOffsets({ frameCount, action })
-  const motionProfile = resolveCanonicalMotionProfile(action)
-  const extraction = {
-    mode: 'canonical-local-synthesis',
-    outputCount: 1,
-    sourceFrame: 'canonical'
-  }
-  const synthesis = {
-    mode: 'canonical-frame',
-    source: 'single-approved-canonical-frame',
-    compositeMode: 'overlay-local-patch',
-    motionProfile,
-    motionRegion,
-    offsets
-  }
-  const frames = []
-  for (let index = 0; index < frameCount; index += 1) {
-    const fileName = `${String(index + 1).padStart(4, '0')}.png`
-    const framePath = path.join(safeOutputFramesDir, fileName)
-    const frameBuffer = await createCanonicalLocalMotionFrame({
-      canonicalBuffer: normalized.frameBuffer,
-      motionRegion,
-      offset: offsets[index] || { x: 0, y: 0 }
-    })
-    const fileSha256 = crypto.createHash('sha256').update(frameBuffer).digest('hex')
-    fs.writeFileSync(framePath, frameBuffer)
-    const frameInspection = await inspectVisibleImage(framePath)
-    frames.push({
-      fileName,
-      width: FRAME_WIDTH,
-      height: FRAME_HEIGHT,
-      sha256: frameInspection.sha256,
-      fileSha256,
-      visiblePixels: frameInspection.visiblePixels,
-      frameBounds: frameInspection.bounds,
-      sourceVisiblePixels: normalized.sourceVisiblePixels,
-      sourceBounds: normalized.sourceBounds,
-      sourceFilledFrame: normalized.sourceFilledFrame,
-      sourceOpaqueFullFrameTrimmed: normalized.sourceOpaqueFullFrameTrimmed,
-      sourceBackgroundRemoved: normalized.sourceBackgroundRemoved,
-      sourceBackgroundRemovedRatio: normalized.sourceBackgroundRemovedRatio,
-      synthesisOffset: offsets[index] || { x: 0, y: 0 }
-    })
-  }
-
-  const contactSheetPath = await writeActionFrameContactSheet({
-    dataDir,
-    framesDir: safeOutputFramesDir,
-    qaDir: safeQaDir,
-    frames
-  })
-  const qaPath = path.join(safeQaDir, 'action-frame-validation.json')
-  const playback = createPlaybackDiagnostics({
-    frameCount,
-    loop: Boolean(action?.loop)
-  })
-  const quality = await createActionFrameQuality({
-    frames,
-    frameCount,
-    framesDir: safeOutputFramesDir,
-    extraction
-  })
-  writeJson(qaPath, {
-    ok: quality.ok,
-    actionId,
-    name: String(action?.name || actionId),
-    sourceRelativePath: sourceEntry.sourceRelativePath,
-    sourceRelativePaths: [sourceEntry.sourceRelativePath],
-    frameCount,
-    frameWidth: FRAME_WIDTH,
-    frameHeight: FRAME_HEIGHT,
-    loop: Boolean(action?.loop),
-    playback,
-    extraction,
-    synthesis,
-    triggerProposal: action?.triggerProposal || { type: 'unbound' },
-    contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
-    frames,
-    errors: quality.errors,
-    warnings: quality.warnings,
-    quality
-  })
-
-  return {
-    actionId,
-    frameCount,
-    frameWidth: FRAME_WIDTH,
-    frameHeight: FRAME_HEIGHT,
-    framesDir: safeOutputFramesDir,
-    contactSheetPath,
-    qaPath
-  }
 }
 
 const repairActionFrameFromGeneratedImage = async ({
@@ -1227,6 +1172,9 @@ const repairActionFrameFromGeneratedImage = async ({
     width: FRAME_WIDTH,
     height: FRAME_HEIGHT,
     sha256: frameInspection.sha256,
+    alphaMaskSha256: frameInspection.alphaMaskSha256,
+    upperAlphaMaskSha256: frameInspection.upperAlphaMaskSha256,
+    lowerAlphaMaskSha256: frameInspection.lowerAlphaMaskSha256,
     fileSha256,
     visiblePixels: frameInspection.visiblePixels,
     frameBounds: frameInspection.bounds,
@@ -1286,8 +1234,10 @@ const repairActionFrameFromGeneratedImage = async ({
     ? await createActionFrameQuality({
         frames: hydratedFrames,
         frameCount,
+        action,
         extraction,
-        framesDir: safeOutputFramesDir
+        framesDir: safeOutputFramesDir,
+        identityReferenceMeanRgb: resolveIdentityReferenceMeanRgb(generationResult)
       })
     : {
         ok: false,

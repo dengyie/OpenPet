@@ -10,8 +10,14 @@ const sharp = require('sharp')
 const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
 const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
+const { writeGoodSubtleWaveSheet } = require('../fixtures/creator-studio/action-quality-fixtures')
+const {
+  OFFICIAL_FULL_PET_ROWS
+} = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
+const { getActionSheetLayout } = require('../../examples/plugins/creator-studio/lib/action-sheet-layout')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/creator-studio')
+const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))
 const createActionFrameQa = ({
   actionId = 'shy-spin',
   frameCount = 1,
@@ -34,74 +40,78 @@ const createActionFrameQa = ({
   warnings: []
 })
 
-const createGeneratedActionSheetFrameSvg = ({
-  width,
-  height,
-  body,
-  head,
-  pawLift,
-  pawAngle
-}) => `
-  <svg width="${width}" height="${height}" viewBox="0 0 196 212" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="98" cy="130" rx="48" ry="58" fill="${body}" />
-    <circle cx="98" cy="78" r="42" fill="${head}" />
-    <circle cx="72" cy="43" r="16" fill="${head}" />
-    <circle cx="124" cy="43" r="16" fill="${head}" />
-    <ellipse cx="98" cy="146" rx="25" ry="36" fill="#f2dcc0" opacity="0.92" />
-    <ellipse cx="84" cy="80" rx="7" ry="8" fill="#4f8c42" />
-    <ellipse cx="112" cy="80" rx="7" ry="8" fill="#4f8c42" />
-    <ellipse cx="98" cy="96" rx="10" ry="7" fill="#f2dcc0" opacity="0.95" />
-    <circle cx="98" cy="93" r="3" fill="#7b4b2a" />
-    <ellipse cx="75" cy="188" rx="16" ry="9" fill="${body}" />
-    <ellipse cx="121" cy="188" rx="16" ry="9" fill="${body}" />
-    <g transform="rotate(${pawAngle} 132 ${122 - pawLift})">
-      <ellipse cx="132" cy="${122 - pawLift}" rx="11" ry="32" fill="${body}" />
-      <circle cx="132" cy="${92 - pawLift}" r="11" fill="${head}" />
-    </g>
-    <ellipse cx="64" cy="135" rx="11" ry="32" fill="${body}" />
-  </svg>
-`
-
 const createGeneratedActionSheet = async ({ filePath, frameCount = 12, palette } = {}) => {
-  const columns = Math.max(1, Math.min(4, frameCount))
-  const rows = Math.max(1, Math.ceil(frameCount / columns))
-  const cellWidth = 256
-  const cellHeight = 256
-  const colors = Array.isArray(palette) && palette.length > 0
-    ? palette
-    : ['#d89b45', '#e2ad5b']
-  const poses = [
-    { pawLift: 0, pawAngle: 0 },
-    { pawLift: 8, pawAngle: -4 },
-    { pawLift: 18, pawAngle: -10 },
-    { pawLift: 26, pawAngle: -16 },
-    { pawLift: 30, pawAngle: 8 },
-    { pawLift: 22, pawAngle: -8 },
-    { pawLift: 14, pawAngle: 4 },
-    { pawLift: 6, pawAngle: 1 },
-    { pawLift: 0, pawAngle: 0 },
-    { pawLift: 7, pawAngle: -3 },
-    { pawLift: 15, pawAngle: -8 },
-    { pawLift: 3, pawAngle: 1 }
-  ]
-  const body = colors[0] || '#d89b45'
-  const head = colors[1] || body
-  const composites = Array.from({ length: frameCount }, (_entry, index) => {
-    const column = index % columns
-    const row = Math.floor(index / columns)
-    const pose = poses[index % poses.length]
-    return {
-      input: Buffer.from(createGeneratedActionSheetFrameSvg({
-        width: cellWidth,
-        height: cellHeight,
-        body,
-        head,
-        ...pose
-      })),
-      left: column * cellWidth,
-      top: row * cellHeight
+  return writeGoodSubtleWaveSheet({ filePath, frameCount, palette })
+}
+
+const createMockOfficialFrameSvgBuffer = ({ rowIndex, frameIndex }) => Buffer.from(
+  `<svg width="192" height="208" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${58 + rowIndex}" y="${96 - (frameIndex % 3)}" width="${46 + (frameIndex % 4)}" height="58" fill="#f6b73c"/>
+    <rect x="${78 + frameIndex * 3}" y="${74 + (rowIndex % 4)}" width="12" height="${26 + (frameIndex % 5)}" fill="#1c7ed6"/>
+    <rect x="${90 - (frameIndex % 2)}" y="150" width="${20 + (rowIndex % 3)}" height="8" fill="#2f9e44"/>
+  </svg>`
+)
+
+const writeMockProviderBasePng = async (outputPath) => {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: 512,
+      height: 512,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
     }
   })
+    .composite([{
+      input: Buffer.from(`
+        <svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="256" cy="300" rx="82" ry="112" fill="#d89b45" />
+          <circle cx="256" cy="196" r="72" fill="#e2ad5b" />
+          <circle cx="224" cy="190" r="10" fill="#4f8c42" />
+          <circle cx="288" cy="190" r="10" fill="#4f8c42" />
+          <ellipse cx="256" cy="294" rx="38" ry="74" fill="#f2dcc0" />
+          <ellipse cx="214" cy="420" rx="28" ry="14" fill="#d89b45" />
+          <ellipse cx="298" cy="420" rx="28" ry="14" fill="#d89b45" />
+        </svg>
+      `),
+      left: 0,
+      top: 0
+    }])
+    .png()
+    .toFile(outputPath)
+}
+
+const writeMockOfficialRowStripPng = async ({ outputPath, actionId }) => {
+  const row = OFFICIAL_FULL_PET_ROW_BY_ID.get(actionId)
+  if (!row) throw new Error(`Unknown test official row: ${actionId}`)
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: row.frameCount * 192,
+      height: 208,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite(row.durations.map((_duration, frameIndex) => ({
+      input: createMockOfficialFrameSvgBuffer({ rowIndex: row.row, frameIndex }),
+      left: frameIndex * 192,
+      top: 0
+    })))
+    .png()
+    .toFile(outputPath)
+}
+
+const writeMockActionSheetPng = async ({ outputPath, actionId }) => {
+  const row = OFFICIAL_FULL_PET_ROW_BY_ID.get(actionId)
+  if (!row) throw new Error(`Unknown test official row: ${actionId}`)
+  const { columns, rows } = getActionSheetLayout(row.frameCount)
+  const cellWidth = 256
+  const cellHeight = 256
+  const jumpOffsets = [0, -14, -30, -16, 0]
+  const waveLifts = [0, 22, 46, 26]
+  const strideOffsets = [-18, 0, 18, 0, -12, 12, -6, 6]
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
   await sharp({
     create: {
       width: columns * cellWidth,
@@ -110,9 +120,51 @@ const createGeneratedActionSheet = async ({ filePath, frameCount = 12, palette }
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     }
   })
-    .composite(composites)
+    .composite(row.durations.map((_duration, frameIndex) => {
+      const locomotion = /^running(?:-|$)/.test(actionId)
+      const bodyOffsetY = actionId === 'jumping' ? jumpOffsets[frameIndex % jumpOffsets.length] : 0
+      const bodyRadiusX = 50 + ([0, 4, 7, 3, 6, 2, 5, 1][frameIndex % 8])
+      const pawLift = actionId === 'waving'
+        ? waveLifts[frameIndex % waveLifts.length]
+        : actionId === 'failed'
+          ? [0, 8, 18, 28, 18, 8, 0, 4][frameIndex % 8]
+          : [0, 4, 9, 3, 7, 1, 6, 2][frameIndex % 8]
+      const stride = locomotion ? strideOffsets[frameIndex % strideOffsets.length] : 0
+      return {
+        input: Buffer.from(`
+        <svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">
+          <g transform="translate(0 ${bodyOffsetY})">
+            <ellipse cx="128" cy="150" rx="${bodyRadiusX}" ry="60" fill="#d89b45" />
+            <circle cx="128" cy="92" r="42" fill="#e2ad5b" />
+            <circle cx="111" cy="90" r="6" fill="#4f8c42" />
+            <circle cx="145" cy="90" r="6" fill="#4f8c42" />
+            <ellipse cx="128" cy="162" rx="24" ry="36" fill="#f2dcc0" />
+            <rect x="154" y="${98 - pawLift}" width="12" height="${36 + pawLift}" rx="6" fill="#d89b45" />
+            <ellipse cx="${104 - stride}" cy="210" rx="16" ry="9" fill="#d89b45" />
+            <ellipse cx="${152 + stride}" cy="210" rx="16" ry="9" fill="#d89b45" />
+          </g>
+        </svg>
+      `),
+        left: (frameIndex % columns) * cellWidth,
+        top: Math.floor(frameIndex / columns) * cellHeight
+      }
+    }))
     .png()
-    .toFile(filePath)
+    .toFile(outputPath)
+}
+
+const writeMockProviderImage = async ({ outputPath, dataRelativeDir }) => {
+  const officialRowMatch = String(dataRelativeDir || '').match(/\/official-rows\/([^/]+)-row-strip$/)
+  if (officialRowMatch) {
+    await writeMockOfficialRowStripPng({ outputPath, actionId: officialRowMatch[1] })
+    return
+  }
+  const actionSheetMatch = String(dataRelativeDir || '').match(/\/frames\/base\/([^/]+)-keyframe-row$/)
+  if (actionSheetMatch) {
+    await writeMockActionSheetPng({ outputPath, actionId: actionSheetMatch[1] })
+    return
+  }
+  await writeMockProviderBasePng(outputPath)
 }
 
 test('creator studio example manifest declares hybrid creator workflow entries', () => {
@@ -275,6 +327,25 @@ test('creator studio generation task validation rejects unsafe trigger proposals
     }),
     /trigger type is invalid/
   )
+})
+
+test('creator studio generation task defaults single actions to canonical provider sprite rows', () => {
+  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
+
+  const task = normalizeGenerationTask({
+    mode: 'single-action',
+    targetPet: 'current',
+    styleSource: 'referenceImage',
+    actions: [{
+      actionId: 'custom-wave',
+      name: 'Custom Wave',
+      motionPrompt: 'Wave one front paw.',
+      frameCount: 6,
+      triggerProposal: { type: 'manual' }
+    }]
+  })
+
+  assert.equal(task.actions[0].synthesisMode, 'canonical-frame')
 })
 
 test('creator studio generation task preserves sanitized action asset protocol fields', () => {
@@ -510,7 +581,7 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.providerPrompt, /programmatically sliced/i)
 })
 
-test('creator studio prompt builder emits canonical source instructions for canonical-frame synthesis', () => {
+test('creator studio prompt builder emits complete sprite-sheet instructions for canonical-frame actions', () => {
   const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
   const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
   const generationTask = normalizeGenerationTask({
@@ -541,11 +612,12 @@ test('creator studio prompt builder emits canonical source instructions for cano
   })
 
   assert.equal(built.actionId, 'wave')
-  assert.match(built.providerPrompt, /canonical full-body source frame/i)
-  assert.match(built.providerPrompt, /OpenPet will synthesize bounded local motion/i)
+  assert.match(built.providerPrompt, /transparent-background animation sprite sheet/i)
+  assert.match(built.providerPrompt, /complete provider-generated action frames/i)
+  assert.doesNotMatch(built.providerPrompt, /OpenPet will synthesize bounded local motion/i)
   assert.match(built.providerPrompt, /source identity panels.*highest identity authority/i)
   assert.match(built.providerPrompt, /action pose panels.*motion guidance/i)
-  assert.doesNotMatch(built.providerPrompt, /3 columns x 2 rows grid/i)
+  assert.match(built.providerPrompt, /3 columns x 2 rows grid/i)
 })
 
 test('creator studio prompt builder emits a generic OpenPet action asset protocol for wave actions', () => {
@@ -1295,14 +1367,22 @@ const createBridgeServer = ({ routes }) => {
       const payload = body ? JSON.parse(body) : {}
       requests.push({ method: request.method, url: request.url, payload })
       const handler = routes.find((route) => request.url.endsWith(route.path))?.handler
-      const result = handler
+      const resultPromise = Promise.resolve(handler
         ? handler({ request, payload, requests })
-        : { status: 404, body: { ok: false, error: 'Not found' } }
-      response.writeHead(result.status || 200, {
-        'Content-Type': 'application/json',
-        Connection: 'close'
+        : { status: 404, body: { ok: false, error: 'Not found' } })
+      resultPromise.then((result) => {
+        response.writeHead(result.status || 200, {
+          'Content-Type': 'application/json',
+          Connection: 'close'
+        })
+        response.end(JSON.stringify(result.body))
+      }).catch((error) => {
+        response.writeHead(500, {
+          'Content-Type': 'application/json',
+          Connection: 'close'
+        })
+        response.end(JSON.stringify({ ok: false, error: error.message }))
       })
-      response.end(JSON.stringify(result.body))
     })
   })
   return { server, requests }
@@ -1377,6 +1457,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     metadataRelativePath: `runs/${created.json.run.runId}/inputs/references/reference.json`
   }
   fs.writeFileSync(runPath, `${JSON.stringify(storedRun, null, 2)}\n`)
+  await writeMockProviderBasePng(path.join(dataDir, storedRun.input.referenceImage.relativePath))
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -1388,10 +1469,14 @@ test('creator studio run-step command uses host bridge for provider generation w
         Connection: 'close'
       })
       if (request.url.endsWith('/creator/model-image-generate')) {
-        const dataRelativePath = `runs/${created.json.run.runId}/frames/base/0001.png`
+        const outputDir = String(payload.output?.dataRelativeDir || '')
+        const isActionRow = /-keyframe-row$/.test(outputDir)
+        const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
+        ;(isActionRow
+          ? createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
+          : writeMockProviderBasePng(generatedPath))
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -1486,7 +1571,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.equal(generated.json.run.backendStatus.state, 'ready')
     assert.equal(run.status, 'ready_for_review')
     assert.equal(run.backendStatus.state, 'ready')
-    assert.equal(run.artifacts.generatedImage.outputs[0].dataRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
+    assert.match(run.artifacts.generatedImage.outputs[0].dataRelativePath, /-keyframe-row\/0001\.png$/)
     assert.equal(actionFrames.actionId, run.generationTask.actions[0].actionId)
     assert.equal(actionFrames.name, '原地打滚')
     assert.equal(actionFrames.frameCount, 12)
@@ -1496,10 +1581,10 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.equal(fs.existsSync(lastFramePath), true)
     assert.equal(firstFrameStats.channels[3].max > 0, true)
     assert.equal(frameQa.ok, true)
-    assert.equal(frameQa.sourceRelativePath, `runs/${created.json.run.runId}/frames/base/0001.png`)
-    assert.deepEqual(frameQa.sourceRelativePaths, [`runs/${created.json.run.runId}/frames/base/0001.png`])
+    assert.match(frameQa.sourceRelativePath, /-keyframe-row\/0001\.png$/)
+    assert.deepEqual(frameQa.sourceRelativePaths, [frameQa.sourceRelativePath])
     assert.equal(frameQa.actionId, actionFrames.actionId)
-    assert.equal(frameQa.extraction.mode, 'action-sheet')
+    assert.equal(frameQa.extraction.mode, 'provider-keyframe-row')
     assert.deepEqual(frameQa.extraction.layout, { columns: 4, rows: 3 })
     assert.equal(frameQa.playback.loop, true)
     assert.equal(frameQa.playback.frameDurationsMs.length, 12)
@@ -1514,22 +1599,11 @@ test('creator studio run-step command uses host bridge for provider generation w
       endMs: 120
     })
     assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
-    assert.match(requests[1].payload.prompt, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
-    assert.match(requests[1].payload.prompt, /Arrange exactly 12 sequential poses in a 4 column by 3 row grid\./)
-    assert.match(requests[1].payload.prompt, /Keep the same character identity, proportions, face, palette, and overall style\./)
-    assert.match(requests[1].payload.prompt, /Use a plain clean background that is easy to cut out\./)
-    assert.match(requests[1].payload.prompt, /Action sheet label: 原地打滚\./)
-    assert.notEqual(requests[1].payload.prompt, '新增一个自定义动作：原地打滚，动作要循环，点击触发。')
-    assert.deepEqual(requests[1].payload.referenceImages, [{
-      path: path.join(dataDir, 'runs', created.json.run.runId, 'inputs', 'references', 'canonical-reference.png'),
-      fileName: 'canonical-reference.png',
-      relativePath: `runs/${created.json.run.runId}/inputs/references/canonical-reference.png`,
-      metadataRelativePath: `runs/${created.json.run.runId}/inputs/references/reference.json`,
-      sha256: 'reference-content-hash',
-      role: 'canonical-reference'
-    }])
-    assert.equal(requests[1].payload.prompt.includes('bridge-token'), false)
-    assert.equal(requests[1].payload.timeoutMs, 300000)
+    assert.match(requests[3].payload.prompt, /sprite sheet/i)
+    assert.match(requests[3].payload.prompt, /12 animation frames/i)
+    assert.deepEqual(requests[3].payload.referenceImages.map((reference) => reference.role), ['keyframe-action-reference-board'])
+    assert.equal(requests[3].payload.prompt.includes('bridge-token'), false)
+    assert.equal(requests[3].payload.timeoutMs, 300000)
     assert.deepEqual(run.modelSnapshot, {
       backend: 'provider',
       provider: 'openai-compatible',
@@ -1546,7 +1620,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.equal(fs.existsSync(providerPromptPath), true)
     assert.equal(fs.readFileSync(providerPromptPath, 'utf-8'), `${run.artifacts.generatedImage.promptBuilder.promptPreview.text}\n`)
     assert.deepEqual(run.artifacts.generatedImage.promptBuilder.warnings, [])
-    assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-settings', '/creator/model-image-generate'])
+    assert.deepEqual(requests.map((entry) => entry.url), ['/creator/model-settings', '/creator/model-image-generate', '/creator/model-image-generate', '/creator/model-image-generate'])
   } finally {
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
@@ -1565,6 +1639,12 @@ test('creator studio run-step command fails and persists run state when provider
     },
     config: { backend: 'provider' }
   })
+  const timeoutRunPath = path.join(dataDir, 'runs', created.json.run.runId, 'run.json')
+  const timeoutRun = JSON.parse(fs.readFileSync(timeoutRunPath, 'utf-8'))
+  const timeoutReferenceRelativePath = `runs/${created.json.run.runId}/inputs/references/canonical-reference.png`
+  await writeMockProviderBasePng(path.join(dataDir, timeoutReferenceRelativePath))
+  timeoutRun.input.referenceImage = { fileName: 'canonical-reference.png', relativePath: timeoutReferenceRelativePath, metadataRelativePath: `runs/${created.json.run.runId}/inputs/references/reference.json`, contentHash: 'timeout-reference' }
+  fs.writeFileSync(timeoutRunPath, `${JSON.stringify(timeoutRun, null, 2)}\n`)
 
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
@@ -1613,7 +1693,7 @@ test('creator studio run-step command fails and persists run state when provider
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /timed out after 120000ms/i)
     assert.match(run.error, /timed out after 120000ms/i)
-    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'text-to-image')
+    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'provider-keyframe-sprite-row')
     assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 0)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.match(run.artifacts.generatedImage.failure.message, /timed out after 120000ms/i)
@@ -1641,7 +1721,7 @@ test('creator studio run-step command surfaces provider business errors from the
   const runPath = path.join(dataDir, 'runs', created.json.run.runId, 'run.json')
   const referenceRelativePath = `runs/${created.json.run.runId}/inputs/references/canonical-reference.png`
   const referenceMetadataRelativePath = `runs/${created.json.run.runId}/inputs/references/reference.json`
-  fs.writeFileSync(path.join(dataDir, referenceRelativePath), Buffer.from('reference-image-bytes'))
+  await writeMockProviderBasePng(path.join(dataDir, referenceRelativePath))
   fs.writeFileSync(path.join(dataDir, referenceMetadataRelativePath), JSON.stringify({ ok: true }, null, 2))
   const storedRun = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
   storedRun.input.referenceImage = {
@@ -1699,11 +1779,9 @@ test('creator studio run-step command surfaces provider business errors from the
     assert.equal(run.backendStatus.state, 'failed')
     assert.match(run.backendStatus.message, /旧转发链路已关闭/)
     assert.match(run.error, /旧转发链路已关闭/)
-    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'image-edit')
+    assert.equal(run.artifacts.generatedImage.conditioning.mode, 'provider-keyframe-sprite-row')
     assert.equal(run.artifacts.generatedImage.conditioning.endpoint, '/images/edits')
-    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 1)
-    assert.equal(run.artifacts.generatedImage.conditioning.references[0].relativePath, referenceRelativePath)
-    assert.equal(run.artifacts.generatedImage.conditioning.references[0].metadataRelativePath, referenceMetadataRelativePath)
+    assert.equal(run.artifacts.generatedImage.conditioning.referenceImageCount, 0)
     assert.match(run.artifacts.generatedImage.failure.message, /旧转发链路已关闭/)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.deepEqual(events.map((entry) => entry.event), ['generate.start', 'generate.failed'])
@@ -1713,7 +1791,7 @@ test('creator studio run-step command surfaces provider business errors from the
   }
 })
 
-test('creator studio host-bridged local run can be approved and exported as a standard pet bundle', async () => {
+test('creator studio preview-only host run cannot be exported as a pet bundle', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-local-export-'))
   const created = runCreatorCommand({
     command: 'create-run',
@@ -1791,9 +1869,9 @@ test('creator studio host-bridged local run can be approved and exported as a st
 
     assert.equal(generated.status, 0)
     assert.equal(approved.status, 0)
-    assert.equal(exported.status, 0)
-    assert.equal(fs.existsSync(exported.json.bundle.path), true)
-    assert.match(exported.json.bundle.path, /\.codex-pet\.zip$/)
+    assert.equal(exported.status, 1)
+    assert.equal(exported.json.ok, false)
+    assert.match(exported.json.error, /bundle|preview|missing/i)
   } finally {
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
@@ -1845,8 +1923,12 @@ test('creator studio provider full-pet generation writes task qa without prompt 
       },
       {
         path: '/creator/model-image-generate',
-        handler: ({ payload }) => {
+        handler: async ({ payload }) => {
           const dataRelativePath = `${payload.output.dataRelativeDir}/0001.png`
+          await writeMockProviderImage({
+            outputPath: path.join(dataDir, dataRelativePath),
+            dataRelativeDir: payload.output.dataRelativeDir
+          })
           return {
             body: {
               ok: true,
@@ -1892,11 +1974,11 @@ test('creator studio provider full-pet generation writes task qa without prompt 
         OPENPET_BRIDGE_TOKEN: 'bridge-token'
       }
     })
+    assert.equal(generated.status, 0, generated.stderr || JSON.stringify(generated.json))
     const actionTaskQaPath = generated.json.run.artifacts.actionTaskQa
     const actionTaskQa = JSON.parse(fs.readFileSync(actionTaskQaPath, 'utf-8'))
     const serialized = JSON.stringify(actionTaskQa)
 
-    assert.equal(generated.status, 0)
     assert.equal(actionTaskQa.ok, true)
     assert.equal(actionTaskQa.mode, 'full-pet')
     assert.equal(actionTaskQa.targetPet, 'new')
@@ -4606,10 +4688,14 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
         }))
         return
       }
-      const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+      const outputDir = String(payload.output?.dataRelativeDir || '')
+      const isActionRow = /-keyframe-row$/.test(outputDir)
+      const dataRelativePath = `${outputDir}/0001.png`
       const generatedPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-      createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
+      ;(isActionRow
+        ? createGeneratedActionSheet({ filePath: generatedPath, frameCount: 16 })
+        : writeMockProviderBasePng(generatedPath))
         .then(() => {
           response.end(JSON.stringify({
             ok: true,
@@ -4649,6 +4735,11 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
       prompt: unsafePrompt,
       backend: 'local'
     })
+    const { readRun, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+    const referenceRelativePath = `runs/${draft.run.runId}/inputs/references/canonical-reference.png`
+    await writeMockProviderBasePng(path.join(dataDir, referenceRelativePath))
+    const storedRun = readRun({ dataDir, runId: draft.run.runId })
+    writeRun({ dataDir, run: { ...storedRun, input: { ...storedRun.input, referenceImage: { fileName: 'canonical-reference.png', relativePath: referenceRelativePath, metadataRelativePath: `runs/${draft.run.runId}/inputs/references/reference.json`, contentHash: 'provenance-reference' } } } })
     await postJson(`/api/runs/${draft.run.runId}/confirm`)
     await postJson(`/api/runs/${draft.run.runId}/generate-action`)
     const detail = await fetch(`http://127.0.0.1:${port}/api/runs/${draft.run.runId}`).then((response) => response.json())
@@ -4662,8 +4753,8 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
-    assert.equal(detail.run.developerPrompt.conditioning.mode, 'text-to-image')
-    assert.equal(detail.run.developerPrompt.conditioning.referenceImageCount, 0)
+    assert.equal(detail.run.developerPrompt.conditioning.mode, 'provider-keyframe-sprite-row')
+    assert.equal(detail.run.developerPrompt.conditioning.referenceImageCount, 1)
     assert.equal(detail.run.developerPrompt.promptPreview.truncated, false)
     assert.match(detail.run.developerPrompt.promptPreview.text, /Create one OpenPet action sheet/)
     assert.match(detail.run.developerPrompt.promptPreview.text, /\[redacted-secret\]/)
@@ -4681,6 +4772,7 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
+    server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
   }
 })
@@ -4848,11 +4940,15 @@ test('creator studio service rejects duplicate generation while a run is already
       }
       if (request.url.endsWith('/creator/model-image-generate')) {
         imageRequests += 1
-        const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+        const outputDir = String(payload.output?.dataRelativeDir || '')
+        const isActionRow = /-keyframe-row$/.test(outputDir)
+        const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         const sendGeneratedImage = () => {
           fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-          createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
+          ;(isActionRow
+            ? createGeneratedActionSheet({ filePath: generatedPath, frameCount: 16 })
+            : writeMockProviderBasePng(generatedPath))
             .then(() => {
               response.end(JSON.stringify({
                 ok: true,
@@ -4906,6 +5002,11 @@ test('creator studio service rejects duplicate generation while a run is already
       backend: 'local'
     })
     const runId = draft.body.run.runId
+    const { readRun, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+    const referenceRelativePath = `runs/${runId}/inputs/references/canonical-reference.png`
+    await writeMockProviderBasePng(path.join(dataDir, referenceRelativePath))
+    const storedRun = readRun({ dataDir, runId })
+    writeRun({ dataDir, run: { ...storedRun, input: { ...storedRun.input, referenceImage: { fileName: 'canonical-reference.png', relativePath: referenceRelativePath, metadataRelativePath: `runs/${runId}/inputs/references/reference.json`, contentHash: 'generation-lock-reference' } } } })
     await postJsonResponse(`/api/runs/${runId}/confirm`)
     const firstGeneration = postJsonResponse(`/api/runs/${runId}/generate-action`)
     await firstImageStartedPromise
@@ -4919,7 +5020,7 @@ test('creator studio service rejects duplicate generation while a run is already
     assert.equal(duplicate.body.ok, false)
     assert.match(duplicate.body.error, /already generating/i)
     assert.equal(duplicate.body.run.status, 'generating')
-    assert.equal(imageRequests, 1)
+    assert.equal(imageRequests, 3)
   } finally {
     releaseFirstImage?.()
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
@@ -4928,6 +5029,7 @@ test('creator studio service rejects duplicate generation while a run is already
     else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
+    server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
   }
 })
@@ -6057,6 +6159,7 @@ test('creator studio service exposes failed generation recovery and retries the 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
   let generationAttempts = 0
+  let actionRowAttempts = 0
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -6078,17 +6181,22 @@ test('creator studio service exposes failed generation recovery and retries the 
         return
       }
       generationAttempts += 1
-      if (generationAttempts === 1) {
+      const outputDir = String(payload.output?.dataRelativeDir || '')
+      const isActionRow = /-keyframe-row$/.test(outputDir)
+      if (isActionRow) actionRowAttempts += 1
+      if (isActionRow && actionRowAttempts === 1) {
         response.end(JSON.stringify({
           ok: false,
           error: 'Provider queue overloaded'
         }))
         return
       }
-      const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+      const dataRelativePath = `${outputDir}/0001.png`
       const generatedPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-      createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
+      ;(isActionRow
+        ? createGeneratedActionSheet({ filePath: generatedPath, frameCount: 12 })
+        : writeMockProviderBasePng(generatedPath))
         .then(() => {
           response.end(JSON.stringify({
             ok: true,
@@ -6131,12 +6239,17 @@ test('creator studio service exposes failed generation recovery and retries the 
       backend: 'local'
     })
     const runId = draft.body.run.runId
+    const { readRun, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+    const referenceRelativePath = `runs/${runId}/inputs/references/canonical-reference.png`
+    await writeMockProviderBasePng(path.join(dataDir, referenceRelativePath))
+    const storedRun = readRun({ dataDir, runId })
+    writeRun({ dataDir, run: { ...storedRun, input: { ...storedRun.input, referenceImage: { fileName: 'canonical-reference.png', relativePath: referenceRelativePath, metadataRelativePath: `runs/${runId}/inputs/references/reference.json`, contentHash: 'retry-reference' } } } })
     await postJsonResponse(`/api/runs/${runId}/confirm`)
     const failed = await postJsonResponse(`/api/runs/${runId}/generate-action`)
     const retried = await postJsonResponse(`/api/runs/${runId}/generate-action`)
     const logs = await fetch(`http://127.0.0.1:${port}/api/runs/${runId}/logs`).then((response) => response.json())
 
-    assert.equal(failed.response.status, 500)
+    assert.equal(failed.response.status, 400)
     assert.equal(failed.body.ok, false)
     assert.match(failed.body.error, /Provider queue overloaded/)
     assert.equal(failed.body.run.runId, runId)
@@ -6144,8 +6257,8 @@ test('creator studio service exposes failed generation recovery and retries the 
     assert.equal(failed.body.run.recovery.canRetryGeneration, true)
     assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
     assert.equal(failed.body.run.recovery.outputCount, 0)
-    assert.equal(failed.body.run.recovery.conditioning.mode, 'text-to-image')
-    assert.equal(failed.body.run.recovery.conditioning.referenceImageCount, 0)
+    assert.equal(failed.body.run.recovery.conditioning.mode, 'provider-keyframe-sprite-row')
+    assert.equal(failed.body.run.recovery.conditioning.referenceImageCount, 1)
     assert.equal(String(failed.body.run.recovery.attemptFailedAt || '').length > 0, true)
     assert.equal(failed.body.run.wizardState.nextStep.label, 'Retry generation')
     assert.equal(failed.body.run.wizardState.nextStep.blocked, false)
@@ -6180,7 +6293,7 @@ test('creator studio service exposes failed generation recovery and retries the 
       'review:current',
       'import:upcoming'
     ])
-    assert.equal(generationAttempts, 2)
+    assert.equal(generationAttempts, 6)
     assert.deepEqual(logs.logs.map((entry) => entry.event), [
       'task.drafted',
       'task.confirmed',
@@ -6196,6 +6309,7 @@ test('creator studio service exposes failed generation recovery and retries the 
     else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
+    server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
   }
 })
@@ -6639,6 +6753,7 @@ test('creator studio service exposes full-pet validation recovery guidance for d
   const server = createCreatorStudioServer({ dataDir, dashboardPath })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = server.address().port
+  let imageGenerationRequestCount = 0
   const bridgeServer = require('node:http').createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -6659,6 +6774,7 @@ test('creator studio service exposes full-pet validation recovery guidance for d
         }))
         return
       }
+      imageGenerationRequestCount += 1
       const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
       const generatedPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
@@ -6730,6 +6846,7 @@ test('creator studio service exposes full-pet validation recovery guidance for d
       'The generated source image was empty. Adjust the prompt or model settings, then retry generation on this same run.'
     )
     assert.equal(failed.body.run.recovery.qaFocus, 'Check source image validation expectations before retrying.')
+    assert.equal(imageGenerationRequestCount, 1)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl

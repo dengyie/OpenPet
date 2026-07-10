@@ -97,6 +97,23 @@ test('final action generation falls back to the action anchor when final action 
   assert.equal(references[0].relativePath, 'runs/run-anchor/anchors/actions/waving-anchor.png')
 })
 
+test('reference resolver skips stale anchor records whose local files are missing', () => {
+  const dataDir = makeDataDir()
+  const run = createRunWithAnchors(dataDir)
+  fs.unlinkSync(path.join(dataDir, run.artifacts.anchorReferences.finalActionBoards[0].relativePath))
+
+  const references = resolveRunReferenceImages({
+    dataDir,
+    run,
+    stage: 'final',
+    actionId: 'waving'
+  })
+
+  assert.equal(references.length, 1)
+  assert.equal(references[0].role, 'action-anchor')
+  assert.equal(references[0].relativePath, 'runs/run-anchor/anchors/actions/waving-anchor.png')
+})
+
 test('character anchor generation uses the composite board as the only reference image', () => {
   const dataDir = makeDataDir()
   const run = createRunWithAnchors(dataDir)
@@ -163,4 +180,50 @@ test('reference resolver rejects anchor paths that escape through bare parent se
   assert.equal(references.length, 1)
   assert.equal(references[0].role, 'canonical-reference')
   assert.equal(references[0].relativePath, 'runs/run-anchor/inputs/references/canonical-reference.png')
+})
+
+test('reference resolver rejects anchor symlinks that escape the data directory', () => {
+  const dataDir = makeDataDir()
+  const run = createRunWithAnchors(dataDir)
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-anchor-outside-'))
+  const outsidePath = path.join(outsideDir, 'outside.png')
+  fs.writeFileSync(outsidePath, 'outside reference')
+  const escapedRelativePath = 'runs/run-anchor/anchors/actions/escaped-anchor.png'
+  const escapedPath = path.join(dataDir, escapedRelativePath)
+  fs.unlinkSync(path.join(dataDir, run.artifacts.anchorReferences.finalActionBoards[0].relativePath))
+  fs.unlinkSync(path.join(dataDir, run.artifacts.anchorReferences.actionAnchors[0].relativePath))
+  fs.symlinkSync(outsidePath, escapedPath)
+  run.artifacts.anchorReferences.actionAnchors[0].relativePath = escapedRelativePath
+
+  const references = resolveRunReferenceImages({
+    dataDir,
+    run,
+    stage: 'final',
+    actionId: 'waving'
+  })
+
+  assert.equal(references.length, 1)
+  assert.equal(references[0].role, 'character-anchor')
+  assert.equal(references[0].relativePath, 'runs/run-anchor/anchors/character-anchor.png')
+})
+
+test('reference resolver rejects a recorded source image after its sha256 content changes', () => {
+  const dataDir = makeDataDir()
+  const run = createRunWithAnchors(dataDir)
+  const sourcePath = path.join(dataDir, run.input.referenceImage.relativePath)
+  run.artifacts.anchorReferences = null
+  run.input.referenceImage.contentHash = require('node:crypto')
+    .createHash('sha256')
+    .update(fs.readFileSync(sourcePath))
+    .digest('hex')
+  fs.writeFileSync(sourcePath, 'replaced reference')
+
+  const references = resolveRunReferenceImages({
+    dataDir,
+    run,
+    stage: 'final',
+    actionId: 'waving'
+  })
+
+  assert.deepEqual(references, [])
 })

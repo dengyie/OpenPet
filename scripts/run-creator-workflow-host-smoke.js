@@ -7,6 +7,7 @@ const path = require('path')
 const { sanitizeLogText } = require('../src/main/services/log-safety')
 const { createBasicBehaviorPlugin } = require('../src/main/plugins/official/basic-behavior')
 const { getLegacyPetAnimations } = require('../src/main/pet-pack/loader')
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('../examples/plugins/creator-studio/lib/full-pet-row-contract')
 const { LEGACY_USER_DATA_DIR_NAME } = require('../src/main/user-data-path')
 const { syncBundledPlugins } = require('../src/main/services/bundled-plugin-sync-service')
 const { createActionImportService } = require('../src/main/services/action-import-service')
@@ -61,8 +62,9 @@ const usage = () => [
   '  --help',
   '',
   'Runs the real host-owned creatorWorkflowService in isolated userData/workspace sandboxes.',
-  'It validates provider generation plus import/apply handoff, but does not claim that the',
-  'uploaded reference image is already sent to the provider as a true multimodal condition.'
+  'It validates provider generation plus import/apply handoff. Canonical-frame actions',
+  'must record complete provider-generated keyframe sprite-row evidence; provider action',
+  'anchors alone are not acceptable deliverable action-completion evidence.'
 ].join('\n')
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
@@ -547,11 +549,13 @@ const verifyConditioningEvidence = ({ runRecord }) => {
       message: 'Run record is missing reference conditioning evidence'
     }
   }
-  if (conditioning.mode !== 'image-edit') {
-    return {
-      ok: false,
-      message: `Run conditioning mode is not image-edit: ${conditioning.mode || 'unknown'}`
-    }
+  const referencePaths = Array.isArray(conditioning.references)
+    ? conditioning.references.map((reference) => String(reference?.relativePath || '')).filter(Boolean)
+    : []
+  const failedStage = [...(runRecord?.anchorGenerationStages || []), ...(runRecord?.generationStages || [])]
+    .find((stage) => stage?.ok === false)
+  if (failedStage) {
+    return { ok: false, message: `Provider generation stage failed: ${failedStage.stage || 'unknown'}` }
   }
   if ((Number(conditioning.referenceImageCount) || 0) <= 0) {
     return {
@@ -559,13 +563,66 @@ const verifyConditioningEvidence = ({ runRecord }) => {
       message: 'Run conditioning evidence did not record any reference images'
     }
   }
-  const referencePaths = Array.isArray(conditioning.references)
-    ? conditioning.references.map((reference) => String(reference?.relativePath || '')).filter(Boolean)
-    : []
   if (!referencePaths.length) {
     return {
       ok: false,
       message: 'Run conditioning evidence is missing reference relative paths'
+    }
+  }
+  if (conditioning.mode !== 'image-edit') {
+    if (conditioning.mode === 'provider-keyframe-sprite-row') {
+      const referenceRoles = Array.isArray(conditioning.references)
+        ? conditioning.references.map((reference) => String(reference?.role || '')).filter(Boolean)
+        : []
+      const finalKeyframeRowStage = Array.isArray(runRecord?.generationStages)
+        ? runRecord.generationStages.find((stage) => (
+          stage?.stage === 'final-image'
+          && stage?.ok === true
+          && Array.isArray(stage?.referenceRoles)
+          && stage.referenceRoles.includes('keyframe-action-reference-board')
+        ))
+        : null
+      if (!finalKeyframeRowStage) {
+        return {
+          ok: false,
+          message: 'Provider keyframe sprite row conditioning is missing a successful final-image stage'
+        }
+      }
+      if (!finalKeyframeRowStage.outputRelativePath) {
+        return { ok: false, message: 'Provider keyframe sprite row final stage is missing its output path' }
+      }
+      if (
+        Number(conditioning.referenceImageCount) !== 1 ||
+        referencePaths.length !== 1 ||
+        referenceRoles.length !== 1 ||
+        referenceRoles[0] !== 'keyframe-action-reference-board'
+      ) {
+        return {
+          ok: false,
+          message: 'Provider keyframe sprite row conditioning must record exactly one single conditioning board reference'
+        }
+      }
+      if (
+        !Array.isArray(finalKeyframeRowStage.referenceRoles) ||
+        finalKeyframeRowStage.referenceRoles.length !== 1 ||
+        finalKeyframeRowStage.referenceRoles[0] !== 'keyframe-action-reference-board'
+      ) {
+        return {
+          ok: false,
+          message: 'Provider keyframe sprite row final stage must use exactly one single conditioning board reference'
+        }
+      }
+      return {
+        ok: true,
+        message: `Provider keyframe sprite row recorded with a single conditioning board: ${referencePaths.join(', ')}`,
+        artifactPaths: {
+          referenceInput: referencePaths[0]
+        }
+      }
+    }
+    return {
+      ok: false,
+      message: `Run conditioning mode is not complete provider sprite-row evidence: ${conditioning.mode || 'unknown'}`
     }
   }
   return {
@@ -577,9 +634,25 @@ const verifyConditioningEvidence = ({ runRecord }) => {
   }
 }
 
+const summarizeCandidateSelection = (candidateSelection = {}) => {
+  if (!isObject(candidateSelection)) return null
+  const candidateCount = Math.max(0, Number(candidateSelection.candidateCount) || 0)
+  const selectedCandidateId = sanitizeText(candidateSelection.selectedCandidateId || '', 160)
+  const selectedCandidateRelativePath = sanitizeText(candidateSelection.selectedCandidateRelativePath || '', 500)
+  if (candidateCount <= 0 && !selectedCandidateId && !selectedCandidateRelativePath) return null
+  return {
+    candidateCount,
+    selectedCandidateId,
+    selectedCandidateRelativePath,
+    selectedScore: Math.max(0, Number(candidateSelection.selectedScore) || 0),
+    acceptable: Boolean(candidateSelection.acceptable)
+  }
+}
+
 const summarizeGenerationStages = (stages = []) => (
   Array.isArray(stages)
     ? stages.map((stage) => ({
+      ...(stage?.actionId ? { actionId: String(stage.actionId) } : {}),
       stage: String(stage?.stage || ''),
       ok: Object.hasOwn(stage || {}, 'ok') ? Boolean(stage?.ok) : null,
       referenceRole: String(stage?.referenceRole || ''),
@@ -591,6 +664,10 @@ const summarizeGenerationStages = (stages = []) => (
       model: String(stage?.model || ''),
       outputRelativePath: String(stage?.outputRelativePath || ''),
       promptRelativePath: String(stage?.promptRelativePath || ''),
+      ...(stage?.adopted ? { adopted: true } : {}),
+      ...(summarizeCandidateSelection(stage?.candidateSelection)
+        ? { candidateSelection: summarizeCandidateSelection(stage.candidateSelection) }
+        : {}),
       error: sanitizeText(stage?.error || '', 500)
     }))
     : []
@@ -674,23 +751,30 @@ const verifyPreviewReadyNewCharacterScenario = ({ result }) => {
 
 const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, runRecord }) => {
   if (scenario === 'new-character' && result?.state === 'preview-ready') {
-    const previewVerification = verifyPreviewReadyNewCharacterScenario({ result })
-    if (!previewVerification.ok) return previewVerification
-    const conditioningVerification = verifyConditioningEvidence({ runRecord })
-    if (!conditioningVerification.ok) return conditioningVerification
     return {
-      ok: true,
-      message: `${previewVerification.message}. ${conditioningVerification.message}.`,
-      artifactPaths: {
-        ...(isObject(previewVerification.artifactPaths) ? previewVerification.artifactPaths : {}),
-        ...(isObject(conditioningVerification.artifactPaths) ? conditioningVerification.artifactPaths : {})
-      }
+      ok: false,
+      message: 'New-character workflow stopped at preview-ready; complete provider-generated official action rows are required before this smoke can pass.'
     }
   }
   if (result?.state !== 'completed') {
     return {
       ok: false,
       message: `Workflow did not complete successfully: ${result?.state || 'unknown'}`
+    }
+  }
+  if (scenario === 'new-character') {
+    const realActionIds = new Set((result?.basicActions?.realActionIds || []).map(String))
+    const missing = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !realActionIds.has(actionId))
+    if (missing.length) return { ok: false, message: `Completed pet is missing provider-generated official actions: ${missing.join(', ')}` }
+    for (const actionId of OFFICIAL_FULL_PET_ACTION_IDS) {
+      const stages = (runRecord?.generationStages || []).filter((stage) => stage.actionId === actionId)
+      for (const stageName of ['start-keyframe', 'peak-keyframe', 'final-image']) {
+        const stage = stages.find((candidate) => candidate.stage === stageName && candidate.ok === true)
+        if (!stage) return { ok: false, message: `Official action ${actionId} is missing successful ${stageName} evidence` }
+        if (stageName === 'final-image' && !stage.outputRelativePath) {
+          return { ok: false, message: `Official action ${actionId} final-image evidence is missing its output path` }
+        }
+      }
     }
   }
   const importVerification = scenario === 'existing-action'
@@ -928,7 +1012,7 @@ const runCreatorWorkflowHostSmoke = async ({
     schemaVersion: 1,
     evidenceType: 'creator-workflow-host-smoke',
     generatedAt: now().toISOString(),
-    claimBoundary: 'Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and records evidence that the run-local canonical reference image was sent into the provider request as an image-edit conditioning input. It does not guarantee the provider visually obeyed that conditioning.',
+    claimBoundary: 'Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and requires complete provider-generated keyframe sprite-row evidence for canonical-frame action completion. Provider action anchors alone are not acceptable deliverable action-completion evidence; this smoke still does not guarantee the provider visually obeyed that conditioning.',
     sessionId: sessionPaths.sessionId,
     sessionDir: createSafeProjectPath(sessionPaths.sessionDir, `${DEFAULT_SESSION_DIR_LABEL}/${sessionPaths.sessionId}`),
     reportPath: createSafeSessionPath({
@@ -978,6 +1062,9 @@ const main = async () => {
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2))
+    if (report.errors.length) {
+      process.exitCode = 1
+    }
   } else {
     console.log(`creator workflow host smoke: ${report.ok ? 'ok' : 'failed'}`)
     console.log(`report: ${report.reportPath}`)
@@ -1006,8 +1093,10 @@ module.exports = {
   prepareSeedSettings,
   resolveReferenceImagePath,
   resolveImportedPetRoot,
+  verifyConditioningEvidence,
   verifyNewCharacterScenario,
   verifyScenarioResult,
+  summarizeGenerationStages,
   approveScenarioReferenceImage,
   runScenarioWorkflow,
   runCreatorWorkflowHostSmoke

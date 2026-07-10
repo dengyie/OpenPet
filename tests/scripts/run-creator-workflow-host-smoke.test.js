@@ -15,8 +15,10 @@ const {
   prepareSeedSettings,
   resolveReferenceImagePath,
   resolveImportedPetRoot,
+  verifyConditioningEvidence,
   verifyNewCharacterScenario,
   verifyScenarioResult,
+  summarizeGenerationStages,
   approveScenarioReferenceImage,
   runScenarioWorkflow,
   runCreatorWorkflowHostSmoke
@@ -194,7 +196,7 @@ test('verifyNewCharacterScenario resolves imported pack root from isolated userD
   assert.equal(verification.artifactPaths.petManifestPath, path.join(packRoot, 'pet.json'))
 })
 
-test('verifyScenarioResult treats new-character preview-ready as a passed official-row gate', () => {
+test('verifyScenarioResult rejects new-character preview-ready as incomplete official-row output', () => {
   const verification = verifyScenarioResult({
     scenario: 'new-character',
     result: {
@@ -226,9 +228,162 @@ test('verifyScenarioResult treats new-character preview-ready as a passed offici
     }
   })
 
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /preview-ready.*official action rows/i)
+})
+
+test('verifyConditioningEvidence rejects adopted provider action anchors as action completion evidence', () => {
+  const anchorPath = 'runs/run-existing/anchors/actions/wave-anchor/0001.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'adopted-provider-anchor',
+        endpoint: 'local/provider-anchor-adoption',
+        referenceImageCount: 1,
+        references: [{
+          fileName: '0001.png',
+          relativePath: anchorPath,
+          role: 'action-anchor'
+        }]
+      },
+      anchorGenerationStages: [{
+        stage: 'action-anchor',
+        ok: true,
+        outputRelativePath: anchorPath
+      }],
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        adopted: true,
+        outputRelativePath: anchorPath
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /not complete provider sprite-row evidence/)
+})
+
+test('verifyConditioningEvidence accepts provider keyframe sprite row conditioning', () => {
+  const boardPath = 'runs/run-existing/inputs/keyframes/actions/wave-row-reference-board.png'
+  const outputPath = 'runs/run-existing/frames/base/wave-keyframe-row/0001.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'provider-keyframe-sprite-row',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        references: [
+          {
+            fileName: 'wave-row-reference-board.png',
+            relativePath: boardPath,
+            role: 'keyframe-action-reference-board'
+          }
+        ]
+      },
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        adopted: false,
+        referenceRoles: ['keyframe-action-reference-board'],
+        outputRelativePath: outputPath
+      }]
+    }
+  })
+
   assert.equal(verification.ok, true)
-  assert.match(verification.message, /Preview-only full-pet output/)
-  assert.deepEqual(verification.artifactPaths.referenceInput, 'runs/run-preview/inputs/references/canonical-reference.png')
+  assert.match(verification.message, /keyframe sprite row/)
+  assert.equal(verification.artifactPaths.referenceInput, boardPath)
+})
+
+test('verifyConditioningEvidence rejects provider keyframe rows with more than one final reference image', () => {
+  const boardPath = 'runs/run-existing/inputs/keyframes/actions/wave-row-reference-board.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'provider-keyframe-sprite-row',
+        endpoint: '/images/edits',
+        referenceImageCount: 2,
+        references: [
+          {
+            fileName: 'wave-row-reference-board.png',
+            relativePath: boardPath,
+            role: 'keyframe-action-reference-board'
+          },
+          {
+            fileName: 'extra.png',
+            relativePath: 'runs/run-existing/inputs/references/extra.png',
+            role: 'canonical-reference'
+          }
+        ]
+      },
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        adopted: false,
+        referenceRoles: ['keyframe-action-reference-board', 'canonical-reference'],
+        outputRelativePath: 'runs/run-existing/frames/base/wave-keyframe-row/0001.png'
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /single conditioning board reference/)
+})
+
+test('verifyConditioningEvidence rejects adopted anchors even with incomplete adoption evidence', () => {
+  const anchorPath = 'runs/run-existing/anchors/actions/wave-anchor/0001.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'adopted-provider-anchor',
+        endpoint: 'local/provider-anchor-adoption',
+        referenceImageCount: 1,
+        references: [{
+          fileName: '0001.png',
+          relativePath: anchorPath,
+          role: 'action-anchor'
+        }]
+      },
+      anchorGenerationStages: [{
+        stage: 'action-anchor',
+        ok: true,
+        outputRelativePath: anchorPath
+      }],
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        outputRelativePath: anchorPath
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /not complete provider sprite-row evidence/)
+})
+
+test('summarizeGenerationStages preserves direct-source action anchor candidate selection evidence', () => {
+  const summary = summarizeGenerationStages([{
+    stage: 'action-anchor',
+    ok: true,
+    referenceRoles: ['source-action-reference-board'],
+    outputRelativePath: 'runs/run-existing/anchors/actions/wave-anchor/0001.png',
+    candidateSelection: {
+      candidateCount: 3,
+      selectedCandidateId: 'clean-cutout-motion-readable',
+      selectedCandidateRelativePath: 'runs/run-existing/anchors/actions/wave-anchor-candidates/02-clean-cutout-motion-readable/0001.png',
+      selectedScore: 87.25,
+      acceptable: true
+    }
+  }])
+
+  assert.deepEqual(summary[0].candidateSelection, {
+    candidateCount: 3,
+    selectedCandidateId: 'clean-cutout-motion-readable',
+    selectedCandidateRelativePath: 'runs/run-existing/anchors/actions/wave-anchor-candidates/02-clean-cutout-motion-readable/0001.png',
+    selectedScore: 87.25,
+    acceptable: true
+  })
 })
 
 test('approveScenarioReferenceImage returns a workflow token for a reference path', () => {
@@ -249,7 +404,7 @@ test('approveScenarioReferenceImage returns a workflow token for a reference pat
   assert.deepEqual(calls, ['/tmp/reference.png'])
 })
 
-test('runScenarioWorkflow approves the reference image before generating a new character', async () => {
+test('runScenarioWorkflow approves the reference image but rejects failed provider evidence', async () => {
   const repoRoot = createTempDir('openpet-creator-workflow-repo-')
   const sourceUserDataDir = createTempDir('openpet-creator-workflow-source-user-data-')
   const scenarioDir = createTempDir('openpet-creator-workflow-scenario-')
@@ -354,7 +509,8 @@ test('runScenarioWorkflow approves the reference image before generating a new c
     }
   })
 
-  assert.equal(result.ok, true)
+  assert.equal(result.ok, false)
+  assert.match(result.verification.message, /missing provider-generated official actions/)
   assert.deepEqual(calls[0], ['approve', referenceImagePath])
   assert.equal(calls[1][0], 'generateNewCharacter')
   assert.equal(calls[1][1].characterName, 'Golden Cartoon Cat')
@@ -510,7 +666,7 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
   assert.equal(report.ok, true)
   assert.equal(report.schemaVersion, 1)
   assert.equal(report.evidenceType, 'creator-workflow-host-smoke')
-  assert.match(report.claimBoundary, /records evidence that the run-local canonical reference image was sent/i)
+  assert.match(report.claimBoundary, /requires complete provider-generated keyframe sprite-row evidence/i)
   assert.equal(report.scenarios.length, 2)
   assert.equal(report.scenarios[0].verification.ok, true)
   assert.equal(report.scenarios[1].verification.ok, true)

@@ -146,7 +146,13 @@ const normalizeGenerationTask = (task = {}) => {
   if (!VALID_TARGET_PETS.has(targetPet)) throw new Error(`Creator Studio targetPet is invalid: ${targetPet}`)
   const styleSource = String(task.styleSource || (mode === 'single-action' ? 'currentPet' : 'textOnly'))
   if (!VALID_STYLE_SOURCES.has(styleSource)) throw new Error(`Creator Studio styleSource is invalid: ${styleSource}`)
-  const actions = Array.isArray(task.actions) ? task.actions.map(normalizeAction) : []
+  const actions = Array.isArray(task.actions)
+      ? task.actions.map(normalizeAction).map((action) => (
+          mode === 'single-action'
+            ? { ...action, synthesisMode: 'canonical-frame' }
+            : action
+        ))
+      : []
   if (actions.length === 0) throw new Error('Creator Studio generation task requires at least one action')
   return {
     mode,

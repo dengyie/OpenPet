@@ -1318,7 +1318,7 @@ test('creator studio example imports approved fixture pet through host bridge', 
   assert.equal(fs.existsSync(path.join(userPacksDir, 'sprout-cat', 'pet.json')), true)
 })
 
-test('creator studio example imports approved host-bridged local pet through host bridge', async () => {
+test('creator studio example rejects importing a preview-only host pet', async () => {
   const settingsService = createSettingsService({
     plugins: { enabled: { 'openpet.creator-studio': true } },
     petPacks: { activePackId: 'legacy-cat', installed: {} }
@@ -1391,17 +1391,11 @@ test('creator studio example imports approved host-bridged local pet through hos
   const runId = createResult.result.run.runId
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
   await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
-  const importResult = await service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true })
-
-  assert.equal(importResult.ok, true)
-  assert.equal(importResult.result.ok, true)
-  assert.equal(importResult.result.run.importStatus, 'imported')
-  assert.equal(settingsService.get().petPacks.activePackId, 'local-sprout-cat')
-  assert.equal(fs.existsSync(path.join(userPacksDir, 'local-sprout-cat', 'pet.json')), true)
-  assert.notEqual(
-    crypto.createHash('sha256').update(fs.readFileSync(path.join(userPacksDir, 'local-sprout-cat', 'spritesheet.webp'))).digest('hex'),
-    crypto.createHash('sha256').update(createMinimalWebp()).digest('hex')
+  await assert.rejects(
+    service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true }),
+    /pet\.json|preview|official action/i
   )
+  assert.equal(settingsService.get().petPacks.activePackId, 'legacy-cat')
 })
 
 test('declaration-only creator asset inspection bridge rejects missing permissions', async () => {

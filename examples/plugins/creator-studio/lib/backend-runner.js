@@ -4,9 +4,9 @@ const { getBackendAdapter } = require('./backend-adapters')
 const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
 const { generateViaHostModelBridge } = require('./host-model-bridge')
 const {
-  buildActionFramesFromGeneratedImage,
   buildCanonicalActionFramesFromGeneratedImage
 } = require('./action-frame-builder')
+const { assertActionFrameQaPassed } = require('./action-frame-qa')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const {
@@ -45,8 +45,20 @@ const writeHostGeneratedStandardOutputs = async ({ dataDir, run, generationResul
     dataDir,
     generationResult,
     outputDir,
-    qaDir
+    qaDir,
+    officialRows: generationResult.officialRows || null
   })
+  if (atlas.previewOnly) {
+    return {
+      outputDir,
+      bundlePath: '',
+      sha256: '',
+      qaPath: atlas.atlasQaPath,
+      sourceQaPath: atlas.sourceQaPath,
+      previewPath: atlas.previewPath,
+      previewOnly: true
+    }
+  }
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: run.petId,
     displayName: run.input.petName,
@@ -85,11 +97,7 @@ const isHostGeneratedSingleActionRun = (run) => (
   run.generationTask.actions.length > 0
 )
 
-const getActionFrameBuilder = (action = {}) => (
-  action?.synthesisMode === 'canonical-frame'
-    ? buildCanonicalActionFramesFromGeneratedImage
-    : buildActionFramesFromGeneratedImage
-)
+const getActionFrameBuilder = () => buildCanonicalActionFramesFromGeneratedImage
 
 const persistGeneratedImageAttempt = ({ dataDir, run, generationResult, now }) => {
   const currentRun = readRun({ dataDir, runId: run.runId })
@@ -138,6 +146,22 @@ const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, 
     outputFramesDir: framesDir,
     qaDir
   })
+  const actionFrameArtifact = {
+    actionId: actionFrames.actionId,
+    name: action.name,
+    framesDir: actionFrames.framesDir,
+    qa: actionFrames.qaPath,
+    contactSheet: actionFrames.contactSheetPath,
+    frameCount: actionFrames.frameCount,
+    frameWidth: actionFrames.frameWidth,
+    frameHeight: actionFrames.frameHeight,
+    triggerProposal: action.triggerProposal || { type: 'unbound' }
+  }
+  assertActionFrameQaPassed({
+    dataDir,
+    actionFrames: actionFrameArtifact,
+    operation: 'review'
+  })
   const nextRun = {
     ...run,
     status: 'ready_for_review',
@@ -145,17 +169,7 @@ const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, 
     updatedAt: completedAt,
     artifacts: {
       ...run.artifacts,
-      actionFrames: {
-        actionId: actionFrames.actionId,
-        name: action.name,
-        framesDir: actionFrames.framesDir,
-        qa: actionFrames.qaPath,
-        contactSheet: actionFrames.contactSheetPath,
-        frameCount: actionFrames.frameCount,
-        frameWidth: actionFrames.frameWidth,
-        frameHeight: actionFrames.frameHeight,
-        triggerProposal: action.triggerProposal || { type: 'unbound' }
-      },
+      actionFrames: actionFrameArtifact,
       generatedImage: generationResult
     },
     ...(generationResult.modelSnapshot ? { modelSnapshot: generationResult.modelSnapshot } : {}),
@@ -173,6 +187,25 @@ const buildHostGeneratedActionOutput = async ({ dataDir, run, generationResult, 
 const buildHostGeneratedRunOutput = async ({ dataDir, run, generationResult, now }) => {
   const completedAt = now()
   const standardOutput = await writeHostGeneratedStandardOutputs({ dataDir, run, generationResult, now })
+  if (standardOutput.previewOnly) {
+    const nextRun = {
+      ...run,
+      status: 'ready_for_review',
+      currentStep: 'review',
+      updatedAt: completedAt,
+      artifacts: {
+        ...run.artifacts,
+        outputDir: standardOutput.outputDir,
+        basePreview: standardOutput.previewPath,
+        qa: standardOutput.qaPath,
+        sourceImageQa: standardOutput.sourceQaPath,
+        generatedImage: generationResult
+      },
+      reviewStatus: 'pending',
+      error: ''
+    }
+    return { outputDir: standardOutput.outputDir, bundlePath: '', sha256: '', run: nextRun }
+  }
   const nextRun = {
     ...run,
     status: 'ready_for_review',
@@ -323,6 +356,7 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 }
 
 module.exports = {
+  buildHostGeneratedActionOutput,
   persistGeneratedImageAttempt,
   runGenerationStep
 }

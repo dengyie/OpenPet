@@ -5,6 +5,7 @@ const os = require('os')
 const path = require('path')
 
 const {
+  __testInternals,
   CREATOR_STUDIO_PLUGIN_ID,
   EDITABLE_TARGET_ID,
   EDITABLE_TARGET_TYPE,
@@ -41,6 +42,32 @@ const createPluginView = ({
       runtime: { status: serviceStatus }
     }]
   }
+})
+
+test('creator workflow treats missing full-pet QA evidence as all official rows missing', () => {
+  const coverage = __testInternals.resolveOfficialActionCoverage(null)
+
+  assert.equal(coverage.basicActions, null)
+  assert.deepEqual(coverage.missingOfficialActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
+})
+
+test('creator workflow rejects full-pet coverage from failed QA evidence', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-failed-qa-'))
+  const qaDir = path.join(pluginDataDir, 'runs', 'run-failed-qa', 'qa')
+  fs.mkdirSync(qaDir, { recursive: true })
+  fs.writeFileSync(path.join(qaDir, 'atlas-validation.json'), `${JSON.stringify({
+    ok: false,
+    basicActions: {
+      realActionIds: OFFICIAL_FULL_PET_ACTION_IDS,
+      requiredOfficialActionIds: OFFICIAL_FULL_PET_ACTION_IDS,
+      missingRequiredOfficialActionIds: []
+    }
+  }, null, 2)}\n`)
+
+  assert.equal(__testInternals.readBasicActionCoverage({
+    pluginDataDir,
+    runId: 'run-failed-qa'
+  }), null)
 })
 
 test('creator workflow service blocks before drafting runs when provider health is unavailable', async () => {
@@ -474,6 +501,7 @@ test('creator workflow service imports an existing action and auto-applies click
   assert.equal(commandCalls[0].payload.generationTask.mode, 'single-action')
   assert.equal(commandCalls[0].payload.generationTask.actions[0].frameCount, 6)
   assert.equal(commandCalls[0].payload.generationTask.actions[0].synthesisMode, 'canonical-frame')
+  assert.equal(commandCalls[0].payload.generationTask.actions[0].animationType, 'reaction')
   assert.deepEqual(copiedRuns, [{
     targetType: EDITABLE_TARGET_TYPE,
     targetId: EDITABLE_TARGET_ID,
@@ -867,6 +895,7 @@ test('creator workflow service forwards official row coverage without leaking ab
           }
         }
         if (commandId === 'run-step') {
+          writeAtlasQa()
           return {
             commandId,
             result: { ok: true, message: 'generated', run: { runId: 'run-003', status: 'ready_for_review' } }
@@ -879,7 +908,6 @@ test('creator workflow service forwards official row coverage without leaking ab
           }
         }
         if (commandId === 'import-approved-pet') {
-          writeAtlasQa()
           return {
             commandId,
             result: {

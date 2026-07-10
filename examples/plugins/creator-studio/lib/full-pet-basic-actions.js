@@ -9,12 +9,12 @@ const FULL_PET_ACTION_SUPPORT = Object.freeze({
 const createActionPolicyEntry = (value) => Object.freeze(value)
 
 const FULL_PET_ACTION_POLICY = Object.freeze([
-  ...OFFICIAL_FULL_PET_ACTION_IDS.map((actionId) => (
+  ...OFFICIAL_FULL_PET_ACTION_IDS.map((actionId, index) => (
     createActionPolicyEntry({
       actionId,
-      support: FULL_PET_ACTION_SUPPORT.FALLBACK_ONLY,
-      attemptGeneratedPose: false,
-      expansionRank: null
+      support: FULL_PET_ACTION_SUPPORT.REQUIRED_REAL,
+      attemptGeneratedPose: true,
+      expansionRank: index + 1
     })
   ))
 ])

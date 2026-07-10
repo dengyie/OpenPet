@@ -54,15 +54,14 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
       throw new Error(`Official full-pet row ${row.id} requires ${row.frameCount} frames`)
     }
     for (let column = 0; column < row.frameCount; column += 1) {
+      const framePath = getFramePath(frames[column])
+      const metadata = await sharp(framePath).metadata()
+      if (metadata.width !== CODEX_ATLAS.cellWidth || metadata.height !== CODEX_ATLAS.cellHeight) {
+        throw new Error(`Official full-pet row ${row.id} frame ${column + 1} must be exactly ${CODEX_ATLAS.cellWidth}x${CODEX_ATLAS.cellHeight}`)
+      }
       composites.push({
-        input: await sharp(getFramePath(frames[column]))
+        input: await sharp(framePath)
           .ensureAlpha()
-          .resize({
-            width: CODEX_ATLAS.cellWidth,
-            height: CODEX_ATLAS.cellHeight,
-            fit: 'fill',
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-          })
           .png()
           .toBuffer(),
         left: column * CODEX_ATLAS.cellWidth,
