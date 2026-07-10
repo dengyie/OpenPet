@@ -237,6 +237,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const chatSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(chatSection, 'Vision / 多模态文本模型')
     await expect(chatSection.getByTestId('vision-provider-follow-chat')).toContainText('Vision / 多模态文本任务默认复用聊天 Provider')
 
     await chatSection.getByLabel('Vision Provider Mode').selectOption('override')
@@ -1566,6 +1567,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const providerSection = await expandAiSection(page, '聊天 Provider')
+    await openProviderDisclosure(providerSection, '高级 / 诊断')
     await page.getByRole('switch', { name: 'Enable AI chat' }).click()
     await providerSection.getByRole('button', { name: '保存聊天 Provider' }).click()
     await providerSection.getByPlaceholder('输入 API Key').fill('sk-demo-chat')
