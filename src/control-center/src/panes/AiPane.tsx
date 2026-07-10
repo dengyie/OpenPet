@@ -108,6 +108,9 @@ function ProviderModelSelector({
   const searchAriaLabel = searchLabelPrefix
     ? `搜索${searchLabelPrefix === 'Vision' ? ' Vision ' : searchLabelPrefix}模型`
     : '搜索模型'
+  const refreshAriaLabel = searchLabelPrefix
+    ? `刷新${searchLabelPrefix === 'Vision' ? ' Vision ' : searchLabelPrefix}模型`
+    : '刷新模型'
   const listButtonLabel = expanded
     ? '收起模型列表'
     : `查看模型列表${cachedCount ? ` ${cachedCount}` : ''}`
@@ -154,7 +157,7 @@ function ProviderModelSelector({
       </div>
       <div className="provider-model-picker-toolbar">
         {onRefreshModels ? (
-          <button type="button" className="ghost" onClick={onRefreshModels} disabled={saving}>
+          <button type="button" className="ghost" aria-label={refreshAriaLabel} onClick={onRefreshModels} disabled={saving}>
             刷新模型
           </button>
         ) : null}
@@ -1054,9 +1057,6 @@ export function AiPane({
                       <button type="button" className="ghost" aria-label="测试已保存配置" onClick={onTest} disabled={saving}>
                         测试
                       </button>
-                      <button type="button" className="ghost" aria-label="刷新聊天模型" onClick={onDiscoverAiModels} disabled={saving}>
-                        刷新模型
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -1134,9 +1134,6 @@ export function AiPane({
                     <div className="provider-card-secondary-actions">
                       <button type="button" className="ghost" aria-label="检查图片健康" onClick={onCheckImageGenerationHealth} disabled={saving}>
                         健康检查
-                      </button>
-                      <button type="button" className="ghost" aria-label="刷新图片模型" onClick={onDiscoverImageGenerationModels} disabled={saving}>
-                        刷新模型
                       </button>
                     </div>
                   </div>
@@ -1405,11 +1402,6 @@ export function AiPane({
 
                         {renderChatModelDiscovery(visionModelDiscovery, config.vision.model, hasUnsavedVisionProbeInputs, 'Vision', '刷新 Vision 模型')}
 
-                        <div className="provider-card-secondary-actions">
-                          <button type="button" className="ghost" onClick={onDiscoverVisionModels} disabled={saving}>
-                            刷新 Vision 模型
-                          </button>
-                        </div>
                       </>
                     )}
 

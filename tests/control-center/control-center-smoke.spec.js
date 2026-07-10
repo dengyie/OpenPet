@@ -242,6 +242,7 @@ test.describe('Control Center smoke', () => {
     await expect(chatSection.getByRole('button', { name: '保存聊天 Provider' })).toBeVisible()
     await expect(chatSection.getByRole('button', { name: '保存聊天 Provider' })).toHaveText('保存')
     await expect(chatSection.getByRole('button', { name: '测试已保存配置' })).toHaveText('测试')
+    await expect(chatSection.getByRole('button', { name: '刷新聊天模型' })).toHaveCount(1)
     await expect(chatSection.getByRole('button', { name: '刷新聊天模型' })).toHaveText('刷新模型')
 
     await providerCardSummary(imageSection).click()
@@ -253,6 +254,7 @@ test.describe('Control Center smoke', () => {
     await expect(imageSection.getByRole('button', { name: '保存图片 Provider' })).toBeVisible()
     await expect(imageSection.getByRole('button', { name: '保存图片 Provider' })).toHaveText('保存')
     await expect(imageSection.getByRole('button', { name: '检查图片健康' })).toHaveText('健康检查')
+    await expect(imageSection.getByRole('button', { name: '刷新图片模型' })).toHaveCount(1)
     await expect(imageSection.getByRole('button', { name: '刷新图片模型' })).toHaveText('刷新模型')
   })
 
