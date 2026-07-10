@@ -117,6 +117,12 @@ const IPC = {
 contextBridge.exposeInMainWorld('controlCenterAPI', {
   getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
   saveSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
+  onSettingsChanged: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    const handler = (_event, settings) => listener(settings)
+    ipcRenderer.on(IPC.SETTINGS_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.SETTINGS_CHANGED, handler)
+  },
   importCursor: () => ipcRenderer.invoke(IPC.SETTINGS_IMPORT_CURSOR),
   previewScale: (scale) => ipcRenderer.send(IPC.SETTINGS_PREVIEW_SCALE, scale),
   getActions: () => ipcRenderer.invoke(IPC.ACTIONS_GET),

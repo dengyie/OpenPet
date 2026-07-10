@@ -16,6 +16,7 @@ export interface ControlCenterSettings {
   customCursors: CustomCursorRecord[]
   hiddenCursorIds: string[]
   customCursorScope: CustomCursorScope
+  systemCursorStatus: SystemCursorStatus
   grounded: boolean
   home: ControlCenterPetHomeSettings
   petBubbleChat: PetBubbleChatSettings
@@ -42,6 +43,13 @@ export interface CustomCursorSettings {
 export type CursorOptionType = 'system' | 'custom'
 export type CursorOptionSource = 'system' | 'builtin' | 'uploaded'
 export type CustomCursorScope = 'openpet' | 'system'
+
+export interface SystemCursorStatus {
+  supported: boolean
+  platform: string
+  active: boolean
+  helperPid: number
+}
 
 export interface CursorOption {
   id: string
@@ -3273,6 +3281,7 @@ export interface SignedReleaseClaimSummary {
 export interface ControlCenterApi {
   getSettings: () => Promise<ControlCenterSettings>
   saveSettings: (settings: Partial<ControlCenterSettings>) => Promise<ControlCenterSettings>
+  onSettingsChanged: (listener: (settings: ControlCenterSettings) => void) => () => void
   previewScale: (scale: number) => void
   importCursor: () => Promise<CursorImportResult>
   getActions: () => Promise<ActionsConfigViewState>

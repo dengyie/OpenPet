@@ -69,6 +69,17 @@ export function usePetSettingsPane() {
     return () => { mounted = false }
   }, [])
 
+  useEffect(() => api.onSettingsChanged((nextSettings) => {
+    const normalized = cloneSettings(nextSettings)
+    const previousScope = originalRef.current.customCursorScope
+    originalRef.current = normalized
+    setOriginalSettings(normalized)
+    setSettings(normalized)
+    if (previousScope === 'system' && normalized.customCursorScope === 'openpet') {
+      setStatus('全电脑指针已停止，已恢复为仅 OpenPet')
+    }
+  }), [])
+
   useEffect(() => {
     const restorePreview = () => {
       if (!shouldRestoreScalePreview({
@@ -94,8 +105,10 @@ export function usePetSettingsPane() {
       setOriginalSettings(savedSettings)
       setSettings(savedSettings)
       if (successMessage) setStatus(successMessage)
+      return savedSettings
     } catch (error) {
       setStatus(messageFromError(error, errorFallback))
+      return null
     } finally {
       setSaving(false)
     }
@@ -115,16 +128,28 @@ export function usePetSettingsPane() {
 
   const onChangeCursorScope = async (scope: ControlCenterSettings['customCursorScope']) => {
     const nextScope = normalizeCustomCursorScope(scope)
-    const nextSettings = applyCursorState(settings, { customCursorScope: nextScope })
-    setSettings(nextSettings)
-    if (scope === 'system') {
-      setStatus('当前版本暂不支持全电脑指针替换，已保持仅 OpenPet 生效')
+    if (nextScope === 'system' && !settings.systemCursorStatus.supported) {
+      setStatus('当前平台暂不支持全电脑指针，请继续使用仅 OpenPet')
       return
     }
-    await persistSettings(nextSettings, '已设置为仅 OpenPet 使用自定义指针', '指针作用范围保存失败')
+    if (nextScope === 'system' && !settings.customCursor.enabled) {
+      setStatus('请先选择一个自定义指针，再应用到整个电脑')
+      return
+    }
+    const previousSettings = settings
+    const nextSettings = applyCursorState(settings, { customCursorScope: nextScope })
+    setSettings(nextSettings)
+    const savedSettings = await persistSettings(
+      nextSettings,
+      nextScope === 'system' ? '已将自定义指针应用到整个电脑' : '已设置为仅 OpenPet 使用自定义指针',
+      '指针作用范围保存失败'
+    )
+    if (!savedSettings) setSettings(previousSettings)
   }
 
-  const onSave = () => persistSettings(settings, '', '宠物设置保存失败')
+  const onSave = async () => {
+    await persistSettings(settings, '', '宠物设置保存失败')
+  }
 
   const onReset = () => {
     const restoredSettings = cloneSettings(originalRef.current)
@@ -138,7 +163,11 @@ export function usePetSettingsPane() {
     setSettings(nextSettings)
     await persistSettings(
       nextSettings,
-      cursorId === SYSTEM_CURSOR_ID ? '已切换为系统默认指针' : '指针已立即应用到宠物交互区域',
+      cursorId === SYSTEM_CURSOR_ID
+        ? '已切换为系统默认指针'
+        : nextSettings.customCursorScope === 'system'
+          ? '指针已立即应用到整个电脑'
+          : '指针已立即应用到宠物交互区域',
       '鼠标指针设置保存失败'
     )
   }

@@ -71,6 +71,7 @@ const state = {
   mousePassthrough: false,
   currentLayout: null,
   customCursor: { enabled: false, assetPath: '', assetUrl: '', fileName: '', width: 0, height: 0, hotspotX: 0, hotspotY: 0 },
+  customCursorScope: 'openpet',
   customCursorOverlayVisible: false,
   cursorFocusRequested: false,
   windowFocused: typeof document.hasFocus === 'function' ? document.hasFocus() : true,
@@ -425,6 +426,7 @@ cursorOverlay.addEventListener?.('load', () => {
 
 const applyPetCursorStyle = (insideFrame, point = state.lastPointerPoint, insideCursorRegion = insideFrame) => {
   const context = {
+    scope: state.customCursorScope,
     insideFrame,
     insideCursorRegion,
     windowFocused: isPetWindowFocused(),
@@ -889,6 +891,9 @@ window.petAPI.onSettingsChanged((s) => {
   if (s.walkSpeed != null) state.walkSpeed = s.walkSpeed
   if (s.walkDuration != null) state.walkDuration = s.walkDuration
   if (s.bubbleDuration != null) state.bubbleDuration = s.bubbleDuration
+  if (s.customCursorScope === 'system' || s.customCursorScope === 'openpet') {
+    state.customCursorScope = s.customCursorScope
+  }
   if (s.customCursor) {
     state.customCursor = {
       enabled: Boolean(s.customCursor.enabled && s.customCursor.assetUrl),
@@ -908,6 +913,7 @@ window.petAPI.onSettingsChanged((s) => {
     walkDurationUpdated: s.walkDuration != null,
     bubbleDurationUpdated: s.bubbleDuration != null,
     customCursorUpdated: Boolean(s.customCursor),
+    customCursorScope: state.customCursorScope,
     customCursorEnabled: Boolean(state.customCursor.enabled),
     customCursorFileName: state.customCursor.fileName || ''
   }, { level: 'info', message: 'Pet renderer settings applied' })

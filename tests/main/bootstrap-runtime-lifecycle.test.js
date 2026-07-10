@@ -52,6 +52,32 @@ test('runtime app lifecycle continues quit after plugin shutdown timeout', async
   assert.equal(safeLogs.some((entry) => entry.event === 'plugins.shutdown.timed_out' && entry.message.includes('5ms')), true)
 })
 
+test('runtime app lifecycle waits for system cursor restoration before quitting', async () => {
+  const appHandlers = new Map()
+  let resolveCursorDispose
+  let quitCalls = 0
+  const cursorDispose = new Promise((resolve) => { resolveCursorDispose = resolve })
+
+  registerRuntimeAppLifecycle({
+    app: { quit: () => { quitCalls += 1 } },
+    appLogService: { record: () => {} },
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => appHandlers.set('before-quit', onBeforeQuit),
+    safeRecordAppLog: () => {},
+    triggerRuleRuntimeService: { stop: () => {} },
+    systemCursorService: { dispose: () => cursorDispose },
+    getPluginService: () => ({ stopAllServices: async () => {} }),
+    shutdownTimeoutMs: 100
+  })
+
+  appHandlers.get('before-quit')({ preventDefault: () => {} })
+  await delay(10)
+  assert.equal(quitCalls, 0)
+
+  resolveCursorDispose()
+  await delay(10)
+  assert.equal(quitCalls, 1)
+})
+
 test('display lifecycle normalizes pet window and persists adjusted home anchor', () => {
   const screenHandlers = new Map()
   const positionCalls = []

@@ -155,7 +155,7 @@ const normalizeNumber = (value: unknown, fallback = 0) => {
 
 const normalizeHiddenCursorIds = (_hiddenCursorIds: unknown): string[] => []
 
-export const normalizeCustomCursorScope = (_value: unknown): CustomCursorScope => 'openpet'
+export const normalizeCustomCursorScope = (value: unknown): CustomCursorScope => value === 'system' ? 'system' : 'openpet'
 
 const clampCursorSizePercent = (value: unknown) => {
   const normalized = normalizeNumber(value, 100)
@@ -329,7 +329,7 @@ export const normalizeCursorSettingsState = (
   const legacyCustomCursor = normalizeRuntimeCursor(settings.customCursor)
   const customCursors = normalizeCustomCursorCollection(settings.customCursors)
   const hiddenCursorIds = normalizeHiddenCursorIds(settings.hiddenCursorIds)
-  const customCursorScope = normalizeCustomCursorScope(settings.customCursorScope)
+  const requestedCustomCursorScope = normalizeCustomCursorScope(settings.customCursorScope)
   const migratedLegacyCursor = migrateLegacyCustomCursorRecord(settings.customCursor)
   const nextCustomCursors = migratedLegacyCursor && customCursors.length === 0
     ? [migratedLegacyCursor, ...customCursors]
@@ -348,15 +348,17 @@ export const normalizeCursorSettingsState = (
 
   if (!cursorExists) selectedCursorId = SYSTEM_CURSOR_ID
 
+  const customCursor = resolveSelectedCursor({
+    selectedCursorId,
+    customCursors: nextCustomCursors
+  })
+
   return {
     selectedCursorId,
     hiddenCursorIds,
-    customCursorScope,
+    customCursorScope: customCursor.enabled ? requestedCustomCursorScope : 'openpet',
     customCursors: nextCustomCursors,
-    customCursor: resolveSelectedCursor({
-      selectedCursorId,
-      customCursors: nextCustomCursors
-    })
+    customCursor
   }
 }
 

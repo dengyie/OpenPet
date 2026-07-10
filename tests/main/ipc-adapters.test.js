@@ -28,10 +28,21 @@ test('pet settings adapter builds renderer settings from host settings', () => {
       autoHide: false,
       pinOnInteraction: true
     }
+  }, {
+    supported: true,
+    platform: 'darwin',
+    active: true,
+    helperPid: 42
   })
 
   assert.equal(result.scale, 1.25)
   assert.equal(result.customCursorScope, 'openpet')
+  assert.deepEqual(result.systemCursorStatus, {
+    supported: true,
+    platform: 'darwin',
+    active: true,
+    helperPid: 42
+  })
   assert.deepEqual(result.hiddenCursorIds, [])
   assert.equal(result.home.hasAnchor, true)
   assert.equal(result.petBubbleChat.enabled, false)
@@ -67,6 +78,33 @@ test('pet settings adapter merges renderer view back into host settings', () => 
   assert.equal(merged.petBehavior.home.anchor.x, 10)
   assert.equal(merged.petBubbleChat.enabled, false)
   assert.equal(merged.petBubbleChat.autoPopup, true)
+})
+
+test('pet settings adapter preserves system scope for a selected custom cursor', () => {
+  const currentSettings = {
+    selectedCursorId: 'cursor-1',
+    customCursorScope: 'openpet',
+    customCursor: { enabled: true },
+    customCursors: [{
+      id: 'cursor-1',
+      name: 'Cursor',
+      assetPath: '/tmp/cursor.png',
+      assetUrl: 'file:///tmp/cursor.png',
+      fileName: 'cursor.png',
+      width: 32,
+      height: 32,
+      hotspotX: 0,
+      hotspotY: 0,
+      byteSize: 100,
+      createdAt: '2026-07-10T00:00:00.000Z'
+    }],
+    petBehavior: { grounded: false, home: {} }
+  }
+
+  const merged = mergePetSettingsViewIntoHostSettings(currentSettings, { customCursorScope: 'system' })
+
+  assert.equal(merged.customCursorScope, 'system')
+  assert.equal(merged.customCursor.enabled, true)
 })
 
 test('pet settings adapter normalizes local http config onto loopback host and token', () => {

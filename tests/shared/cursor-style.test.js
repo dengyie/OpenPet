@@ -53,4 +53,8 @@ test('resolvePetCursorOverlayState shows DOM cursor overlay inside the active pe
     resolvePetCursorOverlayState(cursor, { insideFrame: true, dragging: false, menuOpen: true }),
     { visible: false, assetUrl: '', nativeCursor: '' }
   )
+  assert.deepEqual(
+    resolvePetCursorOverlayState(cursor, { scope: 'system', insideFrame: true, dragging: false, menuOpen: false }),
+    { visible: false, assetUrl: '', nativeCursor: '' }
+  )
 })

@@ -172,6 +172,20 @@ test('custom cursor uses a DOM overlay inside the clickable pet region and hides
   assert.equal(logs.at(-1).details.cursorOverlayVisible, true)
 })
 
+test('system cursor scope suppresses the pet DOM overlay and focus request', async () => {
+  const { callbacks, elements, focusRequests } = await createRendererHarness({ insideFrame: true, hasFocus: false })
+
+  callbacks.settings({
+    customCursorScope: 'system',
+    customCursor: { enabled: true, assetUrl: 'file:///cursor.png', assetPath: '/cursor.png', fileName: 'cursor.png' }
+  })
+  dispatch(elements.pet, 'pointermove', { clientX: 24, clientY: 88, screenX: 1024, screenY: 768 })
+
+  assert.equal(elements['custom-cursor-overlay'].classList.contains('visible'), false)
+  assert.equal(elements.pet.style.cursor, '')
+  assert.equal(focusRequests.length, 0)
+})
+
 test('custom cursor waits for pet focus before drawing overlay to avoid duplicate OS cursors', async () => {
   const { callbacks, elements, focusRequests, focusState, logs, windowListeners } = await createRendererHarness({
     insideFrame: true,

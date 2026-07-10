@@ -3,6 +3,7 @@ const { createPluginServices } = require('./create-plugin-services')
 const { createWindowServices } = require('./create-window-services')
 const { registerDisplayLifecycle, registerPetWindowLifecycle, registerRuntimeAppLifecycle } = require('./runtime-lifecycle')
 const { registerCursorRepair, runPostPluginStartupSideEffects } = require('./startup-side-effects')
+const { IPC } = require('../../shared/ipc-channels')
 
 const createOpenPetRuntime = ({
   app,
@@ -35,13 +36,15 @@ const createOpenPetRuntime = ({
   factories,
   setPetWindow
 }) => {
+  let handleSystemCursorUnexpectedExit = async () => {}
   const core = createCoreServices({
     app,
     projectRoot,
     packageJson,
     settingsRuntime,
     factories,
-    screen
+    screen,
+    onSystemCursorUnexpectedExit: (event) => handleSystemCursorUnexpectedExit(event)
   })
   const {
     services: {
@@ -53,6 +56,7 @@ const createOpenPetRuntime = ({
       appLogService,
       behaviorOrchestratorService,
       cursorAssetService,
+      systemCursorService,
       creatorReferenceService,
       imageGenerationModelService,
       localHttpService,
@@ -66,6 +70,27 @@ const createOpenPetRuntime = ({
     syncLoginItemSettings,
     setCatalogService
   } = core
+
+  const broadcastCursorSettings = (settings) => {
+    const payload = createPetRendererSettings(settings, systemCursorService?.getStatus?.())
+    const activePetWindow = getPetWindow()
+    if (activePetWindow && !activePetWindow.isDestroyed?.()) {
+      activePetWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, payload)
+      const settingsWindow = activePetWindow.settingsWindow
+      if (settingsWindow && !settingsWindow.isDestroyed?.()) {
+        settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, payload)
+      }
+    }
+    return payload
+  }
+
+  handleSystemCursorUnexpectedExit = async () => {
+    const currentSettings = petService.getSettings()
+    if (currentSettings.customCursorScope !== 'system') return currentSettings
+    const fallbackSettings = petService.saveSettings({ ...currentSettings, customCursorScope: 'openpet' })
+    broadcastCursorSettings(fallbackSettings)
+    return fallbackSettings
+  }
 
   const { petChatWindowService, petBubbleChatWindowService } = createWindowServices({
     BrowserWindow,
@@ -93,10 +118,11 @@ const createOpenPetRuntime = ({
     registerAppLifecycleLogs,
     safeRecordAppLog,
     triggerRuleRuntimeService,
+    systemCursorService,
     getPluginService: () => pluginService
   })
 
-  registerCursorRepair({ cursorAssetService, petService, appLogService })
+  const cursorRepairPromise = registerCursorRepair({ cursorAssetService, petService, appLogService })
 
   let ipcRuntimeHelpers = {
     broadcastActivePetPackChanged: () => {}
@@ -140,12 +166,16 @@ const createOpenPetRuntime = ({
     appLogService
   })
 
-  runPostPluginStartupSideEffects({
+  void runPostPluginStartupSideEffects({
     petService,
     localHttpService,
     normalizeLocalHttpConfig,
     syncLoginItemSettings,
-    triggerRuleRuntimeService
+    triggerRuleRuntimeService,
+    cursorRepairPromise,
+    systemCursorService,
+    appLogService,
+    onSystemCursorFallback: broadcastCursorSettings
   })
 
   ipcRuntimeHelpers = registerIpcHandlers({
@@ -170,6 +200,7 @@ const createOpenPetRuntime = ({
     actionService,
     actionImportService,
     cursorAssetService,
+    systemCursorService,
     appLogService,
     applyWindowScale: (targetWindow, scale) => applyWindowScale(targetWindow, scale),
     applyPetViewport,
@@ -187,6 +218,7 @@ const createOpenPetRuntime = ({
     screen,
     getPetWindow,
     petService,
+    systemCursorService,
     petMovementPolicy,
     createPetRendererSettings
   })
@@ -204,6 +236,7 @@ const createOpenPetRuntime = ({
     petBubbleChatWindowService,
     pluginInstallService: pluginServices.pluginInstallService,
     pluginService,
+    systemCursorService,
     applyWindowScale,
     createPetRendererSettings,
     maybeRunPackagedRuntimeSmoke,

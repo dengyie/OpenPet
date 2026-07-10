@@ -116,11 +116,11 @@ test('listCursorOptions merges built-in cursor overrides without duplicating car
   assert.equal(matchingOptions[0].sizePercent, 150)
 })
 
-test('normalizeCustomCursorScope defaults to openpet and never persists system before native support exists', () => {
+test('normalizeCustomCursorScope preserves the two supported scope values', () => {
   assert.equal(normalizeCustomCursorScope(undefined), 'openpet')
   assert.equal(normalizeCustomCursorScope('nope'), 'openpet')
   assert.equal(normalizeCustomCursorScope('openpet'), 'openpet')
-  assert.equal(normalizeCustomCursorScope('system'), 'openpet')
+  assert.equal(normalizeCustomCursorScope('system'), 'system')
 })
 
 test('normalizeCursorSettingsState clears legacy hidden cursor ids and keeps hidden built-in selections active', () => {
@@ -135,6 +135,25 @@ test('normalizeCursorSettingsState clears legacy hidden cursor ids and keeps hid
   assert.equal(normalized.customCursor.enabled, true)
   assert.deepEqual(normalized.hiddenCursorIds, [])
   assert.equal(normalized.customCursorScope, 'openpet')
+})
+
+test('normalizeCursorSettingsState keeps system scope only while a custom cursor is selected', () => {
+  const builtinId = BUILTIN_CURSORS[0].id
+  const enabled = normalizeCursorSettingsState({
+    selectedCursorId: builtinId,
+    customCursorScope: 'system',
+    customCursors: []
+  })
+  const disabled = normalizeCursorSettingsState({
+    selectedCursorId: SYSTEM_CURSOR_ID,
+    customCursorScope: 'system',
+    customCursors: []
+  })
+
+  assert.equal(enabled.customCursor.enabled, true)
+  assert.equal(enabled.customCursorScope, 'system')
+  assert.equal(disabled.customCursor.enabled, false)
+  assert.equal(disabled.customCursorScope, 'openpet')
 })
 
 test('normalizeCursorSettingsState migrates a legacy hosted cursor into the new cursor library state', () => {

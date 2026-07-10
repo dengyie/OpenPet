@@ -1882,6 +1882,12 @@ const demoCursorAssetUrl = `data:image/svg+xml;utf8,${encodeURIComponent(`
 
 const normalizeDemoSettings = (settings: Partial<ControlCenterSettings> | ControlCenterSettings): ControlCenterSettings => {
   const nextSettings = cloneSettings(settings)
+  nextSettings.systemCursorStatus = {
+    supported: true,
+    platform: 'darwin',
+    active: nextSettings.customCursorScope === 'system' && nextSettings.customCursor.enabled,
+    helperPid: nextSettings.customCursorScope === 'system' && nextSettings.customCursor.enabled ? 10001 : 0
+  }
   if (!nextSettings.grounded) {
     nextSettings.home = {
       ...nextSettings.home,
@@ -2577,6 +2583,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return normalizeDemoSettings(demoState.settings)
   },
   previewScale: () => {},
+  onSettingsChanged: () => () => {},
   importCursor: async () => {
     const cursor: CustomCursorRecord = {
       id: 'demo-cursor',

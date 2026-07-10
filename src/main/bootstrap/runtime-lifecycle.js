@@ -9,6 +9,7 @@ const registerRuntimeAppLifecycle = ({
   registerAppLifecycleLogs,
   safeRecordAppLog,
   triggerRuleRuntimeService,
+  systemCursorService,
   getPluginService,
   shutdownTimeoutMs = PLUGIN_SHUTDOWN_TIMEOUT_MS
 }) => {
@@ -36,6 +37,27 @@ const registerRuntimeAppLifecycle = ({
 
       const pluginShutdown = Promise.resolve()
         .then(() => getPluginService()?.stopAllServices?.())
+        .catch((error) => {
+          safeRecordAppLog(appLogService, {
+            scope: 'plugins',
+            level: 'error',
+            actor: 'system',
+            event: 'plugins.shutdown.failed',
+            message: error?.message || 'Plugin shutdown failed before app quit'
+          })
+        })
+      const systemCursorShutdown = Promise.resolve()
+        .then(() => systemCursorService?.dispose?.())
+        .catch((error) => {
+          safeRecordAppLog(appLogService, {
+            scope: 'system-cursor',
+            level: 'error',
+            actor: 'system',
+            event: 'system-cursor.shutdown.failed',
+            message: error?.message || 'System cursor restoration failed before app quit'
+          })
+        })
+      const runtimeShutdown = Promise.all([pluginShutdown, systemCursorShutdown])
       const shutdownTimeout = new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
           safeRecordAppLog(appLogService, {
@@ -48,20 +70,11 @@ const registerRuntimeAppLifecycle = ({
           resolve()
         }, shutdownTimeoutMs)
         timeoutId?.unref?.()
-        pluginShutdown.finally(() => clearTimeout(timeoutId))
+        runtimeShutdown.finally(() => clearTimeout(timeoutId))
       })
 
       Promise.resolve()
-        .then(() => Promise.race([pluginShutdown, shutdownTimeout]))
-        .catch((error) => {
-          safeRecordAppLog(appLogService, {
-            scope: 'plugins',
-            level: 'error',
-            actor: 'system',
-            event: 'plugins.shutdown.failed',
-            message: error?.message || 'Plugin shutdown failed before app quit'
-          })
-        })
+        .then(() => Promise.race([runtimeShutdown, shutdownTimeout]))
         .finally(() => {
           app.quit()
         })
@@ -72,6 +85,7 @@ const registerRuntimeAppLifecycle = ({
 const normalizePetWindowForDisplayChange = ({
   getPetWindow,
   petService,
+  systemCursorService,
   petMovementPolicy,
   createPetRendererSettings
 }) => {
@@ -108,7 +122,10 @@ const normalizePetWindowForDisplayChange = ({
         }
       }
     })
-    activePetWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(petService.getSettings()))
+    activePetWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(
+      petService.getSettings(),
+      systemCursorService?.getStatus?.()
+    ))
   }
 }
 
@@ -147,6 +164,7 @@ const registerPetWindowLifecycle = ({
   petBubbleChatWindowService,
   pluginInstallService,
   pluginService,
+  systemCursorService,
   applyWindowScale,
   createPetRendererSettings,
   maybeRunPackagedRuntimeSmoke = noop,
@@ -160,7 +178,10 @@ const registerPetWindowLifecycle = ({
   activePetWindow.webContents.on('did-finish-load', () => {
     const settings = petService.getSettings()
     applyWindowScale(activePetWindow, settings.scale)
-    activePetWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(settings))
+    activePetWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(
+      settings,
+      systemCursorService?.getStatus?.()
+    ))
     maybeRunPackagedRuntimeSmoke({ app, petWindow: activePetWindow, petService, petPackService, petBubbleChatWindowService })
     maybeRunPackagedPluginCleanupEvidence({ app, pluginInstallService, pluginService })
     maybeRunPackagedCreatorStudioEvidence({ app, pluginService })

@@ -22,7 +22,7 @@
   }
 
   const resolvePetCursorOverlayState = (cursor, context = {}) => {
-    if (!cursor || !cursor.enabled || !cursor.assetUrl || !context.insideFrame || context.menuOpen) {
+    if (context.scope === 'system' || !cursor || !cursor.enabled || !cursor.assetUrl || !context.insideFrame || context.menuOpen) {
       return { visible: false, assetUrl: '', nativeCursor: '' }
     }
     return { visible: true, assetUrl: cursor.assetUrl, nativeCursor: 'none' }

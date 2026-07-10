@@ -41,6 +41,7 @@ const { createPluginGithubImportService } = require('./src/main/services/plugin-
 const { createLocalHttpService } = require('./src/main/services/local-http-service')
 const { createActionImportService } = require('./src/main/services/action-import-service')
 const { createCursorAssetService } = require('./src/main/services/cursor-asset-service')
+const { createSystemCursorService } = require('./src/main/services/system-cursor-service')
 const { createAppLogService } = require('./src/main/services/app-log-service')
 const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
@@ -126,6 +127,7 @@ const bootstrapOpenPet = () => {
       createLocalHttpService,
       createActionImportService,
       createCursorAssetService,
+      createSystemCursorService,
       createAppLogService,
       createAboutService,
       createCatalogService,

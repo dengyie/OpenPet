@@ -76,7 +76,9 @@ export function PetPane({
   const selectedScalableCursor = visibleCursorOptions.find((cursor) => cursor.id === settings.selectedCursorId) || null
   const selectedCursorSizePercent = Math.round(Number(selectedScalableCursor?.sizePercent) || 100)
   const [pendingCursorSizePercent, setPendingCursorSizePercent] = useState(selectedCursorSizePercent)
-  const cursorScopeFeedback = status.includes('全电脑指针替换') ? status : ''
+  const cursorScopeFeedback = status.includes('全电脑') || status.includes('整个电脑') || status.includes('指针作用范围') ? status : ''
+  const systemCursorAvailable = settings.systemCursorStatus.supported
+  const systemCursorSelectable = systemCursorAvailable && settings.customCursor.enabled
 
   useEffect(() => {
     setPendingCursorSizePercent(selectedCursorSizePercent)
@@ -292,7 +294,9 @@ export function PetPane({
               <div>
                 <div className="field-label">作用范围</div>
                 <div className="field-note">
-                  关闭时只影响宠物交互区域；全电脑指针替换需要后续原生能力支持，当前保持仅 OpenPet 生效。
+                  {systemCursorAvailable
+                    ? '开启后会在 macOS 全电脑范围显示当前指针；关闭后只影响宠物交互区域。'
+                    : '当前平台暂不支持全电脑指针，仍可使用仅 OpenPet 模式。'}
                 </div>
               </div>
               <div className="cursor-scope-control">
@@ -309,13 +313,13 @@ export function PetPane({
                   ariaLabel="Apply cursor to the whole computer"
                   checked={settings.customCursorScope === 'system'}
                   onChange={(checked) => onChangeCursorScope(checked ? 'system' : 'openpet')}
-                  disabled={saving}
+                  disabled={saving || !systemCursorSelectable}
                 />
                 <button
                   type="button"
                   className="cursor-scope-target"
                   onClick={() => onChangeCursorScope('system')}
-                  disabled={saving}
+                  disabled={saving || !systemCursorSelectable}
                 >
                   应用到整个电脑
                 </button>

@@ -1,7 +1,14 @@
 const { normalizeCursorSettingsState } = require('../../shared/cursor-library')
 const { createLocalHttpToken } = require('../services/local-http-service')
 
-const createPetRendererSettings = (settings = {}) => {
+const normalizeSystemCursorStatus = (status = {}) => ({
+  supported: Boolean(status.supported),
+  platform: typeof status.platform === 'string' ? status.platform : process.platform,
+  active: Boolean(status.active),
+  helperPid: Number.isFinite(Number(status.helperPid)) ? Number(status.helperPid) : 0
+})
+
+const createPetRendererSettings = (settings = {}, systemCursorStatus = {}) => {
   const cursorState = normalizeCursorSettingsState(settings)
   return {
     scale: settings.scale,
@@ -14,6 +21,7 @@ const createPetRendererSettings = (settings = {}) => {
     customCursors: cursorState.customCursors,
     hiddenCursorIds: cursorState.hiddenCursorIds,
     customCursorScope: cursorState.customCursorScope,
+    systemCursorStatus: normalizeSystemCursorStatus(systemCursorStatus),
     grounded: Boolean(settings.petBehavior?.grounded),
     home: {
       enabled: Boolean(settings.petBehavior?.home?.enabled),
@@ -97,5 +105,6 @@ module.exports = {
   collectCustomCursorAssetPaths,
   createPetRendererSettings,
   mergePetSettingsViewIntoHostSettings,
-  normalizeLocalHttpConfig
+  normalizeLocalHttpConfig,
+  normalizeSystemCursorStatus
 }

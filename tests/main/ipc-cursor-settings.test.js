@@ -26,6 +26,7 @@ const createRequiredServices = ({
   dialogService,
   browserWindowService,
   appService,
+  systemCursorService,
   getPetWindow = () => null,
   applyWindowScale = () => {}
 }) => ({
@@ -92,6 +93,7 @@ const createRequiredServices = ({
     deleteAction: () => ({ ok: true })
   },
   cursorAssetService,
+  systemCursorService,
   appLogService: { record: () => {} },
   applyWindowScale,
   applyPetViewport: () => {},
@@ -104,6 +106,151 @@ const createRequiredServices = ({
   browserWindowService,
   appService,
   ipcMainService
+})
+
+const createCursorSettingsFixture = ({ scope = 'openpet' } = {}) => ({
+  scale: 1,
+  walkSpeed: 2,
+  walkDuration: 15000,
+  bubbleDuration: 1300,
+  menuPosition: 'auto',
+  autoStart: false,
+  selectedCursorId: 'cursor-system-test',
+  customCursorScope: scope,
+  customCursor: {
+    enabled: true,
+    assetPath: '/tmp/cursor-system-test.png',
+    assetUrl: 'file:///tmp/cursor-system-test.png',
+    fileName: 'cursor-system-test.png',
+    width: 32,
+    height: 32,
+    hotspotX: 4,
+    hotspotY: 5
+  },
+  customCursors: [{
+    id: 'cursor-system-test',
+    type: 'custom',
+    source: 'uploaded',
+    name: 'System Test',
+    assetPath: '/tmp/cursor-system-test.png',
+    assetUrl: 'file:///tmp/cursor-system-test.png',
+    fileName: 'cursor-system-test.png',
+    width: 32,
+    height: 32,
+    byteSize: 100,
+    hotspotX: 4,
+    hotspotY: 5,
+    createdAt: '2026-07-10T00:00:00.000Z'
+  }],
+  petBehavior: {
+    grounded: false,
+    home: { enabled: false, radius: 'medium', anchor: null }
+  },
+  petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true }
+})
+
+const createCursorPetService = (initialSettings, onSave = () => {}) => {
+  let currentSettings = initialSettings
+  return {
+    onSay: () => {},
+    onAction: () => {},
+    onEvent: () => {},
+    getAnimations: () => ({ actions: [] }),
+    getPreviewAnimations: () => ({ actions: [] }),
+    reloadAnimations: () => ({ actions: [] }),
+    previewSettings: () => {},
+    getSettings: () => currentSettings,
+    saveSettings: (settings) => {
+      onSave(settings)
+      currentSettings = settings
+      return currentSettings
+    },
+    say: (payload) => payload,
+    playAction: (payload) => payload,
+    setEvent: (payload) => payload
+  }
+}
+
+test('settings:save activates whole-computer cursor before persisting system scope', async () => {
+  const ipcMain = createIpcMainStub()
+  const order = []
+  const petService = createCursorPetService(createCursorSettingsFixture(), (settings) => {
+    order.push(`save:${settings.customCursorScope}`)
+  })
+  let active = false
+  const systemCursorService = {
+    sync: async (settings) => {
+      order.push(`sync:${settings.customCursorScope}`)
+      active = settings.customCursorScope === 'system'
+    },
+    getStatus: () => ({ supported: true, platform: 'darwin', active, helperPid: active ? 88 : 0 })
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
+    cursorAssetService: {},
+    systemCursorService
+  }))
+
+  const result = await ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { customCursorScope: 'system' })
+
+  assert.deepEqual(order, ['sync:system', 'save:system'])
+  assert.equal(result.customCursorScope, 'system')
+  assert.deepEqual(result.systemCursorStatus, {
+    supported: true,
+    platform: 'darwin',
+    active: true,
+    helperPid: 88
+  })
+})
+
+test('settings:save leaves persisted scope unchanged when system cursor activation fails', async () => {
+  const ipcMain = createIpcMainStub()
+  let saveCalls = 0
+  const petService = createCursorPetService(createCursorSettingsFixture(), () => { saveCalls += 1 })
+  const systemCursorService = {
+    sync: async () => { throw new Error('helper failed') },
+    getStatus: () => ({ supported: true, platform: 'darwin', active: false, helperPid: 0 })
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
+    cursorAssetService: {},
+    systemCursorService
+  }))
+
+  await assert.rejects(
+    ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { customCursorScope: 'system' }),
+    /helper failed/
+  )
+  assert.equal(saveCalls, 0)
+  assert.equal(petService.getSettings().customCursorScope, 'openpet')
+})
+
+test('settings:save rolls the native cursor back when persistence fails after activation', async () => {
+  const ipcMain = createIpcMainStub()
+  const syncScopes = []
+  const initialSettings = createCursorSettingsFixture()
+  const petService = createCursorPetService(initialSettings, () => { throw new Error('disk failed') })
+  const systemCursorService = {
+    sync: async (settings) => { syncScopes.push(settings.customCursorScope) },
+    getStatus: () => ({ supported: true, platform: 'darwin', active: false, helperPid: 0 })
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
+    cursorAssetService: {},
+    systemCursorService
+  }))
+
+  await assert.rejects(
+    ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { customCursorScope: 'system' }),
+    /disk failed/
+  )
+  assert.deepEqual(syncScopes, ['system', 'openpet'])
 })
 
 test('settings:save removes orphaned cursor assets after replacing a custom cursor', async () => {

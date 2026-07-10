@@ -79,6 +79,12 @@ const controlCenterSettingsFixture = {
   customCursors: [],
   hiddenCursorIds: [],
   customCursorScope: 'openpet',
+  systemCursorStatus: {
+    supported: true,
+    platform: 'darwin',
+    active: false,
+    helperPid: 0
+  },
   grounded: true,
   home: {
     enabled: true,

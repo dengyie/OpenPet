@@ -27,7 +27,7 @@ const applyCursorRepairToCollection = (customCursors = [], previousCursor = {}, 
 
 const registerCursorRepair = ({ cursorAssetService, petService, appLogService }) => {
   const cursorBeforeRepair = petService.getSettings().customCursor
-  cursorAssetService.repairCursor(cursorBeforeRepair).then((customCursor) => {
+  return cursorAssetService.repairCursor(cursorBeforeRepair).then((customCursor) => {
     const currentSettings = petService.getSettings()
     if (customCursor.assetPath && hasCursorRepairChanged(cursorBeforeRepair, customCursor)) {
       petService.saveSettings({
@@ -75,11 +75,37 @@ const runPostPluginStartupSideEffects = ({
   localHttpService,
   normalizeLocalHttpConfig,
   syncLoginItemSettings,
-  triggerRuleRuntimeService
+  triggerRuleRuntimeService,
+  cursorRepairPromise = Promise.resolve(),
+  systemCursorService,
+  appLogService,
+  onSystemCursorFallback = () => {}
 }) => {
   maybeStartLocalHttp({ petService, localHttpService, normalizeLocalHttpConfig })
   syncLoginItemSettings(petService.getSettings().autoStart)
   triggerRuleRuntimeService.start()
+  return Promise.resolve(cursorRepairPromise).then(async () => {
+    try {
+      await systemCursorService?.sync?.(petService.getSettings())
+    } catch (error) {
+      const currentSettings = petService.getSettings()
+      const fallbackSettings = currentSettings.customCursorScope === 'system'
+        ? petService.saveSettings({ ...currentSettings, customCursorScope: 'openpet' })
+        : currentSettings
+      try {
+        appLogService?.record?.({
+          scope: 'system-cursor',
+          level: 'error',
+          actor: 'system',
+          event: 'system-cursor.startup.failed',
+          message: error?.message || 'Failed to restore whole-computer cursor at startup'
+        })
+      } catch (_) {
+        // Startup fallback must not depend on logging availability.
+      }
+      onSystemCursorFallback(fallbackSettings)
+    }
+  })
 }
 
 module.exports = {

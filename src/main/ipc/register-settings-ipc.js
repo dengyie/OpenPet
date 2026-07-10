@@ -72,6 +72,7 @@ const registerSettingsIpc = ({
   getPetWindow,
   browserWindowService,
   cursorAssetService,
+  systemCursorService,
   petMovementPolicy,
   showOpenDialogForEvent,
   sendToPetWindow,
@@ -148,7 +149,10 @@ const registerSettingsIpc = ({
     return repairedSettings
   }
 
-  ipcMainService.handle(IPC.SETTINGS_GET, async () => createPetRendererSettings(await maybeRepairStoredCustomCursorRecords()))
+  ipcMainService.handle(IPC.SETTINGS_GET, async () => createPetRendererSettings(
+    await maybeRepairStoredCustomCursorRecords(),
+    systemCursorService?.getStatus?.()
+  ))
 
   ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
     if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
@@ -200,7 +204,7 @@ const registerSettingsIpc = ({
     }
   })
 
-  ipcMainService.handle(IPC.SETTINGS_SAVE, (_event, settings) => {
+  ipcMainService.handle(IPC.SETTINGS_SAVE, async (_event, settings) => {
     const petWindow = getPetWindow()
     const previousSettings = petService.getSettings()
     const nextSettings = mergePetSettingsViewIntoHostSettings(petService.getSettings(), settings)
@@ -214,12 +218,45 @@ const registerSettingsIpc = ({
       nextSettings.petBehavior = behavior
     }
 
-    const savedSettings = petService.saveSettings(nextSettings)
+    if (nextSettings.customCursorScope === 'system' && !systemCursorService?.sync) {
+      throw new Error('Whole-computer cursor service is unavailable')
+    }
+    try {
+      await systemCursorService?.sync?.(nextSettings)
+    } catch (error) {
+      recordAppLog({
+        scope: 'system-cursor',
+        level: 'error',
+        actor: 'system',
+        event: 'system-cursor.apply.failed',
+        message: error?.message || 'Whole-computer cursor activation failed',
+        details: { requestedScope: nextSettings.customCursorScope }
+      })
+      throw error
+    }
+
+    let savedSettings
+    try {
+      savedSettings = petService.saveSettings(nextSettings)
+    } catch (error) {
+      try {
+        await systemCursorService?.sync?.(previousSettings)
+      } catch (rollbackError) {
+        recordAppLog({
+          scope: 'system-cursor',
+          level: 'error',
+          actor: 'system',
+          event: 'system-cursor.rollback.failed',
+          message: rollbackError?.message || 'Whole-computer cursor rollback failed'
+        })
+      }
+      throw error
+    }
     const previousAssetPaths = new Set(collectCustomCursorAssetPaths(previousSettings.customCursors))
     const nextAssetPaths = new Set(collectCustomCursorAssetPaths(savedSettings.customCursors))
     const orphanedAssetPaths = Array.from(previousAssetPaths).filter((assetPath) => !nextAssetPaths.has(assetPath))
     if (orphanedAssetPaths.length > 0) cursorAssetService?.deleteAssets?.(orphanedAssetPaths)
-    const rendererSettings = createPetRendererSettings(savedSettings)
+    const rendererSettings = createPetRendererSettings(savedSettings, systemCursorService?.getStatus?.())
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, rendererSettings)
     recordAppLog({
       scope: 'settings',
@@ -232,7 +269,8 @@ const registerSettingsIpc = ({
         homeEnabled: Boolean(savedSettings.petBehavior?.home?.enabled),
         homeRadius: savedSettings.petBehavior?.home?.radius || 'medium',
         customCursorEnabled: Boolean(savedSettings.customCursor?.enabled),
-        customCursorFileName: savedSettings.customCursor?.fileName || ''
+        customCursorFileName: savedSettings.customCursor?.fileName || '',
+        customCursorScope: savedSettings.customCursorScope || 'openpet'
       }
     })
     return rendererSettings

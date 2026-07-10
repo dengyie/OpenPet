@@ -37,7 +37,7 @@ test('settings default custom cursor is disabled', () => {
   })
 })
 
-test('mergeSettings clears legacy hidden cursor ids and rejects unsupported system cursor scope', () => {
+test('mergeSettings clears legacy hidden cursor ids and preserves system scope for an active cursor', () => {
   const settings = mergeSettings({
     selectedCursorId: BUILTIN_CURSORS[0].id,
     customCursorScope: 'system',
@@ -45,7 +45,7 @@ test('mergeSettings clears legacy hidden cursor ids and rejects unsupported syst
   })
 
   assert.equal(settings.selectedCursorId, BUILTIN_CURSORS[0].id)
-  assert.equal(settings.customCursorScope, 'openpet')
+  assert.equal(settings.customCursorScope, 'system')
   assert.deepEqual(settings.hiddenCursorIds, [])
 })
 

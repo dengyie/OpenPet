@@ -58,6 +58,12 @@ export const defaultSettings = {
   customCursors: [],
   hiddenCursorIds: [],
   customCursorScope: 'openpet',
+  systemCursorStatus: {
+    supported: false,
+    platform: 'unknown',
+    active: false,
+    helperPid: 0
+  },
   grounded: false,
   home: {
     enabled: false,
@@ -397,6 +403,10 @@ export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | 
   ...defaultSettings,
   ...(settings || {}),
   ...normalizeCursorState(settings),
+  systemCursorStatus: {
+    ...defaultSettings.systemCursorStatus,
+    ...(settings?.systemCursorStatus || {})
+  },
   home: {
     ...defaultSettings.home,
     ...(settings?.home || {})

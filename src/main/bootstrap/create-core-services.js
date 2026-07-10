@@ -8,7 +8,8 @@ const createCoreServices = ({
   packageJson,
   settingsRuntime,
   factories,
-  screen
+  screen,
+  onSystemCursorUnexpectedExit = () => {}
 }) => {
   const {
     createEventBus,
@@ -28,6 +29,7 @@ const createCoreServices = ({
     createLocalHttpService,
     createActionImportService,
     createCursorAssetService,
+    createSystemCursorService,
     createAppLogService,
     createAboutService,
     createPetMovementPolicy
@@ -108,6 +110,18 @@ const createCoreServices = ({
   const cursorAssetService = createCursorAssetService({
     cursorDir: path.join(app.getPath('userData'), 'cursors')
   })
+  const systemCursorService = typeof createSystemCursorService === 'function'
+    ? createSystemCursorService({
+        projectRoot,
+        userDataPath: app.getPath('userData'),
+        appLogService,
+        onUnexpectedExit: onSystemCursorUnexpectedExit
+      })
+    : {
+        getStatus: () => ({ supported: false, platform: process.platform, active: false, helperPid: 0 }),
+        sync: async () => {},
+        dispose: async () => {}
+      }
 
   return {
     setCatalogService: (nextCatalogService) => {
@@ -124,6 +138,7 @@ const createCoreServices = ({
       appLogService,
       behaviorOrchestratorService,
       cursorAssetService,
+      systemCursorService,
       creatorReferenceService,
       imageGenerationModelService,
       triggerRuleRuntimeService,
