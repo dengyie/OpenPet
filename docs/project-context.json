@@ -17,6 +17,7 @@
     "Control Center owns user-facing configuration",
     "API keys and provider credentials stay in the main process",
     "Local HTTP and MCP are loopback-only and disabled by default",
+    "macOS whole-computer custom cursor scope is backed by a native click-through helper; system scope persists only after activation succeeds, and helper failure or app shutdown restores the native pointer while Windows and Linux remain unsupported",
     "Bundled pets include doro, duodong, and chispa",
     "Codex pet directory import and zip import are supported",
     "Common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet 8317 gateway preset is tied to archived smoke evidence",

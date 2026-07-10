@@ -81,7 +81,7 @@ customCursorScope: 'openpet'
 
 不要复用 `customCursor.enabled` 表达作用范围。`customCursor.enabled` 只表示当前是否存在可用的 runtime cursor；`customCursorScope` 表示应用范围。
 
-本轮实现只有 `openpet` 是可保存的有效生效状态。`system` 只表达一个后续原生能力方向；在 `SystemCursorService` 未落地前，UI 不得把 `system` 保存进持久化设置，也不得让用户看到一个已经启用但无实际效果的全电脑模式。
+> Implementation update (2026-07-11): the openpet-only limitation below described the UI-simplification milestone and is now superseded on macOS by [`2026-07-10-macos-system-cursor-design.md`](./2026-07-10-macos-system-cursor-design.md). A ready native helper now permits `system` persistence on macOS. Windows and Linux remain unsupported and must not persist a false active state.
 
 ## 3. 当前代码事实
 
@@ -138,12 +138,12 @@ customCursorScope: 'openpet'
 - 不得让用户看到两个 cursor。
 - 不得让透明全屏窗口挡住其他应用点击。
 
-如果平台暂不支持系统级替换：
+如果平台暂不支持系统级替换（当前为 Windows 和 Linux）：
 
 - UI 可以显示勾选项，但必须 disabled，并显示不可用原因。
 - 或者允许用户点击后给出明确状态：`当前系统暂不支持全电脑指针替换，已保持仅 OpenPet 生效。`
 - 不允许保存一个看起来启用了但实际无效果的 `system` 状态。
-- 在没有 `SystemCursorService` 的 Phase 2 中，settings 内必须保持 `customCursorScope: 'openpet'`。
+- 在没有可用 `SystemCursorService` 的平台上，settings 内必须保持 `customCursorScope: 'openpet'`。
 
 ### 4.3 全电脑模式的推荐阶段边界
 
@@ -267,8 +267,8 @@ const normalizeCustomCursorScope = (value: unknown): CustomCursorScope => (
 - 缺省值是 `openpet`。
 - 非法值回退到 `openpet`。
 - 当没有可用自定义 cursor 时，作用范围可以保留用户选择，但 runtime 不应启用 cursor。
-- Phase 2 中系统级能力不可用，因此 `system` 输入必须回退到 `openpet`，不允许保存“意图但未生效”的状态。
-- 只有 Phase 3 原生 `SystemCursorService` 落地并通过支持检测后，才允许保存 `system`。
+- `system` 只有在原生 `SystemCursorService` 报告支持、选中项有效且激活成功后才允许保存。
+- 激活失败、helper 异常退出或平台不支持时必须回退到 `openpet`，不允许保存“意图但未生效”的状态。
 
 ### 6.3 Runtime contract
 
@@ -288,14 +288,14 @@ interface CursorRuntimeState {
 }
 ```
 
-本轮如果不实现原生 `SystemCursorService`，`systemCursor.supported` 应为 `false`。
+macOS 的 `systemCursor.supported` 由原生 helper 可用性决定；Windows 和 Linux 为 `false`。
 
-Phase 2 可以不新增完整 `CursorRuntimeState`，但必须做到：
+当前实现必须做到：
 
 - Control Center settings contract 有 `customCursorScope`。
-- renderer 收到的生效设置仍按 `openpet` 处理。
-- 未支持 `system` 时，renderer 不需要新增全局 overlay 或任何跨窗口行为。
-- 日志或状态反馈要能解释为什么全电脑模式不可用。
+- renderer 在 `openpet` 下使用局部 overlay，在 `system` 下关闭局部 overlay，避免双指针。
+- 未支持 `system` 时，不新增全局 overlay 或任何跨窗口行为。
+- UI 和日志必须反映 helper 的真实 active/failed 状态。
 
 ## 7. 系统级 cursor 技术边界
 

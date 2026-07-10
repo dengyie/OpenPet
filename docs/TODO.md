@@ -1,6 +1,6 @@
 # OpenPet TODO
 
-> Last updated: 2026-07-09
+> Last updated: 2026-07-11
 > Purpose: this is the single active maintainer work queue.
 
 Use this file for open work and priority changes. Keep phase docs, reviews, and old roadmap files as background only; do not split active planning across multiple TODO documents again.
@@ -46,6 +46,7 @@ These are already true and should not be re-planned as open work:
 - [x] AI provider settings with one `模型 Provider` hub, chat/image capability cards, main-process secret storage, active/draft workflow, structured diagnostics, and Provider/Creator safe-log coverage.
 - [x] Local extension runtime with explicit setup/command/service controls, dashboards, health checks, and cleanup evidence tooling.
 - [x] Loopback-only local HTTP and MCP endpoints.
+- [x] macOS whole-computer custom cursor scope backed by a native helper, with activation-before-save, OpenPet-only fallback, and native-pointer restoration on switch, failure, or app quit. Windows and Linux remain unsupported.
 - [x] Bundled `openpet.agent-awareness` Phase A product skeleton: reversible `install-codex-hooks` / `uninstall-codex-hooks`, hook + polling ingestion, native-approval and opt-in-gated auto-start, sanitized runtime states for session/turn/tool/approval/progress, and Control Center plus Bubble Chat detail entries.
 - [x] Agent Awareness Phase B foundation: safe token/context/cost aggregation when metadata exists, best-effort git branch/dirty summaries, usage stats dashboard, per-session detail/focus links, generated summaries/progress hints, notification-policy evidence, and stale-session merge protection.
 - [x] Broad Node test coverage, Playwright Control Center regression coverage, and a TypeScript migration baseline across shared contracts and key UI/service boundaries.
