@@ -107,8 +107,9 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('navigation', { name: 'Control Center' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Pet' })).toBeVisible()
 
+    const navigation = page.getByRole('navigation', { name: 'Control Center' })
     for (const tab of tabs) {
-      await page.getByRole('button', { name: tab }).click()
+      await navigation.getByRole('button', { name: tab, exact: true }).click()
       await expect(page.getByRole('heading', { name: tab })).toBeVisible()
     }
   })
