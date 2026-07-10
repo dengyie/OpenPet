@@ -76,4 +76,3 @@ test('macOS cursor helper activates, updates, and exits cleanly', { skip: !shoul
   assert.deepEqual(exit, { code: 0, signal: null })
   assert.deepEqual(stderr, [])
 })
-

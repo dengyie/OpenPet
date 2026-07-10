@@ -95,4 +95,3 @@
 - [ ] Run the production review context collector and phase-gate review across the complete diff.
 - [ ] Fix only P0/P1 findings, rerun the affected evidence chain, and repeat review up to three times.
 - [ ] Rebase the branch onto the latest local `main`, rerun the merge-risk verification, and commit as `feat(phase-system-cursor): enable macOS system cursor scope`.
-
