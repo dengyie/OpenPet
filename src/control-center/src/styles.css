@@ -522,6 +522,27 @@ button {
 .provider-model-option-groups {
   display: grid;
   gap: 10px;
+  padding: 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.provider-model-option-groups[hidden] {
+  display: none;
+}
+
+.provider-model-filter {
+  display: grid;
+  gap: 6px;
+}
+
+.provider-model-options-scroll {
+  display: grid;
+  gap: 12px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .provider-model-option-group {
@@ -550,6 +571,11 @@ button {
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .provider-model-pill-muted {
@@ -563,11 +589,28 @@ button {
   color: #ffffff;
 }
 
+.provider-model-pill-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .provider-model-picker-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.provider-model-picker-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .provider-model-source-badge {

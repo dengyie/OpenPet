@@ -80,3 +80,41 @@ test('formatProviderModelCatalogMeta reports empty and populated cache states', 
     /已缓存 2 个模型/
   )
 })
+
+test('buildProviderModelSelectorGroups prefers recommended display rows and marks cached duplicates', async () => {
+  const { buildProviderModelSelectorGroups } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+
+  assert.deepEqual(buildProviderModelSelectorGroups({
+    currentModel: 'gpt-5.5',
+    filterText: '',
+    recommendedModels: ['gpt-5.5', 'gpt-4o-mini'],
+    cachedModels: ['gpt-5.5', 'gpt-4o', 'openpet-chat-test']
+  }), {
+    recommended: [
+      { id: 'gpt-5.5', cached: true, selected: true },
+      { id: 'gpt-4o-mini', cached: false, selected: false }
+    ],
+    cached: [
+      { id: 'gpt-4o', cached: true, selected: false },
+      { id: 'openpet-chat-test', cached: true, selected: false }
+    ],
+    manual: []
+  })
+})
+
+test('buildProviderModelSelectorGroups filters rows and keeps the current manual model visible', async () => {
+  const { buildProviderModelSelectorGroups } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+
+  assert.deepEqual(buildProviderModelSelectorGroups({
+    currentModel: 'custom-gateway-model',
+    filterText: 'custom',
+    recommendedModels: ['gpt-5.5', 'gpt-4o-mini'],
+    cachedModels: ['gpt-5.5', 'gpt-4o', 'openpet-chat-test']
+  }), {
+    recommended: [],
+    cached: [],
+    manual: [
+      { id: 'custom-gateway-model', cached: false, selected: true }
+    ]
+  })
+})

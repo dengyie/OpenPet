@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   AiBehaviorConfig,
@@ -21,7 +22,7 @@ import type {
 import { Toggle } from '../components/Toggle'
 import { defaultImageGenerationConfig } from '../lib/defaults'
 import {
-  buildProviderModelOptions,
+  buildProviderModelSelectorGroups,
   describeCurrentModelSource,
   formatProviderModelCatalogMeta
 } from '../lib/provider-model-catalog'
@@ -52,12 +53,14 @@ type ProviderStatusItemProps = {
   tone?: 'default' | 'ok' | 'warn'
 }
 
-type ProviderModelPickerProps = {
+type ProviderModelSelectorProps = {
   ariaLabel: string
   currentModel: string
   cachedCatalog: ProviderModelCatalogViewState
   recommendedModels?: string[]
+  saving?: boolean
   onSelectModel: (model: string) => void
+  onRefreshModels?: () => void | Promise<void>
 }
 
 function ProviderStatusItem({ label, value, tone = 'default' }: ProviderStatusItemProps) {
@@ -69,32 +72,66 @@ function ProviderStatusItem({ label, value, tone = 'default' }: ProviderStatusIt
   )
 }
 
-function ProviderModelPicker({
+function ProviderModelSelector({
   ariaLabel,
   currentModel,
   cachedCatalog,
   recommendedModels = [],
-  onSelectModel
-}: ProviderModelPickerProps) {
-  const options = buildProviderModelOptions({
-    currentModel,
-    recommendedModels,
-    cachedModels: cachedCatalog.models
-  })
-  const recommendedOptions = options.filter((option) => option.source === 'recommended')
-  const cachedOptions = options.filter((option) => option.source === 'cached')
+  saving = false,
+  onSelectModel,
+  onRefreshModels
+}: ProviderModelSelectorProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [filterText, setFilterText] = useState('')
   const normalizedCurrentModel = String(currentModel || '').trim()
   const currentSource = describeCurrentModelSource({
     currentModel,
     recommendedModels,
     cachedModels: cachedCatalog.models
   })
+  const groups = buildProviderModelSelectorGroups({
+    currentModel,
+    filterText,
+    recommendedModels,
+    cachedModels: cachedCatalog.models
+  })
+  const allModels = [
+    ...groups.recommended.map((row) => ({ ...row, source: 'recommended' as const })),
+    ...groups.cached.map((row) => ({ ...row, source: 'cached' as const })),
+    ...groups.manual.map((row) => ({ ...row, source: 'manual' as const }))
+  ]
+  const cachedCount = Array.isArray(cachedCatalog.models) ? cachedCatalog.models.length : 0
   const datalistId = `${ariaLabel.replace(/\s+/g, '-')}-options`
+  const sourceListId = `${ariaLabel.replace(/\s+/g, '-')}-sources`
+  const sourceListTestId = `${ariaLabel}-sources`
+  const searchLabelPrefix = ariaLabel.replace(/\s*Model\s*$/i, '').trim()
+  const searchAriaLabel = searchLabelPrefix
+    ? `搜索${searchLabelPrefix === 'Vision' ? ' Vision ' : searchLabelPrefix}模型`
+    : '搜索模型'
+  const listButtonLabel = expanded
+    ? '收起模型列表'
+    : `查看模型列表${cachedCount ? ` ${cachedCount}` : ''}`
   const getSourceLabel = (source: 'recommended' | 'cached' | 'manual') => {
     if (source === 'recommended') return '推荐模型'
     if (source === 'cached') return '缓存模型'
     return '手动输入'
   }
+  const renderRows = (rows: typeof groups.recommended, emptyLabel: string) => (
+    rows.length
+      ? rows.map((row) => (
+        <button
+          key={row.id}
+          type="button"
+          aria-label={row.id}
+          className={`provider-model-pill${row.selected ? ' active' : ''}`}
+          onClick={() => onSelectModel(row.id)}
+        >
+          <span>{row.id}</span>
+          {row.cached ? <span className="provider-model-pill-badge" aria-hidden="true">已缓存</span> : null}
+        </button>
+      ))
+      : <span className="field-note">{emptyLabel}</span>
+  )
 
   return (
     <div className="provider-model-picker">
@@ -107,53 +144,65 @@ function ProviderModelPicker({
         onChange={(event) => onSelectModel(event.target.value)}
       />
       <datalist id={datalistId}>
-        {options.map((option) => (
+        {allModels.map((option) => (
           <option key={`${option.source}:${option.id}`} value={option.id} label={getSourceLabel(option.source)} />
         ))}
       </datalist>
-      {options.length ? (
-        <div className="provider-model-option-groups" data-testid={`${ariaLabel}-sources`}>
+      <div className="provider-model-picker-meta">
+        <span className={`provider-model-source-badge provider-model-source-${currentSource.source}`}>{currentSource.label}</span>
+        {normalizedCurrentModel && currentSource.source === 'manual' ? <span className="field-note">当前值不依赖 /models，可直接保存使用。</span> : null}
+      </div>
+      <div className="provider-model-picker-toolbar">
+        {onRefreshModels ? (
+          <button type="button" className="ghost" onClick={onRefreshModels} disabled={saving}>
+            刷新模型
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ghost"
+          aria-expanded={expanded}
+          aria-controls={sourceListId}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {listButtonLabel}
+        </button>
+      </div>
+      <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
+      <div className="provider-model-option-groups" id={sourceListId} data-testid={sourceListTestId} hidden={!expanded}>
+        <label className="provider-model-filter">
+          <span className="field-label">搜索模型</span>
+          <input
+            aria-label={searchAriaLabel}
+            className="text-input"
+            value={filterText}
+            placeholder="输入关键词过滤模型"
+            onChange={(event) => setFilterText(event.target.value)}
+          />
+        </label>
+        <div className="provider-model-options-scroll">
           <div className="provider-model-option-group">
             <strong>推荐模型</strong>
             <div className="provider-model-pill-row">
-              {recommendedOptions.length
-                ? recommendedOptions.map((option) => (
-                  <button
-                    key={`recommended:${option.id}`}
-                    type="button"
-                    className={`provider-model-pill${normalizedCurrentModel === option.id ? ' active' : ''}`}
-                    onClick={() => onSelectModel(option.id)}
-                  >
-                    {option.id}
-                  </button>
-                ))
-                : <span className="field-note">暂无推荐模型</span>}
+              {renderRows(groups.recommended, '暂无推荐模型')}
             </div>
           </div>
           <div className="provider-model-option-group">
             <strong>缓存模型</strong>
             <div className="provider-model-pill-row">
-              {cachedOptions.length
-                ? cachedOptions.map((option) => (
-                  <button
-                    key={`cached:${option.id}`}
-                    type="button"
-                    className={`provider-model-pill provider-model-pill-muted${normalizedCurrentModel === option.id ? ' active' : ''}`}
-                    onClick={() => onSelectModel(option.id)}
-                  >
-                    {option.id}
-                  </button>
-                ))
-                : <span className="field-note">暂无缓存模型</span>}
+              {renderRows(groups.cached, '暂无缓存模型')}
             </div>
           </div>
+          {groups.manual.length ? (
+            <div className="provider-model-option-group">
+              <strong>手动输入</strong>
+              <div className="provider-model-pill-row">
+                {renderRows(groups.manual, '当前过滤没有匹配手动模型')}
+              </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-      <div className="provider-model-picker-meta">
-        <span className={`provider-model-source-badge provider-model-source-${currentSource.source}`}>{currentSource.label}</span>
-        {normalizedCurrentModel && currentSource.source === 'manual' ? <span className="field-note">当前值不依赖 /models，可直接保存使用。</span> : null}
       </div>
-      <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
     </div>
   )
 }
@@ -1016,12 +1065,14 @@ export function AiPane({
 
                 <div className="field-row">
                   <span className="field-label">Model</span>
-                  <ProviderModelPicker
+                  <ProviderModelSelector
                     ariaLabel="聊天 Model"
                     currentModel={config.model}
                     cachedCatalog={activeConfig.modelCatalog}
                     recommendedModels={chatRecommendedModels}
+                    saving={saving}
                     onSelectModel={(model) => onChange({ model })}
+                    onRefreshModels={onDiscoverAiModels}
                   />
                 </div>
 
@@ -1114,12 +1165,14 @@ export function AiPane({
 
                         <div className="field-row">
                           <span className="field-label">Vision Model</span>
-                          <ProviderModelPicker
+                          <ProviderModelSelector
                             ariaLabel="Vision Model"
                             currentModel={config.vision.model}
                             cachedCatalog={activeConfig.vision.modelCatalog}
                             recommendedModels={visionRecommendedModels}
+                            saving={saving}
                             onSelectModel={(model) => onChangeVision({ model })}
+                            onRefreshModels={onDiscoverVisionModels}
                           />
                         </div>
 
@@ -1346,12 +1399,14 @@ export function AiPane({
 
                 <div className="field-row">
                   <span className="field-label">图片 Model</span>
-                  <ProviderModelPicker
+                  <ProviderModelSelector
                     ariaLabel="图片 Model"
                     currentModel={imageGenerationConfig.model}
                     cachedCatalog={activeImageGenerationConfig.modelCatalog}
                     recommendedModels={imageRecommendedModels}
+                    saving={saving}
                     onSelectModel={(model) => onChangeImageGeneration({ model })}
+                    onRefreshModels={onDiscoverImageGenerationModels}
                   />
                 </div>
 
