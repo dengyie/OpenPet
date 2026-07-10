@@ -49,7 +49,7 @@ test('runtime app lifecycle continues quit after plugin shutdown timeout', async
   assert.equal(triggerStopCalls, 1)
   assert.equal(pluginStopCalls, 1)
   assert.equal(quitCalls, 1)
-  assert.equal(safeLogs.some((entry) => entry.event === 'plugins.shutdown.timed_out' && entry.message.includes('5ms')), true)
+  assert.equal(safeLogs.some((entry) => entry.event === 'runtime.shutdown.timed_out' && entry.message.includes('5ms')), true)
 })
 
 test('runtime app lifecycle waits for system cursor restoration before quitting', async () => {
@@ -76,6 +76,27 @@ test('runtime app lifecycle waits for system cursor restoration before quitting'
   resolveCursorDispose()
   await delay(10)
   assert.equal(quitCalls, 1)
+})
+
+test('runtime app lifecycle attributes a combined shutdown timeout to runtime cleanup', async () => {
+  const appHandlers = new Map()
+  const safeLogs = []
+  registerRuntimeAppLifecycle({
+    app: { quit: () => {} },
+    appLogService: { record: () => {} },
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => appHandlers.set('before-quit', onBeforeQuit),
+    safeRecordAppLog: (_service, entry) => safeLogs.push(entry),
+    triggerRuleRuntimeService: { stop: () => {} },
+    systemCursorService: { dispose: () => new Promise(() => {}) },
+    getPluginService: () => ({ stopAllServices: async () => {} }),
+    shutdownTimeoutMs: 5
+  })
+
+  appHandlers.get('before-quit')({ preventDefault: () => {} })
+  await delay(20)
+
+  assert.equal(safeLogs.some((entry) => entry.event === 'runtime.shutdown.timed_out'), true)
+  assert.equal(safeLogs.some((entry) => entry.event === 'plugins.shutdown.timed_out'), false)
 })
 
 test('display lifecycle normalizes pet window and persists adjusted home anchor', () => {
@@ -110,6 +131,9 @@ test('display lifecycle normalizes pet window and persists adjusted home anchor'
       getSettings: () => settings,
       saveSettings: (nextSettings) => saveSettingsCalls.push(nextSettings)
     },
+    systemCursorService: {
+      getStatus: () => ({ supported: true, platform: 'darwin', active: true, helperPid: 77 })
+    },
     petMovementPolicy: {
       normalizeWindowForDisplay: ({ windowBounds, settings: behaviorSettings }) => {
         assert.deepEqual(windowBounds, { x: 100, y: 200, width: 80, height: 90 })
@@ -125,7 +149,7 @@ test('display lifecycle normalizes pet window and persists adjusted home anchor'
         y: 40
       })
     },
-    createPetRendererSettings: (input) => ({ rendererSettings: input })
+    createPetRendererSettings: (input, status) => ({ rendererSettings: input, status })
   })
 
   assert.equal(typeof screenHandlers.get('display-metrics-changed'), 'function')
@@ -142,7 +166,10 @@ test('display lifecycle normalizes pet window and persists adjusted home anchor'
     y: 40
   })
   assert.deepEqual(sendCalls, [
-    [IPC.SETTINGS_CHANGED, { rendererSettings: settings }]
+    [IPC.SETTINGS_CHANGED, {
+      rendererSettings: settings,
+      status: { supported: true, platform: 'darwin', active: true, helperPid: 77 }
+    }]
   ])
 })
 

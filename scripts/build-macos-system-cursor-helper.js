@@ -49,15 +49,29 @@ const buildMacosSystemCursorHelper = ({
   return { built: true, skipped: false, outputPath }
 }
 
+const buildMacosSystemCursorHelpers = (options = {}) => {
+  const platform = options.platform || process.platform
+  if (platform !== 'darwin') {
+    return [buildMacosSystemCursorHelper({ ...options, platform })]
+  }
+  return ['arm64', 'x64'].map((arch) => buildMacosSystemCursorHelper({
+    ...options,
+    platform,
+    arch
+  }))
+}
+
 if (require.main === module) {
   try {
-    const result = buildMacosSystemCursorHelper()
+    const results = buildMacosSystemCursorHelpers()
+    const result = results[0]
     if (result.reason === 'unsupported-platform') {
       console.log('OpenPet system cursor helper: skipped on non-macOS host')
-    } else if (result.reason === 'up-to-date') {
-      console.log(`OpenPet system cursor helper: up to date at ${result.outputPath}`)
     } else {
-      console.log(`OpenPet system cursor helper: built at ${result.outputPath}`)
+      for (const entry of results) {
+        const state = entry.reason === 'up-to-date' ? 'up to date' : 'built'
+        console.log(`OpenPet system cursor helper: ${state} at ${entry.outputPath}`)
+      }
     }
   } catch (error) {
     console.error(`OpenPet system cursor helper build failed: ${error.message}`)
@@ -68,6 +82,6 @@ if (require.main === module) {
 module.exports = {
   HELPER_NAME,
   buildMacosSystemCursorHelper,
+  buildMacosSystemCursorHelpers,
   resolveSwiftTarget
 }
-

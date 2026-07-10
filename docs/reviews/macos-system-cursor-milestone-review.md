@@ -26,3 +26,7 @@ Reviewed the native macOS helper, `SystemCursorService`, settings transaction, s
 - `OPENPET_RUN_NATIVE_CURSOR_SMOKE=1 node --test tests/services/system-cursor-native-smoke.test.js`: 1 passed.
 
 Quality score: 94/100. Status: pass.
+
+## Post-review hardening
+
+The final independent review identified and fixed bounded failure-path issues before merge: failed stop signals no longer suppress unexpected-exit fallback or wait forever, failed immediate cursor mutations conditionally restore cursor fields without overwriting newer fallback state or unrelated Control Center drafts, display lifecycle payloads retain native runtime status, shutdown timeout logs use runtime ownership, macOS packaging prepares both supported architectures, and the unused hidden-built-in list export was removed.

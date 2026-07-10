@@ -61,11 +61,11 @@ const registerRuntimeAppLifecycle = ({
       const shutdownTimeout = new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
           safeRecordAppLog(appLogService, {
-            scope: 'plugins',
+            scope: 'runtime',
             level: 'error',
             actor: 'system',
-            event: 'plugins.shutdown.timed_out',
-            message: `Plugin shutdown exceeded ${shutdownTimeoutMs}ms; continuing app quit`
+            event: 'runtime.shutdown.timed_out',
+            message: `Runtime cleanup exceeded ${shutdownTimeoutMs}ms; continuing app quit`
           })
           resolve()
         }, shutdownTimeoutMs)
@@ -133,12 +133,14 @@ const registerDisplayLifecycle = ({
   screen,
   getPetWindow,
   petService,
+  systemCursorService,
   petMovementPolicy,
   createPetRendererSettings
 }) => {
   const normalizeForDisplayChange = () => normalizePetWindowForDisplayChange({
     getPetWindow,
     petService,
+    systemCursorService,
     petMovementPolicy,
     createPetRendererSettings
   })

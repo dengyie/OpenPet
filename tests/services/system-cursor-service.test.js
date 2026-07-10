@@ -249,6 +249,90 @@ test('system cursor service contains synchronous fallback callback failures', as
   assert.equal(logs.some((entry) => entry.event === 'system-cursor.fallback.failed'), true)
 })
 
+test('system cursor service preserves unexpected-exit fallback when SIGTERM cannot be sent', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const unexpectedExits = []
+  const child = createFakeChild()
+  child.kill = () => false
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      queueMicrotask(() => emitJsonLine(child, { event: 'ready', version: 'active' }))
+      return child
+    },
+    versionFactory: () => 'active',
+    onUnexpectedExit: (event) => unexpectedExits.push(event)
+  })
+
+  await service.apply(cursor)
+  await assert.rejects(service.stop('test'), /Failed to stop/)
+  child.emit('exit', 9, null)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(unexpectedExits.length, 1)
+})
+
+test('system cursor service treats a synchronous SIGTERM exit as expected', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const unexpectedExits = []
+  const child = createFakeChild({
+    onSignal: (signal, currentChild) => {
+      if (signal === 'SIGTERM') currentChild.emit('exit', 0, signal)
+    }
+  })
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      queueMicrotask(() => emitJsonLine(child, { event: 'ready', version: 'active' }))
+      return child
+    },
+    versionFactory: () => 'active',
+    onUnexpectedExit: (event) => unexpectedExits.push(event)
+  })
+
+  await service.apply(cursor)
+  await service.stop('test')
+
+  assert.equal(unexpectedExits.length, 0)
+  assert.equal(service.getStatus().active, false)
+})
+
+test('system cursor service fails within a bounded time when SIGKILL cannot be sent', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const child = createFakeChild()
+  child.kill = (signal) => signal !== 'SIGKILL'
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      queueMicrotask(() => emitJsonLine(child, { event: 'ready', version: 'active' }))
+      return child
+    },
+    versionFactory: () => 'active',
+    stopTimeoutMs: 5
+  })
+
+  await service.apply(cursor)
+  await assert.rejects(service.stop('test'), /force-stop/)
+})
+
 test('materializeSystemCursorAsset converts a data URL into a managed PNG', async (t) => {
   const fixture = createFixture()
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))

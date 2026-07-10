@@ -6,6 +6,7 @@ const path = require('path')
 
 const {
   buildMacosSystemCursorHelper,
+  buildMacosSystemCursorHelpers,
   resolveSwiftTarget
 } = require('../../scripts/build-macos-system-cursor-helper')
 
@@ -55,3 +56,23 @@ test('resolveSwiftTarget rejects unsupported build architectures', () => {
   assert.throws(() => resolveSwiftTarget('ia32'), /Unsupported macOS helper architecture/)
 })
 
+test('macOS distribution helper build prepares both supported architectures', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-helper-build-all-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const sourceDir = path.join(root, 'native', 'macos-system-cursor')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  fs.writeFileSync(path.join(sourceDir, 'OpenPetSystemCursor.swift'), 'import AppKit\n')
+  const targets = []
+
+  const result = buildMacosSystemCursorHelpers({
+    platform: 'darwin',
+    projectRoot: root,
+    execFileSyncImpl: (_command, args) => {
+      targets.push(args[args.indexOf('-target') + 1])
+      fs.writeFileSync(args[args.indexOf('-o') + 1], 'binary')
+    }
+  })
+
+  assert.deepEqual(targets.sort(), ['arm64-apple-macos12.0', 'x86_64-apple-macos12.0'])
+  assert.deepEqual(result.map((entry) => path.basename(path.dirname(entry.outputPath))).sort(), ['arm64', 'x64'])
+})

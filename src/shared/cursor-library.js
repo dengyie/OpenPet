@@ -378,11 +378,6 @@ const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
   ]
 }
 
-const listHiddenBuiltinCursorOptions = (hiddenCursorIds = []) => {
-  normalizeHiddenCursorIds(hiddenCursorIds)
-  return []
-}
-
 const resizeCustomCursorRecord = (cursor, sizePercent) => {
   const normalized = normalizeCustomCursorRecord(cursor)
   if (!normalized) return null
@@ -433,7 +428,6 @@ module.exports = {
   createDefaultRuntimeCursor,
   createPersistedCursorRecord,
   getBuiltinCursorById,
-  listHiddenBuiltinCursorOptions,
   listCursorOptions,
   normalizeCustomCursorScope,
   normalizeCursorSettingsState,

@@ -221,9 +221,19 @@ const createSystemCursorService = ({
   const stopChild = async (reason) => {
     const targetChild = child
     if (!targetChild) return getStatus()
-    expectedChildren.add(targetChild)
     const exitPromise = new Promise((resolve) => targetChild.once('exit', resolve))
-    if (!targetChild.kill('SIGTERM')) throw new Error('Failed to stop macOS system cursor helper')
+    expectedChildren.add(targetChild)
+    let terminateSent = false
+    try {
+      terminateSent = targetChild.kill('SIGTERM')
+    } catch (error) {
+      expectedChildren.delete(targetChild)
+      throw error
+    }
+    if (!terminateSent) {
+      expectedChildren.delete(targetChild)
+      throw new Error('Failed to stop macOS system cursor helper')
+    }
     let timeoutId
     const stopped = await Promise.race([
       exitPromise.then(() => true),
@@ -234,8 +244,22 @@ const createSystemCursorService = ({
     ])
     clearTimeout(timeoutId)
     if (!stopped) {
-      targetChild.kill('SIGKILL')
-      await exitPromise
+      if (!targetChild.kill('SIGKILL')) {
+        expectedChildren.delete(targetChild)
+        throw new Error('Failed to force-stop macOS system cursor helper')
+      }
+      const forceStopped = await Promise.race([
+        exitPromise.then(() => true),
+        new Promise((resolve) => {
+          timeoutId = setTimeout(() => resolve(false), stopTimeoutMs)
+          timeoutId.unref?.()
+        })
+      ])
+      clearTimeout(timeoutId)
+      if (!forceStopped) {
+        expectedChildren.delete(targetChild)
+        throw new Error('macOS system cursor helper did not exit after force-stop')
+      }
     }
     if (child === targetChild) {
       child = null

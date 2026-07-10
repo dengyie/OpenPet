@@ -51,7 +51,7 @@ This milestone implements macOS only. On Windows and Linux the service reports u
 
 ## Build And Packaging
 
-`scripts/build-macos-system-cursor-helper.js` compiles the helper with the installed Swift toolchain into `build/native/<arch>/OpenPetSystemCursor`. The script skips cleanly on non-macOS hosts. Development startup and packaging build the helper before launching or packaging Electron. The helper source and compiled runtime path are included by electron-builder; compiled output remains ignored by git.
+`scripts/build-macos-system-cursor-helper.js` compiles arm64 and x64 helpers with the installed Swift toolchain into `build/native/<arch>/OpenPetSystemCursor`. The script skips cleanly on non-macOS hosts. Development startup and packaging build both supported architectures before launching or packaging Electron, while runtime selection still follows `process.arch`. The helper source and compiled runtime paths are included by electron-builder; compiled output remains ignored by git.
 
 ## Failure And Recovery
 
@@ -68,4 +68,3 @@ This milestone implements macOS only. On Windows and Linux the service reports u
 - IPC tests cover successful persistence, failure without persistence, and local-overlay suppression in system mode.
 - Swift helper smoke launches against a generated cursor, confirms `ready`, verifies the overlay process stays alive, then terminates and confirms clean exit.
 - `npm run check:syntax`, focused tests, `npm test`, and Control Center cursor Playwright regressions run before merge readiness.
-

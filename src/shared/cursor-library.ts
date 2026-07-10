@@ -408,10 +408,6 @@ export const listCursorOptions = (
   ]
 }
 
-export const listHiddenBuiltinCursorOptions = (_hiddenCursorIds: string[] = []): CursorOption[] => {
-  return []
-}
-
 export const resizeCustomCursorRecord = (
   cursor: Partial<CustomCursorRecord> | null | undefined,
   sizePercent: number
