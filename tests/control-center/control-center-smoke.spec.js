@@ -59,10 +59,16 @@ const expandAiSection = async (page, name) => {
 }
 
 const openProviderDisclosure = async (section, title) => {
+  if (title !== '高级 / 诊断') {
+    const advancedDisclosure = providerDisclosure(section, '高级 / 诊断')
+    if (await advancedDisclosure.count() && await advancedDisclosure.getAttribute('open') === null) {
+      await advancedDisclosure.locator('summary').first().click()
+    }
+  }
   const disclosure = providerDisclosure(section, title)
   await expect(disclosure).toHaveCount(1)
   if (await disclosure.getAttribute('open') === null) {
-    await disclosure.locator('summary').click()
+    await disclosure.locator('summary').first().click()
   }
   await expect(disclosure).toHaveAttribute('open', '')
   return disclosure
@@ -180,9 +186,13 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'AI' }).click()
 
     const chatSection = await expandAiSection(page, '聊天 Provider')
+    const advancedDiagnostics = providerDisclosure(chatSection, '高级 / 诊断')
     const presetDisclosure = providerDisclosure(chatSection, '显示常用聊天 Provider 预设')
     const advancedDisclosure = providerDisclosure(chatSection, '显示高级聊天配置')
 
+    await expect(advancedDiagnostics).toHaveCount(1)
+    await expect(advancedDiagnostics).not.toHaveAttribute('open', '')
+    await expect(chatSection.getByText('诊断与兼容性')).toBeHidden()
     await expect(presetDisclosure).not.toHaveAttribute('open', '')
     await expect(advancedDisclosure).not.toHaveAttribute('open', '')
     await expect(chatSection.getByRole('button', { name: 'OpenAI 官方' })).toHaveCount(0)

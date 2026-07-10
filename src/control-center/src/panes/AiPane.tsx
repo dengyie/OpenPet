@@ -991,40 +991,7 @@ export function AiPane({
                 hasApiKey={activeConfig.hasApiKey}
               />
               <div className="provider-capability-body">
-              <div className="provider-card-header">
-                <div>
-                  <h3>聊天模型</h3>
-                  <p>用于宠物气泡聊天、扩展聊天面板、人格生成、记忆抽取和行为编排。</p>
-                </div>
-                <div className="provider-card-actions">
-                  <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
-                    {saving ? '保存中' : '保存聊天 Provider'}
-                  </button>
-                  <div className="provider-card-secondary-actions">
-                    <button type="button" className="ghost" onClick={onTest} disabled={saving}>
-                      测试已保存配置
-                    </button>
-                    <button type="button" className="ghost" onClick={onDiscoverAiModels} disabled={saving}>
-                      刷新聊天模型
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="provider-status-strip">
-                <ProviderStatusItem label="当前模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
-                <ProviderStatusItem label="当前 Endpoint" value={activeConfig.baseUrl || '未设置'} />
-                <ProviderStatusItem label="密钥状态" value={activeConfig.hasApiKey ? '已保存' : '未保存'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
-                <ProviderStatusItem label="草稿状态" value={draftSummary || '当前没有未保存修改'} tone={draftSummary ? 'warn' : 'default'} />
-              </div>
-              <div className="section provider-summary" data-testid="ai-provider-summary">
-                <div className="readonly-row">
-                  <strong>当前生效配置</strong>
-                  <div className="provider-inline-summary" data-testid="ai-provider-active-summary">
-                    <code>{activeChatHostSummary}</code>
-                    <span>{activeConfig.model || '未设置模型'}</span>
-                    <span>{activeConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
-                  </div>
-                </div>
+                <div className="section provider-summary provider-core-summary" data-testid="ai-provider-summary">
 
                 {providerConfigDirty ? (
                   <div className="provider-warning" data-testid="ai-provider-dirty-warning">
@@ -1036,22 +1003,6 @@ export function AiPane({
                 {providerConfigValidationError ? (
                   <div className="provider-warning error" data-testid="ai-provider-validation-error">{providerConfigValidationError}</div>
                 ) : null}
-
-                <div className="field-row">
-                  <div className="field-label">启用聊天</div>
-                  <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
-                </div>
-
-                <label className="field-row">
-                  <span className="field-label">Provider</span>
-                  <select
-                    className="text-input"
-                    value={config.provider}
-                    onChange={(event) => onChange({ provider: event.target.value })}
-                  >
-                    <option value="openai-compatible">OpenAI compatible</option>
-                  </select>
-                </label>
 
                 <label className="field-row">
                   <span className="field-label">Base URL</span>
@@ -1096,19 +1047,68 @@ export function AiPane({
                   </div>
                 </div>
 
-                <div className="field-row">
-                  <div>
-                    <div className="field-label">长期记忆</div>
-                    <div className="field-note">主回复不阻塞，后台自动抽取用户与宠物关系记忆</div>
+                <div className="provider-card-actions provider-card-actions-inline">
+                  <button type="button" className="primary" onClick={onSave} disabled={saveDisabled}>
+                    {saving ? '保存中' : '保存聊天 Provider'}
+                  </button>
+                  <div className="provider-card-secondary-actions">
+                    <button type="button" className="ghost" onClick={onTest} disabled={saving}>
+                      测试已保存配置
+                    </button>
+                    <button type="button" className="ghost" onClick={onDiscoverAiModels} disabled={saving}>
+                      刷新聊天模型
+                    </button>
                   </div>
-                  <Toggle
-                    ariaLabel="Enable AI memory"
-                    checked={config.memory.enabled}
-                    onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
-                  />
                 </div>
 
-                <details className="provider-disclosure" open>
+                <details className="provider-disclosure">
+                  <summary>高级 / 诊断</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-status-strip">
+                      <ProviderStatusItem label="当前模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                      <ProviderStatusItem label="当前 Endpoint" value={activeConfig.baseUrl || '未设置'} />
+                      <ProviderStatusItem label="密钥状态" value={activeConfig.hasApiKey ? '已保存' : '未保存'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                      <ProviderStatusItem label="草稿状态" value={draftSummary || '当前没有未保存修改'} tone={draftSummary ? 'warn' : 'default'} />
+                    </div>
+
+                    <div className="readonly-row">
+                      <strong>当前生效配置</strong>
+                      <div className="provider-inline-summary" data-testid="ai-provider-active-summary">
+                        <code>{activeChatHostSummary}</code>
+                        <span>{activeConfig.model || '未设置模型'}</span>
+                        <span>{activeConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                      </div>
+                    </div>
+
+                    <div className="field-row">
+                      <div className="field-label">启用聊天</div>
+                      <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
+                    </div>
+
+                    <label className="field-row">
+                      <span className="field-label">Provider</span>
+                      <select
+                        className="text-input"
+                        value={config.provider}
+                        onChange={(event) => onChange({ provider: event.target.value })}
+                      >
+                        <option value="openai-compatible">OpenAI compatible</option>
+                      </select>
+                    </label>
+
+                    <div className="field-row">
+                      <div>
+                        <div className="field-label">长期记忆</div>
+                        <div className="field-note">主回复不阻塞，后台自动抽取用户与宠物关系记忆</div>
+                      </div>
+                      <Toggle
+                        ariaLabel="Enable AI memory"
+                        checked={config.memory.enabled}
+                        onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
+                      />
+                    </div>
+
+                <details className="provider-disclosure">
                   <summary>Vision / 多模态文本模型</summary>
                   <div className="provider-disclosure-body">
                     <div className="readonly-row" data-testid="vision-provider-effective-summary">
@@ -1273,9 +1273,8 @@ export function AiPane({
                     </label>
                   </div>
                 </details>
-              </div>
 
-              <div className="provider-diagnostics">
+                <div className="provider-diagnostics">
                 <div className="provider-diagnostics-heading">诊断与兼容性</div>
                 {(connectionStatus || connectionTestResult) ? (
                   <div
@@ -1328,6 +1327,9 @@ export function AiPane({
                     </button>
                   ))}
                 </div>
+                </div>
+                  </div>
+                </details>
               </div>
               </div>
             </details>
@@ -1342,46 +1344,7 @@ export function AiPane({
                 hasApiKey={activeImageGenerationConfig.hasApiKey}
               />
               <div className="provider-capability-body">
-              <div className="provider-card-header">
-                <div>
-                  <h3>图片模型</h3>
-                  <p>用于 Creator Studio 生成宠物立绘、动作帧和导入前图片资产。</p>
-                </div>
-                <div className="provider-card-actions">
-                  <button type="button" className="primary" onClick={onSaveImageGeneration} disabled={imageSaveDisabled}>
-                    保存图片 Provider
-                  </button>
-                  <div className="provider-card-secondary-actions">
-                    <button type="button" className="ghost" onClick={onCheckImageGenerationHealth} disabled={saving}>
-                      检查图片健康
-                    </button>
-                    <button type="button" className="ghost" onClick={onDiscoverImageGenerationModels} disabled={saving}>
-                      刷新图片模型
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="provider-status-strip">
-                <ProviderStatusItem label="当前模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
-                <ProviderStatusItem label="当前 Endpoint" value={activeImageGenerationConfig.baseUrl || '未设置'} />
-                <ProviderStatusItem label="密钥状态" value={activeImageGenerationConfig.hasApiKey ? '已保存' : '未保存'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
-                <ProviderStatusItem label="草稿状态" value={imageDraftSummary || '当前没有未保存修改'} tone={imageDraftSummary ? 'warn' : 'default'} />
-              </div>
-
-              <div className="section">
-                <div className="readonly-row">
-                  <strong>图片当前 Provider</strong>
-                  <div className="provider-inline-summary">
-                    <code>{activeImageHostSummary}</code>
-                    <span>{activeImageGenerationConfig.model || '未设置模型'}</span>
-                    <span>{activeImageGenerationConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
-                  </div>
-                </div>
-
-                <div className="readonly-row">
-                  <strong>生成边界</strong>
-                  <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
-                </div>
+                <div className="section provider-core-summary">
 
                 {imageProviderValidationError ? (
                   <div className="provider-warning error">{imageProviderValidationError}</div>
@@ -1435,6 +1398,44 @@ export function AiPane({
                     </button>
                   </div>
                 </div>
+
+                <div className="provider-card-actions provider-card-actions-inline">
+                  <button type="button" className="primary" onClick={onSaveImageGeneration} disabled={imageSaveDisabled}>
+                    保存图片 Provider
+                  </button>
+                  <div className="provider-card-secondary-actions">
+                    <button type="button" className="ghost" onClick={onCheckImageGenerationHealth} disabled={saving}>
+                      检查图片健康
+                    </button>
+                    <button type="button" className="ghost" onClick={onDiscoverImageGenerationModels} disabled={saving}>
+                      刷新图片模型
+                    </button>
+                  </div>
+                </div>
+
+                <details className="provider-disclosure">
+                  <summary>高级 / 诊断</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-status-strip">
+                      <ProviderStatusItem label="当前模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                      <ProviderStatusItem label="当前 Endpoint" value={activeImageGenerationConfig.baseUrl || '未设置'} />
+                      <ProviderStatusItem label="密钥状态" value={activeImageGenerationConfig.hasApiKey ? '已保存' : '未保存'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                      <ProviderStatusItem label="草稿状态" value={imageDraftSummary || '当前没有未保存修改'} tone={imageDraftSummary ? 'warn' : 'default'} />
+                    </div>
+
+                    <div className="readonly-row">
+                      <strong>图片当前 Provider</strong>
+                      <div className="provider-inline-summary">
+                        <code>{activeImageHostSummary}</code>
+                        <span>{activeImageGenerationConfig.model || '未设置模型'}</span>
+                        <span>{activeImageGenerationConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                      </div>
+                    </div>
+
+                    <div className="readonly-row">
+                      <strong>生成边界</strong>
+                      <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
+                    </div>
 
                 <details className="provider-disclosure">
                   <summary>查看图片 Provider 边界</summary>
@@ -1506,9 +1507,8 @@ export function AiPane({
                     </label>
                   </div>
                 </details>
-              </div>
 
-              <div className="provider-diagnostics">
+                <div className="provider-diagnostics">
                 <div className="provider-diagnostics-heading">诊断与兼容性</div>
                 {imageHealthStatus ? (
                   <div className="readonly-row">
@@ -1544,6 +1544,9 @@ export function AiPane({
                   <strong>透明背景兼容性</strong>
                   <span>{imageTransparencyCompatibilityHint}</span>
                 </div>
+                </div>
+                  </div>
+                </details>
               </div>
               </div>
             </details>
