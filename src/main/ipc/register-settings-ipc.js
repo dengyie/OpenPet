@@ -121,13 +121,17 @@ const registerSettingsIpc = ({
     const cursorState = normalizeCursorSettingsState({
       selectedCursorId: currentSettings.selectedCursorId,
       customCursors: repairedCustomCursors,
-      customCursor: currentSettings.customCursor
+      customCursor: currentSettings.customCursor,
+      hiddenCursorIds: currentSettings.hiddenCursorIds,
+      customCursorScope: currentSettings.customCursorScope
     })
     const repairedSettings = petService.saveSettings({
       ...currentSettings,
       selectedCursorId: cursorState.selectedCursorId,
       customCursors: cursorState.customCursors,
-      customCursor: cursorState.customCursor
+      customCursor: cursorState.customCursor,
+      hiddenCursorIds: cursorState.hiddenCursorIds,
+      customCursorScope: cursorState.customCursorScope
     })
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(repairedSettings))
     recordAppLog({

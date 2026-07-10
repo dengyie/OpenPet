@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../shared/openpet-contracts'
+import type { ControlCenterSettings, CursorOption } from '../../../shared/openpet-contracts'
 import {
   CUSTOM_CURSOR_MAX_SIZE_PERCENT,
   CUSTOM_CURSOR_MIN_SIZE_PERCENT,
   CUSTOM_CURSOR_SIZE_STEP_PERCENT,
-  getBuiltinCursorById,
   SYSTEM_CURSOR_ID
 } from '../../../shared/cursor-library.ts'
 import { SegmentedControl } from '../components/SegmentedControl'
@@ -17,14 +16,12 @@ export interface PetPaneProps {
   status: string
   saving: boolean
   cursorOptions: CursorOption[]
-  hiddenCursorOptions: CursorOption[]
   onChange: (partial: Partial<ControlCenterSettings>, previewScale?: boolean) => void
+  onChangeCursorScope: (scope: ControlCenterSettings['customCursorScope']) => void | Promise<void>
   onSelectCursor: (cursorId: string) => void | Promise<void>
   onImportCursor: () => void | Promise<void>
   onResizeCursor: (cursorId: string, sizePercent: number) => void | Promise<void>
-  onRenameCursor: (cursorId: string, nextName: string) => void | Promise<void>
   onDeleteCursor: (cursorId: string) => void | Promise<void>
-  onRestoreCursor: (cursorId: string) => void | Promise<void>
   onSave: () => void | Promise<void>
   onReset: () => void
 }
@@ -59,36 +56,23 @@ const formatCursorSize = (cursor: Pick<CursorOption, 'width' | 'height'>) => {
   return width > 0 && height > 0 ? `${width}×${height}` : '尺寸未知'
 }
 
-const formatCursorDate = (value: string) => {
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return '时间未知'
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date(timestamp))
-}
-
 export function PetPane({
   settings,
   originalSettings,
   status,
   onChange,
+  onChangeCursorScope,
   onSelectCursor,
   onImportCursor,
   onResizeCursor,
-  onRenameCursor,
   onDeleteCursor,
   onSave,
   onReset,
   cursorOptions,
-  hiddenCursorOptions,
-  onRestoreCursor,
   saving
 }: PetPaneProps) {
   const scalePercent = Math.round(settings.scale * 100)
   const visibleCursorOptions = cursorOptions.filter((option) => option.id !== SYSTEM_CURSOR_ID)
-  const managedCursorOptions = [...visibleCursorOptions, ...hiddenCursorOptions]
   const selectedScalableCursor = visibleCursorOptions.find((cursor) => cursor.id === settings.selectedCursorId) || null
   const selectedCursorSizePercent = Math.round(Number(selectedScalableCursor?.sizePercent) || 100)
   const [pendingCursorSizePercent, setPendingCursorSizePercent] = useState(selectedCursorSizePercent)
@@ -110,51 +94,6 @@ export function PetPane({
     if (!selectedScalableCursor) return
     if (pendingCursorSizePercent === selectedCursorSizePercent) return
     onResizeCursor(selectedScalableCursor.id, pendingCursorSizePercent)
-  }
-
-  const promptRenameCursor = (cursor: CustomCursorRecord) => {
-    if (getBuiltinCursorById(cursor.id)) return
-    const nextName = window.prompt('修改指针名称', cursor.name)
-    if (nextName == null) return
-    onRenameCursor(cursor.id, nextName)
-  }
-
-  const confirmDeleteCursor = (cursor: CustomCursorRecord) => {
-    onDeleteCursor(cursor.id)
-  }
-
-  const renderCursorActionButtons = (cursor: CursorOption) => {
-    const customRecord = settings.customCursors.find((record) => record.id === cursor.id) || null
-    return (
-      <>
-        {customRecord && cursor.canRename === true ? (
-          <button type="button" className="ghost" onClick={() => promptRenameCursor(customRecord)} disabled={saving}>
-            重命名
-          </button>
-        ) : null}
-        {cursor.canRestore === true ? (
-          <button type="button" className="ghost accent" onClick={() => onRestoreCursor(cursor.id)} disabled={saving}>
-            恢复
-          </button>
-        ) : null}
-        {cursor.canDelete === true ? (
-          <button
-            type="button"
-            className="ghost danger"
-            onClick={() => {
-              if (customRecord) {
-                confirmDeleteCursor(customRecord)
-                return
-              }
-              onDeleteCursor(cursor.id)
-            }}
-            disabled={saving}
-          >
-            删除
-          </button>
-        ) : null}
-      </>
-    )
   }
 
   return (
@@ -348,54 +287,23 @@ export function PetPane({
               )}
             </div>
 
-            <div className="cursor-management-panel">
-              <div className="cursor-management-header">
-                <div>
-                  <h3>指针库状态</h3>
-                  <p>这里统一管理当前可见指针、上传指针，以及已隐藏的内置指针恢复入口。</p>
-                </div>
-                <div className="cursor-management-actions">
-                  <button type="button" className="ghost accent" onClick={onImportCursor} disabled={saving}>
-                    上传指针
-                  </button>
+            <div className="cursor-scope-row">
+              <div>
+                <div className="field-label">作用范围</div>
+                <div className="field-note">
+                  关闭时只影响宠物交互区域；全电脑指针替换需要后续原生能力支持，当前保持仅 OpenPet 生效。
                 </div>
               </div>
-
-              {managedCursorOptions.length > 0 ? (
-                <div className="cursor-library-list" role="list" aria-label="指针库状态">
-                  {managedCursorOptions.map((cursor) => {
-                    const active = settings.selectedCursorId === cursor.id
-                    return (
-                      <div
-                        key={cursor.id}
-                        className={`cursor-library-row${cursor.canRestore === true ? ' hidden-row' : ''}`}
-                        role="listitem"
-                      >
-                        <span className="cursor-library-preview">
-                          <img src={cursor.assetUrl} alt={`${cursor.name} 预览`} />
-                        </span>
-                        <span className="cursor-library-main">
-                          <span className="cursor-library-title">
-                            <strong>{cursor.name}</strong>
-                            {active ? <span className="cursor-usage-badge">使用中</span> : null}
-                            {cursor.source === 'builtin' ? <span className="cursor-usage-badge subtle">内置</span> : null}
-                            {cursor.source === 'uploaded' ? <span className="cursor-usage-badge subtle">已上传</span> : null}
-                            {cursor.canRestore === true ? <span className="cursor-usage-badge hidden">已隐藏</span> : null}
-                          </span>
-                          <span className="cursor-library-meta">
-                            {formatCursorSize(cursor)} · {formatCursorDate(cursor.createdAt)}
-                          </span>
-                        </span>
-                        <span className="cursor-library-actions">
-                          {renderCursorActionButtons(cursor)}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="cursor-library-empty">当前还没有可管理的指针记录。</div>
-              )}
+              <div className="cursor-scope-control">
+                <span className="cursor-scope-pill">仅 OpenPet</span>
+                <Toggle
+                  ariaLabel="Apply cursor to the whole computer"
+                  checked={settings.customCursorScope === 'system'}
+                  onChange={(checked) => onChangeCursorScope(checked ? 'system' : 'openpet')}
+                  disabled={saving}
+                />
+                <span>应用到整个电脑</span>
+              </div>
             </div>
           </div>
         </div>

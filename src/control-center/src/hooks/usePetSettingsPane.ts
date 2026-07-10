@@ -10,8 +10,8 @@ import {
   createPersistedCursorRecord,
   createDefaultRuntimeCursor,
   getBuiltinCursorById,
-  listHiddenBuiltinCursorOptions,
   listCursorOptions,
+  normalizeCustomCursorScope,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,
   resizeCustomCursorRecord
@@ -20,7 +20,7 @@ import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '..
 import type { PetPaneProps } from '../panes/PetPane'
 
 const normalizeCursorState = (settings: Partial<ControlCenterSettings>) => (
-  normalizeCursorSettingsState(settings) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds'>
+  normalizeCursorSettingsState(settings) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds' | 'customCursorScope'>
 )
 
 const normalizeCustomCursorRecords = (cursors: Partial<CustomCursorRecord>[] | null | undefined) => (
@@ -38,7 +38,8 @@ const applyCursorState = (settings: ControlCenterSettings, partial: Partial<Cont
       selectedCursorId: partial.selectedCursorId ?? settings.selectedCursorId,
       customCursors: partial.customCursors ?? settings.customCursors,
       customCursor: partial.customCursor ?? settings.customCursor,
-      hiddenCursorIds: partial.hiddenCursorIds ?? settings.hiddenCursorIds
+      hiddenCursorIds: partial.hiddenCursorIds ?? settings.hiddenCursorIds,
+      customCursorScope: partial.customCursorScope ?? settings.customCursorScope
     })
   })
 }
@@ -84,10 +85,6 @@ export function usePetSettingsPane() {
     () => listCursorOptions(settings.customCursors, settings.hiddenCursorIds) as CursorOption[],
     [settings.customCursors, settings.hiddenCursorIds]
   )
-  const hiddenCursorOptions = useMemo<CursorOption[]>(
-    () => listHiddenBuiltinCursorOptions(settings.hiddenCursorIds) as CursorOption[],
-    [settings.hiddenCursorIds]
-  )
 
   const persistSettings = async (nextSettings: ControlCenterSettings, successMessage: string, errorFallback: string) => {
     setSaving(true)
@@ -105,10 +102,26 @@ export function usePetSettingsPane() {
   }
 
   const onChange = (partial: Partial<ControlCenterSettings>, previewScale = false) => {
-    const nextSettings = cloneSettings({ ...settings, ...partial })
+    const nextSettings = applyCursorState(settings, {
+      ...partial,
+      customCursorScope: partial.customCursorScope === undefined
+        ? settings.customCursorScope
+        : normalizeCustomCursorScope(partial.customCursorScope)
+    })
     setSettings(nextSettings)
     if (status) setStatus('')
     if (previewScale) api.previewScale(nextSettings.scale)
+  }
+
+  const onChangeCursorScope = async (scope: ControlCenterSettings['customCursorScope']) => {
+    const nextScope = normalizeCustomCursorScope(scope)
+    const nextSettings = applyCursorState(settings, { customCursorScope: nextScope })
+    setSettings(nextSettings)
+    if (scope === 'system') {
+      setStatus('当前版本暂不支持全电脑指针替换，已保持仅 OpenPet 生效')
+      return
+    }
+    await persistSettings(nextSettings, '已设置为仅 OpenPet 使用自定义指针', '指针作用范围保存失败')
   }
 
   const onSave = () => persistSettings(settings, '', '宠物设置保存失败')
@@ -179,28 +192,9 @@ export function usePetSettingsPane() {
     )
   }
 
-  const onRenameCursor = async (cursorId: string, nextName: string) => {
-    const normalizedName = nextName.trim()
-    if (!normalizedName) {
-      setStatus('指针名称不能为空')
-      return
-    }
-    const targetCursor = settings.customCursors.find((cursor) => cursor.id === cursorId)
-    if (!targetCursor) {
-      setStatus('未找到要编辑的指针')
-      return
-    }
-    const nextCustomCursors = normalizeCustomCursorRecords(settings.customCursors.map((cursor) => (
-      cursor.id === cursorId ? { ...cursor, name: normalizedName } : cursor
-    )))
-    const nextSettings = applyCursorState(settings, { customCursors: nextCustomCursors })
-    setSettings(nextSettings)
-    await persistSettings(nextSettings, `已更新指针名称：${normalizedName}`, '指针名称保存失败')
-  }
-
   const onDeleteCursor = async (cursorId: string) => {
     const targetCursor = cursorOptions.find((cursor) => cursor.id === cursorId)
-    if (!targetCursor || targetCursor.canDelete !== true) {
+    if (!targetCursor || targetCursor.source !== 'uploaded' || targetCursor.canDelete !== true) {
       setStatus('未找到要删除的指针')
       return
     }
@@ -209,13 +203,9 @@ export function usePetSettingsPane() {
     }
 
     const deletingSelectedCursor = settings.selectedCursorId === cursorId
-    const nextHiddenCursorIds = targetCursor.source === 'builtin'
-      ? Array.from(new Set([...settings.hiddenCursorIds, cursorId]))
-      : settings.hiddenCursorIds
     const nextSettings = applyCursorState(settings, {
       selectedCursorId: deletingSelectedCursor ? SYSTEM_CURSOR_ID : settings.selectedCursorId,
       customCursor: createDefaultRuntimeCursor(),
-      hiddenCursorIds: nextHiddenCursorIds,
       customCursors: normalizeCustomCursorRecords(
         settings.customCursors.filter((cursor) => cursor.id !== cursorId)
       )
@@ -230,38 +220,18 @@ export function usePetSettingsPane() {
     )
   }
 
-  const onRestoreCursor = async (cursorId: string) => {
-    const targetCursor = hiddenCursorOptions.find((cursor) => cursor.id === cursorId)
-    if (!targetCursor || targetCursor.canRestore !== true) {
-      setStatus('未找到要恢复的指针')
-      return
-    }
-
-    const nextSettings = applyCursorState(settings, {
-      hiddenCursorIds: settings.hiddenCursorIds.filter((id) => id !== cursorId)
-    })
-    setSettings(nextSettings)
-    await persistSettings(
-      nextSettings,
-      `已恢复指针：${targetCursor.name}`,
-      '指针恢复失败'
-    )
-  }
-
   const paneProps = {
     settings,
     originalSettings,
     status,
     saving,
     cursorOptions,
-    hiddenCursorOptions,
     onChange,
+    onChangeCursorScope,
     onSelectCursor,
     onImportCursor,
     onResizeCursor,
-    onRenameCursor,
     onDeleteCursor,
-    onRestoreCursor,
     onSave,
     onReset
   } satisfies PetPaneProps

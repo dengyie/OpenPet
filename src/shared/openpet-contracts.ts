@@ -15,6 +15,7 @@ export interface ControlCenterSettings {
   customCursor: CustomCursorSettings
   customCursors: CustomCursorRecord[]
   hiddenCursorIds: string[]
+  customCursorScope: CustomCursorScope
   grounded: boolean
   home: ControlCenterPetHomeSettings
   petBubbleChat: PetBubbleChatSettings
@@ -40,6 +41,7 @@ export interface CustomCursorSettings {
 
 export type CursorOptionType = 'system' | 'custom'
 export type CursorOptionSource = 'system' | 'builtin' | 'uploaded'
+export type CustomCursorScope = 'openpet' | 'system'
 
 export interface CursorOption {
   id: string

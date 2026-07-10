@@ -32,7 +32,7 @@ import {
 } from '../../../shared/cursor-library.ts'
 
 const normalizeCursorState = (settings: Partial<ControlCenterSettings> | null | undefined) => (
-  normalizeCursorSettingsState(settings || {}) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds'>
+  normalizeCursorSettingsState(settings || {}) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds' | 'customCursorScope'>
 )
 
 export const defaultCustomCursor = {
@@ -57,6 +57,7 @@ export const defaultSettings = {
   customCursor: createDefaultRuntimeCursor(),
   customCursors: [],
   hiddenCursorIds: [],
+  customCursorScope: 'openpet',
   grounded: false,
   home: {
     enabled: false,

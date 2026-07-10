@@ -56,6 +56,7 @@ const defaultSettings = {
   customCursor: createDefaultCursorSettings(),
   customCursors: [],
   hiddenCursorIds: [],
+  customCursorScope: 'openpet',
   petBehavior: {
     grounded: false,
     home: {

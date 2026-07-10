@@ -22,6 +22,7 @@ const { defaultSettings, mergeSettings } = require('../../src/main/settings')
 
 test('settings default custom cursor is disabled', () => {
   assert.equal(defaultSettings.selectedCursorId, SYSTEM_CURSOR_ID)
+  assert.equal(defaultSettings.customCursorScope, 'openpet')
   assert.deepEqual(defaultSettings.ai.memory, { enabled: false })
   assert.deepEqual(defaultSettings.customCursors, [])
   assert.deepEqual(defaultSettings.customCursor, {
@@ -34,6 +35,18 @@ test('settings default custom cursor is disabled', () => {
     hotspotX: 0,
     hotspotY: 0
   })
+})
+
+test('mergeSettings clears legacy hidden cursor ids and rejects unsupported system cursor scope', () => {
+  const settings = mergeSettings({
+    selectedCursorId: BUILTIN_CURSORS[0].id,
+    customCursorScope: 'system',
+    hiddenCursorIds: [BUILTIN_CURSORS[0].id]
+  })
+
+  assert.equal(settings.selectedCursorId, BUILTIN_CURSORS[0].id)
+  assert.equal(settings.customCursorScope, 'openpet')
+  assert.deepEqual(settings.hiddenCursorIds, [])
 })
 
 test('mergeSettings preserves ai automatic memory config', () => {

@@ -700,7 +700,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('switch', { name: 'Enable pet bubble chat popup' })).toHaveAttribute('aria-checked', 'false')
   })
 
-  test('configures a custom pet hover cursor in the redesigned cursor library', async ({ page }) => {
+  test('configures a custom pet hover cursor in the simplified cursor picker', async ({ page }) => {
     await page.goto('/')
 
     const cursorHeader = page.locator('.cursor-selection-header')
@@ -712,14 +712,24 @@ test.describe('Control Center smoke', () => {
     await expect(cursorHeader).toContainText('预览会模拟真实指针落点')
     await expect(cursorOptionsRow).toBeVisible()
     await expect(cursorOptionCards).toHaveCount(7)
+    await expect(page.locator('.cursor-management-panel')).toHaveCount(0)
+    await expect(page.locator('.cursor-library-row')).toHaveCount(0)
+    await expect(page.getByText('指针库状态')).toHaveCount(0)
     await expect(cursorOptionCards.first()).toHaveCSS('width', '72px')
     await expect(cursorOptionCards.last()).toHaveCSS('width', '72px')
     await expect(cursorOptionCards.first().locator('.cursor-card-preview')).toHaveCSS('min-height', '43px')
     await expect(cursorOptionCards.first().locator('img')).toHaveCSS('width', '46px')
     await expect(page.getByRole('button', { name: '系统默认' })).toHaveCount(0)
+    await expect(page.getByRole('switch', { name: 'Apply cursor to the whole computer' })).toHaveAttribute('aria-checked', 'false')
+    await expect(page.getByText('仅 OpenPet', { exact: true })).toBeVisible()
+    await expect(page.getByText('全电脑指针替换需要后续原生能力支持，当前保持仅 OpenPet 生效。')).toBeVisible()
+    await page.getByRole('switch', { name: 'Apply cursor to the whole computer' }).click()
+    await expect(page.getByRole('switch', { name: 'Apply cursor to the whole computer' })).toHaveAttribute('aria-checked', 'false')
+    await expect(page.locator('.status-line')).toContainText('当前版本暂不支持全电脑指针替换，已保持仅 OpenPet 生效')
     await expect(cursorSizePanel).toBeVisible()
     await expect(cursorSizePanel).toContainText('当前指针大小')
     await expect(cursorSizePanel).toContainText('先在上方选择一个指针')
+    await expect(page.getByRole('button', { name: /^删除指针/ })).toHaveCount(0)
 
     await page.getByRole('button', { name: '添加自定义' }).click()
     await expect(cursorOptionCards).toHaveCount(8)
@@ -728,7 +738,7 @@ test.describe('Control Center smoke', () => {
     await expect(cursorSizePanel).toContainText('100%')
     await expect(cursorSizePanel).toContainText('32×32')
     await expect(page.getByRole('button', { name: '删除指针 demo-cursor' })).toBeVisible()
-    await expect(page.locator('.cursor-card-delete')).toHaveCount(7)
+    await expect(page.locator('.cursor-card-delete')).toHaveCount(1)
 
     const sizeSlider = page.getByRole('slider', { name: '当前指针大小' })
     await sizeSlider.evaluate((input) => {
@@ -743,7 +753,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('已将 demo-cursor 调整为 150%')
   })
 
-  test('deletes an uploaded custom cursor from the cursor picker and falls back to the hidden system state', async ({ page }) => {
+  test('deletes an uploaded custom cursor from the cursor picker and falls back to the system default state', async ({ page }) => {
     await page.addInitScript(() => {
       const messages = []
       window.__cursorConfirmMessages = messages
@@ -766,18 +776,16 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('已删除指针：demo-cursor，并切换为系统默认')
     await expect(page.locator('.cursor-size-panel')).toContainText('先在上方选择一个指针')
     await expect(page.locator('.cursor-option-card')).toHaveCount(7)
-    await expect(page.locator('.cursor-card-delete')).toHaveCount(6)
+    await expect(page.locator('.cursor-card-delete')).toHaveCount(0)
 
     const seenConfirmMessages = await page.evaluate(() => window.__cursorConfirmMessages || [])
     expect(seenConfirmMessages[0]).toContain('确认删除指针“demo-cursor”？')
   })
 
-  test('deletes a built-in cursor card with the same affordance and allows restoring it from the management panel', async ({ page }) => {
+  test('keeps built-in cursor cards visible and non-deletable without the management panel', async ({ page }) => {
     await page.addInitScript(() => {
-      const messages = []
-      window.__cursorBuiltinConfirmMessages = messages
       window.confirm = (message) => {
-        messages.push(String(message || ''))
+        window.__unexpectedBuiltinConfirmMessage = String(message || '')
         return true
       }
     })
@@ -786,20 +794,15 @@ test.describe('Control Center smoke', () => {
 
     const builtinCard = page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' }).first()
     await expect(builtinCard).toBeVisible()
-    await expect(page.getByRole('button', { name: '删除指针 爪爪紫' })).toBeVisible()
-
-    await page.getByRole('button', { name: '删除指针 爪爪紫' }).click()
-
-    await expect(page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' })).toHaveCount(0)
-    await expect(page.locator('.cursor-option-card')).toHaveCount(6)
-    await expect(page.locator('.cursor-library-row.hidden-row')).toContainText('爪爪紫')
-    await expect(page.locator('.cursor-library-row.hidden-row')).toContainText('已隐藏')
-    await page.getByRole('button', { name: '恢复' }).click()
+    await expect(page.getByRole('button', { name: '删除指针 爪爪紫' })).toHaveCount(0)
+    await expect(page.locator('.cursor-card-delete')).toHaveCount(0)
+    await expect(page.locator('.cursor-management-panel')).toHaveCount(0)
+    await builtinCard.click()
     await expect(page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' })).toHaveCount(1)
-    await expect(page.locator('.status-line')).toContainText('已恢复指针：爪爪紫')
+    await expect(page.locator('.cursor-option-card.selected')).toContainText('爪爪紫')
 
-    const seenConfirmMessages = await page.evaluate(() => window.__cursorBuiltinConfirmMessages || [])
-    expect(seenConfirmMessages[0]).toContain('确认删除指针“爪爪紫”？')
+    const unexpectedConfirm = await page.evaluate(() => window.__unexpectedBuiltinConfirmMessage || '')
+    expect(unexpectedConfirm).toBe('')
   })
 
   test('persists grounded and home settings in the demo API session', async ({ page }) => {

@@ -31,6 +31,8 @@ test('pet settings adapter builds renderer settings from host settings', () => {
   })
 
   assert.equal(result.scale, 1.25)
+  assert.equal(result.customCursorScope, 'openpet')
+  assert.deepEqual(result.hiddenCursorIds, [])
   assert.equal(result.home.hasAnchor, true)
   assert.equal(result.petBubbleChat.enabled, false)
 })
@@ -44,6 +46,7 @@ test('pet settings adapter merges renderer view back into host settings', () => 
     menuPosition: 'auto',
     autoStart: false,
     selectedCursorId: 'system',
+    customCursorScope: 'openpet',
     customCursor: { enabled: false },
     customCursors: [],
     petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true },
@@ -52,12 +55,14 @@ test('pet settings adapter merges renderer view back into host settings', () => 
 
   const merged = mergePetSettingsViewIntoHostSettings(currentSettings, {
     scale: 1.5,
+    customCursorScope: 'system',
     grounded: true,
     home: { enabled: true, radius: 'small' },
     petBubbleChat: { enabled: false }
   })
 
   assert.equal(merged.scale, 1.5)
+  assert.equal(merged.customCursorScope, 'openpet')
   assert.equal(merged.petBehavior.grounded, true)
   assert.equal(merged.petBehavior.home.anchor.x, 10)
   assert.equal(merged.petBubbleChat.enabled, false)

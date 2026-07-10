@@ -23,7 +23,7 @@ const createBuiltinCursor = ({ id, name, svg, hotspotX = 0, hotspotY = 0, width 
   hotspotX,
   hotspotY,
   createdAt: 'builtin',
-  canDelete: true,
+  canDelete: false,
   canRename: false,
   canRestore: false
 })
@@ -135,13 +135,9 @@ const normalizeNumber = (value, fallback = 0) => {
   return Number.isFinite(number) ? number : fallback
 }
 
-const normalizeHiddenCursorIds = (hiddenCursorIds) => (
-  Array.from(new Set(
-    (Array.isArray(hiddenCursorIds) ? hiddenCursorIds : [])
-      .map((value) => (typeof value === 'string' ? value.trim() : ''))
-      .filter((value) => Boolean(value) && value !== SYSTEM_CURSOR_ID)
-  ))
-)
+const normalizeHiddenCursorIds = () => []
+
+const normalizeCustomCursorScope = () => 'openpet'
 
 const clampCursorSizePercent = (value) => {
   const normalized = normalizeNumber(value, 100)
@@ -305,6 +301,7 @@ const normalizeCursorSettingsState = (settings = {}) => {
   const legacyCustomCursor = normalizeRuntimeCursor(settings.customCursor)
   const customCursors = normalizeCustomCursorCollection(settings.customCursors)
   const hiddenCursorIds = normalizeHiddenCursorIds(settings.hiddenCursorIds)
+  const customCursorScope = normalizeCustomCursorScope(settings.customCursorScope)
   const migratedLegacyCursor = migrateLegacyCustomCursorRecord(settings.customCursor)
   const nextCustomCursors = migratedLegacyCursor && customCursors.length === 0
     ? [migratedLegacyCursor, ...customCursors]
@@ -318,7 +315,7 @@ const normalizeCursorSettingsState = (settings = {}) => {
   }
 
   const cursorExists = selectedCursorId === SYSTEM_CURSOR_ID
-    || (Boolean(getBuiltinCursorById(selectedCursorId)) && !hiddenCursorIds.includes(selectedCursorId))
+    || Boolean(getBuiltinCursorById(selectedCursorId))
     || nextCustomCursors.some((cursor) => cursor.id === selectedCursorId)
 
   if (!cursorExists) selectedCursorId = SYSTEM_CURSOR_ID
@@ -326,6 +323,7 @@ const normalizeCursorSettingsState = (settings = {}) => {
   return {
     selectedCursorId,
     hiddenCursorIds,
+    customCursorScope,
     customCursors: nextCustomCursors,
     customCursor: resolveSelectedCursor({
       selectedCursorId,
@@ -336,7 +334,7 @@ const normalizeCursorSettingsState = (settings = {}) => {
 
 const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
   const normalizedCustomCursors = normalizeCustomCursorCollection(customCursors)
-  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
+  normalizeHiddenCursorIds(hiddenCursorIds)
   const customCursorById = new Map(normalizedCustomCursors.map((cursor) => [cursor.id, cursor]))
   const builtinIds = new Set(BUILTIN_CURSORS.map((cursor) => cursor.id))
 
@@ -360,7 +358,6 @@ const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
       canRestore: false
     },
     ...BUILTIN_CURSORS
-      .filter((cursor) => !hiddenCursorIdSet.has(cursor.id))
       .map((cursor) => {
       const overrideCursor = customCursorById.get(cursor.id)
       return overrideCursor
@@ -369,26 +366,19 @@ const listCursorOptions = (customCursors = [], hiddenCursorIds = []) => {
             ...overrideCursor,
             type: 'custom',
             source: 'builtin',
-            canDelete: true,
+            canDelete: false,
             canRename: false,
             canRestore: false
           }
         : cursor
     }),
-    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id) && !hiddenCursorIdSet.has(cursor.id))
+    ...normalizedCustomCursors.filter((cursor) => !builtinIds.has(cursor.id))
   ]
 }
 
 const listHiddenBuiltinCursorOptions = (hiddenCursorIds = []) => {
-  const hiddenCursorIdSet = new Set(normalizeHiddenCursorIds(hiddenCursorIds))
-  return BUILTIN_CURSORS
-    .filter((cursor) => hiddenCursorIdSet.has(cursor.id))
-    .map((cursor) => ({
-      ...cursor,
-      canDelete: false,
-      canRename: false,
-      canRestore: true
-    }))
+  normalizeHiddenCursorIds(hiddenCursorIds)
+  return []
 }
 
 const resizeCustomCursorRecord = (cursor, sizePercent) => {
@@ -443,6 +433,7 @@ module.exports = {
   getBuiltinCursorById,
   listHiddenBuiltinCursorOptions,
   listCursorOptions,
+  normalizeCustomCursorScope,
   normalizeCursorSettingsState,
   normalizeCustomCursorCollection,
   normalizeCustomCursorRecord,

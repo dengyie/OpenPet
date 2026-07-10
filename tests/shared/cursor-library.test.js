@@ -10,8 +10,8 @@ const {
   createPersistedCursorRecord,
   LEGACY_CUSTOM_CURSOR_ID,
   SYSTEM_CURSOR_ID,
-  listHiddenBuiltinCursorOptions,
   listCursorOptions,
+  normalizeCustomCursorScope,
   normalizeCursorSettingsState,
   removeStoredCursorRecord,
   resizeCustomCursorRecord,
@@ -28,6 +28,7 @@ test('cursor library exposes the built-in picker catalog', () => {
     BUILTIN_CURSORS.map((cursor) => cursor.name),
     ['爪爪紫', '粉色肉垫', '小鱼游游', '胡萝卜', '魔法棒', '小猫咪']
   )
+  assert.deepEqual(BUILTIN_CURSORS.map((cursor) => cursor.canDelete), [false, false, false, false, false, false])
 })
 
 test('decorative built-in cursors use a centered visual hotspot', () => {
@@ -82,23 +83,12 @@ test('listCursorOptions returns system, built-ins, and custom cursors in order',
   assert.equal(options.length, 8)
 })
 
-test('listCursorOptions can hide deleted built-in cursor cards from the visible picker rail', () => {
+test('listCursorOptions keeps historical hidden built-ins visible after management UI removal', () => {
   const hiddenId = BUILTIN_CURSORS[0].id
   const options = listCursorOptions([], [hiddenId])
 
-  assert.equal(options.some((option) => option.id === hiddenId), false)
-  assert.equal(options.length, 6)
-})
-
-test('listHiddenBuiltinCursorOptions exposes deleted built-in cursors with restore affordance', () => {
-  const hiddenId = BUILTIN_CURSORS[0].id
-  const options = listHiddenBuiltinCursorOptions([hiddenId])
-
-  assert.equal(options.length, 1)
-  assert.equal(options[0].id, hiddenId)
-  assert.equal(options[0].source, 'builtin')
-  assert.equal(options[0].canDelete, false)
-  assert.equal(options[0].canRestore, true)
+  assert.equal(options.some((option) => option.id === hiddenId), true)
+  assert.equal(options.length, 7)
 })
 
 test('listCursorOptions merges built-in cursor overrides without duplicating cards', () => {
@@ -120,10 +110,31 @@ test('listCursorOptions merges built-in cursor overrides without duplicating car
   assert.equal(matchingOptions.length, 1)
   assert.equal(matchingOptions[0].type, 'custom')
   assert.equal(matchingOptions[0].source, 'builtin')
-  assert.equal(matchingOptions[0].canDelete, true)
+  assert.equal(matchingOptions[0].canDelete, false)
   assert.equal(matchingOptions[0].canRestore, false)
   assert.equal(matchingOptions[0].width, 72)
   assert.equal(matchingOptions[0].sizePercent, 150)
+})
+
+test('normalizeCustomCursorScope defaults to openpet and never persists system before native support exists', () => {
+  assert.equal(normalizeCustomCursorScope(undefined), 'openpet')
+  assert.equal(normalizeCustomCursorScope('nope'), 'openpet')
+  assert.equal(normalizeCustomCursorScope('openpet'), 'openpet')
+  assert.equal(normalizeCustomCursorScope('system'), 'openpet')
+})
+
+test('normalizeCursorSettingsState clears legacy hidden cursor ids and keeps hidden built-in selections active', () => {
+  const hiddenId = BUILTIN_CURSORS[0].id
+  const normalized = normalizeCursorSettingsState({
+    selectedCursorId: hiddenId,
+    hiddenCursorIds: [hiddenId],
+    customCursors: []
+  })
+
+  assert.equal(normalized.selectedCursorId, hiddenId)
+  assert.equal(normalized.customCursor.enabled, true)
+  assert.deepEqual(normalized.hiddenCursorIds, [])
+  assert.equal(normalized.customCursorScope, 'openpet')
 })
 
 test('normalizeCursorSettingsState migrates a legacy hosted cursor into the new cursor library state', () => {

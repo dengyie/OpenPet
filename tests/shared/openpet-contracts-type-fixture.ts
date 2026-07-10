@@ -78,6 +78,7 @@ const controlCenterSettingsFixture = {
   },
   customCursors: [],
   hiddenCursorIds: [],
+  customCursorScope: 'openpet',
   grounded: true,
   home: {
     enabled: true,
