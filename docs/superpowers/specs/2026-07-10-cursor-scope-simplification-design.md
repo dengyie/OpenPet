@@ -1,7 +1,7 @@
 # Cursor Scope Simplification Design
 
 > Date: 2026-07-10
-> Status: requirements draft
+> Status: reviewed requirements
 > Scope: Control Center 自定义指针页面精简、指针作用范围选择、后续实现边界
 > Out of scope: 重新设计宠物动作系统、重写上传链路、替换现有宠物窗口 hitbox/overlay 算法
 
@@ -46,7 +46,7 @@ Cursor 设置区域只保留紧凑的顶部能力：
 
 - 选择：点击 card。
 - 上传：点击 `添加自定义` card。
-- 删除：继续使用 card 右上角删除按钮。
+- 删除：继续使用上传 cursor card 右上角删除按钮。
 - 缩放：使用当前指针大小行。
 
 ### 2.2 指针作用范围
@@ -80,6 +80,8 @@ customCursorScope: 'openpet'
 ```
 
 不要复用 `customCursor.enabled` 表达作用范围。`customCursor.enabled` 只表示当前是否存在可用的 runtime cursor；`customCursorScope` 表示应用范围。
+
+本轮实现只有 `openpet` 是可保存的有效生效状态。`system` 只表达一个后续原生能力方向；在 `SystemCursorService` 未落地前，UI 不得把 `system` 保存进持久化设置，也不得让用户看到一个已经启用但无实际效果的全电脑模式。
 
 ## 3. 当前代码事实
 
@@ -141,6 +143,7 @@ customCursorScope: 'openpet'
 - UI 可以显示勾选项，但必须 disabled，并显示不可用原因。
 - 或者允许用户点击后给出明确状态：`当前系统暂不支持全电脑指针替换，已保持仅 OpenPet 生效。`
 - 不允许保存一个看起来启用了但实际无效果的 `system` 状态。
+- 在没有 `SystemCursorService` 的 Phase 2 中，settings 内必须保持 `customCursorScope: 'openpet'`。
 
 ### 4.3 全电脑模式的推荐阶段边界
 
@@ -149,7 +152,7 @@ customCursorScope: 'openpet'
 - UI 精简。
 - `customCursorScope` 设置字段。
 - OpenPet / 全电脑选择控件。
-- 当 `system` 不可用时的禁用或回退。
+- 当 `system` 不可用时的禁用或回退，且不保存 `system`。
 - OpenPet 局部 cursor 不回退、不破坏。
 
 后续阶段再交付：
@@ -206,16 +209,29 @@ Cursor 设置区域结构调整为：
 
 必须明确处理旧的 `hiddenCursorIds`：
 
-- 如果继续允许删除内置 cursor card，就必须有一个不依赖下方管理面板的恢复路径。
-- 如果本轮不做恢复路径，建议暂停内置 cursor 的删除能力，只允许删除上传 cursor。
+- 本轮必须暂停内置 cursor card 删除能力，只允许删除上传 cursor。
+- `listCursorOptions(...)` 返回的内置 cursor，包括内置尺寸覆盖项，都必须 `canDelete: false`。
+- `BUILTIN_CURSORS` 定义本身也必须 `canDelete: false`，避免 view 层误判。
+- 如果未来继续允许删除内置 cursor card，必须先设计一个不依赖下方管理面板的恢复路径。
 - 已存在的 `hiddenCursorIds` 不能导致内置 cursor 永久消失且无恢复入口。
 
-推荐本轮策略：
+本轮强制策略：
 
 - 上传 cursor：card 删除按钮删除记录。
 - 内置 cursor：本轮不展示删除按钮，避免无恢复路径。
 - 内置 cursor 的大小覆盖仍可通过尺寸滑条产生和保存。
-- 如历史设置里已有 `hiddenCursorIds`，读取时仍保持兼容，但 UI 不再新增 hidden 内置 cursor。
+- 如历史设置里已有 `hiddenCursorIds`，本轮读取时必须将内置 cursor 重新暴露到 picker，并在下一次保存时清空这些 hidden 内置 id。
+- `onDeleteCursor(...)` 必须拒绝 `source === 'builtin'` 的删除请求，即使旧数据或测试 fixture 误传了 `canDelete: true`。
+
+### 5.4 历史隐藏状态迁移
+
+删除管理面板后，不再存在隐藏内置 cursor 的恢复 UI。因此必须在 Phase 2 做一次安全迁移：
+
+- `normalizeCursorSettingsState(...)` 继续接受 `hiddenCursorIds`，保持旧 settings 文件可读。
+- `listCursorOptions(...)` 不再因为 `hiddenCursorIds` 隐藏内置 cursor，所有内置 cursor 默认重新出现在顶部 picker。
+- `applyCursorState(...)` 或保存路径应把 `hiddenCursorIds` 归一化为空数组，防止旧隐藏状态继续传播。
+- 如果用户当前选中的是历史隐藏的内置 cursor，迁移后保持该内置 cursor 选中并显示。
+- 删除上传 cursor 时仍不写入 `hiddenCursorIds`。
 
 ## 6. 状态与持久化
 
@@ -251,7 +267,8 @@ const normalizeCustomCursorScope = (value: unknown): CustomCursorScope => (
 - 缺省值是 `openpet`。
 - 非法值回退到 `openpet`。
 - 当没有可用自定义 cursor 时，作用范围可以保留用户选择，但 runtime 不应启用 cursor。
-- 当系统级能力不可用时，不应把有效 settings 保存成 `system`，除非后续实现明确支持“保存意图但未生效”的状态模型。
+- Phase 2 中系统级能力不可用，因此 `system` 输入必须回退到 `openpet`，不允许保存“意图但未生效”的状态。
+- 只有 Phase 3 原生 `SystemCursorService` 落地并通过支持检测后，才允许保存 `system`。
 
 ### 6.3 Runtime contract
 
@@ -272,6 +289,13 @@ interface CursorRuntimeState {
 ```
 
 本轮如果不实现原生 `SystemCursorService`，`systemCursor.supported` 应为 `false`。
+
+Phase 2 可以不新增完整 `CursorRuntimeState`，但必须做到：
+
+- Control Center settings contract 有 `customCursorScope`。
+- renderer 收到的生效设置仍按 `openpet` 处理。
+- 未支持 `system` 时，renderer 不需要新增全局 overlay 或任何跨窗口行为。
+- 日志或状态反馈要能解释为什么全电脑模式不可用。
 
 ## 7. 系统级 cursor 技术边界
 
@@ -326,7 +350,9 @@ Windows 存在系统 cursor 替换 API 的可能路径，但它是全局副作�
 - 增加 `customCursorScope` 字段及默认值。
 - 增加作用范围 checkbox/toggle。
 - 默认 `openpet`。
-- 如果系统级能力未实现，`system` 选项禁用或点击后回退并提示。
+- 如果系统级能力未实现，`system` 选项禁用或点击后回退并提示，且 settings 保持 `openpet`。
+- 禁用内置 cursor 删除能力，保留上传 cursor 删除能力。
+- 迁移历史 `hiddenCursorIds`，让隐藏过的内置 cursor 重新出现在顶部 picker。
 - 更新 Control Center smoke 测试。
 
 验收：
@@ -334,6 +360,9 @@ Windows 存在系统 cursor 替换 API 的可能路径，但它是全局副作�
 - 页面只剩顶部 cursor card、尺寸调节和作用范围控件。
 - 不再出现 `指针库状态`、下方上传、管理列表、重命名、恢复。
 - 上传、选择、缩放、删除上传 cursor 仍可用。
+- 内置 cursor 不再显示删除按钮。
+- 历史隐藏内置 cursor 会重新显示。
+- `customCursorScope` 默认和保存结果都是 `openpet`。
 - `npm run build:control-center` 通过。
 - 相关 cursor smoke 通过。
 
@@ -368,6 +397,8 @@ Windows 存在系统 cursor 替换 API 的可能路径，但它是全局副作�
 - 系统级能力不可用时无法保存假 `system` 生效状态。
 - 上传 cursor 后仍自动选中。
 - 删除上传 cursor 后回到系统默认 runtime。
+- 内置 cursor card 不显示删除按钮。
+- 历史隐藏内置 cursor 重新出现在 picker。
 
 ### 9.2 Shared contract
 
@@ -375,6 +406,8 @@ Windows 存在系统 cursor 替换 API 的可能路径，但它是全局副作�
 
 - `customCursorScope` 缺省为 `openpet`。
 - 非法 scope 值回退到 `openpet`。
+- Phase 2 中 `system` scope 输入回退到 `openpet`。
+- `hiddenCursorIds` 不再隐藏内置 cursor。
 - settings IPC adapter 正确读写 scope。
 
 ### 9.3 Renderer
@@ -425,4 +458,6 @@ Windows 存在系统 cursor 替换 API 的可能路径，但它是全局副作�
 - 用户能在设置页看到作用范围控件。
 - 默认状态是仅 OpenPet。
 - 未实现原生系统能力时，用户不能保存一个无效果的全电脑模式。
+- 内置 cursor 删除入口消失，上传 cursor 删除入口保留。
+- 曾被隐藏的内置 cursor 能重新显示在顶部 picker。
 - 现有 OpenPet 局部 cursor 功能不退化。
