@@ -76,6 +76,7 @@ export function PetPane({
   const selectedScalableCursor = visibleCursorOptions.find((cursor) => cursor.id === settings.selectedCursorId) || null
   const selectedCursorSizePercent = Math.round(Number(selectedScalableCursor?.sizePercent) || 100)
   const [pendingCursorSizePercent, setPendingCursorSizePercent] = useState(selectedCursorSizePercent)
+  const cursorScopeFeedback = status.includes('全电脑指针替换') ? status : ''
 
   useEffect(() => {
     setPendingCursorSizePercent(selectedCursorSizePercent)
@@ -295,15 +296,35 @@ export function PetPane({
                 </div>
               </div>
               <div className="cursor-scope-control">
-                <span className="cursor-scope-pill">仅 OpenPet</span>
+                <button
+                  type="button"
+                  className="cursor-scope-pill"
+                  aria-pressed={settings.customCursorScope === 'openpet'}
+                  onClick={() => onChangeCursorScope('openpet')}
+                  disabled={saving}
+                >
+                  仅 OpenPet
+                </button>
                 <Toggle
                   ariaLabel="Apply cursor to the whole computer"
                   checked={settings.customCursorScope === 'system'}
                   onChange={(checked) => onChangeCursorScope(checked ? 'system' : 'openpet')}
                   disabled={saving}
                 />
-                <span>应用到整个电脑</span>
+                <button
+                  type="button"
+                  className="cursor-scope-target"
+                  onClick={() => onChangeCursorScope('system')}
+                  disabled={saving}
+                >
+                  应用到整个电脑
+                </button>
               </div>
+              {cursorScopeFeedback ? (
+                <div className="cursor-scope-feedback" role="status">
+                  {cursorScopeFeedback}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
