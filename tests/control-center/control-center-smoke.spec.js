@@ -346,8 +346,8 @@ test.describe('Control Center smoke', () => {
     await expect(summary).toContainText('reply chars')
     await expect(summary).toContainText('流式摘要')
     await expect(summary).toContainText('mode standard')
-    await expect(summary).toContainText('status completed')
-    await expect(summary).toContainText('provider 120ms / total 120ms')
+    await expect(summary).toContainText('status unknown')
+    await expect(summary).toContainText('latency n/a')
   })
 
   test('supports provider presets, model discovery, and image compatibility hints in the AI pane', async ({ page }) => {
@@ -865,6 +865,26 @@ test.describe('Control Center smoke', () => {
     await builtinCard.click()
     await expect(page.locator('.cursor-option-card').filter({ hasText: '爪爪紫' })).toHaveCount(1)
     await expect(page.locator('.cursor-option-card.selected')).toContainText('爪爪紫')
+    await expect(page.getByRole('button', { name: '恢复默认大小' })).toHaveCount(0)
+    await page.getByText('应用到整个电脑', { exact: true }).click()
+    await expect(page.getByRole('switch', { name: 'Apply cursor to the whole computer' })).toHaveAttribute('aria-checked', 'true')
+
+    const sizeSlider = page.getByRole('slider', { name: '当前指针大小' })
+    await sizeSlider.evaluate((input) => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+      valueSetter.call(input, '150')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      input.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+    await expect(page.locator('.cursor-size-panel')).toContainText('150%')
+    await expect(page.getByRole('button', { name: '恢复默认大小' })).toBeVisible()
+    await page.getByRole('button', { name: '恢复默认大小' }).click()
+    await expect(page.locator('.cursor-size-panel')).toContainText('100%')
+    await expect(page.locator('.cursor-size-panel')).toContainText('48×48')
+    await expect(page.getByRole('button', { name: '恢复默认大小' })).toHaveCount(0)
+    await expect(page.locator('.status-line')).toContainText('已恢复 爪爪紫 的默认大小')
+    await expect(page.getByRole('switch', { name: 'Apply cursor to the whole computer' })).toHaveAttribute('aria-checked', 'true')
 
     const unexpectedConfirm = await page.evaluate(() => window.__unexpectedBuiltinConfirmMessage || '')
     expect(unexpectedConfirm).toBe('')

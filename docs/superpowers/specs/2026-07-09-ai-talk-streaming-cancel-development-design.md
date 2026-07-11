@@ -370,11 +370,11 @@ Streaming 状态：
 建议新增或扩展：
 
 ```ts
-AI_TALK_STREAM_STATE_CHANGED: 'ai-talk:stream-state-changed'
-AI_TALK_CANCEL_REQUEST: 'ai-talk:cancel-request'
 PET_BUBBLE_CHAT_CANCEL_MESSAGE: 'pet-bubble-chat:cancel-message'
 PET_CHAT_CANCEL_MESSAGE: 'pet-chat:cancel-message'
 ```
+
+Streaming state stays inside the main process and is broadcast directly to both window managers; it does not expose a separate renderer IPC channel.
 
 事件 payload：
 

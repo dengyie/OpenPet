@@ -748,10 +748,9 @@ git commit -m "feat(phase-1): add ai talk streaming lifecycle"
 **Interfaces:**
 - Consumes: `aiTalkService.streamChat()` and `aiTalkService.cancelRequest()`.
 - Produces IPC constants:
-- `AI_TALK_STREAM_STATE_CHANGED: 'ai-talk:stream-state-changed'`
-- `AI_TALK_CANCEL_REQUEST: 'ai-talk:cancel-request'`
 - `PET_BUBBLE_CHAT_CANCEL_MESSAGE: 'pet-bubble-chat:cancel-message'`
 - `PET_CHAT_CANCEL_MESSAGE: 'pet-chat:cancel-message'`
+- Streaming state is broadcast directly to the two main-process window managers.
 
 - [ ] **Step 1: Add failing IPC test**
 
@@ -797,8 +796,6 @@ Expected before implementation: missing cancel channel handler assertions fail.
 Add these constants to both shared channel files near the existing AI Talk and chat entries:
 
 ```js
-AI_TALK_STREAM_STATE_CHANGED: 'ai-talk:stream-state-changed',
-AI_TALK_CANCEL_REQUEST: 'ai-talk:cancel-request',
 PET_BUBBLE_CHAT_CANCEL_MESSAGE: 'pet-bubble-chat:cancel-message',
 PET_CHAT_CANCEL_MESSAGE: 'pet-chat:cancel-message',
 ```

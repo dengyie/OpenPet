@@ -1459,6 +1459,81 @@ test('ai service streamComplete parses OpenAI-compatible SSE deltas', async () =
   assert.equal(result.finishReason, 'stop')
 })
 
+test('ai service streamComplete parses the final SSE event without a trailing newline', async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Tail"},"finish_reason":"stop"}]}'))
+      controller.close()
+    }
+  })
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({ ok: true, status: 200, body })
+  })
+
+  const result = await service.streamComplete({
+    messages: [{ role: 'user', content: 'Say tail' }]
+  })
+
+  assert.equal(result.reply, 'Tail')
+  assert.equal(result.chunkCount, 1)
+  assert.equal(result.finishReason, 'stop')
+})
+
+test('ai service streamComplete cancels a still-open response body after DONE', async () => {
+  let cancelCount = 0
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode([
+        'data: {"choices":[{"delta":{"content":"Done"},"finish_reason":"stop"}]}',
+        'data: [DONE]',
+        ''
+      ].join('\n\n')))
+    },
+    cancel() {
+      cancelCount += 1
+    }
+  })
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({ ok: true, status: 200, body })
+  })
+
+  const result = await service.streamComplete({
+    messages: [{ role: 'user', content: 'Finish early' }]
+  })
+
+  assert.equal(result.reply, 'Done')
+  assert.equal(cancelCount, 1)
+  assert.equal(body.locked, false)
+})
+
 test('ai service streamComplete honors abort signal', async () => {
   const controller = new AbortController()
   const service = createAiService({
@@ -1580,6 +1655,40 @@ test('ai service streamComplete falls back before chunks when streaming is unsup
   assert.equal(result.streaming, false)
   assert.equal(result.fallback, true)
   assert.equal(result.fallbackReason, 'unsupported-stream')
+})
+
+test('ai service streamComplete does not retry a generic 404 as non-streaming', async () => {
+  let callCount = 0
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'missing-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      callCount += 1
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({ error: { message: 'model was not found', code: 'model_not_found' } })
+      }
+    }
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({ messages: [{ role: 'user', content: 'Say hello' }] }),
+    (error) => error?.providerStatus === 404 && error?.providerCode === 'model_not_found'
+  )
+  assert.equal(callCount, 1)
 })
 
 test('ai service streamComplete propagates abort signal to tools fallback completion', async () => {

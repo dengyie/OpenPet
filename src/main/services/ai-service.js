@@ -341,20 +341,11 @@ const createProviderError = ({ message, status, code }) => {
   return error
 }
 
-const isStreamingUnsupportedError = (error) => {
-  const status = Number(error?.providerStatus || error?.status || 0)
-  const code = String(error?.providerCode || error?.code || '').toLowerCase()
-  const message = String(error?.message || '').toLowerCase()
-  return status === 404 || code.includes('unsupported') || message.includes('stream')
+const isStreamingUnsupportedProviderResponse = ({ code, message } = {}) => {
+  const details = `${String(code || '')} ${String(message || '')}`.toLowerCase()
+  const unsupported = '(?:unsupported|not[_\\s-]?supported|does\\s+not\\s+support)'
+  return new RegExp(`(?:stream.{0,32}${unsupported}|${unsupported}.{0,32}stream)`).test(details)
 }
-
-const isStreamingUnsupportedProviderResponse = ({ status, code, message } = {}) => (
-  isStreamingUnsupportedError({
-    providerStatus: status,
-    providerCode: code,
-    message
-  })
-)
 
 const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
   const timeout = createTimeoutController(timeoutMs)
@@ -388,15 +379,26 @@ const readStreamTextChunks = async function * (body) {
   if (typeof body.getReader === 'function') {
     const reader = body.getReader()
     const decoder = new TextDecoder()
+    let reachedEnd = false
     try {
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          reachedEnd = true
+          break
+        }
         yield decoder.decode(value, { stream: true })
       }
       const tail = decoder.decode()
       if (tail) yield tail
     } finally {
+      if (!reachedEnd) {
+        try {
+          await reader.cancel()
+        } catch (_) {
+          // Preserve the original stream result or failure when cleanup is already complete.
+        }
+      }
       reader.releaseLock?.()
     }
     return
@@ -1012,7 +1014,6 @@ const createAiService = ({
           code: providerCode
         })
         if (isStreamingUnsupportedProviderResponse({
-          status: response.status,
           code: providerCode,
           message: providerMessage
         })) {
@@ -1033,6 +1034,17 @@ const createAiService = ({
 
       let buffer = ''
       let done = false
+      const consumeLine = (line) => {
+        const event = parseOpenAiStreamLine(line)
+        if (!event) return false
+        if (event.done) return true
+        if (event.finishReason) finishReason = event.finishReason
+        if (!event.delta) return false
+        chunkCount += 1
+        reply += event.delta
+        if (typeof onDelta === 'function') onDelta(event.delta)
+        return false
+      }
       for await (const textChunk of readStreamTextChunks(response.body)) {
         if (linkedSignal.signal.aborted) {
           if (linkedSignal.isTimeout()) throw createTimeoutError()
@@ -1044,20 +1056,14 @@ const createAiService = ({
         const lines = buffer.split(/\r?\n/)
         buffer = lines.pop() || ''
         for (const line of lines) {
-          const event = parseOpenAiStreamLine(line)
-          if (!event) continue
-          if (event.done) {
+          if (consumeLine(line)) {
             done = true
             break
           }
-          if (event.finishReason) finishReason = event.finishReason
-          if (!event.delta) continue
-          chunkCount += 1
-          reply += event.delta
-          if (typeof onDelta === 'function') onDelta(event.delta)
         }
         if (done) break
       }
+      if (!done && buffer) consumeLine(buffer)
 
       recordLog({
         level: 'info',

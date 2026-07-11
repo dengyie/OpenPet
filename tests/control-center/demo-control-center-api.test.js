@@ -1165,6 +1165,9 @@ test('demo API keeps per-pack conversations and trace summaries aligned with req
   const citrusSummary = await demoControlCenterAPI.getAiTalkTraceSummary({ conversationId: 'control-center:citrus-cat:main' })
   assert.equal(citrusSummary.conversation.conversationId, 'control-center:citrus-cat:main')
   assert.equal(citrusSummary.conversation.petPackId, 'citrus-cat')
+  assert.equal(citrusSummary.result.status, 'completed')
+  assert.equal(citrusSummary.result.providerLatencyMs, 120)
+  assert.equal(citrusSummary.result.elapsedMs, 120)
   assert.equal(citrusSummary.result.replyChars, citrusReply.reply.length)
 
   const diagnostics = JSON.parse(await demoControlCenterAPI.exportAiTalkTraceDiagnostics({

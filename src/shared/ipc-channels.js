@@ -85,8 +85,6 @@ const IPC = Object.freeze({
   AI_CLEAR_PET_PACK_MEMORIES: 'ai:clear-pet-pack-memories',
   AI_TALK_GET_TRACE_SUMMARY: 'ai-talk:get-trace-summary',
   AI_TALK_EXPORT_TRACE: 'ai-talk:export-trace',
-  AI_TALK_STREAM_STATE_CHANGED: 'ai-talk:stream-state-changed',
-  AI_TALK_CANCEL_REQUEST: 'ai-talk:cancel-request',
   IMAGE_GENERATION_GET_CONFIG: 'image-generation:get-config',
   IMAGE_GENERATION_SAVE_CONFIG: 'image-generation:save-config',
   IMAGE_GENERATION_SAVE_API_KEY: 'image-generation:save-api-key',
