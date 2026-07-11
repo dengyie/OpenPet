@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const sharp = require('sharp')
+const { createIdentityDescriptor, identityDescriptorDistance, rgbDistance } = require('./identity-descriptor')
 const {
   FULL_PET_ROW_QUALITY,
   getOfficialFullPetRow
@@ -98,6 +99,14 @@ const measureFrame = async (frame) => {
     }
   }
 
+  const bbox = {
+    left: minX,
+    top: minY,
+    right: maxX,
+    bottom: maxY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  }
   return {
     framePath,
     width: info.width,
@@ -119,14 +128,13 @@ const measureFrame = async (frame) => {
       g: sumG / visiblePixels,
       b: sumB / visiblePixels
     },
-    bbox: {
-      left: minX,
-      top: minY,
-      right: maxX,
-      bottom: maxY,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1
-    },
+    bbox,
+    identityDescriptor: createIdentityDescriptor({
+      data,
+      info,
+      bounds: bbox,
+      alphaThreshold: VISIBLE_ALPHA_THRESHOLD
+    }),
     centroid: {
       x: sumX / visiblePixels,
       y: sumY / visiblePixels
@@ -176,12 +184,6 @@ const isTransformLike = (measures) => {
   )
 }
 
-const rgbDistance = (left = {}, right = {}) => Math.sqrt(
-  ((Number(left.r) || 0) - (Number(right.r) || 0)) ** 2 +
-  ((Number(left.g) || 0) - (Number(right.g) || 0)) ** 2 +
-  ((Number(left.b) || 0) - (Number(right.b) || 0)) ** 2
-)
-
 const compareMasks = (left, right) => {
   if (!Buffer.isBuffer(left) || !Buffer.isBuffer(right) || left.length !== right.length) {
     return { changedPixels: 0, unionPixels: 0, changedRatio: 0 }
@@ -224,7 +226,7 @@ const summarizeMaskMotion = (measures, key) => {
   }
 }
 
-const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenceMeanRgb = null }) => {
+const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenceMeanRgb = null, identityReferenceDescriptor = null }) => {
   const row = getOfficialFullPetRow(actionId)
   if (!row) {
     throw new Error(`Unknown official full-pet row: ${String(actionId || '').trim() || '(missing)'}`)
@@ -255,6 +257,12 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
     : []
   const maxIdentityMeanRgbDistance = identityMeanRgbDistances.length > 0
     ? Math.max(...identityMeanRgbDistances)
+    : 0
+  const identityDescriptorDistances = identityReferenceDescriptor
+    ? visibleMeasures.map((measure) => identityDescriptorDistance(measure.identityDescriptor, identityReferenceDescriptor))
+    : []
+  const maxIdentityDescriptorDistance = identityDescriptorDistances.length > 0
+    ? Math.max(...identityDescriptorDistances)
     : 0
   const edgeTouchFrameCount = visibleMeasures.filter((measure) => (
     measure.bbox.left <= SAFE_MARGIN_PX ||
@@ -330,6 +338,9 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
   if (identityReferenceMeanRgb && maxIdentityMeanRgbDistance > 120) {
     errors.push('row_identity_reference_mismatch')
   }
+  if (identityReferenceDescriptor && maxIdentityDescriptorDistance > 90) {
+    errors.push('row_identity_descriptor_mismatch')
+  }
   if (!verticalAction && centroidDrift > DEFAULT_LIMITS.centroidDrift) {
     errors.push('row_centroid_drift')
   }
@@ -368,8 +379,11 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
     verticalMotion,
     identityReference: {
       meanRgb: identityReferenceMeanRgb,
+      descriptor: identityReferenceDescriptor,
       maxMeanRgbDistance: Number(maxIdentityMeanRgbDistance.toFixed(2)),
-      distances: identityMeanRgbDistances.map((value) => Number(value.toFixed(2)))
+      distances: identityMeanRgbDistances.map((value) => Number(value.toFixed(2))),
+      maxDescriptorDistance: Number(maxIdentityDescriptorDistance.toFixed(2)),
+      descriptorDistances: identityDescriptorDistances.map((value) => Number(value.toFixed(2)))
     },
     errors,
     warnings,

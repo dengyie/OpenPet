@@ -670,6 +670,73 @@ test('canonical action synthesis rejects a final sprite sheet that no longer mat
   assert.ok(qa.quality.metrics.identityReference.maxMeanRgbDistance > 120)
 })
 
+test('canonical action synthesis rejects same-color final sheets with a different identity layout', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base/spatial-identity-keyframe-row')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await createActionSheetPng({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 6
+  })
+
+  const result = await buildCanonicalActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/spatial-identity-keyframe-row/0001.png', mimeType: 'image/png' }],
+      keyframeSpriteRow: {
+        ok: true,
+        actionId: 'spatial-identity-wave',
+        keyframes: [{
+          role: 'action-start-keyframe',
+          quality: {
+            metrics: {
+              meanRgb: { r: 216, g: 160, b: 78 },
+              identityDescriptor: {
+                aspectRatio: 1.15,
+                regions: [
+                  { r: 110, g: 70, b: 40 },
+                  { r: 220, g: 170, b: 95 },
+                  { r: 235, g: 190, b: 110 }
+                ]
+              }
+            }
+          }
+        }, {
+          role: 'action-peak-keyframe',
+          quality: {
+            metrics: {
+              meanRgb: { r: 216, g: 160, b: 78 },
+              identityDescriptor: {
+                aspectRatio: 1.15,
+                regions: [
+                  { r: 110, g: 70, b: 40 },
+                  { r: 220, g: 170, b: 95 },
+                  { r: 235, g: 190, b: 110 }
+                ]
+              }
+            }
+          }
+        }]
+      }
+    },
+    action: {
+      actionId: 'spatial-identity-wave',
+      name: 'Spatial Identity Wave',
+      motionPrompt: 'Wave with one front paw.',
+      frameCount: 6,
+      loop: false,
+      synthesisMode: 'canonical-frame'
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/spatial-identity-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.ok, false)
+  assert.ok(qa.errors.includes('action_identity_descriptor_mismatch'))
+})
+
 test('canonical action synthesis rejects failed provider keyframe rows instead of local synthesis fallback', async () => {
   const dataDir = makeDataDir()
   const rowDir = path.join(dataDir, 'runs/demo/frames/base/waving-keyframe-row')
@@ -889,6 +956,50 @@ test('action frame builder repairs one frame and updates QA evidence', async () 
   assert.equal(qa.frames[2].visiblePixels > 0, true)
   assert.deepEqual(qa.repairs, [{ fileName: '0003.png', repairedAt: '2026-06-24T00:00:00.000Z' }])
   assert.equal(JSON.stringify(qa).includes(dataDir), false)
+})
+
+test('action frame repair reuses the sequence crop and is pixel-idempotent', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  const outputFramesDir = path.join(dataDir, 'runs/demo/frames/actions/scale-changing-wave')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  await createCustomActionSheetPng({
+    filePath: path.join(sourceDir, '0001.png'),
+    frameCount: 4,
+    createBody: (index) => {
+      const size = [64, 132, 92, 112][index]
+      const left = Math.floor((256 - size) / 2)
+      const top = 222 - size
+      return `<rect x="${left}" y="${top}" width="${size}" height="${size}" fill="#d89b45"/>`
+    }
+  })
+  const action = { actionId: 'scale-changing-wave', name: 'Scale Changing Wave', frameCount: 4, loop: false }
+  const generationResult = { outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }] }
+  const built = await buildActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult,
+    action,
+    outputFramesDir,
+    qaDir
+  })
+  const beforeQa = JSON.parse(fs.readFileSync(built.qaPath, 'utf-8'))
+  const beforeFrame = beforeQa.frames[0]
+
+  await repairActionFrameFromGeneratedImage({
+    dataDir,
+    generationResult,
+    action,
+    outputFramesDir,
+    qaDir,
+    fileName: '0001.png'
+  })
+  const afterQa = JSON.parse(fs.readFileSync(built.qaPath, 'utf-8'))
+  const afterFrame = afterQa.frames[0]
+
+  assert.deepEqual(afterFrame.frameBounds, beforeFrame.frameBounds)
+  assert.equal(afterFrame.fileSha256, beforeFrame.fileSha256)
+  assert.deepEqual(afterQa.extraction.sharedCrop, beforeQa.extraction.sharedCrop)
 })
 
 test('action frame builder repairs legacy QA by backfilling missing frame hashes', async () => {

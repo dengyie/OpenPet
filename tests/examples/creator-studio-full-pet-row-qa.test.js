@@ -308,6 +308,37 @@ test('official rows reject foreground colors that conflict with provider keyfram
   assert.ok(qa.identityReference.maxMeanRgbDistance > 120)
 })
 
+test('official rows reject same-color characters with a different identity layout', async () => {
+  const tempDir = createTempDir()
+  const frames = await writeFrames({
+    outputDir: path.join(tempDir, 'spatial-identity-wave'),
+    frameCount: 4,
+    createRects: (index) => [
+      { x: 70, y: 64, width: 58, height: 44, color: '#e2ad5b' },
+      { x: 64, y: 108, width: 72, height: 68, color: '#d89b45' },
+      { x: 130 + index * 2, y: 72 - index, width: 12, height: 38, color: '#d89b45' }
+    ]
+  })
+
+  const qa = await analyzeRowFrames({
+    actionId: 'waving',
+    frames,
+    sourceKind: 'row-strip',
+    identityReferenceMeanRgb: { r: 216, g: 160, b: 78 },
+    identityReferenceDescriptor: {
+      aspectRatio: 1.2,
+      regions: [
+        { r: 110, g: 70, b: 40 },
+        { r: 220, g: 170, b: 95 },
+        { r: 235, g: 190, b: 110 }
+      ]
+    }
+  })
+
+  assert.equal(qa.quality, FULL_PET_ROW_QUALITY.FAILED)
+  assert.ok(qa.errors.includes('row_identity_descriptor_mismatch'))
+})
+
 test('official rows reject cropped frames that touch the output boundary', async () => {
   const tempDir = createTempDir()
   const frames = await writeFrames({

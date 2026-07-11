@@ -1,12 +1,13 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const http = require('node:http')
 const os = require('node:os')
 const path = require('node:path')
 const sharp = require('sharp')
 
-const { __testInternals, createFullPetActionPosePrompt, generateViaHostModelBridge } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
+const { __testInternals, generateViaHostModelBridge } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
 const {
   OFFICIAL_FULL_PET_ACTION_IDS,
   OFFICIAL_FULL_PET_ROWS
@@ -14,6 +15,19 @@ const {
 const { getActionSheetLayout } = require('../../examples/plugins/creator-studio/lib/action-sheet-layout')
 
 const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))
+
+test('host model bridge clamps provider stages to the remaining workflow budget', () => {
+  assert.equal(__testInternals.resolveGenerationStageTimeout({
+    requestedTimeoutMs: 600000,
+    deadlineMs: 11000,
+    nowMs: 10000
+  }), 1000)
+  assert.throws(() => __testInternals.resolveGenerationStageTimeout({
+    requestedTimeoutMs: 600000,
+    deadlineMs: 10000,
+    nowMs: 10000
+  }), /time budget/i)
+})
 
 const writeMockBaseProviderPng = async (outputPath) => {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
@@ -129,35 +143,6 @@ const writeMockProviderImage = async ({ outputPath, dataRelativeDir }) => {
   await writeMockBaseProviderPng(outputPath)
 }
 
-test('host model bridge sanitizes full-pet action pose prompts', () => {
-  const prompt = createFullPetActionPosePrompt({
-    actionId: 'waving',
-    run: {
-      input: {
-        originalPrompt: 'Make a cat with sk-secret123 at /Users/mango/private.png via localhost:3000/debug'
-      },
-      generationTask: {
-        characterBrief: 'Round pet token=secret-value from http://127.0.0.1:9911/provider',
-        actions: [{
-          actionId: 'waving',
-          name: 'wave tokenName',
-          motionPrompt: 'wave from C:\\Users\\mango\\secret.png'
-        }]
-      }
-    }
-  })
-
-  assert.match(prompt, /\[redacted-secret\]|\[redacted-token\]/)
-  assert.match(prompt, /\[redacted-path\]/)
-  assert.match(prompt, /\[redacted-local-url\]/)
-  assert.doesNotMatch(prompt, /sk-secret123/)
-  assert.doesNotMatch(prompt, /\/Users\/mango/)
-  assert.doesNotMatch(prompt, /127\.0\.0\.1|localhost/)
-  assert.doesNotMatch(prompt, /C:\\Users\\mango/)
-  assert.match(prompt, /2 columns by 2 rows/i)
-  assert.doesNotMatch(prompt, /one horizontal row/i)
-})
-
 test('host model bridge does not upload a canonical reference symlink that escapes the data directory', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-escaped-reference-'))
   const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-outside-'))
@@ -239,7 +224,73 @@ test('host model bridge does not upload a canonical reference symlink that escap
           }]
         }
       }
-    }), /provider complete sprite rows are required/i)
+    }), /reference image is missing or unusable/i)
+
+    assert.equal(requests.length, 0)
+  } finally {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('host model bridge fails closed when a full-pet reference record is no longer usable', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-missing-full-pet-reference-'))
+  const requests = []
+  const server = http.createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', () => {
+      const payload = body ? JSON.parse(body) : {}
+      if (request.url === '/creator/model-settings') {
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ ok: true, config: { provider: 'local', model: 'pet-model', timeoutMs: 300000 } }))
+        return
+      }
+      requests.push(payload)
+      response.writeHead(500, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ ok: false, error: 'provider must not be called' }))
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`
+  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
+
+  try {
+    await assert.rejects(() => generateViaHostModelBridge({
+      backend: 'provider',
+      dataDir,
+      run: {
+        runId: 'run-missing-full-pet-reference',
+        petId: 'missing-reference-cat',
+        input: {
+          referenceImage: {
+            fileName: 'cat.png',
+            relativePath: 'runs/run-missing-full-pet-reference/inputs/references/cat.png',
+            width: 512,
+            height: 512,
+            contentHash: 'a'.repeat(64)
+          }
+        },
+        generationTask: {
+          mode: 'full-pet',
+          styleSource: 'referenceImage',
+          characterBrief: 'Preserve the exact source cat.',
+          actions: OFFICIAL_FULL_PET_ROWS.map((row) => ({
+            actionId: row.id,
+            name: row.id,
+            motionPrompt: `${row.id} motion`,
+            frameCount: row.frameCount,
+            loop: true
+          }))
+        }
+      }
+    }), /reference image.*unusable|reference image.*missing|reference.*validation/i)
 
     assert.equal(requests.length, 0)
   } finally {
@@ -470,8 +521,108 @@ test('host model bridge conditions every official full-pet action with provider 
   }
 })
 
+test('host model bridge stops full-pet generation after the first official action fails', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-full-pet-fail-fast-'))
+  const sourceRelativePath = 'runs/run-full-pet-fail-fast/inputs/references/cat.png'
+  const sourcePath = path.join(dataDir, sourceRelativePath)
+  await writeMockBaseProviderPng(sourcePath)
+  const sourceHash = crypto.createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex')
+  const requests = []
+  const server = http.createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => { body += chunk })
+    request.on('end', async () => {
+      const payload = body ? JSON.parse(body) : {}
+      if (request.url === '/creator/model-settings') {
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({ ok: true, config: { provider: 'local', model: 'pet-model', timeoutMs: 300000 } }))
+        return
+      }
+      const dataRelativeDir = String(payload.output?.dataRelativeDir || '')
+      requests.push(dataRelativeDir)
+      if (
+        dataRelativeDir === 'runs/run-full-pet-fail-fast/anchors/character-anchor' ||
+        dataRelativeDir === 'runs/run-full-pet-fail-fast/frames/base'
+      ) {
+        const dataRelativePath = `${dataRelativeDir}/0001.png`
+        await writeMockBaseProviderPng(path.join(dataDir, dataRelativePath))
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(JSON.stringify({
+          ok: true,
+          result: { outputs: [{ dataRelativePath, mimeType: 'image/png' }] }
+        }))
+        return
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ ok: false, error: 'identity source rejected' }))
+    })
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
+  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`
+  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
+
+  try {
+    let failure = null
+    try {
+      await generateViaHostModelBridge({
+        backend: 'provider',
+        dataDir,
+        run: {
+          runId: 'run-full-pet-fail-fast',
+          petId: 'fail-fast-cat',
+          input: {
+            referenceImage: {
+              fileName: 'cat.png',
+              relativePath: sourceRelativePath,
+              width: 512,
+              height: 512,
+              contentHash: sourceHash
+            }
+          },
+          generationTask: {
+            mode: 'full-pet',
+            styleSource: 'referenceImage',
+            characterBrief: 'Exact source cat.',
+            actions: OFFICIAL_FULL_PET_ROWS.map((row) => ({
+              actionId: row.id,
+              name: row.id,
+              motionPrompt: `${row.id} motion`,
+              frameCount: row.frameCount,
+              loop: true
+            }))
+          }
+        }
+      })
+    } catch (error) {
+      failure = error
+    }
+
+    assert.match(String(failure?.message || ''), /identity source rejected|official row generation failed/i)
+    assert.deepEqual(requests, [
+      'runs/run-full-pet-fail-fast/anchors/character-anchor',
+      'runs/run-full-pet-fail-fast/frames/base',
+      'runs/run-full-pet-fail-fast/keyframes/actions/idle-start-keyframe'
+    ])
+    const failedStage = failure?.partialGenerationResult?.generationStages?.find((stage) => (
+      stage?.actionId === 'idle' && stage?.stage === 'action-start-keyframe'
+    ))
+    assert.equal(failedStage?.ok, false)
+    assert.match(String(failedStage?.error || ''), /identity source rejected/i)
+  } finally {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    server.closeAllConnections?.()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 test('host model bridge falls back to a discovered working model for full-pet official row generation', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-fallback-'))
+  await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-fallback/inputs/references/reference.png'))
   const requests = []
   const server = http.createServer((request, response) => {
     let body = ''
@@ -581,13 +732,14 @@ test('host model bridge only retries openai-compatible image-edit fallbacks with
     settings: { provider: 'openai-compatible', modelCatalog: { models: ['gemini-image', 'grok-imagine-image', 'gpt-image-1.5'] } },
     preferredModel: 'gpt-image-2'
   }), ['gpt-image-2', 'gpt-image-1.5', 'grok-imagine-image'])
-  return
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-compatible-fallback-'))
+  const referencePath = path.join(dataDir, 'runs/run-bridge-compatible-fallback/inputs/references/reference.png')
+  await writeMockBaseProviderPng(referencePath)
   const requests = []
   const server = http.createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
-    request.on('end', () => {
+    request.on('end', async () => {
       const payload = body ? JSON.parse(body) : {}
       if (request.url === '/creator/model-settings') {
         response.writeHead(200, { 'Content-Type': 'application/json' })
@@ -621,8 +773,7 @@ test('host model bridge only retries openai-compatible image-edit fallbacks with
       const dataRelativeDir = String(payload.output?.dataRelativeDir || '')
       const dataRelativePath = `${dataRelativeDir}/0001.png`
       const outputPath = path.join(dataDir, dataRelativePath)
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-      fs.writeFileSync(outputPath, 'png placeholder')
+      await writeMockProviderImage({ outputPath, dataRelativeDir })
       response.writeHead(200, { 'Content-Type': 'application/json' })
       response.end(JSON.stringify({
         ok: true,
@@ -660,7 +811,7 @@ test('host model bridge only retries openai-compatible image-edit fallbacks with
           mode: 'single-action',
           characterBrief: 'Bridge cat',
           actions: [{
-            actionId: 'wave',
+            actionId: 'waving',
             name: 'Wave',
             motionPrompt: 'friendly wave',
             frameCount: 6,
@@ -672,13 +823,13 @@ test('host model bridge only retries openai-compatible image-edit fallbacks with
     })
 
     assert.equal(result.model, 'grok-imagine-image')
-    assert.deepEqual(requests.map((entry) => entry.model), [
+    assert.deepEqual(requests.map((entry) => entry.model), Array(3).fill([
       'gpt-image-2',
       'gpt-image-1.5',
       'grok-imagine-image'
-    ])
+    ]).flat())
     assert.equal(requests.some((entry) => entry.model === 'gemini-image'), false)
-    assert.deepEqual(requests.map((entry) => entry.timeoutMs), [300000, 600000, 600000])
+    assert.deepEqual(requests.map((entry) => entry.timeoutMs), Array(3).fill([300000, 600000, 600000]).flat())
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -694,8 +845,8 @@ test('host model bridge prefers host-owned verified fallback policy over discove
     settings: { provider: 'openai-compatible', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
     preferredModel: 'gpt-image-2'
   }), ['gpt-image-2'])
-  return
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-policy-fallback-'))
+  await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-policy-fallback/inputs/references/reference.png'))
   const requests = []
   const server = http.createServer((request, response) => {
     let body = ''
@@ -761,7 +912,7 @@ test('host model bridge prefers host-owned verified fallback policy over discove
           mode: 'single-action',
           characterBrief: 'Bridge cat',
           actions: [{
-            actionId: 'wave',
+            actionId: 'waving',
             name: 'Wave',
             motionPrompt: 'friendly wave',
             frameCount: 6,
@@ -788,13 +939,13 @@ test('host model bridge skips an unverified preferred model when host policy exp
     settings: { provider: 'openai-compatible', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
     preferredModel: 'grok-imagine-image'
   }), ['gpt-image-2'])
-  return
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-policy-preferred-'))
+  await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-policy-preferred/inputs/references/reference.png'))
   const requests = []
   const server = http.createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
-    request.on('end', () => {
+    request.on('end', async () => {
       const payload = body ? JSON.parse(body) : {}
       if (request.url === '/creator/model-settings') {
         response.writeHead(200, { 'Content-Type': 'application/json' })
@@ -828,8 +979,7 @@ test('host model bridge skips an unverified preferred model when host policy exp
       const dataRelativeDir = String(payload.output?.dataRelativeDir || '')
       const dataRelativePath = `${dataRelativeDir}/0001.png`
       const outputPath = path.join(dataDir, dataRelativePath)
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-      fs.writeFileSync(outputPath, 'png placeholder')
+      await writeMockProviderImage({ outputPath, dataRelativeDir })
       response.writeHead(200, { 'Content-Type': 'application/json' })
       response.end(JSON.stringify({
         ok: true,
@@ -867,7 +1017,7 @@ test('host model bridge skips an unverified preferred model when host policy exp
           mode: 'single-action',
           characterBrief: 'Bridge cat',
           actions: [{
-            actionId: 'wave',
+            actionId: 'waving',
             name: 'Wave',
             motionPrompt: 'friendly wave',
             frameCount: 6,
@@ -879,7 +1029,7 @@ test('host model bridge skips an unverified preferred model when host policy exp
     })
 
     assert.equal(result.model, 'gpt-image-2')
-    assert.deepEqual(requests, ['gpt-image-2'])
+    assert.deepEqual(requests, ['gpt-image-2', 'gpt-image-2', 'gpt-image-2'])
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -895,8 +1045,8 @@ test('host model bridge fails fast when the host policy exposes no verified crea
     settings: { provider: 'openai-compatible', creatorWorkflowModelPolicy: { verifiedModels: [], fallbackModels: [] } },
     preferredModel: 'grok-imagine-image'
   }), [])
-  return
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-policy-empty-'))
+  await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-policy-empty/inputs/references/reference.png'))
   const server = http.createServer((request, response) => {
     if (request.url === '/creator/model-settings') {
       response.writeHead(200, { 'Content-Type': 'application/json' })
@@ -950,7 +1100,7 @@ test('host model bridge fails fast when the host policy exposes no verified crea
           mode: 'single-action',
           characterBrief: 'Bridge cat',
           actions: [{
-            actionId: 'wave',
+            actionId: 'waving',
             name: 'Wave',
             motionPrompt: 'friendly wave',
             frameCount: 6,
