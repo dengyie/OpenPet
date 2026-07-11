@@ -5,6 +5,11 @@ const sharp = require('sharp')
 const { removeOpaqueEdgeBackground } = require('./edge-background-cutout')
 const { getActionSheetLayout } = require('./action-sheet-layout')
 const { inferAnimationType, isWavingAction } = require('./action-semantics')
+const {
+  averageIdentityDescriptors,
+  createIdentityDescriptor,
+  identityDescriptorDistance
+} = require('./identity-descriptor')
 const { resolveGeneratedImagePath } = require('./real-atlas-builder')
 const { createPlaybackDiagnostics } = require('./action-frame-playback')
 
@@ -177,45 +182,8 @@ const extractVisibleBounds = ({ data, info }) => {
     },
     visiblePixels
   }
-  const lowerBandTop = Math.max(minY, maxY - Math.max(4, Math.floor((maxY - minY + 1) * 0.14)))
-  let lowerMinX = info.width
-  let lowerMaxX = -1
-  for (let y = lowerBandTop; y <= maxY; y += 1) {
-    for (let x = minX; x <= maxX; x += 1) {
-      const pixelIndex = ((y * info.width) + x) * info.channels
-      if (data[pixelIndex + 3] <= VISIBLE_ALPHA_THRESHOLD) continue
-      lowerMinX = Math.min(lowerMinX, x)
-      lowerMaxX = Math.max(lowerMaxX, x)
-    }
-  }
-  bounds.lowerRootX = Number((lowerMaxX >= lowerMinX
-    ? (lowerMinX + lowerMaxX) / 2
-    : sumX / visiblePixels).toFixed(2))
   bounds.identityDescriptor = createIdentityDescriptor({ data, info, bounds, alphaThreshold: 0 })
   return bounds
-}
-
-const createAlphaMaskEvidence = ({ data, info }) => {
-  const alphaMask = Buffer.alloc(info.width * info.height)
-  const upperAlphaMask = Buffer.alloc(info.width * info.height)
-  const lowerAlphaMask = Buffer.alloc(info.width * info.height)
-  const splitY = Math.floor(info.height * 0.56)
-  for (let y = 0; y < info.height; y += 1) {
-    for (let x = 0; x < info.width; x += 1) {
-      const pixelIndex = (y * info.width) + x
-      const alpha = data[(pixelIndex * info.channels) + 3]
-      if (alpha <= VISIBLE_ALPHA_THRESHOLD) continue
-      alphaMask[pixelIndex] = 255
-      if (y < splitY) upperAlphaMask[pixelIndex] = 255
-      else lowerAlphaMask[pixelIndex] = 255
-    }
-  }
-  const hash = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
-  return {
-    alphaMaskSha256: hash(alphaMask),
-    upperAlphaMaskSha256: hash(upperAlphaMask),
-    lowerAlphaMaskSha256: hash(lowerAlphaMask)
-  }
 }
 
 const createAlphaMaskEvidence = ({ data, info }) => {
@@ -281,7 +249,8 @@ const hydrateFrameEvidenceFromDisk = async ({ frames, framesDir }) => {
     const needsAlphaMaskEvidence = typeof frame.alphaMaskSha256 !== 'string' ||
       typeof frame.upperAlphaMaskSha256 !== 'string' ||
       typeof frame.lowerAlphaMaskSha256 !== 'string'
-    if (!needsVisibleEvidence && !needsRawHash && !needsFileHash && !needsAlphaMaskEvidence) {
+    const needsIdentityDescriptor = !frame.identityDescriptor
+    if (!needsVisibleEvidence && !needsRawHash && !needsFileHash && !needsAlphaMaskEvidence && !needsIdentityDescriptor) {
       hydratedFrames.push(frame)
       continue
     }
@@ -293,6 +262,7 @@ const hydrateFrameEvidenceFromDisk = async ({ frames, framesDir }) => {
       height: needsVisibleEvidence ? FRAME_HEIGHT : frame.height,
       visiblePixels: needsVisibleEvidence ? frameInspection.visiblePixels : frame.visiblePixels,
       frameBounds: needsVisibleEvidence ? frameInspection.bounds : frame.frameBounds,
+      identityDescriptor: needsIdentityDescriptor ? frameInspection.bounds?.identityDescriptor || null : frame.identityDescriptor,
       sha256: needsRawHash ? frameInspection.sha256 : frame.sha256,
       alphaMaskSha256: needsAlphaMaskEvidence ? frameInspection.alphaMaskSha256 : frame.alphaMaskSha256,
       upperAlphaMaskSha256: needsAlphaMaskEvidence ? frameInspection.upperAlphaMaskSha256 : frame.upperAlphaMaskSha256,
@@ -471,6 +441,14 @@ const resolveIdentityReferenceMeanRgb = (generationResult = {}) => {
   }), { r: 0, g: 0, b: 0 })
 }
 
+const resolveIdentityReferenceDescriptor = (generationResult = {}) => averageIdentityDescriptors(
+  Array.isArray(generationResult?.keyframeSpriteRow?.keyframes)
+    ? generationResult.keyframeSpriteRow.keyframes
+        .map((keyframe) => keyframe?.quality?.metrics?.identityDescriptor)
+        .filter(Boolean)
+    : []
+)
+
 const prepareFrameSource = async (sourceInput, { removeOpaqueBackground = false, allowOpaqueFullFrame = true } = {}) => {
   const backgroundRemoval = removeOpaqueBackground
     ? await removeOpaqueEdgeBackground(sourceInput)
@@ -518,6 +496,20 @@ const createSharedSequenceCrop = (preparedFrames = []) => {
     width: Math.max(1, right - left + 1),
     height: Math.max(1, bottom - top + 1)
   }
+}
+
+const normalizeSharedCrop = (value = {}) => {
+  const left = Number(value.left)
+  const top = Number(value.top)
+  const width = Number(value.width)
+  const height = Number(value.height)
+  if (
+    !Number.isInteger(left) || left < 0 ||
+    !Number.isInteger(top) || top < 0 ||
+    !Number.isInteger(width) || width < 1 ||
+    !Number.isInteger(height) || height < 1
+  ) return null
+  return { left, top, width, height }
 }
 
 const createNormalizedFrame = async (preparedFrame, sharedCrop = null) => {
@@ -731,7 +723,7 @@ const sourceBoundsTouchCellEdge = (frame) => {
     bottom >= Number(cell.height || 0) - 1 - tolerance
 }
 
-const createActionFrameQuality = async ({ frames, frameCount, extraction, framesDir, action = {}, identityReferenceMeanRgb = null, sheetLayout = null }) => {
+const createActionFrameQuality = async ({ frames, frameCount, extraction, framesDir, action = {}, identityReferenceMeanRgb = null, identityReferenceDescriptor = null, sheetLayout = null }) => {
   const complete = isCompleteFrameEvidence({ frames, frameCount })
   const animationType = inferAnimationType(action)
   const frameBounds = frames.map((frame) => frame?.frameBounds).filter(Boolean)
@@ -801,6 +793,12 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   const maxIdentityMeanRgbDistance = identityMeanRgbDistances.length > 0
     ? Math.max(...identityMeanRgbDistances)
     : 0
+  const identityDescriptorDistances = identityReferenceDescriptor
+    ? frames.map((frame) => identityDescriptorDistance(frame?.identityDescriptor, identityReferenceDescriptor))
+    : []
+  const maxIdentityDescriptorDistance = identityDescriptorDistances.length > 0
+    ? Math.max(...identityDescriptorDistances)
+    : 0
   const centroidYValues = frameBounds.map((bounds) => Number(bounds.centroidY)).filter(Number.isFinite)
   const startCentroidY = centroidYValues[0] || 0
   const endCentroidY = centroidYValues[centroidYValues.length - 1] || 0
@@ -821,6 +819,9 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   }
   if (complete && identityReferenceMeanRgb && maxIdentityMeanRgbDistance > 120) {
     errors.push('action_identity_reference_mismatch')
+  }
+  if (complete && identityReferenceDescriptor && maxIdentityDescriptorDistance > 90) {
+    errors.push('action_identity_descriptor_mismatch')
   }
   if (complete && sheetLayout?.visibleUnusedCellCount > 0) {
     errors.push('action_sheet_unused_cell_not_empty')
@@ -916,8 +917,11 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
       },
       identityReference: {
         meanRgb: identityReferenceMeanRgb,
+        descriptor: identityReferenceDescriptor,
         maxMeanRgbDistance: Number(maxIdentityMeanRgbDistance.toFixed(2)),
-        distances: identityMeanRgbDistances.map((value) => Number(value.toFixed(2)))
+        distances: identityMeanRgbDistances.map((value) => Number(value.toFixed(2))),
+        maxDescriptorDistance: Number(maxIdentityDescriptorDistance.toFixed(2)),
+        descriptorDistances: identityDescriptorDistances.map((value) => Number(value.toFixed(2)))
       },
       sheetLayout
     }
@@ -1065,6 +1069,7 @@ const buildActionFramesFromGeneratedImage = async ({
       visiblePixels: frameInspection.visiblePixels,
       frameBounds: frameInspection.bounds,
       meanRgb: frameInspection.bounds?.meanRgb || null,
+      identityDescriptor: frameInspection.bounds?.identityDescriptor || null,
       sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
       sourceBounds: frameSource.normalized.sourceBounds,
       sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
@@ -1095,9 +1100,11 @@ const buildActionFramesFromGeneratedImage = async ({
     extraction: extraction || {
       mode: 'action-sheet',
       outputCount: 1,
-      layout: getActionSheetLayout(frameCount)
+      layout: getActionSheetLayout(frameCount),
+      sharedCrop
     },
     identityReferenceMeanRgb: resolveIdentityReferenceMeanRgb(generationResult),
+    identityReferenceDescriptor: resolveIdentityReferenceDescriptor(generationResult),
     sheetLayout
   })
   writeJson(qaPath, {
@@ -1117,8 +1124,7 @@ const buildActionFramesFromGeneratedImage = async ({
         outputCount: 1,
         layout: getActionSheetLayout(frameCount)
       }),
-      sharedCrop,
-      rootStabilization: stabilized.rootStabilization
+      sharedCrop
     },
     triggerProposal: action?.triggerProposal || { type: 'unbound' },
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
@@ -1222,16 +1228,7 @@ const repairActionFrameFromGeneratedImage = async ({
     frameCount,
     frameIndex
   })
-  let frameSource = await materializeFrameSource({ frameCellSource, sharedCrop })
-  const storedRootStabilization = currentQa?.extraction?.rootStabilization
-  if (storedRootStabilization?.target) {
-    const stabilized = await stabilizeNormalizedFrameSources({
-      frameSources: [frameSource],
-      action,
-      target: storedRootStabilization.target
-    })
-    frameSource = stabilized.frameSources[0]
-  }
+  const frameSource = await materializeFrameSource({ frameCellSource, sharedCrop })
   const framePath = path.join(safeOutputFramesDir, fileName)
   const fileSha256 = crypto.createHash('sha256').update(frameSource.normalized.frameBuffer).digest('hex')
   fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
@@ -1247,6 +1244,7 @@ const repairActionFrameFromGeneratedImage = async ({
     fileSha256,
     visiblePixels: frameInspection.visiblePixels,
     frameBounds: frameInspection.bounds,
+    identityDescriptor: frameInspection.bounds?.identityDescriptor || null,
     sourceVisiblePixels: frameSource.normalized.sourceVisiblePixels,
     sourceBounds: frameSource.normalized.sourceBounds,
     sourceFilledFrame: frameSource.normalized.sourceFilledFrame,
@@ -1282,7 +1280,7 @@ const repairActionFrameFromGeneratedImage = async ({
     framesDir: safeOutputFramesDir
   })
   const qaComplete = isCompleteFrameEvidence({ frames: hydratedFrames, frameCount })
-  const warnings = Array.isArray(currentQa.warnings) ? currentQa.warnings.slice() : []
+  const warnings = Array.isArray(storedQa.warnings) ? storedQa.warnings.slice() : []
   const incompleteWarning = 'Action frame QA is incomplete after repair.'
   const nextWarnings = qaComplete
     ? warnings.filter((warning) => warning !== incompleteWarning)
@@ -1298,7 +1296,10 @@ const repairActionFrameFromGeneratedImage = async ({
     loop: Boolean(storedQa.loop ?? action?.loop),
     frameDurationsMs: storedQa.playback?.frameDurationsMs
   })
-  const extraction = currentQa.extraction || frameSource.extraction
+  const extraction = {
+    ...(storedQa.extraction || frameSource.extraction),
+    sharedCrop
+  }
   const quality = qaComplete
     ? await createActionFrameQuality({
         frames: hydratedFrames,
@@ -1306,7 +1307,8 @@ const repairActionFrameFromGeneratedImage = async ({
         action,
         extraction,
         framesDir: safeOutputFramesDir,
-        identityReferenceMeanRgb: resolveIdentityReferenceMeanRgb(generationResult)
+        identityReferenceMeanRgb: resolveIdentityReferenceMeanRgb(generationResult),
+        identityReferenceDescriptor: resolveIdentityReferenceDescriptor(generationResult)
       })
     : {
         ok: false,
@@ -1315,7 +1317,7 @@ const repairActionFrameFromGeneratedImage = async ({
         metrics: { frameCount: frames.filter(Boolean).length }
       }
   writeJson(qaPath, {
-    ...currentQa,
+    ...storedQa,
     ok: qaComplete && quality.ok,
     actionId,
     sourceRelativePath: storedQa.sourceRelativePath || frameSource.sourceRelativePath,

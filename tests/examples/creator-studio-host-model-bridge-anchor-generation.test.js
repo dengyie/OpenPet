@@ -609,6 +609,44 @@ test('action anchor scoring ranks single-pet action anchors above copied referen
   assert.equal(singlePetScore > boardScore, true)
 })
 
+test('action anchor scoring rejects same-average-color identities with different spatial color layout', () => {
+  const referenceMetrics = {
+    visiblePixels: 100,
+    coverage: 0.28,
+    edgeRatio: 0,
+    minPaddingRatio: 0.08,
+    centerOffsetRatio: 0.02,
+    meanRgb: { r: 180, g: 140, b: 90 },
+    bounds: { width: 120, height: 190 },
+    identityDescriptor: {
+      aspectRatio: 0.632,
+      regions: [
+        { r: 230, g: 190, b: 120 },
+        { r: 130, g: 90, b: 60 },
+        { r: 180, g: 140, b: 90 }
+      ]
+    }
+  }
+  const matchingMetrics = JSON.parse(JSON.stringify(referenceMetrics))
+  const rearrangedMetrics = {
+    ...JSON.parse(JSON.stringify(referenceMetrics)),
+    identityDescriptor: {
+      aspectRatio: 1.25,
+      regions: [
+        { r: 130, g: 90, b: 60 },
+        { r: 230, g: 190, b: 120 },
+        { r: 180, g: 140, b: 90 }
+      ]
+    }
+  }
+
+  const matchingScore = __testInternals.scoreActionAnchorMetrics({ metrics: matchingMetrics, referenceMetrics })
+  const rearrangedScore = __testInternals.scoreActionAnchorMetrics({ metrics: rearrangedMetrics, referenceMetrics })
+
+  assert.equal(matchingScore >= 70, true)
+  assert.equal(rearrangedScore < 30, true)
+})
+
 test('canonical direct-source candidate selection rejects all-low-quality candidate sets before import', async () => {
   const dataDir = makeDataDir()
   const sourcePath = path.join(dataDir, 'runs/run-low-quality-candidates/inputs/references/cat.png')

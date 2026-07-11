@@ -14,6 +14,11 @@ const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('
 const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
 const { getActionSheetLayout } = require('./action-sheet-layout')
 const { inferAnimationType } = require('./action-semantics')
+const {
+  averageIdentityDescriptors,
+  createIdentityDescriptor,
+  identityDescriptorDistance
+} = require('./identity-descriptor')
 const { extractRowStripFrames } = require('./full-pet-row-extractor')
 const { FULL_PET_ROW_QUALITY, getOfficialFullPetRow } = require('./full-pet-row-contract')
 const { validateGeneratedImageOutput } = require('./real-atlas-builder')
@@ -31,6 +36,8 @@ const DEFAULT_CONSTRAINTS = {
 const CREATOR_PROVIDER_MIN_TIMEOUT_MS = 300000
 const BASIC_ACTION_MIN_TIMEOUT_MS = 300000
 const FALLBACK_MODEL_MIN_TIMEOUT_MS = 600000
+const FULL_PET_WORKFLOW_MAX_DURATION_MS = 90 * 60 * 1000
+const MAX_IDENTITY_DESCRIPTOR_DISTANCE = 90
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
 const DIRECT_SOURCE_ACTION_ANCHOR_CANDIDATE_COUNT = 3
 const MIN_ACCEPTABLE_ACTION_ANCHOR_SCORE = 50
@@ -377,6 +384,16 @@ const sumAttemptDurationsMs = (attempts = []) => attempts.reduce((total, attempt
   total + Math.max(0, Number(attempt?.durationMs) || 0)
 ), 0)
 
+const resolveGenerationStageTimeout = ({ requestedTimeoutMs, deadlineMs = 0, nowMs = Date.now() }) => {
+  const requested = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  if (!deadlineMs) return requested
+  const remainingMs = Math.floor(Number(deadlineMs) - Number(nowMs))
+  if (remainingMs <= 0) {
+    throw new Error('Creator Studio generation exceeded the full-pet workflow time budget')
+  }
+  return Math.max(1, Math.min(requested, remainingMs))
+}
+
 const clampNumber = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0))
 
 const roundMetric = (value, digits = 4) => {
@@ -466,30 +483,6 @@ const findGenerationAction = (run = {}, actionId) => {
   return actions.find((action) => action?.actionId === actionId) || null
 }
 
-const createFullPetActionPosePrompt = ({ run = {}, actionId }) => {
-  const officialRow = getOfficialFullPetRow(actionId)
-  const action = findGenerationAction(run, actionId) || { actionId, name: actionId, motionPrompt: actionId }
-  const characterBrief = sanitizeCreativeBrief(run?.generationTask?.characterBrief || run?.input?.generationTask?.characterBrief || run?.input?.originalPrompt || run?.input?.prompt || run?.petId || 'OpenPet desktop pet')
-  const actionName = sanitizeCreativeBrief(action.name || actionId)
-  const motionPrompt = sanitizeCreativeBrief(action.motionPrompt || actionName)
-  const frameCount = Number(officialRow?.frameCount) || Number(action.frameCount) || 6
-  const layout = getActionSheetLayout(frameCount)
-  return [
-    `Create one complete provider-generated official OpenPet action sprite sheet for the character: ${characterBrief}.`,
-    `Pose/action: ${actionName}.`,
-    `Motion intent: ${motionPrompt}.`,
-    `Generate exactly ${frameCount} sequential animation frames arranged as ${layout.columns} columns by ${layout.rows} rows with equal cells in reading order.`,
-    'Leave every unused grid cell completely empty and transparent.',
-    'This is a final action sprite sheet, not a single pose, not a model sheet, and not a local-synthesis source.',
-    'Keep the same character identity, proportions, face, palette, and style as the reference image.',
-    'Keep the lower-center root, body scale, camera angle, lighting, and baseline stable across every frame.',
-    'Put one complete full-body pet in each cell with safe padding; no cropped ears, paws, tail, limbs, accessories, or body parts.',
-    'Use transparent-friendly cutout sprites with no labels, text, borders, watermark, props, scene background, floor, cast shadow, motion blur, or large empty cells.',
-    'Only the action-specific moving parts should change; preserve face, torso, feet/base, markings, fur or material texture, and source visual style.',
-    'OpenPet will only split this provider-generated sprite sheet into frames and run QA.'
-  ].join(' ')
-}
-
 const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model }) => callBridge('/creator/model-image-generate', {
   model,
   prompt,
@@ -555,6 +548,12 @@ const averageKeyframeIdentityMeanRgb = (keyframes = []) => {
     b: accumulator.b + (Number(value.b) || 0) / values.length
   }), { r: 0, g: 0, b: 0 })
 }
+
+const averageKeyframeIdentityDescriptor = (keyframes = []) => averageIdentityDescriptors(
+  Array.isArray(keyframes)
+    ? keyframes.map((keyframe) => keyframe?.quality?.metrics?.identityDescriptor).filter(Boolean)
+    : []
+)
 
 const generateWithModelFallback = async ({
   settings = {},
@@ -2308,7 +2307,13 @@ const readImageMaskMetrics = async (filePath) => {
       height: boundsHeight,
       centroidX,
       centroidY
-    }
+    },
+    identityDescriptor: createIdentityDescriptor({
+      data,
+      info,
+      bounds: { left: minX, top: minY, right: maxX, bottom: maxY, width: boundsWidth, height: boundsHeight },
+      alphaThreshold: 24
+    })
   }
 }
 
@@ -2383,7 +2388,20 @@ const readImageMaskMetricsFromAlpha = ({ data, width, height, totalPixels, edgeW
       height: maxY - minY + 1,
       centroidX,
       centroidY
-    }
+    },
+    identityDescriptor: createIdentityDescriptor({
+      data,
+      info: { width, height, channels: 4 },
+      bounds: {
+        left: minX,
+        top: minY,
+        right: maxX,
+        bottom: maxY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+      },
+      alphaThreshold: 24
+    })
   }
 }
 
@@ -2410,6 +2428,10 @@ const scoreActionAnchorMetrics = ({ metrics, referenceMetrics, action = {} }) =>
   score -= Math.min(24, (Number(metrics.centerOffsetRatio) || 0) * 120)
   if (referenceMetrics?.visiblePixels) {
     score -= Math.min(30, (distanceRgb(metrics.meanRgb, referenceMetrics.meanRgb) / 441.7) * 34)
+    const descriptorDistance = identityDescriptorDistance(metrics.identityDescriptor, referenceMetrics.identityDescriptor)
+    if (descriptorDistance > MAX_IDENTITY_DESCRIPTOR_DISTANCE) {
+      score -= Math.min(100, 55 + (descriptorDistance - MAX_IDENTITY_DESCRIPTOR_DISTANCE))
+    }
   }
   const boundsWidth = Number(metrics.bounds?.width) || 0
   const boundsHeight = Number(metrics.bounds?.height) || 0
@@ -2440,6 +2462,18 @@ const summarizeActionAnchorMetrics = (metrics = {}) => {
       g: Math.round(Number(value.meanRgb?.g) || 0),
       b: Math.round(Number(value.meanRgb?.b) || 0)
     },
+    identityDescriptor: value.identityDescriptor
+      ? {
+          aspectRatio: roundMetric(value.identityDescriptor.aspectRatio),
+          regions: Array.isArray(value.identityDescriptor.regions)
+            ? value.identityDescriptor.regions.map((region) => ({
+                r: Math.round(Number(region?.r) || 0),
+                g: Math.round(Number(region?.g) || 0),
+                b: Math.round(Number(region?.b) || 0)
+              }))
+            : []
+        }
+      : null,
     bounds: value.bounds
       ? {
           left: Math.round(Number(value.bounds.left) || 0),
@@ -2499,18 +2533,6 @@ const shouldSkipCharacterAnchorForActions = (run = {}) => {
   if (!shouldGenerateActionAnchors(run)) return false
   const actions = getRunActions(run)
   return actions.length > 0 && actions.every((action) => shouldUseDirectSourceBoardForActionAnchor(action))
-}
-
-const createActionReferenceImage = ({ dataDir, anchorReferences, actionId }) => {
-  const actionAnchor = findActionAnchorRecord({ anchorReferences, actionId })
-  const reference = createReferenceImageFromRecord({
-    dataDir,
-    record: actionAnchor,
-    fallbackFileName: `${createSafeFileSegment(actionId, 'action')}-anchor.png`,
-    fallbackRole: 'action-anchor'
-  })
-  if (!reference?.path || !fs.existsSync(reference.path)) return null
-  return reference
 }
 
 const createCanonicalProviderOnlyAnchorReferences = () => ({
@@ -2575,6 +2597,7 @@ const generateActionKeyframe = async ({
   action,
   keyframeRole = 'start',
   referenceImages = [],
+  generationDeadlineMs = 0,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   const normalizedKeyframeRole = String(keyframeRole || 'start').trim().toLowerCase() === 'start'
@@ -2603,13 +2626,15 @@ const generateActionKeyframe = async ({
     ).replace(/\\/g, '/'),
     prompt: promptBuild.prompt
   })
+  let stageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
   try {
+    stageTimeoutMs = resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs })
     const attempt = await generateWithFallbackImpl({
       settings,
       preferredModel: selectedModel,
       model: selectedModel,
       prompt: promptBuild.prompt,
-      requestedTimeoutMs,
+      requestedTimeoutMs: stageTimeoutMs,
       referenceImages,
       runId: run.runId,
       dataRelativeDir: path.join(
@@ -2687,7 +2712,7 @@ const generateActionKeyframe = async ({
         actionId,
         ok: true,
         referenceImages,
-        timeoutMs: requestedTimeoutMs,
+        timeoutMs: stageTimeoutMs,
         durationMs: sumAttemptDurationsMs(attempt.attempts),
         model: attempt.selectedModel,
         modelAttempts: attempt.attempts,
@@ -2712,7 +2737,7 @@ const generateActionKeyframe = async ({
         actionId,
         ok: false,
         referenceImages,
-        timeoutMs: requestedTimeoutMs,
+        timeoutMs: stageTimeoutMs,
         durationMs: sumAttemptDurationsMs(modelAttempts),
         model: selectedModel,
         modelAttempts,
@@ -2732,6 +2757,7 @@ const generateKeyframeActionSpriteRow = async ({
   requestedTimeoutMs,
   action,
   originalReferenceImages = [],
+  generationDeadlineMs = 0,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   if (originalReferenceImages.length === 0) return null
@@ -2749,6 +2775,7 @@ const generateKeyframeActionSpriteRow = async ({
     action,
     keyframeRole: 'start',
     referenceImages: normalizedOriginalReferenceImages,
+    generationDeadlineMs,
     generateWithFallbackImpl
   })
   if (!startKeyframeResult) return null
@@ -2775,6 +2802,7 @@ const generateKeyframeActionSpriteRow = async ({
     action,
     keyframeRole: 'peak',
     referenceImages: normalizedOriginalReferenceImages,
+    generationDeadlineMs,
     generateWithFallbackImpl
   })
   if (!peakKeyframeResult.ok) {
@@ -2831,13 +2859,15 @@ const generateKeyframeActionSpriteRow = async ({
     relativePath: path.join('runs', run.runId, 'prompts', 'keyframes', 'actions', `${actionId}-sprite-row.md`).replace(/\\/g, '/'),
     prompt: promptBuild.prompt
   })
+  let finalStageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
   try {
+    finalStageTimeoutMs = resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs })
     const attempt = await generateWithFallbackImpl({
       settings,
       preferredModel: selectedModel,
       model: selectedModel,
       prompt: promptBuild.prompt,
-      requestedTimeoutMs,
+      requestedTimeoutMs: finalStageTimeoutMs,
       referenceImages: [conditioningBoardReferenceImage],
       runId: run.runId,
       dataRelativeDir: path.join('runs', run.runId, 'frames', 'base', `${actionId}-keyframe-row`).replace(/\\/g, '/')
@@ -2851,7 +2881,7 @@ const generateKeyframeActionSpriteRow = async ({
       actionId,
       ok: true,
       referenceImages: [conditioningBoardReferenceImage],
-      timeoutMs: requestedTimeoutMs,
+      timeoutMs: finalStageTimeoutMs,
       durationMs: sumAttemptDurationsMs(attempt.attempts),
       model: attempt.selectedModel,
       modelAttempts: attempt.attempts,
@@ -2890,7 +2920,7 @@ const generateKeyframeActionSpriteRow = async ({
       actionId,
       ok: false,
       referenceImages: [conditioningBoardReferenceImage],
-      timeoutMs: requestedTimeoutMs,
+      timeoutMs: finalStageTimeoutMs,
       durationMs: sumAttemptDurationsMs(modelAttempts),
       model: selectedModel,
       modelAttempts,
@@ -3370,11 +3400,7 @@ const generateFullPetBasicActionSource = async ({
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
-  qualityReferenceImages = referenceImages,
-  generationDeadlineMs = 0,
-  qualityProfile = getDefaultQualityProfile(),
-  qualityGuidance = null,
-  requestedChanges = []
+  generationDeadlineMs = 0
 }) => {
   let providerRow = null
   try {
@@ -3393,14 +3419,15 @@ const generateFullPetBasicActionSource = async ({
       animationType: inferAnimationType(sourceAction),
       synthesisMode: 'canonical-frame'
     }
-    const providerRow = await generateKeyframeActionSpriteRow({
+    providerRow = await generateKeyframeActionSpriteRow({
       dataDir,
       run,
       settings,
       selectedModel,
       requestedTimeoutMs: Math.max(requestedTimeoutMs, BASIC_ACTION_MIN_TIMEOUT_MS),
       action,
-      originalReferenceImages: referenceImages
+      originalReferenceImages: referenceImages,
+      generationDeadlineMs
     })
     if (!providerRow?.ok || !providerRow.output) {
       const error = new Error(providerRow?.error || `Creator Studio official row generation failed for ${safeActionId}`)
@@ -3432,6 +3459,7 @@ const generateFullPetBasicActionSource = async ({
         sourceRelativePath: materializedOutput.dataRelativePath,
         quality: FULL_PET_ROW_QUALITY.ROW_REAL,
         identityReferenceMeanRgb: averageKeyframeIdentityMeanRgb(providerRow.keyframes),
+        identityReferenceDescriptor: averageKeyframeIdentityDescriptor(providerRow.keyframes),
         frames: extracted.frames
       },
       outputs: []
@@ -3449,10 +3477,6 @@ const generateFullPetBasicActionSource = async ({
       model: '',
       modelAttempts: Array.isArray(error?.modelAttempts) ? error.modelAttempts : [],
       generationStages: Array.isArray(providerRow?.stages) ? providerRow.stages : [],
-      keyframes: Array.isArray(providerRow?.keyframes) ? providerRow.keyframes : [],
-      failureConditions: Array.isArray(failedQuality?.failureConditions)
-        ? failedQuality.failureConditions
-        : [],
       error: String(error?.message || 'Action source generation failed').slice(0, 240)
     }
   }
@@ -3465,30 +3489,37 @@ const generateFullPetBasicActionSources = async ({
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
-  qualityReferenceImages = referenceImages,
-  generationDeadlineMs = 0,
-  qualityProfile = getDefaultQualityProfile(),
-  qualityGuidance = null,
-  repairChangesByActionId = {},
-  requestedActionIds = GENERATED_FULL_PET_ACTION_IDS,
-  generateActionSourceImpl = generateFullPetBasicActionSource,
-  mirrorRowFramesImpl = mirrorRowFrames,
-  readActionCheckpointsImpl = readActionCheckpoints,
-  resolveReusableActionResultImpl = resolveReusableActionResult,
-  writeActionCheckpointImpl = writeActionCheckpoint,
-  nowImpl = () => new Date().toISOString()
+  generationDeadlineMs = 0
 }) => {
   const actionResults = []
   for (const actionId of GENERATED_FULL_PET_ACTION_IDS) {
-    actionResults.push(await generateFullPetBasicActionSource({
+    const result = await generateFullPetBasicActionSource({
       actionId,
       dataDir,
       run,
       settings,
       selectedModel,
       requestedTimeoutMs,
-      referenceImages
-    }))
+      referenceImages,
+      generationDeadlineMs
+    })
+    actionResults.push(result)
+    if (!result.ok) {
+      const error = new Error(result.error || `Creator Studio official row generation failed for ${actionId}`)
+      error.partialActionSources = {
+        officialRows: {
+          version: 1,
+          mode: 'official-full-pet-provider-rows',
+          rows: actionResults.map((entry) => entry.row).filter(Boolean)
+        },
+        basicActionGeneration: {
+          attemptedActionIds: actionResults.map((entry) => entry.actionId),
+          attempts: actionResults.map(summarizeBasicActionAttempt)
+        },
+        generationStages: actionResults.flatMap((entry) => entry.generationStages || [])
+      }
+      throw error
+    }
   }
 
   return {
@@ -3541,9 +3572,6 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   }
 
   const settings = await readHostModelSettings()
-  const governance = loadPetGenerationGovernance()
-  const providerArtApprovals = loadConfiguredProviderArtApprovals()
-  const { qualityProfile, qualityGuidance } = governance
   const generationDeadlineMs = isFullPetRun(run)
     ? Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS
     : 0
@@ -3553,6 +3581,14 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const originalReferenceImages = isUsableLocalReferenceImage({ dataDir, referenceImage: originalReferenceImage })
     ? [originalReferenceImage]
     : []
+  const expectsReferenceImage = Boolean(
+    run?.input?.referenceImage ||
+    run?.generationTask?.styleSource === 'referenceImage' ||
+    run?.input?.generationTask?.styleSource === 'referenceImage'
+  )
+  if (expectsReferenceImage && originalReferenceImages.length === 0) {
+    throw new Error('Creator Studio reference image is missing or unusable; reference-image generation must fail closed.')
+  }
   const firstActionForReference = Array.isArray(run?.generationTask?.actions)
     ? run.generationTask.actions[0]
     : Array.isArray(run?.input?.generationTask?.actions)
@@ -3582,7 +3618,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       run,
       settings,
       selectedModel: configuredModelSnapshot.model,
-      requestedTimeoutMs,
+      requestedTimeoutMs: resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs }),
       originalReferenceImages
     })
     anchorReferences = generatedAnchors.anchorReferences
@@ -3939,9 +3975,6 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       settings,
       preferredModel: configuredModelSnapshot.model,
       prompt: providerPrompt,
-      promptCompiler: promptBuild.promptCompiler,
-      buildPromptForModel,
-      constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: baseStageTimeoutMs,
       referenceImages,
       runId: run.runId,
@@ -3956,7 +3989,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       stage: 'final-image',
       ok: false,
       referenceImages,
-      timeoutMs: requestedTimeoutMs,
+      timeoutMs: baseStageTimeoutMs,
       durationMs: sumAttemptDurationsMs(failedAttempts),
       model: configuredModelSnapshot.model,
       modelAttempts: failedAttempts,
@@ -4008,7 +4041,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
         stage: 'final-image',
         ok: true,
         referenceImages,
-        timeoutMs: requestedTimeoutMs,
+        timeoutMs: baseStageTimeoutMs,
         durationMs: sumAttemptDurationsMs(modelAttempts),
         model: selectedModel,
         modelAttempts,
@@ -4033,14 +4066,35 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
         output: baseOutputs[0],
         role: 'canonical-reference'
       })].filter(Boolean)
-  const fullPetBasicActionSources = await generateFullPetBasicActionSources({
-    dataDir,
-    run,
-    settings,
-    selectedModel,
-    requestedTimeoutMs,
-    referenceImages: officialActionReferenceImages
-  })
+  let fullPetBasicActionSources
+  try {
+    fullPetBasicActionSources = await generateFullPetBasicActionSources({
+      dataDir,
+      run,
+      settings,
+      selectedModel,
+      requestedTimeoutMs,
+      referenceImages: officialActionReferenceImages,
+      generationDeadlineMs
+    })
+  } catch (error) {
+    const partialSources = error?.partialActionSources || {
+      officialRows: { version: 1, mode: 'official-full-pet-provider-rows', rows: [] },
+      basicActionGeneration: { attemptedActionIds: [], attempts: [] },
+      generationStages: []
+    }
+    error.partialGenerationResult = {
+      ...result,
+      outputs: baseOutputs,
+      officialRows: partialSources.officialRows,
+      basicActionGeneration: partialSources.basicActionGeneration,
+      generationStages: [
+        ...(Array.isArray(result.generationStages) ? result.generationStages : []),
+        ...(Array.isArray(partialSources.generationStages) ? partialSources.generationStages : [])
+      ]
+    }
+    throw error
+  }
   const generatedOfficialRows = Array.isArray(fullPetBasicActionSources.officialRows?.rows)
     ? fullPetBasicActionSources.officialRows.rows
     : []
@@ -4078,9 +4132,9 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 module.exports = {
   __testInternals: {
     buildModelCandidateList,
+    resolveGenerationStageTimeout,
     scoreActionAnchorMetrics
   },
-  createFullPetActionPosePrompt,
   generateAnchorReferences,
   generateViaHostModelBridge,
   resolveRunReferenceImages

@@ -358,13 +358,15 @@ const analyzeOfficialRowWithStableSlots = async ({
   row,
   frames,
   sourceKind,
-  identityReferenceMeanRgb = null
+  identityReferenceMeanRgb = null,
+  identityReferenceDescriptor = null
 }) => {
   const initialQa = await analyzeRowFrames({
     actionId: row.id,
     frames,
     sourceKind,
-    identityReferenceMeanRgb
+    identityReferenceMeanRgb,
+    identityReferenceDescriptor
   })
   if (initialQa.quality !== FULL_PET_ROW_QUALITY.FAILED) {
     return {
@@ -389,7 +391,8 @@ const analyzeOfficialRowWithStableSlots = async ({
     actionId: row.id,
     frames: stabilized.frames,
     sourceKind,
-    identityReferenceMeanRgb
+    identityReferenceMeanRgb,
+    identityReferenceDescriptor
   })
   return {
     frames: stabilized.frames,
@@ -445,7 +448,8 @@ const buildOfficialAtlasFromRows = async ({
       row,
       frames,
       sourceKind,
-      identityReferenceMeanRgb: input.identityReferenceMeanRgb || null
+      identityReferenceMeanRgb: input.identityReferenceMeanRgb || null,
+      identityReferenceDescriptor: input.identityReferenceDescriptor || null
     })
     const qa = rowAnalysis.qa
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
