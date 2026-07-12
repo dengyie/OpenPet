@@ -392,6 +392,54 @@ test('action frame builder accepts subtle waving sheets with stable anchors', as
   assert.equal(qa.quality.metrics.adjacentFrameDiff.averageChangedPixelRatio > 0.003, true)
 })
 
+test('action frame builder stabilizes provider-authored stationary frames to one lower-center root', async () => {
+  const dataDir = makeDataDir()
+  const sourceDir = path.join(dataDir, 'runs/demo/frames/base')
+  const sourcePath = path.join(sourceDir, '0001.png')
+  const qaDir = path.join(dataDir, 'runs/demo/qa')
+  fs.mkdirSync(sourceDir, { recursive: true })
+  const offsets = [
+    { x: 0, y: 0, paw: 0 },
+    { x: 18, y: 14, paw: 16 },
+    { x: -15, y: -9, paw: 30 },
+    { x: 12, y: 11, paw: 24 },
+    { x: -10, y: -7, paw: 12 },
+    { x: 5, y: 6, paw: 2 }
+  ]
+  await createCustomActionSheetPng({
+    filePath: sourcePath,
+    frameCount: offsets.length,
+    createBody: (index) => {
+      const offset = offsets[index]
+      return `<g transform="translate(${offset.x} ${offset.y})"><rect x="82" y="96" width="92" height="108" rx="34" fill="#d89b45"/><circle cx="128" cy="76" r="38" fill="#e2ad5b"/><rect x="154" y="${116 - offset.paw}" width="14" height="58" rx="7" fill="#d89b45"/><circle cx="108" cy="74" r="6" fill="#4f8c42"/><circle cx="148" cy="74" r="6" fill="#4f8c42"/></g>`
+    }
+  })
+
+  const result = await buildCanonicalActionFramesFromGeneratedImage({
+    dataDir,
+    generationResult: {
+      outputs: [{ dataRelativePath: 'runs/demo/frames/base/0001.png', mimeType: 'image/png' }],
+      keyframeSpriteRow: { ok: true, actionId: 'anchored-wave' }
+    },
+    action: {
+      actionId: 'anchored-wave',
+      name: 'Anchored Wave',
+      animationType: 'stationary_loop',
+      frameCount: offsets.length,
+      loop: true
+    },
+    outputFramesDir: path.join(dataDir, 'runs/demo/frames/actions/anchored-wave'),
+    qaDir
+  })
+
+  const qa = JSON.parse(fs.readFileSync(result.qaPath, 'utf-8'))
+  assert.equal(qa.extraction.rootStabilization.mode, 'lower-center-root')
+  assert.equal(qa.quality.metrics.frameBounds.baselineY.range <= 1, true)
+  assert.equal(qa.quality.metrics.frameBounds.lowerRootX.range <= 1, true)
+  assert.equal(qa.frames.some((frame) => Math.abs(frame.stabilization.shiftX) >= 5), true)
+  assert.equal(qa.frames.some((frame) => Math.abs(frame.stabilization.shiftY) >= 5), true)
+})
+
 test('action frame builder preserves provider-authored vertical jump motion through normalization', async () => {
   const dataDir = makeDataDir()
   const sourceDir = path.join(dataDir, 'runs/demo/frames/base')

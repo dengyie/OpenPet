@@ -813,7 +813,7 @@ test('host model bridge routes every single action through a keyframe-conditione
 
     assert.deepEqual(requests.map((entry) => entry.referenceRoles), [
       ['canonical-reference'],
-      ['canonical-reference'],
+      ['action-peak-conditioning-board'],
       ['keyframe-action-reference-board']
     ])
     assert.deepEqual(requests.map((entry) => entry.dataRelativeDir), [
@@ -832,6 +832,8 @@ test('host model bridge routes every single action through a keyframe-conditione
     assert.equal(result.outputs[0].dataRelativePath, 'runs/run-anchor-flow/frames/base/waving-keyframe-row/0001.png')
     assert.match(requests[0].prompt, /START FRAME/i)
     assert.match(requests[1].prompt, /PEAK\/END FRAME/i)
+    assert.match(requests[1].prompt, /single conditioning board/i)
+    assert.match(requests[1].prompt, /start keyframe/i)
     assert.match(requests[2].prompt, /complete transparent-background OpenPet sprite sheet/i)
     assert.match(requests[2].prompt, /single local conditioning board/i)
     assert.match(requests[2].prompt, /Frame 3.*peak.*fully raised/is)
@@ -851,13 +853,13 @@ test('host model bridge routes every single action through a keyframe-conditione
         outputCount: 1,
         adopted: false
       },
-          {
-            stage: 'action-peak-keyframe',
-            ok: true,
-            referenceRoles: ['canonical-reference'],
-            timeoutMs: 300000,
-            outputCount: 1,
-            adopted: false
+      {
+        stage: 'action-peak-keyframe',
+        ok: true,
+        referenceRoles: ['action-peak-conditioning-board'],
+        timeoutMs: 300000,
+        outputCount: 1,
+        adopted: false
       },
       {
         stage: 'final-image',
@@ -1025,7 +1027,7 @@ test('host model bridge rejects canonical actions when keyframe sprite row gener
           {
             stage: 'action-peak-keyframe',
             ok: true,
-            referenceRoles: ['canonical-reference'],
+            referenceRoles: ['action-peak-conditioning-board'],
             adopted: false
           },
           {
@@ -1041,7 +1043,7 @@ test('host model bridge rejects canonical actions when keyframe sprite row gener
     )
     assert.deepEqual(requests.map((entry) => entry.referenceRoles), [
       ['canonical-reference'],
-      ['canonical-reference'],
+      ['action-peak-conditioning-board'],
       ['keyframe-action-reference-board']
     ])
   } finally {
@@ -1442,24 +1444,24 @@ test('host model bridge records final-stage timeout diagnostics when final actio
         stage: 'action-start-keyframe',
         ok: true,
         referenceRoles: ['canonical-reference'],
-            timeoutMs: 300000,
-            error: ''
-          },
-          {
-            stage: 'action-peak-keyframe',
-            ok: true,
-            referenceRoles: ['canonical-reference'],
-            timeoutMs: 300000,
-            error: ''
-          },
-          {
-            stage: 'final-image',
-            ok: false,
-            referenceRoles: ['keyframe-action-reference-board'],
-            timeoutMs: 300000,
-            error: 'Post "https://ai.example/v1/images/edits": context canceled'
-          }
-        ])
+        timeoutMs: 300000,
+        error: ''
+      },
+      {
+        stage: 'action-peak-keyframe',
+        ok: true,
+        referenceRoles: ['action-peak-conditioning-board'],
+        timeoutMs: 300000,
+        error: ''
+      },
+      {
+        stage: 'final-image',
+        ok: false,
+        referenceRoles: ['keyframe-action-reference-board'],
+        timeoutMs: 300000,
+        error: 'Post "https://ai.example/v1/images/edits": context canceled'
+      }
+    ])
         assert.equal(stages[2].modelAttempts[0].timeoutMs, 300000)
         assert.deepEqual(stages[2].modelAttempts[0].referenceRoles, ['keyframe-action-reference-board'])
         return true
@@ -1467,7 +1469,7 @@ test('host model bridge records final-stage timeout diagnostics when final actio
     )
     assert.deepEqual(requests.map((entry) => entry.referenceRoles), [
       ['canonical-reference'],
-      ['canonical-reference'],
+      ['action-peak-conditioning-board'],
       ['keyframe-action-reference-board']
     ])
   } finally {

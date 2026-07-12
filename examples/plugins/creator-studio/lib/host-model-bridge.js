@@ -36,6 +36,8 @@ const DEFAULT_CONSTRAINTS = {
 const CREATOR_PROVIDER_MIN_TIMEOUT_MS = 300000
 const BASIC_ACTION_MIN_TIMEOUT_MS = 300000
 const FALLBACK_MODEL_MIN_TIMEOUT_MS = 600000
+const TRANSIENT_GATEWAY_RETRY_DELAY_MS = 1500
+const MAX_TRANSIENT_GATEWAY_ATTEMPTS_PER_MODEL = 2
 const FULL_PET_WORKFLOW_MAX_DURATION_MS = 90 * 60 * 1000
 const MAX_IDENTITY_DESCRIPTOR_DISTANCE = 90
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
@@ -184,6 +186,20 @@ const resolveProviderArtReadinessForModels = ({ settings, models, governance, ap
     datasetId: governance.humanRegistry.datasetId
   })
 }
+
+const isTransientGatewayHttpFailure = (error) => {
+  const message = String(error?.message || error || '').trim()
+  const statusMatch = message.match(/generation failed with HTTP\s+(\d{3})/i)
+  if (!statusMatch) return false
+  const status = Number(statusMatch[1])
+  return status === 408 || status === 425 || status === 429 || (
+    status >= 500 && status <= 504
+  ) || (
+    status >= 520 && status <= 524
+  )
+}
+
+const sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(delayMs) || 0)))
 
 const createReferenceImageFromRecord = ({ dataDir, record = {}, fallbackFileName = 'reference.png', fallbackRole = 'reference-image' }) => {
   const relativePath = createSafeRelativePath(record?.relativePath)
@@ -564,9 +580,11 @@ const generateWithModelFallback = async ({
   referenceImages,
   runId,
   dataRelativeDir,
+  settings,
   preferredModel,
-  buildPromptForModel = null,
-  callHostImageGenerateImpl = callHostImageGenerate
+  callHostImageGenerateImpl = callHostImageGenerate,
+  retryDelayMs = TRANSIENT_GATEWAY_RETRY_DELAY_MS,
+  sleepImpl = sleep
 }) => {
   assertSingleProviderReferenceImage(referenceImages)
   const attempts = []
@@ -576,45 +594,53 @@ const generateWithModelFallback = async ({
   }
   let lastError = null
   for (const model of modelCandidates) {
-    const startedAtMs = Date.now()
-    try {
-      const effectiveTimeoutMs = normalizeModelName(model) === normalizeModelName(preferredModel)
-        ? requestedTimeoutMs
-        : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS)
-      const response = await callHostImageGenerate({
-        model,
-        prompt,
-        requestedTimeoutMs: effectiveTimeoutMs,
-        referenceImages,
-        runId,
-        dataRelativeDir
-      })
-      attempts.push(createGenerationAttemptRecord({
-        model,
-        ok: true,
-        timeoutMs: effectiveTimeoutMs,
-        referenceImages,
-        durationMs: Date.now() - startedAtMs
-      }))
-      return {
-        response,
-        selectedModel: model,
-        attempts
+    const modelTimeoutBudgetMs = normalizeModelName(model) === normalizeModelName(preferredModel)
+      ? Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+      : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS)
+    const modelStartedAtMs = Date.now()
+    for (let attemptIndex = 0; attemptIndex < MAX_TRANSIENT_GATEWAY_ATTEMPTS_PER_MODEL; attemptIndex += 1) {
+      const startedAtMs = Date.now()
+      const effectiveTimeoutMs = Math.max(1, modelTimeoutBudgetMs - (startedAtMs - modelStartedAtMs))
+      try {
+        const response = await callHostImageGenerateImpl({
+          model,
+          prompt,
+          requestedTimeoutMs: effectiveTimeoutMs,
+          referenceImages,
+          runId,
+          dataRelativeDir
+        })
+        attempts.push(createGenerationAttemptRecord({
+          model,
+          ok: true,
+          timeoutMs: effectiveTimeoutMs,
+          referenceImages,
+          durationMs: Date.now() - startedAtMs
+        }))
+        return {
+          response,
+          selectedModel: model,
+          attempts
+        }
+      } catch (error) {
+        attempts.push(createGenerationAttemptRecord({
+          model,
+          ok: false,
+          error: error?.message || error,
+          timeoutMs: effectiveTimeoutMs,
+          referenceImages,
+          durationMs: Date.now() - startedAtMs
+        }))
+        lastError = error
+        const remainingModelBudgetMs = modelTimeoutBudgetMs - (Date.now() - modelStartedAtMs)
+        const canRetrySameModel = attemptIndex + 1 < MAX_TRANSIENT_GATEWAY_ATTEMPTS_PER_MODEL &&
+          remainingModelBudgetMs > Math.max(1, Number(retryDelayMs) || 0) &&
+          isTransientGatewayHttpFailure(error)
+        if (!canRetrySameModel) break
+        await sleepImpl(retryDelayMs)
       }
-    } catch (error) {
-      attempts.push(createGenerationAttemptRecord({
-        model,
-        ok: false,
-        error: error?.message || error,
-        timeoutMs: normalizeModelName(model) === normalizeModelName(preferredModel)
-          ? requestedTimeoutMs
-          : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS),
-        referenceImages,
-        durationMs: Date.now() - startedAtMs
-      }))
-      lastError = error
-      if (!shouldRetryWithAnotherModel(error)) break
     }
+    if (!shouldRetryWithAnotherModel(lastError)) break
   }
 
   let alphaVisiblePixels = 0
@@ -2597,6 +2623,7 @@ const generateActionKeyframe = async ({
   action,
   keyframeRole = 'start',
   referenceImages = [],
+  qualityReferenceImages = referenceImages,
   generationDeadlineMs = 0,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
@@ -2651,7 +2678,7 @@ const generateActionKeyframe = async ({
     if (!materializedOutput) throw new Error(`Creator Studio ${normalizedKeyframeRole} keyframe output was not materialized for ${actionId}`)
     const keyframePath = path.join(dataDir, materializedOutput.dataRelativePath)
     const metrics = await readImageMaskMetrics(keyframePath)
-    const referencePath = String(referenceImages[0]?.path || '').trim()
+    const referencePath = String((qualityReferenceImages[0] || referenceImages[0])?.path || '').trim()
     const referenceMetrics = referencePath && fs.existsSync(referencePath)
       ? await readImageMaskMetrics(referencePath)
       : null
@@ -2793,6 +2820,25 @@ const generateKeyframeActionSpriteRow = async ({
       error: String(startKeyframeResult.error || `Creator Studio start keyframe generation failed for ${actionId}`).slice(0, 240)
     }
   }
+  const peakConditioningBoard = await buildAnchorReferenceBoard({
+    dataDir,
+    runId: run.runId,
+    sourceReferences: [
+      normalizedOriginalReferenceImages[0],
+      startKeyframeResult.referenceImage
+    ].filter(Boolean),
+    characterBrief: resolveAnchorCharacterBrief(run),
+    outputRelativeDir: path.join('runs', run.runId, 'inputs', 'keyframes', 'actions').replace(/\\/g, '/'),
+    boardRole: 'action-peak-conditioning-board',
+    fileBaseName: `${actionId}-peak-conditioning-board`
+  })
+  const peakConditioningReferenceImage = {
+    path: peakConditioningBoard.path,
+    fileName: path.basename(peakConditioningBoard.relativePath),
+    relativePath: peakConditioningBoard.relativePath,
+    metadataRelativePath: peakConditioningBoard.metadataRelativePath,
+    role: 'action-peak-conditioning-board'
+  }
   const peakKeyframeResult = await generateActionKeyframe({
     dataDir,
     run,
@@ -2801,7 +2847,8 @@ const generateKeyframeActionSpriteRow = async ({
     requestedTimeoutMs,
     action,
     keyframeRole: 'peak',
-    referenceImages: normalizedOriginalReferenceImages,
+    referenceImages: [peakConditioningReferenceImage],
+    qualityReferenceImages: normalizedOriginalReferenceImages,
     generationDeadlineMs,
     generateWithFallbackImpl
   })
@@ -4132,6 +4179,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 module.exports = {
   __testInternals: {
     buildModelCandidateList,
+    generateWithModelFallback,
+    isTransientGatewayHttpFailure,
     resolveGenerationStageTimeout,
     scoreActionAnchorMetrics
   },
