@@ -84,29 +84,27 @@ const hashEventId = (parts) => crypto
   .update(`openpet-agent-event\0${JSON.stringify(parts)}`)
   .digest('hex')
 
-const deriveEventId = (rawEvent = {}, event = {}) => {
-  const explicitId = String(rawEvent.eventId || rawEvent.event_id || rawEvent.id || '').trim()
+const stableIdentityJson = (value) => {
+  if (Array.isArray(value)) return `[${value.map((entry) => stableIdentityJson(entry)).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().filter((key) => value[key] !== undefined).map((key) => `${JSON.stringify(key)}:${stableIdentityJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+const deriveEventId = (rawEvent = {}, event = {}, providedEventId = '') => {
+  const explicitId = String(providedEventId || rawEvent.eventId || rawEvent.event_id || rawEvent.id || '').trim()
   if (Buffer.byteLength(explicitId, 'utf-8') > 4096) throw new Error('Agent event id is too large')
   if (explicitId) return hashEventId(['explicit', explicitId])
   const sessionId = String(rawEvent.sessionId || rawEvent.session_id || rawEvent.conversationId || rawEvent.filePath || event.sessionId || '').trim()
-  const turnId = String(rawEvent.turnId || rawEvent.turn_id || rawEvent.runId || rawEvent.run_id || '').trim()
-  const toolUseId = String(rawEvent.toolUseId || rawEvent.tool_use_id || rawEvent.callId || rawEvent.call_id || '').trim()
   const timestamp = String(rawEvent.timestamp || '').trim()
-  if (!sessionId || (!turnId && !toolUseId && !timestamp)) {
-    throw new Error('Agent event requires a stable event identity (explicit id, turn id, tool id, or timestamp)')
+  const type = String(rawEvent.type || rawEvent.event || rawEvent.name || rawEvent.hook_event_name || event.type || '').trim()
+  if (!sessionId || !timestamp || !type) {
+    throw new Error('Agent event requires a stable event identity (explicit id or session, type, and timestamp)')
   }
-  return hashEventId([
-    'derived',
-    sanitizeText(rawEvent.source || rawEvent.lastSource || event.lastSource || event.adapter || '', 32),
-    sanitizeText(
-      sessionId,
-      160
-    ),
-    sanitizeText(turnId, 160),
-    sanitizeText(toolUseId, 160),
-    sanitizeText(rawEvent.type || rawEvent.event || rawEvent.name || rawEvent.hook_event_name || event.type || '', 64),
-    sanitizeText(timestamp, 40)
-  ])
+  const identity = stableIdentityJson(rawEvent)
+  if (Buffer.byteLength(identity, 'utf-8') > 64 * 1024) throw new Error('Agent event identity is too large')
+  return hashEventId(['derived', identity])
 }
 
 const toFiniteNumber = (value) => {
@@ -262,23 +260,28 @@ const createAgentAwarenessServer = ({
   const ingestEvent = async ({ event, eventId, initial }) => {
     event.eventId = eventId
     const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId) || null
-    let notification = { status: 'skipped', retry: 'not-needed' }
-    if (!initial) {
-      const mapped = mapper.mapEvent({ event, previousSession })
-      try {
-        if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
-        if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
-        notification = { status: 'delivered', retry: 'not-needed' }
-      } catch (_) {
-        notification = { status: 'failed', retry: 'not-automatic' }
-      }
+    const pending = store.upsertEvent(event, {
+      eventId,
+      notification: initial
+        ? { status: 'skipped', retry: 'not-needed' }
+        : { status: 'pending', retry: 'not-automatic' }
+    })
+    if (initial) return pending
+    const mapped = mapper.mapEvent({ event, previousSession })
+    let notification
+    try {
+      if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
+      if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
+      notification = { status: 'delivered', retry: 'not-needed' }
+    } catch (_) {
+      notification = { status: 'failed', retry: 'not-automatic' }
     }
-    return store.upsertEvent(event, { eventId, notification })
+    return store.updateCommittedEvent(eventId, { notification })
   }
 
-  const handleEvent = async (rawEvent, { initial = false } = {}) => {
+  const handleEvent = async (rawEvent, { initial = false, eventId: providedEventId = '' } = {}) => {
     const normalized = normalizeIncomingEvent(rawEvent)
-    const eventId = deriveEventId(rawEvent, normalized)
+    const eventId = deriveEventId(rawEvent, normalized, providedEventId)
     const committed = store.getCommittedEvent(eventId)
     if (committed) return committed
     if (activeIngestions.has(eventId)) return cloneJson(await activeIngestions.get(eventId))

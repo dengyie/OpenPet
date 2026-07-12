@@ -503,7 +503,7 @@ const createCodexRolloutPoller = ({
           if (seen.has(key)) continue
           seen.add(key)
           emitted += 1
-          await onEvent(event, { initial })
+          await onEvent(event, { initial, eventId: key })
         }
       }
       lastError = ''

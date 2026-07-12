@@ -390,6 +390,20 @@ const createSessionStore = ({
       pruneEventDedupe()
       const entry = state.eventDedupe.find((candidate) => candidate.id === String(eventId || ''))
       return entry ? clone(entry.result) : null
+    },
+    updateCommittedEvent: (eventId, patch = {}) => {
+      pruneEventDedupe()
+      const entry = state.eventDedupe.find((candidate) => candidate.id === String(eventId || ''))
+      if (!entry) throw new Error('Committed Agent event was not found')
+      const previousState = clone(state)
+      entry.result = { ...entry.result, ...clone(patch) }
+      try {
+        save()
+      } catch (error) {
+        state = previousState
+        throw error
+      }
+      return clone(entry.result)
     }
   }
 }

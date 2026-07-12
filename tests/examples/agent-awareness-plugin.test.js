@@ -1049,6 +1049,27 @@ test('agent awareness hashes raw explicit event ids before redaction', async () 
   assert.equal(service.store.getStatus().totalEvents, 2)
 })
 
+test('agent awareness keeps same-timestamp tool events distinct', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-derived-id-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+  const event = {
+    sessionId: 'raw-session-derived-id',
+    type: 'tool.started',
+    status: 'working',
+    timestamp: '2026-07-12T01:01:00.000Z'
+  }
+
+  const first = await service.handleEvent({ ...event, toolName: 'read-file' })
+  const second = await service.handleEvent({ ...event, toolName: 'write-file' })
+
+  assert.notEqual(first.event.eventId, second.event.eventId)
+  assert.equal(service.store.getStatus().totalEvents, 2)
+})
+
 test('agent awareness rejects derived ids without stable turn, tool, or timestamp metadata', async () => {
   const service = createAgentAwarenessServer({
     dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-weak-id-')),
@@ -1107,10 +1128,52 @@ test('agent awareness commits session and dedupe state atomically', async () => 
   } finally {
     fs.renameSync = originalRenameSync
   }
+  assert.equal(firstService.store.getStatus().totalEvents, 0)
 
   const retryService = createService()
   await retryService.handleEvent(payload)
   assert.equal(retryService.store.getStatus().totalEvents, 1)
+})
+
+test('agent awareness does not repeat bridge delivery when final result persistence fails', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-delivery-idempotency-'))
+  const bridgeCalls = []
+  const payload = {
+    eventId: 'delivery-persist-event-1',
+    sessionId: 'raw-session-delivery-persist',
+    type: 'turn.completed',
+    status: 'completed',
+    timestamp: '2026-07-12T01:01:00.000Z'
+  }
+  const createService = () => createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => bridgeCalls.push('event'),
+      say: async () => bridgeCalls.push('say')
+    },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+  const firstService = createService()
+  const originalRenameSync = fs.renameSync
+  let sessionRenames = 0
+  fs.renameSync = (source, destination) => {
+    if (destination === path.join(dataDir, 'sessions.json') && ++sessionRenames === 2) {
+      throw new Error('delivery result disk full')
+    }
+    return originalRenameSync(source, destination)
+  }
+  try {
+    await assert.rejects(() => firstService.handleEvent(payload), /delivery result disk full/)
+  } finally {
+    fs.renameSync = originalRenameSync
+  }
+
+  const retryService = createService()
+  const retry = await retryService.handleEvent(payload)
+
+  assert.deepEqual(bridgeCalls, ['event', 'say'])
+  assert.equal(retryService.store.getStatus().totalEvents, 1)
+  assert.equal(retry.notification.status, 'pending')
 })
 
 test('agent awareness dedupe remains bounded and accepts distinct event ids', async () => {
