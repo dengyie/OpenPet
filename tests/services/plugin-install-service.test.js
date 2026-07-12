@@ -277,6 +277,102 @@ test('plugin install service updates with permission diff and disables the plugi
   assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.1.0')
 })
 
+test('plugin update restores the installed directory when settings persistence fails', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  const initial = service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))
+  service.installPlugin(initial.selectionId)
+  const previousSettings = structuredClone(settingsService.get())
+  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const originalSave = settingsService.save
+  settingsService.save = () => { throw new Error('disk full') }
+
+  assert.throws(() => service.updatePlugin(update.selectionId), /disk full/)
+
+  settingsService.save = originalSave
+  assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
+  assert.deepEqual(settingsService.get(), previousSettings)
+  assert.equal(fs.readdirSync(pluginDir).some((entry) => entry.includes('.staging-') || entry.includes('.backup-')), false)
+})
+
+test('plugin update keeps the old install when staging copy fails', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
+  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const originalCpSync = fs.cpSync
+  fs.cpSync = (source, target, options) => {
+    if (String(target).includes('.staging-')) throw new Error('copy failed')
+    return originalCpSync(source, target, options)
+  }
+  try {
+    assert.throws(() => service.updatePlugin(update.selectionId), /copy failed/)
+  } finally {
+    fs.cpSync = originalCpSync
+  }
+
+  assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
+})
+
+test('plugin update keeps the old install when the inspected source changes before staging validation', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
+  const sourcePath = createPluginPackage({ version: '2.0.0' })
+  const update = service.inspectPluginPackage(sourcePath)
+  fs.appendFileSync(path.join(sourcePath, 'index.js'), '// changed after review\n')
+
+  assert.throws(() => service.updatePlugin(update.selectionId), /changed after inspection/)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
+})
+
+test('plugin update restores the old install when staging rename fails', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
+  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const originalRenameSync = fs.renameSync
+  fs.renameSync = (source, target) => {
+    if (String(source).includes('.staging-')) throw new Error('swap failed')
+    return originalRenameSync(source, target)
+  }
+  try {
+    assert.throws(() => service.updatePlugin(update.selectionId), /swap failed/)
+  } finally {
+    fs.renameSync = originalRenameSync
+  }
+
+  assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
+})
+
+test('plugin update rolls back files and settings when backup cleanup fails', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
+  const previousSettings = structuredClone(settingsService.get())
+  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const originalRmSync = fs.rmSync
+  let failedCleanup = false
+  fs.rmSync = (target, options) => {
+    if (!failedCleanup && String(target).includes('.backup-')) {
+      failedCleanup = true
+      throw new Error('cleanup failed')
+    }
+    return originalRmSync(target, options)
+  }
+  try {
+    assert.throws(() => service.updatePlugin(update.selectionId), /cleanup failed/)
+  } finally {
+    fs.rmSync = originalRmSync
+  }
+
+  assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
+  assert.deepEqual(settingsService.get(), previousSettings)
+})
+
 test('plugin install service rejects updating from the installed plugin directory itself', () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
@@ -332,7 +428,25 @@ test('plugin install service can remove target plugin storage during uninstall',
   assert.deepEqual(settingsService.get().plugins.storage.other, { keep: true })
 })
 
-test('plugin install service accepts legacy .ibot-plugin.zip packages for compatibility', () => {
+test('plugin uninstall restores files and settings when settings persistence fails', () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  const review = service.inspectPluginPackage(createPluginPackage())
+  service.installPlugin(review.selectionId)
+  const previousSettings = structuredClone(settingsService.get())
+  const originalSave = settingsService.save
+  settingsService.save = () => { throw new Error('disk full') }
+
+  assert.throws(() => service.uninstallPlugin('focus-timer'), /disk full/)
+
+  settingsService.save = originalSave
+  assert.equal(fs.existsSync(path.join(pluginDir, 'focus-timer', 'plugin.json')), true)
+  assert.deepEqual(settingsService.get(), previousSettings)
+  assert.equal(fs.readdirSync(pluginDir).some((entry) => entry.includes('.backup-')), false)
+})
+
+test('plugin install service accepts legacy .ibot-plugin.zip packages for compatibility', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const zipRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-legacy-plugin-zip-'))
   const sourcePath = createPluginPackage()
@@ -340,14 +454,14 @@ test('plugin install service accepts legacy .ibot-plugin.zip packages for compat
   execFileSync('zip', ['-qr', zipPath, '.'], { cwd: sourcePath })
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
 
-  const review = service.inspectPluginPackage(zipPath)
+  const review = await service.inspectPluginPackage(zipPath)
 
   assert.equal(review.plugin.id, 'focus-timer')
   assert.equal(review.sourceType, 'zip')
   service.clearPendingSelection(review.selectionId)
 })
 
-test('plugin install service rejects zip packages with path traversal entries', () => {
+test('plugin install service rejects zip packages with path traversal entries', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const zipRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-zip-'))
   const zipPath = path.join(zipRoot, 'bad.openpet-plugin.zip')
@@ -357,5 +471,89 @@ test('plugin install service rejects zip packages with path traversal entries', 
 
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
 
-  assert.throws(() => service.inspectPluginPackage(zipPath), /unsafe paths/)
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /unsafe paths/)
+})
+
+test('plugin install service rejects zip packages containing symbolic links', async (t) => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const sourcePath = createPluginPackage()
+  const outsidePath = path.join(path.dirname(sourcePath), 'outside.txt')
+  fs.writeFileSync(outsidePath, 'outside')
+  fs.symlinkSync(outsidePath, path.join(sourcePath, 'linked.txt'))
+  const zipPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-link-')), 'linked.openpet-plugin.zip')
+  execFileSync('zip', ['-qry', zipPath, '.'], { cwd: sourcePath })
+  const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
+  t.after(() => service.clearPendingSelection())
+
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /must not contain links/i)
+})
+
+test('plugin install service enforces bounded zip metadata before extraction', async (t) => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const zipPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-limits-')), 'fixture.zip')
+  fs.writeFileSync(zipPath, 'fixture')
+  const sourcePath = createPluginPackage()
+  let entries = []
+  let extractCalls = 0
+  const service = createPluginInstallService({
+    settingsService: createSettingsService(),
+    pluginDir,
+    zipLimits: {
+      maxEntries: 2,
+      maxExpandedBytes: 20,
+      maxFileBytes: 12,
+      maxCompressionRatio: 5,
+      timeoutMs: 20
+    },
+    inspectArchive: async () => entries,
+    extractArchive: async ({ destination }) => {
+      extractCalls += 1
+      fs.cpSync(sourcePath, destination, { recursive: true })
+    }
+  })
+  t.after(() => service.clearPendingSelection())
+
+  entries = [
+    { name: 'a', uncompressedSize: 1, compressedSize: 1 },
+    { name: 'b', uncompressedSize: 1, compressedSize: 1 },
+    { name: 'c', uncompressedSize: 1, compressedSize: 1 }
+  ]
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /entry count/i)
+
+  entries = [{ name: 'large', uncompressedSize: 13, compressedSize: 13 }]
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /single file/i)
+
+  entries = [
+    { name: 'a', uncompressedSize: 11, compressedSize: 11 },
+    { name: 'b', uncompressedSize: 10, compressedSize: 10 }
+  ]
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /expanded size/i)
+
+  entries = [{ name: 'ratio', uncompressedSize: 12, compressedSize: 1 }]
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /compression ratio/i)
+  assert.equal(extractCalls, 0)
+})
+
+test('plugin install service aborts timed-out zip extraction and removes staging', async () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const zipRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-timeout-'))
+  const zipPath = path.join(zipRoot, 'fixture.zip')
+  fs.writeFileSync(zipPath, 'fixture')
+  let extractionPath = ''
+  const service = createPluginInstallService({
+    settingsService: createSettingsService(),
+    pluginDir,
+    zipLimits: { timeoutMs: 5 },
+    inspectArchive: async () => [{ name: 'plugin.json', uncompressedSize: 10, compressedSize: 10 }],
+    extractArchive: async ({ destination, signal }) => {
+      extractionPath = destination
+      fs.mkdirSync(destination, { recursive: true })
+      await new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('archive extraction timed out')), { once: true })
+      })
+    }
+  })
+
+  await assert.rejects(() => service.inspectPluginPackage(zipPath), /timed out/i)
+  assert.equal(fs.existsSync(extractionPath), false)
 })

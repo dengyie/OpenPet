@@ -65,7 +65,7 @@ const registerPluginIpc = ({
       ]
     })
     if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-    return { canceled: false, ...pluginInstallService.inspectPluginPackage(selected.filePaths[0]) }
+    return { canceled: false, ...await pluginInstallService.inspectPluginPackage(selected.filePaths[0]) }
   })
 
   ipcMainService.handle(IPC.PLUGINS_INSPECT_GITHUB_REPOSITORY, async (_event, payload) => {

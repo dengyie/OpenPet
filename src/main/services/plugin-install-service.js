@@ -2,12 +2,21 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
-const { execFileSync } = require('child_process')
+const { execFile } = require('child_process')
+const { promisify } = require('util')
 const { normalizePluginManifest, normalizeSignature } = require('../plugins/manifest')
 const { normalizeConfigSchema } = require('../plugins/config-schema')
 
 const PLUGIN_SELECTION_TTL_MS = 10 * 60 * 1000
 const SAFE_ZIP_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
+const DEFAULT_ZIP_LIMITS = {
+  maxEntries: 1000,
+  maxExpandedBytes: 100 * 1024 * 1024,
+  maxFileBytes: 25 * 1024 * 1024,
+  maxCompressionRatio: 100,
+  timeoutMs: 15000
+}
+const execFileAsync = promisify(execFile)
 
 const ensureDirectory = (dirPath) => fs.mkdirSync(dirPath, { recursive: true })
 
@@ -191,18 +200,95 @@ const getSignatureReview = (rootPath, manifest, fileHashes) => {
   }
 }
 
-const extractZipToTemp = (zipPath) => {
-  if (!fs.existsSync(zipPath)) throw new Error('Plugin package does not exist')
-  const entries = execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' })
-    .split(/\r?\n/)
-    .filter(Boolean)
-  entries.forEach(assertSafeZipEntry)
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-package-'))
-  execFileSync('unzip', ['-qq', zipPath, '-d', tempRoot])
-  return tempRoot
+const inspectZipArchive = async ({ zipPath, timeoutMs, signal }) => {
+  const options = { encoding: 'utf-8', timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, signal }
+  const [{ stdout: namesOutput }, { stdout: verboseOutput }] = await Promise.all([
+    execFileAsync('unzip', ['-Z1', zipPath], options),
+    execFileAsync('unzip', ['-Z', '-v', zipPath], options)
+  ])
+  const names = namesOutput.split(/\r?\n/).filter(Boolean)
+  const blocks = verboseOutput.split(/Central directory entry #\d+:/).slice(1)
+  if (blocks.length !== names.length) throw new Error('Plugin package metadata is inconsistent')
+  return names.map((name, index) => {
+    const block = blocks[index]
+    const compressedSize = Number(block.match(/^\s*compressed size:\s+(\d+) bytes/m)?.[1])
+    const uncompressedSize = Number(block.match(/^\s*uncompressed size:\s+(\d+) bytes/m)?.[1])
+    const unixAttributes = block.match(/^\s*Unix file attributes \([^)]*\):\s*(.+)$/m)?.[1] || ''
+    return {
+      name,
+      compressedSize,
+      uncompressedSize,
+      isLink: unixAttributes.trim().startsWith('l'),
+      encrypted: !/^\s*file security status:\s+not encrypted$/m.test(block)
+    }
+  })
 }
 
-const normalizeSourceRoot = (sourcePath, options = {}) => {
+const extractZipArchive = async ({ zipPath, destination, timeoutMs, signal }) => {
+  await execFileAsync('unzip', ['-qq', zipPath, '-d', destination], {
+    timeout: timeoutMs,
+    maxBuffer: 1024 * 1024,
+    signal
+  })
+}
+
+const assertArchiveLimits = (entries, limits) => {
+  if (entries.length > limits.maxEntries) throw new Error('Plugin package exceeds ZIP entry count limit')
+  let expandedBytes = 0
+  for (const entry of entries) {
+    assertSafeZipEntry(entry.name)
+    if (entry.isLink) throw new Error('Plugin package must not contain links')
+    if (entry.encrypted) throw new Error('Encrypted plugin packages are not supported')
+    if (!Number.isFinite(entry.uncompressedSize) || !Number.isFinite(entry.compressedSize)) {
+      throw new Error('Plugin package metadata is invalid')
+    }
+    if (entry.uncompressedSize > limits.maxFileBytes) throw new Error('Plugin package exceeds ZIP single file size limit')
+    expandedBytes += entry.uncompressedSize
+    if (expandedBytes > limits.maxExpandedBytes) throw new Error('Plugin package exceeds ZIP expanded size limit')
+    const ratio = entry.compressedSize > 0 ? entry.uncompressedSize / entry.compressedSize : (entry.uncompressedSize > 0 ? Infinity : 1)
+    if (ratio > limits.maxCompressionRatio) throw new Error('Plugin package exceeds ZIP compression ratio limit')
+  }
+}
+
+const runArchiveOperation = async (operation, timeoutMs) => {
+  const controller = new AbortController()
+  let timeoutId
+  const timeout = new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort()
+      reject(new Error('Plugin package extraction timed out'))
+    }, timeoutMs)
+    timeoutId.unref?.()
+  })
+  try {
+    return await Promise.race([Promise.resolve().then(() => operation(controller.signal)), timeout])
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+const extractZipToTemp = async (zipPath, { limits, inspectArchive, extractArchive }) => {
+  if (!fs.existsSync(zipPath)) throw new Error('Plugin package does not exist')
+  const entries = await runArchiveOperation(
+    (signal) => inspectArchive({ zipPath, timeoutMs: limits.timeoutMs, signal }),
+    limits.timeoutMs
+  )
+  assertArchiveLimits(entries, limits)
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-package-'))
+  try {
+    await runArchiveOperation(
+      (signal) => extractArchive({ zipPath, destination: tempRoot, timeoutMs: limits.timeoutMs, signal }),
+      limits.timeoutMs
+    )
+    assertNoSymlinks(tempRoot)
+    return tempRoot
+  } catch (error) {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+    throw error
+  }
+}
+
+const normalizeSourceRoot = (sourcePath, options = {}, archiveOptions) => {
   if (!sourcePath || typeof sourcePath !== 'string') throw new Error('Plugin source path is required')
   const stats = fs.statSync(sourcePath)
   if (stats.isDirectory()) {
@@ -213,17 +299,25 @@ const normalizeSourceRoot = (sourcePath, options = {}) => {
     }
   }
   if (stats.isFile() && /\.(?:openpet|ibot)-plugin\.zip$|\.zip$/i.test(sourcePath)) {
-    const rootPath = extractZipToTemp(sourcePath)
-    return { rootPath, sourceType: 'zip', cleanupPath: rootPath }
+    return extractZipToTemp(sourcePath, archiveOptions)
+      .then((rootPath) => ({ rootPath, sourceType: 'zip', cleanupPath: rootPath }))
   }
   throw new Error('Plugin source must be a directory or OpenPet plugin package (.openpet-plugin.zip)')
 }
 
-const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginInstallService = ({
+  settingsService,
+  pluginDir,
+  getPluginBlockStatus = () => ({ blocked: false, reasons: [] }),
+  zipLimits = {},
+  inspectArchive = inspectZipArchive,
+  extractArchive = extractZipArchive
+}) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!pluginDir) throw new Error('pluginDir is required')
 
   const pendingSelections = new Map()
+  const limits = { ...DEFAULT_ZIP_LIMITS, ...zipLimits }
 
   const cleanupSelection = (selection) => {
     if (selection?.cleanupPath) fs.rmSync(selection.cleanupPath, { recursive: true, force: true })
@@ -311,13 +405,16 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
 
   const inspectPluginPackage = (sourcePath, options = {}) => {
     pruneSelections()
-    const normalized = normalizeSourceRoot(sourcePath, options)
-    try {
-      return buildReview(normalized)
-    } catch (error) {
-      if (normalized.cleanupPath) fs.rmSync(normalized.cleanupPath, { recursive: true, force: true })
-      throw error
+    const normalized = normalizeSourceRoot(sourcePath, options, { limits, inspectArchive, extractArchive })
+    const finish = (source) => {
+      try {
+        return buildReview(source)
+      } catch (error) {
+        if (source.cleanupPath) fs.rmSync(source.cleanupPath, { recursive: true, force: true })
+        throw error
+      }
     }
+    return normalized && typeof normalized.then === 'function' ? normalized.then(finish) : finish(normalized)
   }
 
   const savePluginSettings = ({ pluginId, packageHash, sourcePackageHash = '', signature, disable = true, removeStorage = false }) => {
@@ -364,14 +461,41 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
       }
     }
     ensureDirectory(pluginDir)
-    copyDirectory(selection.rootPath, targetDir)
-    savePluginSettings({
-      pluginId: selection.plugin.id,
-      packageHash: selection.packageHash,
-      sourcePackageHash,
-      signature: selection.signature,
-      disable: true
-    })
+    const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const stagingDir = path.join(pluginDir, `.${selection.plugin.id}.staging-${suffix}`)
+    const backupDir = path.join(pluginDir, `.${selection.plugin.id}.backup-${suffix}`)
+    const previousSettings = structuredClone(settingsService.get())
+    let settingsCommitted = false
+    let backupCreated = false
+    let stagingPromoted = false
+    try {
+      copyDirectory(selection.rootPath, stagingDir)
+      assertNoSymlinks(stagingDir)
+      if (getPackageHash(getFileHashes(stagingDir)) !== selection.packageHash) {
+        throw new Error('Plugin package changed after inspection')
+      }
+      if (fs.existsSync(targetDir)) {
+        fs.renameSync(targetDir, backupDir)
+        backupCreated = true
+      }
+      fs.renameSync(stagingDir, targetDir)
+      stagingPromoted = true
+      savePluginSettings({
+        pluginId: selection.plugin.id,
+        packageHash: selection.packageHash,
+        sourcePackageHash,
+        signature: selection.signature,
+        disable: true
+      })
+      settingsCommitted = true
+      if (backupCreated) fs.rmSync(backupDir, { recursive: true, force: true })
+    } catch (error) {
+      fs.rmSync(stagingDir, { recursive: true, force: true })
+      if (stagingPromoted && fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })
+      if (backupCreated && fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
+      if (settingsCommitted) settingsService.save(previousSettings)
+      throw error
+    }
     pendingSelections.delete(selectionId)
     cleanupSelection(selection)
     return {
@@ -390,7 +514,6 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
     const targetDir = path.join(pluginDir, pluginId)
     if (!fs.existsSync(targetDir)) throw new Error(`Installed plugin not found: ${pluginId}`)
     assertInsideDirectory(pluginDir, targetDir, 'install path')
-    fs.rmSync(targetDir, { recursive: true, force: true })
     const settings = settingsService.get()
     const plugins = settings.plugins || {}
     const enabled = { ...(plugins.enabled || {}) }
@@ -401,7 +524,7 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
     delete config[pluginId]
     delete installed[pluginId]
     if (removeStorage) delete storage[pluginId]
-    settingsService.save({
+    const nextSettings = {
       ...settings,
       plugins: {
         ...plugins,
@@ -410,7 +533,20 @@ const createPluginInstallService = ({ settingsService, pluginDir, getPluginBlock
         storage,
         installed
       }
-    })
+    }
+    const backupDir = path.join(pluginDir, `.${pluginId}.backup-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    let settingsCommitted = false
+    try {
+      fs.renameSync(targetDir, backupDir)
+      settingsService.save(nextSettings)
+      settingsCommitted = true
+      fs.rmSync(backupDir, { recursive: true, force: true })
+    } catch (error) {
+      if (settingsCommitted) settingsService.save(settings)
+      if (fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })
+      if (fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
+      throw error
+    }
     return { ok: true, pluginId, storageRemoved: Boolean(removeStorage) }
   }
 
