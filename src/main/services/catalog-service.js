@@ -321,7 +321,7 @@ const createCatalogService = ({
     const downloaded = await downloadPackage(entry)
     let review
     try {
-      review = pluginInstallService.inspectPluginPackage(downloaded.packagePath)
+      review = await pluginInstallService.inspectPluginPackage(downloaded.packagePath)
       if (review.plugin?.id !== entry.id) throw new Error('Catalog plugin id does not match package manifest')
       const blockStatus = getPluginBlockStatus({ id: entry.id, sha256: review.packageHash, sourceSha256: downloaded.sha256 })
       if (blockStatus.blocked) throw new Error(`Catalog item is blocked: ${blockStatus.reasons.join(', ')}`)
