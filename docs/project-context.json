@@ -23,7 +23,7 @@
     "Common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet 8317 gateway preset is tied to archived smoke evidence",
     "Chat provider settings separate active saved config from renderer drafts, support separate save and test connection actions, and avoid the older coupled connection-check workflow",
     "Image generation settings use one OpenAI-compatible image Provider contract with unified OpenAI-compatible provider settings rather than the older split fixture-versus-provider selector model",
-    "Creator Studio Pet character generation is governed by docs/pet-character-generation.md: one clean user source, exactly one image attachment per Provider request, local composite reference boards, and a QA-gated running-right to running-left approved-mirror correction; running-left is derived locally without a separate Provider request",
+    "Creator Studio Pet character generation is governed by docs/pet-character-generation.md: one clean user source, at most one image attachment per Provider request, local composite reference boards, and a required running-right to running-left approved-mirror correction; current orchestration still requests both directional rows independently",
     "Creator Studio real generated atlas QA is landed through source-image-validation.json and atlas-validation.json artifacts before full-pet import approval",
     "Trigger Proposal Inbox is the host review path for Creator Studio trigger proposals and imported follow-up review",
     "Real-provider smoke entrypoints exist for AI provider verification, Bubble Chat acceptance, and Creator Studio provider-path validation",

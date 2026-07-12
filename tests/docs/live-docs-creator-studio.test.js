@@ -24,8 +24,8 @@ test('live docs describe technical full-pet atlas packaging without overclaiming
 
   assert.match(
     todoArchitecture,
-    /provider-backed full-pet runs now package a generated technical atlas/i,
-    'openpet-current-todo-architecture.md should list technical full-pet atlas packaging as a landed fact'
+    /pet-character-generation\.md[\s\S]*technical atlas/i,
+    'openpet-current-todo-architecture.md should link the canonical contract and retain the technical atlas boundary'
   )
   assert.doesNotMatch(
     todoArchitecture,
@@ -268,15 +268,21 @@ test('live docs describe landed official row package support without claiming pr
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const petGenerationDoc = readText('docs/pet-character-generation.md')
 
+  assert.match(
+    todoArchitecture,
+    /pet-character-generation\.md/i,
+    'openpet-current-todo-architecture.md should delegate generation policy to the canonical document'
+  )
+  assert.match(
+    petGenerationDoc,
+    /official (?:full-pet )?row package|deterministic official row/i,
+    'canonical docs should mention landed official row package support'
+  )
+
   for (const [name, content] of [
     ['docs/openpet-current-todo-architecture.md', todoArchitecture],
     ['docs/pet-character-generation.md', petGenerationDoc]
   ]) {
-    assert.match(
-      content,
-      /official (?:full-pet )?row package|deterministic official row/i,
-      `${name} should mention landed official row package support`
-    )
     assert.match(
       content,
       /row-real[\s\S]*approved-mirror|approved-mirror[\s\S]*row-real/i,
