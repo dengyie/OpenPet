@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const fs = require('fs')
 const http = require('http')
 const path = require('path')
@@ -11,6 +12,9 @@ const { TOKEN_FILE } = require('../commands/codex-hook-plan')
 const { readHookMode } = require('../lib/hook-mode')
 
 const DEFAULT_PORT = 8795
+const DEFAULT_DEDUPE_MAX_ENTRIES = 256
+const DEFAULT_DEDUPE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const DEDUPE_FILE = 'event-dedupe.json'
 
 const sendJson = (response, statusCode, body) => {
   response.writeHead(statusCode, {
@@ -73,6 +77,101 @@ const sanitizePollerStatus = (status = {}) => ({
   ...status,
   lastError: sanitizeText(status.lastError || '', 160)
 })
+
+const cloneJson = (value) => JSON.parse(JSON.stringify(value))
+
+const toTimeMs = (value) => {
+  const parsed = Date.parse(String(value || ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const hashEventId = (parts) => crypto
+  .createHash('sha256')
+  .update(`openpet-agent-event\0${JSON.stringify(parts)}`)
+  .digest('hex')
+
+const deriveEventId = (rawEvent = {}, event = {}) => {
+  const explicitId = sanitizeText(rawEvent.eventId || rawEvent.event_id || rawEvent.id || '', 160)
+  if (explicitId) return hashEventId(['explicit', explicitId])
+  return hashEventId([
+    'derived',
+    sanitizeText(rawEvent.source || rawEvent.lastSource || event.lastSource || event.adapter || '', 32),
+    sanitizeText(
+      rawEvent.sessionId || rawEvent.session_id || rawEvent.conversationId || rawEvent.filePath || event.sessionId || '',
+      160
+    ),
+    sanitizeText(rawEvent.turnId || rawEvent.turn_id || rawEvent.runId || rawEvent.run_id || '', 160),
+    sanitizeText(rawEvent.toolUseId || rawEvent.tool_use_id || rawEvent.callId || rawEvent.call_id || '', 160),
+    sanitizeText(rawEvent.type || rawEvent.event || rawEvent.name || rawEvent.hook_event_name || event.type || '', 64),
+    sanitizeText(rawEvent.timestamp || '', 40)
+  ])
+}
+
+const createEventDedupeStore = ({
+  dataDir,
+  now,
+  maxEntries = DEFAULT_DEDUPE_MAX_ENTRIES,
+  ttlMs = DEFAULT_DEDUPE_TTL_MS
+}) => {
+  const filePath = path.join(dataDir, DEDUPE_FILE)
+  const boundedMaxEntries = Math.max(1, Math.floor(Number(maxEntries) || DEFAULT_DEDUPE_MAX_ENTRIES))
+  const boundedTtlMs = Math.max(1, Math.floor(Number(ttlMs) || DEFAULT_DEDUPE_TTL_MS))
+  let entries = []
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+    entries = Array.isArray(parsed?.entries)
+      ? parsed.entries.filter((entry) => (
+          entry && typeof entry.id === 'string' && entry.result && typeof entry.result === 'object'
+        ))
+      : []
+  } catch (error) {
+    if (error?.code !== 'ENOENT') entries = []
+  }
+
+  const prune = () => {
+    const currentTime = toTimeMs(now()) || Date.now()
+    entries = entries
+      .filter((entry) => {
+        const committedAt = toTimeMs(entry.committedAt)
+        return committedAt > 0 && currentTime - committedAt <= boundedTtlMs
+      })
+      .sort((left, right) => toTimeMs(left.committedAt) - toTimeMs(right.committedAt))
+      .slice(-boundedMaxEntries)
+  }
+
+  const persist = () => {
+    fs.mkdirSync(dataDir, { recursive: true })
+    const temporaryPath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
+    try {
+      fs.writeFileSync(temporaryPath, JSON.stringify({ version: 1, entries }, null, 2))
+      fs.renameSync(temporaryPath, filePath)
+    } finally {
+      try {
+        fs.rmSync(temporaryPath, { force: true })
+      } catch (_) {}
+    }
+  }
+
+  prune()
+
+  return {
+    get: (id) => {
+      const previousLength = entries.length
+      prune()
+      if (entries.length !== previousLength) persist()
+      const entry = entries.find((candidate) => candidate.id === id)
+      return entry ? cloneJson(entry.result) : null
+    },
+    set: (id, result) => {
+      entries = entries.filter((entry) => entry.id !== id)
+      entries.push({ id, committedAt: now(), result: cloneJson(result) })
+      prune()
+      persist()
+      return cloneJson(result)
+    }
+  }
+}
 
 const toFiniteNumber = (value) => {
   if (value == null || value === '') return null
@@ -207,11 +306,20 @@ const createAgentAwarenessServer = ({
   dataDir = process.env.OPENPET_DATA_DIR || path.join(process.cwd(), '.agent-awareness-data'),
   bridgeClient = createBridgeClient(),
   createRolloutPoller = (options) => createCodexRolloutPoller(options),
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  dedupeMaxEntries = DEFAULT_DEDUPE_MAX_ENTRIES,
+  dedupeTtlMs = DEFAULT_DEDUPE_TTL_MS
 } = {}) => {
   const dashboardDir = path.resolve(__dirname, '..', 'web', 'dashboard')
   const store = createSessionStore({ dataDir })
+  const dedupeStore = createEventDedupeStore({
+    dataDir,
+    now,
+    maxEntries: dedupeMaxEntries,
+    ttlMs: dedupeTtlMs
+  })
   const mapper = createAgentStateMapper()
+  const activeIngestions = new Map()
   let server = null
   let rolloutPoller = null
 
@@ -221,16 +329,37 @@ const createAgentAwarenessServer = ({
       : normalizeCodexEvent(rawEvent, { now })
   )
 
-  const handleEvent = async (rawEvent, { initial = false } = {}) => {
-    const event = normalizeIncomingEvent(rawEvent)
+  const ingestEvent = async ({ event, eventId, initial }) => {
+    event.eventId = eventId
     const previousSession = store.listSessions().find((session) => session.sessionId === event.sessionId) || null
     const session = store.upsertEvent(event)
+    let notification = { status: 'skipped', retry: 'not-needed' }
     if (!initial) {
       const mapped = mapper.mapEvent({ event, previousSession })
-      if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
-      if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
+      try {
+        if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
+        if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
+        notification = { status: 'delivered', retry: 'not-needed' }
+      } catch (_) {
+        notification = { status: 'failed', retry: 'not-automatic' }
+      }
     }
-    return { event, session }
+    return dedupeStore.set(eventId, { event, session, notification })
+  }
+
+  const handleEvent = async (rawEvent, { initial = false } = {}) => {
+    const normalized = normalizeIncomingEvent(rawEvent)
+    const eventId = deriveEventId(rawEvent, normalized)
+    const committed = dedupeStore.get(eventId)
+    if (committed) return committed
+    if (activeIngestions.has(eventId)) return cloneJson(await activeIngestions.get(eventId))
+    const ingestion = ingestEvent({ event: normalized, eventId, initial })
+    activeIngestions.set(eventId, ingestion)
+    try {
+      return cloneJson(await ingestion)
+    } finally {
+      if (activeIngestions.get(eventId) === ingestion) activeIngestions.delete(eventId)
+    }
   }
 
   const handleRequest = async (request, response) => {
@@ -290,7 +419,7 @@ const createAgentAwarenessServer = ({
         }
         const body = await readJsonBody(request)
         const result = await handleEvent(body)
-        sendJson(response, 200, { ok: true, event: result.event, session: result.session })
+        sendJson(response, 200, { ok: true, event: result.event, session: result.session, notification: result.notification })
       } catch (error) {
         sendJson(response, 400, { ok: false, error: error?.message || 'Event ingestion failed' })
       }

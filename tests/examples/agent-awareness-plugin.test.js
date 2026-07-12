@@ -932,6 +932,140 @@ test('agent awareness server serves health and notifies pet only for incremental
   ])
 })
 
+test('agent awareness HTTP ingestion stays successful and deduplicates after bridge failure', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-idempotent-http-'))
+  let bridgeCalls = 0
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => {
+        bridgeCalls += 1
+        throw new Error('bridge leaked /Users/mango/private/OpenPet sk-test123')
+      },
+      say: async () => {
+        bridgeCalls += 1
+      }
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+
+  await service.start(0)
+  const port = service.server.address().port
+  const payload = {
+    eventId: 'delivery-42',
+    sessionId: 'raw-session-idempotent',
+    type: 'turn.completed',
+    status: 'completed',
+    message: 'Codex completed a turn.',
+    timestamp: '2026-07-12T01:00:00.000Z'
+  }
+  const firstResponse = await fetch(`http://127.0.0.1:${port}/api/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  const first = await firstResponse.json()
+  const retryResponse = await fetch(`http://127.0.0.1:${port}/api/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  const retry = await retryResponse.json()
+  await service.close()
+
+  assert.equal(firstResponse.status, 200)
+  assert.equal(retryResponse.status, 200)
+  assert.equal(first.ok, true)
+  assert.match(first.event.eventId, /^[a-f0-9]{64}$/)
+  assert.deepEqual(first.notification, { status: 'failed', retry: 'not-automatic' })
+  assert.deepEqual(retry, first)
+  assert.equal(bridgeCalls, 1)
+  assert.equal(service.store.getStatus().totalEvents, 1)
+  assert.equal(service.store.listSessions()[0].history.length, 1)
+  assert.equal(JSON.stringify(first).includes('/Users/mango'), false)
+  assert.equal(JSON.stringify(first).includes('sk-test123'), false)
+})
+
+test('agent awareness dedupe survives reload and does not repeat bridge notification', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-idempotent-reload-'))
+  const createService = (bridgeCalls) => createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: {
+      event: async () => bridgeCalls.push('event'),
+      say: async () => bridgeCalls.push('say')
+    },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+  const payload = {
+    session_id: 'raw-session-reload',
+    turn_id: 'turn-7',
+    hook_event_name: 'Stop',
+    status: 'completed',
+    timestamp: '2026-07-12T01:01:00.000Z'
+  }
+
+  const firstBridgeCalls = []
+  const firstService = createService(firstBridgeCalls)
+  const first = await firstService.handleEvent(payload)
+  await firstService.close()
+
+  const secondBridgeCalls = []
+  const secondService = createService(secondBridgeCalls)
+  const retry = await secondService.handleEvent(payload)
+
+  assert.deepEqual(retry, first)
+  assert.equal(secondService.store.getStatus().totalEvents, 1)
+  assert.equal(secondService.store.listSessions()[0].history.length, 1)
+  assert.deepEqual(firstBridgeCalls, ['event', 'say'])
+  assert.deepEqual(secondBridgeCalls, [])
+})
+
+test('agent awareness dedupe remains bounded and accepts distinct event ids', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-idempotent-bounded-'))
+  let currentTime = '2026-07-12T01:02:00.000Z'
+  const service = createAgentAwarenessServer({
+    dataDir,
+    now: () => currentTime,
+    dedupeMaxEntries: 2,
+    dedupeTtlMs: 1000,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({
+      getStatus: () => ({ enabled: true }),
+      start: () => {},
+      stop: () => {}
+    })
+  })
+  const event = {
+    sessionId: 'raw-session-bounded',
+    type: 'turn.completed',
+    status: 'completed',
+    timestamp: '2026-07-12T01:02:00.000Z'
+  }
+
+  await service.handleEvent({ ...event, eventId: 'event-one' })
+  await service.handleEvent({ ...event, eventId: 'event-two' })
+  await service.handleEvent({ ...event, eventId: 'event-three' })
+  const dedupePath = path.join(dataDir, 'event-dedupe.json')
+  const boundedState = JSON.parse(fs.readFileSync(dedupePath, 'utf-8'))
+  assert.equal(boundedState.entries.length, 2)
+  assert.equal(service.store.getStatus().totalEvents, 3)
+
+  await service.handleEvent({ ...event, eventId: 'event-two' })
+  assert.equal(service.store.getStatus().totalEvents, 3)
+
+  currentTime = '2026-07-12T01:02:02.000Z'
+  await service.handleEvent({ ...event, eventId: 'event-two' })
+  assert.equal(service.store.getStatus().totalEvents, 4)
+})
+
 test('agent awareness server aggregates bounded usage diagnostics across sessions', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-usage-diagnostics-'))
   const service = createAgentAwarenessServer({
