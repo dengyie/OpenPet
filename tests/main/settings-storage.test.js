@@ -66,6 +66,24 @@ test('saveSettings leaves the previous primary unchanged when final replacement 
   assert.equal(fs.readdirSync(userDataDir).some((entry) => entry.endsWith('.tmp')), false)
 })
 
+test('saveSettings never rotates a non-object primary over the last-known-good backup', () => {
+  fs.writeFileSync(settingsPath, 'null', 'utf-8')
+  fs.writeFileSync(backupPath, JSON.stringify({ scale: 1.75 }), 'utf-8')
+  const originalRename = fs.renameSync
+  fs.renameSync = (source, destination) => {
+    if (destination === settingsPath) throw new Error('simulated replacement failure')
+    return originalRename(source, destination)
+  }
+
+  try {
+    assert.throws(() => saveSettings({ scale: 1.5 }), /simulated replacement failure/)
+  } finally {
+    fs.renameSync = originalRename
+  }
+
+  assert.deepEqual(JSON.parse(fs.readFileSync(backupPath, 'utf-8')), { scale: 1.75 })
+})
+
 test('loadSettings recovers a malformed primary from the last-known-good backup', () => {
   fs.writeFileSync(settingsPath, '{malformed', 'utf-8')
   fs.writeFileSync(backupPath, JSON.stringify({ scale: 1.75, walkSpeed: 3 }), 'utf-8')

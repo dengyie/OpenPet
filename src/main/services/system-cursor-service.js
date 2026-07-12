@@ -94,7 +94,6 @@ const createSystemCursorService = ({
   const configPath = path.join(runtimeDir, 'config.json')
   const assetDir = path.join(runtimeDir, 'assets')
   let currentContext = null
-  let nextGeneration = 0
   let disposed = false
   let operation = Promise.resolve()
   const expectedChildren = new WeakSet()
@@ -154,7 +153,6 @@ const createSystemCursorService = ({
   const attachChild = (nextChild) => {
     let resolveExit
     const context = {
-      generation: ++nextGeneration,
       child: nextChild,
       ready: false,
       stderrTail: '',
@@ -182,35 +180,35 @@ const createSystemCursorService = ({
     nextChild.stderr?.on?.('data', (chunk) => {
       context.stderrTail = `${context.stderrTail}${String(chunk || '')}`.slice(-MAX_STDERR_CHARS)
     })
-    nextChild.once('error', (error) => {
-      rejectProtocolWaiters(context, error)
-    })
-    nextChild.once('exit', (code, signal) => {
+    const settleTerminal = ({ error = null, code = null, signal = null }) => {
+      if (context.exited) return
       context.exited = true
-      resolveExit({ code, signal })
+      resolveExit({ error, code, signal })
       output.close()
       const wasCurrent = currentContext === context
       const wasReady = context.ready
       const expected = expectedChildren.has(nextChild)
       if (wasCurrent) currentContext = null
-      const exitError = new Error(`macOS system cursor helper exited before reporting ready (code ${code ?? 'null'}, signal ${signal || 'none'})`)
-      rejectProtocolWaiters(context, exitError)
+      const terminalError = error || new Error(`macOS system cursor helper exited before reporting ready (code ${code ?? 'null'}, signal ${signal || 'none'})`)
+      rejectProtocolWaiters(context, terminalError)
       if (!expected && wasReady) {
         record({
           level: 'error',
           event: 'system-cursor.helper.exited',
           message: 'macOS system cursor helper exited unexpectedly',
-          details: { code, signal: signal || '', stderr: context.stderrTail }
+          details: { code, signal: signal || '', stderr: context.stderrTail, error: error?.message || '' }
         })
-        Promise.resolve().then(() => onUnexpectedExit({ code, signal, stderr: context.stderrTail })).catch((error) => {
+        Promise.resolve().then(() => onUnexpectedExit({ code, signal, stderr: context.stderrTail, error })).catch((fallbackError) => {
           record({
             level: 'error',
             event: 'system-cursor.fallback.failed',
-            message: error?.message || 'Failed to persist cursor fallback after helper exit'
+            message: fallbackError?.message || 'Failed to persist cursor fallback after helper exit'
           })
         })
       }
-    })
+    }
+    nextChild.once('error', (error) => settleTerminal({ error }))
+    nextChild.once('exit', (code, signal) => settleTerminal({ code, signal }))
     return context
   }
 

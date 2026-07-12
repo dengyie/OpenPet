@@ -52,11 +52,17 @@ test('failed immediate cursor mutation does not overwrite a newer external curso
   assert.equal(resolvePersistedCursorMutation({ previous, optimistic, current: fallback, saved: null }), fallback)
 })
 
-test('successful immediate cursor mutation uses the persisted settings', async () => {
+test('successful immediate cursor mutation only reconciles cursor-owned fields', async () => {
   const { resolvePersistedCursorMutation } = await import('../../src/control-center/src/lib/pet-settings-cursor-state.mjs')
   const previous = { selectedCursorId: 'old', customCursorScope: 'openpet' }
   const optimistic = { selectedCursorId: 'new', customCursorScope: 'system' }
-  const saved = { selectedCursorId: 'saved', customCursorScope: 'system' }
+  const current = { ...optimistic, scale: 1.6, grounded: true }
+  const saved = { selectedCursorId: 'saved', customCursorScope: 'system', scale: 1, grounded: false }
 
-  assert.equal(resolvePersistedCursorMutation({ previous, optimistic, current: optimistic, saved }), saved)
+  assert.deepEqual(resolvePersistedCursorMutation({ previous, optimistic, current, saved }), {
+    selectedCursorId: 'saved',
+    customCursorScope: 'system',
+    scale: 1.6,
+    grounded: true
+  })
 })

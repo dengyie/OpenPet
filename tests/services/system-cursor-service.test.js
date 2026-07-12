@@ -173,6 +173,47 @@ test('system cursor service rejects activation when the helper exits before read
   assert.equal(service.getStatus().active, false)
 })
 
+test('system cursor service treats child error as terminal and can spawn a replacement', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const failedChild = createFakeChild({ onSignal: () => false })
+  failedChild.kill = () => false
+  const replacementChild = createFakeChild({
+    onSignal: (signal, child) => {
+      if (signal === 'SIGTERM') queueMicrotask(() => child.emit('exit', 0, signal))
+    }
+  })
+  replacementChild.pid = 5252
+  let spawnCount = 0
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      spawnCount += 1
+      if (spawnCount === 1) {
+        queueMicrotask(() => failedChild.emit('error', new Error('helper spawn channel failed')))
+        return failedChild
+      }
+      queueMicrotask(() => emitJsonLine(replacementChild, { event: 'ready', version: '2' }))
+      return replacementChild
+    },
+    versionFactory: () => String(spawnCount + 1),
+    protocolTimeoutMs: 20
+  })
+
+  await assert.rejects(service.apply(cursor), /helper spawn channel failed/)
+  const status = await service.apply(cursor)
+
+  assert.equal(spawnCount, 2)
+  assert.equal(status.active, true)
+  assert.equal(status.helperPid, 5252)
+  await service.dispose()
+})
+
 test('system cursor service does not leak a protocol timeout when spawning throws synchronously', async (t) => {
   const fixture = createFixture()
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
@@ -288,6 +329,35 @@ test('system cursor service reports an unexpected helper exit after activation',
   assert.equal(service.getStatus().active, false)
   assert.equal(unexpectedExits.length, 1)
   assert.equal(unexpectedExits[0].code, 9)
+})
+
+test('system cursor service reports an unexpected helper error after activation', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const child = createFakeChild()
+  const unexpected = []
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      queueMicrotask(() => emitJsonLine(child, { event: 'ready', version: '1' }))
+      return child
+    },
+    versionFactory: () => '1',
+    onUnexpectedExit: async (details) => unexpected.push(details)
+  })
+
+  await service.apply(cursor)
+  child.emit('error', new Error('helper transport failed'))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(service.getStatus().active, false)
+  assert.equal(unexpected.length, 1)
+  assert.match(unexpected[0].error.message, /helper transport failed/)
 })
 
 test('system cursor service contains synchronous fallback callback failures', async (t) => {

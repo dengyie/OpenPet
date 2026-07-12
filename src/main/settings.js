@@ -295,7 +295,11 @@ const saveSettings = (settings) => {
   if (fs.existsSync(settingsPath)) {
     try {
       const previousSettings = readSettingsFile(settingsPath)
-      writeJsonAtomic(settingsBackupPath, previousSettings)
+      if (isPlainObject(previousSettings)) {
+        writeJsonAtomic(settingsBackupPath, previousSettings)
+      } else {
+        console.warn('OpenPet settings primary file is not an object; preserving existing backup')
+      }
     } catch (error) {
       if (error instanceof SyntaxError) {
         console.warn('OpenPet settings primary file is invalid; preserving existing backup')
