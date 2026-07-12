@@ -93,13 +93,11 @@ const createSystemCursorService = ({
   const runtimeDir = path.join(userDataPath || projectRoot || process.cwd(), 'system-cursor-runtime')
   const configPath = path.join(runtimeDir, 'config.json')
   const assetDir = path.join(runtimeDir, 'assets')
-  let child = null
-  let childReady = false
-  let stderrTail = ''
+  let currentContext = null
+  let nextGeneration = 0
   let disposed = false
   let operation = Promise.resolve()
   const expectedChildren = new WeakSet()
-  const protocolWaiters = new Set()
 
   const record = (entry) => {
     try {
@@ -116,48 +114,57 @@ const createSystemCursorService = ({
   const getStatus = () => ({
     supported,
     platform,
-    active: Boolean(child && childReady),
-    helperPid: child && childReady ? Number(child.pid) || 0 : 0
+    active: Boolean(currentContext?.child && currentContext.ready),
+    helperPid: currentContext?.child && currentContext.ready ? Number(currentContext.child.pid) || 0 : 0
   })
 
-  const settleProtocolWaiters = (message) => {
-    for (const waiter of [...protocolWaiters]) {
+  const settleProtocolWaiters = (context, message) => {
+    for (const waiter of [...context.waiters]) {
       if (message?.event === 'error' && (!message.version || message.version === waiter.version)) {
-        protocolWaiters.delete(waiter)
+        context.waiters.delete(waiter)
         clearTimeout(waiter.timeoutId)
         waiter.reject(new Error(message.message || 'macOS system cursor helper reported an error'))
         continue
       }
       if (message?.event !== waiter.event || message?.version !== waiter.version) continue
-      protocolWaiters.delete(waiter)
+      context.waiters.delete(waiter)
       clearTimeout(waiter.timeoutId)
       waiter.resolve(message)
     }
   }
 
-  const rejectProtocolWaiters = (error) => {
-    for (const waiter of [...protocolWaiters]) {
-      protocolWaiters.delete(waiter)
+  const rejectProtocolWaiters = (context, error) => {
+    for (const waiter of [...context.waiters]) {
+      context.waiters.delete(waiter)
       clearTimeout(waiter.timeoutId)
       waiter.reject(error)
     }
   }
 
-  const waitForProtocol = (event, version) => new Promise((resolve, reject) => {
+  const waitForProtocol = (context, event, version) => new Promise((resolve, reject) => {
     const waiter = { event, version, resolve, reject, timeoutId: null }
     waiter.timeoutId = setTimeout(() => {
-      protocolWaiters.delete(waiter)
+      context.waiters.delete(waiter)
       reject(new Error(`macOS system cursor helper timed out waiting for ${event}`))
     }, protocolTimeoutMs)
     waiter.timeoutId.unref?.()
-    protocolWaiters.add(waiter)
+    context.waiters.add(waiter)
   })
 
   const attachChild = (nextChild) => {
-    child = nextChild
-    childReady = false
-    stderrTail = ''
+    let resolveExit
+    const context = {
+      generation: ++nextGeneration,
+      child: nextChild,
+      ready: false,
+      stderrTail: '',
+      waiters: new Set(),
+      exited: false,
+      exitPromise: new Promise((resolve) => { resolveExit = resolve })
+    }
+    currentContext = context
     const output = readline.createInterface({ input: nextChild.stdout })
+    context.output = output
     output.on('line', (line) => {
       let message
       try {
@@ -170,33 +177,32 @@ const createSystemCursorService = ({
         })
         return
       }
-      settleProtocolWaiters(message)
+      settleProtocolWaiters(context, message)
     })
     nextChild.stderr?.on?.('data', (chunk) => {
-      stderrTail = `${stderrTail}${String(chunk || '')}`.slice(-MAX_STDERR_CHARS)
+      context.stderrTail = `${context.stderrTail}${String(chunk || '')}`.slice(-MAX_STDERR_CHARS)
     })
     nextChild.once('error', (error) => {
-      rejectProtocolWaiters(error)
+      rejectProtocolWaiters(context, error)
     })
     nextChild.once('exit', (code, signal) => {
+      context.exited = true
+      resolveExit({ code, signal })
       output.close()
-      const wasCurrent = child === nextChild
-      const wasReady = wasCurrent && childReady
+      const wasCurrent = currentContext === context
+      const wasReady = context.ready
       const expected = expectedChildren.has(nextChild)
-      if (wasCurrent) {
-        child = null
-        childReady = false
-      }
+      if (wasCurrent) currentContext = null
       const exitError = new Error(`macOS system cursor helper exited before reporting ready (code ${code ?? 'null'}, signal ${signal || 'none'})`)
-      rejectProtocolWaiters(exitError)
+      rejectProtocolWaiters(context, exitError)
       if (!expected && wasReady) {
         record({
           level: 'error',
           event: 'system-cursor.helper.exited',
           message: 'macOS system cursor helper exited unexpectedly',
-          details: { code, signal: signal || '', stderr: stderrTail }
+          details: { code, signal: signal || '', stderr: context.stderrTail }
         })
-        Promise.resolve().then(() => onUnexpectedExit({ code, signal, stderr: stderrTail })).catch((error) => {
+        Promise.resolve().then(() => onUnexpectedExit({ code, signal, stderr: context.stderrTail })).catch((error) => {
           record({
             level: 'error',
             event: 'system-cursor.fallback.failed',
@@ -205,6 +211,7 @@ const createSystemCursorService = ({
         })
       }
     })
+    return context
   }
 
   const ensureHelper = async () => {
@@ -218,10 +225,9 @@ const createSystemCursorService = ({
     return helperPath
   }
 
-  const stopChild = async (reason) => {
-    const targetChild = child
-    if (!targetChild) return getStatus()
-    const exitPromise = new Promise((resolve) => targetChild.once('exit', resolve))
+  const stopContext = async (context, reason, { recordDeactivation = true } = {}) => {
+    if (!context || context.exited) return getStatus()
+    const targetChild = context.child
     expectedChildren.add(targetChild)
     let terminateSent = false
     try {
@@ -236,7 +242,7 @@ const createSystemCursorService = ({
     }
     let timeoutId
     const stopped = await Promise.race([
-      exitPromise.then(() => true),
+      context.exitPromise.then(() => true),
       new Promise((resolve) => {
         timeoutId = setTimeout(() => resolve(false), stopTimeoutMs)
         timeoutId.unref?.()
@@ -249,7 +255,7 @@ const createSystemCursorService = ({
         throw new Error('Failed to force-stop macOS system cursor helper')
       }
       const forceStopped = await Promise.race([
-        exitPromise.then(() => true),
+        context.exitPromise.then(() => true),
         new Promise((resolve) => {
           timeoutId = setTimeout(() => resolve(false), stopTimeoutMs)
           timeoutId.unref?.()
@@ -261,18 +267,19 @@ const createSystemCursorService = ({
         throw new Error('macOS system cursor helper did not exit after force-stop')
       }
     }
-    if (child === targetChild) {
-      child = null
-      childReady = false
+    if (currentContext === context) currentContext = null
+    if (recordDeactivation) {
+      record({
+        level: 'info',
+        event: 'system-cursor.deactivated',
+        message: 'Whole-computer cursor deactivated',
+        details: { reason }
+      })
     }
-    record({
-      level: 'info',
-      event: 'system-cursor.deactivated',
-      message: 'Whole-computer cursor deactivated',
-      details: { reason }
-    })
     return getStatus()
   }
+
+  const stopChild = async (reason) => stopContext(currentContext, reason)
 
   const applyInternal = async (cursor) => {
     if (!supported) throw new Error('Whole-computer cursor mode is only supported on macOS')
@@ -290,13 +297,15 @@ const createSystemCursorService = ({
     }
     writeJsonAtomic(configPath, config)
 
-    if (child && childReady) {
-      const updatePromise = waitForProtocol('updated', version)
-      if (!child.kill('SIGHUP')) {
-        rejectProtocolWaiters(new Error('Failed to notify macOS system cursor helper about an update'))
+    if (currentContext?.child && currentContext.ready) {
+      const context = currentContext
+      const updatePromise = waitForProtocol(context, 'updated', version)
+      if (!context.child.kill('SIGHUP')) {
+        rejectProtocolWaiters(context, new Error('Failed to notify macOS system cursor helper about an update'))
         throw new Error('Failed to update whole-computer cursor')
       }
       await updatePromise
+      if (currentContext !== context || context.exited) throw new Error('macOS system cursor helper changed during update')
       record({
         level: 'info',
         event: 'system-cursor.updated',
@@ -306,17 +315,19 @@ const createSystemCursorService = ({
       return getStatus()
     }
 
+    if (currentContext) await stopContext(currentContext, 'startup-retry', { recordDeactivation: false })
+
     const nextChild = spawnProcess(helperPath, ['--config', configPath, '--parent-pid', String(parentPid)], {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true
     })
-    attachChild(nextChild)
-    const readyPromise = waitForProtocol('ready', version)
+    const context = attachChild(nextChild)
+    const readyPromise = waitForProtocol(context, 'ready', version)
     try {
       await readyPromise
-      if (child !== nextChild) throw new Error('macOS system cursor helper changed during startup')
-      childReady = true
+      if (currentContext !== context || context.exited) throw new Error('macOS system cursor helper changed during startup')
+      context.ready = true
       record({
         level: 'info',
         event: 'system-cursor.activated',
@@ -330,9 +341,13 @@ const createSystemCursorService = ({
       })
       return getStatus()
     } catch (error) {
-      if (child === nextChild) {
-        expectedChildren.add(nextChild)
-        nextChild.kill('SIGTERM')
+      if (!context.exited) {
+        try {
+          await stopContext(context, 'startup-failed', { recordDeactivation: false })
+        } catch (stopError) {
+          stopError.cause = error
+          throw stopError
+        }
       }
       throw error
     }

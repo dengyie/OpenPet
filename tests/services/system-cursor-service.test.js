@@ -193,6 +193,74 @@ test('system cursor service does not leak a protocol timeout when spawning throw
   assert.equal(service.getStatus().active, false)
 })
 
+test('system cursor service waits for a timed-out generation to exit before accepting replacement readiness', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  let oldExited = false
+  const oldChild = createFakeChild({
+    onSignal: (signal, currentChild) => {
+      if (signal === 'SIGKILL') {
+        queueMicrotask(() => {
+          oldExited = true
+          currentChild.emit('exit', 0, signal)
+        })
+      }
+    }
+  })
+  const replacementChild = createFakeChild()
+  replacementChild.pid = 5252
+  let spawnCount = 0
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      spawnCount += 1
+      if (spawnCount === 1) return oldChild
+      if (!oldExited) queueMicrotask(() => emitJsonLine(oldChild, { event: 'ready', version: 'shared-version' }))
+      return replacementChild
+    },
+    versionFactory: () => 'shared-version',
+    protocolTimeoutMs: 10,
+    stopTimeoutMs: 5
+  })
+
+  await assert.rejects(service.apply(cursor), /timed out waiting for ready/)
+
+  let replacementSettled = false
+  const replacement = service.apply(cursor).finally(() => {
+    replacementSettled = true
+  })
+  while (spawnCount < 2) await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(oldExited, true)
+  assert.equal(replacementSettled, false)
+  emitJsonLine(replacementChild, { event: 'ready', version: 'shared-version' })
+  const status = await replacement
+
+  assert.equal(status.active, true)
+  assert.equal(status.helperPid, 5252)
+  assert.deepEqual(oldChild.signals, ['SIGTERM', 'SIGKILL'])
+
+  let updateSettled = false
+  const update = service.apply({ ...cursor, width: 72 }).finally(() => {
+    updateSettled = true
+  })
+  while (!replacementChild.signals.includes('SIGHUP')) await new Promise((resolve) => setImmediate(resolve))
+  emitJsonLine(oldChild, { event: 'updated', version: 'shared-version' })
+  oldChild.emit('exit', 9, null)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(updateSettled, false)
+  assert.equal(service.getStatus().active, true)
+  emitJsonLine(replacementChild, { event: 'updated', version: 'shared-version' })
+  await update
+})
+
 test('system cursor service reports an unexpected helper exit after activation', async (t) => {
   const fixture = createFixture()
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
