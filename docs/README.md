@@ -13,6 +13,7 @@ The goal is to keep a small set of live operating docs current and treat the res
 | Single active work queue | [`TODO.md`](./TODO.md) |
 | Local development workflow | [`development-workflow.md`](./development-workflow.md) |
 | Test scope and merge-time validation | [`testing-strategy.md`](./testing-strategy.md) |
+| Current production review remediation plan | [`superpowers/plans/2026-07-12-production-review-remediation.md`](./superpowers/plans/2026-07-12-production-review-remediation.md) |
 | Release evidence index | [`release-evidence/README.md`](./release-evidence/README.md) |
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
