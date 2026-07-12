@@ -1028,6 +1028,91 @@ test('agent awareness dedupe survives reload and does not repeat bridge notifica
   assert.deepEqual(secondBridgeCalls, [])
 })
 
+test('agent awareness hashes raw explicit event ids before redaction', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-explicit-id-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+  const event = {
+    sessionId: 'raw-session-explicit-id',
+    type: 'turn.completed',
+    status: 'completed',
+    timestamp: '2026-07-12T01:01:00.000Z'
+  }
+
+  const first = await service.handleEvent({ ...event, eventId: 'https://one.example.test/events/42' })
+  const second = await service.handleEvent({ ...event, eventId: 'https://two.example.test/events/42' })
+
+  assert.notEqual(first.event.eventId, second.event.eventId)
+  assert.equal(service.store.getStatus().totalEvents, 2)
+})
+
+test('agent awareness rejects derived ids without stable turn, tool, or timestamp metadata', async () => {
+  const service = createAgentAwarenessServer({
+    dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-weak-id-')),
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+
+  await assert.rejects(() => service.handleEvent({
+    sessionId: 'raw-session-weak-id',
+    type: 'turn.completed',
+    status: 'completed'
+  }), /stable event identity/i)
+})
+
+test('agent awareness rejects oversized explicit event ids instead of truncating into collisions', async () => {
+  const service = createAgentAwarenessServer({
+    dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-large-id-')),
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+
+  await assert.rejects(() => service.handleEvent({
+    eventId: 'x'.repeat(4097),
+    sessionId: 'raw-session-large-id',
+    type: 'turn.completed',
+    timestamp: '2026-07-12T01:01:00.000Z'
+  }), /event id is too large/i)
+})
+
+test('agent awareness commits session and dedupe state atomically', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-atomic-idempotency-'))
+  const payload = {
+    eventId: 'atomic-event-1',
+    sessionId: 'raw-session-atomic',
+    type: 'turn.completed',
+    status: 'completed',
+    timestamp: '2026-07-12T01:01:00.000Z'
+  }
+  const createService = () => createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+  const firstService = createService()
+  const originalRenameSync = fs.renameSync
+  let failed = false
+  fs.renameSync = (source, destination) => {
+    if (!failed && destination === path.join(dataDir, 'sessions.json')) {
+      failed = true
+      throw new Error('session transaction disk full')
+    }
+    return originalRenameSync(source, destination)
+  }
+  try {
+    await assert.rejects(() => firstService.handleEvent(payload), /session transaction disk full/)
+  } finally {
+    fs.renameSync = originalRenameSync
+  }
+
+  const retryService = createService()
+  await retryService.handleEvent(payload)
+  assert.equal(retryService.store.getStatus().totalEvents, 1)
+})
+
 test('agent awareness dedupe remains bounded and accepts distinct event ids', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-idempotent-bounded-'))
   let currentTime = '2026-07-12T01:02:00.000Z'
@@ -1053,9 +1138,9 @@ test('agent awareness dedupe remains bounded and accepts distinct event ids', as
   await service.handleEvent({ ...event, eventId: 'event-one' })
   await service.handleEvent({ ...event, eventId: 'event-two' })
   await service.handleEvent({ ...event, eventId: 'event-three' })
-  const dedupePath = path.join(dataDir, 'event-dedupe.json')
+  const dedupePath = path.join(dataDir, 'sessions.json')
   const boundedState = JSON.parse(fs.readFileSync(dedupePath, 'utf-8'))
-  assert.equal(boundedState.entries.length, 2)
+  assert.equal(boundedState.eventDedupe.length, 2)
   assert.equal(service.store.getStatus().totalEvents, 3)
 
   await service.handleEvent({ ...event, eventId: 'event-two' })
@@ -1064,6 +1149,28 @@ test('agent awareness dedupe remains bounded and accepts distinct event ids', as
   currentTime = '2026-07-12T01:02:02.000Z'
   await service.handleEvent({ ...event, eventId: 'event-two' })
   assert.equal(service.store.getStatus().totalEvents, 4)
+})
+
+test('agent awareness persisted dedupe projections stay within an aggregate byte budget', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-dedupe-bytes-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    dedupeMaxEntries: 256,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: true }), start: () => {}, stop: () => {} })
+  })
+  for (let index = 0; index < 256; index += 1) {
+    await service.handleEvent({
+      eventId: `bounded-byte-event-${index}`,
+      sessionId: 'raw-session-byte-budget',
+      type: 'tool.started',
+      toolName: `tool-${index}`,
+      message: 'x'.repeat(500),
+      timestamp: new Date(Date.UTC(2026, 6, 12, 2, 0, index)).toISOString()
+    })
+  }
+
+  assert.ok(fs.statSync(path.join(dataDir, 'sessions.json')).size < 2 * 1024 * 1024)
 })
 
 test('agent awareness server aggregates bounded usage diagnostics across sessions', async () => {
@@ -1713,7 +1820,7 @@ test('agent awareness event ingestion requires bearer token after hook plan crea
   const unauthorized = await fetch(`http://127.0.0.1:${port}/api/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: 'raw-session-1', type: 'turn.completed', status: 'completed' })
+    body: JSON.stringify({ eventId: 'auth-event-1', sessionId: 'raw-session-1', type: 'turn.completed', status: 'completed' })
   })
   const authorized = await fetch(`http://127.0.0.1:${port}/api/events`, {
     method: 'POST',
@@ -1721,7 +1828,7 @@ test('agent awareness event ingestion requires bearer token after hook plan crea
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ sessionId: 'raw-session-1', type: 'turn.completed', status: 'completed' })
+    body: JSON.stringify({ eventId: 'auth-event-1', sessionId: 'raw-session-1', type: 'turn.completed', status: 'completed' })
   })
   await service.close()
 

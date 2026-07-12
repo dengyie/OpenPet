@@ -11,6 +11,7 @@ const { applyUsageSnapshotDelta, pruneRetainedHistory } = require('./usage-rollu
 
 const DEFAULT_MAX_SESSIONS = 100
 const DEFAULT_MAX_EVENTS = 1000
+const DEFAULT_DEDUPE_MAX_BYTES = 512 * 1024
 
 const toTimestampMs = (value) => {
   const parsed = Date.parse(String(value || ''))
@@ -207,12 +208,29 @@ const createSessionStore = ({
   maxSessions = DEFAULT_MAX_SESSIONS,
   maxEvents = DEFAULT_MAX_EVENTS,
   now = () => new Date().toISOString(),
-  retentionDays = DEFAULT_RETENTION_DAYS
+  retentionDays = DEFAULT_RETENTION_DAYS,
+  dedupeMaxEntries = 256,
+  dedupeTtlMs = 7 * 24 * 60 * 60 * 1000,
+  dedupeMaxBytes = DEFAULT_DEDUPE_MAX_BYTES
 } = {}) => {
   ensureDirectory(dataDir)
   const storePath = path.join(dataDir, STORE_FILE)
   const loaded = loadStoreState({ storePath, now, retentionDays })
   let state = loaded.state
+  const boundedDedupeMaxEntries = Math.max(1, Math.floor(Number(dedupeMaxEntries) || 256))
+  const boundedDedupeTtlMs = Math.max(1, Math.floor(Number(dedupeTtlMs) || (7 * 24 * 60 * 60 * 1000)))
+  const boundedDedupeMaxBytes = Math.max(1024, Math.floor(Number(dedupeMaxBytes) || DEFAULT_DEDUPE_MAX_BYTES))
+
+  const pruneEventDedupe = () => {
+    const currentTime = toTimestampMs(now()) || Date.now()
+    state.eventDedupe = (Array.isArray(state.eventDedupe) ? state.eventDedupe : [])
+      .filter((entry) => entry?.id && entry?.result && currentTime - toTimestampMs(entry.committedAt) <= boundedDedupeTtlMs)
+      .sort((left, right) => toTimestampMs(left.committedAt) - toTimestampMs(right.committedAt))
+      .slice(-boundedDedupeMaxEntries)
+    while (state.eventDedupe.length > 1 && Buffer.byteLength(JSON.stringify(state.eventDedupe), 'utf-8') > boundedDedupeMaxBytes) {
+      state.eventDedupe.shift()
+    }
+  }
 
   const save = () => {
     state.updatedAt = now()
@@ -287,7 +305,37 @@ const createSessionStore = ({
       sessionSummaries: [...state.sessionSummaries],
       dailyUsageRollups: [...state.dailyUsageRollups]
     }),
-    upsertEvent: (event) => {
+    upsertEvent: (event, options = {}) => {
+      const eventId = String(options.eventId || '')
+      pruneEventDedupe()
+      const committed = eventId ? state.eventDedupe.find((entry) => entry.id === eventId) : null
+      if (committed) return clone(committed.result)
+      const previousState = clone(state)
+      const commit = (session) => {
+        if (eventId) {
+          const result = {
+            event: clone(event),
+            session: { ...clone(session), history: (session.history || []).slice(-1).map((entry) => clone(entry)) },
+            notification: clone(options.notification || { status: 'skipped', retry: 'not-needed' })
+          }
+          state.eventDedupe.push({ id: eventId, committedAt: now(), result })
+          pruneEventDedupe()
+          try {
+            save()
+          } catch (error) {
+            state = previousState
+            throw error
+          }
+          return clone(result)
+        }
+        try {
+          save()
+        } catch (error) {
+          state = previousState
+          throw error
+        }
+        return session
+      }
       const sessionId = String(event.sessionId || '')
       if (!sessionId) throw new Error('sessionId is required')
       const recordObservedEvent = (timestamp) => {
@@ -311,8 +359,7 @@ const createSessionStore = ({
           state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
           syncSessionSummary(session)
           state = pruneRetainedHistory({ state, now, retentionDays })
-          save()
-          return session
+          return commit(session)
         }
         Object.assign(session, createRuntimeSession(session, event, { now }))
       }
@@ -337,8 +384,12 @@ const createSessionStore = ({
         }
       }
       state = pruneRetainedHistory({ state, now, retentionDays })
-      save()
-      return session
+      return commit(session)
+    },
+    getCommittedEvent: (eventId) => {
+      pruneEventDedupe()
+      const entry = state.eventDedupe.find((candidate) => candidate.id === String(eventId || ''))
+      return entry ? clone(entry.result) : null
     }
   }
 }

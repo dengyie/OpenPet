@@ -37,6 +37,7 @@ const createEmptyStoreState = ({
   liveSessions: [],
   sessionSummaries: [],
   dailyUsageRollups: [],
+  eventDedupe: [],
   stats: {
     totalEvents: 0,
     lastEventAt: '',
@@ -127,6 +128,7 @@ const normalizeLoadedState = ({
   state.liveSessions = Array.isArray(parsed?.liveSessions) ? parsed.liveSessions.map((session) => cloneJson(session)) : []
   state.sessionSummaries = Array.isArray(parsed?.sessionSummaries) ? parsed.sessionSummaries.map((summary) => cloneJson(summary)) : []
   state.dailyUsageRollups = Array.isArray(parsed?.dailyUsageRollups) ? parsed.dailyUsageRollups.map((row) => cloneJson(row)) : []
+  state.eventDedupe = Array.isArray(parsed?.eventDedupe) ? parsed.eventDedupe.map((entry) => cloneJson(entry)) : []
   state.stats.totalEvents = Number(parsed?.stats?.totalEvents) || 0
   state.stats.lastEventAt = String(parsed?.stats?.lastEventAt || '')
   state.stats.storeError = String(parsed?.stats?.storeError || '')
