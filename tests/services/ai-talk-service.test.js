@@ -316,14 +316,19 @@ test('ai talk service can send a merged user batch while preserving separate tra
   ])
 })
 
-test('ai talk service can persist queued user messages before provider completion and skip duplicate appends', async () => {
+test('ai talk service persists an acquired user batch before provider completion', async () => {
   const requests = []
   const store = createStore()
+  let releaseProvider
+  const providerCanFinish = new Promise((resolve) => {
+    releaseProvider = resolve
+  })
   const service = createAiTalkService({
     aiService: {
       getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
       complete: async (request) => {
         requests.push(request)
+        await providerCanFinish
         return { reply: '排队回复。' }
       }
     },
@@ -331,22 +336,23 @@ test('ai talk service can persist queued user messages before provider completio
     petPackService: createPetPackService({ id: 'legacy-cat' })
   })
 
-  const appended = service.appendUserMessages({
-    messages: ['先发一句', '再补一句'],
+  const pendingResult = service.chat({
+    messageBatch: ['先发一句', '再补一句'],
     entrypoint: 'control-center'
   })
-  const result = await service.chat({
-    messageBatch: ['先发一句', '再补一句'],
-    entrypoint: 'control-center',
-    skipUserAppend: true
-  })
+  await waitForRequestCount(requests, 1)
 
-  assert.equal(appended.conversationId, 'control-center:legacy-cat:main')
+  assert.deepEqual(store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), [
+    '先发一句',
+    '再补一句'
+  ])
   assert.deepEqual(requests[0].messages.map((message) => message.content), [
     requests[0].messages[0].content,
     '先发一句',
     '再补一句'
   ])
+  releaseProvider()
+  const result = await pendingResult
   assert.deepEqual(result.messages.map((message) => message.content), [
     '先发一句',
     '再补一句',
@@ -1687,6 +1693,8 @@ test('ai talk service streamChat preserves whitespace across streamed deltas', a
 test('ai talk service cancelRequest prevents assistant persistence and side effects', async () => {
   const store = createStore()
   let memoryRequestCount = 0
+  let streamCallCount = 0
+  const providerRequests = []
   const states = []
   const service = createAiTalkService({
     aiService: {
@@ -1698,6 +1706,12 @@ test('ai talk service cancelRequest prevents assistant persistence and side effe
         memory: { enabled: true }
       }),
       streamComplete: async ({ requestId, onDelta, signal }) => {
+        streamCallCount += 1
+        providerRequests.push({ requestId, signal })
+        if (streamCallCount > 1) {
+          onDelta('Complete')
+          return { reply: 'Complete', elapsedMs: 4, chunkCount: 1, finishReason: 'stop' }
+        }
         onDelta('Partial')
         service.cancelRequest({ requestId, reason: 'user-cancel' })
         assert.equal(signal.aborted, true)
@@ -1725,6 +1739,68 @@ test('ai talk service cancelRequest prevents assistant persistence and side effe
   assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['Please write long'])
   assert.equal(memoryRequestCount, 0)
   assert.equal(states.at(-1).status, 'canceled')
+
+  await service.streamChat({
+    messageBatch: ['Please write long', 'Follow up'],
+    requestId: 'stream-cancel-retry-1',
+    entrypoint: 'bubble-chat'
+  })
+
+  assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), [
+    'Please write long',
+    'Follow up',
+    'Complete'
+  ])
+})
+
+test('ai talk service retains a started failed turn and does not duplicate it in a merged retry', async () => {
+  const store = createStore()
+  const requests = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async (request) => {
+        requests.push(request.messages.map(({ role, content }) => ({ role, content })))
+        if (requests.length === 1) throw new Error('provider unavailable')
+        return { reply: 'Recovered', elapsedMs: 5, chunkCount: 0, finishReason: 'stop' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  await assert.rejects(
+    () => service.streamChat({
+      message: 'First attempt',
+      requestId: 'stream-failure-1',
+      entrypoint: 'bubble-chat'
+    }),
+    /provider unavailable/
+  )
+  assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['First attempt'])
+
+  await service.streamChat({
+    messageBatch: ['First attempt', 'Queued follow-up'],
+    requestId: 'stream-failure-retry-1',
+    entrypoint: 'bubble-chat'
+  })
+
+  assert.deepEqual(requests[1].map((message) => message.content), [
+    requests[1][0].content,
+    'First attempt',
+    'Queued follow-up'
+  ])
+  assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), [
+    'First attempt',
+    'Queued follow-up',
+    'Recovered'
+  ])
 })
 
 test('ai talk service streamChat treats provider timeout as failure instead of cancel', async () => {

@@ -1,11 +1,16 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const Module = require('module')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 
 const ipcPath = require.resolve('../../src/main/ipc')
 const { IPC } = require('../../src/shared/ipc-channels')
 const { createEventBus } = require('../../src/main/services/event-bus')
 const { createPetService } = require('../../src/main/services/pet-service')
+const { createAiTalkStore } = require('../../src/main/services/ai-talk-store')
+const { createAiTalkService } = require('../../src/main/services/ai-talk-service')
 
 const loadIpcWithElectron = (electronStub) => {
   delete require.cache[ipcPath]
@@ -786,6 +791,106 @@ test('pet bubble chat send reuses shared AI Talk conversation and updates popup 
   assert.equal(new Set(requestIds).size, 1)
   const completionLog = logs.find((entry) => entry.event === 'pet-bubble-chat.message.completed')
   assert.equal(completionLog.details?.providerLatencyMs, 820)
+})
+
+test('pet bubble chat queues user turns without persisting them ahead of provider order', async () => {
+  const store = createAiTalkStore({
+    storePath: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-bubble-order-')), 'ai-talk-store.json'),
+    now: () => '2026-07-12T00:00:00.000Z'
+  })
+  const providerRequests = []
+  let releaseFirst
+  const firstCanFinish = new Promise((resolve) => {
+    releaseFirst = resolve
+  })
+  const providerService = {
+    getConfig: () => ({
+      enabled: true,
+      hasApiKey: true,
+      provider: 'openai-compatible',
+      model: 'stream-model',
+      behavior: { enabled: false },
+      memory: { enabled: false }
+    }),
+    streamComplete: async ({ messages }) => {
+      providerRequests.push(messages.map(({ role, content }) => ({ role, content })))
+      if (providerRequests.length === 1) {
+        await firstCanFinish
+        return { reply: 'assistant-one', elapsedMs: 5, chunkCount: 0, finishReason: 'stop' }
+      }
+      return { reply: 'assistant-two', elapsedMs: 5, chunkCount: 0, finishReason: 'stop' }
+    }
+  }
+  const petPackService = {
+    getActivePetPack: () => ({
+      manifest: { id: 'legacy-cat', displayName: 'Legacy Cat', persona: null, actions: [] }
+    })
+  }
+  const aiTalkService = createAiTalkService({
+    aiService: providerService,
+    aiTalkStore: store,
+    petPackService
+  })
+  let activeRequestId = ''
+  let queuedMessages = []
+  const bubbleWindow = {
+    queueOutgoingMessage: ({ text, requestId }) => {
+      if (activeRequestId) {
+        queuedMessages.push(text)
+        return { shouldStartRequest: false, state: { queued: true } }
+      }
+      activeRequestId = requestId
+      return { shouldStartRequest: true, batchMessages: [text], state: { queued: false } }
+    },
+    completeRequest: ({ requestId }) => {
+      if (requestId === activeRequestId) activeRequestId = ''
+    },
+    startQueuedRequest: (requestId) => {
+      if (!queuedMessages.length) return []
+      const batch = queuedMessages
+      queuedMessages = []
+      activeRequestId = requestId
+      return batch
+    },
+    failRequest: () => {},
+    applyStreamState: () => {},
+    rebuildItems: ({ conversationMessages }) => ({ items: conversationMessages }),
+    getState: () => ({})
+  }
+  const ipcMain = registerPetChatHandlers({
+    aiService: providerService,
+    aiTalkService,
+    petPackService,
+    petBubbleChatWindowService: bubbleWindow,
+    petChatWindowService: { getState: () => ({}), applyStreamState: () => {} }
+  })
+
+  const first = ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE)(null, { message: 'user-one' })
+  while (providerRequests.length < 1) await new Promise((resolve) => setImmediate(resolve))
+  const second = await ipcMain.handlers.get(IPC.PET_BUBBLE_CHAT_SEND_MESSAGE)(null, { message: 'user-two' })
+  assert.equal(second.queued, true)
+  releaseFirst()
+  await first
+  for (let index = 0; index < 20 && providerRequests.length < 2; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  for (let index = 0; index < 20 && store.getMessages('control-center:legacy-cat', 'main').length < 4; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+
+  assert.equal(providerRequests.length, 2)
+  assert.deepEqual(providerRequests[1].map((message) => message.content), [
+    providerRequests[1][0].content,
+    'user-one',
+    'assistant-one',
+    'user-two'
+  ])
+  assert.deepEqual(store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content), [
+    'user-one',
+    'assistant-one',
+    'user-two',
+    'assistant-two'
+  ])
 })
 
 test('pet chat send refreshes bubble chat items from the shared main conversation', async () => {

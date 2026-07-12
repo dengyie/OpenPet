@@ -470,12 +470,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     })
     try {
       assertPetChatReady()
-      if (aiTalkService?.appendUserMessages) {
-        aiTalkService.appendUserMessages({
-          messages: [message],
-          entrypoint: 'control-center'
-        })
-      }
       const queued = petBubbleChatWindowService?.queueOutgoingMessage?.({ text: message, requestId })
       if (!queued) {
         petBubbleChatWindowService?.setSendingState?.({
@@ -511,8 +505,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           message: messagesForBatch.at(-1) || '',
           messageBatch: messagesForBatch,
           entrypoint: 'control-center',
-          requestId: batchRequestId,
-          skipUserAppend: Boolean(aiTalkService?.appendUserMessages)
+          requestId: batchRequestId
         }, { source: 'bubble-chat' })
         petBubbleChatWindowService?.completeRequest?.({
           requestId: batchRequestId,
