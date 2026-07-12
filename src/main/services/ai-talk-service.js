@@ -530,7 +530,16 @@ const uniqueScopes = (items = []) => Array.from(new Set(
     .filter((scope) => scope === 'global' || scope === 'petPack')
 ))
 
-const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService = null } = {}) => {
+const createAiTalkService = ({
+  aiService,
+  aiTalkStore,
+  petPackService,
+  appLogService,
+  petUtteranceLogService = null,
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
+  streamUpdateIntervalMs = 40
+} = {}) => {
   if (!aiService) throw new Error('aiService is required')
   if (!aiTalkStore) throw new Error('aiTalkStore is required')
   if (!petPackService) throw new Error('petPackService is required')
@@ -613,6 +622,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
   const pendingMemoryJobs = new Set()
   const conversationQueues = new Map()
   const streamingRequests = new Map()
+  const streamCoalescers = new Map()
 
   const enqueueConversation = (conversationKey, task) => {
     if (!conversationKey) return task()
@@ -661,6 +671,55 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       }
     }
     return view
+  }
+
+  const createStreamCoalescer = ({ requestId, onState }) => {
+    let timer = null
+    let pendingState = null
+
+    const clearTimer = () => {
+      if (timer == null) return
+      clearTimeoutFn(timer)
+      timer = null
+    }
+
+    const flush = () => {
+      clearTimer()
+      if (!pendingState) return null
+      const state = pendingState
+      pendingState = null
+      const view = emitStreamState(state, onState)
+      recordLog({
+        level: 'debug',
+        event: 'ai-talk.stream.progress',
+        message: 'AI talk stream progress updated',
+        details: {
+          requestId: view.requestId,
+          conversationId: view.conversationId,
+          petPackId: view.petPackId,
+          chunkCount: view.chunkCount,
+          partialReplyChars: view.partialReplyChars
+        }
+      })
+      return view
+    }
+
+    const schedule = (state) => {
+      pendingState = state
+      if (timer != null) return
+      timer = setTimeoutFn(() => {
+        timer = null
+        flush()
+      }, Math.max(30, Math.min(60, Number(streamUpdateIntervalMs) || 40)))
+    }
+
+    const dispose = () => {
+      clearTimer()
+      pendingState = null
+      streamCoalescers.delete(requestId)
+    }
+
+    return { schedule, flush, dispose }
   }
 
   const cancelRequest = ({ requestId, reason = 'user-cancel' } = {}) => {
@@ -1298,6 +1357,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       messageCount: userContents.length
     }
     let registryEntry = null
+    let streamCoalescer = null
     let partialReply = ''
     let chunkCount = 0
     let terminalStatus = 'failed'
@@ -1407,6 +1467,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           cancelReason: ''
         }
         streamingRequests.set(safeRequestId, registryEntry)
+        streamCoalescer = createStreamCoalescer({ requestId: safeRequestId, onState })
+        streamCoalescers.set(safeRequestId, streamCoalescer)
         emitStreamState({ ...registryEntry, partialReply, chunkCount }, onState)
         recordLog({
           level: 'info',
@@ -1439,19 +1501,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
             registryEntry.status = 'streaming'
             chunkCount += 1
             partialReply += text
-            emitStreamState({ ...registryEntry, partialReply, chunkCount }, onState)
-            recordLog({
-              level: 'debug',
-              event: 'ai-talk.stream.delta',
-              message: 'AI talk stream delta received',
-              details: {
-                requestId: safeRequestId,
-                conversationId: conversationPublicId,
-                petPackId,
-                chunkCount,
-                partialReplyChars: partialReply.length
-              }
-            })
+            streamCoalescer.schedule({ ...registryEntry, partialReply, chunkCount })
           }
         })
 
@@ -1465,6 +1515,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         finishReason = normalizeString(result.finishReason)
         const reply = normalizeProviderText(result.reply || partialReply)
         if (!reply.trim()) throw new Error('AI provider returned an empty response')
+        streamCoalescer.flush()
         const bubbleSegments = createBubbleSegments(reply)
         const bubble = createReplyBubble({ reply, behaviorIntent: result.behaviorIntent })
         const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [{ role: 'assistant', content: reply }])
@@ -1540,6 +1591,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
           errorCode: ''
         })
         emitStreamState({ ...registryEntry, partialReply: reply, chunkCount }, onState)
+        streamCoalescer.dispose()
         return {
           conversationId: conversationPublicId,
           reply,
@@ -1552,6 +1604,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         }
       })
     } catch (error) {
+      streamCoalescer?.flush()
       const canceled = registryEntry?.status === 'canceling' || error?.name === 'AbortError'
       terminalStatus = canceled ? 'canceled' : 'failed'
       cancelReason = registryEntry?.cancelReason || (canceled ? 'user-cancel' : '')
@@ -1566,6 +1619,7 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
         }, onState)
         streamingRequests.delete(safeRequestId)
       }
+      streamCoalescer?.dispose()
       recordLog({
         level: canceled ? 'info' : 'error',
         event: canceled ? 'ai-talk.stream.canceled' : 'ai-talk.stream.failed',
@@ -1632,6 +1686,17 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
       }
       throw error
     }
+  }
+
+  const dispose = () => {
+    for (const coalescer of streamCoalescers.values()) coalescer.dispose()
+    streamCoalescers.clear()
+    for (const request of streamingRequests.values()) {
+      request.status = 'canceling'
+      request.cancelReason = 'service-disposed'
+      request.controller.abort()
+    }
+    streamingRequests.clear()
   }
 
   const chat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId } = {}) => {
@@ -1860,7 +1925,8 @@ const createAiTalkService = ({ aiService, aiTalkStore, petPackService, appLogSer
     mergePersona,
     recordTraceBehaviorOutcome,
     savePersonaOverride,
-    streamChat
+    streamChat,
+    dispose
   }
 }
 

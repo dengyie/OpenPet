@@ -141,3 +141,24 @@ test('app log service sanitizes nested diagnostic details without dropping safe 
   assert.equal(raw.includes('qwertyuiopasdfgh'), false)
   assert.equal(raw.includes('file:///Users/mango/private/workflow.json'), false)
 })
+
+test('app log service does not reread the full log for every append below the compaction limit', () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-app-logs-'))
+  const service = createAppLogService({ logDir, maxEntries: 1000 })
+  const originalReadFileSync = fs.readFileSync
+  let logReadCount = 0
+  fs.readFileSync = (...args) => {
+    if (args[0] === service.logPath) logReadCount += 1
+    return originalReadFileSync(...args)
+  }
+  try {
+    for (let index = 0; index < 100; index += 1) {
+      service.record({ event: 'stream.progress', details: { index } })
+    }
+  } finally {
+    fs.readFileSync = originalReadFileSync
+  }
+
+  assert.equal(logReadCount <= 1, true)
+  assert.equal(service.read().length, 100)
+})

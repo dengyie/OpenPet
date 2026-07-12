@@ -40,6 +40,21 @@ const waitForRequestCount = async (requests, count) => {
   throw new Error(`Timed out waiting for ${count} AI requests`)
 }
 
+const createTimerHarness = () => {
+  let nextId = 1
+  const timers = new Map()
+  return {
+    setTimeout: (callback) => {
+      const id = nextId
+      nextId += 1
+      timers.set(id, callback)
+      return id
+    },
+    clearTimeout: (id) => timers.delete(id),
+    pendingCount: () => timers.size
+  }
+}
+
 test('ai talk service compiles pet pack persona into stable system prompt', async () => {
   const requests = []
   const store = createStore()
@@ -1653,8 +1668,125 @@ test('ai talk service streamChat appends only final assistant reply', async () =
 
   assert.equal(result.reply, 'Hello')
   assert.deepEqual(store.getMessages('bubble-chat:mochi-cat', 'main').map((message) => message.content), ['Hi', 'Hello'])
-  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === 'Hel'), true)
+  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === 'Hello'), true)
   assert.equal(states.at(-1).status, 'completed')
+})
+
+test('ai talk service coalesces a 1000-delta stream into bounded states and progress logs', async () => {
+  const store = createStore()
+  const states = []
+  const logs = []
+  const timers = createTimerHarness()
+  const expectedReply = 'x'.repeat(1000)
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({
+        enabled: true,
+        provider: 'openai-compatible',
+        model: 'stream-model',
+        behavior: { enabled: false },
+        memory: { enabled: false }
+      }),
+      streamComplete: async ({ onDelta }) => {
+        for (let index = 0; index < 1000; index += 1) onDelta('x')
+        return { reply: expectedReply, elapsedMs: 10, chunkCount: 1000, finishReason: 'stop' }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    setTimeoutFn: timers.setTimeout,
+    clearTimeoutFn: timers.clearTimeout
+  })
+
+  const result = await service.streamChat({
+    message: 'Go',
+    requestId: 'stream-1000',
+    entrypoint: 'bubble-chat',
+    onState: (state) => states.push(state)
+  })
+
+  assert.equal(result.reply, expectedReply)
+  assert.equal(states.at(-1).partialReply, expectedReply)
+  assert.equal(states.length <= 4, true)
+  assert.equal(logs.filter((entry) => entry.event === 'ai-talk.stream.progress').length <= 1, true)
+  assert.equal(logs.some((entry) => entry.event === 'ai-talk.stream.delta'), false)
+  assert.equal(timers.pendingCount(), 0)
+})
+
+test('ai talk service flushes pending progress before provider failure', async () => {
+  const states = []
+  const timers = createTimerHarness()
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false }, memory: { enabled: false } }),
+      streamComplete: async ({ onDelta }) => {
+        onDelta('partial-before-error')
+        throw new Error('provider failed')
+      }
+    },
+    aiTalkStore: createStore(),
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null }),
+    setTimeoutFn: timers.setTimeout,
+    clearTimeoutFn: timers.clearTimeout
+  })
+
+  await assert.rejects(
+    () => service.streamChat({ message: 'Hi', requestId: 'stream-error-flush', onState: (state) => states.push(state) }),
+    /provider failed/
+  )
+
+  assert.equal(states.some((state) => state.status === 'streaming' && state.partialReply === 'partial-before-error'), true)
+  assert.equal(states.at(-1).status, 'failed')
+  assert.equal(timers.pendingCount(), 0)
+})
+
+test('ai talk service completes an empty-delta stream with an immediate final flush', async () => {
+  const states = []
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false }, memory: { enabled: false } }),
+      streamComplete: async () => ({ reply: 'final-without-deltas', elapsedMs: 2, chunkCount: 0, finishReason: 'stop' })
+    },
+    aiTalkStore: createStore(),
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  await service.streamChat({ message: 'Hi', requestId: 'stream-empty', onState: (state) => states.push(state) })
+
+  assert.equal(states.at(-1).status, 'completed')
+  assert.equal(states.at(-1).partialReply, 'final-without-deltas')
+})
+
+test('ai talk service disposal clears pending stream timers and aborts active requests', async () => {
+  const timers = createTimerHarness()
+  let providerStarted = false
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false }, memory: { enabled: false } }),
+      streamComplete: ({ onDelta, signal }) => new Promise((resolve, reject) => {
+        providerStarted = true
+        onDelta('pending')
+        signal.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    },
+    aiTalkStore: createStore(),
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null }),
+    setTimeoutFn: timers.setTimeout,
+    clearTimeoutFn: timers.clearTimeout
+  })
+
+  const pending = service.streamChat({ message: 'Hi', requestId: 'stream-dispose' })
+  for (let index = 0; index < 20 && !providerStarted; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  service.dispose()
+  const result = await pending
+
+  assert.equal(result.canceled, true)
+  assert.equal(timers.pendingCount(), 0)
 })
 
 test('ai talk service streamChat preserves whitespace across streamed deltas', async () => {

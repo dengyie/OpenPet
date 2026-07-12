@@ -115,6 +115,7 @@ const normalizeEntry = ({ entry, clock, idFactory }) => ({
 const createAppLogService = ({ logDir, logFileName = 'openpet-app.jsonl', maxEntries = 1000, clock = () => new Date(), idFactory = () => crypto.randomUUID() }) => {
   if (!logDir) throw new Error('logDir is required')
   const logPath = path.join(logDir, logFileName)
+  let entryCount = null
 
   const read = ({ limit = maxEntries } = {}) => {
     if (!fs.existsSync(logPath)) return []
@@ -136,13 +137,16 @@ const createAppLogService = ({ logDir, logFileName = 'openpet-app.jsonl', maxEnt
   const compact = () => {
     const entries = read({ limit: maxEntries })
     fs.writeFileSync(logPath, `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`, 'utf-8')
+    entryCount = entries.length
   }
 
   const record = (entry) => {
     const normalized = normalizeEntry({ entry, clock, idFactory })
     fs.mkdirSync(logDir, { recursive: true })
+    if (entryCount == null) entryCount = fs.existsSync(logPath) ? read({ limit: maxEntries + 1 }).length : 0
     fs.appendFileSync(logPath, `${JSON.stringify(normalized)}\n`, 'utf-8')
-    if (maxEntries > 0 && read({ limit: maxEntries + 1 }).length > maxEntries) compact()
+    entryCount += 1
+    if (maxEntries > 0 && entryCount > maxEntries) compact()
     return normalized
   }
 
