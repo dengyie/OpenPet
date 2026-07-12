@@ -488,7 +488,7 @@ const createPluginInstallService = ({
     const stagingDir = path.join(pluginDir, `.${selection.plugin.id}.staging-${suffix}`)
     const backupDir = path.join(pluginDir, `.${selection.plugin.id}.backup-${suffix}`)
     const previousSettings = structuredClone(settingsService.get())
-    let settingsCommitted = false
+    let settingsWriteAttempted = false
     let backupCreated = false
     let stagingPromoted = false
     try {
@@ -503,6 +503,7 @@ const createPluginInstallService = ({
       }
       fs.renameSync(stagingDir, targetDir)
       stagingPromoted = true
+      settingsWriteAttempted = true
       savePluginSettings({
         pluginId: selection.plugin.id,
         packageHash: selection.packageHash,
@@ -510,7 +511,6 @@ const createPluginInstallService = ({
         signature: selection.signature,
         disable: true
       })
-      settingsCommitted = true
       if (backupCreated) fs.rmSync(backupDir, { recursive: true, force: true })
     } catch (error) {
       runRecoverySteps(error, [
@@ -522,7 +522,7 @@ const createPluginInstallService = ({
           if (backupCreated && fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
         },
         () => {
-          if (settingsCommitted) settingsService.save(previousSettings)
+          if (settingsWriteAttempted) settingsService.save(previousSettings)
         }
       ])
       throw error
@@ -566,16 +566,16 @@ const createPluginInstallService = ({
       }
     }
     const backupDir = path.join(pluginDir, `.${pluginId}.backup-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-    let settingsCommitted = false
+    let settingsWriteAttempted = false
     try {
       fs.renameSync(targetDir, backupDir)
+      settingsWriteAttempted = true
       settingsService.save(nextSettings)
-      settingsCommitted = true
       fs.rmSync(backupDir, { recursive: true, force: true })
     } catch (error) {
       runRecoverySteps(error, [
         () => {
-          if (settingsCommitted) settingsService.save(settings)
+          if (settingsWriteAttempted) settingsService.save(settings)
         },
         () => {
           if (fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })

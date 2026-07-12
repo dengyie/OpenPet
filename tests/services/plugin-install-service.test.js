@@ -298,6 +298,29 @@ test('plugin update restores the installed directory when settings persistence f
   assert.equal(fs.readdirSync(pluginDir).some((entry) => entry.includes('.staging-') || entry.includes('.backup-')), false)
 })
 
+test('plugin update restores settings when save mutates state before throwing', async () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  service.installPlugin((await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))).selectionId)
+  const previousSettings = structuredClone(settingsService.get())
+  const update = await service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const originalSave = settingsService.save
+  let saves = 0
+  settingsService.save = (settings) => {
+    const saved = originalSave(settings)
+    saves += 1
+    if (saves === 1) throw new Error('post-persist side effect failed')
+    return saved
+  }
+
+  assert.throws(() => service.updatePlugin(update.selectionId), /post-persist side effect failed/)
+
+  settingsService.save = originalSave
+  assert.deepEqual(settingsService.get(), previousSettings)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
+})
+
 test('plugin update keeps the old install when staging copy fails', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
@@ -479,6 +502,29 @@ test('plugin uninstall restores files and settings when settings persistence fai
   assert.equal(fs.existsSync(path.join(pluginDir, 'focus-timer', 'plugin.json')), true)
   assert.deepEqual(settingsService.get(), previousSettings)
   assert.equal(fs.readdirSync(pluginDir).some((entry) => entry.includes('.backup-')), false)
+})
+
+test('plugin uninstall restores settings when save mutates state before throwing', async () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  const review = await service.inspectPluginPackage(createPluginPackage())
+  service.installPlugin(review.selectionId)
+  const previousSettings = structuredClone(settingsService.get())
+  const originalSave = settingsService.save
+  let saves = 0
+  settingsService.save = (settings) => {
+    const saved = originalSave(settings)
+    saves += 1
+    if (saves === 1) throw new Error('post-persist side effect failed')
+    return saved
+  }
+
+  assert.throws(() => service.uninstallPlugin('focus-timer'), /post-persist side effect failed/)
+
+  settingsService.save = originalSave
+  assert.deepEqual(settingsService.get(), previousSettings)
+  assert.equal(fs.existsSync(path.join(pluginDir, 'focus-timer', 'plugin.json')), true)
 })
 
 test('plugin install service accepts legacy .ibot-plugin.zip packages for compatibility', async () => {
