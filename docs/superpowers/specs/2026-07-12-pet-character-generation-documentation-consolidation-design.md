@@ -1,8 +1,8 @@
 # Pet Character Generation Documentation Consolidation Design
 
-**Date:** 2026-07-12
-**Owner:** dev8
-**Status:** Approved
+**Date:** 2026-07-12  
+**Owner:** dev8  
+**Status:** Approved  
 **Scope:** Consolidate only the `codex/dev8` documentation for reference-image-driven pet character and action generation.
 
 ## Goal
@@ -82,7 +82,7 @@ The required rows are:
 | ---: | --- | ---: | --- |
 | 0 | `idle` | 6 | Calm breathing or blinking loop |
 | 1 | `running-right` | 8 | Directional movement to the right |
-| 2 | `running-left` | 8 | Framewise horizontal mirror of the approved `running-right` row |
+| 2 | `running-left` | 8 | Directional movement to the left |
 | 3 | `waving` | 4 | Clear greeting gesture |
 | 4 | `jumping` | 5 | Anticipation, lift, peak, descent, settle |
 | 5 | `failed` | 8 | Error, sad, or deflated reaction |
@@ -90,27 +90,7 @@ The required rows are:
 | 7 | `running` | 6 | Active work, processing, scanning, or focus; not directional running |
 | 8 | `review` | 6 | Focused inspection or thinking loop |
 
-The standard full-pet flow generates `running-right` once and deterministically derives `running-left` by mirroring the approved frames horizontally. It does not spend a separate provider request on `running-left`. Frame order, frame durations, alpha, cell dimensions, and root-anchor timing remain unchanged, and the mirrored row must pass direction, stability, and atlas QA before it receives `approved-mirror` quality.
-
-If a directional accessory, marking, symbol, or text makes mirroring visually invalid, the standard flow blocks the pair for human review instead of silently issuing a second generation request or importing an inconsistent row. All other actions require genuine action-specific visual generation. Translation, scaling, rotation, deformation, or tiling of the base character cannot count as a real action.
-
-## Directional Pair Optimization
-
-`running-right` and `running-left` are one motion design expressed in two directions. Treating them as independent provider generations would introduce unnecessary identity, gait, timing, and silhouette variance.
-
-The directional pair pipeline is:
-
-```text
-single composite reference board
-  -> provider-generated running-right sheet
-  -> frame extraction and running-right QA
-  -> explicit running-right approval
-  -> framewise horizontal mirror
-  -> running-left direction and stability QA
-  -> paired atlas rows with identical frame timing
-```
-
-This makes the official nine-row pet require eight action-generation jobs in the normal case. The ninth row is a deterministic, QA-gated directional derivative rather than an additional model output.
+Only an approved `running-right` row may be mirrored frame-by-frame into `running-left`. All other actions require genuine action-specific visual generation. Translation, scaling, rotation, deformation, or tiling of the base character cannot count as a real action.
 
 ## Quality-First Generation Design
 
@@ -123,12 +103,11 @@ Generation proceeds in inspectable stages:
 3. Generate or select the canonical character anchor.
 4. Build action semantics and key-pose requirements for one action.
 5. Compose one action reference board from the identity anchor and bounded action cues.
-6. Request a complete provider-generated action sheet or row using that board as the only image attachment; skip a separate `running-left` request.
+6. Request a complete provider-generated action sheet or row using that board as the only image attachment.
 7. Extract frames, remove edge-connected backgrounds where safe, normalize slots, and preserve the stable root anchor.
-8. After `running-right` passes QA and approval, mirror its frames into `running-left` without changing order or timing.
-9. Run technical, identity, motion, semantic, directional-pair, and atlas QA.
-10. Generate contact sheets and animated previews for human review.
-11. Repair only the smallest failing scope, then compose and import the approved atlas.
+8. Run technical, identity, motion, semantic, and atlas QA.
+9. Generate contact sheets and animated previews for human review.
+10. Repair only the smallest failing scope, then compose and import the approved atlas.
 
 Independent per-frame generation is not the preferred production strategy because it has produced unacceptable whole-character redraw and identity drift. Local deterministic processing may extract, cut out, align, mirror the one approved directional row, and package provider-generated art; it may not manufacture missing action semantics.
 
@@ -200,7 +179,6 @@ Any changed documentation link must resolve. A targeted documentation regression
 - The user supplies one reference image and every provider request accepts no more than one image attachment.
 - Composite reference boards are explicitly local, bounded, inspectable intermediate artifacts.
 - The official nine-row Codex Pet contract and quality-first policy are unambiguous.
-- `running-right` is generated once and `running-left` is its deterministic, QA-gated framewise mirror, so the normal flow does not spend a second provider request on the directional pair.
 - Base transforms cannot be presented as generated actions.
 - Automated QA and human visual approval responsibilities are separated clearly.
 - Superseded dev8 development plans and specifications are removed after their valid content is consolidated.
