@@ -1,8 +1,8 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-16
-> Owner: `codex/dev8`
-> Status: Hatch Pet Phase 1 automated verification passed; final integrated generation remediation is implemented but independently unverified
+> Updated: 2026-07-13  
+> Owner: `codex/dev8`  
+> Status: current development authority  
 > Scope: generate a Codex-compatible pet character and its basic actions from one user reference image, with visual quality taking priority over generation cost.
 
 This is the sole current development document for OpenPet character and action generation. It replaces the branch's earlier one-click chain notes, row-pipeline specifications, anchor-reference specifications, action-quality plans, and duplicated live-doc summaries.
@@ -13,13 +13,13 @@ OpenPet should let an ordinary user provide exactly one source image and receive
 
 - a recognizable, transparent-background pet character;
 - a stable canonical identity suitable for a small desktop window;
-- an approved `idle` action and any optional actions that independently pass QA;
+- the official Codex Pet action set;
 - inspectable quality evidence;
 - an importable `pet.json` and `spritesheet.webp` package.
 
 The quality target is not “a technically valid atlas.” The generated character must remain recognizably the same character across all frames, and every action must read correctly when animated.
 
-Official-quality output means an approved canonical character followed by genuine action-specific Provider row generation, deterministic extraction and QA, and human visual approval. A base identity plus compatibility transforms does not meet that bar. Missing optional actions are acceptable, but a low-quality action must not enter the package.
+Official-quality output means an approved canonical character followed by genuine action-specific Provider row generation, deterministic extraction and QA, and human visual approval. A base identity plus compatibility transforms does not meet that bar.
 
 The branch already contains:
 
@@ -32,40 +32,13 @@ The branch already contains:
 - technical, identity, motion, and row QA;
 - contact-sheet and preview artifacts;
 - guarded approval, import, and activation flows;
-- automatic generation stops at `ready_for_review`; approval, import, and activation are separate explicit human actions;
-- deterministic support for `approved-mirror` row quality;
-- quality-first partial packaging with stable transparent atlas slots;
-- durable per-action checkpoints and scoped retry;
-- fail-closed single-reference enforcement at plugin and host image-generation boundaries;
-- explicit single-output Provider requests with fail-closed deliverable output-count enforcement;
-- bounded same-model retry for transient Provider transport failures;
-- canonical full-pet action identity boards with separate canonical QA references;
-- idle-specific minimal-motion semantics, provider image-task schema v3, prompt compiler v3, and local prompt-builder v6;
-- versioned human-example registries and immutable quality profiles;
-- profile-bound prompts, reference-board metadata, keyframe QA, row QA, and atlas QA;
-- action-scoped and identity-scoped repair with archived prior evidence;
-- machine-readable Provider production-art claim gates.
-- bounded visual plans compiled into Provider-neutral semantics and model-aware final prompts without raw prompt passthrough;
-- GPT Image 2-aligned `DELIVERABLE / REFERENCE / CHANGE / PRESERVE / COMPOSITION / ACTION or FRAME PLAN / BACKGROUND / CONSTRAINTS` prompt sections;
-- capability-aware opaque-background generation for `gpt-image-2`, followed by deterministic local background removal;
-- complete per-cell animation beats, preserved direction/secondary/forbidden motion semantics, and action-scoped repair guidance;
-- atomic `run.json` replacement, last-valid backup, and visible failed-state recovery.
+- deterministic support for `approved-mirror` row quality.
 
-The landed deterministic official row package can compose and validate complete or partial sets of `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every available row.
+The landed deterministic official row package can compose and validate complete `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every row.
+
+The current implementation still has one important divergence from this document: `GENERATED_FULL_PET_ACTION_IDS` currently includes both `running-right` and `running-left`, so the provider orchestration can request both rows independently. The required design is to generate only `running-right`, approve it, then derive `running-left` through the existing framewise mirror path. Until that runtime change lands, the documentation contract is stricter than the orchestration implementation.
 
 Real-provider smoke success proves that the host bridge and provider path can complete. It does not prove production art quality. Production approval still requires human visual review.
-
-The current integrated generation remediation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance. Fresh verification must use the final integrated HEAD and the isolated assignment in `docs/superpowers/plans/2026-07-15-provider-neutral-image-generation-test-handoff.md`.
-
-### Hatch Pet Agent Phase 1 boundary
-
-Phase 1 adds a disabled-by-default Hatch Pet Agent configuration surface and a text-only shadow planner beside the fixed Creator Studio workflow. Users may follow the saved chat Provider/model configuration or save a dedicated hatch-pet Provider/model and host-owned secret. Follow-chat inherits only Provider configuration and its secret reference: hatch-pet never reads or writes ordinary pet-chat conversation history, memory, behavior state, or prompts.
-
-The product design uses the same resolved hatch-pet model for later planning and visual evaluation, with separate stateless roles. Phase 1 implements only structured text planning: it sends no image attachment, performs no model visual evaluation, and executes no model decision. Runtime execution is fixed to `shadow`; recorded suggestions and failures are additive diagnostics only.
-
-Control Center exposes the shadow enable flag, follow-chat/dedicated configuration, bounded budget settings, the future identity-review checkpoint, capability status, and sanitized run diagnostics. Budgets and the identity checkpoint are recorded for the future bounded workflow but do not change the fixed generator in Phase 1. Durable artifacts stay under `runs/<runId>/agent/` and contain bounded snapshots, state, budgets, prompt metadata, and decision records. API keys remain host-owned and must not appear in renderer responses, logs, snapshots, diagnostics, or agent artifacts.
-
-Shadow planning never changes image Provider selection, generation prompts, retry behavior, deterministic QA, human approval, import, activation, or any Creator Studio command payload. Disabled mode performs no hatch-pet model or store work, and enabled-mode configuration, model, validation, or persistence failures must not block the fixed workflow. Phase 1 automated verification passed on the isolated `codex/dev8-hatch-pet-phase1-test` task at `662d7c9e`; this proves only the text-only shadow-planning contracts. It supplies no Provider approval, human visual acceptance, or `production-art-ready` evidence.
 
 ## 2. User Experience
 
@@ -80,9 +53,7 @@ one clean user reference image
   -> deterministic QA
   -> contact-sheet and animated-preview review
   -> Codex Pet atlas and manifest packaging
-  -> explicit human approval
-  -> explicit import
-  -> optional explicit activation
+  -> import and activation
 ```
 
 The user does not prepare a collage, multi-view sheet, sprite sheet, contact sheet, model sheet, or action grid. OpenPet creates the required intermediate artifacts.
@@ -134,19 +105,6 @@ The official rows are:
 
 Used cells must contain visible pixels. Unused cells must have zero visible alpha and no transparent RGB residue. Frame order and durations come from `full-pet-row-contract.js` and must not be inferred from the generated sheet.
 
-`idle` is the only required action. Every other official action is optional. A failed optional action is omitted while generation continues with later actions. The fixed nine-row atlas layout does not change: unavailable optional rows remain fully transparent and are never filled with copied `idle` art.
-
-`running-right` and `running-left` form one optional atomic pair. The pair is available only when `running-right` passes generation and QA and its framewise mirrored `running-left` derivative also passes. If either half fails, both directions are omitted.
-
-The generated manifest records the production action set explicitly:
-
-- `requiredActionIds`: currently `['idle']`;
-- `availableActionIds`: only actions whose rows passed the applicable gates;
-- `omittedActionIds`: official actions excluded from the package;
-- `actionAvailability`: bounded quality or omission evidence for review.
-
-Legacy complete Codex Pet manifests without availability metadata continue to expose all nine rows. New partial manifests must include `idle` in `availableActionIds`.
-
 Official real coverage consists only of:
 
 - `row-real`: a genuine provider-generated, action-specific row that passed row QA;
@@ -156,7 +114,7 @@ Preview fallbacks and base-image transforms never count as official real coverag
 
 ## 4. Single-Reference Provider Rule
 
-The user supplies exactly one source image for a normal run. Every real image-generation Provider request must contain exactly one validated image attachment.
+The user supplies exactly one source image for a normal run. Every image-generation Provider request may contain at most one image attachment.
 
 This rule applies to:
 
@@ -178,17 +136,6 @@ The source image, character anchor, action anchor, and keyframes must never be a
 
 Provider configuration, API keys, model discovery, and output writes stay in the main process. Creator Studio receives bounded host-bridge results and data-relative artifact paths, not credentials or arbitrary filesystem access.
 
-The plugin bridge rejects zero or multiple references before resolving paths. The public image-generation service repeats the same gate before output-path work or Provider queue acquisition, and the normalized edit/multipart path repeats the invariant before request construction. Multipart edits use the single field name `image`, never `image[]`. Stable public error codes are:
-
-```text
-reference_image_required
-reference_image_count_invalid
-reference_image_invalid
-reference_image_unusable
-```
-
-Every real request uses `/images/edits`, one multipart `image` field, and `n=1`; no valid generation stage uses `/images/generations`. The host still materializes all outputs actually returned so downstream delivery gates can validate reality rather than silently truncate the response. A deliverable action sheet or final keyframe-conditioned sprite row must contain exactly one complete Provider output; zero or multiple outputs are explicit failures, and OpenPet never selects the first ambiguous deliverable output.
-
 ## 5. Identity Contract
 
 The source image is the highest authority for visible identity. Unless the user explicitly requests a transformation, generation must preserve:
@@ -209,8 +156,6 @@ The canonical character must:
 - use a stable lower-center root anchor;
 - avoid text, borders, guide marks, UI, scenery, or unrelated effects;
 - provide enough identity information for every later action row.
-
-The transparent background above is the final OpenPet artifact contract, not necessarily the direct Provider-output contract. For `gpt-image-2`, the Provider prompt requests one uniform opaque background with clean separable edges. OpenPet then removes that background locally, clears RGB residue under zero alpha, and applies the existing edge, halo, alpha, occupancy, and cell-boundary gates before the artifact can satisfy the transparent-output requirement.
 
 The optional text description can add name, temperament, or action intent. If text conflicts with the visible source identity, the image wins.
 
@@ -247,27 +192,17 @@ Build an explicit action plan before generation. The plan identifies:
 
 For example, a wave requires a readable raised-limb peak rather than whole-body jitter. Directional running requires alternating gait. The non-directional `running` row must communicate focused work rather than movement across the screen.
 
-`idle` uses a stricter fixed contract. Its start keyframe matches the canonical pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root. Its motion peak may add only subtle breathing, blink, ear, or tail-tip movement, with no action extreme, large limb change, camera change, body-root movement, or character redesign. The final frame settles back to the canonical start pose for a quiet loop.
-
 ### Stage 4: one composite action reference
 
-Compose a bounded action reference board locally. For full-pet action generation, the board uses the canonical generated identity as its primary panel and the original user source as secondary visible-detail evidence. The canonical panel controls pose, framing, scale, and cross-row continuity; the original source remains authoritative for visible identity details. The board remains one image file and is not itself a deliverable sprite sheet.
+Compose a bounded action reference board locally. The board may show the approved identity anchor and locally arranged action cues, but it remains one image file. It is not itself a deliverable sprite sheet.
 
-The Provider receives that one board as its only reference attachment. Keyframe identity QA separately compares candidates against the canonical generated identity rather than against the composite board or a dynamic raw source pose. The board should prioritize identity over decorative guidance. Labels, borders, or layout elements must not leak into the generated output.
+The board should prioritize identity over decorative guidance. Labels, borders, or layout elements must not leak into the generated output.
 
 ### Stage 5: Provider action-sheet generation
 
 Send the composite board as the only image attachment and request a complete action-specific sheet or row. The Provider must author the actual pose changes. OpenPet may specify layout, key poses, transparency, scale, and continuity, but it must not later fabricate missing semantics from the base pose.
 
-The upstream prompt is self-contained and model-aware. Creator Studio first validates a Provider-neutral visual plan and image task, then selects a registered capability profile and renderer for the configured image model. `gpt-image-2` receives short labeled sections in this order: deliverable, reference responsibility, change, preservation invariants, composition, action or per-cell frame plan, opaque background, and final constraints. A registered generic renderer may use a different supported background contract while preserving the same semantics.
-
-The prompt explicitly separates what changes from what stays unchanged. The reference image controls visible identity; the written action plan controls non-idle pose; the canvas contract controls scale, root, and padding; the model profile controls background behavior. Every action sheet describes every required cell, including direction, allowed secondary motion, forbidden motion, and loop closure. Raw Creator Studio prompts, project terminology, product-only character text, paths, URIs, secrets, transport terms, identifiers, and prompt-control instructions cannot pass through to the image model. If appearance text conflicts with the attached identity, the image wins.
-
-Transient transport failures such as `fetch failed`, connection reset, a closed socket, or a bounded timeout/connectivity code receive at most one same-model retry inside the existing two-attempt and total-time budgets. The retry does not change the selected model, quality thresholds, output-count contract, or request evidence. An exhausted retry remains an explicit failure with sanitized transport evidence.
-
 Independent per-frame Provider generation is not the preferred production method. Existing evidence showed large whole-character redraw and stable face/body-core drift between frames even when each request succeeded. A complete keyframe-conditioned sheet gives the Provider shared visual context for the sequence.
-
-When one Provider response contains multiple keyframe candidates, OpenPet evaluates every materialized candidate from that response. It selects the highest-scoring candidate that passes all unchanged composition and identity gates. This does not make another Provider request. If none pass, the action is rejected and every candidate's bounded QA record remains available for diagnosis.
 
 ### Stage 6: extraction and stabilization
 
@@ -287,23 +222,9 @@ Stable-slot correction may fix baseline or size popping caused by extraction. It
 
 Run deterministic QA, produce contact sheets and animated previews, and require human review before approval. Repair the smallest failing scope: one artifact, one row, or the character identity. Regenerate the full pet only when a shared identity failure affects all rows.
 
-The active quality profile is loaded once for a generation workflow. Its evidence record is written into keyframe, row, atlas, generation-stage, and reference-board metadata:
-
-```json
-{
-  "version": 1,
-  "id": "pet-generation-default-v1",
-  "sourceDatasetId": ""
-}
-```
-
-The default profile preserves the pre-governance thresholds. A configured non-default profile is accepted only as a complete, bounded profile tied to the loaded human-review dataset and a safe review-evidence path.
-
 ### Stage 8: atlas composition and import
 
-Compose only approved `row-real` and `approved-mirror` rows into the official atlas. Validate the final atlas, bind QA evidence to its hash, and create the manifest/package. Automatic orchestration stops at `ready_for_review`; a human must explicitly approve, then explicitly import, and may separately choose activation, which defaults to false.
-
-The pipeline writes a durable checkpoint after each bounded action attempt. A retry reuses a successful row only when all checkpointed frame paths remain inside the run data directory and their SHA-256 hashes still match. Failed quality output is preserved as evidence but is never reused as an approved row.
+Compose only approved `row-real` and `approved-mirror` rows into the official atlas. Validate the final atlas, bind QA evidence to its hash, create the manifest/package, then import and activate through the host-owned bridge.
 
 ## 7. Directional Pair Optimization
 
@@ -336,8 +257,6 @@ The mirrored result receives `approved-mirror` quality only after QA. No other a
 If readable text, a directional symbol, an asymmetric marking, or a one-sided accessory makes the mirrored identity invalid, block the directional pair for human review. Do not silently issue an independent `running-left` generation request inside the standard flow, and do not import an inconsistent pair.
 
 ## 8. Quality Gates
-
-Quality thresholds come from the active immutable profile. `pet-generation-default-v1` is behavior-compatible with the prior constants. Prompt and reference-board guidance is derived only from validated, bounded human rejection reason codes; an empty example registry injects no additional guidance.
 
 ### Technical integrity
 
@@ -396,23 +315,12 @@ Human visual review must inspect:
 
 The reviewer may approve, reject, or request a scoped repair. A Provider HTTP success, zero automated warnings, or a successful import does not replace this review.
 
-Human-approved and human-rejected examples use the versioned registry at:
-
-```text
-examples/plugins/creator-studio/quality/pet-generation-human-examples.json
-```
-
-Each record binds an official action ID to `approved` or `rejected`, a safe data-relative evidence path, bounded numeric metrics, and fixed rejection reason codes. Approved examples cannot contain rejection reasons; rejected examples require at least one reason. Free-form reviewer prose, host paths, and raw Provider payloads are not accepted. The development registry is valid and empty; no visual labels were fabricated.
-
-Supported rejection reasons are `identity-drift`, `semantic-mismatch`, `static-motion`, `transform-only-motion`, `edge-contact`, `background-contamination`, `baseline-instability`, `scale-instability`, and `direction-mismatch`. Only fixed phrases derived from these codes may enter prompts.
-
 ## 10. Failure Recovery
 
 | Failure | Owner | Recovery |
 | --- | --- | --- |
 | Invalid or collage source | Source validation | Ask for one clean reference image |
-| Transient Provider transport or bounded gateway error | Host Provider bridge | Preserve sanitized stage evidence and retry the same model once within the existing attempt and deadline budgets |
-| Provider returns zero or multiple deliverable outputs | Host Provider bridge | Reject explicitly; never select the first ambiguous action sheet or final sprite row |
+| Provider timeout or gateway error | Host Provider bridge | Preserve sanitized stage evidence and retry the same bounded stage |
 | Canonical identity drift | Identity anchor | Rebuild the composite board or regenerate the canonical character |
 | One action loses identity | Action generation | Regenerate that action using the approved identity reference |
 | Wrong action semantics | Prompt/action plan | Strengthen key-pose guidance and regenerate the row |
@@ -421,14 +329,9 @@ Supported rejection reasons are `identity-drift`, `semantic-mismatch`, `static-m
 | Static or transform-only row | Provider generation | Reject and regenerate; never accept local motion fabrication |
 | Mirrored accessory/text is invalid | Directional-pair review | Block the pair for human decision |
 | Artifact hash mismatch | Approval/import | Invalidate approval and rerun QA on current files |
-| Torn or unreadable `run.json` | Run store | Preserve the corrupt file, recover the last valid state when available, mark the run failed with `generation-command-state-recovered`, and retain completed artifacts/checkpoints |
 | Human visual rejection | Selected identity/action scope | Keep unapproved and repair the smallest rejected scope |
 
-Failures must remain explicit. The pipeline must not silently downgrade an official-quality request to preview fallback art. Failure of required `idle` blocks packaging; failure of an optional action records its bounded reason, omits that action, and continues. Runtime requests for an omitted action fall back to the approved `idle` action and report the originally requested action ID.
-
-Action repair invalidates only the selected generated action checkpoint, reuses other hash-valid rows, rebuilds derived atlas/review artifacts, and does not regenerate the canonical identity. `running-left` cannot be repaired independently; repair `running-right` and derive the mirror. Identity repair archives the prior evidence, invalidates all action checkpoints and generated identity artifacts, and runs a true full-pet regeneration.
-
-Repair evidence is archived under `runs/<runId>/repairs/` before active artifacts are replaced. Both repair scopes stop at `ready_for_review` or `failed`; they never auto-approve, auto-import, or auto-activate output.
+Failures must remain explicit. The pipeline must not silently downgrade an official-quality request to preview fallback art.
 
 ## 11. Artifacts And Provenance
 
@@ -438,16 +341,12 @@ A run should preserve inspectable, data-relative artifacts for:
 - composite reference-board image and metadata;
 - character anchor and action anchors;
 - prompt snapshots and model snapshot;
-- human-review dataset identity and active quality-profile evidence;
 - Provider generation stage summaries;
 - generated sheets/rows;
 - extracted frame sequences;
 - frame hashes and QA JSON;
 - contact sheets and animated previews;
 - row-source classifications;
-- per-action checkpoint hashes and action-availability metadata;
-- repair scope and archived pre-repair evidence;
-- structured Provider art-readiness claim metadata;
 - source-image, row, and final-atlas validation;
 - import and activation result.
 
@@ -470,16 +369,11 @@ Logs and public dashboard responses must remove API keys, authorization headers,
 | Row technical, identity, and motion QA | `examples/plugins/creator-studio/lib/full-pet-row-qa.js` |
 | Stable-slot correction | `examples/plugins/creator-studio/lib/full-pet-row-stable-slots.js` |
 | Atlas composition and final validation | `examples/plugins/creator-studio/lib/real-atlas-builder.js`, `full-pet-atlas-composer.js` |
-| Human examples, quality profiles, and prompt governance | `examples/plugins/creator-studio/lib/pet-generation-human-examples.js`, `pet-generation-quality-profile.js`, `pet-generation-governance.js` |
-| Action checkpoints and repair orchestration | `examples/plugins/creator-studio/lib/full-pet-action-checkpoints.js`, `backend-runner.js` |
-| Provider production-art approval registry | `examples/plugins/creator-studio/lib/provider-art-approval.js` |
 | Dashboard review surface | `examples/plugins/creator-studio/service/studio-service.js`, `web/dashboard/index.html` |
 
 The host owns Provider credentials, writes, approval boundaries, import, activation, and trigger-proposal persistence. The plugin owns bounded task, prompt, artifact, QA, and review workflows.
 
 ## 13. Verification Matrix
-
-The following commands define the independent testing task. They must not be run on `codex/dev8`; use the isolated testing branch and worktree named in the handoff document.
 
 ### Documentation contract
 
@@ -527,13 +421,15 @@ npm run smoke:creator-workflow-host -- --reference-image <file>
 
 Never put raw secrets or local paths into committed smoke evidence.
 
-## 14. Known Limitations And Independent Verification Work
+## 14. Known Limitations And Next Engineering Work
 
-- The development branch contains no fabricated human-review examples and no Provider production-art approvals. Both registries intentionally remain empty.
-- No non-default profile is endorsed. Calibration must be derived from real approved/rejected examples and reviewed evidence on the isolated testing branch.
-- Phase 1 automated shadow-planning verification passed at `662d7c9e`; the final integrated human-review, partial-package, Provider-neutral prompt, exact-reference, timeout/recovery, and atomic-persistence remediation has not yet been independently exercised.
-- Real action and full-pet Provider smoke, successful full-pet generation, repair exercises, human labels, profile calibration, visual acceptance, and Provider approval remain assigned to the independent testing workflow and are not implied by Phase 1 PASS.
-- A Provider or model change invalidates the corresponding support claim until the exact provider/model/profile/dataset tuple receives new human approval evidence.
+- Change full-pet orchestration to remove `running-left` from Provider-generated action IDs and use the existing mirror helper after `running-right` approval.
+- Add an orchestration regression proving that a normal full-pet run makes no separate `running-left` Provider request.
+- Add explicit single-attachment assertions at every host image-generation bridge boundary.
+- Improve action-specific Provider prompts and reference boards using real rejected/approved examples.
+- Keep identity and motion thresholds calibrated against human-reviewed fixtures rather than a single sample.
+- Preserve repair at the smallest failing scope instead of restarting the entire pet.
+- Continue real-provider visual review before promoting any model or gateway as production-art ready.
 
 ## 15. Evidence And Claim Boundaries
 
@@ -548,15 +444,6 @@ Archived Creator Studio Provider evidence:
 - `docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/`
 
 These archives demonstrate bounded parts of the technical chain, including host orchestration, `/images/edits` reference conditioning, artifact writes, QA execution, and import flows. They do not by themselves prove production art quality, current model consistency, or final human approval.
-
-Provider/model support claims use two levels:
-
-- `technical-chain-ready`: the technical chain may be exercised, but no matching human art approval exists for the exact tuple;
-- `production-art-ready`: every model that successfully generated part of the result, including fallback models and reused repair stages, has a matching approved record for the current Provider, quality profile, and human dataset.
-
-Approval records live in `examples/plugins/creator-studio/quality/provider-art-approvals.json`. They are exact-match, versioned, path-safe records. One approved model cannot promote a result containing output from another unapproved successful model. This claim metadata never changes per-run deterministic QA, `artisticApproval`, human review status, approval, import, or activation rules.
-
-The shipped empty approval registry means this development result is `technical-chain-ready` only. No `production-art-ready` claim is permitted until the independent testing task records real human acceptance evidence and adds the matching approval record.
 
 When documentation, code, and evidence conflict, use this order:
 
