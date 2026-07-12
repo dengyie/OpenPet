@@ -7,6 +7,25 @@ const MAX_PLUGIN_NETWORK_REQUEST_BYTES = 64 * 1024
 const MAX_PLUGIN_NETWORK_RESPONSE_BYTES = 128 * 1024
 const RESPONSE_CONTEXT = Symbol('openpetPluginNetworkResponseContext')
 
+const parseIpv6Words = (address) => {
+  let value = String(address || '').toLowerCase().split('%')[0]
+  const ipv4Tail = value.match(/(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1]
+  if (ipv4Tail) {
+    const octets = ipv4Tail.split('.').map(Number)
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null
+    value = `${value.slice(0, -ipv4Tail.length)}${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`
+  }
+  const halves = value.split('::')
+  if (halves.length > 2) return null
+  const left = halves[0] ? halves[0].split(':') : []
+  const right = halves[1] ? halves[1].split(':') : []
+  const missing = 8 - left.length - right.length
+  if ((halves.length === 1 && missing !== 0) || missing < 0) return null
+  const words = [...left, ...Array(missing).fill('0'), ...right]
+  if (words.length !== 8 || words.some((word) => !/^[0-9a-f]{1,4}$/.test(word))) return null
+  return words.map((word) => Number.parseInt(word, 16))
+}
+
 // Reject DNS-rebinding SSRF: even when a manifest allowlist host is a public
 // domain, an attacker can point its A record at 127.0.0.1 / 169.254.169.254 /
 // an internal RFC1918 address. After resolving, we require every resolved IP to
@@ -16,18 +35,19 @@ const isPrivateAddress = (ip) => {
   // IPv6 — loopback, link-local, unique-local, unspecified, multicast.
   const bare = ip.replace(/^\[|]$/g, '')
   if (bare.includes(':')) {
-    const mappedIpv4 = bare.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i)?.[1]
-    if (mappedIpv4) return isPrivateAddress(mappedIpv4)
-    const mappedHex = bare.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
-    if (mappedHex) {
-      const high = Number.parseInt(mappedHex[1], 16)
-      const low = Number.parseInt(mappedHex[2], 16)
-      return isPrivateAddress(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`)
+    const words = parseIpv6Words(bare)
+    if (!words) return true
+    if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
+      return isPrivateAddress(`${words[6] >> 8}.${words[6] & 0xff}.${words[7] >> 8}.${words[7] & 0xff}`)
     }
-    if (bare === '::1' || bare === '::') return true
-    if (bare.toLowerCase().startsWith('fe80:')) return true
-    if (bare.toLowerCase().startsWith('fc') || bare.toLowerCase().startsWith('fd')) return true
-    if (bare.toLowerCase().startsWith('ff')) return true
+    if (words.slice(0, 6).every((word) => word === 0)) return true // IPv4-compatible/reserved ::/96
+    if (words.slice(0, 4).every((word) => word === 0) && words[4] === 0xffff && words[5] === 0) return true
+    if (words.every((word) => word === 0)) return true
+    if (words.slice(0, 7).every((word) => word === 0) && words[7] === 1) return true
+    if ((words[0] & 0xfe00) === 0xfc00) return true // unique-local fc00::/7
+    if ((words[0] & 0xffc0) === 0xfe80) return true // link-local fe80::/10
+    if ((words[0] & 0xffc0) === 0xfec0) return true // deprecated site-local fec0::/10
+    if ((words[0] & 0xff00) === 0xff00) return true // multicast ff00::/8
     return false
   }
   // IPv4
