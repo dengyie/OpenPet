@@ -20,7 +20,10 @@ const cursorSettingsEqual = (left = {}, right = {}) => CURSOR_SETTINGS_KEYS.ever
 ))
 
 export const resolvePersistedCursorMutation = ({ previous, optimistic, current, saved }) => {
-  if (saved) return mergeExternalCursorSettings(current, saved)
+  if (saved) {
+    if (!cursorSettingsEqual(current, optimistic)) return current
+    return mergeExternalCursorSettings(current, saved)
+  }
   if (!cursorSettingsEqual(current, optimistic)) return current
   return mergeExternalCursorSettings(current, previous)
 }

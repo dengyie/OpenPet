@@ -102,6 +102,18 @@ test('loadSettings recovers a malformed primary from the last-known-good backup'
   assert.equal(warnings.some((message) => message.includes('primary')), true)
 })
 
+test('loadSettings rejects non-object primary values and recovers the last-known-good backup', () => {
+  for (const invalidPrimary of ['null', '[]', '42', '"invalid"']) {
+    fs.writeFileSync(settingsPath, invalidPrimary, 'utf-8')
+    fs.writeFileSync(backupPath, JSON.stringify({ scale: 1.75, walkSpeed: 3 }), 'utf-8')
+
+    const loaded = loadSettings()
+
+    assert.equal(loaded.scale, 1.75)
+    assert.equal(loaded.walkSpeed, 3)
+  }
+})
+
 test('loadSettings reports invalid primary and backup before falling back to defaults', () => {
   fs.writeFileSync(settingsPath, '{malformed-primary', 'utf-8')
   fs.writeFileSync(backupPath, '{malformed-backup', 'utf-8')

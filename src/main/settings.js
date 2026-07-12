@@ -239,7 +239,11 @@ const syncLoginItemSettings = (autoStart) => {
   app.setLoginItemSettings({ openAtLogin: autoStart })
 }
 
-const readSettingsFile = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+const readSettingsFile = (filePath) => {
+  const settings = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  if (!isPlainObject(settings)) throw new TypeError('OpenPet settings file must contain an object')
+  return settings
+}
 
 const writeJsonAtomic = (filePath, value) => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
@@ -295,13 +299,9 @@ const saveSettings = (settings) => {
   if (fs.existsSync(settingsPath)) {
     try {
       const previousSettings = readSettingsFile(settingsPath)
-      if (isPlainObject(previousSettings)) {
-        writeJsonAtomic(settingsBackupPath, previousSettings)
-      } else {
-        console.warn('OpenPet settings primary file is not an object; preserving existing backup')
-      }
+      writeJsonAtomic(settingsBackupPath, previousSettings)
     } catch (error) {
-      if (error instanceof SyntaxError) {
+      if (error instanceof SyntaxError || error instanceof TypeError) {
         console.warn('OpenPet settings primary file is invalid; preserving existing backup')
       } else {
         throw error
