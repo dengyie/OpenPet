@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
 import {
   cloneAiBehavior,
@@ -33,6 +33,7 @@ import {
   applySavedImageGenerationConfigState
 } from '../lib/provider-config-state'
 import { formatProviderModelCatalogMeta } from '../lib/provider-model-catalog'
+import { mergeSavedFields, shouldApplySaveResponse } from '../lib/async-save-state.mjs'
 import type {
   AiBehaviorConfig,
   AiBehaviorResult,
@@ -260,7 +261,12 @@ const getImageTransparencyCompatibilityHint = (model: string) => {
 
 export function useAiPane(activeTab = 'ai') {
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [saving, setSavingState] = useState(false)
+  const savingOperationCountRef = useRef(0)
+  const setSaving = (nextSaving: boolean) => {
+    savingOperationCountRef.current = Math.max(0, savingOperationCountRef.current + (nextSaving ? 1 : -1))
+    setSavingState(savingOperationCountRef.current > 0)
+  }
   const [config, setConfig] = useState<AiConfigViewState>(defaultAiConfig)
   const [activeConfig, setActiveConfig] = useState<AiConfigViewState>(defaultAiConfig)
   const [personaProfile, setPersonaProfile] = useState<AiPersonaProfileViewState>(defaultAiPersonaProfile)
@@ -300,6 +306,8 @@ export function useAiPane(activeTab = 'ai') {
   const [replayDraft, setReplayDraft] = useState('')
   const [replayResult, setReplayResult] = useState<AiBehaviorResult | null>(null)
   const [behaviorStatus, setBehaviorStatus] = useState('')
+  const saveRevisionRef = useRef({ provider: 0, image: 0, behavior: 0 })
+  const appliedSaveRevisionRef = useRef({ provider: 0, image: 0, behavior: 0 })
 
   const loadPersonaProfile = async () => {
     const profile = cloneAiPersonaProfile(await api.getAiPersonaProfile())
@@ -496,13 +504,25 @@ export function useAiPane(activeTab = 'ai') {
   }, [])
 
   const saveProviderConfigDraft = async () => {
-    const validationError = validateProviderConfig(config)
+    const submittedConfig = cloneAiConfig(config)
+    const submittedActiveConfig = cloneAiConfig(activeConfig)
+    const revision = ++saveRevisionRef.current.provider
+    const validationError = validateProviderConfig(submittedConfig)
     if (validationError) throw new Error(validationError)
-    const changedFields = getProviderConfigChanges(config, activeConfig)
-    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildProviderConfigSavePayload(config, activeConfig)))
-    setConfig(savedConfig)
+    const changedFields = getProviderConfigChanges(submittedConfig, submittedActiveConfig)
+    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildProviderConfigSavePayload(submittedConfig, submittedActiveConfig)))
+    if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.provider)) {
+      return { savedConfig, changedFields, applied: false }
+    }
+    appliedSaveRevisionRef.current.provider = revision
+    setConfig((current) => cloneAiConfig(mergeSavedFields({
+      current,
+      submitted: submittedConfig,
+      saved: savedConfig,
+      fields: ['provider', 'baseUrl', 'model', 'systemPrompt', 'vision']
+    })))
     setActiveConfig(savedConfig)
-    return { savedConfig, changedFields }
+    return { savedConfig, changedFields, applied: true }
   }
 
   const saveApiKeyDraft = async () => {
@@ -529,7 +549,8 @@ export function useAiPane(activeTab = 'ai') {
     setStatus('')
     setConnectionStatus('保存聊天 Provider 中')
     try {
-      const { changedFields } = await saveProviderConfigDraft()
+      const { changedFields, applied } = await saveProviderConfigDraft()
+      if (!applied) return
       await loadPetChatState()
       setConnectionTestResult(null)
       setChatModelDiscovery(null)
@@ -550,13 +571,22 @@ export function useAiPane(activeTab = 'ai') {
     setImageHealthStatus('')
     setImageHealthResult(null)
     try {
-      const validationError = validateImageProviderConfig(imageGenerationConfig)
+      const submittedConfig = cloneImageGenerationConfig(imageGenerationConfig)
+      const submittedActiveConfig = cloneImageGenerationConfig(activeImageGenerationConfig)
+      const revision = ++saveRevisionRef.current.image
+      const validationError = validateImageProviderConfig(submittedConfig)
       if (validationError) throw new Error(validationError)
-      const changedFields = getImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
+      const changedFields = getImageGenerationConfigChanges(submittedConfig, submittedActiveConfig)
       const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(
-        buildImageGenerationConfigSavePayload(imageGenerationConfig, activeImageGenerationConfig)
+        buildImageGenerationConfigSavePayload(submittedConfig, submittedActiveConfig)
       ))
-      setImageGenerationConfig(savedConfig)
+      if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.image)) return
+      appliedSaveRevisionRef.current.image = revision
+      setImageGenerationConfig((current) => cloneImageGenerationConfig(mergeSavedFields({
+        current,
+        submitted: submittedConfig,
+        saved: savedConfig
+      })))
       setActiveImageGenerationConfig(savedConfig)
       setImageModelDiscovery(null)
       setImageModelDiscoveryStatus('')
@@ -572,11 +602,23 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setBehaviorStatus('')
     try {
-      const parsedRules = parseBehaviorRules(behaviorRulesText)
-      const savedBehavior = cloneAiBehavior(await api.saveAiBehavior({ ...behavior, rules: parsedRules }))
-      setBehavior(savedBehavior)
-      setBehaviorRulesText(JSON.stringify(savedBehavior.rules || [], null, 2))
-      setConfig({ ...config, behavior: savedBehavior })
+      const submittedRulesText = behaviorRulesText
+      const parsedRules = parseBehaviorRules(submittedRulesText)
+      const submittedBehavior = cloneAiBehavior({ ...behavior, rules: parsedRules })
+      const revision = ++saveRevisionRef.current.behavior
+      const savedBehavior = cloneAiBehavior(await api.saveAiBehavior(submittedBehavior))
+      if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.behavior)) return
+      appliedSaveRevisionRef.current.behavior = revision
+      setBehavior((current) => cloneAiBehavior(mergeSavedFields({ current, submitted: submittedBehavior, saved: savedBehavior })))
+      setBehaviorRulesText((current) => current === submittedRulesText ? JSON.stringify(savedBehavior.rules || [], null, 2) : current)
+      setConfig((current) => ({
+        ...current,
+        behavior: cloneAiBehavior(mergeSavedFields({
+          current: current.behavior,
+          submitted: submittedBehavior,
+          saved: savedBehavior
+        }))
+      }))
       setBehaviorStatus('Behavior 配置已保存')
     } catch (error) {
       setBehaviorStatus(messageFromError(error, 'Behavior 配置保存失败'))
@@ -1159,8 +1201,8 @@ export function useAiPane(activeTab = 'ai') {
     setDryRunText,
     setReplayDraft,
     setBehaviorRulesText,
-    onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => setBehavior({ ...behavior, ...partial }),
-    onChange: (partial: Partial<AiConfigViewState>) => setConfig({ ...config, ...partial }),
+    onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => setBehavior((current) => ({ ...current, ...partial })),
+    onChange: (partial: Partial<AiConfigViewState>) => setConfig((current) => ({ ...current, ...partial })),
     onChangeVision: (partial: Partial<VisionConfigViewState>) => setConfig((current) => {
       const shouldHydrateFromChat = partial.mode === 'override' && current.vision.mode !== 'override'
       const baseVision = shouldHydrateFromChat

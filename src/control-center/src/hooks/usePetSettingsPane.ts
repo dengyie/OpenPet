@@ -3,6 +3,7 @@ import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import { shouldRestoreScalePreview } from '../lib/pet-scale-preview.mjs'
+import { mergeSavedFields, shouldApplySaveResponse } from '../lib/async-save-state.mjs'
 import { mergeExternalCursorSettings, resolvePersistedCursorMutation } from '../lib/pet-settings-cursor-state.mjs'
 import {
   CUSTOM_CURSOR_MAX_SIZE_PERCENT,
@@ -53,6 +54,9 @@ export function usePetSettingsPane() {
   const [originalSettings, setOriginalSettings] = useState<ControlCenterSettings>(defaultSettings)
   const [status, setStatus] = useState('')
   const originalRef = useRef<ControlCenterSettings>(defaultSettings)
+  const saveRevisionRef = useRef(0)
+  const appliedSaveRevisionRef = useRef(0)
+  const pendingSaveCountRef = useRef(0)
 
   useEffect(() => {
     let mounted = true
@@ -101,19 +105,31 @@ export function usePetSettingsPane() {
   )
 
   const persistSettings = async (nextSettings: ControlCenterSettings, successMessage: string, errorFallback: string) => {
+    const submittedSettings = cloneSettings(nextSettings)
+    const revision = ++saveRevisionRef.current
+    pendingSaveCountRef.current += 1
     setSaving(true)
     try {
-      const savedSettings = cloneSettings(await api.saveSettings(nextSettings))
+      const savedSettings = cloneSettings(await api.saveSettings(submittedSettings))
+      if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current)) return null
+      appliedSaveRevisionRef.current = revision
       originalRef.current = savedSettings
       setOriginalSettings(savedSettings)
-      setSettings(savedSettings)
+      setSettings((current) => cloneSettings(mergeSavedFields({
+        current,
+        submitted: submittedSettings,
+        saved: savedSettings
+      })))
       if (successMessage) setStatus(successMessage)
       return savedSettings
     } catch (error) {
-      setStatus(messageFromError(error, errorFallback))
+      if (shouldApplySaveResponse(revision, appliedSaveRevisionRef.current)) {
+        setStatus(messageFromError(error, errorFallback))
+      }
       return null
     } finally {
-      setSaving(false)
+      pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1)
+      setSaving(pendingSaveCountRef.current > 0)
     }
   }
 
