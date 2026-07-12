@@ -40,7 +40,7 @@ const FALLBACK_ONLY_FULL_PET_ACTION_IDS = Object.freeze(
 
 const GENERATED_FULL_PET_ACTION_IDS = Object.freeze(
   FULL_PET_ACTION_POLICY
-    .filter((entry) => entry.attemptGeneratedPose)
+    .filter((entry) => entry.attemptGeneratedPose && entry.actionId !== 'running-left')
     .map((entry) => entry.actionId)
 )
 

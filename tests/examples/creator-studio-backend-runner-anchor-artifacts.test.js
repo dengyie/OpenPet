@@ -64,6 +64,71 @@ test('backend runner persists anchor references as first-class run artifacts', (
   assert.deepEqual(storedRun.artifacts.anchorReferences, anchorReferences)
 })
 
+test('backend runner persists failed keyframe QA evidence in the run record', () => {
+  const dataDir = makeDataDir()
+  const run = {
+    runId: 'run-failed-keyframe-evidence',
+    status: 'generating',
+    updatedAt: '2026-07-08T00:00:00.000Z',
+    artifacts: {}
+  }
+  const quality = {
+    ok: false,
+    score: 0,
+    rawScore: 60.71,
+    safeComposition: false,
+    identityConsistent: true,
+    identityColorDistance: 18.69,
+    identityDescriptorDistance: 52.87,
+    failureConditions: ['edge-ratio-high'],
+    metrics: {
+      coverage: 0.257,
+      edgeRatio: 0.021,
+      minPaddingRatio: 0,
+      centerOffsetRatio: 0.04
+    }
+  }
+  const generationResult = {
+    backend: 'provider',
+    outputs: [],
+    keyframeSpriteRow: {
+      ok: false,
+      actionId: 'running-right',
+      keyframes: [{
+        actionId: 'running-right',
+        keyframeRole: 'peak',
+        relativePath: 'runs/run-failed-keyframe-evidence/keyframes/actions/running-right-peak-keyframe/0001.png',
+        quality
+      }]
+    },
+    generationStages: [{
+      stage: 'action-peak-keyframe',
+      actionId: 'running-right',
+      ok: false,
+      quality
+    }],
+    keyframes: [{
+      actionId: 'running-right',
+      keyframeRole: 'peak',
+      relativePath: 'runs/run-failed-keyframe-evidence/keyframes/actions/running-right-peak-keyframe/0001.png',
+      quality
+    }]
+  }
+  writeRun({ dataDir, run })
+
+  persistGeneratedImageAttempt({
+    dataDir,
+    run,
+    generationResult,
+    now: () => '2026-07-08T00:01:00.000Z'
+  })
+
+  const storedRun = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', run.runId, 'run.json'), 'utf-8'))
+  assert.deepEqual(storedRun.artifacts.generatedImage.keyframeSpriteRow.keyframes[0].quality, quality)
+  assert.deepEqual(storedRun.artifacts.generatedImage.generationStages[0].quality, quality)
+  assert.deepEqual(storedRun.artifacts.generatedImage.keyframes[0].quality, quality)
+})
+
 test('backend runner rejects host generated action output before review when QA fails', async () => {
   const dataDir = makeDataDir()
   const runId = 'run-action-qa-fail'
