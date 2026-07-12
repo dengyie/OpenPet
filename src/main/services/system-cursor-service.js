@@ -158,6 +158,7 @@ const createSystemCursorService = ({
       stderrTail: '',
       waiters: new Set(),
       exited: false,
+      errorRecoveryScheduled: false,
       exitPromise: new Promise((resolve) => { resolveExit = resolve })
     }
     currentContext = context
@@ -180,35 +181,67 @@ const createSystemCursorService = ({
     nextChild.stderr?.on?.('data', (chunk) => {
       context.stderrTail = `${context.stderrTail}${String(chunk || '')}`.slice(-MAX_STDERR_CHARS)
     })
-    const settleTerminal = ({ error = null, code = null, signal = null }) => {
-      if (context.exited) return
-      context.exited = true
-      resolveExit({ error, code, signal })
-      output.close()
-      const wasCurrent = currentContext === context
-      const wasReady = context.ready
-      const expected = expectedChildren.has(nextChild)
-      if (wasCurrent) currentContext = null
-      const terminalError = error || new Error(`macOS system cursor helper exited before reporting ready (code ${code ?? 'null'}, signal ${signal || 'none'})`)
-      rejectProtocolWaiters(context, terminalError)
-      if (!expected && wasReady) {
-        record({
-          level: 'error',
-          event: 'system-cursor.helper.exited',
-          message: 'macOS system cursor helper exited unexpectedly',
-          details: { code, signal: signal || '', stderr: context.stderrTail, error: error?.message || '' }
-        })
-        Promise.resolve().then(() => onUnexpectedExit({ code, signal, stderr: context.stderrTail, error })).catch((fallbackError) => {
+    const reportUnexpected = ({ error = null, code = null, signal = null, cleanupError = null }) => {
+      record({
+        level: 'error',
+        event: 'system-cursor.helper.exited',
+        message: 'macOS system cursor helper exited unexpectedly',
+        details: {
+          code,
+          signal: signal || '',
+          stderr: context.stderrTail,
+          error: error?.message || '',
+          cleanupError: cleanupError?.message || ''
+        }
+      })
+      return Promise.resolve()
+        .then(() => onUnexpectedExit({ code, signal, stderr: context.stderrTail, error, cleanupError }))
+        .catch((fallbackError) => {
           record({
             level: 'error',
             event: 'system-cursor.fallback.failed',
             message: fallbackError?.message || 'Failed to persist cursor fallback after helper exit'
           })
         })
-      }
     }
-    nextChild.once('error', (error) => settleTerminal({ error }))
-    nextChild.once('exit', (code, signal) => settleTerminal({ code, signal }))
+    const settleExit = (code, signal) => {
+      if (context.exited) return
+      context.exited = true
+      resolveExit({ code, signal })
+      output.close()
+      const wasCurrent = currentContext === context
+      const wasReady = context.ready
+      const expected = expectedChildren.has(nextChild)
+      if (wasCurrent) currentContext = null
+      rejectProtocolWaiters(context, new Error(`macOS system cursor helper exited before reporting ready (code ${code ?? 'null'}, signal ${signal || 'none'})`))
+      if (!expected && wasReady) reportUnexpected({ code, signal })
+    }
+    nextChild.once('error', (error) => {
+      rejectProtocolWaiters(context, error)
+      if (!context.ready || context.exited || context.errorRecoveryScheduled) return
+      context.ready = false
+      context.errorRecoveryScheduled = true
+      const recovery = enqueue(async () => {
+        let cleanupError = null
+        try {
+          await stopContext(context, 'helper-error', { recordDeactivation: false })
+        } catch (errorDuringCleanup) {
+          cleanupError = errorDuringCleanup
+        }
+        if (cleanupError) {
+          record({
+            level: 'error',
+            event: 'system-cursor.helper.cleanup.failed',
+            message: cleanupError.message || 'Failed to reclaim macOS system cursor helper after an error',
+            details: { error: error.message || '', stderr: context.stderrTail }
+          })
+          throw cleanupError
+        }
+        await reportUnexpected({ error })
+      })
+      recovery.catch(() => {})
+    })
+    nextChild.once('exit', settleExit)
     return context
   }
 
@@ -227,32 +260,9 @@ const createSystemCursorService = ({
     if (!context || context.exited) return getStatus()
     const targetChild = context.child
     expectedChildren.add(targetChild)
-    let terminateSent = false
-    try {
-      terminateSent = targetChild.kill('SIGTERM')
-    } catch (error) {
-      expectedChildren.delete(targetChild)
-      throw error
-    }
-    if (!terminateSent) {
-      expectedChildren.delete(targetChild)
-      throw new Error('Failed to stop macOS system cursor helper')
-    }
-    let timeoutId
-    const stopped = await Promise.race([
-      context.exitPromise.then(() => true),
-      new Promise((resolve) => {
-        timeoutId = setTimeout(() => resolve(false), stopTimeoutMs)
-        timeoutId.unref?.()
-      })
-    ])
-    clearTimeout(timeoutId)
-    if (!stopped) {
-      if (!targetChild.kill('SIGKILL')) {
-        expectedChildren.delete(targetChild)
-        throw new Error('Failed to force-stop macOS system cursor helper')
-      }
-      const forceStopped = await Promise.race([
+    const waitForExit = async () => {
+      let timeoutId
+      const stopped = await Promise.race([
         context.exitPromise.then(() => true),
         new Promise((resolve) => {
           timeoutId = setTimeout(() => resolve(false), stopTimeoutMs)
@@ -260,8 +270,32 @@ const createSystemCursorService = ({
         })
       ])
       clearTimeout(timeoutId)
+      return stopped
+    }
+    let terminateSent = false
+    let terminateError = null
+    try {
+      terminateSent = targetChild.kill('SIGTERM')
+    } catch (error) {
+      terminateError = error
+    }
+    const stopped = await waitForExit()
+    if (!stopped) {
+      let forceSent = false
+      let forceError = null
+      try {
+        forceSent = targetChild.kill('SIGKILL')
+      } catch (error) {
+        forceError = error
+      }
+      const forceStopped = await waitForExit()
       if (!forceStopped) {
         expectedChildren.delete(targetChild)
+        if (!forceSent) {
+          const stopError = new Error('Failed to force-stop macOS system cursor helper')
+          stopError.cause = forceError || terminateError || (!terminateSent ? new Error('SIGTERM was not sent') : undefined)
+          throw stopError
+        }
         throw new Error('macOS system cursor helper did not exit after force-stop')
       }
     }
@@ -343,8 +377,7 @@ const createSystemCursorService = ({
         try {
           await stopContext(context, 'startup-failed', { recordDeactivation: false })
         } catch (stopError) {
-          stopError.cause = error
-          throw stopError
+          error.cleanupError = stopError
         }
       }
       throw error

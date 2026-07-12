@@ -176,8 +176,11 @@ test('system cursor service rejects activation when the helper exits before read
 test('system cursor service treats child error as terminal and can spawn a replacement', async (t) => {
   const fixture = createFixture()
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
-  const failedChild = createFakeChild({ onSignal: () => false })
-  failedChild.kill = () => false
+  const failedChild = createFakeChild({
+    onSignal: (signal, child) => {
+      if (signal === 'SIGTERM') queueMicrotask(() => child.emit('exit', 1, signal))
+    }
+  })
   const replacementChild = createFakeChild({
     onSignal: (signal, child) => {
       if (signal === 'SIGTERM') queueMicrotask(() => child.emit('exit', 0, signal))
@@ -334,7 +337,11 @@ test('system cursor service reports an unexpected helper exit after activation',
 test('system cursor service reports an unexpected helper error after activation', async (t) => {
   const fixture = createFixture()
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
-  const child = createFakeChild()
+  const child = createFakeChild({
+    onSignal: (signal, currentChild) => {
+      if (signal === 'SIGTERM') queueMicrotask(() => currentChild.emit('exit', 1, signal))
+    }
+  })
   const unexpected = []
   const service = createSystemCursorService({
     platform: 'darwin',
@@ -358,6 +365,101 @@ test('system cursor service reports an unexpected helper error after activation'
   assert.equal(service.getStatus().active, false)
   assert.equal(unexpected.length, 1)
   assert.match(unexpected[0].error.message, /helper transport failed/)
+})
+
+test('system cursor service waits for a helper error process to exit before spawning replacement', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const failedChild = createFakeChild()
+  failedChild.kill = (signal = 'SIGTERM') => {
+    failedChild.signals.push(signal)
+    return false
+  }
+  const replacementChild = createFakeChild({
+    onSignal: (signal, child) => {
+      if (signal === 'SIGTERM') queueMicrotask(() => child.emit('exit', 0, signal))
+    }
+  })
+  replacementChild.pid = 5252
+  let spawnCount = 0
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      spawnCount += 1
+      if (spawnCount === 1) {
+        queueMicrotask(() => emitJsonLine(failedChild, { event: 'ready', version: '1' }))
+        return failedChild
+      }
+      queueMicrotask(() => emitJsonLine(replacementChild, { event: 'ready', version: '2' }))
+      return replacementChild
+    },
+    versionFactory: () => String(spawnCount + 1),
+    stopTimeoutMs: 100
+  })
+
+  await service.apply(cursor)
+  failedChild.emit('error', new Error('active helper channel failed'))
+  const replacement = service.apply(cursor)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(spawnCount, 1)
+  assert.deepEqual(failedChild.signals, ['SIGTERM'])
+
+  failedChild.emit('exit', 1, 'SIGTERM')
+  const status = await replacement
+  assert.equal(spawnCount, 2)
+  assert.equal(status.helperPid, 5252)
+  await service.dispose()
+})
+
+test('system cursor service force-kills an errored helper when SIGTERM cannot be sent', async (t) => {
+  const fixture = createFixture()
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
+  const failedChild = createFakeChild()
+  failedChild.kill = (signal = 'SIGTERM') => {
+    failedChild.signals.push(signal)
+    if (signal === 'SIGKILL') queueMicrotask(() => failedChild.emit('exit', 1, signal))
+    return signal === 'SIGKILL'
+  }
+  const replacementChild = createFakeChild({
+    onSignal: (signal, child) => {
+      if (signal === 'SIGTERM') queueMicrotask(() => child.emit('exit', 0, signal))
+    }
+  })
+  replacementChild.pid = 6262
+  let spawnCount = 0
+  const service = createSystemCursorService({
+    platform: 'darwin',
+    projectRoot: fixture.root,
+    userDataPath: fixture.root,
+    appLogService: { record: () => {} },
+    resolveHelperPath: () => fixture.helperPath,
+    prepareCursorAsset: async () => fixture.imagePath,
+    spawnProcess: () => {
+      spawnCount += 1
+      if (spawnCount === 1) {
+        queueMicrotask(() => emitJsonLine(failedChild, { event: 'ready', version: '1' }))
+        return failedChild
+      }
+      queueMicrotask(() => emitJsonLine(replacementChild, { event: 'ready', version: '2' }))
+      return replacementChild
+    },
+    versionFactory: () => String(spawnCount + 1),
+    stopTimeoutMs: 5
+  })
+
+  await service.apply(cursor)
+  failedChild.emit('error', new Error('active helper channel failed'))
+  const status = await service.apply(cursor)
+
+  assert.deepEqual(failedChild.signals, ['SIGTERM', 'SIGKILL'])
+  assert.equal(status.helperPid, 6262)
+  await service.dispose()
 })
 
 test('system cursor service contains synchronous fallback callback failures', async (t) => {
@@ -405,11 +507,12 @@ test('system cursor service preserves unexpected-exit fallback when SIGTERM cann
       return child
     },
     versionFactory: () => 'active',
+    stopTimeoutMs: 5,
     onUnexpectedExit: (event) => unexpectedExits.push(event)
   })
 
   await service.apply(cursor)
-  await assert.rejects(service.stop('test'), /Failed to stop/)
+  await assert.rejects(service.stop('test'), /Failed to force-stop/)
   child.emit('exit', 9, null)
   await new Promise((resolve) => setImmediate(resolve))
 
