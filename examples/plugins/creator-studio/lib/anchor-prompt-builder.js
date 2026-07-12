@@ -143,6 +143,7 @@ const buildActionKeyframePrompt = ({
   const animationType = inferAnimationType(action)
   const role = normalizeActionText(keyframeRole, 'start')
   const isStart = /start|first|neutral/i.test(role)
+  const usesPeakConditioningBoard = !isStart && /conditioning-board|action-start-keyframe|start keyframe/i.test(String(referenceRole || ''))
   return {
     role: 'action-keyframe',
     version: PROMPT_BUILDER_VERSION,
@@ -154,6 +155,12 @@ const buildActionKeyframePrompt = ({
       `Reference role: ${sanitizeCreativeBrief(referenceRole)}.`,
       'The original user source image is the highest identity authority.',
       'If the written description conflicts with the reference image, follow the reference image.',
+      usesPeakConditioningBoard
+        ? 'The reference image is a single conditioning board: it contains the original user source image plus the normalized start keyframe. Use it only to lock identity, scale, lower-center root, and the neutral-to-peak pose change.'
+        : '',
+      usesPeakConditioningBoard
+        ? 'Do not copy the board layout, panels, white background, presentation spacing, or any repeated reference image into the output.'
+        : '',
       '',
       `Action ID: ${actionId}`,
       `Action name: ${actionName}`,

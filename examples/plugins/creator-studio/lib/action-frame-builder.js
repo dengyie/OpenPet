@@ -182,6 +182,20 @@ const extractVisibleBounds = ({ data, info }) => {
     },
     visiblePixels
   }
+  const lowerBandTop = Math.max(minY, maxY - Math.max(4, Math.floor((maxY - minY + 1) * 0.14)))
+  let lowerMinX = info.width
+  let lowerMaxX = -1
+  for (let y = lowerBandTop; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const pixelIndex = ((y * info.width) + x) * info.channels
+      if (data[pixelIndex + 3] <= VISIBLE_ALPHA_THRESHOLD) continue
+      lowerMinX = Math.min(lowerMinX, x)
+      lowerMaxX = Math.max(lowerMaxX, x)
+    }
+  }
+  bounds.lowerRootX = Number((lowerMaxX >= lowerMinX
+    ? (lowerMinX + lowerMaxX) / 2
+    : sumX / visiblePixels).toFixed(2))
   bounds.identityDescriptor = createIdentityDescriptor({ data, info, bounds, alphaThreshold: 0 })
   return bounds
 }
@@ -554,6 +568,115 @@ const createNormalizedFrame = async (preparedFrame, sharedCrop = null) => {
   }
 }
 
+const median = (values = []) => {
+  const finiteValues = values.map(Number).filter(Number.isFinite).sort((left, right) => left - right)
+  if (finiteValues.length === 0) return 0
+  const middle = Math.floor(finiteValues.length / 2)
+  return finiteValues.length % 2 === 0
+    ? (finiteValues[middle - 1] + finiteValues[middle]) / 2
+    : finiteValues[middle]
+}
+
+const resolveRootStabilizationPolicy = (action = {}) => {
+  const animationType = inferAnimationType(action)
+  return {
+    mode: 'lower-center-root',
+    animationType,
+    stabilizeX: true,
+    // Preserve intentional airborne motion while removing horizontal jitter.
+    stabilizeY: animationType !== 'vertical_bounce'
+  }
+}
+
+const clampFrameShift = ({ requestedShift, bounds, axis, dimension }) => {
+  if (!bounds) return 0
+  const start = axis === 'x' ? Number(bounds.left) : Number(bounds.top)
+  const end = axis === 'x' ? Number(bounds.right) : Number(bounds.bottom)
+  const minimum = -start
+  const maximum = (dimension - 1) - end
+  return Math.min(maximum, Math.max(minimum, Math.round(requestedShift)))
+}
+
+const translateNormalizedFrame = async ({ normalized, shiftX, shiftY }) => {
+  const inspection = await inspectVisibleBuffer(normalized.frameBuffer)
+  const appliedShiftX = clampFrameShift({
+    requestedShift: shiftX,
+    bounds: inspection.bounds,
+    axis: 'x',
+    dimension: FRAME_WIDTH
+  })
+  const appliedShiftY = clampFrameShift({
+    requestedShift: shiftY,
+    bounds: inspection.bounds,
+    axis: 'y',
+    dimension: FRAME_HEIGHT
+  })
+  const frameBuffer = await sharp({
+    create: {
+      width: FRAME_WIDTH,
+      height: FRAME_HEIGHT,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite([{ input: normalized.frameBuffer, left: appliedShiftX, top: appliedShiftY }])
+    .png()
+    .toBuffer()
+  return {
+    ...normalized,
+    frameBuffer,
+    stabilization: {
+      requestedShiftX: Number(shiftX.toFixed(2)),
+      requestedShiftY: Number(shiftY.toFixed(2)),
+      shiftX: appliedShiftX,
+      shiftY: appliedShiftY,
+      clippedX: appliedShiftX !== Math.round(shiftX),
+      clippedY: appliedShiftY !== Math.round(shiftY)
+    }
+  }
+}
+
+const stabilizeNormalizedFrameSources = async ({ frameSources, action, target = null }) => {
+  const policy = resolveRootStabilizationPolicy(action)
+  const inspections = []
+  for (const frameSource of frameSources) {
+    inspections.push(await inspectVisibleBuffer(frameSource.normalized.frameBuffer))
+  }
+  const targetRoot = {
+    x: Number(Number.isFinite(Number(target?.x))
+      ? Number(target.x)
+      : median(inspections.map((inspection) => inspection.bounds?.lowerRootX)).toFixed(2)),
+    y: Number(Number.isFinite(Number(target?.y))
+      ? Number(target.y)
+      : median(inspections.map((inspection) => inspection.bounds?.baselineY)).toFixed(2))
+  }
+  const stabilizedSources = []
+  for (const [index, frameSource] of frameSources.entries()) {
+    const bounds = inspections[index].bounds
+    const requestedShiftX = policy.stabilizeX ? targetRoot.x - Number(bounds?.lowerRootX || 0) : 0
+    const requestedShiftY = policy.stabilizeY ? targetRoot.y - Number(bounds?.baselineY || 0) : 0
+    stabilizedSources.push({
+      ...frameSource,
+      normalized: await translateNormalizedFrame({
+        normalized: frameSource.normalized,
+        shiftX: requestedShiftX,
+        shiftY: requestedShiftY
+      })
+    })
+  }
+  return {
+    frameSources: stabilizedSources,
+    rootStabilization: {
+      ...policy,
+      target: targetRoot,
+      frameCount: frameSources.length,
+      clippedFrameCount: stabilizedSources.filter((source) => (
+        source.normalized.stabilization.clippedX || source.normalized.stabilization.clippedY
+      )).length
+    }
+  }
+}
+
 const extractActionSheetCellBuffer = async ({ sourcePath, frameCount, frameIndex }) => {
   const metadata = await sharp(sourcePath).metadata()
   const layout = getActionSheetLayout(frameCount)
@@ -731,6 +854,7 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
   const widths = numericRange(frameBounds.map((bounds) => bounds.width))
   const visiblePixels = numericRange(frames.map((frame) => frame?.visiblePixels))
   const baseline = numericRange(frameBounds.map((bounds) => bounds.baselineY))
+  const lowerRootX = numericRange(frameBounds.map((bounds) => bounds.lowerRootX))
   const centroidX = numericRange(frameBounds.map((bounds) => bounds.centroidX))
   const centroidY = numericRange(frameBounds.map((bounds) => bounds.centroidY))
   const sourceCellEdgeTouchCount = frames.filter(sourceBoundsTouchCellEdge).length
@@ -912,6 +1036,7 @@ const createActionFrameQuality = async ({ frames, frameCount, extraction, frames
         width: widths,
         height: heights,
         baselineY: baseline,
+        lowerRootX,
         centroidX,
         centroidY
       },
@@ -1040,13 +1165,21 @@ const buildActionFramesFromGeneratedImage = async ({
     }))
   }
   const sharedCrop = createSharedSequenceCrop(frameCellSources.map((source) => source.prepared))
+  const materializedFrameSources = []
+  for (let index = 0; index < frameCount; index += 1) {
+    materializedFrameSources.push(await materializeFrameSource({
+      frameCellSource: frameCellSources[index],
+      sharedCrop
+    }))
+  }
+  const stabilized = await stabilizeNormalizedFrameSources({
+    frameSources: materializedFrameSources,
+    action
+  })
   for (let index = 0; index < frameCount; index += 1) {
     const fileName = `${String(index + 1).padStart(4, '0')}.png`
     const framePath = path.join(safeOutputFramesDir, fileName)
-    const frameSource = await materializeFrameSource({
-      frameCellSource: frameCellSources[index],
-      sharedCrop
-    })
+    const frameSource = stabilized.frameSources[index]
     sourceRelativePath = sourceRelativePath || frameSource.sourceRelativePath
     sourceRelativePaths = frameSource.sourceRelativePaths
     const frameExtraction = createExtractionWithMode({
@@ -1076,6 +1209,7 @@ const buildActionFramesFromGeneratedImage = async ({
       sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
       sourceBackgroundRemoved: frameSource.normalized.sourceBackgroundRemoved,
       sourceBackgroundRemovedRatio: frameSource.normalized.sourceBackgroundRemovedRatio,
+      stabilization: frameSource.normalized.stabilization,
       ...(frameExtraction?.sourceCell ? { sourceCell: frameExtraction.sourceCell } : {}),
       ...(Number.isInteger(frameExtraction?.sourceOutputIndex) ? { sourceOutputIndex: frameExtraction.sourceOutputIndex } : {})
     })
@@ -1124,7 +1258,8 @@ const buildActionFramesFromGeneratedImage = async ({
         outputCount: 1,
         layout: getActionSheetLayout(frameCount)
       }),
-      sharedCrop
+      sharedCrop,
+      rootStabilization: stabilized.rootStabilization
     },
     triggerProposal: action?.triggerProposal || { type: 'unbound' },
     contactSheetRelativePath: toDataRelativePath({ dataDir, targetPath: contactSheetPath }),
@@ -1228,7 +1363,16 @@ const repairActionFrameFromGeneratedImage = async ({
     frameCount,
     frameIndex
   })
-  const frameSource = await materializeFrameSource({ frameCellSource, sharedCrop })
+  let frameSource = await materializeFrameSource({ frameCellSource, sharedCrop })
+  const storedRootStabilization = currentQa?.extraction?.rootStabilization
+  if (storedRootStabilization?.target) {
+    const stabilized = await stabilizeNormalizedFrameSources({
+      frameSources: [frameSource],
+      action,
+      target: storedRootStabilization.target
+    })
+    frameSource = stabilized.frameSources[0]
+  }
   const framePath = path.join(safeOutputFramesDir, fileName)
   const fileSha256 = crypto.createHash('sha256').update(frameSource.normalized.frameBuffer).digest('hex')
   fs.writeFileSync(framePath, frameSource.normalized.frameBuffer)
@@ -1251,6 +1395,7 @@ const repairActionFrameFromGeneratedImage = async ({
     sourceOpaqueFullFrameTrimmed: frameSource.normalized.sourceOpaqueFullFrameTrimmed,
     sourceBackgroundRemoved: frameSource.normalized.sourceBackgroundRemoved,
     sourceBackgroundRemovedRatio: frameSource.normalized.sourceBackgroundRemovedRatio,
+    stabilization: frameSource.normalized.stabilization,
     ...(frameSource.extraction?.sourceCell ? { sourceCell: frameSource.extraction.sourceCell } : {}),
     repairedAt: now()
   }

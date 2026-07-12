@@ -29,6 +29,66 @@ test('host model bridge clamps provider stages to the remaining workflow budget'
   }), /time budget/i)
 })
 
+test('host model bridge retries the same verified model once after a transient gateway HTTP failure', async () => {
+  const requests = []
+  const response = await __testInternals.generateWithModelFallback({
+    prompt: 'wave',
+    requestedTimeoutMs: 300000,
+    referenceImages: [{ role: 'canonical-reference' }],
+    runId: 'run-transient-retry',
+    dataRelativeDir: 'runs/run-transient-retry/keyframes/start',
+    settings: {
+      provider: 'openai-compatible',
+      creatorWorkflowModelPolicy: {
+        verifiedModels: ['gpt-image-2'],
+        fallbackModels: []
+      }
+    },
+    preferredModel: 'gpt-image-2',
+    retryDelayMs: 0,
+    callHostImageGenerateImpl: async (request) => {
+      requests.push(request)
+      if (requests.length === 1) {
+        throw new Error('Image Provider generation failed with HTTP 524')
+      }
+      return { ok: true, result: { outputs: [{ dataRelativePath: 'runs/output.png' }] } }
+    }
+  })
+
+  assert.equal(response.selectedModel, 'gpt-image-2')
+  assert.equal(requests.length, 2)
+  assert.deepEqual(response.attempts.map((attempt) => ({ model: attempt.model, ok: attempt.ok })), [
+    { model: 'gpt-image-2', ok: false },
+    { model: 'gpt-image-2', ok: true }
+  ])
+})
+
+test('host model bridge does not retry the same model after a non-transient provider HTTP failure', async () => {
+  const requests = []
+  await assert.rejects(() => __testInternals.generateWithModelFallback({
+    prompt: 'wave',
+    requestedTimeoutMs: 300000,
+    referenceImages: [{ role: 'canonical-reference' }],
+    runId: 'run-non-transient-failure',
+    dataRelativeDir: 'runs/run-non-transient-failure/keyframes/start',
+    settings: {
+      provider: 'openai-compatible',
+      creatorWorkflowModelPolicy: {
+        verifiedModels: ['gpt-image-2'],
+        fallbackModels: []
+      }
+    },
+    preferredModel: 'gpt-image-2',
+    retryDelayMs: 0,
+    callHostImageGenerateImpl: async (request) => {
+      requests.push(request)
+      throw new Error('Image Provider generation failed with HTTP 400')
+    }
+  }), /HTTP 400/)
+
+  assert.equal(requests.length, 1)
+})
+
 const writeMockBaseProviderPng = async (outputPath) => {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
   await sharp({
@@ -397,7 +457,7 @@ test('host model bridge generates text-only full-pet rows through per-action con
     assert.equal(finalRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
     assert.equal(requests.some((entry) => /\/official-rows\//.test(entry.dataRelativeDir)), false)
     assert.equal(startRequests.every((entry) => entry.referenceRoles[0] === 'canonical-reference'), true)
-    assert.equal(peakRequests.every((entry) => entry.referenceRoles[0] === 'canonical-reference'), true)
+    assert.equal(peakRequests.every((entry) => entry.referenceRoles[0] === 'action-peak-conditioning-board'), true)
     assert.equal(finalRequests.every((entry) => entry.referenceRoles[0] === 'keyframe-action-reference-board'), true)
     assert.equal(startRequests.every((entry) => entry.timeoutMs === 480000), true)
     assert.equal(peakRequests.every((entry) => entry.timeoutMs === 480000), true)
@@ -508,7 +568,7 @@ test('host model bridge conditions every official full-pet action with provider 
     assert.equal(finalRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
     assert.equal(legacyRowRequests.length, 0)
     assert.equal(startRequests.every((entry) => entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'canonical-reference'), true)
-    assert.equal(peakRequests.every((entry) => entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'canonical-reference'), true)
+    assert.equal(peakRequests.every((entry) => entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'action-peak-conditioning-board'), true)
     assert.equal(finalRequests.every((entry) => entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'keyframe-action-reference-board'), true)
     assert.equal(result.officialRows.rows.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
   } finally {
