@@ -25,74 +25,104 @@ const resolveSafeStorage = (safeStorage) => {
 const isSafeStorageAvailable = (safeStorage) => Boolean(safeStorage?.isEncryptionAvailable?.())
 
 const encryptValue = (safeStorage, value) => {
-  if (!safeStorage || !isSafeStorageAvailable(safeStorage)) return { encrypted: false, value: String(value || '') }
-  return { encrypted: true, value: safeStorage.encryptString(String(value || '')).toString('base64') }
+  const plaintext = String(value || '')
+  if (!plaintext || !safeStorage || !isSafeStorageAvailable(safeStorage)) {
+    return { encrypted: false, value: plaintext }
+  }
+  return { encrypted: true, value: safeStorage.encryptString(plaintext).toString('base64') }
 }
 
 const decryptEntry = (safeStorage, entry) => {
   if (!entry || typeof entry !== 'object') return ''
   if (entry.encrypted === true) {
-    if (!safeStorage || !isSafeStorageAvailable(safeStorage)) return ''
-    try {
-      return safeStorage.decryptString(Buffer.from(entry.value, 'base64'))
-    } catch (_) {
-      return ''
+    if (!safeStorage || !isSafeStorageAvailable(safeStorage)) {
+      throw new Error('Encrypted secrets are unavailable because safe storage is not available')
     }
+    return safeStorage.decryptString(Buffer.from(entry.value, 'base64'))
   }
-  // Legacy plaintext entry — return as-is (and will be re-encrypted on next setSecret).
+  // Legacy plaintext entry — return as-is and convert it on the next successful write.
   return String(entry.value || '')
 }
 
 const readStore = (storePath, safeStorage) => {
-  try {
-    if (!fs.existsSync(storePath)) return { secrets: {} }
-    const parsed = JSON.parse(fs.readFileSync(storePath, 'utf-8'))
-    const rawSecrets = parsed.secrets || {}
-    const secrets = {}
-    for (const [id, entry] of Object.entries(rawSecrets)) {
-      secrets[id] = {
-        label: entry?.label || id,
-        value: decryptEntry(safeStorage, entry),
-        encrypted: entry?.encrypted === true,
-        updatedAt: entry?.updatedAt || ''
-      }
+  if (!fs.existsSync(storePath)) return { secrets: {} }
+  const parsed = JSON.parse(fs.readFileSync(storePath, 'utf-8'))
+  const rawSecrets = parsed.secrets || {}
+  const secrets = {}
+  for (const [id, entry] of Object.entries(rawSecrets)) {
+    secrets[id] = {
+      label: entry?.label || id,
+      value: decryptEntry(safeStorage, entry),
+      updatedAt: entry?.updatedAt || ''
     }
-    return { secrets }
-  } catch (_) {
-    return { secrets: {} }
   }
+  return { secrets }
 }
 
-const writeStore = (storePath, store) => {
+const createDiskStore = (store, safeStorage) => {
+  const secrets = {}
+  for (const [id, secret] of Object.entries(store.secrets)) {
+    const persistedValue = encryptValue(safeStorage, secret.value)
+    secrets[id] = {
+      label: secret.label || id,
+      encrypted: persistedValue.encrypted,
+      value: persistedValue.value,
+      updatedAt: secret.updatedAt || ''
+    }
+  }
+  return { secrets }
+}
+
+const writeStore = (storePath, store, safeStorage) => {
   fs.mkdirSync(path.dirname(storePath), { recursive: true })
-  fs.writeFileSync(storePath, JSON.stringify(store, null, 2), { encoding: 'utf-8', mode: 0o600 })
-  if (process.platform !== 'win32') fs.chmodSync(storePath, 0o600)
+  const temporaryPath = `${storePath}.${process.pid}.${Date.now()}.tmp`
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(createDiskStore(store, safeStorage), null, 2), {
+      encoding: 'utf-8',
+      mode: 0o600,
+      flush: true
+    })
+    if (process.platform !== 'win32') fs.chmodSync(temporaryPath, 0o600)
+    fs.renameSync(temporaryPath, storePath)
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true })
+    } catch (_) {}
+    throw error
+  }
 }
 
 const createSecretService = ({ storePath = getDefaultStorePath(), safeStorage } = {}) => {
   const resolvedSafeStorage = resolveSafeStorage(safeStorage)
   let store = readStore(storePath, resolvedSafeStorage)
 
-  const persist = () => writeStore(storePath, store)
+  const persist = (nextStore) => writeStore(storePath, nextStore, resolvedSafeStorage)
 
   const setSecret = ({ id, value, label = id }) => {
     if (!id) throw new Error('Secret id is required')
-    const encrypted = encryptValue(resolvedSafeStorage, value)
-    store.secrets[id] = {
-      label,
-      encrypted: encrypted.encrypted,
-      value: encrypted.value,
-      updatedAt: new Date().toISOString()
+    const nextStore = {
+      secrets: {
+        ...store.secrets,
+        [id]: {
+          label,
+          value: String(value || ''),
+          updatedAt: new Date().toISOString()
+        }
+      }
     }
-    persist()
+    persist(nextStore)
+    store = nextStore
     return { id, label, hasValue: Boolean(value) }
   }
 
   const getSecretValue = (id) => store.secrets[id]?.value || ''
 
   const deleteSecret = (id) => {
-    delete store.secrets[id]
-    persist()
+    const secrets = { ...store.secrets }
+    delete secrets[id]
+    const nextStore = { secrets }
+    persist(nextStore)
+    store = nextStore
   }
 
   const listSecretRefs = () => Object.entries(store.secrets)

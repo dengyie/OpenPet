@@ -69,6 +69,8 @@ test('secret service encrypts secrets at rest when safeStorage is available', ()
 
   service.setSecret({ id: 'sk', value: 'super-secret-key', label: 'Provider key' })
 
+  assert.equal(service.getSecretValue('sk'), 'super-secret-key')
+
   const onDisk = JSON.parse(fs.readFileSync(storePath, 'utf-8'))
   assert.equal(onDisk.secrets.sk.encrypted, true)
   assert.notEqual(onDisk.secrets.sk.value, 'super-secret-key')
@@ -76,6 +78,49 @@ test('secret service encrypts secrets at rest when safeStorage is available', ()
 
   const reloaded = createSecretService({ storePath, safeStorage })
   assert.equal(reloaded.getSecretValue('sk'), 'super-secret-key')
+})
+
+test('secret service preserves decrypted secrets across load and subsequent writes', () => {
+  const storePath = createTempStore()
+  const safeStorage = createFakeSafeStorage()
+
+  createSecretService({ storePath, safeStorage })
+    .setSecret({ id: 'alpha', value: 'alpha-value', label: 'Alpha' })
+
+  const afterFirstRestart = createSecretService({ storePath, safeStorage })
+  assert.equal(afterFirstRestart.getSecretValue('alpha'), 'alpha-value')
+
+  afterFirstRestart.setSecret({ id: 'beta', value: 'beta-value', label: 'Beta' })
+
+  const afterSecondRestart = createSecretService({ storePath, safeStorage })
+  assert.equal(afterSecondRestart.getSecretValue('alpha'), 'alpha-value')
+  assert.equal(afterSecondRestart.getSecretValue('beta'), 'beta-value')
+})
+
+test('secret service leaves runtime and disk state unchanged when atomic replacement fails', () => {
+  const storePath = createTempStore()
+  const safeStorage = createFakeSafeStorage()
+  const service = createSecretService({ storePath, safeStorage })
+  service.setSecret({ id: 'alpha', value: 'alpha-value', label: 'Alpha' })
+  const previousFile = fs.readFileSync(storePath, 'utf-8')
+  const originalRenameSync = fs.renameSync
+
+  fs.renameSync = () => {
+    throw new Error('simulated rename failure')
+  }
+  try {
+    assert.throws(
+      () => service.setSecret({ id: 'beta', value: 'beta-value', label: 'Beta' }),
+      /simulated rename failure/
+    )
+  } finally {
+    fs.renameSync = originalRenameSync
+  }
+
+  assert.equal(fs.readFileSync(storePath, 'utf-8'), previousFile)
+  assert.equal(service.getSecretValue('alpha'), 'alpha-value')
+  assert.equal(service.getSecretValue('beta'), '')
+  assert.equal(JSON.parse(previousFile).secrets.alpha.encrypted, true)
 })
 
 test('secret service migrates legacy plaintext entries on read', () => {
