@@ -188,7 +188,7 @@ test('live docs mention archived real Creator Studio provider smoke evidence and
 test('live docs mention archived Creator Workflow host smoke evidence and its branch-level claim boundary', () => {
   const evidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance'
   const mainEvidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance'
-  const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
+  const petGenerationDoc = readText('docs/pet-character-generation.md')
   const developmentSummary = readText('docs/development-summary.md')
   const handoff = readText('docs/HANDOFF.md')
   const projectStatusReview = readText('docs/project-status-review.md')
@@ -206,7 +206,7 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
   const sensitiveEvidencePattern = /sk-[A-Za-z0-9_-]+|Authorization|Bearer|\/Users\/mango|\.codex\/worktrees/i
 
   for (const [name, content] of [
-    ['one-click-action-generation-complete-chain.md', oneClickDoc],
+    ['pet-character-generation.md', petGenerationDoc],
     ['development-summary.md', developmentSummary],
     ['HANDOFF.md', handoff],
     ['project-status-review.md', projectStatusReview],
@@ -253,28 +253,24 @@ test('live docs mention archived Creator Workflow host smoke evidence and its br
 
 test('creator studio live docs keep the official hatch-pet full-action policy truthful', () => {
   const creatorReadme = readText('examples/plugins/creator-studio/README.md')
-  const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
+  const petGenerationDoc = readText('docs/pet-character-generation.md')
 
-  for (const [name, content] of [
-    ['examples/plugins/creator-studio/README.md', creatorReadme],
-    ['docs/one-click-action-generation-complete-chain.md', oneClickDoc]
-  ]) {
-    assert.match(content, /official-quality[\s\S]*base generation[\s\S]*state-specific row-strip generation/i, `${name} should describe official-quality output as base plus row-strip generation`)
-    assert.match(content, /idle[\s\S]*running-right[\s\S]*running-left[\s\S]*waving[\s\S]*jumping[\s\S]*failed[\s\S]*waiting[\s\S]*running[\s\S]*review/i, `${name} should list all nine official Codex rows`)
-    assert.match(content, /running-left[\s\S]*framewise-mirrored[\s\S]*approved `?running-right`?/i, `${name} should keep running-left as the only approved deterministic derivation`)
-    assert.match(content, /base-(?:pet\/)?preview|preview\/compatibility|preview\/fallback|compatibility previews/i, `${name} should label base-only fallback rows as preview or compatibility output`)
-    assert.match(content, /local (?:geometric )?transform|base-image transform|transformed|code-generated row strips/i, `${name} should reject local transform rows as real action generation`)
-    assert.doesNotMatch(content, /required real:[\s\S]*idle/i, `${name} should not describe base-only idle coverage as an official real action`)
-  }
+  assert.match(petGenerationDoc, /official-quality[\s\S]*canonical character[\s\S]*action-specific/i, 'canonical docs should describe official-quality output as identity plus action-specific generation')
+  assert.match(petGenerationDoc, /idle[\s\S]*running-right[\s\S]*running-left[\s\S]*waving[\s\S]*jumping[\s\S]*failed[\s\S]*waiting[\s\S]*running[\s\S]*review/i, 'canonical docs should list all nine official Codex rows')
+  assert.match(petGenerationDoc, /running-right[\s\S]*running-left[\s\S]*framewise horizontal mirror/i, 'canonical docs should define running-left as the mirrored directional pair')
+  assert.match(petGenerationDoc, /base-image transforms|transform-only frames/i, 'canonical docs should reject local transform rows as real action generation')
+  assert.doesNotMatch(petGenerationDoc, /required real:[\s\S]*idle/i, 'canonical docs should not describe base-only idle coverage as an official real action')
+  assert.match(creatorReadme, /pet-character-generation\.md/i, 'Creator Studio README should link to the canonical generation authority')
+  assert.match(creatorReadme, /not (?:official-quality|production art)|preview|fallback/i, 'Creator Studio README should keep the preview and production-art claim boundary')
 })
 
 test('live docs describe landed official row package support without claiming provider art approval', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
-  const oneClickDoc = readText('docs/one-click-action-generation-complete-chain.md')
+  const petGenerationDoc = readText('docs/pet-character-generation.md')
 
   for (const [name, content] of [
     ['docs/openpet-current-todo-architecture.md', todoArchitecture],
-    ['docs/one-click-action-generation-complete-chain.md', oneClickDoc]
+    ['docs/pet-character-generation.md', petGenerationDoc]
   ]) {
     assert.match(
       content,
@@ -292,6 +288,43 @@ test('live docs describe landed official row package support without claiming pr
       `${name} should keep provider generation or human art approval outside the landed deterministic claim`
     )
   }
+})
+
+test('canonical pet generation docs enforce one reference image and mirrored directional rows', () => {
+  const canonical = readText('docs/pet-character-generation.md')
+  assert.match(canonical, /exactly one source image/i)
+  assert.match(canonical, /at most one image attachment/i)
+  assert.match(canonical, /compose[\s\S]*composite reference board/i)
+  assert.match(canonical, /running-right[\s\S]*running-left[\s\S]*framewise horizontal mirror/i)
+  assert.match(canonical, /does not (?:spend|make|issue) a separate provider request (?:on|for) `?running-left`?/i)
+  assert.match(canonical, /1536x1872/i)
+  assert.match(canonical, /192x208/i)
+  assert.match(canonical, /human[\s\S]*visual[\s\S]*review/i)
+})
+
+test('current live docs link to the canonical pet generation authority', () => {
+  const linkedDocs = [
+    'docs/README.md',
+    'docs/HANDOFF.md',
+    'docs/development-summary.md',
+    'docs/project-status-review.md',
+    'docs/openpet-current-todo-architecture.md',
+    'examples/plugins/creator-studio/README.md'
+  ]
+
+  for (const relativePath of linkedDocs) {
+    assert.match(
+      readText(relativePath),
+      /pet-character-generation\.md/i,
+      `${relativePath} should link to the canonical pet generation authority`
+    )
+  }
+
+  assert.doesNotMatch(
+    readText('docs/README.md'),
+    /one-click-action-generation-complete-chain\.md/i,
+    'docs/README.md should not index the superseded one-click generation document'
+  )
 })
 
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {

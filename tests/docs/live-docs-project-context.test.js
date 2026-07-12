@@ -61,6 +61,16 @@ test('project-context describes the current Creator Studio review and trigger ha
   )
 })
 
+test('project-context points to the canonical single-reference pet generation contract', () => {
+  const context = readProjectContext()
+  const facts = context.currentFacts.join('\n')
+
+  assert.match(facts, /docs\/pet-character-generation\.md/i)
+  assert.match(facts, /one image attachment/i)
+  assert.match(facts, /running-left/i)
+  assert.match(facts, /approved-mirror/i)
+})
+
 test('project-context indexes the archived provider smoke evidence and current smoke TypeScript boundary truthfully', () => {
   const context = readProjectContext()
   const facts = context.currentFacts.join('\n')
