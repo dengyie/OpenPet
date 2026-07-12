@@ -399,12 +399,12 @@ const createPluginRemoteSourceSubmissionRehearsal = async ({
       execFile,
       fsImpl
     })
-    const packageValidation = validatePluginPackage(packagePath)
+    const packageValidation = await validatePluginPackage(packagePath)
     if (!packageValidation.ok) {
       throw new Error(`Packaged plugin validation failed: ${packageValidation.errors.join('; ')}`)
     }
 
-    const bundle = createPluginSubmissionBundle({
+    const bundle = await createPluginSubmissionBundle({
       sourcePath: packagePath,
       outputDir: bundleDir,
       now: () => new Date(generatedAt),

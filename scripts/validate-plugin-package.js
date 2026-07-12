@@ -155,17 +155,30 @@ const validatePluginPackage = (sourcePath, options = {}) => {
     getPluginBlockStatus: getPluginBlockStatusFactory(options)
   })
 
-  let review
-  try {
-    review = service.inspectPluginPackage(path.resolve(sourcePath))
+  let review = null
+  const cleanup = () => {
+    if (review?.selectionId) service.clearPendingSelection(review.selectionId)
+    if (!options.installedDir) fs.rmSync(pluginDir, { recursive: true, force: true })
+  }
+  const finish = (inspectedReview) => {
+    review = inspectedReview
     const result = validateReview(review, options)
     service.clearPendingSelection(review.selectionId)
+    review = null
+    return result
+  }
+
+  try {
+    const inspected = service.inspectPluginPackage(path.resolve(sourcePath))
+    if (inspected && typeof inspected.then === 'function') {
+      return inspected.then(finish).finally(cleanup)
+    }
+    const result = finish(inspected)
+    cleanup()
     return result
   } catch (error) {
-    if (review?.selectionId) service.clearPendingSelection(review.selectionId)
+    cleanup()
     throw error
-  } finally {
-    if (!options.installedDir) fs.rmSync(pluginDir, { recursive: true, force: true })
   }
 }
 
@@ -190,14 +203,14 @@ const printTextResult = (result) => {
   console.log('Plugin package validation passed.')
 }
 
-const main = () => {
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(usage())
     return
   }
 
-  const result = validatePluginPackage(options.sourcePath, options)
+  const result = await validatePluginPackage(options.sourcePath, options)
   if (options.json) {
     console.log(JSON.stringify(result, null, 2))
   } else {
@@ -208,12 +221,10 @@ const main = () => {
 }
 
 if (require.main === module) {
-  try {
-    main()
-  } catch (error) {
+  main().catch((error) => {
     console.error(error.message || error)
     process.exit(1)
-  }
+  })
 }
 
 module.exports = {

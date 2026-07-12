@@ -53,9 +53,9 @@ test('sessionIdFromDate formats a stable archive-safe timestamp', () => {
   assert.equal(sessionIdFromDate(new Date('2026-06-17T15:14:15.000Z')), '2026-06-17T15-14-15Z')
 })
 
-test('createPluginRealWorldSubmissionRehearsal packages an existing plugin through author and maintainer handoff', () => {
+test('createPluginRealWorldSubmissionRehearsal packages an existing plugin through author and maintainer handoff', async () => {
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-real-world-rehearsal-'))
-  const summary = createPluginRealWorldSubmissionRehearsal({
+  const summary = await createPluginRealWorldSubmissionRehearsal({
     sourcePath: EXAMPLE_PLUGIN_PATH,
     outputDir,
     reviewer: 'OpenPet Maintainer',

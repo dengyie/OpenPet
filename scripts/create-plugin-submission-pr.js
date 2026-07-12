@@ -109,12 +109,14 @@ const createPluginSubmissionPr = ({
     now
   })
 
-  const title = `Plugin submission: ${report.plugin.name}`
-  const summary = report.readyForHumanReview
-    ? 'Package validation passed and the submission packet is ready for human review.'
-    : 'Package validation failed and the submission packet needs fixes before human review.'
+  const finish = (resolvedReport) => {
+    const report = resolvedReport
+    const title = `Plugin submission: ${report.plugin.name}`
+    const summary = report.readyForHumanReview
+      ? 'Package validation passed and the submission packet is ready for human review.'
+      : 'Package validation failed and the submission packet needs fixes before human review.'
 
-  return {
+    return {
     generatedAt: report.generatedAt,
     title,
     summary,
@@ -165,7 +167,9 @@ const createPluginSubmissionPr = ({
     ].join('\n'),
     assignees: [],
     labels: ['plugin-submission', report.readyForHumanReview ? 'ready-for-review' : 'needs-fix']
+    }
   }
+  return report && typeof report.then === 'function' ? report.then(finish) : finish(report)
 }
 
 const renderMarkdownPr = (pr) => [
@@ -183,14 +187,14 @@ const writePr = ({ pr, outputPath, json = false, fsImpl = fs }) => {
   return absoluteOutputPath
 }
 
-const main = () => {
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(usage())
     return
   }
 
-  const pr = createPluginSubmissionPr(options)
+  const pr = await createPluginSubmissionPr(options)
   if (options.outputPath) {
     const writtenPath = writePr({ pr, outputPath: options.outputPath, json: options.json })
     console.log(`Plugin submission PR packet created: ${writtenPath}`)
@@ -206,12 +210,10 @@ const main = () => {
 }
 
 if (require.main === module) {
-  try {
-    main()
-  } catch (err) {
+  main().catch((err) => {
     console.error(err.message || err)
     process.exit(1)
-  }
+  })
 }
 
 module.exports = {

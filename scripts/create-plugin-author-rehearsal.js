@@ -200,7 +200,7 @@ const renderChecklist = ({ templates, submission }) => [
   ''
 ].join('\n')
 
-const createPluginAuthorRehearsal = ({
+const createPluginAuthorRehearsal = async ({
   outputDir = DEFAULT_OUTPUT_DIR,
   submissionTemplate = 'ai',
   now = () => new Date(),
@@ -252,8 +252,8 @@ const createPluginAuthorRehearsal = ({
     execFile,
     fsImpl
   })
-  const packageValidation = validatePluginPackage(packagePath)
-  const bundle = createPluginSubmissionBundle({
+  const packageValidation = await validatePluginPackage(packagePath)
+  const bundle = await createPluginSubmissionBundle({
     sourcePath: packagePath,
     outputDir: bundleDir,
     now: () => new Date(generatedAt),
@@ -326,13 +326,13 @@ const createPluginAuthorRehearsal = ({
   return summary
 }
 
-const main = () => {
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(usage())
     return
   }
-  const summary = createPluginAuthorRehearsal(options)
+  const summary = await createPluginAuthorRehearsal(options)
   if (options.json) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
   } else {
@@ -345,12 +345,10 @@ const main = () => {
 }
 
 if (require.main === module) {
-  try {
-    main()
-  } catch (error) {
+  main().catch((error) => {
     console.error(error.message || error)
     process.exit(1)
-  }
+  })
 }
 
 module.exports = {

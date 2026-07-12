@@ -33,9 +33,9 @@ test('parseArgs rejects bad plugin author rehearsal options', () => {
   assert.throws(() => parseArgs(['--unknown']), /Unexpected argument/)
 })
 
-test('createPluginAuthorRehearsal scaffolds all templates and validates an AI submission bundle', () => {
+test('createPluginAuthorRehearsal scaffolds all templates and validates an AI submission bundle', async () => {
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-author-rehearsal-'))
-  const summary = createPluginAuthorRehearsal({
+  const summary = await createPluginAuthorRehearsal({
     outputDir,
     submissionTemplate: 'ai',
     now: () => new Date('2026-06-16T05:00:00.000Z')
@@ -52,7 +52,7 @@ test('createPluginAuthorRehearsal scaffolds all templates and validates an AI su
   const aiTemplate = summary.templates.find((item) => item.template === 'ai')
   assert.deepEqual(aiTemplate.plugin.permissions, ['pet:say', 'ai:chat'])
   assert.equal(aiTemplate.plugin.commands[0].id, 'ask')
-  assert.equal(validatePluginPackage(resolveOutputPath(outputDir, summary.submission.packagePath)).ok, true)
+  assert.equal((await validatePluginPackage(resolveOutputPath(outputDir, summary.submission.packagePath))).ok, true)
 
   const bundleValidation = validateBundle(loadBundle({ bundleDir: resolveOutputPath(outputDir, summary.submission.bundleDir) }), { requireReady: true })
   assert.equal(bundleValidation.ok, true)

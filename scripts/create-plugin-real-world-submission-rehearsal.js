@@ -176,7 +176,7 @@ const renderChecklist = ({ summary }) => [
   ''
 ].join('\n')
 
-const createPluginRealWorldSubmissionRehearsal = ({
+const createPluginRealWorldSubmissionRehearsal = async ({
   sourcePath,
   outputDir = '',
   reviewer = 'OpenPet Maintainer',
@@ -219,12 +219,12 @@ const createPluginRealWorldSubmissionRehearsal = ({
     execFile,
     fsImpl
   })
-  const packageValidation = validatePluginPackage(packagePath)
+  const packageValidation = await validatePluginPackage(packagePath)
   if (!packageValidation.ok) {
     throw new Error(`Packaged plugin validation failed: ${packageValidation.errors.join('; ')}`)
   }
 
-  const bundle = createPluginSubmissionBundle({
+  const bundle = await createPluginSubmissionBundle({
     sourcePath: packagePath,
     outputDir: bundleDir,
     now: () => new Date(generatedAt),
@@ -326,14 +326,14 @@ const createPluginRealWorldSubmissionRehearsal = ({
   return summary
 }
 
-const main = () => {
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(usage())
     return
   }
 
-  const summary = createPluginRealWorldSubmissionRehearsal(options)
+  const summary = await createPluginRealWorldSubmissionRehearsal(options)
   if (options.json) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
   } else {
@@ -345,12 +345,10 @@ const main = () => {
 }
 
 if (require.main === module) {
-  try {
-    main()
-  } catch (error) {
+  main().catch((error) => {
     console.error(error.message || error)
     process.exit(1)
-  }
+  })
 }
 
 module.exports = {

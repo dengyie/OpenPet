@@ -156,19 +156,20 @@ const createPluginSubmissionReport = ({
     blockedIds,
     blockedHashes
   })
-  const review = validation.review
-  const checklist = createChecklist(validation)
+  const finish = (resolvedValidation) => {
+    const review = resolvedValidation.review
+    const checklist = createChecklist(resolvedValidation)
 
-  return {
+    return {
     generatedAt: now().toISOString(),
     sourcePath: createSafeSourcePath(sourcePath),
     requireSignature,
-    readyForHumanReview: validation.ok,
-    decision: validation.ok ? 'ready-for-human-review' : 'blocked-before-review',
+    readyForHumanReview: resolvedValidation.ok,
+    decision: resolvedValidation.ok ? 'ready-for-human-review' : 'blocked-before-review',
     validation: {
-      ok: validation.ok,
-      errors: validation.errors,
-      warnings: validation.warnings
+      ok: resolvedValidation.ok,
+      errors: resolvedValidation.errors,
+      warnings: resolvedValidation.warnings
     },
     plugin: {
       id: review.plugin.id,
@@ -201,7 +202,9 @@ const createPluginSubmissionReport = ({
       'For distribution, require trusted signing evidence beyond local hash metadata.',
       'Install only through Control Center review flow and keep the plugin disabled until a user explicitly enables it.'
     ]
+    }
   }
+  return validation && typeof validation.then === 'function' ? validation.then(finish) : finish(validation)
 }
 
 const escapeCell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\n/g, '<br>')
@@ -285,14 +288,14 @@ const writeReport = ({ report, outputPath, json = false, fsImpl = fs }) => {
   return absoluteOutputPath
 }
 
-const main = () => {
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(usage())
     return
   }
 
-  const report = createPluginSubmissionReport(options)
+  const report = await createPluginSubmissionReport(options)
   if (options.outputPath) {
     const writtenPath = writeReport({ report, outputPath: options.outputPath, json: options.json })
     console.log(`Plugin submission report created: ${writtenPath}`)
@@ -308,12 +311,10 @@ const main = () => {
 }
 
 if (require.main === module) {
-  try {
-    main()
-  } catch (err) {
+  main().catch((err) => {
     console.error(err.message || err)
     process.exit(1)
-  }
+  })
 }
 
 module.exports = {

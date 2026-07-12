@@ -134,14 +134,17 @@ const createPluginSubmissionBundle = ({
   }
   const report = createPluginSubmissionReport(commonOptions)
   const pr = createPluginSubmissionPr(commonOptions)
-  const absoluteOutputDir = path.resolve(outputDir || defaultOutputDir(sourcePath))
-  const outputFiles = {
+  const finish = ([resolvedReport, resolvedPr]) => {
+    const report = resolvedReport
+    const pr = resolvedPr
+    const absoluteOutputDir = path.resolve(outputDir || defaultOutputDir(sourcePath))
+    const outputFiles = {
     report: path.join(absoluteOutputDir, 'plugin-submission-report.md'),
     pr: path.join(absoluteOutputDir, 'plugin-submission-pr.md'),
     summary: path.join(absoluteOutputDir, 'plugin-submission-summary.json')
-  }
-  const safeOutputDir = createSafeProjectPath(absoluteOutputDir, DEFAULT_BUNDLE_DIR_NAME)
-  const files = {
+    }
+    const safeOutputDir = createSafeProjectPath(absoluteOutputDir, DEFAULT_BUNDLE_DIR_NAME)
+    const files = {
     report: createSafeBundleFilePath({
       filePath: outputFiles.report,
       bundleDir: absoluteOutputDir,
@@ -157,8 +160,8 @@ const createPluginSubmissionBundle = ({
       bundleDir: absoluteOutputDir,
       fallback: 'plugin-submission-summary.json'
     })
-  }
-  const summary = {
+    }
+    const summary = {
     generatedAt,
     sourcePath: report.sourcePath,
     outputDir: safeOutputDir,
@@ -179,23 +182,28 @@ const createPluginSubmissionBundle = ({
       'Record manual reviewer approval before merge.',
       'Do not treat this bundle as signing trust, catalog approval, or runtime smoke evidence.'
     ]
+    }
+
+    writeText({ outputPath: outputFiles.report, content: renderMarkdownSubmissionReport(report), fsImpl })
+    writeText({ outputPath: outputFiles.pr, content: renderMarkdownPr(pr), fsImpl })
+    writeText({ outputPath: outputFiles.summary, content: JSON.stringify(summary, null, 2), fsImpl })
+
+    return summary
   }
-
-  writeText({ outputPath: outputFiles.report, content: renderMarkdownSubmissionReport(report), fsImpl })
-  writeText({ outputPath: outputFiles.pr, content: renderMarkdownPr(pr), fsImpl })
-  writeText({ outputPath: outputFiles.summary, content: JSON.stringify(summary, null, 2), fsImpl })
-
-  return summary
+  if ((report && typeof report.then === 'function') || (pr && typeof pr.then === 'function')) {
+    return Promise.all([report, pr]).then(finish)
+  }
+  return finish([report, pr])
 }
 
-const main = () => {
+const main = async () => {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(usage())
     return
   }
 
-  const summary = createPluginSubmissionBundle(options)
+  const summary = await createPluginSubmissionBundle(options)
   if (options.json) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
   } else {
@@ -209,12 +217,10 @@ const main = () => {
 }
 
 if (require.main === module) {
-  try {
-    main()
-  } catch (err) {
+  main().catch((err) => {
     console.error(err.message || err)
     process.exit(1)
-  }
+  })
 }
 
 module.exports = {
