@@ -120,8 +120,9 @@ test('rss reader example plugin fetches and caches feed items through the local 
       say: async (payload) => petEvents.push(payload)
     },
     pluginDirs: [pluginDir],
-    fetchImpl: async (url, options) => {
-      fetchCalls.push({ url, options })
+    resolveAddress: async () => ['203.0.113.10'],
+    pluginNetworkConnect: async ({ url, request }) => {
+      fetchCalls.push({ url, options: { ...request, redirect: 'manual' } })
       return {
         ok: true,
         status: 200,

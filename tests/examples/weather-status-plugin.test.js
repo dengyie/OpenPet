@@ -101,8 +101,9 @@ test('weather status example plugin runs network and storage through the local p
       say: async (payload) => petEvents.push(payload)
     },
     pluginDirs: [pluginDir],
-    fetchImpl: async (url, options) => {
-      fetchCalls.push({ url, options })
+    resolveAddress: async () => ['203.0.113.10'],
+    pluginNetworkConnect: async ({ url, request }) => {
+      fetchCalls.push({ url, options: { ...request, redirect: 'manual' } })
       return {
         ok: true,
         status: 200,

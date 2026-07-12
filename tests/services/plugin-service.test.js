@@ -5804,12 +5804,12 @@ test('plugin service lets local plugins fetch allowlisted https hosts', async ()
       plugins: { enabled: { 'local-runner': true } }
     }),
     petService: { say: async () => {} },
-    fetchImpl: async (url, options) => {
-      fetchCalls.push({ url, options })
+    pluginNetworkConnect: async (options) => {
+      fetchCalls.push(options)
       return {
         ok: true,
         status: 200,
-        url,
+        url: options.url,
         headers: { get: (name) => name === 'content-type' ? 'application/json' : '' },
         text: async () => '{"ok":true}'
       }
@@ -5845,24 +5845,26 @@ test('plugin service lets local plugins fetch allowlisted https hosts', async ()
     headers: { 'content-type': 'application/json' },
     text: '{"ok":true}'
   })
-  assert.deepEqual(fetchCalls, [{
+  assert.deepEqual(fetchCalls.map(({ url, request, address, servername, hostHeader }) => ({ url, request, address, servername, hostHeader })), [{
     url: 'https://api.example.com/v1/status',
-    options: {
+    request: {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      redirect: 'manual',
       body: '{"ping":true}'
-    }
+    },
+    address: '203.0.113.10',
+    servername: 'api.example.com',
+    hostHeader: 'api.example.com'
   }])
 })
 
 test('plugin service rejects oversized network request and response bodies', async () => {
-  const createNetworkService = ({ source, fetchImpl }) => createPluginService({
+  const createNetworkService = ({ source, pluginNetworkConnect }) => createPluginService({
     settingsService: createSettingsService({
       plugins: { enabled: { 'local-runner': true } }
     }),
     petService: { say: async () => {} },
-    fetchImpl,
+    pluginNetworkConnect,
     resolveAddress: async () => ['203.0.113.10'],
     officialPlugins: [],
     pluginDirs: [createRunnablePluginDir({
@@ -5882,7 +5884,7 @@ test('plugin service rejects oversized network request and response bodies', asy
           return { start: async () => ctx.network.fetch('https://api.example.com/data', { method: 'POST', body: 'x'.repeat(65 * 1024) }) }
         }
       `,
-      fetchImpl: async () => {
+      pluginNetworkConnect: async () => {
         throw new Error('fetch should not be reached')
       }
     }).runCommand('local-runner', 'start'),
@@ -5896,7 +5898,7 @@ test('plugin service rejects oversized network request and response bodies', asy
           return { start: async () => ctx.network.fetch('https://api.example.com/data') }
         }
       `,
-      fetchImpl: async (url) => ({
+      pluginNetworkConnect: async ({ url }) => ({
         ok: true,
         status: 200,
         url,
@@ -5916,7 +5918,7 @@ test('plugin service blocks DNS-rebinding SSRF to private addresses', async () =
       plugins: { enabled: { 'local-runner': true } }
     }),
     petService: { say: async () => {} },
-    fetchImpl: async () => {
+    pluginNetworkConnect: async () => {
       throw new Error('fetch should not be reached')
     },
     resolveAddress,

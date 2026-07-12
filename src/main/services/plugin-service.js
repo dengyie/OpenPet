@@ -8,7 +8,7 @@ const { normalizePluginManifest } = require('../plugins/manifest')
 const { coerceConfigValue, normalizeConfigSchema } = require('../plugins/config-schema')
 const { hasOwn, cloneJsonValue, getJsonByteSize } = require('./plugin-json-utils')
 const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = require('./plugin-log-store')
-const { normalizeNetworkRequest, readLimitedResponseText, assertResolvedAddressesSafe } = require('./plugin-network-client')
+const { normalizeNetworkRequest, readLimitedResponseText, requestPluginNetwork, connectPinnedHttps } = require('./plugin-network-client')
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
 const { readLocalPluginManifests } = require('./plugin-discovery')
 const {
@@ -372,7 +372,7 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, resolveAddress, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const commandBridgeRuntimes = new Map()
@@ -886,16 +886,15 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const runPluginNetworkRequest = async (manifest, payload) => {
     assertPermission(manifest, 'network')
-    if (typeof fetchImpl !== 'function') throw new Error('Plugin network fetch is not available')
     const { url, request } = normalizeNetworkRequest(manifest, payload)
-    await assertResolvedAddressesSafe(new URL(url).hostname, resolveAddress)
-    const response = await fetchImpl(url, { ...request, redirect: 'manual' })
-    if (response.url) {
-      const responseUrl = new URL(response.url)
-      if (responseUrl.protocol !== 'https:' || !manifest.network.allowlist.includes(responseUrl.host.toLowerCase())) {
-        throw new Error(`Plugin ${manifest.id} cannot access network host: ${responseUrl.host}`)
-      }
-    }
+    const response = await requestPluginNetwork({
+      manifest,
+      url,
+      request,
+      resolveAddress,
+      connect: pluginNetworkConnect,
+      timeoutMs: pluginNetworkTimeoutMs
+    })
     const text = await readLimitedResponseText(response)
     return {
       ok: Boolean(response.ok),

@@ -1,4 +1,7 @@
 const { hasOwn } = require('./plugin-json-utils')
+const https = require('https')
+const net = require('net')
+const { Readable } = require('stream')
 
 const MAX_PLUGIN_NETWORK_REQUEST_BYTES = 64 * 1024
 const MAX_PLUGIN_NETWORK_RESPONSE_BYTES = 128 * 1024
@@ -45,19 +48,112 @@ const defaultResolveAddress = async (hostname) => {
   }
 }
 
-// Known limit (TOCTOU window): we resolve the hostname and check the IPs here,
-// but the actual fetch in plugin-service.js re-resolves via the system resolver.
-// A rebinding DNS server can answer this check with a public IP and answer the
-// fetch with a private IP moments later. Pinning the fetched IP is not possible
-// with Node's fetch API (no connect-time IP override). This narrows but does not
-// fully close DNS-rebinding SSRF; see docs/code-quality-remediation-plan.md Task 6.
 const assertResolvedAddressesSafe = async (hostname, resolveAddress = defaultResolveAddress) => {
   const addresses = await resolveAddress(hostname)
   const resolved = Array.isArray(addresses) ? addresses : [addresses]
+  if (!resolved.length) throw new Error(`Plugin network host could not be resolved: ${hostname}`)
   for (const address of resolved) {
     if (isPrivateAddress(address)) {
       throw new Error(`Plugin network host resolves to a non-public address (${address}); DNS-rebinding SSRF blocked`)
     }
+  }
+  return resolved.map((address) => ({ address, family: net.isIP(address) }))
+}
+
+const connectPinnedHttps = ({ url, request, address, family, servername, hostHeader, port, signal }) => new Promise((resolve, reject) => {
+  const target = new URL(url)
+  const headers = { ...(request.headers || {}), host: hostHeader }
+  const outgoing = https.request({
+    protocol: 'https:',
+    hostname: address,
+    family,
+    port,
+    path: `${target.pathname}${target.search}`,
+    method: request.method,
+    headers,
+    servername,
+    rejectUnauthorized: true,
+    signal
+  }, (incoming) => {
+    const responseHeaders = Object.fromEntries(Object.entries(incoming.headers)
+      .map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value.join(', ') : String(value || '')]))
+    resolve({
+      ok: incoming.statusCode >= 200 && incoming.statusCode < 300,
+      status: incoming.statusCode || 0,
+      url,
+      headers: { get: (name) => responseHeaders[String(name).toLowerCase()] || '' },
+      body: Readable.toWeb(incoming),
+      text: async () => {
+        let text = ''
+        for await (const chunk of incoming) text += String(chunk)
+        return text
+      }
+    })
+  })
+  outgoing.once('error', reject)
+  if (hasOwn(request, 'body')) outgoing.write(request.body)
+  outgoing.end()
+})
+
+const isRedirectStatus = (status) => [301, 302, 303, 307, 308].includes(Number(status))
+
+const requestPluginNetwork = async ({
+  manifest,
+  url,
+  request,
+  resolveAddress = defaultResolveAddress,
+  connect = connectPinnedHttps,
+  timeoutMs = 10000,
+  maxRedirects = 5,
+  signal
+}) => {
+  const controller = new AbortController()
+  let timedOut = false
+  const abortFromCaller = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abortFromCaller()
+  else signal?.addEventListener?.('abort', abortFromCaller, { once: true })
+  const timeoutId = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  timeoutId.unref?.()
+
+  let currentUrl = new URL(url)
+  let currentRequest = { ...request, headers: { ...(request.headers || {}) } }
+  try {
+    for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+      if (currentUrl.protocol !== 'https:' || !manifest.network.allowlist.includes(currentUrl.host.toLowerCase())) {
+        throw new Error(`Plugin ${manifest.id} cannot access network host: ${currentUrl.host}`)
+      }
+      const addresses = await assertResolvedAddressesSafe(currentUrl.hostname, resolveAddress)
+      const selected = addresses[0]
+      const response = await connect({
+        url: currentUrl.toString(),
+        request: currentRequest,
+        address: selected.address,
+        family: selected.family,
+        servername: currentUrl.hostname,
+        hostHeader: currentUrl.host,
+        port: Number(currentUrl.port) || 443,
+        signal: controller.signal
+      })
+      const location = response.headers?.get?.('location') || ''
+      if (!isRedirectStatus(response.status) || !location) return response
+      if (redirectCount === maxRedirects) throw new Error('Plugin network request exceeded redirect limit')
+      currentUrl = new URL(location, currentUrl)
+      if ([301, 302, 303].includes(response.status) && currentRequest.method === 'POST') {
+        currentRequest = { method: 'GET', headers: { ...currentRequest.headers } }
+        delete currentRequest.headers['content-length']
+        delete currentRequest.headers['content-type']
+      }
+    }
+    throw new Error('Plugin network request exceeded redirect limit')
+  } catch (error) {
+    if (timedOut) throw new Error('Plugin network request timed out')
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+    signal?.removeEventListener?.('abort', abortFromCaller)
   }
 }
 
@@ -124,6 +220,8 @@ module.exports = {
   MAX_PLUGIN_NETWORK_RESPONSE_BYTES,
   isPrivateAddress,
   assertResolvedAddressesSafe,
+  requestPluginNetwork,
+  connectPinnedHttps,
   normalizeNetworkRequest,
   readLimitedResponseText
 }
