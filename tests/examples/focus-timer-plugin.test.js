@@ -30,12 +30,12 @@ const createSettingsService = (initialSettings = {}) => {
   }
 }
 
-test('focus timer example plugin can be inspected and installed disabled by default', () => {
+test('focus timer example plugin can be inspected and installed disabled by default', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-example-installed-'))
   const settingsService = createSettingsService()
   const installService = createPluginInstallService({ settingsService, pluginDir })
 
-  const review = installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
+  const review = await installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
 
   assert.equal(review.sourceType, 'directory')
   assert.equal(review.installMode, 'install')
@@ -75,7 +75,7 @@ test('focus timer example plugin runs through the local plugin service sdk', asy
     }
   })
   const installService = createPluginInstallService({ settingsService, pluginDir })
-  const review = installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
+  const review = await installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
   installService.installPlugin(review.selectionId)
   settingsService.save({
     ...settingsService.get(),

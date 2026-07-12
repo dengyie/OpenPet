@@ -169,7 +169,10 @@ const validatePluginPackage = (sourcePath, options = {}) => {
   }
 
   try {
-    const inspected = service.inspectPluginPackage(path.resolve(sourcePath))
+    const absoluteSourcePath = path.resolve(sourcePath)
+    const inspected = fs.statSync(absoluteSourcePath).isDirectory()
+      ? service.inspectPluginPackageSync(absoluteSourcePath)
+      : service.inspectPluginPackage(absoluteSourcePath)
     if (inspected && typeof inspected.then === 'function') {
       return inspected.then(finish).finally(cleanup)
     }

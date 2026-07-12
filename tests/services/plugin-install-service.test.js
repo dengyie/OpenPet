@@ -132,13 +132,15 @@ const createExtensionDeclarationPackage = ({
   return pluginPath
 }
 
-test('plugin install service inspects and installs an unsigned plugin disabled by default', () => {
+test('plugin install service inspects and installs an unsigned plugin disabled by default', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
   const service = createPluginInstallService({ settingsService, pluginDir })
   const sourcePath = createPluginPackage()
 
-  const review = service.inspectPluginPackage(sourcePath)
+  const inspection = service.inspectPluginPackage(sourcePath)
+  assert.equal(inspection instanceof Promise, true)
+  const review = await inspection
 
   assert.equal(review.plugin.id, 'focus-timer')
   assert.equal(review.installMode, 'install')
@@ -159,11 +161,11 @@ test('plugin install service inspects and installs an unsigned plugin disabled b
   assert.equal(settingsService.get().plugins.installed['focus-timer'].signatureStatus, 'unsigned')
 })
 
-test('plugin install service inspects extension declaration packages without legacy main files', () => {
+test('plugin install service inspects extension declaration packages without legacy main files', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-extensions-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
 
-  const review = service.inspectPluginPackage(createExtensionDeclarationPackage())
+  const review = await service.inspectPluginPackage(createExtensionDeclarationPackage())
 
   assert.equal(review.plugin.id, 'weather-morning-report')
   assert.equal(review.plugin.profile, 'runtime')
@@ -184,11 +186,11 @@ test('plugin install service inspects extension declaration packages without leg
   assert.deepEqual(review.plugin.assets, ['assets/email-template.html'])
 })
 
-test('plugin install service surfaces creator-tools profile and action permissions in review data', () => {
+test('plugin install service surfaces creator-tools profile and action permissions in review data', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-creator-extensions-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
 
-  const review = service.inspectPluginPackage(createExtensionDeclarationPackage({
+  const review = await service.inspectPluginPackage(createExtensionDeclarationPackage({
     id: 'action-author',
     profile: 'creator-tools',
     permissions: ['actions:read', 'actions:write']
@@ -199,28 +201,28 @@ test('plugin install service surfaces creator-tools profile and action permissio
   assert.deepEqual(review.permissionDiff.permissions.added, ['actions:read', 'actions:write'])
 })
 
-test('plugin install service rejects extension declarations that reference missing assets', () => {
+test('plugin install service rejects extension declarations that reference missing assets', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-extensions-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
 
-  assert.throws(
+  await assert.rejects(
     () => service.inspectPluginPackage(createExtensionDeclarationPackage({ assetPath: 'assets/missing.html' })),
     /Plugin asset file does not exist/
   )
 })
 
-test('plugin install service verifies local signature hash metadata', () => {
+test('plugin install service verifies local signature hash metadata', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
 
-  const review = service.inspectPluginPackage(createPluginPackage({ signature: true }))
+  const review = await service.inspectPluginPackage(createPluginPackage({ signature: true }))
 
   assert.equal(review.signature.status, 'hash-verified')
   assert.equal(review.signature.signer, 'openpet-labs')
   assert.deepEqual(review.signature.errors, [])
 })
 
-test('plugin install service does not mark partial signature metadata as verified', () => {
+test('plugin install service does not mark partial signature metadata as verified', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
   const sourcePath = createPluginPackage()
@@ -233,14 +235,14 @@ test('plugin install service does not mark partial signature metadata as verifie
     }
   }, null, 2))
 
-  const review = service.inspectPluginPackage(sourcePath)
+  const review = await service.inspectPluginPackage(sourcePath)
 
   assert.equal(review.signature.status, 'present-unverified')
   assert.match(review.signature.errors[0], /does not cover files: index.js/)
   assert.throws(() => service.installPlugin(review.selectionId), /signature hash verification failed/)
 })
 
-test('plugin install service updates with permission diff and disables the plugin', () => {
+test('plugin install service updates with permission diff and disables the plugin', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService({
     plugins: {
@@ -249,7 +251,7 @@ test('plugin install service updates with permission diff and disables the plugi
     }
   })
   const service = createPluginInstallService({ settingsService, pluginDir })
-  const firstReview = service.inspectPluginPackage(createPluginPackage({ permissions: ['pet:say'] }))
+  const firstReview = await service.inspectPluginPackage(createPluginPackage({ permissions: ['pet:say'] }))
   service.installPlugin(firstReview.selectionId)
 
   settingsService.save({
@@ -259,7 +261,7 @@ test('plugin install service updates with permission diff and disables the plugi
       enabled: { ...settingsService.get().plugins.enabled, 'focus-timer': true }
     }
   })
-  const nextReview = service.inspectPluginPackage(createPluginPackage({
+  const nextReview = await service.inspectPluginPackage(createPluginPackage({
     version: '1.1.0',
     permissions: ['pet:say', 'network'],
     network: { allowlist: ['api.example.com'] }
@@ -277,14 +279,14 @@ test('plugin install service updates with permission diff and disables the plugi
   assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.1.0')
 })
 
-test('plugin update restores the installed directory when settings persistence fails', () => {
+test('plugin update restores the installed directory when settings persistence fails', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
   const service = createPluginInstallService({ settingsService, pluginDir })
-  const initial = service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))
+  const initial = await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))
   service.installPlugin(initial.selectionId)
   const previousSettings = structuredClone(settingsService.get())
-  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const update = await service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
   const originalSave = settingsService.save
   settingsService.save = () => { throw new Error('disk full') }
 
@@ -296,12 +298,12 @@ test('plugin update restores the installed directory when settings persistence f
   assert.equal(fs.readdirSync(pluginDir).some((entry) => entry.includes('.staging-') || entry.includes('.backup-')), false)
 })
 
-test('plugin update keeps the old install when staging copy fails', () => {
+test('plugin update keeps the old install when staging copy fails', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
   const service = createPluginInstallService({ settingsService, pluginDir })
-  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
-  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  service.installPlugin((await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))).selectionId)
+  const update = await service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
   const originalCpSync = fs.cpSync
   fs.cpSync = (source, target, options) => {
     if (String(target).includes('.staging-')) throw new Error('copy failed')
@@ -316,23 +318,23 @@ test('plugin update keeps the old install when staging copy fails', () => {
   assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
 })
 
-test('plugin update keeps the old install when the inspected source changes before staging validation', () => {
+test('plugin update keeps the old install when the inspected source changes before staging validation', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
-  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
+  service.installPlugin((await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))).selectionId)
   const sourcePath = createPluginPackage({ version: '2.0.0' })
-  const update = service.inspectPluginPackage(sourcePath)
+  const update = await service.inspectPluginPackage(sourcePath)
   fs.appendFileSync(path.join(sourcePath, 'index.js'), '// changed after review\n')
 
   assert.throws(() => service.updatePlugin(update.selectionId), /changed after inspection/)
   assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
 })
 
-test('plugin update restores the old install when staging rename fails', () => {
+test('plugin update restores the old install when staging rename fails', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
-  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
-  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  service.installPlugin((await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))).selectionId)
+  const update = await service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
   const originalRenameSync = fs.renameSync
   fs.renameSync = (source, target) => {
     if (String(source).includes('.staging-')) throw new Error('swap failed')
@@ -347,13 +349,13 @@ test('plugin update restores the old install when staging rename fails', () => {
   assert.equal(JSON.parse(fs.readFileSync(path.join(pluginDir, 'focus-timer', 'plugin.json'), 'utf-8')).version, '1.0.0')
 })
 
-test('plugin update rolls back files and settings when backup cleanup fails', () => {
+test('plugin update rolls back files and settings when backup cleanup fails', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
   const service = createPluginInstallService({ settingsService, pluginDir })
-  service.installPlugin(service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' })).selectionId)
+  service.installPlugin((await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))).selectionId)
   const previousSettings = structuredClone(settingsService.get())
-  const update = service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const update = await service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
   const originalRmSync = fs.rmSync
   let failedCleanup = false
   fs.rmSync = (target, options) => {
@@ -373,21 +375,54 @@ test('plugin update rolls back files and settings when backup cleanup fails', ()
   assert.deepEqual(settingsService.get(), previousSettings)
 })
 
-test('plugin install service rejects updating from the installed plugin directory itself', () => {
+test('plugin update continues remaining rollback steps when one recovery action throws', async () => {
+  const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
+  const settingsService = createSettingsService()
+  const service = createPluginInstallService({ settingsService, pluginDir })
+  service.installPlugin((await service.inspectPluginPackage(createPluginPackage({ version: '1.0.0' }))).selectionId)
+  const previousSettings = structuredClone(settingsService.get())
+  const update = await service.inspectPluginPackage(createPluginPackage({ version: '2.0.0' }))
+  const targetDir = path.join(pluginDir, 'focus-timer')
+  const originalRmSync = fs.rmSync
+  let failedBackupCleanup = false
+  let failedRollbackCleanup = false
+  fs.rmSync = (target, options) => {
+    if (!failedBackupCleanup && String(target).includes('.backup-')) {
+      failedBackupCleanup = true
+      throw new Error('cleanup failed')
+    }
+    if (failedBackupCleanup && !failedRollbackCleanup && target === targetDir) {
+      failedRollbackCleanup = true
+      originalRmSync(target, options)
+      throw new Error('rollback target cleanup failed')
+    }
+    return originalRmSync(target, options)
+  }
+  try {
+    assert.throws(() => service.updatePlugin(update.selectionId), /cleanup failed/)
+  } finally {
+    fs.rmSync = originalRmSync
+  }
+
+  assert.equal(JSON.parse(fs.readFileSync(path.join(targetDir, 'plugin.json'), 'utf-8')).version, '1.0.0')
+  assert.deepEqual(settingsService.get(), previousSettings)
+})
+
+test('plugin install service rejects updating from the installed plugin directory itself', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const service = createPluginInstallService({ settingsService: createSettingsService(), pluginDir })
-  const firstReview = service.inspectPluginPackage(createPluginPackage())
+  const firstReview = await service.inspectPluginPackage(createPluginPackage())
   service.installPlugin(firstReview.selectionId)
 
   const installedPath = path.join(pluginDir, 'focus-timer')
-  const updateReview = service.inspectPluginPackage(installedPath)
+  const updateReview = await service.inspectPluginPackage(installedPath)
 
   assert.equal(updateReview.installMode, 'update')
   assert.throws(() => service.updatePlugin(updateReview.selectionId), /source cannot be the installed plugin directory/)
   assert.equal(fs.existsSync(path.join(installedPath, 'plugin.json')), true)
 })
 
-test('plugin install service uninstalls one plugin without removing other plugin storage', () => {
+test('plugin install service uninstalls one plugin without removing other plugin storage', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService({
     plugins: {
@@ -397,7 +432,7 @@ test('plugin install service uninstalls one plugin without removing other plugin
     }
   })
   const service = createPluginInstallService({ settingsService, pluginDir })
-  const review = service.inspectPluginPackage(createPluginPackage())
+  const review = await service.inspectPluginPackage(createPluginPackage())
   service.installPlugin(review.selectionId)
 
   const result = service.uninstallPlugin('focus-timer')
@@ -410,7 +445,7 @@ test('plugin install service uninstalls one plugin without removing other plugin
   assert.deepEqual(settingsService.get().plugins.storage['focus-timer'], { draft: true })
 })
 
-test('plugin install service can remove target plugin storage during uninstall', () => {
+test('plugin install service can remove target plugin storage during uninstall', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService({
     plugins: {
@@ -418,7 +453,7 @@ test('plugin install service can remove target plugin storage during uninstall',
     }
   })
   const service = createPluginInstallService({ settingsService, pluginDir })
-  const review = service.inspectPluginPackage(createPluginPackage())
+  const review = await service.inspectPluginPackage(createPluginPackage())
   service.installPlugin(review.selectionId)
 
   const result = service.uninstallPlugin('focus-timer', { removeStorage: true })
@@ -428,11 +463,11 @@ test('plugin install service can remove target plugin storage during uninstall',
   assert.deepEqual(settingsService.get().plugins.storage.other, { keep: true })
 })
 
-test('plugin uninstall restores files and settings when settings persistence fails', () => {
+test('plugin uninstall restores files and settings when settings persistence fails', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installed-plugins-'))
   const settingsService = createSettingsService()
   const service = createPluginInstallService({ settingsService, pluginDir })
-  const review = service.inspectPluginPackage(createPluginPackage())
+  const review = await service.inspectPluginPackage(createPluginPackage())
   service.installPlugin(review.selectionId)
   const previousSettings = structuredClone(settingsService.get())
   const originalSave = settingsService.save

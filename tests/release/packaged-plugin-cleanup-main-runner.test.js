@@ -54,7 +54,7 @@ test('runPackagedPluginCleanupEvidence writes runtime artifact and transcripts f
     getLogs: () => logs
   }
   const pluginInstallService = {
-    inspectPluginPackage: () => ({ selectionId: 'selection-1' }),
+    inspectPluginPackage: async () => ({ selectionId: 'selection-1' }),
     installPlugin: () => ({ pluginId: 'openpet.cleanup-evidence-fixture' })
   }
   let quitCalled = false

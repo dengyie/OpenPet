@@ -64,6 +64,18 @@ const copyDirectory = (sourceDir, targetDir) => {
   fs.cpSync(sourceDir, targetDir, { recursive: true })
 }
 
+const runRecoverySteps = (originalError, steps) => {
+  const rollbackErrors = []
+  for (const step of steps) {
+    try {
+      step()
+    } catch (error) {
+      rollbackErrors.push(error)
+    }
+  }
+  if (rollbackErrors.length) originalError.rollbackErrors = rollbackErrors
+}
+
 const readJsonFile = (filePath, label) => {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
@@ -403,18 +415,29 @@ const createPluginInstallService = ({
     return review
   }
 
-  const inspectPluginPackage = (sourcePath, options = {}) => {
+  const inspectPluginPackage = async (sourcePath, options = {}) => {
     pruneSelections()
-    const normalized = normalizeSourceRoot(sourcePath, options, { limits, inspectArchive, extractArchive })
-    const finish = (source) => {
-      try {
-        return buildReview(source)
-      } catch (error) {
-        if (source.cleanupPath) fs.rmSync(source.cleanupPath, { recursive: true, force: true })
-        throw error
-      }
+    const source = await normalizeSourceRoot(sourcePath, options, { limits, inspectArchive, extractArchive })
+    try {
+      return buildReview(source)
+    } catch (error) {
+      if (source.cleanupPath) fs.rmSync(source.cleanupPath, { recursive: true, force: true })
+      throw error
     }
-    return normalized && typeof normalized.then === 'function' ? normalized.then(finish) : finish(normalized)
+  }
+
+  const inspectPluginPackageSync = (sourcePath, options = {}) => {
+    pruneSelections()
+    const source = normalizeSourceRoot(sourcePath, options, { limits, inspectArchive, extractArchive })
+    if (source && typeof source.then === 'function') {
+      throw new Error('ZIP plugin inspection requires the asynchronous API')
+    }
+    try {
+      return buildReview(source)
+    } catch (error) {
+      if (source.cleanupPath) fs.rmSync(source.cleanupPath, { recursive: true, force: true })
+      throw error
+    }
   }
 
   const savePluginSettings = ({ pluginId, packageHash, sourcePackageHash = '', signature, disable = true, removeStorage = false }) => {
@@ -490,10 +513,18 @@ const createPluginInstallService = ({
       settingsCommitted = true
       if (backupCreated) fs.rmSync(backupDir, { recursive: true, force: true })
     } catch (error) {
-      fs.rmSync(stagingDir, { recursive: true, force: true })
-      if (stagingPromoted && fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })
-      if (backupCreated && fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
-      if (settingsCommitted) settingsService.save(previousSettings)
+      runRecoverySteps(error, [
+        () => fs.rmSync(stagingDir, { recursive: true, force: true }),
+        () => {
+          if (stagingPromoted && fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })
+        },
+        () => {
+          if (backupCreated && fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
+        },
+        () => {
+          if (settingsCommitted) settingsService.save(previousSettings)
+        }
+      ])
       throw error
     }
     pendingSelections.delete(selectionId)
@@ -542,9 +573,17 @@ const createPluginInstallService = ({
       settingsCommitted = true
       fs.rmSync(backupDir, { recursive: true, force: true })
     } catch (error) {
-      if (settingsCommitted) settingsService.save(settings)
-      if (fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })
-      if (fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
+      runRecoverySteps(error, [
+        () => {
+          if (settingsCommitted) settingsService.save(settings)
+        },
+        () => {
+          if (fs.existsSync(targetDir)) fs.rmSync(targetDir, { recursive: true, force: true })
+        },
+        () => {
+          if (fs.existsSync(backupDir)) fs.renameSync(backupDir, targetDir)
+        }
+      ])
       throw error
     }
     return { ok: true, pluginId, storageRemoved: Boolean(removeStorage) }
@@ -562,7 +601,7 @@ const createPluginInstallService = ({
     return { ok: true }
   }
 
-  return { inspectPluginPackage, installPlugin, updatePlugin, uninstallPlugin, clearPendingSelection }
+  return { inspectPluginPackage, inspectPluginPackageSync, installPlugin, updatePlugin, uninstallPlugin, clearPendingSelection }
 }
 
 module.exports = { createPluginInstallService, diffPluginPermissions, assertNoSymlinks }

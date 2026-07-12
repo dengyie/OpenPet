@@ -30,9 +30,9 @@ const createSettingsService = (initialSettings = {}) => {
   }
 }
 
-const installAndEnableExamplePlugin = ({ settingsService, pluginDir }) => {
+const installAndEnableExamplePlugin = async ({ settingsService, pluginDir }) => {
   const installService = createPluginInstallService({ settingsService, pluginDir })
-  const review = installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
+  const review = await installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
   installService.installPlugin(review.selectionId)
   settingsService.save({
     ...settingsService.get(),
@@ -46,12 +46,12 @@ const installAndEnableExamplePlugin = ({ settingsService, pluginDir }) => {
   })
 }
 
-test('weather status example plugin can be inspected and installed disabled by default', () => {
+test('weather status example plugin can be inspected and installed disabled by default', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-weather-example-installed-'))
   const settingsService = createSettingsService()
   const installService = createPluginInstallService({ settingsService, pluginDir })
 
-  const review = installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
+  const review = await installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
 
   assert.equal(review.sourceType, 'directory')
   assert.equal(review.installMode, 'install')
@@ -91,7 +91,7 @@ test('weather status example plugin runs network and storage through the local p
       }
     }
   })
-  installAndEnableExamplePlugin({ settingsService, pluginDir })
+  await installAndEnableExamplePlugin({ settingsService, pluginDir })
 
   const petEvents = []
   const fetchCalls = []

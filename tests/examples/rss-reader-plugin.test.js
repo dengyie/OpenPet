@@ -30,9 +30,9 @@ const createSettingsService = (initialSettings = {}) => {
   }
 }
 
-const installAndEnableExamplePlugin = ({ settingsService, pluginDir }) => {
+const installAndEnableExamplePlugin = async ({ settingsService, pluginDir }) => {
   const installService = createPluginInstallService({ settingsService, pluginDir })
-  const review = installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
+  const review = await installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
   installService.installPlugin(review.selectionId)
   settingsService.save({
     ...settingsService.get(),
@@ -65,12 +65,12 @@ const rssFixture = `<?xml version="1.0" encoding="UTF-8"?>
   </channel>
 </rss>`
 
-test('rss reader example plugin can be inspected and installed disabled by default', () => {
+test('rss reader example plugin can be inspected and installed disabled by default', async () => {
   const pluginDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-rss-example-installed-'))
   const settingsService = createSettingsService()
   const installService = createPluginInstallService({ settingsService, pluginDir })
 
-  const review = installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
+  const review = await installService.inspectPluginPackage(EXAMPLE_PLUGIN_PATH)
 
   assert.equal(review.sourceType, 'directory')
   assert.equal(review.installMode, 'install')
@@ -110,7 +110,7 @@ test('rss reader example plugin fetches and caches feed items through the local 
       }
     }
   })
-  installAndEnableExamplePlugin({ settingsService, pluginDir })
+  await installAndEnableExamplePlugin({ settingsService, pluginDir })
 
   const petEvents = []
   const fetchCalls = []

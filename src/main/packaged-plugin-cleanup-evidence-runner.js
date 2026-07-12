@@ -54,8 +54,8 @@ const waitForLog = async ({ pluginService, pluginId, pattern, timeoutMs = 2500 }
   return false
 }
 
-const installAndEnablePlugin = ({ pluginInstallService, pluginService, pluginSource }) => {
-  const review = pluginInstallService.inspectPluginPackage(pluginSource)
+const installAndEnablePlugin = async ({ pluginInstallService, pluginService, pluginSource }) => {
+  const review = await pluginInstallService.inspectPluginPackage(pluginSource)
   const installed = pluginInstallService.installPlugin(review.selectionId)
   pluginService.setEnabled(installed.pluginId, true)
   return installed.pluginId
@@ -134,7 +134,7 @@ const runPackagedPluginCleanupEvidence = async ({
   const stderr = []
 
   try {
-    pluginId = installAndEnablePlugin({ pluginInstallService, pluginService, pluginSource })
+    pluginId = await installAndEnablePlugin({ pluginInstallService, pluginService, pluginSource })
     stdout.push(`installed ${pluginId}`)
     const setup = await runSetupEvidence({
       pluginService,
