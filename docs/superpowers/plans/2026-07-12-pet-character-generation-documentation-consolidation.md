@@ -211,7 +211,7 @@ git commit -m "docs(dev8): add canonical pet character generation guide"
 
 - [ ] **Step 1: Replace Creator Studio README generation policy with a concise pointer**
 
-Keep commands, fixture/provider operation, bridge ownership, and import behavior. Replace duplicated row-policy paragraphs with a short paragraph linking to `../../../docs/pet-character-generation.md`; retain the explicit statement that preview fallback and smoke success are not official-quality art.
+Keep commands, fixture/provider operation, bridge ownership, and import behavior. Replace duplicated row-policy paragraphs with a short paragraph linking to `../../docs/pet-character-generation.md`; retain the explicit statement that preview fallback and smoke success are not official-quality art.
 
 - [ ] **Step 2: Add the Creator Studio character-generation entry to `docs/README.md`**
 
