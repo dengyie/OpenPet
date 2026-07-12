@@ -133,7 +133,6 @@ const createPluginSubmissionBundle = ({
     now: fixedNow
   }
   const report = createPluginSubmissionReport(commonOptions)
-  const pr = createPluginSubmissionPr(commonOptions)
   const finish = ([resolvedReport, resolvedPr]) => {
     const report = resolvedReport
     const pr = resolvedPr
@@ -190,10 +189,15 @@ const createPluginSubmissionBundle = ({
 
     return summary
   }
-  if ((report && typeof report.then === 'function') || (pr && typeof pr.then === 'function')) {
-    return Promise.all([report, pr]).then(finish)
+  const finishReport = (resolvedReport) => {
+    const pr = createPluginSubmissionPr({ report: resolvedReport })
+    return pr && typeof pr.then === 'function'
+      ? pr.then((resolvedPr) => finish([resolvedReport, resolvedPr]))
+      : finish([resolvedReport, pr])
   }
-  return finish([report, pr])
+  return report && typeof report.then === 'function'
+    ? report.then(finishReport)
+    : finishReport(report)
 }
 
 const main = async () => {

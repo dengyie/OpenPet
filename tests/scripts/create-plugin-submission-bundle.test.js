@@ -12,6 +12,24 @@ const {
 } = require('../../scripts/create-plugin-submission-bundle')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/focus-timer')
+
+test('plugin submission bundle inspects the source package only once', async (t) => {
+  const sourcePath = EXAMPLE_PLUGIN_PATH
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-submission-single-review-'))
+  const manifestPath = path.join(sourcePath, 'plugin.json')
+  const originalReadFileSync = fs.readFileSync
+  let manifestReads = 0
+  fs.readFileSync = (...args) => {
+    if (path.resolve(String(args[0])) === path.resolve(manifestPath)) manifestReads += 1
+    return originalReadFileSync(...args)
+  }
+  t.after(() => { fs.readFileSync = originalReadFileSync })
+
+  await createPluginSubmissionBundle({ sourcePath, outputDir })
+
+  assert.equal(manifestReads, 2)
+})
+
 const resolveBundlePath = (bundleDir, recordedPath) => (
   path.isAbsolute(recordedPath) ? recordedPath : path.join(bundleDir, recordedPath)
 )

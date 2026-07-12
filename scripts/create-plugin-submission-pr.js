@@ -91,6 +91,7 @@ const buildChecklist = (report) => {
 }
 
 const createPluginSubmissionPr = ({
+  report: providedReport = null,
   sourcePath,
   requireSignature = false,
   installedDir = '',
@@ -98,9 +99,9 @@ const createPluginSubmissionPr = ({
   blockedHashes = [],
   now = () => new Date()
 } = {}) => {
-  if (!sourcePath) throw new Error('Plugin source path is required')
+  if (!providedReport && !sourcePath) throw new Error('Plugin source path is required')
 
-  const report = createPluginSubmissionReport({
+  const report = providedReport || createPluginSubmissionReport({
     sourcePath,
     requireSignature,
     installedDir,
