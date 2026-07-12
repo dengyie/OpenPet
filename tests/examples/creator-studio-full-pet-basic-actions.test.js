@@ -17,10 +17,14 @@ test('full-pet basic action policy keeps generation and qa requirements intentio
     REQUIRED_REAL_FULL_PET_ACTION_IDS,
     ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
   )
-  assert.deepEqual(GENERATED_FULL_PET_ACTION_IDS, REQUIRED_REAL_FULL_PET_ACTION_IDS)
+  assert.deepEqual(
+    GENERATED_FULL_PET_ACTION_IDS,
+    ['idle', 'running-right', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+  )
+  assert.equal(GENERATED_FULL_PET_ACTION_IDS.includes('running-left'), false)
 })
 
-test('full-pet basic action policy generates every official row by default', () => {
+test('full-pet basic action policy generates eight provider rows and derives running-left', () => {
   assert.deepEqual(
     OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
     []

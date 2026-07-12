@@ -13,6 +13,7 @@ const {
   OFFICIAL_FULL_PET_ROWS
 } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
 const { getActionSheetLayout } = require('../../examples/plugins/creator-studio/lib/action-sheet-layout')
+const { GENERATED_FULL_PET_ACTION_IDS } = require('../../examples/plugins/creator-studio/lib/full-pet-basic-actions')
 
 const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))
 
@@ -27,6 +28,69 @@ test('host model bridge clamps provider stages to the remaining workflow budget'
     deadlineMs: 10000,
     nowMs: 10000
   }), /time budget/i)
+})
+
+test('full-pet generation preserves accumulated evidence when running-left mirroring fails', async () => {
+  const generatedActionIds = []
+  const createResult = (actionId) => ({
+    actionId,
+    ok: true,
+    outputCount: 1,
+    model: 'pet-model',
+    modelAttempts: [{ model: 'pet-model', ok: true }],
+    keyframes: [{ actionId, keyframeRole: 'start', quality: { ok: true, score: 80 } }],
+    generationStages: [{ stage: 'final-image', actionId, ok: true }],
+    row: {
+      actionId,
+      sourceRelativePath: `runs/run-mirror-failure/frames/base/${actionId}-keyframe-row/0001.png`,
+      quality: 'row-real',
+      frames: [{ index: 0, actionId, path: `/tmp/${actionId}-01.png` }]
+    }
+  })
+
+  await assert.rejects(
+    () => __testInternals.generateFullPetBasicActionSources({
+      dataDir: '/tmp/creator-studio-mirror-failure',
+      run: { runId: 'run-mirror-failure' },
+      settings: {},
+      selectedModel: 'pet-model',
+      requestedTimeoutMs: 300000,
+      referenceImages: [],
+      generateActionSourceImpl: async ({ actionId }) => {
+        generatedActionIds.push(actionId)
+        return createResult(actionId)
+      },
+      mirrorRowFramesImpl: async () => {
+        throw new Error('sharp decode failed')
+      }
+    }),
+    (error) => {
+      assert.match(error.message, /running-left mirror failed/i)
+      assert.match(error.message, /sharp decode failed/i)
+      assert.deepEqual(generatedActionIds, ['idle', 'running-right'])
+      assert.deepEqual(
+        error.partialActionSources?.officialRows?.rows?.map((row) => row.actionId),
+        ['idle', 'running-right']
+      )
+      assert.deepEqual(
+        error.partialActionSources?.basicActionGeneration?.attemptedActionIds,
+        ['idle', 'running-right']
+      )
+      assert.deepEqual(
+        error.partialActionSources?.basicActionGeneration?.attempts?.map((attempt) => attempt.actionId),
+        ['idle', 'running-right']
+      )
+      assert.deepEqual(
+        error.partialActionSources?.keyframes?.map((keyframe) => keyframe.actionId),
+        ['idle', 'running-right']
+      )
+      assert.deepEqual(
+        error.partialActionSources?.generationStages?.map((stage) => stage.actionId),
+        ['idle', 'running-right']
+      )
+      return true
+    }
+  )
 })
 
 test('host model bridge retries the same verified model once after a transient gateway HTTP failure', async () => {
@@ -456,14 +520,15 @@ test('host model bridge generates text-only full-pet rows through per-action con
     })
 
     assert.equal(result.outputs.length, 1)
-    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
-    assert.equal(result.basicActionGeneration.attempts.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
+    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, GENERATED_FULL_PET_ACTION_IDS)
+    assert.equal(result.basicActionGeneration.attempts.length, GENERATED_FULL_PET_ACTION_IDS.length)
     const startRequests = requests.filter((entry) => /-start-keyframe$/.test(entry.dataRelativeDir))
     const peakRequests = requests.filter((entry) => /-peak-keyframe$/.test(entry.dataRelativeDir))
     const finalRequests = requests.filter((entry) => /-keyframe-row$/.test(entry.dataRelativeDir))
-    assert.equal(startRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.equal(peakRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.equal(finalRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
+    assert.equal(startRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.equal(peakRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.equal(finalRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.equal(requests.some((entry) => entry.dataRelativeDir.includes('running-left')), false)
     assert.equal(requests.some((entry) => /\/official-rows\//.test(entry.dataRelativeDir)), false)
     assert.equal(startRequests.every((entry) => entry.referenceRoles[0] === 'canonical-reference'), true)
     assert.equal(peakRequests.every((entry) => entry.referenceRoles[0] === 'action-peak-conditioning-board'), true)
@@ -472,6 +537,13 @@ test('host model bridge generates text-only full-pet rows through per-action con
     assert.equal(peakRequests.every((entry) => entry.timeoutMs === 480000), true)
     assert.equal(finalRequests.every((entry) => entry.timeoutMs === 480000), true)
     assert.equal(result.officialRows.rows.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
+    const mirroredLeft = result.officialRows.rows.find((row) => row.actionId === 'running-left')
+    assert.equal(mirroredLeft.quality, 'approved-mirror')
+    assert.equal(mirroredLeft.sourceActionId, 'running-right')
+    assert.deepEqual(
+      mirroredLeft.frames.map((frame) => frame.index),
+      result.officialRows.rows.find((row) => row.actionId === 'running-right').frames.map((frame) => frame.index)
+    )
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -572,9 +644,10 @@ test('host model bridge conditions every official full-pet action with provider 
     const peakRequests = requests.filter((entry) => /-peak-keyframe$/.test(entry.dataRelativeDir))
     const finalRequests = requests.filter((entry) => /-keyframe-row$/.test(entry.dataRelativeDir))
     const legacyRowRequests = requests.filter((entry) => /\/official-rows\//.test(entry.dataRelativeDir))
-    assert.equal(startRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.equal(peakRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.equal(finalRequests.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
+    assert.equal(startRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.equal(peakRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.equal(finalRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.equal(requests.some((entry) => entry.dataRelativeDir.includes('running-left')), false)
     assert.equal(legacyRowRequests.length, 0)
     assert.equal(startRequests.every((entry) => entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'canonical-reference'), true)
     assert.equal(peakRequests.every((entry) => entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'action-peak-conditioning-board'), true)
@@ -679,6 +752,7 @@ test('host model bridge stops full-pet generation after the first official actio
     ))
     assert.equal(failedStage?.ok, false)
     assert.match(String(failedStage?.error || ''), /identity source rejected/i)
+    assert.deepEqual(failure?.partialGenerationResult?.keyframes, [])
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -776,8 +850,8 @@ test('host model bridge falls back to a discovered working model for full-pet of
 
     assert.equal(result.model, 'gpt-image-1.5')
     assert.deepEqual(result.modelAttempts.map((entry) => entry.model), ['gpt-image-2', 'gpt-image-1.5'])
-    assert.equal(result.basicActionGeneration.attempts.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
+    assert.equal(result.basicActionGeneration.attempts.length, GENERATED_FULL_PET_ACTION_IDS.length)
+    assert.deepEqual(result.basicActionGeneration.attemptedActionIds, GENERATED_FULL_PET_ACTION_IDS)
     assert.equal(result.officialRows.rows.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
     assert.equal(requests.some((entry) => entry.model === 'gpt-image-2'), true)
     assert.equal(requests.some((entry) => entry.model === 'gpt-image-1.5'), true)

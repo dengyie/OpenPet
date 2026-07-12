@@ -2597,9 +2597,9 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
     assert.equal(baseGenerationAttempts, 2)
-    assert.equal(keyframeGenerationAttempts, 18)
-    assert.equal(actionRowGenerationAttempts, 9)
-    assert.equal(totalGenerationAttempts, 29)
+    assert.equal(keyframeGenerationAttempts, 16)
+    assert.equal(actionRowGenerationAttempts, 8)
+    assert.equal(totalGenerationAttempts, 26)
     assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
     assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {

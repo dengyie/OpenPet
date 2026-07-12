@@ -1212,7 +1212,24 @@ test('host model bridge rejects cropped keyframes before building the conditioni
           }
         }
       }),
-      /start keyframe quality.*below/i
+      (error) => {
+        assert.match(error.message, /start keyframe quality.*below/i)
+        const failedKeyframe = error.partialGenerationResult?.keyframeSpriteRow?.keyframes?.[0]
+        assert.equal(failedKeyframe?.quality?.ok, false)
+        assert.equal(typeof failedKeyframe?.quality?.rawScore, 'number')
+        assert.equal(typeof failedKeyframe?.quality?.safeComposition, 'boolean')
+        assert.equal(typeof failedKeyframe?.quality?.metrics?.coverage, 'number')
+        assert.equal(typeof failedKeyframe?.quality?.metrics?.edgeRatio, 'number')
+        assert.equal(typeof failedKeyframe?.quality?.metrics?.minPaddingRatio, 'number')
+        assert.equal(typeof failedKeyframe?.quality?.metrics?.centerOffsetRatio, 'number')
+        assert.equal(typeof failedKeyframe?.quality?.identityColorDistance, 'number')
+        assert.equal(typeof failedKeyframe?.quality?.identityDescriptorDistance, 'number')
+        assert.equal(Array.isArray(failedKeyframe?.quality?.failureConditions), true)
+        assert.equal(failedKeyframe.quality.failureConditions.length > 0, true)
+        const failedStage = error.partialGenerationResult?.generationStages?.find((stage) => !stage.ok)
+        assert.deepEqual(failedStage?.quality, failedKeyframe.quality)
+        return true
+      }
     )
     assert.deepEqual(requests, [
       'runs/run-cropped-keyframe/keyframes/actions/waving-start-keyframe'
@@ -1225,6 +1242,92 @@ test('host model bridge rejects cropped keyframes before building the conditioni
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(resolve))
   }
+})
+
+test('keyframe preparation removes a safely removable opaque edge background before QA', async () => {
+  const dataDir = makeDataDir()
+  const outputPath = path.join(dataDir, 'runs/run-opaque-removable/keyframes/start.png')
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: 256,
+      height: 256,
+      channels: 4,
+      background: { r: 242, g: 239, b: 232, alpha: 1 }
+    }
+  }).composite([{
+    input: Buffer.from('<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg"><ellipse cx="128" cy="145" rx="48" ry="62" fill="#d7a14b"/><circle cx="128" cy="86" r="42" fill="#e7b65f"/></svg>')
+  }]).png().toFile(outputPath)
+
+  const preparation = await __testInternals.prepareGeneratedKeyframeOutput(outputPath)
+  const alpha = await sharp(outputPath).ensureAlpha().extractChannel('alpha').raw().toBuffer()
+
+  assert.equal(preparation.safe, true)
+  assert.equal(preparation.backgroundRemoved, true)
+  assert.equal(preparation.failureCondition, '')
+  assert.equal(alpha.some((value) => value === 0), true)
+})
+
+test('keyframe preparation reports an explicit QA reason when an opaque background cannot be removed safely', async () => {
+  const dataDir = makeDataDir()
+  const outputPath = path.join(dataDir, 'runs/run-opaque-unsafe/keyframes/start.png')
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: 128,
+      height: 128,
+      channels: 4,
+      background: { r: 124, g: 102, b: 82, alpha: 1 }
+    }
+  }).png().toFile(outputPath)
+
+  const preparation = await __testInternals.prepareGeneratedKeyframeOutput(outputPath)
+
+  assert.equal(preparation.safe, false)
+  assert.equal(preparation.backgroundRemoved, false)
+  assert.equal(preparation.failureCondition, 'background-not-safely-removable')
+})
+
+test('keyframe quality rejects descriptor drift even when mean foreground color remains close', () => {
+  const metrics = {
+    visiblePixels: 12000,
+    coverage: 0.28,
+    edgeRatio: 0,
+    minPaddingRatio: 0.08,
+    centerOffsetRatio: 0.03,
+    meanRgb: { r: 180, g: 140, b: 90 },
+    bounds: { width: 120, height: 190 },
+    identityDescriptor: {
+      aspectRatio: 1.2,
+      regions: [
+        { r: 130, g: 90, b: 60 },
+        { r: 230, g: 190, b: 120 },
+        { r: 180, g: 140, b: 90 }
+      ]
+    }
+  }
+  const referenceMetrics = {
+    ...metrics,
+    identityDescriptor: {
+      aspectRatio: 0.63,
+      regions: [
+        { r: 230, g: 190, b: 120 },
+        { r: 130, g: 90, b: 60 },
+        { r: 180, g: 140, b: 90 }
+      ]
+    }
+  }
+
+  const quality = __testInternals.evaluateActionKeyframeQuality({
+    metrics,
+    referenceMetrics,
+    backgroundPreparation: { safe: true }
+  })
+
+  assert.equal(quality.identityColorDistance, 0)
+  assert.equal(quality.identityConsistent, false)
+  assert.equal(quality.failureConditions.includes('identity-descriptor-distance-high'), true)
+  assert.equal(quality.ok, false)
 })
 
 test('host model bridge rejects keyframes whose foreground palette conflicts with the source identity', async () => {
