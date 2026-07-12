@@ -67,3 +67,39 @@ test('settings service update applies an atomic read-modify-write', () => {
   assert.deepEqual(result.ai, { conversations: ['c1'], behavior: { enabled: true } })
 })
 
+test('settings service publishes memory side effects and events only after persistence succeeds', () => {
+  const bus = createEventBus()
+  const events = []
+  const sideEffects = []
+  const service = createSettingsService({
+    eventBus: bus,
+    loadSettings: () => ({ scale: 1, walkSpeed: 2 }),
+    saveSettings: () => {
+      throw new Error('disk full')
+    },
+    syncSideEffects: (settings) => sideEffects.push(settings)
+  })
+  bus.on('settings:changed', (settings) => events.push(settings))
+
+  assert.throws(() => service.save({ scale: 2, walkSpeed: 3 }), /disk full/)
+
+  assert.deepEqual(service.get(), { scale: 1, walkSpeed: 2 })
+  assert.deepEqual(sideEffects, [])
+  assert.deepEqual(events, [])
+})
+
+test('settings service update isolates nested mutations when persistence fails', () => {
+  const service = createSettingsService({
+    loadSettings: () => ({ ai: { enabled: false } }),
+    saveSettings: () => {
+      throw new Error('disk full')
+    }
+  })
+
+  assert.throws(() => service.update((settings) => {
+    settings.ai.enabled = true
+    return settings
+  }), /disk full/)
+
+  assert.deepEqual(service.get(), { ai: { enabled: false } })
+})

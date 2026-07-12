@@ -13,6 +13,7 @@ const { SYSTEM_CURSOR_ID, normalizeCursorSettingsState } = require('../shared/cu
 
 // 设置保存在 Electron 用户数据目录，卸载重装后仍然保留。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json')
+const settingsBackupPath = `${settingsPath}.bak`
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -238,16 +239,52 @@ const syncLoginItemSettings = (autoStart) => {
   app.setLoginItemSettings({ openAtLogin: autoStart })
 }
 
+const readSettingsFile = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+
+const writeJsonAtomic = (filePath, value) => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), {
+      encoding: 'utf-8',
+      flush: true
+    })
+    fs.renameSync(temporaryPath, filePath)
+  } catch (error) {
+    try {
+      fs.rmSync(temporaryPath, { force: true })
+    } catch (_) {}
+    throw error
+  }
+}
+
 /**
  * 从磁盘读取设置，与默认值合并后返回。
- * 文件不存在或损坏时静默回退到默认值，不阻塞启动。
+ * 主文件损坏时尝试最后一次有效备份；仅当两者均不可用时回退默认值。
  */
 const loadSettings = () => {
-  try {
-    if (fs.existsSync(settingsPath)) {
-      return mergeSettings(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')))
+  const primaryExists = fs.existsSync(settingsPath)
+  const backupExists = fs.existsSync(settingsBackupPath)
+
+  if (primaryExists) {
+    try {
+      return mergeSettings(readSettingsFile(settingsPath))
+    } catch (_) {
+      console.warn('OpenPet settings primary file could not be read; attempting backup')
     }
-  } catch (_) { /* 文件损坏时回退到默认值 */ }
+  }
+
+  if (backupExists) {
+    try {
+      return mergeSettings(readSettingsFile(settingsBackupPath))
+    } catch (_) {
+      console.warn('OpenPet settings backup file could not be read')
+    }
+  }
+
+  if (primaryExists || backupExists) {
+    console.error('OpenPet settings recovery failed; using defaults')
+  }
   return mergeSettings()
 }
 
@@ -255,7 +292,19 @@ const loadSettings = () => {
  * 将设置写入磁盘。
  */
 const saveSettings = (settings) => {
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const previousSettings = readSettingsFile(settingsPath)
+      writeJsonAtomic(settingsBackupPath, previousSettings)
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        console.warn('OpenPet settings primary file is invalid; preserving existing backup')
+      } else {
+        throw error
+      }
+    }
+  }
+  writeJsonAtomic(settingsPath, settings)
 }
 
-module.exports = { settingsPath, defaultSettings, mergeSettings, loadSettings, saveSettings, syncLoginItemSettings }
+module.exports = { settingsPath, settingsBackupPath, defaultSettings, mergeSettings, loadSettings, saveSettings, syncLoginItemSettings }

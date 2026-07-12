@@ -1,14 +1,24 @@
 const SETTINGS_CHANGED = 'settings:changed'
 const SETTINGS_PREVIEW = 'settings:preview'
 
+const cloneSettings = (settings) => structuredClone(settings)
+
+const validateSettings = (settings) => {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new Error('Settings must be an object')
+  }
+  return settings
+}
+
 const createSettingsService = ({ eventBus, loadSettings, saveSettings, syncSideEffects }) => {
   let currentSettings = loadSettings()
 
-  const get = () => ({ ...currentSettings })
+  const get = () => cloneSettings(currentSettings)
 
   const save = (settings) => {
-    currentSettings = { ...settings }
-    saveSettings(currentSettings)
+    const nextSettings = cloneSettings(validateSettings(settings))
+    saveSettings(nextSettings)
+    currentSettings = nextSettings
     syncSideEffects?.(currentSettings)
     eventBus?.emit(SETTINGS_CHANGED, get())
     return get()
@@ -18,7 +28,7 @@ const createSettingsService = ({ eventBus, loadSettings, saveSettings, syncSideE
   // snapshot at save-time (not at a prior get() call), eliminating the
   // stale-snapshot race when concurrent async callers write different fields.
   const update = (updater) => {
-    const nextSettings = updater({ ...currentSettings })
+    const nextSettings = updater(cloneSettings(currentSettings))
     return save(nextSettings)
   }
 
@@ -29,7 +39,7 @@ const createSettingsService = ({ eventBus, loadSettings, saveSettings, syncSideE
   }
 
   const reload = () => {
-    currentSettings = loadSettings()
+    currentSettings = validateSettings(loadSettings())
     return get()
   }
 
