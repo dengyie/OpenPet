@@ -1,7 +1,11 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { requestPluginNetwork } = require('../../src/main/services/plugin-network-client')
+const {
+  isPrivateAddress,
+  readLimitedResponseText,
+  requestPluginNetwork
+} = require('../../src/main/services/plugin-network-client')
 
 const manifest = {
   id: 'network-plugin',
@@ -57,6 +61,14 @@ test('plugin network request supports validated IPv6 and keeps the requested hos
   assert.equal(connections[0].family, 6)
   assert.equal(connections[0].servername, 'api.example.com')
   assert.equal(connections[0].port, 8443)
+})
+
+test('plugin network request rejects IPv4-mapped IPv6 private destinations', () => {
+  assert.equal(isPrivateAddress('::ffff:127.0.0.1'), true)
+  assert.equal(isPrivateAddress('::ffff:169.254.169.254'), true)
+  assert.equal(isPrivateAddress('::ffff:192.168.1.1'), true)
+  assert.equal(isPrivateAddress('::ffff:7f00:1'), true)
+  assert.equal(isPrivateAddress('::ffff:203.0.113.10'), false)
 })
 
 test('plugin network request revalidates redirects and blocks private redirect destinations', async () => {
@@ -118,4 +130,45 @@ test('plugin network request forwards caller cancellation to the pinned connecti
   controller.abort()
 
   await assert.rejects(() => pending, (error) => error.name === 'AbortError')
+})
+
+test('plugin network response body remains inside the request deadline', async () => {
+  let canceled = false
+  const response = await requestPluginNetwork({
+    manifest,
+    url: 'https://api.example.com/slow-body',
+    request: { method: 'GET', headers: {} },
+    resolveAddress: async () => ['203.0.113.10'],
+    timeoutMs: 5,
+    connect: async () => createResponse({ text: '' })
+  })
+  response.body = new ReadableStream({
+    cancel: () => { canceled = true }
+  })
+
+  await assert.rejects(() => readLimitedResponseText(response), /timed out/i)
+  assert.equal(canceled, true)
+})
+
+test('plugin network request cancels redirect response bodies before following location', async () => {
+  let canceled = false
+  let connectCalls = 0
+  await requestPluginNetwork({
+    manifest,
+    url: 'https://api.example.com/start',
+    request: { method: 'GET', headers: {} },
+    resolveAddress: async () => ['203.0.113.10'],
+    connect: async () => {
+      connectCalls += 1
+      if (connectCalls === 1) {
+        return {
+          ...createResponse({ status: 302, headers: { location: 'https://redirect.example.com/next' } }),
+          body: new ReadableStream({ cancel: () => { canceled = true } })
+        }
+      }
+      return createResponse()
+    }
+  })
+
+  assert.equal(canceled, true)
 })

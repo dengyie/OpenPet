@@ -5,6 +5,7 @@ const { Readable } = require('stream')
 
 const MAX_PLUGIN_NETWORK_REQUEST_BYTES = 64 * 1024
 const MAX_PLUGIN_NETWORK_RESPONSE_BYTES = 128 * 1024
+const RESPONSE_CONTEXT = Symbol('openpetPluginNetworkResponseContext')
 
 // Reject DNS-rebinding SSRF: even when a manifest allowlist host is a public
 // domain, an attacker can point its A record at 127.0.0.1 / 169.254.169.254 /
@@ -15,6 +16,14 @@ const isPrivateAddress = (ip) => {
   // IPv6 — loopback, link-local, unique-local, unspecified, multicast.
   const bare = ip.replace(/^\[|]$/g, '')
   if (bare.includes(':')) {
+    const mappedIpv4 = bare.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i)?.[1]
+    if (mappedIpv4) return isPrivateAddress(mappedIpv4)
+    const mappedHex = bare.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
+    if (mappedHex) {
+      const high = Number.parseInt(mappedHex[1], 16)
+      const low = Number.parseInt(mappedHex[2], 16)
+      return isPrivateAddress(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`)
+    }
     if (bare === '::1' || bare === '::') return true
     if (bare.toLowerCase().startsWith('fe80:')) return true
     if (bare.toLowerCase().startsWith('fc') || bare.toLowerCase().startsWith('fd')) return true
@@ -97,6 +106,17 @@ const connectPinnedHttps = ({ url, request, address, family, servername, hostHea
 
 const isRedirectStatus = (status) => [301, 302, 303, 307, 308].includes(Number(status))
 
+const cancelResponseBody = async (response) => {
+  if (response?.body?.cancel) {
+    await response.body.cancel().catch(() => {})
+    return
+  }
+  if (response?.body?.getReader) {
+    const reader = response.body.getReader()
+    await reader.cancel().catch(() => {})
+  }
+}
+
 const requestPluginNetwork = async ({
   manifest,
   url,
@@ -115,8 +135,16 @@ const requestPluginNetwork = async ({
   const timeoutId = setTimeout(() => {
     timedOut = true
     controller.abort()
+    cleanup()
   }, timeoutMs)
   timeoutId.unref?.()
+  let cleanedUp = false
+  const cleanup = () => {
+    if (cleanedUp) return
+    cleanedUp = true
+    clearTimeout(timeoutId)
+    signal?.removeEventListener?.('abort', abortFromCaller)
+  }
 
   let currentUrl = new URL(url)
   let currentRequest = { ...request, headers: { ...(request.headers || {}) } }
@@ -138,7 +166,14 @@ const requestPluginNetwork = async ({
         signal: controller.signal
       })
       const location = response.headers?.get?.('location') || ''
-      if (!isRedirectStatus(response.status) || !location) return response
+      if (!isRedirectStatus(response.status) || !location) {
+        Object.defineProperty(response, RESPONSE_CONTEXT, {
+          configurable: true,
+          value: { signal: controller.signal, timedOut: () => timedOut, cleanup }
+        })
+        return response
+      }
+      await cancelResponseBody(response)
       if (redirectCount === maxRedirects) throw new Error('Plugin network request exceeded redirect limit')
       currentUrl = new URL(location, currentUrl)
       if ([301, 302, 303].includes(response.status) && currentRequest.method === 'POST') {
@@ -149,11 +184,9 @@ const requestPluginNetwork = async ({
     }
     throw new Error('Plugin network request exceeded redirect limit')
   } catch (error) {
+    cleanup()
     if (timedOut) throw new Error('Plugin network request timed out')
     throw error
-  } finally {
-    clearTimeout(timeoutId)
-    signal?.removeEventListener?.('abort', abortFromCaller)
   }
 }
 
@@ -185,34 +218,63 @@ const normalizeNetworkRequest = (manifest, { url, options = {} } = {}) => {
 }
 
 const readLimitedResponseText = async (response) => {
-  const contentLength = Number(response.headers?.get?.('content-length') || 0)
-  if (Number.isFinite(contentLength) && contentLength > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
-    throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
-  }
-  if (!response.body?.getReader) {
-    const text = await response.text()
-    if (Buffer.byteLength(text, 'utf-8') > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
-      throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
+  const context = response?.[RESPONSE_CONTEXT]
+  const abortError = () => context?.timedOut()
+    ? new Error('Plugin network request timed out')
+    : (context?.signal?.reason instanceof Error ? context.signal.reason : Object.assign(new Error('Plugin network request aborted'), { name: 'AbortError' }))
+  const waitFor = async (promise) => {
+    if (!context?.signal) return promise
+    if (context.signal.aborted) throw abortError()
+    let abortHandler
+    const aborted = new Promise((resolve, reject) => {
+      abortHandler = () => reject(abortError())
+      context.signal.addEventListener('abort', abortHandler, { once: true })
+    })
+    try {
+      return await Promise.race([promise, aborted])
+    } finally {
+      context.signal.removeEventListener('abort', abortHandler)
     }
-    return text
   }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let byteLength = 0
-  let text = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    byteLength += value.byteLength
-    if (byteLength > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
-      await reader.cancel().catch(() => {})
+  try {
+    const contentLength = Number(response.headers?.get?.('content-length') || 0)
+    if (Number.isFinite(contentLength) && contentLength > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
+      await cancelResponseBody(response)
       throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
     }
-    text += decoder.decode(value, { stream: true })
+    if (!response.body?.getReader) {
+      const text = await waitFor(response.text())
+      if (Buffer.byteLength(text, 'utf-8') > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
+        throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
+      }
+      return text
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let byteLength = 0
+    let text = ''
+    try {
+      while (true) {
+        const { done, value } = await waitFor(reader.read())
+        if (done) break
+        byteLength += value.byteLength
+        if (byteLength > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
+          await reader.cancel().catch(() => {})
+          throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
+        }
+        text += decoder.decode(value, { stream: true })
+      }
+      text += decoder.decode()
+      return text
+    } catch (error) {
+      await reader.cancel().catch(() => {})
+      throw error
+    }
+  } finally {
+    context?.cleanup?.()
   }
-  text += decoder.decode()
-  return text
 }
 
 module.exports = {
