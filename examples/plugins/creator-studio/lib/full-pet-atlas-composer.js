@@ -50,6 +50,7 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
     const frames = rowFramesByActionId instanceof Map
       ? rowFramesByActionId.get(row.id)
       : rowFramesByActionId?.[row.id]
+    if (frames == null) continue
     if (!Array.isArray(frames) || frames.length !== row.frameCount) {
       throw new Error(`Official full-pet row ${row.id} requires ${row.frameCount} frames`)
     }
@@ -87,10 +88,14 @@ const composeOfficialFullPetAtlas = async ({ outputPath, rowFramesByActionId }) 
 
   const frameRows = []
   for (const row of OFFICIAL_FULL_PET_ROWS) {
+    const frames = rowFramesByActionId instanceof Map
+      ? rowFramesByActionId.get(row.id)
+      : rowFramesByActionId?.[row.id]
     frameRows.push({
       id: row.id,
       row: row.row,
       frameCount: row.frameCount,
+      available: Array.isArray(frames),
       uniqueFrameCount: await countUniqueRowFrames({ spritesheetPath: outputPath, row })
     })
   }

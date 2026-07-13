@@ -418,7 +418,8 @@ const buildOfficialAtlasFromRows = async ({
   sourceRelativePath,
   sourceValidation,
   size,
-  entries
+  entries,
+  basicActionAttempts = []
 }) => {
   const rowInputs = normalizeOfficialRowsInput(officialRows)
   const rowInputsByActionId = new Map(rowInputs.map((row) => [String(row?.actionId || '').trim(), row]))
@@ -428,7 +429,8 @@ const buildOfficialAtlasFromRows = async ({
   for (const row of OFFICIAL_FULL_PET_ROWS) {
     const input = rowInputsByActionId.get(row.id)
     if (!input) {
-      throw new Error(`Official full-pet row package is missing ${row.id}`)
+      if (row.id === 'idle') throw new Error('Official full-pet row package is missing required idle')
+      continue
     }
     const frames = await normalizeOfficialRowFrames({
       dataDir,
@@ -477,7 +479,7 @@ const buildOfficialAtlasFromRows = async ({
     rowFramesByActionId,
     outputDir: qaDir
   })
-  const basicActions = createBasicActionCoverage(basicActionRows)
+  const basicActions = createBasicActionCoverage(basicActionRows, basicActionAttempts)
   const atlasSha256 = sha256File(spritesheetPath)
   const sourceSha256 = sha256File(entries[0].sourcePath)
   const sourceQaPath = path.join(qaDir, 'source-image-validation.json')
@@ -605,7 +607,10 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
       sourceRelativePath,
       sourceValidation,
       size,
-      entries
+      entries,
+      basicActionAttempts: Array.isArray(generationResult?.basicActionGeneration?.attempts)
+        ? generationResult.basicActionGeneration.attempts
+        : []
     })
     return {
       spritesheetPath,
