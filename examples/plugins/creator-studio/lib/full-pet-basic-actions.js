@@ -6,13 +6,19 @@ const FULL_PET_ACTION_SUPPORT = Object.freeze({
   FALLBACK_ONLY: 'fallback-only'
 })
 
+const DIRECTIONAL_FULL_PET_ACTION_PAIRS = Object.freeze([
+  Object.freeze({ sourceActionId: 'running-right', derivedActionId: 'running-left' })
+])
+
 const createActionPolicyEntry = (value) => Object.freeze(value)
 
 const FULL_PET_ACTION_POLICY = Object.freeze([
   ...OFFICIAL_FULL_PET_ACTION_IDS.map((actionId, index) => (
     createActionPolicyEntry({
       actionId,
-      support: FULL_PET_ACTION_SUPPORT.REQUIRED_REAL,
+      support: actionId === 'idle'
+        ? FULL_PET_ACTION_SUPPORT.REQUIRED_REAL
+        : FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL,
       attemptGeneratedPose: true,
       expansionRank: index + 1
     })
@@ -30,6 +36,10 @@ const OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS = Object.freeze(
     .filter((entry) => entry.support === FULL_PET_ACTION_SUPPORT.OPTIONAL_ATTEMPTED_REAL)
     .sort((left, right) => left.expansionRank - right.expansionRank)
     .map((entry) => entry.actionId)
+)
+
+const OPTIONAL_REAL_FULL_PET_ACTION_IDS = Object.freeze(
+  OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => actionId !== 'idle')
 )
 
 const FALLBACK_ONLY_FULL_PET_ACTION_IDS = Object.freeze(
@@ -103,8 +113,33 @@ const createBasicActionCoverage = (rows, attempts = []) => {
     normalizedRows.filter((row) => row.fallback).map((row) => row.actionId)
   )
   const previewFallbackActionIds = fallbackActionIds.slice()
-  const requiredOfficialActionIds = OFFICIAL_FULL_PET_ACTION_IDS.slice()
+  const requiredOfficialActionIds = REQUIRED_REAL_FULL_PET_ACTION_IDS.slice()
   const missingRequiredOfficialActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.includes(actionId))
+  const attemptsByActionId = new Map(
+    (Array.isArray(attempts) ? attempts : [])
+      .map((attempt) => [normalizeActionId(attempt?.actionId), attempt])
+      .filter(([actionId]) => actionId)
+  )
+  const rowsByActionId = new Map(normalizedRows.map((row) => [row.actionId, row]))
+  const actionAvailability = Object.fromEntries(OFFICIAL_FULL_PET_ACTION_IDS.map((actionId) => {
+    const row = rowsByActionId.get(actionId)
+    if (isOfficialRealRow(row)) {
+      return [actionId, { available: true, quality: row.quality }]
+    }
+    const directionalPair = DIRECTIONAL_FULL_PET_ACTION_PAIRS.find((pair) => pair.derivedActionId === actionId)
+    const attempt = attemptsByActionId.get(actionId) || (
+      directionalPair ? attemptsByActionId.get(directionalPair.sourceActionId) : null
+    )
+    const reason = String(
+      attempt?.failureConditions?.[0] ||
+      attempt?.quality?.failureConditions?.[0] ||
+      attempt?.error ||
+      'not-generated'
+    ).slice(0, 160)
+    return [actionId, { available: false, reason }]
+  }))
+  const availableActionIds = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => actionAvailability[actionId].available)
+  const omittedActionIds = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !actionAvailability[actionId].available)
   return {
     baseIdentityCoverage: normalizedRows.some((row) => row.actionId === 'idle' && row.sourceRelativePath),
     requiredRealActionIds: REQUIRED_REAL_FULL_PET_ACTION_IDS.slice(),
@@ -117,16 +152,22 @@ const createBasicActionCoverage = (rows, attempts = []) => {
     requiredOfficialActionIds,
     previewFallbackActionIds,
     missingRequiredOfficialActionIds,
+    officialActionIds: OFFICIAL_FULL_PET_ACTION_IDS.slice(),
+    availableActionIds,
+    omittedActionIds,
+    actionAvailability,
     rows: normalizedRows
   }
 }
 
 module.exports = {
   FALLBACK_ONLY_FULL_PET_ACTION_IDS,
+  DIRECTIONAL_FULL_PET_ACTION_PAIRS,
   FULL_PET_ACTION_POLICY,
   FULL_PET_ACTION_SUPPORT,
   OFFICIAL_FULL_PET_ACTION_IDS,
   OPTIONAL_ATTEMPTED_REAL_FULL_PET_ACTION_IDS,
+  OPTIONAL_REAL_FULL_PET_ACTION_IDS,
   REQUIRED_REAL_FULL_PET_ACTION_IDS,
   GENERATED_FULL_PET_ACTION_IDS,
   createBasicActionCoverage,
