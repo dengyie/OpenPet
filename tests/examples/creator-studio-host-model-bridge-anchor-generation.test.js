@@ -228,6 +228,109 @@ const createBoardCopyCandidateImageGenerate = ({ dataDir, calls }) => async (req
   }
 }
 
+const createMultiOutputKeyframeGenerate = ({ dataDir, kinds }) => async (request) => {
+  const outputs = []
+  for (const [index, kind] of kinds.entries()) {
+    const dataRelativePath = `${request.dataRelativeDir}/${String(index + 1).padStart(4, '0')}.png`
+    await writeCandidateAnchorImage({
+      filePath: path.join(dataDir, dataRelativePath),
+      kind
+    })
+    outputs.push({ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath })
+  }
+  return {
+    response: {
+      result: {
+        backend: 'provider',
+        model: request.model,
+        outputs
+      }
+    },
+    selectedModel: request.model,
+    attempts: [{
+      model: request.model,
+      ok: true,
+      timeoutMs: request.requestedTimeoutMs,
+      referenceRoles: request.referenceImages.map((reference) => reference.role),
+      durationMs: 7
+    }]
+  }
+}
+
+test('action keyframes select the highest-scoring passing output from one provider response', async () => {
+  const dataDir = makeDataDir()
+  const referencePath = path.join(dataDir, 'runs/run-keyframe-candidates/inputs/reference.png')
+  await writeCandidateAnchorImage({ filePath: referencePath, kind: 'good' })
+
+  const result = await __testInternals.generateActionKeyframe({
+    dataDir,
+    run: {
+      runId: 'run-keyframe-candidates',
+      petId: 'candidate-cat',
+      generationTask: { characterBrief: 'Golden cat with green eyes.' }
+    },
+    settings: {},
+    selectedModel: 'test-image-model',
+    requestedTimeoutMs: 300000,
+    action: {
+      actionId: 'waving',
+      name: 'Waving',
+      motionPrompt: 'Wave with one paw.'
+    },
+    keyframeRole: 'start',
+    referenceImages: [{ path: referencePath, role: 'canonical-reference' }],
+    generateWithFallbackImpl: createMultiOutputKeyframeGenerate({
+      dataDir,
+      kinds: ['wrong-identity', 'good']
+    })
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.keyframe.relativePath.endsWith('/0002.png'), true)
+  assert.equal(result.stage.outputCount, 2)
+  assert.equal(result.keyframe.candidateSelection.candidateCount, 2)
+  assert.equal(result.keyframe.candidateSelection.selectedCandidateIndex, 1)
+  assert.equal(result.keyframe.candidateSelection.candidates[0].quality.ok, false)
+  assert.equal(result.keyframe.candidateSelection.candidates[1].quality.ok, true)
+  assert.equal(result.keyframe.candidateSelection.candidates[1].selected, true)
+})
+
+test('action keyframes preserve every candidate quality record when no output passes', async () => {
+  const dataDir = makeDataDir()
+  const referencePath = path.join(dataDir, 'runs/run-keyframe-rejected/inputs/reference.png')
+  await writeCandidateAnchorImage({ filePath: referencePath, kind: 'good' })
+
+  const result = await __testInternals.generateActionKeyframe({
+    dataDir,
+    run: {
+      runId: 'run-keyframe-rejected',
+      petId: 'candidate-cat',
+      generationTask: { characterBrief: 'Golden cat with green eyes.' }
+    },
+    settings: {},
+    selectedModel: 'test-image-model',
+    requestedTimeoutMs: 300000,
+    action: {
+      actionId: 'waving',
+      name: 'Waving',
+      motionPrompt: 'Wave with one paw.'
+    },
+    keyframeRole: 'peak',
+    referenceImages: [{ path: referencePath, role: 'canonical-reference' }],
+    generateWithFallbackImpl: createMultiOutputKeyframeGenerate({
+      dataDir,
+      kinds: ['wrong-identity', 'cropped']
+    })
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.stage.outputCount, 2)
+  assert.equal(result.keyframe.candidateSelection.candidateCount, 2)
+  assert.equal(result.keyframe.candidateSelection.selectedCandidateIndex, -1)
+  assert.equal(result.keyframe.candidateSelection.candidates.every((candidate) => candidate.quality.ok === false), true)
+  assert.equal(result.keyframe.candidateSelection.candidates.every((candidate) => candidate.quality.failureConditions.length > 0), true)
+})
+
 const createAllBoardCopyCandidateImageGenerate = ({ dataDir, calls }) => async (request) => {
   calls.push({
     dataRelativeDir: request.dataRelativeDir,

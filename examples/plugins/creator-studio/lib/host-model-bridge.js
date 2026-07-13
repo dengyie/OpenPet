@@ -2726,6 +2726,35 @@ const createOutputFromGeneratedPath = ({ dataDir, output }) => {
   }
 }
 
+const createFailedActionKeyframeCandidateQuality = (error) => ({
+  ok: false,
+  score: 0,
+  rawScore: 0,
+  safeComposition: false,
+  identityConsistent: false,
+  identityColorDistance: 0,
+  identityDescriptorDistance: 0,
+  maxIdentityDescriptorDistance: MAX_ACTION_KEYFRAME_IDENTITY_DESCRIPTOR_DISTANCE,
+  minAcceptableScore: MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE,
+  failureConditions: ['candidate-processing-failed'],
+  backgroundPreparation: null,
+  metrics: summarizeActionAnchorMetrics(),
+  error: String(error?.message || error || 'Candidate processing failed').slice(0, 240)
+})
+
+const createActionKeyframeCandidateSelection = ({ candidates, selectedCandidateIndex = -1 }) => ({
+  version: 1,
+  mode: 'single-provider-response-quality-selection',
+  candidateCount: candidates.length,
+  selectedCandidateIndex,
+  candidates: candidates.map((candidate) => ({
+    candidateIndex: candidate.candidateIndex,
+    outputRelativePath: createSafeRelativePath(candidate.output?.dataRelativePath),
+    selected: candidate.candidateIndex === selectedCandidateIndex,
+    quality: candidate.quality
+  }))
+})
+
 const generateActionKeyframe = async ({
   dataDir,
   run,
@@ -2770,6 +2799,8 @@ const generateActionKeyframe = async ({
   let materializedOutput = null
   let quality = null
   let keyframe = null
+  let candidateSelection = null
+  let candidateCount = 0
   try {
     stageTimeoutMs = resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs })
     attempt = await generateWithFallbackImpl({
@@ -2788,23 +2819,55 @@ const generateActionKeyframe = async ({
         `${actionId}-${normalizedKeyframeRole}-keyframe`
       ).replace(/\\/g, '/')
     })
-    const output = getFirstExistingOutput({ dataDir, response: attempt.response })
-    if (!output) throw new Error(`Creator Studio ${normalizedKeyframeRole} keyframe generation returned no outputs for ${actionId}`)
-    materializedOutput = createOutputFromGeneratedPath({ dataDir, output })
-    if (!materializedOutput) throw new Error(`Creator Studio ${normalizedKeyframeRole} keyframe output was not materialized for ${actionId}`)
-    const keyframePath = path.join(dataDir, materializedOutput.dataRelativePath)
-    const backgroundPreparation = await prepareGeneratedKeyframeOutput(keyframePath)
-    materializedOutput.sha256 = sha256File(keyframePath)
-    const metrics = await readImageMaskMetrics(keyframePath)
+    const outputs = filterExistingGeneratedOutputs({
+      dataDir,
+      outputs: Array.isArray(attempt.response?.result?.outputs) ? attempt.response.result.outputs : []
+    })
+    candidateCount = outputs.length
+    if (!outputs.length) throw new Error(`Creator Studio ${normalizedKeyframeRole} keyframe generation returned no outputs for ${actionId}`)
     const referencePath = String((qualityReferenceImages[0] || referenceImages[0])?.path || '').trim()
     const referenceMetrics = referencePath && fs.existsSync(referencePath)
       ? await readImageMaskMetrics(referencePath)
       : null
-    quality = evaluateActionKeyframeQuality({
-      metrics,
-      referenceMetrics,
-      action,
-      backgroundPreparation
+    const candidates = []
+    for (const [candidateIndex, output] of outputs.entries()) {
+      const candidateOutput = createOutputFromGeneratedPath({ dataDir, output })
+      if (!candidateOutput) continue
+      try {
+        const candidatePath = path.join(dataDir, candidateOutput.dataRelativePath)
+        const backgroundPreparation = await prepareGeneratedKeyframeOutput(candidatePath)
+        candidateOutput.sha256 = sha256File(candidatePath)
+        const metrics = await readImageMaskMetrics(candidatePath)
+        candidates.push({
+          candidateIndex,
+          output: candidateOutput,
+          quality: evaluateActionKeyframeQuality({
+            metrics,
+            referenceMetrics,
+            action,
+            backgroundPreparation
+          })
+        })
+      } catch (error) {
+        candidates.push({
+          candidateIndex,
+          output: candidateOutput,
+          quality: createFailedActionKeyframeCandidateQuality(error)
+        })
+      }
+    }
+    if (!candidates.length) throw new Error(`Creator Studio ${normalizedKeyframeRole} keyframe output was not materialized for ${actionId}`)
+    const passingCandidates = candidates
+      .filter((candidate) => candidate.quality.ok)
+      .sort((left, right) => Number(right.quality.score) - Number(left.quality.score))
+    const selectedCandidate = passingCandidates[0] || null
+    const diagnosticCandidate = selectedCandidate || [...candidates]
+      .sort((left, right) => Number(right.quality.rawScore) - Number(left.quality.rawScore))[0]
+    materializedOutput = diagnosticCandidate.output
+    quality = diagnosticCandidate.quality
+    candidateSelection = createActionKeyframeCandidateSelection({
+      candidates,
+      selectedCandidateIndex: selectedCandidate?.candidateIndex ?? -1
     })
     keyframe = createKeyframeRecordFromOutput({
       output: materializedOutput,
@@ -2815,9 +2878,11 @@ const generateActionKeyframe = async ({
       modelAttempts: attempt.attempts,
       quality
     })
-    if (!quality.ok) {
+    keyframe.candidateSelection = candidateSelection
+    if (!selectedCandidate) {
+      const failureConditions = [...new Set(candidates.flatMap((candidate) => candidate.quality.failureConditions || []))]
       throw new Error(
-        `Creator Studio ${normalizedKeyframeRole} keyframe quality for ${actionId} scored ${quality.score} below ${MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE}; failed conditions: ${quality.failureConditions.join(', ')}`
+        `Creator Studio ${normalizedKeyframeRole} keyframe quality for ${actionId} had no passing candidates; failed conditions: ${failureConditions.join(', ')}`
       )
     }
     const referenceImage = {
@@ -2845,7 +2910,7 @@ const generateActionKeyframe = async ({
         modelAttempts: attempt.attempts,
         outputRelativePath: materializedOutput.dataRelativePath,
         promptRelativePath: promptFile.relativePath,
-        outputCount: 1
+        outputCount: candidateCount
       })
     }
   } catch (error) {
@@ -2874,7 +2939,7 @@ const generateActionKeyframe = async ({
         modelAttempts,
         outputRelativePath: materializedOutput?.dataRelativePath || '',
         promptRelativePath: promptFile.relativePath,
-        outputCount: materializedOutput ? 1 : 0,
+        outputCount: candidateCount,
         quality,
         error: error?.message || error
       })
@@ -4349,6 +4414,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 module.exports = {
   __testInternals: {
     buildModelCandidateList,
+    generateActionKeyframe,
     generateWithModelFallback,
     evaluateActionKeyframeQuality,
     generateFullPetBasicActionSources,
