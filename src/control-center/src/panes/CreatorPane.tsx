@@ -109,7 +109,7 @@ const ResultCard = ({
   const canRepairFullPet = result.run?.mode === 'full-pet' &&
     ['review-required', 'preview-ready'].includes(String(result.state))
   const repairableActionIds = canRepairFullPet
-    ? (basicActions?.omittedActionIds || basicActions?.missingRequiredOfficialActionIds || []).filter((actionId) => actionId !== 'running-left')
+    ? (basicActions?.missingRequiredOfficialActionIds || []).filter((actionId) => actionId !== 'running-left')
     : []
 
   return (

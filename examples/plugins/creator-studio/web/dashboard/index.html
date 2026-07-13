@@ -937,9 +937,19 @@
                 `<span>Available actions: ${escapeHtml(availableActionIds.join(', ') || 'none')}</span>`,
                 `<span>Omitted actions: ${escapeHtml(omittedActionIds.join(', ') || 'none')}</span>`,
                 ...omittedActionIds.map((actionId) => (
-                  `<span>${escapeHtml(actionId)}: ${escapeHtml(safeFailureCondition(actionAvailability[actionId]?.reason))}</span>`
+                  [
+                    '<span>',
+                    `${escapeHtml(actionId)}: ${escapeHtml(safeFailureCondition(actionAvailability[actionId]?.reason))}`,
+                    canRepair && actionId !== 'running-left'
+                      ? ` <button data-retry-pet-action="${escapeHtml(actionId)}">Retry action</button>`
+                      : ' (derived from running-right)',
+                    '</span>'
+                  ].join('')
                 )),
                 '<span>Automated QA is technical evidence; human visual approval is still required.</span>',
+                canRepair
+                  ? '<span><button data-retry-pet-identity="true">Regenerate canonical identity</button></span>'
+                  : '',
                 '</div>'
               ].join('')
             : '',

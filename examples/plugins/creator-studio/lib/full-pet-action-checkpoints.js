@@ -59,25 +59,83 @@ const normalizeResult = ({ dataDir, result }) => {
 const readActionCheckpoints = ({ dataDir, runId }) => readJson(checkpointPath({ dataDir, runId }), {
   version: CHECKPOINT_VERSION,
   runId,
-  actions: {}
+  actions: {},
+  invalidations: []
 })
 
-const writeActionCheckpoint = ({ dataDir, runId, result, now = () => new Date().toISOString() }) => {
+const writeCheckpointFile = ({ dataDir, runId, checkpoints, now = () => new Date().toISOString() }) => {
   const filePath = checkpointPath({ dataDir, runId })
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  const next = {
+    ...checkpoints,
+    version: CHECKPOINT_VERSION,
+    runId,
+    updatedAt: now(),
+    actions: checkpoints.actions || {},
+    invalidations: Array.isArray(checkpoints.invalidations)
+      ? checkpoints.invalidations.slice(-100)
+      : []
+  }
+  const temporaryPath = `${filePath}.tmp-${process.pid}`
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(next, null, 2)}\n`)
+  fs.renameSync(temporaryPath, filePath)
+  return next
+}
+
+const writeActionCheckpoint = ({ dataDir, runId, result, now = () => new Date().toISOString() }) => {
   const checkpoints = readActionCheckpoints({ dataDir, runId })
-  checkpoints.version = CHECKPOINT_VERSION
-  checkpoints.runId = runId
-  checkpoints.updatedAt = now()
   checkpoints.actions = checkpoints.actions || {}
   checkpoints.actions[result.actionId] = {
     ...normalizeResult({ dataDir, result }),
     updatedAt: now()
   }
-  const temporaryPath = `${filePath}.tmp-${process.pid}`
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(checkpoints, null, 2)}\n`)
-  fs.renameSync(temporaryPath, filePath)
-  return checkpoints.actions[result.actionId]
+  const written = writeCheckpointFile({ dataDir, runId, checkpoints, now })
+  return written.actions[result.actionId]
+}
+
+const normalizeInvalidationReason = (value, fallback) => (
+  String(value || '').trim().slice(0, 160) || fallback
+)
+
+const invalidateActionCheckpoint = ({
+  dataDir,
+  runId,
+  actionId,
+  reason = 'manual-repair',
+  now = () => new Date().toISOString()
+}) => {
+  const normalizedActionId = String(actionId || '').trim()
+  if (!normalizedActionId) throw new Error('Action checkpoint invalidation requires an actionId')
+  const checkpoints = readActionCheckpoints({ dataDir, runId })
+  checkpoints.actions = checkpoints.actions || {}
+  delete checkpoints.actions[normalizedActionId]
+  checkpoints.invalidations = Array.isArray(checkpoints.invalidations) ? checkpoints.invalidations : []
+  checkpoints.invalidations.push({
+    scope: 'action',
+    actionIds: [normalizedActionId],
+    reason: normalizeInvalidationReason(reason, 'manual-repair'),
+    invalidatedAt: now()
+  })
+  return writeCheckpointFile({ dataDir, runId, checkpoints, now })
+}
+
+const invalidateAllActionCheckpoints = ({
+  dataDir,
+  runId,
+  reason = 'identity-repair',
+  now = () => new Date().toISOString()
+}) => {
+  const checkpoints = readActionCheckpoints({ dataDir, runId })
+  const invalidatedActionIds = Object.keys(checkpoints.actions || {}).sort()
+  checkpoints.actions = {}
+  checkpoints.invalidations = Array.isArray(checkpoints.invalidations) ? checkpoints.invalidations : []
+  checkpoints.invalidations.push({
+    scope: 'identity',
+    actionIds: invalidatedActionIds,
+    reason: normalizeInvalidationReason(reason, 'identity-repair'),
+    invalidatedAt: now()
+  })
+  return writeCheckpointFile({ dataDir, runId, checkpoints, now })
 }
 
 const resolveReusableActionResult = ({ dataDir, runId, actionId }) => {
@@ -97,6 +155,8 @@ const resolveReusableActionResult = ({ dataDir, runId, actionId }) => {
 
 module.exports = {
   CHECKPOINT_VERSION,
+  invalidateActionCheckpoint,
+  invalidateAllActionCheckpoints,
   readActionCheckpoints,
   resolveReusableActionResult,
   writeActionCheckpoint

@@ -2,14 +2,22 @@ const fs = require('fs')
 const path = require('path')
 const { getBackendAdapter } = require('./backend-adapters')
 const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
-const { generateViaHostModelBridge } = require('./host-model-bridge')
+const {
+  generateViaHostModelBridge,
+  regenerateFullPetActionsViaHostModelBridge
+} = require('./host-model-bridge')
 const {
   buildCanonicalActionFramesFromGeneratedImage
 } = require('./action-frame-builder')
 const { assertActionFrameQaPassed } = require('./action-frame-qa')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const { loadPetGenerationGovernance } = require('./pet-generation-governance')
-const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
+const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
+const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
+const {
+  invalidateActionCheckpoint,
+  invalidateAllActionCheckpoints
+} = require('./full-pet-action-checkpoints')
 const {
   createCreatorStudioMetadata,
   sha256,
@@ -262,15 +270,7 @@ const createRepairBaseRun = ({ run, preserveGeneratedImage }) => {
         ...(run.artifacts?.anchorReferences ? { anchorReferences: run.artifacts.anchorReferences } : {})
       }
     : {}
-  const {
-    activatedPackId: _discardedActivatedPackId,
-    humanApproval: _discardedHumanApproval,
-    importedActionId: _discardedImportedActionId,
-    importedPackId: _discardedImportedPackId,
-    modelSnapshot: _discardedModelSnapshot,
-    triggerProposalSubmission: _discardedTriggerProposalSubmission,
-    ...baseRun
-  } = run
+  const { modelSnapshot: _discardedModelSnapshot, ...baseRun } = run
   return {
     ...baseRun,
     status: 'failed',
@@ -380,11 +380,6 @@ const runFullPetActionRepair = async ({
     ...createRepairBaseRun({ run, preserveGeneratedImage: true }),
     status: 'generating',
     updatedAt: startedAt,
-    generationLease: createGenerationLease({
-      commandId: 'retry-action',
-      startedAt,
-      leaseId: `${runId}-retry-action-${startedAt}`
-    }),
     backendStatus: createBackendStatus({
       backend: PROVIDER_BACKEND,
       state: 'running',
@@ -393,12 +388,6 @@ const runFullPetActionRepair = async ({
     })
   }
   writeRun({ dataDir, run: repairRun })
-  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({
-    dataDir,
-    runId,
-    leaseId: repairRun.generationLease.leaseId,
-    now
-  })
   appendRunLog({
     dataDir,
     runId,
@@ -427,9 +416,8 @@ const runFullPetActionRepair = async ({
       now
     })
     const completedAt = now()
-    const { generationLease: _generationLease, ...outputRun } = output.run
     const completedRun = {
-      ...outputRun,
+      ...output.run,
       backendStatus: createBackendStatus({
         backend: PROVIDER_BACKEND,
         state: 'ready',
@@ -469,8 +457,7 @@ const runFullPetActionRepair = async ({
           message: error?.message || 'Creator Studio action repair failed',
           updatedAt: failedAt
         }),
-        error: error?.message || 'Creator Studio action repair failed',
-        generationLease: undefined
+        error: error?.message || 'Creator Studio action repair failed'
       },
       now: () => failedAt
     })
@@ -485,8 +472,6 @@ const runFullPetActionRepair = async ({
     })
     error.run = failedRun
     throw error
-  } finally {
-    stopLeaseHeartbeat()
   }
 }
 
@@ -693,5 +678,7 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 module.exports = {
   buildHostGeneratedActionOutput,
   persistGeneratedImageAttempt,
+  runFullPetActionRepair,
+  runFullPetIdentityRepair,
   runGenerationStep
 }

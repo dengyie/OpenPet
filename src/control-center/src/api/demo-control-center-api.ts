@@ -4179,6 +4179,42 @@ export const demoControlCenterAPI: ControlCenterApi = {
       diagnostics: createDemoCreatorDiagnostics(run.runId, 'retry-identity')
     }
   },
+  retryCreatorAction: async (payload: CreatorRetryActionRequest): Promise<CreatorWorkflowResult> => {
+    const run = completeDemoCreatorRun({
+      state: 'review-required',
+      mode: 'full-pet',
+      runId: payload.runId,
+      commandId: 'retry-action',
+      message: `Repaired demo action ${payload.actionId}`
+    })
+    return {
+      ok: true,
+      state: 'review-required',
+      code: 'action_repair_review_required',
+      message: `动作 ${payload.actionId} 已重新生成，请复查`,
+      run,
+      basicActions: null,
+      diagnostics: null
+    }
+  },
+  retryCreatorIdentity: async (payload: CreatorRetryIdentityRequest): Promise<CreatorWorkflowResult> => {
+    const run = completeDemoCreatorRun({
+      state: 'review-required',
+      mode: 'full-pet',
+      runId: payload.runId,
+      commandId: 'retry-identity',
+      message: 'Regenerated demo canonical identity'
+    })
+    return {
+      ok: true,
+      state: 'review-required',
+      code: 'identity_repair_review_required',
+      message: 'Canonical identity 已重新生成，请复查全部动作',
+      run,
+      basicActions: null,
+      diagnostics: null
+    }
+  },
   getCreatorLastRun: async (): Promise<CreatorLastRunResult> => ({
     ok: true,
     run: demoCreatorLastRun ? cloneCreatorLastRun(demoCreatorLastRun) : null

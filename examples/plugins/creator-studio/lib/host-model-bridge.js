@@ -26,6 +26,7 @@ const {
 const { extractRowStripFrames, mirrorRowFrames } = require('./full-pet-row-extractor')
 const { FULL_PET_ROW_QUALITY, getOfficialFullPetRow } = require('./full-pet-row-contract')
 const {
+  readActionCheckpoints,
   resolveReusableActionResult,
   writeActionCheckpoint
 } = require('./full-pet-action-checkpoints')
@@ -3774,13 +3775,30 @@ const generateFullPetBasicActionSources = async ({
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
+  requestedActionIds = GENERATED_FULL_PET_ACTION_IDS,
   generateActionSourceImpl = generateFullPetBasicActionSource,
   mirrorRowFramesImpl = mirrorRowFrames,
+  readActionCheckpointsImpl = readActionCheckpoints,
   resolveReusableActionResultImpl = resolveReusableActionResult,
   writeActionCheckpointImpl = writeActionCheckpoint,
   nowImpl = () => new Date().toISOString()
 }) => {
+  const normalizedRequestedActionIds = [...new Set(
+    (Array.isArray(requestedActionIds) ? requestedActionIds : [])
+      .map((actionId) => String(actionId || '').trim())
+      .filter(Boolean)
+  )]
+  const unknownRequestedActionIds = normalizedRequestedActionIds.filter((actionId) => (
+    !GENERATED_FULL_PET_ACTION_IDS.includes(actionId)
+  ))
+  if (unknownRequestedActionIds.length > 0) {
+    throw new Error(`Creator Studio cannot generate unsupported repair actions: ${unknownRequestedActionIds.join(', ')}`)
+  }
+  const requestedActionIdSet = new Set(normalizedRequestedActionIds)
+  const checkpointRecords = readActionCheckpointsImpl({ dataDir, runId: run.runId })?.actions || {}
   const actionResults = []
+  const attemptedActionIds = []
+  const reusedActionIds = []
   const officialRows = []
   const createPartialActionSources = () => ({
     officialRows: {
@@ -3789,7 +3807,9 @@ const generateFullPetBasicActionSources = async ({
       rows: officialRows
     },
     basicActionGeneration: {
-      attemptedActionIds: actionResults.map((entry) => entry.actionId),
+      requestedActionIds: normalizedRequestedActionIds,
+      attemptedActionIds,
+      reusedActionIds,
       attempts: actionResults.map(summarizeBasicActionAttempt)
     },
     keyframes: actionResults.flatMap((entry) => entry.keyframes || []),
@@ -3797,18 +3817,25 @@ const generateFullPetBasicActionSources = async ({
   })
   for (const actionId of GENERATED_FULL_PET_ACTION_IDS) {
     const reusable = resolveReusableActionResultImpl({ dataDir, runId: run.runId, actionId })
+    if (!reusable && !requestedActionIdSet.has(actionId)) {
+      const priorFailure = checkpointRecords[actionId]
+      if (priorFailure && priorFailure.ok === false) actionResults.push(priorFailure)
+      continue
+    }
     const result = reusable || await generateActionSourceImpl({
-        actionId,
-        dataDir,
-        run,
-        settings,
-        selectedModel,
-        requestedTimeoutMs,
-        referenceImages,
-        generationDeadlineMs,
-        qualityProfile,
-        qualityGuidance
-      })
+      actionId,
+      dataDir,
+      run,
+      settings,
+      selectedModel,
+      requestedTimeoutMs,
+      referenceImages,
+      generationDeadlineMs,
+      qualityProfile,
+      qualityGuidance
+    })
+    if (reusable) reusedActionIds.push(actionId)
+    else attemptedActionIds.push(actionId)
     actionResults.push(result)
     if (!result.ok) {
       if (!reusable) writeActionCheckpointImpl({ dataDir, runId: run.runId, result, now: nowImpl })
@@ -3852,6 +3879,12 @@ const generateFullPetBasicActionSources = async ({
     if (!reusable) writeActionCheckpointImpl({ dataDir, runId: run.runId, result, now: nowImpl })
   }
 
+  if (!officialRows.some((row) => row?.actionId === 'idle')) {
+    const error = new Error('Creator Studio required idle generation is unavailable after scoped action generation')
+    error.partialActionSources = createPartialActionSources()
+    throw error
+  }
+
   const attempts = actionResults.map(summarizeBasicActionAttempt)
   const coverage = createBasicActionCoverage(officialRows, attempts)
   return {
@@ -3862,7 +3895,9 @@ const generateFullPetBasicActionSources = async ({
       rows: officialRows
     },
     basicActionGeneration: {
-      attemptedActionIds: GENERATED_FULL_PET_ACTION_IDS.slice(),
+      requestedActionIds: normalizedRequestedActionIds,
+      attemptedActionIds,
+      reusedActionIds,
       attempts
     },
     actionAvailability: coverage.actionAvailability,
@@ -3895,6 +3930,79 @@ const hasUsableLocalReferenceImages = (referenceImages = [], dataDir = '') => (
 const hasAnchorEligibleRunReference = (run = {}) => {
   const referenceImage = run?.input?.referenceImage
   return Number(referenceImage?.width) > 0 && Number(referenceImage?.height) > 0
+}
+
+const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, actionIds }) => {
+  if (!isFullPetRun(run)) throw new Error('Creator Studio scoped action repair requires a full-pet run')
+  if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
+    const { BackendUnavailableError } = require('./backend-adapters')
+    throw new BackendUnavailableError({
+      backend: PROVIDER_BACKEND,
+      message: 'Provider backend is not configured. Configure model settings before repairing pet actions.'
+    })
+  }
+  const previousGenerationResult = run?.artifacts?.generatedImage
+  if (!previousGenerationResult || typeof previousGenerationResult !== 'object') {
+    throw new Error('Creator Studio scoped action repair requires existing generated image provenance')
+  }
+  const settings = await readHostModelSettings()
+  const governance = loadPetGenerationGovernance()
+  const modelSnapshot = createModelSnapshot({ backend: PROVIDER_BACKEND, settings })
+  const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  const originalReferenceImage = resolveOriginalReferenceImage({ dataDir, run })
+  const originalReferenceImages = isUsableLocalReferenceImage({ dataDir, referenceImage: originalReferenceImage })
+    ? [originalReferenceImage]
+    : []
+  const baseOutputs = Array.isArray(previousGenerationResult.outputs)
+    ? previousGenerationResult.outputs
+    : []
+  const referenceImages = originalReferenceImages.length > 0
+    ? originalReferenceImages
+    : [createGeneratedOutputReferenceImage({
+        dataDir,
+        output: baseOutputs[0],
+        role: 'canonical-reference'
+      })].filter(Boolean)
+  if (referenceImages.length === 0) {
+    throw new Error('Creator Studio scoped action repair requires a usable identity reference')
+  }
+  const repaired = await generateFullPetBasicActionSources({
+    dataDir,
+    run,
+    settings,
+    selectedModel: modelSnapshot.model,
+    requestedTimeoutMs,
+    referenceImages,
+    generationDeadlineMs: Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS,
+    qualityProfile: governance.qualityProfile,
+    qualityGuidance: governance.qualityGuidance,
+    requestedActionIds: actionIds
+  })
+  const { failure: _discardedFailure, ...previous } = previousGenerationResult
+  return {
+    ...previous,
+    ok: true,
+    backend: PROVIDER_BACKEND,
+    provider: String(settings.provider || 'openai-compatible'),
+    model: modelSnapshot.model,
+    modelSnapshot,
+    generatedAt: new Date().toISOString(),
+    qualityGovernance: governance.evidence,
+    outputs: baseOutputs,
+    officialRows: repaired.officialRows,
+    basicActionGeneration: repaired.basicActionGeneration,
+    actionAvailability: repaired.actionAvailability,
+    availableActionIds: repaired.availableActionIds,
+    omittedActionIds: repaired.omittedActionIds,
+    keyframes: [
+      ...(Array.isArray(previous.keyframes) ? previous.keyframes : []),
+      ...(Array.isArray(repaired.keyframes) ? repaired.keyframes : [])
+    ],
+    generationStages: [
+      ...(Array.isArray(previous.generationStages) ? previous.generationStages : []),
+      ...(Array.isArray(repaired.generationStages) ? repaired.generationStages : [])
+    ]
+  }
 }
 
 const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
@@ -4379,5 +4487,6 @@ module.exports = {
   },
   generateAnchorReferences,
   generateViaHostModelBridge,
+  regenerateFullPetActionsViaHostModelBridge,
   resolveRunReferenceImages
 }
