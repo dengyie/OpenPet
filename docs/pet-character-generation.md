@@ -1,8 +1,8 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-13  
-> Owner: `codex/dev8`  
-> Status: current development authority  
+> Updated: 2026-07-14
+> Owner: `codex/dev8`
+> Status: implemented on the development branch; independent verification pending
 > Scope: generate a Codex-compatible pet character and its basic actions from one user reference image, with visual quality taking priority over generation cost.
 
 This is the sole current development document for OpenPet character and action generation. It replaces the branch's earlier one-click chain notes, row-pipeline specifications, anchor-reference specifications, action-quality plans, and duplicated live-doc summaries.
@@ -34,11 +34,18 @@ The branch already contains:
 - guarded approval, import, and activation flows;
 - deterministic support for `approved-mirror` row quality;
 - quality-first partial packaging with stable transparent atlas slots;
-- durable per-action checkpoints and scoped retry.
+- durable per-action checkpoints and scoped retry;
+- fail-closed single-reference enforcement at plugin and host image-generation boundaries;
+- versioned human-example registries and immutable quality profiles;
+- profile-bound prompts, reference-board metadata, keyframe QA, row QA, and atlas QA;
+- action-scoped and identity-scoped repair with archived prior evidence;
+- machine-readable Provider production-art claim gates.
 
 The landed deterministic official row package can compose and validate complete or partial sets of `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every available row.
 
 Real-provider smoke success proves that the host bridge and provider path can complete. It does not prove production art quality. Production approval still requires human visual review.
+
+The quality-governance implementation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance; those checks belong to the isolated testing task described in `docs/superpowers/plans/2026-07-14-pet-generation-quality-governance-test-handoff.md`.
 
 ## 2. User Experience
 
@@ -149,6 +156,12 @@ The source image, character anchor, action anchor, and keyframes must never be a
 
 Provider configuration, API keys, model discovery, and output writes stay in the main process. Creator Studio receives bounded host-bridge results and data-relative artifact paths, not credentials or arbitrary filesystem access.
 
+The plugin bridge rejects more than one reference before resolving paths. The public image-generation service rejects more than one reference before output-path work or Provider queue acquisition, and the normalized edit/multipart path repeats the invariant before request construction. Multipart edits use the single field name `image`, never `image[]`. All boundaries use the stable failure text:
+
+```text
+Image generation accepts at most one reference image; compose multiple sources into one local reference board
+```
+
 ## 5. Identity Contract
 
 The source image is the highest authority for visible identity. Unless the user explicitly requests a transformation, generation must preserve:
@@ -237,6 +250,18 @@ Stable-slot correction may fix baseline or size popping caused by extraction. It
 
 Run deterministic QA, produce contact sheets and animated previews, and require human review before approval. Repair the smallest failing scope: one artifact, one row, or the character identity. Regenerate the full pet only when a shared identity failure affects all rows.
 
+The active quality profile is loaded once for a generation workflow. Its evidence record is written into keyframe, row, atlas, generation-stage, and reference-board metadata:
+
+```json
+{
+  "version": 1,
+  "id": "pet-generation-default-v1",
+  "sourceDatasetId": ""
+}
+```
+
+The default profile preserves the pre-governance thresholds. A configured non-default profile is accepted only as a complete, bounded profile tied to the loaded human-review dataset and a safe review-evidence path.
+
 ### Stage 8: atlas composition and import
 
 Compose only approved `row-real` and `approved-mirror` rows into the official atlas. Validate the final atlas, bind QA evidence to its hash, create the manifest/package, then import and activate through the host-owned bridge.
@@ -274,6 +299,8 @@ The mirrored result receives `approved-mirror` quality only after QA. No other a
 If readable text, a directional symbol, an asymmetric marking, or a one-sided accessory makes the mirrored identity invalid, block the directional pair for human review. Do not silently issue an independent `running-left` generation request inside the standard flow, and do not import an inconsistent pair.
 
 ## 8. Quality Gates
+
+Quality thresholds come from the active immutable profile. `pet-generation-default-v1` is behavior-compatible with the prior constants. Prompt and reference-board guidance is derived only from validated, bounded human rejection reason codes; an empty example registry injects no additional guidance.
 
 ### Technical integrity
 
@@ -332,6 +359,16 @@ Human visual review must inspect:
 
 The reviewer may approve, reject, or request a scoped repair. A Provider HTTP success, zero automated warnings, or a successful import does not replace this review.
 
+Human-approved and human-rejected examples use the versioned registry at:
+
+```text
+examples/plugins/creator-studio/quality/pet-generation-human-examples.json
+```
+
+Each record binds an official action ID to `approved` or `rejected`, a safe data-relative evidence path, bounded numeric metrics, and fixed rejection reason codes. Approved examples cannot contain rejection reasons; rejected examples require at least one reason. Free-form reviewer prose, host paths, and raw Provider payloads are not accepted. The development registry is valid and empty; no visual labels were fabricated.
+
+Supported rejection reasons are `identity-drift`, `semantic-mismatch`, `static-motion`, `transform-only-motion`, `edge-contact`, `background-contamination`, `baseline-instability`, `scale-instability`, and `direction-mismatch`. Only fixed phrases derived from these codes may enter prompts.
+
 ## 10. Failure Recovery
 
 | Failure | Owner | Recovery |
@@ -350,6 +387,10 @@ The reviewer may approve, reject, or request a scoped repair. A Provider HTTP su
 
 Failures must remain explicit. The pipeline must not silently downgrade an official-quality request to preview fallback art. Failure of required `idle` blocks packaging; failure of an optional action records its bounded reason, omits that action, and continues. Runtime requests for an omitted action fall back to the approved `idle` action and report the originally requested action ID.
 
+Action repair invalidates only the selected generated action checkpoint, reuses other hash-valid rows, rebuilds derived atlas/review artifacts, and does not regenerate the canonical identity. `running-left` cannot be repaired independently; repair `running-right` and derive the mirror. Identity repair archives the prior evidence, invalidates all action checkpoints and generated identity artifacts, and runs a true full-pet regeneration.
+
+Repair evidence is archived under `runs/<runId>/repairs/` before active artifacts are replaced. Both repair scopes stop at `ready_for_review` or `failed`; they never auto-approve, auto-import, or auto-activate output.
+
 ## 11. Artifacts And Provenance
 
 A run should preserve inspectable, data-relative artifacts for:
@@ -358,6 +399,7 @@ A run should preserve inspectable, data-relative artifacts for:
 - composite reference-board image and metadata;
 - character anchor and action anchors;
 - prompt snapshots and model snapshot;
+- human-review dataset identity and active quality-profile evidence;
 - Provider generation stage summaries;
 - generated sheets/rows;
 - extracted frame sequences;
@@ -365,6 +407,8 @@ A run should preserve inspectable, data-relative artifacts for:
 - contact sheets and animated previews;
 - row-source classifications;
 - per-action checkpoint hashes and action-availability metadata;
+- repair scope and archived pre-repair evidence;
+- structured Provider art-readiness claim metadata;
 - source-image, row, and final-atlas validation;
 - import and activation result.
 
@@ -387,11 +431,16 @@ Logs and public dashboard responses must remove API keys, authorization headers,
 | Row technical, identity, and motion QA | `examples/plugins/creator-studio/lib/full-pet-row-qa.js` |
 | Stable-slot correction | `examples/plugins/creator-studio/lib/full-pet-row-stable-slots.js` |
 | Atlas composition and final validation | `examples/plugins/creator-studio/lib/real-atlas-builder.js`, `full-pet-atlas-composer.js` |
+| Human examples, quality profiles, and prompt governance | `examples/plugins/creator-studio/lib/pet-generation-human-examples.js`, `pet-generation-quality-profile.js`, `pet-generation-governance.js` |
+| Action checkpoints and repair orchestration | `examples/plugins/creator-studio/lib/full-pet-action-checkpoints.js`, `backend-runner.js` |
+| Provider production-art approval registry | `examples/plugins/creator-studio/lib/provider-art-approval.js` |
 | Dashboard review surface | `examples/plugins/creator-studio/service/studio-service.js`, `web/dashboard/index.html` |
 
 The host owns Provider credentials, writes, approval boundaries, import, activation, and trigger-proposal persistence. The plugin owns bounded task, prompt, artifact, QA, and review workflows.
 
 ## 13. Verification Matrix
+
+The following commands define the independent testing task. They must not be run on `codex/dev8`; use the isolated testing branch and worktree named in the handoff document.
 
 ### Documentation contract
 
@@ -439,13 +488,12 @@ npm run smoke:creator-workflow-host -- --reference-image <file>
 
 Never put raw secrets or local paths into committed smoke evidence.
 
-## 14. Known Limitations And Next Engineering Work
+## 14. Known Limitations And Independent Verification Work
 
-- Add explicit single-attachment assertions at every host image-generation bridge boundary.
-- Improve action-specific Provider prompts and reference boards using real rejected/approved examples.
-- Keep identity and motion thresholds calibrated against human-reviewed fixtures rather than a single sample.
-- Preserve repair at the smallest failing scope instead of restarting the entire pet.
-- Continue real-provider visual review before promoting any model or gateway as production-art ready.
+- The development branch contains no fabricated human-review examples and no Provider production-art approvals. Both registries intentionally remain empty.
+- No non-default profile is endorsed. Calibration must be derived from real approved/rejected examples and reviewed evidence on the isolated testing branch.
+- The new contracts are implemented but have not been exercised on this branch. Automated suites, real Provider smoke, repair exercises, and human visual acceptance remain assigned to the independent testing task.
+- A Provider or model change invalidates the corresponding support claim until the exact provider/model/profile/dataset tuple receives new human approval evidence.
 
 ## 15. Evidence And Claim Boundaries
 
@@ -460,6 +508,15 @@ Archived Creator Studio Provider evidence:
 - `docs/release-evidence/creator-studio-provider-smoke/2026-06-28T14-06-27-403Z/`
 
 These archives demonstrate bounded parts of the technical chain, including host orchestration, `/images/edits` reference conditioning, artifact writes, QA execution, and import flows. They do not by themselves prove production art quality, current model consistency, or final human approval.
+
+Provider/model support claims use two levels:
+
+- `technical-chain-ready`: the technical chain may be exercised, but no matching human art approval exists for the exact tuple;
+- `production-art-ready`: every model that successfully generated part of the result, including fallback models and reused repair stages, has a matching approved record for the current Provider, quality profile, and human dataset.
+
+Approval records live in `examples/plugins/creator-studio/quality/provider-art-approvals.json`. They are exact-match, versioned, path-safe records. One approved model cannot promote a result containing output from another unapproved successful model. This claim metadata never changes per-run deterministic QA, `artisticApproval`, human review status, approval, import, or activation rules.
+
+The shipped empty approval registry means this development result is `technical-chain-ready` only. No `production-art-ready` claim is permitted until the independent testing task records real human acceptance evidence and adds the matching approval record.
 
 When documentation, code, and evidence conflict, use this order:
 
