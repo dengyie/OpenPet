@@ -13,7 +13,8 @@ const { buildOpenPetImagePrompt, sanitizeCreativeBrief } = require('./openpet-pr
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const {
   GENERATED_FULL_PET_ACTION_IDS,
-  REQUIRED_REAL_FULL_PET_ACTION_IDS
+  REQUIRED_REAL_FULL_PET_ACTION_IDS,
+  createBasicActionCoverage
 } = require('./full-pet-basic-actions')
 const { getActionSheetLayout } = require('./action-sheet-layout')
 const { inferAnimationType } = require('./action-semantics')
@@ -3626,6 +3627,9 @@ const generateFullPetBasicActionSource = async ({
       modelAttempts: Array.isArray(error?.modelAttempts) ? error.modelAttempts : [],
       generationStages: Array.isArray(providerRow?.stages) ? providerRow.stages : [],
       keyframes: Array.isArray(providerRow?.keyframes) ? providerRow.keyframes : [],
+      failureConditions: Array.isArray(failedQuality?.failureConditions)
+        ? failedQuality.failureConditions
+        : [],
       error: String(error?.message || 'Action source generation failed').slice(0, 240)
     }
   }
@@ -3670,9 +3674,14 @@ const generateFullPetBasicActionSources = async ({
     })
     actionResults.push(result)
     if (!result.ok) {
-      const error = new Error(result.error || `Creator Studio official row generation failed for ${actionId}`)
-      error.partialActionSources = createPartialActionSources()
-      throw error
+      if (actionId === 'idle') {
+        const error = new Error(
+          `Creator Studio required idle generation failed: ${result.error || 'idle action did not pass generation and QA'}`
+        )
+        error.partialActionSources = createPartialActionSources()
+        throw error
+      }
+      continue
     }
     officialRows.push(result.row)
     if (actionId === 'running-right') {
@@ -3685,12 +3694,10 @@ const generateFullPetBasicActionSources = async ({
           dataDir
         })
       } catch (cause) {
-        const error = new Error(
-          `Creator Studio running-left mirror failed after running-right: ${String(cause?.message || cause || 'unknown mirror error')}`
-        )
-        error.cause = cause
-        error.partialActionSources = createPartialActionSources()
-        throw error
+        officialRows.pop()
+        result.failureConditions = ['running-left-mirror-failed']
+        result.error = `Creator Studio running-left mirror failed after running-right: ${String(cause?.message || cause || 'unknown mirror error')}`
+        continue
       }
       officialRows.push({
         actionId: 'running-left',
@@ -3705,6 +3712,8 @@ const generateFullPetBasicActionSources = async ({
     }
   }
 
+  const attempts = actionResults.map(summarizeBasicActionAttempt)
+  const coverage = createBasicActionCoverage(officialRows, attempts)
   return {
     outputs: [],
     officialRows: {
@@ -3714,8 +3723,11 @@ const generateFullPetBasicActionSources = async ({
     },
     basicActionGeneration: {
       attemptedActionIds: GENERATED_FULL_PET_ACTION_IDS.slice(),
-      attempts: actionResults.map(summarizeBasicActionAttempt)
+      attempts
     },
+    actionAvailability: coverage.actionAvailability,
+    availableActionIds: coverage.availableActionIds,
+    omittedActionIds: coverage.omittedActionIds,
     keyframes: actionResults.flatMap((result) => result.keyframes || []),
     generationStages: actionResults.flatMap((result) => result.generationStages || [])
   }
@@ -4284,14 +4296,19 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const generatedOfficialRows = Array.isArray(fullPetBasicActionSources.officialRows?.rows)
     ? fullPetBasicActionSources.officialRows.rows
     : []
-  const failedOfficialRowAttempts = Array.isArray(fullPetBasicActionSources.basicActionGeneration?.attempts)
-    ? fullPetBasicActionSources.basicActionGeneration.attempts.filter((attempt) => !attempt.ok)
+  const failedRequiredRowAttempts = Array.isArray(fullPetBasicActionSources.basicActionGeneration?.attempts)
+    ? fullPetBasicActionSources.basicActionGeneration.attempts.filter((attempt) => (
+        !attempt.ok && REQUIRED_REAL_FULL_PET_ACTION_IDS.includes(attempt.actionId)
+      ))
     : []
   const fullPetResult = {
     ...result,
     outputs: baseOutputs,
     officialRows: fullPetBasicActionSources.officialRows,
     basicActionGeneration: fullPetBasicActionSources.basicActionGeneration,
+    actionAvailability: fullPetBasicActionSources.actionAvailability,
+    availableActionIds: fullPetBasicActionSources.availableActionIds,
+    omittedActionIds: fullPetBasicActionSources.omittedActionIds,
     keyframes: Array.isArray(fullPetBasicActionSources.keyframes) ? fullPetBasicActionSources.keyframes : [],
     generationStages: [
       ...(Array.isArray(result.generationStages) ? result.generationStages : []),
@@ -4299,13 +4316,15 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     ]
   }
   if (
-    generatedOfficialRows.length !== REQUIRED_REAL_FULL_PET_ACTION_IDS.length ||
-    failedOfficialRowAttempts.length > 0
+    REQUIRED_REAL_FULL_PET_ACTION_IDS.some((actionId) => (
+      !generatedOfficialRows.some((row) => row?.actionId === actionId)
+    )) ||
+    failedRequiredRowAttempts.length > 0
   ) {
     const missingActionIds = REQUIRED_REAL_FULL_PET_ACTION_IDS.filter((actionId) => (
       !generatedOfficialRows.some((row) => row?.actionId === actionId)
     ))
-    const failedActionIds = failedOfficialRowAttempts.map((attempt) => attempt.actionId).filter(Boolean)
+    const failedActionIds = failedRequiredRowAttempts.map((attempt) => attempt.actionId).filter(Boolean)
     const error = new Error(
       `Creator Studio full-pet official row generation failed; missing or failed rows: ${[...new Set([...missingActionIds, ...failedActionIds])].join(', ')}`
     )

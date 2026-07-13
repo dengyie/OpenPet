@@ -17,6 +17,22 @@ const { GENERATED_FULL_PET_ACTION_IDS } = require('../../examples/plugins/creato
 
 const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))
 
+const createSyntheticFullPetActionResult = (actionId, runId = 'run-synthetic') => ({
+  actionId,
+  ok: true,
+  outputCount: 1,
+  model: 'pet-model',
+  modelAttempts: [{ model: 'pet-model', ok: true }],
+  keyframes: [{ actionId, keyframeRole: 'start', quality: { ok: true, score: 80 } }],
+  generationStages: [{ stage: 'final-image', actionId, ok: true }],
+  row: {
+    actionId,
+    sourceRelativePath: `runs/${runId}/frames/base/${actionId}-keyframe-row/0001.png`,
+    quality: 'row-real',
+    frames: [{ index: 0, actionId, path: `/tmp/${actionId}-01.png` }]
+  }
+})
+
 test('host model bridge clamps provider stages to the remaining workflow budget', () => {
   assert.equal(__testInternals.resolveGenerationStageTimeout({
     requestedTimeoutMs: 600000,
@@ -30,26 +46,10 @@ test('host model bridge clamps provider stages to the remaining workflow budget'
   }), /time budget/i)
 })
 
-test('full-pet generation preserves accumulated evidence when running-left mirroring fails', async () => {
+test('full-pet generation omits the directional pair and continues when running-left mirroring fails', async () => {
   const generatedActionIds = []
-  const createResult = (actionId) => ({
-    actionId,
-    ok: true,
-    outputCount: 1,
-    model: 'pet-model',
-    modelAttempts: [{ model: 'pet-model', ok: true }],
-    keyframes: [{ actionId, keyframeRole: 'start', quality: { ok: true, score: 80 } }],
-    generationStages: [{ stage: 'final-image', actionId, ok: true }],
-    row: {
-      actionId,
-      sourceRelativePath: `runs/run-mirror-failure/frames/base/${actionId}-keyframe-row/0001.png`,
-      quality: 'row-real',
-      frames: [{ index: 0, actionId, path: `/tmp/${actionId}-01.png` }]
-    }
-  })
 
-  await assert.rejects(
-    () => __testInternals.generateFullPetBasicActionSources({
+  const result = await __testInternals.generateFullPetBasicActionSources({
       dataDir: '/tmp/creator-studio-mirror-failure',
       run: { runId: 'run-mirror-failure' },
       settings: {},
@@ -58,39 +58,71 @@ test('full-pet generation preserves accumulated evidence when running-left mirro
       referenceImages: [],
       generateActionSourceImpl: async ({ actionId }) => {
         generatedActionIds.push(actionId)
-        return createResult(actionId)
+        return createSyntheticFullPetActionResult(actionId, 'run-mirror-failure')
       },
       mirrorRowFramesImpl: async () => {
         throw new Error('sharp decode failed')
       }
-    }),
-    (error) => {
-      assert.match(error.message, /running-left mirror failed/i)
-      assert.match(error.message, /sharp decode failed/i)
-      assert.deepEqual(generatedActionIds, ['idle', 'running-right'])
-      assert.deepEqual(
-        error.partialActionSources?.officialRows?.rows?.map((row) => row.actionId),
-        ['idle', 'running-right']
-      )
-      assert.deepEqual(
-        error.partialActionSources?.basicActionGeneration?.attemptedActionIds,
-        ['idle', 'running-right']
-      )
-      assert.deepEqual(
-        error.partialActionSources?.basicActionGeneration?.attempts?.map((attempt) => attempt.actionId),
-        ['idle', 'running-right']
-      )
-      assert.deepEqual(
-        error.partialActionSources?.keyframes?.map((keyframe) => keyframe.actionId),
-        ['idle', 'running-right']
-      )
-      assert.deepEqual(
-        error.partialActionSources?.generationStages?.map((stage) => stage.actionId),
-        ['idle', 'running-right']
-      )
-      return true
+    })
+
+  assert.deepEqual(generatedActionIds, GENERATED_FULL_PET_ACTION_IDS)
+  assert.equal(result.officialRows.rows.some((row) => row.actionId === 'running-right'), false)
+  assert.equal(result.officialRows.rows.some((row) => row.actionId === 'running-left'), false)
+  assert.equal(result.officialRows.rows.some((row) => row.actionId === 'waving'), true)
+  assert.equal(result.actionAvailability['running-right'].available, false)
+  assert.match(result.actionAvailability['running-right'].reason, /mirror/i)
+  assert.equal(result.actionAvailability['running-left'].available, false)
+})
+
+test('full-pet generation omits a failed optional action and continues later actions', async () => {
+  const generatedActionIds = []
+  const result = await __testInternals.generateFullPetBasicActionSources({
+    dataDir: '/tmp/creator-studio-optional-failure',
+    run: { runId: 'run-optional-failure' },
+    settings: {},
+    selectedModel: 'pet-model',
+    requestedTimeoutMs: 300000,
+    referenceImages: [],
+    generateActionSourceImpl: async ({ actionId }) => {
+      generatedActionIds.push(actionId)
+      if (actionId === 'running-right') {
+        return {
+          actionId,
+          ok: false,
+          outputCount: 0,
+          keyframes: [],
+          generationStages: [{ stage: 'action-start-keyframe', actionId, ok: false }],
+          failureConditions: ['identity-descriptor-distance-high'],
+          error: 'identity drift'
+        }
+      }
+      return createSyntheticFullPetActionResult(actionId, 'run-optional-failure')
     }
-  )
+  })
+
+  assert.deepEqual(generatedActionIds, GENERATED_FULL_PET_ACTION_IDS)
+  assert.equal(result.officialRows.rows.some((row) => row.actionId === 'running-right'), false)
+  assert.equal(result.officialRows.rows.some((row) => row.actionId === 'waving'), true)
+  assert.equal(result.actionAvailability['running-right'].reason, 'identity-descriptor-distance-high')
+})
+
+test('full-pet generation still fails closed when required idle generation fails', async () => {
+  await assert.rejects(() => __testInternals.generateFullPetBasicActionSources({
+    dataDir: '/tmp/creator-studio-idle-failure',
+    run: { runId: 'run-idle-failure' },
+    settings: {},
+    selectedModel: 'pet-model',
+    requestedTimeoutMs: 300000,
+    referenceImages: [],
+    generateActionSourceImpl: async ({ actionId }) => ({
+      actionId,
+      ok: false,
+      outputCount: 0,
+      keyframes: [],
+      generationStages: [],
+      error: 'idle identity drift'
+    })
+  }), /required idle/i)
 })
 
 test('host model bridge retries the same verified model once after a transient gateway HTTP failure', async () => {
