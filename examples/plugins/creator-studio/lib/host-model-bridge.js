@@ -26,6 +26,10 @@ const {
 const { extractRowStripFrames, mirrorRowFrames } = require('./full-pet-row-extractor')
 const { FULL_PET_ROW_QUALITY, getOfficialFullPetRow } = require('./full-pet-row-contract')
 const {
+  resolveReusableActionResult,
+  writeActionCheckpoint
+} = require('./full-pet-action-checkpoints')
+const {
   removeOpaqueEdgeBackground,
   sanitizeNearTransparentPixels
 } = require('./edge-background-cutout')
@@ -3644,7 +3648,10 @@ const generateFullPetBasicActionSources = async ({
   referenceImages,
   generationDeadlineMs = 0,
   generateActionSourceImpl = generateFullPetBasicActionSource,
-  mirrorRowFramesImpl = mirrorRowFrames
+  mirrorRowFramesImpl = mirrorRowFrames,
+  resolveReusableActionResultImpl = resolveReusableActionResult,
+  writeActionCheckpointImpl = writeActionCheckpoint,
+  nowImpl = () => new Date().toISOString()
 }) => {
   const actionResults = []
   const officialRows = []
@@ -3662,18 +3669,20 @@ const generateFullPetBasicActionSources = async ({
     generationStages: actionResults.flatMap((entry) => entry.generationStages || [])
   })
   for (const actionId of GENERATED_FULL_PET_ACTION_IDS) {
-    const result = await generateActionSourceImpl({
-      actionId,
-      dataDir,
-      run,
-      settings,
-      selectedModel,
-      requestedTimeoutMs,
-      referenceImages,
-      generationDeadlineMs
-    })
+    const reusable = resolveReusableActionResultImpl({ dataDir, runId: run.runId, actionId })
+    const result = reusable || await generateActionSourceImpl({
+        actionId,
+        dataDir,
+        run,
+        settings,
+        selectedModel,
+        requestedTimeoutMs,
+        referenceImages,
+        generationDeadlineMs
+      })
     actionResults.push(result)
     if (!result.ok) {
+      if (!reusable) writeActionCheckpointImpl({ dataDir, runId: run.runId, result, now: nowImpl })
       if (actionId === 'idle') {
         const error = new Error(
           `Creator Studio required idle generation failed: ${result.error || 'idle action did not pass generation and QA'}`
@@ -3697,6 +3706,7 @@ const generateFullPetBasicActionSources = async ({
         officialRows.pop()
         result.failureConditions = ['running-left-mirror-failed']
         result.error = `Creator Studio running-left mirror failed after running-right: ${String(cause?.message || cause || 'unknown mirror error')}`
+        if (!reusable) writeActionCheckpointImpl({ dataDir, runId: run.runId, result, now: nowImpl })
         continue
       }
       officialRows.push({
@@ -3710,6 +3720,7 @@ const generateFullPetBasicActionSources = async ({
         extraction: mirrored.extraction
       })
     }
+    if (!reusable) writeActionCheckpointImpl({ dataDir, runId: run.runId, result, now: nowImpl })
   }
 
   const attempts = actionResults.map(summarizeBasicActionAttempt)

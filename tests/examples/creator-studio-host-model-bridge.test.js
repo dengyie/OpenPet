@@ -62,7 +62,8 @@ test('full-pet generation omits the directional pair and continues when running-
       },
       mirrorRowFramesImpl: async () => {
         throw new Error('sharp decode failed')
-      }
+      },
+      writeActionCheckpointImpl: () => {}
     })
 
   assert.deepEqual(generatedActionIds, GENERATED_FULL_PET_ACTION_IDS)
@@ -97,7 +98,8 @@ test('full-pet generation omits a failed optional action and continues later act
         }
       }
       return createSyntheticFullPetActionResult(actionId, 'run-optional-failure')
-    }
+    },
+    writeActionCheckpointImpl: () => {}
   })
 
   assert.deepEqual(generatedActionIds, GENERATED_FULL_PET_ACTION_IDS)
@@ -121,8 +123,41 @@ test('full-pet generation still fails closed when required idle generation fails
       keyframes: [],
       generationStages: [],
       error: 'idle identity drift'
-    })
+    }),
+    writeActionCheckpointImpl: () => {}
   }), /required idle/i)
+})
+
+test('full-pet generation reuses approved action checkpoints and calls Provider only for missing actions', async () => {
+  const generatedActionIds = []
+  const checkpointedActionIds = []
+  const result = await __testInternals.generateFullPetBasicActionSources({
+    dataDir: '/tmp/creator-studio-checkpoint-reuse',
+    run: { runId: 'run-checkpoint-reuse' },
+    settings: {},
+    selectedModel: 'pet-model',
+    requestedTimeoutMs: 300000,
+    referenceImages: [],
+    resolveReusableActionResultImpl: ({ actionId }) => (
+      actionId === 'idle' ? createSyntheticFullPetActionResult('idle', 'run-checkpoint-reuse') : null
+    ),
+    generateActionSourceImpl: async ({ actionId }) => {
+      generatedActionIds.push(actionId)
+      return createSyntheticFullPetActionResult(actionId, 'run-checkpoint-reuse')
+    },
+    mirrorRowFramesImpl: async ({ frames }) => ({
+      frames: frames.map((frame) => ({ ...frame, actionId: 'running-left' })),
+      extraction: { sourceKind: 'approved-mirror' }
+    }),
+    writeActionCheckpointImpl: ({ result: checkpoint }) => {
+      checkpointedActionIds.push(checkpoint.actionId)
+    }
+  })
+
+  assert.equal(generatedActionIds.includes('idle'), false)
+  assert.deepEqual(generatedActionIds, GENERATED_FULL_PET_ACTION_IDS.filter((actionId) => actionId !== 'idle'))
+  assert.deepEqual(checkpointedActionIds, generatedActionIds)
+  assert.equal(result.officialRows.rows.some((row) => row.actionId === 'idle'), true)
 })
 
 test('host model bridge retries the same verified model once after a transient gateway HTTP failure', async () => {
