@@ -32,6 +32,17 @@ const HUMAN_METRIC_KEYS = new Set([
   'identityCoreAverageMotionRatio',
   'identityCoreMaxMotionRatio'
 ])
+const QUALITY_GUIDANCE_PHRASES = Object.freeze({
+  'identity-drift': 'Preserve the exact species, silhouette, proportions, markings, palette, material treatment, and accessories from the identity reference.',
+  'semantic-mismatch': 'Make the requested action peak immediately readable and distinct from every other state.',
+  'static-motion': 'Author genuine pose progression; do not repeat one pose.',
+  'transform-only-motion': 'Do not simulate motion by only translating, scaling, rotating, or recoloring one base sprite.',
+  'edge-contact': 'Keep the complete body inside safe transparent padding.',
+  'background-contamination': 'Return one isolated character with no floor, shadow, scenery, labels, or border.',
+  'baseline-instability': 'Keep a stable lower-center root except where vertical action semantics require movement.',
+  'scale-instability': 'Keep character scale consistent across the sequence.',
+  'direction-mismatch': 'Preserve the requested facing direction throughout the directional row.'
+})
 const OFFICIAL_ACTION_IDS = new Set(OFFICIAL_FULL_PET_ACTION_IDS)
 
 const normalizeText = (value) => String(value || '').trim()
@@ -179,12 +190,20 @@ const resolveGuidanceReasonCodes = ({ qualityGuidance, actionId = '' } = {}) => 
   ))
 }
 
+const createQualityGuidanceLines = ({ qualityGuidance, actionId = '' } = {}) => (
+  resolveGuidanceReasonCodes({ qualityGuidance, actionId })
+    .map((reasonCode) => QUALITY_GUIDANCE_PHRASES[reasonCode])
+    .filter(Boolean)
+)
+
 module.exports = {
   DEFAULT_HUMAN_EXAMPLES_PATH,
   HUMAN_DECISIONS,
   HUMAN_EXAMPLE_VERSION,
   HUMAN_METRIC_KEYS,
   HUMAN_REASON_CODES,
+  QUALITY_GUIDANCE_PHRASES,
+  createQualityGuidanceLines,
   createQualityGuidanceSummary,
   loadHumanQualityExamples,
   resolveGuidanceReasonCodes

@@ -9,12 +9,7 @@ const {
 const { assertActionFrameQaPassed } = require('./action-frame-qa')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const { loadPetGenerationGovernance } = require('./pet-generation-governance')
-const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
-const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
-const {
-  invalidateActionCheckpoint,
-  invalidateAllActionCheckpoints
-} = require('./full-pet-action-checkpoints')
+const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const {
   createCreatorStudioMetadata,
   sha256,
@@ -53,7 +48,8 @@ const writeHostGeneratedStandardOutputs = async ({ dataDir, run, generationResul
     generationResult,
     outputDir,
     qaDir,
-    officialRows: generationResult.officialRows || null
+    officialRows: generationResult.officialRows || null,
+    qualityProfile: governance.qualityProfile
   })
   if (atlas.previewOnly) {
     return {

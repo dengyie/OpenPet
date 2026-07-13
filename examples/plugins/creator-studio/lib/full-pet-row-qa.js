@@ -5,23 +5,14 @@ const {
   FULL_PET_ROW_QUALITY,
   getOfficialFullPetRow
 } = require('./full-pet-row-contract')
-
-const DEFAULT_LIMITS = Object.freeze({
-  centroidDrift: 40,
-  baselineDrift: 30,
-  sizeDrift: 0.35
-})
-const VISIBLE_ALPHA_THRESHOLD = 8
-const SAFE_MARGIN_PX = 4
-const MAX_ALPHA_COVERAGE = 0.9
-const MIN_WAVING_UPPER_MOTION_RATIO = 0.01
-const MIN_LOCOMOTION_LOWER_MOTION_RATIO = 0.01
-const MAX_IDENTITY_CORE_AVERAGE_MOTION_RATIO = 0.32
-const MAX_IDENTITY_CORE_PAIR_MOTION_RATIO = 0.5
+const {
+  createQualityProfileEvidence,
+  getDefaultQualityProfile
+} = require('./pet-generation-quality-profile')
 
 const getFramePath = (frame) => frame.path || frame
 
-const measureFrame = async (frame) => {
+const measureFrame = async (frame, visibleAlphaThreshold) => {
   const framePath = getFramePath(frame)
   const { data, info } = await sharp(framePath)
     .ensureAlpha()
@@ -52,7 +43,7 @@ const measureFrame = async (frame) => {
   for (let y = 0; y < info.height; y += 1) {
     for (let x = 0; x < info.width; x += 1) {
       const alpha = data[(y * info.width + x) * info.channels + 3]
-      if (alpha <= VISIBLE_ALPHA_THRESHOLD) continue
+      if (alpha <= visibleAlphaThreshold) continue
       const maskIndex = (y * info.width) + x
       alphaMask[maskIndex] = 255
       if (y < regionSplitY) upperAlphaMask[maskIndex] = 255
@@ -133,7 +124,7 @@ const measureFrame = async (frame) => {
       data,
       info,
       bounds: bbox,
-      alphaThreshold: VISIBLE_ALPHA_THRESHOLD
+      alphaThreshold: visibleAlphaThreshold
     }),
     centroid: {
       x: sumX / visiblePixels,
@@ -226,15 +217,23 @@ const summarizeMaskMotion = (measures, key) => {
   }
 }
 
-const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenceMeanRgb = null, identityReferenceDescriptor = null }) => {
+const analyzeRowFrames = async ({
+  actionId,
+  frames,
+  sourceKind,
+  identityReferenceMeanRgb = null,
+  identityReferenceDescriptor = null,
+  qualityProfile = getDefaultQualityProfile()
+}) => {
   const row = getOfficialFullPetRow(actionId)
   if (!row) {
     throw new Error(`Unknown official full-pet row: ${String(actionId || '').trim() || '(missing)'}`)
   }
+  const limits = qualityProfile.row
   const normalizedFrames = Array.isArray(frames) ? frames : []
   const measures = []
   for (const frame of normalizedFrames) {
-    measures.push(await measureFrame(frame))
+    measures.push(await measureFrame(frame, limits.visibleAlphaThreshold))
   }
 
   const errors = []
@@ -265,10 +264,10 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
     ? Math.max(...identityDescriptorDistances)
     : 0
   const edgeTouchFrameCount = visibleMeasures.filter((measure) => (
-    measure.bbox.left <= SAFE_MARGIN_PX ||
-    measure.bbox.top <= SAFE_MARGIN_PX ||
-    measure.bbox.right >= measure.width - 1 - SAFE_MARGIN_PX ||
-    measure.bbox.bottom >= measure.height - 1 - SAFE_MARGIN_PX
+    measure.bbox.left <= limits.safeMarginPx ||
+    measure.bbox.top <= limits.safeMarginPx ||
+    measure.bbox.right >= measure.width - 1 - limits.safeMarginPx ||
+    measure.bbox.bottom >= measure.height - 1 - limits.safeMarginPx
   )).length
   const maxAlphaCoverage = measures.length > 0 ? Math.max(...measures.map((measure) => measure.alphaCoverage || 0)) : 0
   const maxOpaqueCoverage = measures.length > 0 ? Math.max(...measures.map((measure) => measure.opaqueCoverage || 0)) : 0
@@ -297,7 +296,7 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
   if (edgeTouchFrameCount > 0) {
     errors.push('row_frame_touches_edge')
   }
-  if (maxAlphaCoverage > MAX_ALPHA_COVERAGE || maxOpaqueCoverage > MAX_ALPHA_COVERAGE) {
+  if (maxAlphaCoverage > limits.maxAlphaCoverage || maxOpaqueCoverage > limits.maxAlphaCoverage) {
     errors.push('row_opaque_coverage')
   }
   if (uniqueFrameCount <= 1) {
@@ -314,40 +313,40 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
   if (locomotion && lowerAlphaMaskUniqueFrameCount < Math.min(3, row.frameCount)) {
     errors.push('row_locomotion_lower_body_motion_missing')
   }
-  if (locomotion && motion.lower.averageChangedRatio < MIN_LOCOMOTION_LOWER_MOTION_RATIO) {
+  if (locomotion && motion.lower.averageChangedRatio < limits.minLocomotionLowerMotionRatio) {
     errors.push('row_locomotion_lower_body_motion_missing')
   }
-  if (row.id === 'waving' && motion.upper.averageChangedRatio < MIN_WAVING_UPPER_MOTION_RATIO) {
+  if (row.id === 'waving' && motion.upper.averageChangedRatio < limits.minWavingUpperMotionRatio) {
     errors.push('row_waving_motion_missing')
   }
-  if (verticalAction && verticalMotion.excursion < 8) {
+  if (verticalAction && verticalMotion.excursion < limits.minJumpExcursion) {
     errors.push('row_vertical_motion_missing')
   }
-  if (verticalAction && verticalMotion.returnDrift > 6) {
+  if (verticalAction && verticalMotion.returnDrift > limits.maxJumpReturnDrift) {
     errors.push('row_vertical_return_missing')
   }
   if (
     !verticalAction &&
     (
-      motion.identityCore.averageChangedRatio > MAX_IDENTITY_CORE_AVERAGE_MOTION_RATIO ||
-      motion.identityCore.maxChangedRatio > MAX_IDENTITY_CORE_PAIR_MOTION_RATIO
+      motion.identityCore.averageChangedRatio > limits.maxIdentityCoreAverageMotionRatio ||
+      motion.identityCore.maxChangedRatio > limits.maxIdentityCorePairMotionRatio
     )
   ) {
     errors.push('row_identity_shape_drift')
   }
-  if (identityReferenceMeanRgb && maxIdentityMeanRgbDistance > 120) {
+  if (identityReferenceMeanRgb && maxIdentityMeanRgbDistance > limits.maxIdentityMeanRgbDistance) {
     errors.push('row_identity_reference_mismatch')
   }
-  if (identityReferenceDescriptor && maxIdentityDescriptorDistance > 90) {
+  if (identityReferenceDescriptor && maxIdentityDescriptorDistance > limits.maxIdentityDescriptorDistance) {
     errors.push('row_identity_descriptor_mismatch')
   }
-  if (!verticalAction && centroidDrift > DEFAULT_LIMITS.centroidDrift) {
+  if (!verticalAction && centroidDrift > limits.maxCentroidDrift) {
     errors.push('row_centroid_drift')
   }
-  if (!verticalAction && baselineDrift > DEFAULT_LIMITS.baselineDrift) {
+  if (!verticalAction && baselineDrift > limits.maxBaselineDrift) {
     errors.push('row_baseline_drift')
   }
-  if (sizeDrift > DEFAULT_LIMITS.sizeDrift) {
+  if (sizeDrift > limits.maxSizeDrift) {
     errors.push('row_size_drift')
   }
 
@@ -361,6 +360,7 @@ const analyzeRowFrames = async ({ actionId, frames, sourceKind, identityReferenc
   return {
     actionId: row.id,
     quality,
+    qualityProfile: createQualityProfileEvidence(qualityProfile),
     frameCount: normalizedFrames.length,
     expectedFrameCount: row.frameCount,
     uniqueFrameCount,

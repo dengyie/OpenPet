@@ -12,6 +12,10 @@ const {
 const { analyzeRowFrames } = require('./full-pet-row-qa')
 const { createOfficialRowPreviewArtifacts } = require('./full-pet-row-preview-artifacts')
 const { stabilizeRowFrames } = require('./full-pet-row-stable-slots')
+const {
+  createQualityProfileEvidence,
+  getDefaultQualityProfile
+} = require('./pet-generation-quality-profile')
 
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const CODEX_ATLAS = {
@@ -241,6 +245,7 @@ const normalizeOfficialRowsInput = (officialRows) => (
 const sanitizeRowQa = (qa) => ({
   actionId: qa.actionId,
   quality: qa.quality,
+  qualityProfile: qa.qualityProfile,
   frameCount: qa.frameCount,
   expectedFrameCount: qa.expectedFrameCount,
   uniqueFrameCount: qa.uniqueFrameCount,
@@ -359,14 +364,16 @@ const analyzeOfficialRowWithStableSlots = async ({
   frames,
   sourceKind,
   identityReferenceMeanRgb = null,
-  identityReferenceDescriptor = null
+  identityReferenceDescriptor = null,
+  qualityProfile = getDefaultQualityProfile()
 }) => {
   const initialQa = await analyzeRowFrames({
     actionId: row.id,
     frames,
     sourceKind,
     identityReferenceMeanRgb,
-    identityReferenceDescriptor
+    identityReferenceDescriptor,
+    qualityProfile
   })
   if (initialQa.quality !== FULL_PET_ROW_QUALITY.FAILED) {
     return {
@@ -392,7 +399,8 @@ const analyzeOfficialRowWithStableSlots = async ({
     frames: stabilized.frames,
     sourceKind,
     identityReferenceMeanRgb,
-    identityReferenceDescriptor
+    identityReferenceDescriptor,
+    qualityProfile
   })
   return {
     frames: stabilized.frames,
@@ -419,7 +427,8 @@ const buildOfficialAtlasFromRows = async ({
   sourceValidation,
   size,
   entries,
-  basicActionAttempts = []
+  basicActionAttempts = [],
+  qualityProfile = getDefaultQualityProfile()
 }) => {
   const rowInputs = normalizeOfficialRowsInput(officialRows)
   const rowInputsByActionId = new Map(rowInputs.map((row) => [String(row?.actionId || '').trim(), row]))
@@ -451,7 +460,8 @@ const buildOfficialAtlasFromRows = async ({
       frames,
       sourceKind,
       identityReferenceMeanRgb: input.identityReferenceMeanRgb || null,
-      identityReferenceDescriptor: input.identityReferenceDescriptor || null
+      identityReferenceDescriptor: input.identityReferenceDescriptor || null,
+      qualityProfile
     })
     const qa = rowAnalysis.qa
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
@@ -499,6 +509,7 @@ const buildOfficialAtlasFromRows = async ({
   })
   writeJson(rowQaPath, {
     ok: true,
+    qualityProfile: createQualityProfileEvidence(qualityProfile),
     rows: rowQas.map(sanitizeRowQa)
   })
   writeJson(atlasQaPath, {
@@ -509,6 +520,7 @@ const buildOfficialAtlasFromRows = async ({
     atlasSha256,
     sourceRelativePath,
     sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
+    qualityProfile: createQualityProfileEvidence(qualityProfile),
     basicActions,
     frame: {
       width: CODEX_ATLAS.cellWidth,
@@ -589,7 +601,14 @@ const createPreviewSourcePreparer = () => {
   }
 }
 
-const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, outputDir, qaDir, officialRows = null }) => {
+const buildRealAtlasFromGeneratedImage = async ({
+  dataDir,
+  generationResult,
+  outputDir,
+  qaDir,
+  officialRows = null,
+  qualityProfile = getDefaultQualityProfile()
+}) => {
   const entries = resolveGeneratedImageEntries({ dataDir, generationResult })
   const fallbackEntry = entries[0]
   const { sourcePath, sourceRelativePath, size } = fallbackEntry
@@ -609,6 +628,7 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
       sourceValidation,
       size,
       entries,
+      qualityProfile,
       basicActionAttempts: Array.isArray(generationResult?.basicActionGeneration?.attempts)
         ? generationResult.basicActionGeneration.attempts
         : []

@@ -1,5 +1,6 @@
 const { sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 const { getActionSheetLayout, normalizeFrameCount } = require('./action-sheet-layout')
+const { createQualityGuidanceLines } = require('./pet-generation-human-examples')
 const {
   buildActionFramePlan,
   getKeyframePoseInstruction,
@@ -8,7 +9,7 @@ const {
   resolvePrimaryAnimatedPart
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 2
+const PROMPT_BUILDER_VERSION = 3
 
 const normalizeActionText = (value, fallback = '') => sanitizeCreativeBrief(value || fallback)
 
@@ -23,7 +24,16 @@ const buildKeyframeContractLines = ({ action, frameCount }) => {
   return buildActionFramePlan({ action, frameCount })
 }
 
-const buildCharacterAnchorPrompt = ({ characterBrief = '', referenceRole = 'composite-reference-board' } = {}) => {
+const buildQualityGuidanceBlock = ({ qualityGuidance, actionId = '' }) => {
+  const lines = createQualityGuidanceLines({ qualityGuidance, actionId })
+  return lines.length > 0 ? ['', 'Human-reviewed quality guidance:', ...lines] : []
+}
+
+const buildCharacterAnchorPrompt = ({
+  characterBrief = '',
+  referenceRole = 'composite-reference-board',
+  qualityGuidance = null
+} = {}) => {
   const brief = sanitizeCreativeBrief(characterBrief)
   return {
     role: 'character-anchor',
@@ -50,6 +60,7 @@ const buildCharacterAnchorPrompt = ({ characterBrief = '', referenceRole = 'comp
       'Do not choose action pose panels such as paw up, waving, running, stretching, walking, lying down, or crouched/loaf as the canonical character anchor unless the user explicitly requested that exact base pose.',
       'Use a clean transparent-friendly cutout with 8-12% safe padding.',
       'No sprite sheet, no model sheet, no poster, no collage, no multi-pose image, no text, no watermark, no props, no scene background, no floor, no cast shadow.',
+      ...buildQualityGuidanceBlock({ qualityGuidance }),
       '',
       brief ? `User pet description: ${brief}.` : 'User pet description: none.'
     ].join('\n')
@@ -59,7 +70,8 @@ const buildCharacterAnchorPrompt = ({ characterBrief = '', referenceRole = 'comp
 const buildActionSpriteRowPrompt = ({
   characterBrief = '',
   referenceRole = 'keyframe-action-reference-board',
-  action = {}
+  action = {},
+  qualityGuidance = null
 } = {}) => {
   const actionId = normalizeActionText(action.actionId, 'action')
   const actionName = normalizeActionText(action.name, actionId)
@@ -114,6 +126,7 @@ const buildActionSpriteRowPrompt = ({
         ? 'The complete locomotion cycle must visibly move and reverse the legs, arms, wings, tail, or equivalent locomotion parts; color or texture changes alone are not motion.'
         : `Only the ${movingPart} should move noticeably unless the action explicitly requires whole-body motion.`,
       'Use smooth animation spacing and keep scale, camera angle, outline, and lighting consistent.',
+      ...buildQualityGuidanceBlock({ qualityGuidance, actionId }),
       '',
       'Required keyframes:',
       ...buildKeyframeContractLines({ action, frameCount }),
@@ -133,7 +146,8 @@ const buildActionKeyframePrompt = ({
   characterBrief = '',
   referenceRole = 'source-identity-reference',
   action = {},
-  keyframeRole = 'start'
+  keyframeRole = 'start',
+  qualityGuidance = null
 } = {}) => {
   const actionId = normalizeActionText(action.actionId, 'action')
   const actionName = normalizeActionText(action.name, actionId)
@@ -177,6 +191,7 @@ const buildActionKeyframePrompt = ({
       'One full-body pet only, centered with safe padding.',
       'Transparent-friendly clean cutout; no grid, no sprite sheet, no model sheet, no text, no labels, no border, no props, no scene background, no floor, no shadow.',
       'Keep the same face, eyes, markings, fur or material texture, proportions, silhouette, lighting, rendering medium, and source visual style.',
+      ...buildQualityGuidanceBlock({ qualityGuidance, actionId }),
       '',
       'Negative prompt: different character, changed species, changed face, changed eye color, changed markings, changed proportions, extra limbs, missing limbs, cropped character, text, labels, borders, sprite sheet, model sheet, background scene, floor, shadow, watermark.'
     ].filter(Boolean).join('\n')
@@ -186,7 +201,8 @@ const buildActionKeyframePrompt = ({
 const buildActionAnchorPrompt = ({
   characterBrief = '',
   referenceRole = 'character-anchor',
-  action = {}
+  action = {},
+  qualityGuidance = null
 } = {}) => {
   const actionId = normalizeActionText(action.actionId, 'action')
   const actionName = normalizeActionText(action.name, actionId)
@@ -224,6 +240,7 @@ const buildActionAnchorPrompt = ({
       'Keep the moving parts clearly separated enough to guide provider sprite-row generation.',
       'For stationary actions, body, head, feet/base, and face remain locked while only the target limb changes.',
       'For a waving or paw-up action, use a single raised front paw while keeping the other paw, body, head, face, eyes, feet/base, and tail identity stable.',
+      ...buildQualityGuidanceBlock({ qualityGuidance, actionId }),
       '',
       'Animated parts:',
       formatList(action.animatedParts, ['the requested moving part']),

@@ -3,6 +3,11 @@ const path = require('path')
 const sharp = require('sharp')
 const { sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 const { removeOpaqueEdgeBackground } = require('./edge-background-cutout')
+const { resolveGuidanceReasonCodes } = require('./pet-generation-human-examples')
+const {
+  createQualityProfileEvidence,
+  getDefaultQualityProfile
+} = require('./pet-generation-quality-profile')
 
 const BOARD_SIZE = 1024
 const MAIN_PANEL_SIZE = 820
@@ -331,7 +336,10 @@ const buildAnchorReferenceBoard = async ({
   characterBrief = '',
   outputRelativeDir = '',
   boardRole = 'composite-reference-board',
-  fileBaseName = 'composite-reference-board'
+  fileBaseName = 'composite-reference-board',
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null,
+  actionId = ''
 }) => {
   if (!dataDir) throw new Error('Anchor reference board dataDir is required')
   const normalizedRunId = normalizeText(runId)
@@ -384,7 +392,7 @@ const buildAnchorReferenceBoard = async ({
     .toFile(boardPath)
 
   const metadata = {
-    version: 1,
+    version: 2,
     role: normalizedBoardRole,
     sourcePriority: 'image-first',
     width: BOARD_SIZE,
@@ -392,6 +400,9 @@ const buildAnchorReferenceBoard = async ({
     sourceCount: sources.length,
     renderedSourceCount: renderedReferences.length,
     characterBrief: sanitizeCreativeBrief(characterBrief),
+    qualityProfile: createQualityProfileEvidence(qualityProfile),
+    guidanceReasonCodes: resolveGuidanceReasonCodes({ qualityGuidance, actionId }),
+    panelAuthority: 'identity-primary-pose-guidance-secondary',
     sources: await Promise.all(sources.map((source, index) => createSourceSummary(source, sourceLayouts[index])))
   }
   writeJson(metadataPath, metadata)
@@ -418,7 +429,9 @@ const buildActionSpriteReferenceBoard = async ({
   characterBrief = '',
   outputRelativeDir = '',
   boardRole = 'keyframe-action-reference-board',
-  fileBaseName = 'action-row-reference-board'
+  fileBaseName = 'action-row-reference-board',
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null
 }) => {
   if (!dataDir) throw new Error('Anchor reference board dataDir is required')
   const normalizedRunId = normalizeText(runId)
@@ -481,7 +494,7 @@ const buildActionSpriteReferenceBoard = async ({
     .toFile(boardPath)
 
   const metadata = {
-    version: 1,
+    version: 2,
     role: normalizedBoardRole,
     layoutMode: 'single-conditioning-board',
     sourcePriority: 'image-first',
@@ -491,6 +504,12 @@ const buildActionSpriteReferenceBoard = async ({
     renderedSourceCount: renderedPanels.length,
     actionId: normalizeText(action?.actionId),
     characterBrief: sanitizeCreativeBrief(characterBrief),
+    qualityProfile: createQualityProfileEvidence(qualityProfile),
+    guidanceReasonCodes: resolveGuidanceReasonCodes({
+      qualityGuidance,
+      actionId: normalizeText(action?.actionId)
+    }),
+    panelAuthority: 'identity-primary-pose-guidance-secondary',
     sources: await Promise.all(sources.map((source, index) => createSourceSummary(source, {
       role: 'reference-source',
       rendered: panels.some((panel) => panel.source.path === source.path),

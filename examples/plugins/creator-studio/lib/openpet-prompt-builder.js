@@ -1,5 +1,6 @@
 const { normalizeGenerationTask } = require('./generation-task')
 const { getActionSheetLayout: resolveActionSheetLayout } = require('./action-sheet-layout')
+const { createQualityGuidanceLines } = require('./pet-generation-human-examples')
 const {
   buildActionFramePlan,
   inferAnimationType,
@@ -11,7 +12,7 @@ const {
   isWavingAction
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 2
+const PROMPT_BUILDER_VERSION = 3
 
 const SECTION_ORDER = [
   'Asset Goal',
@@ -21,6 +22,7 @@ const SECTION_ORDER = [
   'Animation Contract',
   'Root And Anchor Rules',
   'Style And Quality Contract',
+  'Human-Reviewed Quality Guidance',
   'Negative Contract',
   'User Creative Brief'
 ]
@@ -318,7 +320,7 @@ const createNegativePrompt = ({ mode, actionName }) => {
   return [...generic, 'multiple poses in one image', `unrelated ${sanitizeCreativeBrief(actionName || 'action')} props`].join(', ')
 }
 
-const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetContext }) => {
+const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetContext, qualityGuidance }) => {
   const mode = task.mode
   const styleSource = task.styleSource
   const actionName = sanitizeCreativeBrief(action?.name || 'pose')
@@ -327,6 +329,10 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
   const actionSpec = getActionSpec({ action, frameCount: actionSheet.frameCount })
   const framePlan = buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
   const negativePrompt = createNegativePrompt({ mode, actionName })
+  const qualityGuidanceLines = createQualityGuidanceLines({
+    qualityGuidance,
+    actionId: action?.actionId || ''
+  })
   if (mode !== 'single-action') {
     return [
       `Create one full-body OpenPet desktop pet sprite: ${sanitizeCreativeBrief(creativeBrief || task.characterBrief || actionName || 'cute desktop pet')}.`,
@@ -340,6 +346,7 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
       'Keep about 10% padding on all sides and do not crop ears, tail, paws, limbs, accessories, or body parts.',
       'Keep lighting, texture density, and rendering detail consistent with the reference; no cast shadow or ground shadow, no floor, no scene background, no checkerboard background.',
       'no text, logo, watermark, UI, border, extra characters, sticker sheet, or extra poses.',
+      ...qualityGuidanceLines,
       `Negative prompt: ${negativePrompt}.`,
       toSentence(creativeBrief)
     ].filter(Boolean).join(' ')
@@ -446,75 +453,11 @@ const buildCompactProviderPrompt = ({ task, action, creativeBrief, currentPetCon
     'The frames should feel like they belong to one continuous animation drawn by the same animator.',
     'The character should look source-faithful, polished, clean, and suitable for a desktop pet or game companion.',
     'Keep lighting, material or fur texture, and rendering detail consistent with the reference while preserving a clean cutout silhouette.',
+    ...qualityGuidanceLines,
     '',
     `Negative prompt: ${negativePrompt}.`,
     toSentence(creativeBrief)
   ].filter((line) => line !== '').join('\n')
-}
-
-const createNegativePrompt = ({ mode, actionName }) => {
-  const generic = [
-    'different character',
-    'redesigned character',
-    'inconsistent identity',
-    'changing species',
-    'changing face',
-    'changing eye color',
-    'lost iris color',
-    'lost eye highlights',
-    'generic black-dot eyes',
-    'hollow eyes',
-    'changing body shape',
-    'changing proportions',
-    'changing head size',
-    'changing outfit',
-    'missing accessories',
-    'extra accessories',
-    'extra limbs',
-    'missing limbs',
-    'duplicated limbs',
-    'malformed hands',
-    'malformed paws',
-    'disconnected body parts',
-    'broken anatomy',
-    'side view when front view is requested',
-    'back view',
-    'different camera angle',
-    'inconsistent scale',
-    'inconsistent line art',
-    'inconsistent lighting',
-    'inconsistent color palette',
-    'cropped character',
-    'cut off ears',
-    'cut off tail',
-    'cut off feet',
-    'body parts crossing cell boundaries',
-    'multiple characters in one cell',
-    'duplicate characters',
-    'background scene',
-    'floor',
-    'furniture',
-    'props',
-    'text',
-    'labels',
-    'watermark',
-    'visible grid lines',
-    'borders',
-    'checkerboard background',
-    'cast shadow',
-    'ground shadow',
-    'motion blur',
-    'messy layout',
-    'uneven cells',
-    'non-transparent background',
-    'unrequested style conversion',
-    'unrequested 3D render',
-    'low quality',
-    'blurry',
-    'noisy'
-  ]
-  if (mode === 'single-action') return generic.join(', ')
-  return [...generic, 'multiple poses in one image', `unrelated ${sanitizeCreativeBrief(actionName || 'action')} props`].join(', ')
 }
 
 const buildSections = ({ task, action, creativeBrief, backend, model, currentPetContext, qualityGuidance }) => {
@@ -636,6 +579,7 @@ const buildSections = ({ task, action, creativeBrief, backend, model, currentPet
       'Keep lighting, material or fur texture, and rendering detail consistent with the reference while preserving a clean cutout silhouette.',
       'Avoid heavy shadow, complex lighting, malformed limbs, duplicate heads, merged paws, malformed tail, or unclear face.'
     ],
+    'Human-Reviewed Quality Guidance': qualityGuidanceLines,
     'Negative Contract': [
       `Negative prompt: ${negativePrompt}.`
     ],
@@ -663,11 +607,7 @@ const buildOpenPetImagePrompt = ({
   backend = '',
   model = '',
   currentPetContext = '',
-  qualityGuidance = null,
-  constraints = { width: 1024, height: 1024 },
-  referenceRole = 'single-character-reference',
-  strategyId = '',
-  requestedChanges = []
+  qualityGuidance = null
 } = {}) => {
   const task = resolveTask({ run, generationTask })
   const action = firstAction(task)
@@ -687,74 +627,12 @@ const buildOpenPetImagePrompt = ({
     currentPetContext,
     qualityGuidance
   })
-  const actionSheet = getActionSheetLayout(action)
-  const actionSpec = action ? getActionSpec({ action, frameCount: actionSheet.frameCount }) : null
-  const requestedVisualPlan = createVisualPlan({
-    appearanceIntent,
-    requestedChanges,
-    action: actionSpec
-      ? {
-          name: action?.name || action?.motionPrompt || 'the requested action',
-          animationType: actionSpec.animationType,
-          viewDirection: actionSpec.viewDirection,
-          loopType: actionSpec.loopType,
-          movingParts: actionSpec.animatedParts,
-          secondaryMotion: actionSpec.secondaryMotion,
-          lockedParts: actionSpec.lockedParts,
-          forbiddenMotion: actionSpec.forbiddenMotion
-        }
-      : null,
-    subject: DEFAULT_FULL_BODY_SUBJECT
-  })
-  const imageTask = createProviderImageTask({
-    taskType: task.mode === 'single-action' ? 'action-frame-sheet' : 'character-image',
-    stage: task.mode === 'single-action' ? 'final' : 'identity',
-    ...(task.mode === 'single-action' ? {} : { canvas: constraints }),
-    ...(task.mode === 'single-action'
-      ? {
-          sheet: {
-            frameCount: actionSheet.frameCount,
-            columns: actionSheet.columns,
-            rows: actionSheet.rows,
-            readingOrder: 'left-to-right-top-to-bottom'
-          },
-          action: {
-            name: action?.name || action?.motionPrompt || 'the requested action',
-            animationType: actionSpec.animationType,
-            moment: action?.motionPrompt || action?.name || 'the requested action',
-            viewDirection: actionSpec.viewDirection,
-            loopType: actionSpec.loopType,
-            movingParts: actionSpec.animatedParts,
-            secondaryMotion: actionSpec.secondaryMotion,
-            lockedParts: actionSpec.lockedParts,
-            forbiddenMotion: actionSpec.forbiddenMotion,
-            loopIntent: action?.loop
-              ? 'a seamless loop that returns to the starting pose'
-              : 'a readable action with a clear ending pose',
-            frameBeats: buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
-          }
-        }
-      : {}),
-    referenceRole,
-    subject: DEFAULT_FULL_BODY_SUBJECT,
-    appearanceIntent: requestedVisualPlan.subject.mediumAndStyle,
-    strategyId,
-    requestedChanges: requestedVisualPlan.subject.requestedVisibleChanges
-  })
-  const visualPlan = createVisualPlan({
-    ...requestedVisualPlan,
-    action: imageTask.action,
-    composition: imageTask.subject
-  })
-  const compiled = compileProviderImagePrompt({
-    task: imageTask,
-    model: model || 'gpt-image-2',
-    visualPlan,
-    qualityGuidance: createQualityGuidanceLines({
-      qualityGuidance,
-      actionId: action?.actionId || '',
-      animationType: actionSpec?.animationType || ''
-    })
+  const providerPrompt = buildCompactProviderPrompt({
+    task,
+    action,
+    creativeBrief,
+    currentPetContext,
+    qualityGuidance
   })
 
   return {

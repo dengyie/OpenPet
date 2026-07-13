@@ -34,6 +34,11 @@ const {
   sanitizeNearTransparentPixels
 } = require('./edge-background-cutout')
 const { validateGeneratedImageOutput } = require('./real-atlas-builder')
+const { loadPetGenerationGovernance } = require('./pet-generation-governance')
+const {
+  createQualityProfileEvidence,
+  getDefaultQualityProfile
+} = require('./pet-generation-quality-profile')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
@@ -51,12 +56,8 @@ const FALLBACK_MODEL_MIN_TIMEOUT_MS = 600000
 const TRANSIENT_GATEWAY_RETRY_DELAY_MS = 1500
 const MAX_TRANSIENT_GATEWAY_ATTEMPTS_PER_MODEL = 2
 const FULL_PET_WORKFLOW_MAX_DURATION_MS = 90 * 60 * 1000
-const MAX_IDENTITY_DESCRIPTOR_DISTANCE = 90
-const MAX_ACTION_KEYFRAME_IDENTITY_DESCRIPTOR_DISTANCE = 70
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
 const DIRECT_SOURCE_ACTION_ANCHOR_CANDIDATE_COUNT = 3
-const MIN_ACCEPTABLE_ACTION_ANCHOR_SCORE = 50
-const MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE = 30
 const KNOWN_FALLBACK_IMAGE_MODELS = [
   'gpt-image-2',
   'gpt-image-1.5'
@@ -471,7 +472,8 @@ const createProviderGenerationStage = ({
   outputCount = 0,
   error = '',
   adopted = false,
-  quality = null
+  quality = null,
+  qualityProfile = null
 }) => {
   const referenceRoles = listReferenceRoles(referenceImages)
   return {
@@ -487,6 +489,7 @@ const createProviderGenerationStage = ({
     outputRelativePath: createSafeRelativePath(outputRelativePath),
     promptRelativePath: createSafeRelativePath(promptRelativePath),
     outputCount: Math.max(0, Number(outputCount) || 0),
+    ...(qualityProfile ? { qualityProfile: createQualityProfileEvidence(qualityProfile) } : {}),
     ...(adopted ? { adopted: true } : {}),
     ...(quality ? { quality } : {}),
     ...(error ? { error: String(error).slice(0, 240) } : {})
@@ -2497,7 +2500,12 @@ const shouldAllowWideActionAnchor = (action = {}) => {
   return /\b(lying|lie|sleep|rest|stretch|crouch|loaf|roll|crawl)\b/.test(text)
 }
 
-const scoreActionAnchorMetrics = ({ metrics, referenceMetrics, action = {} }) => {
+const scoreActionAnchorMetrics = ({
+  metrics,
+  referenceMetrics,
+  action = {},
+  qualityProfile = getDefaultQualityProfile()
+}) => {
   if (!metrics || !metrics.visiblePixels) return 0
   let score = 100
   const coverage = Number(metrics.coverage) || 0
@@ -2511,8 +2519,8 @@ const scoreActionAnchorMetrics = ({ metrics, referenceMetrics, action = {} }) =>
   if (referenceMetrics?.visiblePixels) {
     score -= Math.min(30, (distanceRgb(metrics.meanRgb, referenceMetrics.meanRgb) / 441.7) * 34)
     const descriptorDistance = identityDescriptorDistance(metrics.identityDescriptor, referenceMetrics.identityDescriptor)
-    if (descriptorDistance > MAX_IDENTITY_DESCRIPTOR_DISTANCE) {
-      score -= Math.min(100, 55 + (descriptorDistance - MAX_IDENTITY_DESCRIPTOR_DISTANCE))
+    if (descriptorDistance > qualityProfile.keyframe.maxIdentityDescriptorDistance) {
+      score -= Math.min(100, 55 + (descriptorDistance - qualityProfile.keyframe.maxIdentityDescriptorDistance))
     }
   }
   const boundsWidth = Number(metrics.bounds?.width) || 0
@@ -2575,9 +2583,11 @@ const evaluateActionKeyframeQuality = ({
   metrics,
   referenceMetrics,
   action = {},
-  backgroundPreparation = { safe: true }
+  backgroundPreparation = { safe: true },
+  qualityProfile = getDefaultQualityProfile()
 }) => {
-  const rawScore = scoreActionAnchorMetrics({ metrics, referenceMetrics, action })
+  const keyframeLimits = qualityProfile.keyframe
+  const rawScore = scoreActionAnchorMetrics({ metrics, referenceMetrics, action, qualityProfile })
   const identityColorDistance = referenceMetrics?.visiblePixels
     ? distanceRgb(metrics?.meanRgb, referenceMetrics.meanRgb)
     : 0
@@ -2595,11 +2605,11 @@ const evaluateActionKeyframeQuality = ({
   if (Number(metrics?.minPaddingRatio) < 0.01) compositionFailures.push('padding-low')
   if (Number(metrics?.centerOffsetRatio) > 0.35) compositionFailures.push('center-offset-high')
   const identityFailures = []
-  if (identityColorDistance > 120) identityFailures.push('identity-color-distance-high')
-  if (descriptorDistance > MAX_ACTION_KEYFRAME_IDENTITY_DESCRIPTOR_DISTANCE) {
+  if (identityColorDistance > keyframeLimits.maxIdentityMeanRgbDistance) identityFailures.push('identity-color-distance-high')
+  if (descriptorDistance > keyframeLimits.maxActionIdentityDescriptorDistance) {
     identityFailures.push('identity-descriptor-distance-high')
   }
-  const scoreFailures = rawScore < MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE
+  const scoreFailures = rawScore < keyframeLimits.minActionKeyframeScore
     ? ['raw-score-below-minimum']
     : []
   const safeComposition = compositionFailures.length === 0
@@ -2611,15 +2621,16 @@ const evaluateActionKeyframeQuality = ({
     ...scoreFailures
   ])]
   return {
-    ok: failureConditions.length === 0 && score >= MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE,
+    ok: failureConditions.length === 0 && score >= keyframeLimits.minActionKeyframeScore,
     score: roundMetric(score, 2),
     rawScore: roundMetric(rawScore, 2),
     safeComposition,
     identityConsistent,
     identityColorDistance: roundMetric(identityColorDistance, 2),
     identityDescriptorDistance: roundMetric(descriptorDistance, 2),
-    maxIdentityDescriptorDistance: MAX_ACTION_KEYFRAME_IDENTITY_DESCRIPTOR_DISTANCE,
-    minAcceptableScore: MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE,
+    maxIdentityDescriptorDistance: keyframeLimits.maxActionIdentityDescriptorDistance,
+    minAcceptableScore: keyframeLimits.minActionKeyframeScore,
+    qualityProfile: createQualityProfileEvidence(qualityProfile),
     failureConditions,
     backgroundPreparation,
     metrics: summarizeActionAnchorMetrics(metrics),
@@ -2726,7 +2737,10 @@ const createOutputFromGeneratedPath = ({ dataDir, output }) => {
   }
 }
 
-const createFailedActionKeyframeCandidateQuality = (error) => ({
+const createFailedActionKeyframeCandidateQuality = (
+  error,
+  qualityProfile = getDefaultQualityProfile()
+) => ({
   ok: false,
   score: 0,
   rawScore: 0,
@@ -2734,8 +2748,9 @@ const createFailedActionKeyframeCandidateQuality = (error) => ({
   identityConsistent: false,
   identityColorDistance: 0,
   identityDescriptorDistance: 0,
-  maxIdentityDescriptorDistance: MAX_ACTION_KEYFRAME_IDENTITY_DESCRIPTOR_DISTANCE,
-  minAcceptableScore: MIN_ACCEPTABLE_ACTION_KEYFRAME_SCORE,
+  maxIdentityDescriptorDistance: qualityProfile.keyframe.maxActionIdentityDescriptorDistance,
+  minAcceptableScore: qualityProfile.keyframe.minActionKeyframeScore,
+  qualityProfile: createQualityProfileEvidence(qualityProfile),
   failureConditions: ['candidate-processing-failed'],
   backgroundPreparation: null,
   metrics: summarizeActionAnchorMetrics(),
@@ -2766,6 +2781,8 @@ const generateActionKeyframe = async ({
   referenceImages = [],
   qualityReferenceImages = referenceImages,
   generationDeadlineMs = 0,
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   const normalizedKeyframeRole = String(keyframeRole || 'start').trim().toLowerCase() === 'start'
@@ -2780,7 +2797,8 @@ const generateActionKeyframe = async ({
     characterBrief: resolveAnchorCharacterBrief(run),
     referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
     action,
-    keyframeRole: normalizedKeyframeRole
+    keyframeRole: normalizedKeyframeRole,
+    qualityGuidance
   })
   const promptFile = writeAnchorPromptFile({
     dataDir,
@@ -2845,14 +2863,15 @@ const generateActionKeyframe = async ({
             metrics,
             referenceMetrics,
             action,
-            backgroundPreparation
+            backgroundPreparation,
+            qualityProfile
           })
         })
       } catch (error) {
         candidates.push({
           candidateIndex,
           output: candidateOutput,
-          quality: createFailedActionKeyframeCandidateQuality(error)
+          quality: createFailedActionKeyframeCandidateQuality(error, qualityProfile)
         })
       }
     }
@@ -2910,7 +2929,8 @@ const generateActionKeyframe = async ({
         modelAttempts: attempt.attempts,
         outputRelativePath: materializedOutput.dataRelativePath,
         promptRelativePath: promptFile.relativePath,
-        outputCount: candidateCount
+        outputCount: candidateCount,
+        qualityProfile
       })
     }
   } catch (error) {
@@ -2941,6 +2961,7 @@ const generateActionKeyframe = async ({
         promptRelativePath: promptFile.relativePath,
         outputCount: candidateCount,
         quality,
+        qualityProfile,
         error: error?.message || error
       })
     }
@@ -2956,6 +2977,8 @@ const generateKeyframeActionSpriteRow = async ({
   action,
   originalReferenceImages = [],
   generationDeadlineMs = 0,
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   if (originalReferenceImages.length === 0) return null
@@ -2974,6 +2997,8 @@ const generateKeyframeActionSpriteRow = async ({
     keyframeRole: 'start',
     referenceImages: normalizedOriginalReferenceImages,
     generationDeadlineMs,
+    qualityProfile,
+    qualityGuidance,
     generateWithFallbackImpl
   })
   if (!startKeyframeResult) return null
@@ -3001,7 +3026,10 @@ const generateKeyframeActionSpriteRow = async ({
     characterBrief: resolveAnchorCharacterBrief(run),
     outputRelativeDir: path.join('runs', run.runId, 'inputs', 'keyframes', 'actions').replace(/\\/g, '/'),
     boardRole: 'action-peak-conditioning-board',
-    fileBaseName: `${actionId}-peak-conditioning-board`
+    fileBaseName: `${actionId}-peak-conditioning-board`,
+    qualityProfile,
+    qualityGuidance,
+    actionId
   })
   const peakConditioningReferenceImage = {
     path: peakConditioningBoard.path,
@@ -3021,6 +3049,8 @@ const generateKeyframeActionSpriteRow = async ({
     referenceImages: [peakConditioningReferenceImage],
     qualityReferenceImages: normalizedOriginalReferenceImages,
     generationDeadlineMs,
+    qualityProfile,
+    qualityGuidance,
     generateWithFallbackImpl
   })
   if (!peakKeyframeResult.ok) {
@@ -3052,7 +3082,9 @@ const generateKeyframeActionSpriteRow = async ({
     characterBrief: resolveAnchorCharacterBrief(run),
     outputRelativeDir: path.join('runs', run.runId, 'inputs', 'keyframes', 'actions').replace(/\\/g, '/'),
     boardRole: 'keyframe-action-reference-board',
-    fileBaseName: `${actionId}-row-reference-board`
+    fileBaseName: `${actionId}-row-reference-board`,
+    qualityProfile,
+    qualityGuidance
   })
   const referenceBoard = {
     role: conditioningBoard.role,
@@ -3070,7 +3102,8 @@ const generateKeyframeActionSpriteRow = async ({
   const promptBuild = buildActionSpriteRowPrompt({
     characterBrief: resolveAnchorCharacterBrief(run),
     referenceRole: 'keyframe-action-reference-board',
-    action
+    action,
+    qualityGuidance
   })
   const promptFile = writeAnchorPromptFile({
     dataDir,
@@ -3105,7 +3138,8 @@ const generateKeyframeActionSpriteRow = async ({
       modelAttempts: attempt.attempts,
       outputRelativePath: materializedOutput.dataRelativePath,
       promptRelativePath: promptFile.relativePath,
-      outputCount: 1
+      outputCount: 1,
+      qualityProfile
     })
     return {
       ok: true,
@@ -3144,6 +3178,7 @@ const generateKeyframeActionSpriteRow = async ({
       modelAttempts,
       promptRelativePath: promptFile.relativePath,
       outputCount: 0,
+      qualityProfile,
       error: error?.message || error
     })
     return {
@@ -3174,15 +3209,20 @@ const generateKeyframeActionSpriteRow = async ({
   }
 }
 
-const createCandidateSelectionSummary = ({ candidates, selectedCandidate }) => ({
+const createCandidateSelectionSummary = ({
+  candidates,
+  selectedCandidate,
+  qualityProfile = getDefaultQualityProfile()
+}) => ({
   version: 1,
   mode: 'direct-source-action-anchor-multi-candidate',
   candidateCount: candidates.length,
-  minAcceptableScore: MIN_ACCEPTABLE_ACTION_ANCHOR_SCORE,
+  minAcceptableScore: qualityProfile.keyframe.minActionAnchorScore,
+  qualityProfile: createQualityProfileEvidence(qualityProfile),
   selectedCandidateId: selectedCandidate?.candidateId || '',
   selectedCandidateRelativePath: createSafeRelativePath(selectedCandidate?.relativePath),
   selectedScore: roundMetric(selectedCandidate?.score, 2),
-  acceptable: Number(selectedCandidate?.score || 0) >= MIN_ACCEPTABLE_ACTION_ANCHOR_SCORE,
+  acceptable: Number(selectedCandidate?.score || 0) >= qualityProfile.keyframe.minActionAnchorScore,
   candidates: candidates.map((candidate) => ({
     candidateId: candidate.candidateId,
     promptRelativePath: createSafeRelativePath(candidate.promptRelativePath),
@@ -3190,7 +3230,7 @@ const createCandidateSelectionSummary = ({ candidates, selectedCandidate }) => (
     model: normalizeModelName(candidate.model),
     ok: Boolean(candidate.ok),
     score: roundMetric(candidate.score, 2),
-    acceptable: Number(candidate.score || 0) >= MIN_ACCEPTABLE_ACTION_ANCHOR_SCORE,
+    acceptable: Number(candidate.score || 0) >= qualityProfile.keyframe.minActionAnchorScore,
     selected: candidate.candidateId === selectedCandidate?.candidateId,
     metrics: summarizeActionAnchorMetrics(candidate.metrics),
     ...(candidate.error ? { error: String(candidate.error).slice(0, 240) } : {})
@@ -3220,6 +3260,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
   action,
   actionPromptBuild,
   actionReferenceImage,
+  qualityProfile = getDefaultQualityProfile(),
   generateWithFallbackImpl
 }) => {
   const referenceMetrics = await readImageMaskMetrics(actionReferenceImage.path)
@@ -3267,7 +3308,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
       if (!output) throw new Error(`Creator Studio action anchor candidate ${candidateId} returned no outputs for ${actionId}`)
       const relativePath = createSafeRelativePath(output.dataRelativePath)
       const metrics = await readImageMaskMetrics(path.join(dataDir, relativePath))
-      const score = scoreActionAnchorMetrics({ metrics, referenceMetrics, action })
+      const score = scoreActionAnchorMetrics({ metrics, referenceMetrics, action, qualityProfile })
       candidates.push({
         candidateId,
         ok: true,
@@ -3312,7 +3353,8 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
     .sort((left, right) => Number(right.score || 0) - Number(left.score || 0))[0]
   const selectionSummary = createCandidateSelectionSummary({
     candidates,
-    selectedCandidate
+    selectedCandidate,
+    qualityProfile
   })
   const selectionRelativePath = path.join(
     'runs',
@@ -3329,7 +3371,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
   }
   if (!selection.acceptable) {
     const error = new Error(
-      `Creator Studio action anchor candidate selection for ${actionId} scored ${selection.selectedScore} below the minimum acceptable score ${MIN_ACCEPTABLE_ACTION_ANCHOR_SCORE}; see ${selectionRelativePath}`
+      `Creator Studio action anchor candidate selection for ${actionId} scored ${selection.selectedScore} below the minimum acceptable score ${qualityProfile.keyframe.minActionAnchorScore}; see ${selectionRelativePath}`
     )
     error.modelAttempts = candidates.flatMap((candidate) => candidate.attempts || [])
     error.candidateSelection = selection
@@ -3359,6 +3401,8 @@ const generateAnchorReferences = async ({
   selectedModel = '',
   requestedTimeoutMs,
   originalReferenceImages = [],
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   const references = Array.isArray(originalReferenceImages) ? originalReferenceImages.filter(Boolean) : []
@@ -3377,7 +3421,9 @@ const generateAnchorReferences = async ({
     dataDir,
     runId: run.runId,
     sourceReferences: references,
-    characterBrief
+    characterBrief,
+    qualityProfile,
+    qualityGuidance
   })
   const stages = [{
     stage: 'composite-reference-board',
@@ -3388,7 +3434,8 @@ const generateAnchorReferences = async ({
     outputRelativePath: compositeBoard.relativePath,
     metadataRelativePath: compositeBoard.metadataRelativePath,
     sourceCount: compositeBoard.sourceCount,
-    renderedSourceCount: compositeBoard.renderedSourceCount
+    renderedSourceCount: compositeBoard.renderedSourceCount,
+    qualityProfile: createQualityProfileEvidence(qualityProfile)
   }]
   const compositeReferenceImage = {
     path: compositeBoard.path,
@@ -3402,7 +3449,8 @@ const generateAnchorReferences = async ({
   if (!shouldSkipCharacterAnchorForActions(run)) {
     const characterPromptBuild = buildCharacterAnchorPrompt({
       characterBrief,
-      referenceRole: 'composite-reference-board'
+      referenceRole: 'composite-reference-board',
+      qualityGuidance
     })
     const characterPromptFile = writeAnchorPromptFile({
       dataDir,
@@ -3441,7 +3489,8 @@ const generateAnchorReferences = async ({
       promptRelativePath: characterAnchor.promptRelativePath,
       model: characterAnchor.model,
       modelAttempts: characterAnchor.modelAttempts,
-      outputCount: 1
+      outputCount: 1,
+      qualityProfile: createQualityProfileEvidence(qualityProfile)
     })
   }
 
@@ -3467,7 +3516,8 @@ const generateAnchorReferences = async ({
       const actionPromptBuild = buildActionAnchorPrompt({
         characterBrief,
         referenceRole: actionReferenceRole,
-        action
+        action,
+        qualityGuidance
       })
       const promptFile = writeAnchorPromptFile({
         dataDir,
@@ -3489,6 +3539,7 @@ const generateAnchorReferences = async ({
           action,
           actionPromptBuild,
           actionReferenceImage,
+          qualityProfile,
           generateWithFallbackImpl
         })
         actionOutput = candidateSet.output
@@ -3538,6 +3589,7 @@ const generateAnchorReferences = async ({
           model: actionAnchor.model,
           modelAttempts: actionAnchor.modelAttempts,
           outputCount: 1,
+          qualityProfile: createQualityProfileEvidence(qualityProfile),
           ...(candidateSelection ? { candidateSelection } : {})
         })
         const finalActionBoard = await buildAnchorReferenceBoard({
@@ -3563,7 +3615,10 @@ const generateAnchorReferences = async ({
           ].filter(Boolean).join(' '),
           outputRelativeDir: path.join('runs', run.runId, 'inputs', 'anchors', 'actions').replace(/\\/g, '/'),
           boardRole: 'final-action-reference-board',
-          fileBaseName: `${actionId}-final-reference-board`
+          fileBaseName: `${actionId}-final-reference-board`,
+          qualityProfile,
+          qualityGuidance,
+          actionId
         })
         const finalActionBoardRecord = {
           actionId,
@@ -3581,7 +3636,8 @@ const generateAnchorReferences = async ({
           outputRelativePath: finalActionBoardRecord.relativePath,
           metadataRelativePath: finalActionBoardRecord.metadataRelativePath,
           sourceCount: finalActionBoard.sourceCount,
-          renderedSourceCount: finalActionBoard.renderedSourceCount
+          renderedSourceCount: finalActionBoard.renderedSourceCount,
+          qualityProfile: createQualityProfileEvidence(qualityProfile)
         })
       }
     }
@@ -3618,7 +3674,9 @@ const generateFullPetBasicActionSource = async ({
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
-  generationDeadlineMs = 0
+  generationDeadlineMs = 0,
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null
 }) => {
   let providerRow = null
   try {
@@ -3645,7 +3703,9 @@ const generateFullPetBasicActionSource = async ({
       requestedTimeoutMs: Math.max(requestedTimeoutMs, BASIC_ACTION_MIN_TIMEOUT_MS),
       action,
       originalReferenceImages: referenceImages,
-      generationDeadlineMs
+      generationDeadlineMs,
+      qualityProfile,
+      qualityGuidance
     })
     if (!providerRow?.ok || !providerRow.output) {
       const error = new Error(providerRow?.error || `Creator Studio official row generation failed for ${safeActionId}`)
@@ -3712,6 +3772,8 @@ const generateFullPetBasicActionSources = async ({
   requestedTimeoutMs,
   referenceImages,
   generationDeadlineMs = 0,
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null,
   generateActionSourceImpl = generateFullPetBasicActionSource,
   mirrorRowFramesImpl = mirrorRowFrames,
   resolveReusableActionResultImpl = resolveReusableActionResult,
@@ -3743,7 +3805,9 @@ const generateFullPetBasicActionSources = async ({
         selectedModel,
         requestedTimeoutMs,
         referenceImages,
-        generationDeadlineMs
+        generationDeadlineMs,
+        qualityProfile,
+        qualityGuidance
       })
     actionResults.push(result)
     if (!result.ok) {
@@ -3844,6 +3908,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   }
 
   const settings = await readHostModelSettings()
+  const governance = loadPetGenerationGovernance()
+  const { qualityProfile, qualityGuidance } = governance
   const generationDeadlineMs = isFullPetRun(run)
     ? Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS
     : 0
@@ -3891,7 +3957,9 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       settings,
       selectedModel: configuredModelSnapshot.model,
       requestedTimeoutMs: resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs }),
-      originalReferenceImages
+      originalReferenceImages,
+      qualityProfile,
+      qualityGuidance
     })
     anchorReferences = generatedAnchors.anchorReferences
     anchorGeneration = generatedAnchors.anchorGeneration
@@ -3908,7 +3976,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const promptBuild = buildOpenPetImagePrompt({
     run: runForGeneration,
     backend: normalizedBackend,
-    model: configuredModelSnapshot.model
+    model: configuredModelSnapshot.model,
+    qualityGuidance
   })
   const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
   const originalReferenceImage = resolveOriginalReferenceImage({ dataDir, run })
@@ -3987,7 +4056,9 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
         selectedModel: configuredModelSnapshot.model,
         requestedTimeoutMs,
         action: firstActionForReference,
-        originalReferenceImages
+        originalReferenceImages,
+        qualityProfile,
+        qualityGuidance
       })
     : null
   const referenceImages = keyframeSpriteRow?.ok
@@ -4021,127 +4092,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     },
     modelSnapshot: configuredModelSnapshot,
     promptBuilder,
-    qualityGovernance: governance.evidence,
-    artReadiness: initialArtReadiness
-  }
-  if (anchorReferences) attemptResult.anchorReferences = anchorReferences
-  if (anchorGeneration) attemptResult.anchorGeneration = anchorGeneration
-  const providerAnchorStages = getProviderAnchorStages(anchorGeneration)
-  const keyframeSpriteRowStages = keyframeSpriteRow
-    ? (Array.isArray(keyframeSpriteRow.stages)
-        ? keyframeSpriteRow.stages.filter(Boolean)
-        : [keyframeSpriteRow.finalStage].filter(Boolean))
-    : []
-  if (providerAnchorStages.length > 0 || keyframeSpriteRowStages.length > 0) {
-    attemptResult.generationStages = [
-      ...providerAnchorStages,
-      ...keyframeSpriteRowStages
-    ]
-  }
-  if (canonicalSingleAction && keyframeSpriteRow == null) {
-    const actionId = createSafeFileSegment(firstActionForReference?.actionId, 'action')
-    const error = new Error(
-      `Creator Studio keyframe sprite row could not be prepared for ${actionId}; provider complete sprite rows are required for deliverable action generation.`
-    )
-    error.keyframeSpriteRow = {
-      ok: false,
-      actionId,
-      error: 'keyframe sprite row reference could not be prepared'
-    }
-    const partialGenerationStages = providerAnchorStages
-    error.partialGenerationResult = {
-      ...attemptResult,
-      artReadiness: resolveProviderArtReadinessForModels({
-        settings,
-        models: getSuccessfulGenerationModels({ stages: partialGenerationStages }),
-        governance,
-        approvals: providerArtApprovals
-      }),
-      outputs: [],
-      generationStages: partialGenerationStages,
-      keyframeSpriteRow: error.keyframeSpriteRow,
-      ...(anchorReferences ? { anchorReferences } : {}),
-      ...(anchorGeneration ? { anchorGeneration } : {})
-    }
-    throw error
-  }
-  if (keyframeSpriteRow && keyframeSpriteRow.ok === false) {
-    const actionId = createSafeFileSegment(firstActionForReference?.actionId, 'action')
-    const detail = String(keyframeSpriteRow.error || 'Creator Studio keyframe sprite row generation failed')
-    const error = new Error(
-      canonicalSingleAction
-        ? `Creator Studio keyframe sprite row could not be prepared for ${actionId}; provider complete sprite rows are required for deliverable action generation. Provider error: ${detail}`
-        : detail
-    )
-    error.keyframeSpriteRow = {
-      ok: false,
-      actionId: keyframeSpriteRow.actionId,
-      promptRelativePath: keyframeSpriteRow.promptRelativePath,
-      error: keyframeSpriteRow.error || '',
-      keyframes: Array.isArray(keyframeSpriteRow.keyframes) ? keyframeSpriteRow.keyframes : [],
-      ...(keyframeSpriteRow.referenceBoard ? { referenceBoard: keyframeSpriteRow.referenceBoard } : {})
-    }
-    const partialGenerationStages = [
-      ...providerAnchorStages,
-      ...keyframeSpriteRowStages
-    ]
-    error.partialGenerationResult = {
-      ...attemptResult,
-      artReadiness: resolveProviderArtReadinessForModels({
-        settings,
-        models: getSuccessfulGenerationModels({ stages: partialGenerationStages }),
-        governance,
-        approvals: providerArtApprovals
-      }),
-      conditioning: createKeyframeSpriteRowConditioningSummary({
-        model: configuredModelSnapshot.model,
-        referenceImages: keyframeSpriteRow.referenceImages,
-        promptCompiler: keyframeSpriteRow.promptCompiler
-      }),
-      outputs: [],
-      generationStages: partialGenerationStages,
-      keyframeSpriteRow: error.keyframeSpriteRow,
-      ...(anchorReferences ? { anchorReferences } : {}),
-      ...(anchorGeneration ? { anchorGeneration } : {})
-    }
-    throw error
-  }
-  if (keyframeSpriteRow?.ok) {
-    const keyframeArtReadiness = resolveProviderArtReadinessForModels({
-      settings,
-      models: getSuccessfulGenerationModels({
-        primaryModel: keyframeSpriteRow.model || configuredModelSnapshot.model,
-        stages: keyframeSpriteRowStages
-      }),
-      governance,
-      approvals: providerArtApprovals
-    })
-    return {
-      ...attemptResult,
-      artReadiness: keyframeArtReadiness,
-      outputs: keyframeSpriteRow.output ? [keyframeSpriteRow.output] : [],
-      ok: Boolean(keyframeSpriteRow.output),
-      requestId: '',
-      provider: String(settings.provider || 'openai-compatible'),
-      generatedAt: new Date().toISOString(),
-      model: keyframeSpriteRow.model || configuredModelSnapshot.model,
-      modelAttempts: keyframeSpriteRow.modelAttempts || [],
-      generationStages: [
-        ...providerAnchorStages,
-        ...keyframeSpriteRowStages
-      ],
-      keyframeSpriteRow: {
-        ok: true,
-        actionId: keyframeSpriteRow.actionId,
-        outputRelativePath: keyframeSpriteRow.output?.dataRelativePath || '',
-        promptRelativePath: keyframeSpriteRow.promptRelativePath,
-        model: keyframeSpriteRow.model,
-        keyframes: Array.isArray(keyframeSpriteRow.keyframes) ? keyframeSpriteRow.keyframes : [],
-        ...(keyframeSpriteRow.referenceBoard ? { referenceBoard: keyframeSpriteRow.referenceBoard } : {})
-      },
-      ...(anchorReferences ? { anchorReferences } : {}),
-      ...(anchorGeneration ? { anchorGeneration } : {})
-    }
+    qualityGovernance: governance.evidence
   }
   if (anchorReferences) attemptResult.anchorReferences = anchorReferences
   if (anchorGeneration) attemptResult.anchorGeneration = anchorGeneration
@@ -4265,6 +4216,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       durationMs: sumAttemptDurationsMs(failedAttempts),
       model: configuredModelSnapshot.model,
       modelAttempts: failedAttempts,
+      qualityProfile,
       error: error?.message || error
     })
     if (error && typeof error === 'object') {
@@ -4302,7 +4254,6 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     ...response.result,
     conditioning: response?.result?.conditioning || defaultConditioning,
     qualityGovernance: governance.evidence,
-    artReadiness,
     modelSnapshot,
     promptBuilder,
     model: selectedModel,
@@ -4317,7 +4268,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
         durationMs: sumAttemptDurationsMs(modelAttempts),
         model: selectedModel,
         modelAttempts,
-        outputCount: Array.isArray(response?.result?.outputs) ? response.result.outputs.length : 0
+        outputCount: Array.isArray(response?.result?.outputs) ? response.result.outputs.length : 0,
+        qualityProfile
       })
     ],
     ...(anchorReferences ? { anchorReferences } : {}),
@@ -4347,7 +4299,9 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       selectedModel,
       requestedTimeoutMs,
       referenceImages: officialActionReferenceImages,
-      generationDeadlineMs
+      generationDeadlineMs,
+      qualityProfile,
+      qualityGuidance
     })
   } catch (error) {
     const partialSources = error?.partialActionSources || {
