@@ -372,44 +372,13 @@ const createSafeReferenceRelativePath = (value) => {
   return normalized
 }
 
-const createReferenceContractError = (code, message) => {
-  const error = new Error(message)
-  error.code = code
-  return error
+const assertSingleReferenceImage = (referenceImages) => {
+  if (!Array.isArray(referenceImages) || referenceImages.length <= 1) return
+  throw new Error('Image generation accepts at most one reference image; compose multiple sources into one local reference board')
 }
 
-const assertExactlyOneReferenceImage = (referenceImages) => {
-  if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
-    throw createReferenceContractError(
-      'reference_image_required',
-      'Image generation requires exactly one reference image'
-    )
-  }
-  if (referenceImages.length !== 1) {
-    throw createReferenceContractError(
-      'reference_image_count_invalid',
-      'Image generation requires exactly one reference image; compose multiple sources into one local reference image'
-    )
-  }
-}
-
-const normalizeReferenceImages = (referenceImages = [], { dataDir } = {}) => {
-  assertExactlyOneReferenceImage(referenceImages)
-  const rawDataDir = String(dataDir || '').trim()
-  if (!rawDataDir) {
-    throw createReferenceContractError(
-      'reference_image_unusable',
-      'Reference image data directory is unavailable'
-    )
-  }
-  const root = path.resolve(rawDataDir)
-  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
-    throw createReferenceContractError(
-      'reference_image_unusable',
-      'Reference image data directory is unavailable'
-    )
-  }
-  const realRoot = fs.realpathSync.native(root)
+const normalizeReferenceImages = (referenceImages = []) => {
+  if (!Array.isArray(referenceImages)) return []
   return referenceImages
     .map((entry, index) => {
       if (!entry || typeof entry !== 'object') {
@@ -515,13 +484,12 @@ const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
 }
 
 const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
-  assertExactlyOneReferenceImage(referenceImages)
+  assertSingleReferenceImage(referenceImages)
   const boundary = createMultipartBoundary()
   const buffers = []
   const quality = getProviderImageQuality({ model, constraints })
-  const imageField = referenceImages.length > 1 ? 'image[]' : 'image'
   for (const referenceImage of referenceImages) {
-    appendMultipartFilePart(buffers, boundary, imageField, referenceImage)
+    appendMultipartFilePart(buffers, boundary, 'image', referenceImage)
   }
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
@@ -1326,6 +1294,7 @@ const createImageGenerationModelService = ({
     const providerStartMs = nowMs()
     const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(config))
     const backgroundMode = getProviderGenerationBackgroundMode({ model: config.model, constraints })
+    assertSingleReferenceImage(referenceImages)
     const normalizedReferenceImages = normalizeReferenceImages(referenceImages)
     const endpoint = normalizedReferenceImages.length > 0 ? '/images/edits' : '/images/generations'
     const quality = getProviderImageQuality({ model: config.model, constraints })
@@ -1659,8 +1628,9 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateImage = async (request = {}) => {
-    const config = getStoredConfig()
+  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
+    assertSingleReferenceImage(referenceImages)
+    const config = withRuntimeModelOverride(getStoredConfig(), model)
     const requestId = idFactory()
     const ownerFieldOverrides = findOwnerFieldOverrides(request, {
       topLevel: ['provider', 'baseUrl', 'apiKeyRef', 'model']
