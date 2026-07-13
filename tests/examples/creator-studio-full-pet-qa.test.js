@@ -113,6 +113,28 @@ test('full-pet qa accepts complete official action row coverage', () => {
   assert.deepEqual(result.atlasQa.basicActions.missingRequiredOfficialActionIds, [])
 })
 
+test('full-pet qa accepts an approved idle-only package with optional actions omitted', () => {
+  const fixture = makeQaFixture({
+    atlasQa: {
+      basicActions: {
+        requiredRealActionIds: ['idle'],
+        realActionIds: ['idle'],
+        fallbackActionIds: [],
+        missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle'],
+        previewFallbackActionIds: [],
+        missingRequiredOfficialActionIds: [],
+        availableActionIds: ['idle'],
+        omittedActionIds: ['waving'],
+        rows: [{ actionId: 'idle', fallback: false, quality: 'row-real' }]
+      }
+    }
+  })
+
+  const result = assertFullPetQaPassed({ ...fixture, operation: 'import' })
+  assert.deepEqual(result.atlasQa.basicActions.availableActionIds, ['idle'])
+})
+
 test('full-pet qa rejects spritesheets modified after atlas validation', () => {
   const fixture = makeQaFixture({
     atlasQa: {

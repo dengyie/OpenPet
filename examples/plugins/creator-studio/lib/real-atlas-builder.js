@@ -533,7 +533,8 @@ const buildOfficialAtlasFromRows = async ({
   return {
     sourceQaPath,
     atlasQaPath,
-    visiblePixels: composed.visiblePixels
+    visiblePixels: composed.visiblePixels,
+    basicActions
   }
 }
 
@@ -617,7 +618,8 @@ const buildRealAtlasFromGeneratedImage = async ({ dataDir, generationResult, out
       sourceQaPath: official.sourceQaPath,
       atlasQaPath: official.atlasQaPath,
       sourceRelativePath,
-      visiblePixels: official.visiblePixels
+      visiblePixels: official.visiblePixels,
+      basicActions: official.basicActions
     }
   }
 

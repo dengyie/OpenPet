@@ -125,33 +125,17 @@ const normalizeCodexPetManifest = (manifest, { rootPath }) => {
   assertCodexAtlasHasRenderableContent(absoluteSpritesheetPath)
 
   const hasAvailabilityMetadata = Array.isArray(manifest.availableActionIds)
-  let availableActionIds = hasAvailabilityMetadata
+  const availableActionIds = hasAvailabilityMetadata
     ? [...new Set(manifest.availableActionIds.map((value) => String(value || '').trim()))]
         .filter((actionId) => CODEX_ROWS.some((row) => row.id === actionId))
     : CODEX_ROWS.map((row) => row.id)
   if (!availableActionIds.includes('idle')) {
     throw new Error('Codex pet must make idle available')
   }
-  const hasRunningRight = availableActionIds.includes('running-right')
-  const hasRunningLeft = availableActionIds.includes('running-left')
-  const hasDirectionalPairMismatch = hasRunningRight !== hasRunningLeft
-  if (hasDirectionalPairMismatch) {
-    availableActionIds = availableActionIds.filter((actionId) => !['running-right', 'running-left'].includes(actionId))
-  }
   const omittedActionIds = Array.isArray(manifest.omittedActionIds)
     ? [...new Set(manifest.omittedActionIds.map((value) => String(value || '').trim()))]
         .filter((actionId) => CODEX_ROWS.some((row) => row.id === actionId) && !availableActionIds.includes(actionId))
     : CODEX_ROWS.map((row) => row.id).filter((actionId) => !availableActionIds.includes(actionId))
-  if (hasDirectionalPairMismatch) {
-    omittedActionIds.push(...['running-right', 'running-left'].filter((actionId) => !omittedActionIds.includes(actionId)))
-  }
-  const actionAvailability = manifest.actionAvailability && typeof manifest.actionAvailability === 'object' && !Array.isArray(manifest.actionAvailability)
-    ? { ...manifest.actionAvailability }
-    : {}
-  if (hasDirectionalPairMismatch) {
-    actionAvailability['running-right'] = { available: false, reason: 'directional-pair-incomplete' }
-    actionAvailability['running-left'] = { available: false, reason: 'directional-pair-incomplete' }
-  }
   const availableRows = CODEX_ROWS.filter((row) => availableActionIds.includes(row.id))
 
   return normalizePetPackManifest({
@@ -168,7 +152,7 @@ const normalizeCodexPetManifest = (manifest, { rootPath }) => {
     requiredActionIds: ['idle'],
     availableActionIds,
     omittedActionIds,
-    actionAvailability,
+    actionAvailability: manifest.actionAvailability,
     actions: availableRows.map((row) => ({
       id: row.id,
       label: row.label,
