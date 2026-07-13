@@ -1,7 +1,7 @@
 # Quality-First Partial Pet Generation Design
 
-Date: 2026-07-13
-Status: Approved design
+Date: 2026-07-13  
+Status: Approved design  
 Branch: `codex/dev8`
 
 ## 1. Objective
