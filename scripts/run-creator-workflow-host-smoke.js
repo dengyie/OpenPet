@@ -823,6 +823,13 @@ const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, ru
     ok: true,
     technicalCompletion: true,
     artisticApproval: false,
+    artReadiness: isObject(runRecord?.artReadiness)
+      ? runRecord.artReadiness
+      : {
+          level: 'technical-chain-ready',
+          approved: false,
+          reason: 'no-matching-human-art-approval'
+        },
     claimBoundary: 'Technical completion and automated QA do not constitute human visual approval.',
     message: `${importVerification.message}. ${conditioningVerification.message}.${scenario === 'new-character' ? ` Available actions: ${availableActionIds.join(', ')}. Omitted actions: ${omittedActionIds.join(', ') || 'none'}.` : ''}`,
     artifactPaths: {
@@ -844,6 +851,13 @@ const summarizeVerification = (verification = {}, sessionDir) => {
     message: sanitizeText(verification?.message || '', 500),
     technicalCompletion: verification?.technicalCompletion === true,
     artisticApproval: verification?.artisticApproval === true,
+    artReadiness: isObject(verification?.artReadiness)
+      ? sanitizeReportValue(verification.artReadiness, { sessionDir })
+      : {
+          level: 'technical-chain-ready',
+          approved: false,
+          reason: 'no-matching-human-art-approval'
+        },
     claimBoundary: sanitizeText(verification?.claimBoundary || '', 240),
     artifactPaths
   }

@@ -40,6 +40,11 @@ const {
   createQualityProfileEvidence,
   getDefaultQualityProfile
 } = require('./pet-generation-quality-profile')
+const {
+  DEFAULT_PROVIDER_ART_APPROVALS_PATH,
+  loadProviderArtApprovals,
+  resolveProviderArtReadiness
+} = require('./provider-art-approval')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
@@ -111,7 +116,83 @@ const normalizeModelName = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, '')
   .trim()
 
-const buildHostPromptCandidateModels = ({ settings = {}, preferredModel = '' }) => {
+const loadConfiguredProviderArtApprovals = () => loadProviderArtApprovals({
+  registryPath: String(process.env.OPENPET_PROVIDER_ART_APPROVALS_PATH || '').trim() || DEFAULT_PROVIDER_ART_APPROVALS_PATH
+})
+
+const resolveProviderArtReadinessForModels = ({ settings, models, governance, approvals }) => {
+  const provider = normalizeModelName(settings?.provider || 'openai-compatible')
+  const normalizedModels = [...new Set(
+    (Array.isArray(models) ? models : [models])
+      .map(normalizeModelName)
+      .filter(Boolean)
+  )]
+  const readinessByModel = normalizedModels.map((model) => resolveProviderArtReadiness({
+    approvals,
+    provider,
+    model,
+    qualityProfile: governance.qualityProfile,
+    datasetId: governance.humanRegistry.datasetId
+  }))
+  const unapprovedModels = readinessByModel
+    .filter((entry) => !entry.approved)
+    .map((entry) => entry.model)
+  if (readinessByModel.length === 0 || unapprovedModels.length > 0) {
+    return Object.freeze({
+      level: 'technical-chain-ready',
+      approved: false,
+      reason: readinessByModel.length === 0
+        ? 'no-generation-model-evidence'
+        : 'unapproved-generation-models',
+      provider,
+      models: Object.freeze(normalizedModels),
+      unapprovedModels: Object.freeze(unapprovedModels),
+      qualityProfileId: governance.qualityProfile.id,
+      datasetId: governance.humanRegistry.datasetId
+    })
+  }
+  const approvalIds = readinessByModel.map((entry) => entry.approvalId)
+  const evidenceRelativePaths = readinessByModel.map((entry) => entry.evidenceRelativePath)
+  return Object.freeze({
+    level: 'production-art-ready',
+    approved: true,
+    provider,
+    models: Object.freeze(normalizedModels),
+    ...(approvalIds.length === 1 ? { approvalId: approvalIds[0] } : {}),
+    approvalIds: Object.freeze(approvalIds),
+    ...(evidenceRelativePaths.length === 1 ? { evidenceRelativePath: evidenceRelativePaths[0] } : {}),
+    evidenceRelativePaths: Object.freeze(evidenceRelativePaths),
+    qualityProfileId: governance.qualityProfile.id,
+    datasetId: governance.humanRegistry.datasetId
+  })
+}
+
+const getSuccessfulGenerationModels = ({ primaryModel = '', stages = [] } = {}) => [...new Set([
+  normalizeModelName(primaryModel),
+  ...(Array.isArray(stages) ? stages : [])
+    .filter((stage) => stage?.ok !== false)
+    .map((stage) => normalizeModelName(stage?.model))
+].filter(Boolean))]
+
+const isLikelyImageModel = (value) => (
+  /(image|banana|imagine)/i.test(normalizeModelName(value))
+)
+
+const isSupportedOpenAiCompatibleEditModel = (value) => (
+  /^(gpt-image-(1\.5|2)|grok-imagine-image(?:-quality)?)$/i.test(normalizeModelName(value))
+)
+
+const isEligibleFallbackModel = ({ settings = {}, candidate = '' }) => {
+  const normalized = normalizeModelName(candidate)
+  if (!normalized) return false
+  const provider = normalizeModelName(settings?.provider).toLowerCase()
+  if (provider === 'openai-compatible' || provider === 'openai') {
+    return isSupportedOpenAiCompatibleEditModel(normalized)
+  }
+  return isLikelyImageModel(normalized)
+}
+
+const buildModelCandidateList = ({ settings = {}, preferredModel = '' }) => {
   const candidates = []
   const seen = new Set()
   const addCandidate = (value) => {
@@ -3947,6 +4028,7 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
   }
   const settings = await readHostModelSettings()
   const governance = loadPetGenerationGovernance()
+  const providerArtApprovals = loadConfiguredProviderArtApprovals()
   const modelSnapshot = createModelSnapshot({ backend: PROVIDER_BACKEND, settings })
   const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
   const originalReferenceImage = resolveOriginalReferenceImage({ dataDir, run })
@@ -3979,6 +4061,19 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
     requestedActionIds: actionIds
   })
   const { failure: _discardedFailure, ...previous } = previousGenerationResult
+  const generationStages = [
+    ...(Array.isArray(previous.generationStages) ? previous.generationStages : []),
+    ...(Array.isArray(repaired.generationStages) ? repaired.generationStages : [])
+  ]
+  const artReadiness = resolveProviderArtReadinessForModels({
+    settings,
+    models: getSuccessfulGenerationModels({
+      primaryModel: previous.model,
+      stages: generationStages
+    }),
+    governance,
+    approvals: providerArtApprovals
+  })
   return {
     ...previous,
     ok: true,
@@ -3988,6 +4083,7 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
     modelSnapshot,
     generatedAt: new Date().toISOString(),
     qualityGovernance: governance.evidence,
+    artReadiness,
     outputs: baseOutputs,
     officialRows: repaired.officialRows,
     basicActionGeneration: repaired.basicActionGeneration,
@@ -3998,10 +4094,7 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
       ...(Array.isArray(previous.keyframes) ? previous.keyframes : []),
       ...(Array.isArray(repaired.keyframes) ? repaired.keyframes : [])
     ],
-    generationStages: [
-      ...(Array.isArray(previous.generationStages) ? previous.generationStages : []),
-      ...(Array.isArray(repaired.generationStages) ? repaired.generationStages : [])
-    ]
+    generationStages
   }
 }
 
@@ -4017,11 +4110,18 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 
   const settings = await readHostModelSettings()
   const governance = loadPetGenerationGovernance()
+  const providerArtApprovals = loadConfiguredProviderArtApprovals()
   const { qualityProfile, qualityGuidance } = governance
   const generationDeadlineMs = isFullPetRun(run)
     ? Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS
     : 0
   const configuredModelSnapshot = createModelSnapshot({ backend: normalizedBackend, settings })
+  const initialArtReadiness = resolveProviderArtReadinessForModels({
+    settings,
+    models: [],
+    governance,
+    approvals: providerArtApprovals
+  })
   const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
   const originalReferenceImage = resolveOriginalReferenceImage({ dataDir, run })
   const originalReferenceImages = isUsableLocalReferenceImage({ dataDir, referenceImage: originalReferenceImage })
@@ -4200,7 +4300,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     },
     modelSnapshot: configuredModelSnapshot,
     promptBuilder,
-    qualityGovernance: governance.evidence
+    qualityGovernance: governance.evidence,
+    artReadiness: initialArtReadiness
   }
   if (anchorReferences) attemptResult.anchorReferences = anchorReferences
   if (anchorGeneration) attemptResult.anchorGeneration = anchorGeneration
@@ -4226,10 +4327,17 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       actionId,
       error: 'keyframe sprite row reference could not be prepared'
     }
+    const partialGenerationStages = providerAnchorStages
     error.partialGenerationResult = {
       ...attemptResult,
+      artReadiness: resolveProviderArtReadinessForModels({
+        settings,
+        models: getSuccessfulGenerationModels({ stages: partialGenerationStages }),
+        governance,
+        approvals: providerArtApprovals
+      }),
       outputs: [],
-      generationStages: providerAnchorStages,
+      generationStages: partialGenerationStages,
       keyframeSpriteRow: error.keyframeSpriteRow,
       ...(anchorReferences ? { anchorReferences } : {}),
       ...(anchorGeneration ? { anchorGeneration } : {})
@@ -4252,17 +4360,24 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       keyframes: Array.isArray(keyframeSpriteRow.keyframes) ? keyframeSpriteRow.keyframes : [],
       ...(keyframeSpriteRow.referenceBoard ? { referenceBoard: keyframeSpriteRow.referenceBoard } : {})
     }
+    const partialGenerationStages = [
+      ...providerAnchorStages,
+      ...keyframeSpriteRowStages
+    ]
     error.partialGenerationResult = {
       ...attemptResult,
+      artReadiness: resolveProviderArtReadinessForModels({
+        settings,
+        models: getSuccessfulGenerationModels({ stages: partialGenerationStages }),
+        governance,
+        approvals: providerArtApprovals
+      }),
       conditioning: createKeyframeSpriteRowConditioningSummary({
         model: configuredModelSnapshot.model,
         referenceImages: keyframeSpriteRow.referenceImages
       }),
       outputs: [],
-      generationStages: [
-        ...providerAnchorStages,
-        ...keyframeSpriteRowStages
-      ],
+      generationStages: partialGenerationStages,
       keyframeSpriteRow: error.keyframeSpriteRow,
       ...(anchorReferences ? { anchorReferences } : {}),
       ...(anchorGeneration ? { anchorGeneration } : {})
@@ -4270,8 +4385,18 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     throw error
   }
   if (keyframeSpriteRow?.ok) {
+    const keyframeArtReadiness = resolveProviderArtReadinessForModels({
+      settings,
+      models: getSuccessfulGenerationModels({
+        primaryModel: keyframeSpriteRow.model || configuredModelSnapshot.model,
+        stages: keyframeSpriteRowStages
+      }),
+      governance,
+      approvals: providerArtApprovals
+    })
     return {
       ...attemptResult,
+      artReadiness: keyframeArtReadiness,
       outputs: keyframeSpriteRow.output ? [keyframeSpriteRow.output] : [],
       ok: Boolean(keyframeSpriteRow.output),
       requestId: '',
@@ -4334,11 +4459,14 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       ]
       error.partialGenerationResult = {
         ...attemptResult,
+        artReadiness: resolveProviderArtReadinessForModels({
+          settings,
+          models: getSuccessfulGenerationModels({ stages: partialGenerationStages }),
+          governance,
+          approvals: providerArtApprovals
+        }),
         modelAttempts: failedAttempts,
-        generationStages: [
-          ...providerAnchorStages,
-          failedFinalStage
-        ]
+        generationStages: partialGenerationStages
       }
     }
     throw error
@@ -4362,6 +4490,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     ...response.result,
     conditioning: response?.result?.conditioning || defaultConditioning,
     qualityGovernance: governance.evidence,
+    artReadiness,
     modelSnapshot,
     promptBuilder,
     model: selectedModel,
@@ -4418,16 +4547,26 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       keyframes: [],
       generationStages: []
     }
+    const partialGenerationStages = [
+      ...(Array.isArray(result.generationStages) ? result.generationStages : []),
+      ...(Array.isArray(partialSources.generationStages) ? partialSources.generationStages : [])
+    ]
     error.partialGenerationResult = {
       ...result,
+      artReadiness: resolveProviderArtReadinessForModels({
+        settings,
+        models: getSuccessfulGenerationModels({
+          primaryModel: selectedModel,
+          stages: partialGenerationStages
+        }),
+        governance,
+        approvals: providerArtApprovals
+      }),
       outputs: baseOutputs,
       officialRows: partialSources.officialRows,
       basicActionGeneration: partialSources.basicActionGeneration,
       keyframes: Array.isArray(partialSources.keyframes) ? partialSources.keyframes : [],
-      generationStages: [
-        ...(Array.isArray(result.generationStages) ? result.generationStages : []),
-        ...(Array.isArray(partialSources.generationStages) ? partialSources.generationStages : [])
-      ]
+      generationStages: partialGenerationStages
     }
     throw error
   }
@@ -4453,6 +4592,15 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       ...(Array.isArray(fullPetBasicActionSources.generationStages) ? fullPetBasicActionSources.generationStages : [])
     ]
   }
+  fullPetResult.artReadiness = resolveProviderArtReadinessForModels({
+    settings,
+    models: getSuccessfulGenerationModels({
+      primaryModel: selectedModel,
+      stages: fullPetResult.generationStages
+    }),
+    governance,
+    approvals: providerArtApprovals
+  })
   if (
     REQUIRED_REAL_FULL_PET_ACTION_IDS.some((actionId) => (
       !generatedOfficialRows.some((row) => row?.actionId === actionId)
@@ -4480,8 +4628,10 @@ module.exports = {
     generateWithModelFallback,
     evaluateActionKeyframeQuality,
     generateFullPetBasicActionSources,
+    getSuccessfulGenerationModels,
     isTransientGatewayHttpFailure,
     prepareGeneratedKeyframeOutput,
+    resolveProviderArtReadinessForModels,
     resolveGenerationStageTimeout,
     scoreActionAnchorMetrics
   },

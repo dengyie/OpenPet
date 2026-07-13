@@ -894,9 +894,13 @@
         const actionAvailability = basicActions.actionAvailability && typeof basicActions.actionAvailability === 'object'
           ? basicActions.actionAvailability
           : {}
+        const artReadiness = review?.artReadiness || {}
         const reviewGate = review?.reviewGate || {}
         const visualReview = review?.visualReview || null
         const visualPreviews = Array.isArray(visualReview?.previews) ? visualReview.previews : []
+        const artApprovalIds = Array.isArray(artReadiness.approvalIds)
+          ? artReadiness.approvalIds.filter(Boolean)
+          : [artReadiness.approvalId].filter(Boolean)
         const rowValidationRows = Array.isArray(review?.rowValidation?.rows) ? review.rowValidation.rows : []
         const showsMismatch = run?.status === 'ready_for_review' && review?.sourceImageMatchesCurrent === false
         const canRepair = ['failed', 'ready_for_review'].includes(String(run?.status || ''))

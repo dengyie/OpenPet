@@ -1830,6 +1830,14 @@ const createFullPetReview = ({ dataDir, run }) => {
     sourceImageValidation: createPublicLogValue({ dataDir, value: publicSourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
     rowValidation: createPublicLogValue({ dataDir, value: rowValidation }),
+    artReadiness: createPublicLogValue({
+      dataDir,
+      value: run.artifacts?.generatedImage?.artReadiness || {
+        level: 'technical-chain-ready',
+        approved: false,
+        reason: 'no-matching-human-art-approval'
+      }
+    }),
     visualReview,
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`
