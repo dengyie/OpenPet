@@ -232,6 +232,71 @@ test('verifyScenarioResult rejects new-character preview-ready as incomplete off
   assert.match(verification.message, /preview-ready.*official action rows/i)
 })
 
+test('verifyScenarioResult accepts an imported idle-only pet as technical completion without artistic approval', () => {
+  const userDataDir = createTempDir('openpet-creator-workflow-partial-pet-')
+  const packRoot = path.join(userDataDir, 'pet-packs', 'partial-quality-cat')
+  fs.mkdirSync(packRoot, { recursive: true })
+  fs.writeFileSync(path.join(packRoot, 'pet.json'), JSON.stringify({
+    id: 'partial-quality-cat',
+    requiredActionIds: ['idle'],
+    availableActionIds: ['idle']
+  }))
+  const omittedActionIds = [
+    'running-right',
+    'running-left',
+    'waving',
+    'jumping',
+    'failed',
+    'waiting',
+    'running',
+    'review'
+  ]
+
+  const verification = verifyScenarioResult({
+    scenario: 'new-character',
+    result: {
+      ok: true,
+      state: 'completed',
+      run: { activatedPackId: 'partial-quality-cat' },
+      basicActions: {
+        requiredRealActionIds: ['idle'],
+        availableActionIds: ['idle'],
+        omittedActionIds,
+        actionAvailability: {
+          idle: { available: true, quality: 'row-real' },
+          waving: { available: false, reason: 'identity-descriptor-distance-high' }
+        }
+      }
+    },
+    workspaceRoot: '/tmp/workspace',
+    userDataDir,
+    runRecord: {
+      conditioning: {
+        mode: 'image-edit',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        references: [{
+          fileName: 'canonical-reference.png',
+          relativePath: 'runs/run-partial/inputs/references/canonical-reference.png'
+        }]
+      },
+      generationStages: [
+        { actionId: 'idle', stage: 'action-start-keyframe', ok: true, referenceRoles: ['canonical-reference'] },
+        { actionId: 'idle', stage: 'action-peak-keyframe', ok: true, referenceRoles: ['action-peak-conditioning-board'] },
+        { actionId: 'idle', stage: 'final-image', ok: true, referenceRoles: ['keyframe-action-reference-board'], outputRelativePath: 'runs/run-partial/frames/base/idle-keyframe-row/0001.png' },
+        { actionId: 'waving', stage: 'action-start-keyframe', ok: false, referenceRoles: ['canonical-reference'] }
+      ]
+    }
+  })
+
+  assert.equal(verification.ok, true)
+  assert.equal(verification.technicalCompletion, true)
+  assert.equal(verification.artisticApproval, false)
+  assert.match(verification.claimBoundary, /human visual approval/i)
+  assert.match(verification.message, /Available actions: idle/i)
+  assert.match(verification.message, /Omitted actions:/i)
+})
+
 test('verifyConditioningEvidence rejects adopted provider action anchors as action completion evidence', () => {
   const anchorPath = 'runs/run-existing/anchors/actions/wave-anchor/0001.png'
   const verification = verifyConditioningEvidence({
@@ -510,7 +575,7 @@ test('runScenarioWorkflow approves the reference image but rejects failed provid
   })
 
   assert.equal(result.ok, false)
-  assert.match(result.verification.message, /missing provider-generated official actions/)
+  assert.match(result.verification.message, /missing required approved idle action/)
   assert.deepEqual(calls[0], ['approve', referenceImagePath])
   assert.equal(calls[1][0], 'generateNewCharacter')
   assert.equal(calls[1][1].characterName, 'Golden Cartoon Cat')

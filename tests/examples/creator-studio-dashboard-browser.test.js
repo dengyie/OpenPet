@@ -509,6 +509,15 @@ const seedImportedFullPetRun = async (dataDir) => {
     height: 1872,
     visiblePixels: 8200,
     warnings: [],
+    basicActions: {
+      requiredRealActionIds: ['idle'],
+      availableActionIds: ['idle'],
+      omittedActionIds: ['waving'],
+      actionAvailability: {
+        idle: { available: true, quality: 'row-real' },
+        waving: { available: false, reason: 'identity-descriptor-distance-high' }
+      }
+    },
     visualReview: {
       contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
       previews: [{
@@ -1479,6 +1488,9 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(reviewText, /Centroid drift: 4\.5/i)
     assert.match(reviewText, /Baseline drift: 2/i)
     assert.match(reviewText, /stable-slots/i)
+    assert.match(reviewText, /Available actions:\s*idle/i)
+    assert.match(reviewText, /Omitted actions:\s*waving/i)
+    assert.match(reviewText, /identity-descriptor-distance-high/i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
 

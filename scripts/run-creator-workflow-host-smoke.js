@@ -560,8 +560,9 @@ const verifyConditioningEvidence = ({ runRecord, allowedFailedActionIds = [] }) 
   const referencePaths = Array.isArray(conditioning.references)
     ? conditioning.references.map((reference) => String(reference?.relativePath || '')).filter(Boolean)
     : []
+  const allowedFailures = new Set((Array.isArray(allowedFailedActionIds) ? allowedFailedActionIds : []).map(String))
   const failedStage = [...(runRecord?.anchorGenerationStages || []), ...(runRecord?.generationStages || [])]
-    .find((stage) => stage?.ok === false)
+    .find((stage) => stage?.ok === false && !allowedFailures.has(String(stage?.actionId || '')))
   if (failedStage) {
     return { ok: false, message: `Provider generation stage failed: ${failedStage.stage || 'unknown'}` }
   }
@@ -770,18 +771,42 @@ const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, ru
       message: `Workflow did not complete successfully: ${result?.state || 'unknown'}`
     }
   }
+  let availableActionIds = []
+  let omittedActionIds = []
   if (scenario === 'new-character') {
-    const realActionIds = new Set((result?.basicActions?.realActionIds || []).map(String))
-    const missing = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !realActionIds.has(actionId))
-    if (missing.length) return { ok: false, message: `Completed pet is missing provider-generated official actions: ${missing.join(', ')}` }
-    for (const actionId of OFFICIAL_FULL_PET_ACTION_IDS) {
+    availableActionIds = Array.isArray(result?.basicActions?.availableActionIds)
+      ? result.basicActions.availableActionIds.map(String).filter((actionId) => OFFICIAL_FULL_PET_ACTION_IDS.includes(actionId))
+      : (result?.basicActions?.realActionIds || []).map(String).filter((actionId) => OFFICIAL_FULL_PET_ACTION_IDS.includes(actionId))
+    omittedActionIds = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !availableActionIds.includes(actionId))
+    if (!availableActionIds.includes('idle')) {
+      return { ok: false, message: 'Completed pet is missing required approved idle action' }
+    }
+    const generationStages = Array.isArray(runRecord?.generationStages) ? runRecord.generationStages : []
+    const oversizedReferenceStage = generationStages.find((stage) => (
+      Array.isArray(stage?.referenceRoles) && stage.referenceRoles.length > 1
+    ))
+    if (oversizedReferenceStage) {
+      return { ok: false, message: `Provider stage ${oversizedReferenceStage.stage || 'unknown'} used more than one reference image` }
+    }
+    if (generationStages.some((stage) => stage?.actionId === 'running-left')) {
+      return { ok: false, message: 'running-left must be derived by mirror and must not have a Provider stage' }
+    }
+    for (const actionId of availableActionIds.filter((candidate) => candidate !== 'running-left')) {
       const stages = (runRecord?.generationStages || []).filter((stage) => stage.actionId === actionId)
-      for (const stageName of ['start-keyframe', 'peak-keyframe', 'final-image']) {
-        const stage = stages.find((candidate) => candidate.stage === stageName && candidate.ok === true)
+      for (const stageNames of [['action-start-keyframe', 'start-keyframe'], ['action-peak-keyframe', 'peak-keyframe'], ['final-image']]) {
+        const stage = stages.find((candidate) => stageNames.includes(candidate.stage) && candidate.ok === true)
+        const stageName = stageNames[0]
         if (!stage) return { ok: false, message: `Official action ${actionId} is missing successful ${stageName} evidence` }
         if (stageName === 'final-image' && !stage.outputRelativePath) {
           return { ok: false, message: `Official action ${actionId} final-image evidence is missing its output path` }
         }
+      }
+    }
+    if (availableActionIds.includes('running-left')) {
+      const mirrorQuality = result?.basicActions?.actionAvailability?.['running-left']?.quality ||
+        (result?.basicActions?.rows || []).find((row) => row?.actionId === 'running-left')?.quality
+      if (mirrorQuality !== 'approved-mirror') {
+        return { ok: false, message: 'Available running-left action is missing approved-mirror evidence' }
       }
     }
   }
@@ -798,13 +823,6 @@ const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, ru
     ok: true,
     technicalCompletion: true,
     artisticApproval: false,
-    artReadiness: isObject(runRecord?.artReadiness)
-      ? runRecord.artReadiness
-      : {
-          level: 'technical-chain-ready',
-          approved: false,
-          reason: 'no-matching-human-art-approval'
-        },
     claimBoundary: 'Technical completion and automated QA do not constitute human visual approval.',
     message: `${importVerification.message}. ${conditioningVerification.message}.${scenario === 'new-character' ? ` Available actions: ${availableActionIds.join(', ')}. Omitted actions: ${omittedActionIds.join(', ') || 'none'}.` : ''}`,
     artifactPaths: {
@@ -826,13 +844,6 @@ const summarizeVerification = (verification = {}, sessionDir) => {
     message: sanitizeText(verification?.message || '', 500),
     technicalCompletion: verification?.technicalCompletion === true,
     artisticApproval: verification?.artisticApproval === true,
-    artReadiness: isObject(verification?.artReadiness)
-      ? sanitizeReportValue(verification.artReadiness, { sessionDir })
-      : {
-          level: 'technical-chain-ready',
-          approved: false,
-          reason: 'no-matching-human-art-approval'
-        },
     claimBoundary: sanitizeText(verification?.claimBoundary || '', 240),
     artifactPaths
   }

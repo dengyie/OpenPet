@@ -13,13 +13,13 @@ OpenPet should let an ordinary user provide exactly one source image and receive
 
 - a recognizable, transparent-background pet character;
 - a stable canonical identity suitable for a small desktop window;
-- the official Codex Pet action set;
+- an approved `idle` action and any optional actions that independently pass QA;
 - inspectable quality evidence;
 - an importable `pet.json` and `spritesheet.webp` package.
 
 The quality target is not “a technically valid atlas.” The generated character must remain recognizably the same character across all frames, and every action must read correctly when animated.
 
-Official-quality output means an approved canonical character followed by genuine action-specific Provider row generation, deterministic extraction and QA, and human visual approval. A base identity plus compatibility transforms does not meet that bar.
+Official-quality output means an approved canonical character followed by genuine action-specific Provider row generation, deterministic extraction and QA, and human visual approval. A base identity plus compatibility transforms does not meet that bar. Missing optional actions are acceptable, but a low-quality action must not enter the package.
 
 The branch already contains:
 
@@ -32,11 +32,11 @@ The branch already contains:
 - technical, identity, motion, and row QA;
 - contact-sheet and preview artifacts;
 - guarded approval, import, and activation flows;
-- deterministic support for `approved-mirror` row quality.
+- deterministic support for `approved-mirror` row quality;
+- quality-first partial packaging with stable transparent atlas slots;
+- durable per-action checkpoints and scoped retry.
 
-The landed deterministic official row package can compose and validate complete `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every row.
-
-The current implementation still has one important divergence from this document: `GENERATED_FULL_PET_ACTION_IDS` currently includes both `running-right` and `running-left`, so the provider orchestration can request both rows independently. The required design is to generate only `running-right`, approve it, then derive `running-left` through the existing framewise mirror path. Until that runtime change lands, the documentation contract is stricter than the orchestration implementation.
+The landed deterministic official row package can compose and validate complete or partial sets of `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every available row.
 
 Real-provider smoke success proves that the host bridge and provider path can complete. It does not prove production art quality. Production approval still requires human visual review.
 
@@ -104,6 +104,19 @@ The official rows are:
 | 8 | `review` | 6 | Focused inspection, reading, or thinking loop |
 
 Used cells must contain visible pixels. Unused cells must have zero visible alpha and no transparent RGB residue. Frame order and durations come from `full-pet-row-contract.js` and must not be inferred from the generated sheet.
+
+`idle` is the only required action. Every other official action is optional. A failed optional action is omitted while generation continues with later actions. The fixed nine-row atlas layout does not change: unavailable optional rows remain fully transparent and are never filled with copied `idle` art.
+
+`running-right` and `running-left` form one optional atomic pair. The pair is available only when `running-right` passes generation and QA and its framewise mirrored `running-left` derivative also passes. If either half fails, both directions are omitted.
+
+The generated manifest records the production action set explicitly:
+
+- `requiredActionIds`: currently `['idle']`;
+- `availableActionIds`: only actions whose rows passed the applicable gates;
+- `omittedActionIds`: official actions excluded from the package;
+- `actionAvailability`: bounded quality or omission evidence for review.
+
+Legacy complete Codex Pet manifests without availability metadata continue to expose all nine rows. New partial manifests must include `idle` in `availableActionIds`.
 
 Official real coverage consists only of:
 
@@ -204,6 +217,8 @@ Send the composite board as the only image attachment and request a complete act
 
 Independent per-frame Provider generation is not the preferred production method. Existing evidence showed large whole-character redraw and stable face/body-core drift between frames even when each request succeeded. A complete keyframe-conditioned sheet gives the Provider shared visual context for the sequence.
 
+When one Provider response contains multiple keyframe candidates, OpenPet evaluates every materialized candidate from that response. It selects the highest-scoring candidate that passes all unchanged composition and identity gates. This does not make another Provider request. If none pass, the action is rejected and every candidate's bounded QA record remains available for diagnosis.
+
 ### Stage 6: extraction and stabilization
 
 After a sheet is generated:
@@ -225,6 +240,8 @@ Run deterministic QA, produce contact sheets and animated previews, and require 
 ### Stage 8: atlas composition and import
 
 Compose only approved `row-real` and `approved-mirror` rows into the official atlas. Validate the final atlas, bind QA evidence to its hash, create the manifest/package, then import and activate through the host-owned bridge.
+
+The pipeline writes a durable checkpoint after each bounded action attempt. A retry reuses a successful row only when all checkpointed frame paths remain inside the run data directory and their SHA-256 hashes still match. Failed quality output is preserved as evidence but is never reused as an approved row.
 
 ## 7. Directional Pair Optimization
 
@@ -331,7 +348,7 @@ The reviewer may approve, reject, or request a scoped repair. A Provider HTTP su
 | Artifact hash mismatch | Approval/import | Invalidate approval and rerun QA on current files |
 | Human visual rejection | Selected identity/action scope | Keep unapproved and repair the smallest rejected scope |
 
-Failures must remain explicit. The pipeline must not silently downgrade an official-quality request to preview fallback art.
+Failures must remain explicit. The pipeline must not silently downgrade an official-quality request to preview fallback art. Failure of required `idle` blocks packaging; failure of an optional action records its bounded reason, omits that action, and continues. Runtime requests for an omitted action fall back to the approved `idle` action and report the originally requested action ID.
 
 ## 11. Artifacts And Provenance
 
@@ -347,6 +364,7 @@ A run should preserve inspectable, data-relative artifacts for:
 - frame hashes and QA JSON;
 - contact sheets and animated previews;
 - row-source classifications;
+- per-action checkpoint hashes and action-availability metadata;
 - source-image, row, and final-atlas validation;
 - import and activation result.
 
@@ -423,8 +441,6 @@ Never put raw secrets or local paths into committed smoke evidence.
 
 ## 14. Known Limitations And Next Engineering Work
 
-- Change full-pet orchestration to remove `running-left` from Provider-generated action IDs and use the existing mirror helper after `running-right` approval.
-- Add an orchestration regression proving that a normal full-pet run makes no separate `running-left` Provider request.
 - Add explicit single-attachment assertions at every host image-generation bridge boundary.
 - Improve action-specific Provider prompts and reference boards using real rejected/approved examples.
 - Keep identity and motion thresholds calibrated against human-reviewed fixtures rather than a single sample.

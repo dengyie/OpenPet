@@ -894,7 +894,6 @@
         const actionAvailability = basicActions.actionAvailability && typeof basicActions.actionAvailability === 'object'
           ? basicActions.actionAvailability
           : {}
-        const artReadiness = review?.artReadiness || {}
         const reviewGate = review?.reviewGate || {}
         const visualReview = review?.visualReview || null
         const visualPreviews = Array.isArray(visualReview?.previews) ? visualReview.previews : []
@@ -938,19 +937,9 @@
                 `<span>Available actions: ${escapeHtml(availableActionIds.join(', ') || 'none')}</span>`,
                 `<span>Omitted actions: ${escapeHtml(omittedActionIds.join(', ') || 'none')}</span>`,
                 ...omittedActionIds.map((actionId) => (
-                  [
-                    '<span>',
-                    `${escapeHtml(actionId)}: ${escapeHtml(safeFailureCondition(actionAvailability[actionId]?.reason))}`,
-                    canRepair && actionId !== 'running-left'
-                      ? ` <button data-retry-pet-action="${escapeHtml(actionId)}">Retry action</button>`
-                      : ' (derived from running-right)',
-                    '</span>'
-                  ].join('')
+                  `<span>${escapeHtml(actionId)}: ${escapeHtml(safeFailureCondition(actionAvailability[actionId]?.reason))}</span>`
                 )),
                 '<span>Automated QA is technical evidence; human visual approval is still required.</span>',
-                canRepair
-                  ? '<span><button data-retry-pet-identity="true">Regenerate canonical identity</button></span>'
-                  : '',
                 '</div>'
               ].join('')
             : '',

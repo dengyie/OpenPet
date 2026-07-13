@@ -308,6 +308,18 @@ test('canonical pet generation docs enforce one reference image and mirrored dir
   assert.match(canonical, /human[\s\S]*visual[\s\S]*review/i)
 })
 
+test('canonical pet generation docs define the quality-first partial action contract', () => {
+  const canonical = readText('docs/pet-character-generation.md')
+  assert.match(canonical, /`idle` is the only required action/i)
+  assert.match(canonical, /optional action[\s\S]*omitted/i)
+  assert.match(canonical, /running-right[\s\S]*running-left[\s\S]*atomic pair/i)
+  assert.match(canonical, /missing optional action[\s\S]*acceptable[\s\S]*low-quality action[\s\S]*(?:must not|never)/i)
+  assert.match(canonical, /availableActionIds/i)
+  assert.match(canonical, /omittedActionIds/i)
+  assert.match(canonical, /durable[\s\S]*checkpoint/i)
+  assert.doesNotMatch(canonical, /current implementation still has one important divergence/i)
+})
+
 test('current live docs link to the canonical pet generation authority', () => {
   const linkedDocs = [
     'docs/README.md',
