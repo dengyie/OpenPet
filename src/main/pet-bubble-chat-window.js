@@ -294,6 +294,7 @@ const getCurrentDialogueItems = (items = []) => (
 )
 
 const createPendingUserItemId = () => `pending-user:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
+const MAX_STREAM_PREVIEW_CHARS = 600
 
 const normalizePendingUserMessage = (payload = {}) => {
   const text = String(payload.text || '').trim().replace(/\s+/g, ' ')
@@ -311,7 +312,8 @@ const normalizeStreamState = (payload = {}) => {
   const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(payload.status)
     ? payload.status
     : 'streaming'
-  const partialReply = String(payload.partialReply || '').slice(0, 12000)
+  const fullPartialReply = String(payload.partialReply || '')
+  const partialReply = fullPartialReply.slice(-MAX_STREAM_PREVIEW_CHARS)
   return {
     requestId: typeof payload.requestId === 'string' ? payload.requestId.slice(0, 120) : '',
     conversationId: typeof payload.conversationId === 'string' ? payload.conversationId.slice(0, 240) : '',
@@ -319,7 +321,7 @@ const normalizeStreamState = (payload = {}) => {
     entrypoint: typeof payload.entrypoint === 'string' ? payload.entrypoint.slice(0, 80) : '',
     status,
     partialReply,
-    partialReplyChars: Number.isFinite(Number(payload.partialReplyChars)) ? Number(payload.partialReplyChars) : partialReply.length,
+    partialReplyChars: Number.isFinite(Number(payload.partialReplyChars)) ? Number(payload.partialReplyChars) : fullPartialReply.length,
     chunkCount: Number.isFinite(Number(payload.chunkCount)) ? Number(payload.chunkCount) : 0,
     canCancel: payload.canCancel === true && (status === 'started' || status === 'streaming'),
     errorMessage: typeof payload.errorMessage === 'string' ? payload.errorMessage.slice(0, 240) : ''

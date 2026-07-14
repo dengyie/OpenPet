@@ -279,6 +279,19 @@ test('pet chat window manager tracks transient streaming state and broadcasts it
   assert.equal(chatWindow.webContents.sent.at(-1).channel, 'pet-chat:state-changed')
   assert.equal(chatWindow.webContents.sent.at(-1).payload.streaming.requestId, 'chat-stream-1')
 
+  const fullPartialReply = 'x'.repeat(900)
+  const longStreaming = manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    status: 'streaming',
+    partialReply: fullPartialReply,
+    partialReplyChars: fullPartialReply.length,
+    chunkCount: 2,
+    canCancel: true
+  })
+
+  assert.equal(longStreaming.streaming.partialReply, fullPartialReply)
+  assert.equal(longStreaming.streaming.partialReplyChars, 900)
+
   const completed = manager.applyStreamState({
     requestId: 'chat-stream-1',
     status: 'completed',

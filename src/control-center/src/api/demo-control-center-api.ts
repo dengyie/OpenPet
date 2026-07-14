@@ -483,7 +483,8 @@ const createDemoPetChatState = (): PetChatStateViewState => {
       placement: typeof demoState.petBubbleChatState?.placement === 'string' ? demoState.petBubbleChatState.placement : ''
     },
     bubble: getDemoConversationBubble(conversationId),
-    messages: getDemoConversationMessages(conversationId)
+    messages: getDemoConversationMessages(conversationId),
+    streaming: null
   })
 }
 

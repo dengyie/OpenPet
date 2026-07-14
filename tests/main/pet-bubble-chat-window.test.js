@@ -298,6 +298,19 @@ test('pet bubble chat manager tracks transient streaming state without persistin
   assert.equal(streaming.items.some((item) => item.text === 'Hel'), false)
   assert.equal(instances[0].sent.at(-1).channel, IPC.PET_BUBBLE_CHAT_STATE_CHANGED)
 
+  const fullPartialReply = Array.from({ length: 900 }, (_, index) => String(index % 10)).join('')
+  const longStreaming = manager.applyStreamState({
+    requestId: 'chat-stream-1',
+    status: 'streaming',
+    partialReply: fullPartialReply,
+    partialReplyChars: fullPartialReply.length,
+    chunkCount: 2,
+    canCancel: true
+  })
+
+  assert.equal(longStreaming.streaming.partialReply, fullPartialReply.slice(-600))
+  assert.equal(longStreaming.streaming.partialReplyChars, 900)
+
   const completed = manager.applyStreamState({
     requestId: 'chat-stream-1',
     status: 'completed',

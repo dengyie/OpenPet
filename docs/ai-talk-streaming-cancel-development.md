@@ -1,9 +1,9 @@
 # AI Talk Streaming + Cancel 开发文档
 
-> Date: 2026-07-09
+> Date: 2026-07-15
 > Scope: AI Talk 流式回复、取消生成、桌面聊天状态同步
-> Baseline: `dev6` branch, based on local `main@b557fd4f`
-> Status: Phase 1 core, Phase 2 IPC/window/renderer wiring, Phase 4 smoke/runbook closeout, and post-review streaming hardening are implemented on `dev6`; real-provider desktop feel remains Manual-required.
+> Baseline: current branch-neutral runtime architecture
+> Status: streaming/cancel and production hardening are implemented; post-hardening real-provider desktop validation remains Manual-required.
 
 ## 1. 文档定位
 
@@ -31,7 +31,7 @@ OpenPet 的 AI Talk 已经有一条主进程托管的聊天脑：`AiTalkService`
 - 用户可以从 Bubble Chat 或 PetChatWindow 取消当前生成。
 - 取消或失败不会写入 assistant final transcript，不会触发 memory extraction，不会触发 behavior decision。
 - Provider、AI Talk、IPC、窗口、renderer、smoke 都能通过同一个 `requestId` 串联诊断。
-- Secret、完整 prompt、raw provider chunk、raw memory、完整用户输入不进入 renderer、普通插件或默认日志。
+- Secret、hidden prompt context、raw provider chunk、raw injected memory、完整用户输入不进入普通桌面聊天 renderer、普通插件或默认日志。可信 Control Center 可以按产品需要显示编译后 persona prompt 和已保存 memory text。
 
 ## 3. Milestone Contract
 
@@ -59,7 +59,7 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 | Phase 3 | Cancel/failure recovery hardening | Covered by service/window/smoke tests | Needs real-provider manual confirmation |
 | Phase 4 | Smoke/runbook/evidence closeout | Implemented | Current phase |
 
-### Landed Or Implemented On `dev6`
+### Current Implemented Runtime
 
 - `AiService.streamComplete()` exists in `src/main/services/ai-service.js`.
 - OpenAI-compatible SSE streaming deltas are parsed into normalized text deltas.
@@ -84,7 +84,7 @@ Manual-required：真实 provider streaming 差异；长回复阅读体感；断
 - Bubble Chat renderer rerenders partial updates for the same request/status by including chunk/partial counters in the transient item identity.
 - PetChat renderer displays one transient assistant message with `data-request-id` and `data-status`.
 
-### Post-review Hardening On `dev6`
+### Streaming And Production Hardening
 
 Commit `00ea5bf9 fix(ai-talk): harden streaming cancel semantics` closes the production review findings from the first streaming implementation pass:
 
@@ -93,6 +93,15 @@ Commit `00ea5bf9 fix(ai-talk): harden streaming cancel semantics` closes the pro
 - Bubble Chat partial text updates refresh even when `requestId` and status stay unchanged.
 - Streaming delta accumulation preserves provider whitespace instead of trimming every chunk.
 - Regression coverage was added for all four cases.
+
+Current production hardening additionally provides:
+
+- Application shutdown immediately disposes AI Talk streams, waits within the shared runtime deadline for background memory jobs, and persists remaining jobs as `interrupted` on timeout or restart.
+- Durable retention limits: 400 messages per conversation, 200 memory jobs, 200 active memories, and 400 inactive memories.
+- Active-memory lookup uses rebuilt in-memory indexes instead of scanning inactive history.
+- Complete and streaming turns share input/context preparation and successful-turn finalization; batched trace `messageChars` uses the joined batch.
+- Bubble Chat receives only the latest 600 characters of streaming preview while PetChatWindow retains its 12,000-character view cap and durable transcript keeps the full reply.
+- `PetChatStateViewState` now includes the shared nullable streaming contract used by runtime and Control Center fixtures.
 
 ### Remaining Manual-required
 
@@ -115,6 +124,7 @@ Commit `00ea5bf9 fix(ai-talk): harden streaming cancel semantics` closes the pro
   - `behaviorDecisionScheduled = false`
   - final bubble dispatch is intentionally skipped with `bubbleDispatch.reason = stream-canceled`
 - Both archived reports passed redaction checks for API keys, Authorization/Bearer headers, raw smoke prompts, and local user-data paths in the persisted report.
+- These July 9 archives validate the provider path at that historical implementation point. They predate the current turn-orchestration consolidation and Bubble Chat preview cap, so they are not claimed as post-hardening desktop evidence.
 - Follow-up provider smoke after the harness fix reports `connectionTest.ok = true`, `chat.ok = true`, and Bubble Chat dispatch success against the saved local provider configuration; the prior `network_error` was traced to the smoke file-backed SettingsService missing the production `update()` interface while model catalog persistence ran after a successful `/models` probe.
 - Human desktop acceptance remains pending for visibility duration, hit target comfort, reading experience, and failure/cancel copy.
 
@@ -406,7 +416,7 @@ git worktree list
 
 Rules:
 
-- Work on `dev6` or another feature worktree, not the protected primary `main` worktree.
+- Work on an isolated feature worktree, not the protected primary `main` worktree.
 - Rebase feature branch onto latest `main` before merging.
 - Stage only files that belong to the current phase.
 - Keep `tmp/`, `node_modules/`, `dist/`, release artifacts, and generated local smoke output out of commits unless the phase explicitly archives evidence.
@@ -486,7 +496,7 @@ Review report must include:
 
 Blockers that must be fixed before merge:
 
-- Any API key, Authorization header, raw prompt, raw memory, raw chunk, or full user text in renderer/log/export.
+- Any API key, Authorization header, hidden prompt context, raw injected memory, raw chunk, or full user text in ordinary chat renderer/plugin/default log/export. Trusted Control Center display of compiled persona and saved memory text is allowed.
 - Assistant partial text persisted as a final transcript message.
 - Cancel still triggering memory extraction or behavior decision.
 - Duplicate IPC handler registration.
@@ -507,7 +517,7 @@ After the Phase 2 renderer/window commit lands:
 7. Confirm UI enters canceled state and the next message can be sent.
 8. Open PetChatWindow and repeat the same flow.
 9. Inspect `~/Library/Application Support/ibot/logs/openpet-app.jsonl`.
-10. Confirm logs have `ai-talk.stream.started`, `ai-talk.stream.delta`, and terminal `completed` or `canceled` events.
+10. Confirm logs have `ai-talk.stream.started`, bounded/coalesced `ai-talk.stream.progress`, and terminal `completed` or `canceled` events.
 11. Confirm logs do not contain API key, raw prompt, or raw provider chunks.
 12. Repeat once with the PetChatWindow open and once with only Bubble Chat open.
 13. If cancel appears to do nothing, capture the `requestId` shown in renderer state/logs and search `openpet-app.jsonl` for that id.

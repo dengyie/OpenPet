@@ -195,10 +195,15 @@ Current state:
 - Chat surface convergence is implemented around one lightweight visible Bubble Chat surface, one extended desktop chat panel, one shared `AiTalkService` brain, and `PetService.say()` as the speech ingress.
 - Streaming replies and cancel generation are implemented on the shared AI Talk brain: `AiService.streamComplete()` handles OpenAI-compatible SSE, timeout/cancel separation, abortable fallback, and sanitized diagnostics; `AiTalkService.streamChat()` owns transient partial state, cancel side-effect isolation, final-only assistant persistence, and redacted trace summaries; Bubble Chat and PetChatWindow render the same `requestId` lifecycle with cancel controls.
 - Streaming hardening now covers the previously risky edge cases: provider timeout is reported as failed instead of user-canceled, tools/unsupported-stream fallback receives the same abort signal, Bubble Chat rerenders partial updates for the same request/status, and streamed deltas preserve provider whitespace.
+- AI Talk now participates in runtime shutdown: active streams are disposed immediately, background memory jobs share the bounded shutdown wait, timeout/restart leftovers become persisted `interrupted` jobs, and terminal jobs cannot be overwritten by late completions.
+- AI Talk persistence is bounded to 400 messages per conversation, 200 memory jobs, 200 active memories, and 400 inactive memories. Active-memory exact matching and listing use derived indexes rebuilt from `AiTalkStore` state rather than scanning inactive history.
+- Complete and streaming requests now share turn preparation and successful-turn finalization while keeping provider invocation and streaming cancellation separate; batched request traces record the joined batch character count.
+- Bubble Chat keeps only a 600-character streaming preview, PetChatWindow keeps its 12,000-character view cap, durable transcript keeps the full final reply, and `PetChatStateViewState` exposes the shared nullable streaming state used by runtime and Control Center defaults.
 - Packaged runtime smoke evidence now aligns with the real lightweight chat surface: it records Bubble Chat visibility/item evidence, can capture a dedicated Bubble Chat screenshot, and treats the old renderer `#bubble` as a hidden compatibility node rather than the primary speech surface.
 - The AI Talk smoke and Bubble Chat acceptance path proves request correlation and popup dispatch, but it does not by itself prove that placement, dwell time, and transparent hit-testing have passed a fresh human desktop feel review.
 - The same smoke entrypoint now supports `--stream` and `--cancel-after-ms` for sanitized streaming/cancel acceptance fields without storing raw prompt, provider chunk, memory text, API keys, or local private paths.
 - Real-provider streaming/cancel smoke evidence is archived under `docs/release-evidence/ai-talk-local-smoke/2026-07-09T00-03-49-088Z-streaming/` and `docs/release-evidence/ai-talk-local-smoke/2026-07-09T00-04-20-568Z-streaming-cancel/`. The completed run recorded `chunkCount = 34`, `firstDeltaLatencyMs = 1877`, `providerLatencyMs = 2259`, and visible Bubble Chat dispatch. The canceled run recorded `canceled = true`, `completed = false`, no memory extraction, no behavior decision, and intentionally skipped final bubble dispatch.
+- The July 9 archives are historical provider-path evidence from before the current turn-orchestration consolidation and Bubble Chat preview cap. Fresh real-provider desktop evidence after this hardening remains Manual-required.
 - AI Talk provider smoke connection testing now uses a file-backed SettingsService stub with the same `update()` interface expected by `AiService`; follow-up local smoke reports `connectionTest.ok = true`, `chat.ok = true`, and Bubble Chat dispatch success instead of the previous post-completion `network_error`.
 - AI Talk Trace summary now exposes streaming/cancel-aware fields through the shared renderer contract and Control Center summary UI, including mode, status, chunk count, partial reply char count, latency, finish/cancel reason, and background memory/behavior scheduling flags.
 
@@ -217,6 +222,7 @@ P2/P3:
 Manual-required:
 
 - Human review of the archived real-provider streaming/cancel behavior in the desktop app, including visible reading time, cancel hit target, and recovery copy.
+- Fresh real-provider desktop validation after shutdown, retention, orchestration, and Bubble Chat preview hardening.
 - Real desktop-product validation for bubble placement, transparent hit-testing, reading time, and whether the desktop chat can safely be demoted to an extended panel without harming power-user workflows.
 
 ### 2A. Chat Surface Convergence Direction
@@ -246,7 +252,7 @@ Convergence rules:
 
 Out of scope for this convergence pass:
 
-- Streaming UI.
+- Richer streaming UI beyond the implemented partial-reply and cancel controls.
 - Multiple conversations per pet-pack.
 - Plugin-authored dialogue writes into the main transcript by default.
 - Theme/custom-position product customization.

@@ -53,6 +53,12 @@ test.before(async () => {
   ;({ demoControlCenterAPI } = await import('../../src/control-center/src/api/demo-control-center-api.ts'))
 })
 
+test('demo pet chat state initializes shared streaming state to null', async () => {
+  const state = await demoControlCenterAPI.getPetChatState()
+
+  assert.equal(state.streaming, null)
+})
+
 const ensureDemoFixturePluginInstalled = async () => {
   const existing = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === 'openpet.demo.manual-review')
   if (existing) return existing

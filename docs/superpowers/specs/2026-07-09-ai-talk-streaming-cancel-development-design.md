@@ -2,8 +2,8 @@
 
 日期：2026-07-09
 适用范围：AI Talk 下一阶段开发入口
-当前基线：`dev6` / local `main@b557fd4f`
-状态：设计与实施计划完成，等待 milestone 执行
+当前基线：历史设计文档，描述 2026-07-09 streaming/cancel milestone
+状态：已实现；当前生产架构与加固边界以 `docs/ai-talk-streaming-cancel-development.md` 和 `docs/superpowers/specs/2026-07-15-ai-talk-production-hardening-design.md` 为准
 
 ## 背景
 
@@ -34,7 +34,7 @@ OpenPet 的 AI Talk 核心已经完成第一阶段产品闭环：
 1. 用户发送消息后，Bubble Chat 和 PetChatWindow 能尽快显示 streaming token / partial text。
 2. 用户可以取消当前生成；取消后不会污染最终 transcript、memory extraction 或行为决策。
 3. AI Talk trace 能记录 streaming lifecycle，便于排查慢 provider、断流、取消和失败。
-4. 仍然保持 API key、完整 prompt、raw provider chunk、raw memory 不进入 renderer 或默认日志。
+4. 仍然保持 API key、hidden prompt context、raw provider chunk、raw injected memory 不进入普通桌面聊天 renderer、普通插件或默认日志；可信 Control Center 可显示编译后 persona prompt 和已保存 memory text。
 5. 现有非 streaming provider 路径继续可用，作为 fallback。
 
 ## Milestone 执行契约
@@ -56,7 +56,7 @@ Manual-required：真实 provider streaming 行为差异；真实桌面长回复
 ### P0
 
 - 不破坏 `npm start`、Control Center AI 页、Bubble Chat、PetChatWindow 和现有一次性 chat。
-- API key、完整 prompt、raw provider chunks、完整用户输入、完整 memory 不得进入 renderer、普通插件或默认日志。
+- API key、hidden prompt context、raw provider chunks、完整用户输入、raw injected memory 不得进入普通桌面聊天 renderer、普通插件或默认日志。
 - Cancel 必须是幂等的；重复 cancel 或 late chunk 不得导致崩溃、重复写入 transcript 或重复触发 `PetService.say()`。
 - Streaming 失败不能丢失用户消息；必须能显示错误并允许下一次输入继续。
 
@@ -409,7 +409,7 @@ Scope：`ai-talk`
 新增事件：
 
 - `ai-talk.stream.started`
-- `ai-talk.stream.delta`
+- `ai-talk.stream.progress`，按 30-60ms 窗口合并高频 delta
 - `ai-talk.stream.completed`
 - `ai-talk.stream.canceled`
 - `ai-talk.stream.failed`

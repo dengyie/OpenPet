@@ -261,7 +261,8 @@ export const defaultPetChatState = {
     pinned: false,
     placement: ''
   },
-  messages: []
+  messages: [],
+  streaming: null
 } satisfies PetChatStateViewState
 
 export const defaultServiceStatus = {
@@ -728,7 +729,8 @@ export const clonePetChatState = (
     ...defaultPetChatState.bubbleChat,
     ...(state?.bubbleChat || {})
   },
-  messages: cloneChatMessages(state?.messages)
+  messages: cloneChatMessages(state?.messages),
+  streaming: state?.streaming ? { ...state.streaming } : null
 })
 
 export const cloneAboutInfo = (info: Partial<AboutInfoViewState> | null | undefined): AboutInfoViewState => ({

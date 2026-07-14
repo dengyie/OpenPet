@@ -2682,6 +2682,21 @@ export interface PetBubbleChatWindowStateViewState {
   placement: string
 }
 
+export type AiTalkStreamingStatus = 'started' | 'streaming' | 'completed' | 'canceled' | 'failed'
+
+export interface AiTalkStreamingViewState {
+  requestId: string
+  conversationId: string
+  petPackId: string
+  entrypoint: string
+  status: AiTalkStreamingStatus
+  partialReply: string
+  partialReplyChars: number
+  chunkCount: number
+  canCancel: boolean
+  errorMessage: string
+}
+
 export interface PetChatStateViewState {
   available: boolean
   visible: boolean
@@ -2711,6 +2726,7 @@ export interface PetChatStateViewState {
   bubble: PetChatBubbleViewState
   bubbleChat: PetBubbleChatWindowStateViewState
   messages: ChatMessage[]
+  streaming: AiTalkStreamingViewState | null
 }
 
 export interface AiSaveApiKeyResult {
