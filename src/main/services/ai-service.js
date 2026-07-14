@@ -1714,6 +1714,127 @@ const createAiService = ({
     }
   }
 
+  const completeStructuredTool = async ({
+    messages,
+    tool,
+    configOverride = null,
+    timeoutMs = requestTimeoutMs
+  } = {}) => {
+    const normalizedMessages = Array.isArray(messages) ? messages : []
+    if (!isPlainObject(tool) || tool.type !== 'function' || !isPlainObject(tool.function)) {
+      throw new Error('Structured AI completion requires one function tool')
+    }
+    const toolName = typeof tool.function.name === 'string' ? tool.function.name.trim() : ''
+    if (!toolName || !/^[a-zA-Z0-9_-]{1,80}$/.test(toolName)) {
+      throw new Error('Structured AI completion tool name is invalid')
+    }
+    const config = normalizeCompletionConfig(configOverride || getRawConfig())
+    const apiKey = secretService.getSecretValue(config.apiKeyRef)
+    const effectiveTimeoutMs = Math.min(120000, Math.max(1000, Number(timeoutMs) || requestTimeoutMs))
+    const startedAt = Date.now()
+    const configSource = typeof configOverride?.source === 'string' && configOverride.source.trim()
+      ? configOverride.source.trim().slice(0, 80)
+      : (configOverride ? 'override' : 'chat')
+    const baseDetails = {
+      configSource,
+      provider: config.provider,
+      model: config.model,
+      endpoint: normalizeEndpointForLog(config.baseUrl),
+      messagesCount: normalizedMessages.length,
+      toolName,
+      timeoutMs: effectiveTimeoutMs,
+      hasApiKey: Boolean(apiKey)
+    }
+    recordLog({
+      level: 'info',
+      event: 'ai.structured.request.started',
+      message: 'Structured AI provider request started',
+      details: baseDetails
+    })
+    let response
+    try {
+      if (!apiKey) throw new Error('AI API key is not configured')
+      if (config.provider !== 'openai-compatible') {
+        throw new Error(`Unsupported AI provider: ${config.provider}`)
+      }
+      if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
+
+      const timeout = createTimeoutController(effectiveTimeoutMs)
+      try {
+        response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          signal: timeout.signal,
+          body: JSON.stringify({
+            model: config.model,
+            messages: normalizedMessages,
+            tools: [tool],
+            tool_choice: {
+              type: 'function',
+              function: { name: toolName }
+            }
+          })
+        })
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          const timeoutError = new Error('AI provider request timed out')
+          timeoutError.name = 'AbortError'
+          throw timeoutError
+        }
+        throw error
+      } finally {
+        timeout.clear()
+      }
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw createProviderError({
+          message: data?.error?.message || `AI provider request failed with status ${response.status}`,
+          status: response.status,
+          code: data?.error?.code
+        })
+      }
+      const argumentsValue = parseNamedToolCall(data, toolName)
+      const elapsedMs = Date.now() - startedAt
+      recordLog({
+        level: 'info',
+        event: 'ai.structured.request.completed',
+        message: 'Structured AI provider request completed',
+        details: {
+          ...baseDetails,
+          status: response.status,
+          elapsedMs
+        }
+      })
+      return {
+        arguments: argumentsValue,
+        model: config.model,
+        provider: config.provider,
+        elapsedMs
+      }
+    } catch (error) {
+      recordLog({
+        level: 'error',
+        event: 'ai.structured.request.failed',
+        message: 'Structured AI provider request failed',
+        details: {
+          ...baseDetails,
+          status: error?.providerStatus || response?.status || 0,
+          providerCode: error?.providerCode || '',
+          elapsedMs: Date.now() - startedAt,
+          errorName: sanitizeDiagnosticText(error?.name || 'Error'),
+          errorMessage: error?.providerStatus
+            ? 'AI provider returned an error response'
+            : sanitizeDiagnosticText(error?.message)
+        }
+      })
+      throw error
+    }
+  }
+
   const chat = async ({ message, conversationId }) => {
     const normalizedConversationId = assertValidConversationId(normalizeConversationId(conversationId))
     return enqueueConversation(normalizedConversationId, async () => {
@@ -2144,8 +2265,6 @@ const createAiService = ({
     clearConversation,
     chat,
     complete,
-    completeVision,
-    streamComplete,
     completeStructuredTool,
     testConnection,
     discoverModels,
