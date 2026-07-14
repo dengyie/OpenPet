@@ -114,6 +114,18 @@ user request
 
 `HatchPetAgentService` does not replace Creator Studio. It chooses among Creator Studio's bounded operations.
 
+### Reliability prerequisite before bounded execution
+
+Independent Provider reliability report commit `4ac47213` proved the current inner full-pet workflow can legitimately run longer than the plugin manifest's former 15-minute outer timeout. Before Phase 2 enables any bounded Agent execution:
+
+- keep `FULL_PET_WORKFLOW_MAX_DURATION_MS` at 90 minutes;
+- set `run-step`, `retry-action`, and `retry-identity` outer command timeouts to 5700000 ms (95 minutes), preserving a non-zero watchdog and five minutes of bounded shutdown/evidence grace;
+- add a Creator Studio-owned generation lease with a 30-second heartbeat;
+- recover a `generating` run whose lease is missing or older than 120 seconds to `failed` with reason code `generation-command-terminated`;
+- preserve completed action checkpoints, QA evidence, repair archives, and model provenance during recovery.
+
+The generic plugin runner must not learn Creator Studio run-file internals. Lease creation, heartbeat, cleanup, and stale recovery belong to Creator Studio's run store/backend boundary.
+
 ## 5. Model Configuration
 
 ### Dedicated hatch-pet model
