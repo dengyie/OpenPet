@@ -36,6 +36,10 @@ The branch already contains:
 - quality-first partial packaging with stable transparent atlas slots;
 - durable per-action checkpoints and scoped retry;
 - fail-closed single-reference enforcement at plugin and host image-generation boundaries;
+- explicit single-output Provider requests with fail-closed deliverable output-count enforcement;
+- bounded same-model retry for transient Provider transport failures;
+- canonical full-pet action identity boards with separate canonical QA references;
+- idle-specific minimal-motion semantics and prompt schema v4;
 - versioned human-example registries and immutable quality profiles;
 - profile-bound prompts, reference-board metadata, keyframe QA, row QA, and atlas QA;
 - action-scoped and identity-scoped repair with archived prior evidence;
@@ -45,7 +49,7 @@ The landed deterministic official row package can compose and validate complete 
 
 Real-provider smoke success proves that the host bridge and provider path can complete. It does not prove production art quality. Production approval still requires human visual review.
 
-The quality-governance implementation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance; those checks belong to the isolated testing task described in `docs/superpowers/plans/2026-07-14-pet-generation-quality-governance-test-handoff.md`.
+The current generation implementation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance. The latest reliability follow-up must be verified through the isolated testing task described in `docs/superpowers/plans/2026-07-14-provider-generation-reliability-test-handoff.md`.
 
 ## 2. User Experience
 
@@ -162,6 +166,8 @@ The plugin bridge rejects more than one reference before resolving paths. The pu
 Image generation accepts at most one reference image; compose multiple sources into one local reference board
 ```
 
+Every JSON generation request and multipart edit request explicitly asks the Provider for one output with `n=1`. The host still materializes all outputs actually returned so downstream delivery gates can validate reality rather than silently truncate the response. A deliverable action sheet or final keyframe-conditioned sprite row must contain exactly one complete Provider output; zero or multiple outputs are explicit failures, and OpenPet never selects the first ambiguous deliverable output.
+
 ## 5. Identity Contract
 
 The source image is the highest authority for visible identity. Unless the user explicitly requests a transformation, generation must preserve:
@@ -218,15 +224,19 @@ Build an explicit action plan before generation. The plan identifies:
 
 For example, a wave requires a readable raised-limb peak rather than whole-body jitter. Directional running requires alternating gait. The non-directional `running` row must communicate focused work rather than movement across the screen.
 
+`idle` uses a stricter fixed contract. Its start keyframe matches the canonical pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root. Its motion peak may add only subtle breathing, blink, ear, or tail-tip movement, with no action extreme, large limb change, camera change, body-root movement, or character redesign. The final frame settles back to the canonical start pose for a quiet loop.
+
 ### Stage 4: one composite action reference
 
-Compose a bounded action reference board locally. The board may show the approved identity anchor and locally arranged action cues, but it remains one image file. It is not itself a deliverable sprite sheet.
+Compose a bounded action reference board locally. For full-pet action generation, the board uses the canonical generated identity as its primary panel and the original user source as secondary visible-detail evidence. The canonical panel controls pose, framing, scale, and cross-row continuity; the original source remains authoritative for visible identity details. The board remains one image file and is not itself a deliverable sprite sheet.
 
-The board should prioritize identity over decorative guidance. Labels, borders, or layout elements must not leak into the generated output.
+The Provider receives that one board as its only reference attachment. Keyframe identity QA separately compares candidates against the canonical generated identity rather than against the composite board or a dynamic raw source pose. The board should prioritize identity over decorative guidance. Labels, borders, or layout elements must not leak into the generated output.
 
 ### Stage 5: Provider action-sheet generation
 
 Send the composite board as the only image attachment and request a complete action-specific sheet or row. The Provider must author the actual pose changes. OpenPet may specify layout, key poses, transparency, scale, and continuity, but it must not later fabricate missing semantics from the base pose.
+
+Transient transport failures such as `fetch failed`, connection reset, a closed socket, or a bounded timeout/connectivity code receive at most one same-model retry inside the existing two-attempt and total-time budgets. The retry does not change the selected model, quality thresholds, output-count contract, or request evidence. An exhausted retry remains an explicit failure with sanitized transport evidence.
 
 Independent per-frame Provider generation is not the preferred production method. Existing evidence showed large whole-character redraw and stable face/body-core drift between frames even when each request succeeded. A complete keyframe-conditioned sheet gives the Provider shared visual context for the sequence.
 
@@ -374,7 +384,8 @@ Supported rejection reasons are `identity-drift`, `semantic-mismatch`, `static-m
 | Failure | Owner | Recovery |
 | --- | --- | --- |
 | Invalid or collage source | Source validation | Ask for one clean reference image |
-| Provider timeout or gateway error | Host Provider bridge | Preserve sanitized stage evidence and retry the same bounded stage |
+| Transient Provider transport or bounded gateway error | Host Provider bridge | Preserve sanitized stage evidence and retry the same model once within the existing attempt and deadline budgets |
+| Provider returns zero or multiple deliverable outputs | Host Provider bridge | Reject explicitly; never select the first ambiguous action sheet or final sprite row |
 | Canonical identity drift | Identity anchor | Rebuild the composite board or regenerate the canonical character |
 | One action loses identity | Action generation | Regenerate that action using the approved identity reference |
 | Wrong action semantics | Prompt/action plan | Strengthen key-pose guidance and regenerate the row |
@@ -492,7 +503,8 @@ Never put raw secrets or local paths into committed smoke evidence.
 
 - The development branch contains no fabricated human-review examples and no Provider production-art approvals. Both registries intentionally remain empty.
 - No non-default profile is endorsed. Calibration must be derived from real approved/rejected examples and reviewed evidence on the isolated testing branch.
-- The new contracts are implemented but have not been exercised on this branch. Automated suites, real Provider smoke, repair exercises, and human visual acceptance remain assigned to the independent testing task.
+- Explicit `n=1`, fail-closed deliverable output counts, bounded transient retry, canonical action identity boards, canonical keyframe QA references, idle minimal-motion semantics, and prompt schema v4 are implemented but have not been exercised on this branch.
+- Automated suites, real action and full-pet Provider smoke, successful full-pet generation, repair exercises, human labels, profile calibration, visual acceptance, and Provider approval remain assigned to `docs/superpowers/plans/2026-07-14-provider-generation-reliability-test-handoff.md`.
 - A Provider or model change invalidates the corresponding support claim until the exact provider/model/profile/dataset tuple receives new human approval evidence.
 
 ## 15. Evidence And Claim Boundaries
