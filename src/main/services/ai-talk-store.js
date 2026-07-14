@@ -14,12 +14,15 @@ const MEMORY_OPERATIONS = new Set(['create', 'update', 'reinforce', 'ignore'])
 const MEMORY_STATUSES = new Set(['active', 'superseded', 'deleted'])
 const MAX_MEMORY_TEXT_CHARS = 500
 const MAX_MEMORY_TAGS = 12
+const MAX_MESSAGES_PER_CONVERSATION = 400
 // Cap active memories so the store cannot grow without bound. Traces/utterances
 // already have caps; memories did not, which made every persist() write and
 // findActiveMemory() scan linearly slower over time. Pruning keeps the active
-// set to the most important/confident/recent entries; the rest are archived
-// (status moved off 'active') rather than deleted, preserving auditability.
+// set to the most important/confident/recent entries; the rest move into a
+// bounded inactive audit history.
 const MAX_ACTIVE_MEMORIES = 200
+const MAX_INACTIVE_MEMORIES = 400
+const MAX_MEMORY_JOBS = 200
 const MAX_PET_UTTERANCE_TEXT_CHARS = 1000
 const MAX_PET_UTTERANCES_PER_PACK = 100
 const DEFAULT_RECENT_PET_UTTERANCE_LIMIT = 6
@@ -137,7 +140,7 @@ const loadState = ({ storePath, now }) => {
 
 const createSessionId = ({ entrypoint, petPackId }) => `${entrypoint || 'control-center'}:${petPackId || 'legacy-cat'}`
 
-const createMessageId = ({ sessionId, conversationId, index }) => `${sessionId}:${conversationId}:message:${index + 1}`
+const createMessageId = ({ sessionId, conversationId }) => `${sessionId}:${conversationId}:message:${crypto.randomUUID()}`
 
 const hashText = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex')
 
@@ -341,6 +344,37 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
 
   const recoveredMemoryJobCount = recoverOrphanedMemoryJobs()
 
+  const pruneConversationMessages = () => {
+    let removedCount = 0
+    for (const [conversationKey, messages] of Object.entries(state.messages || {})) {
+      const normalized = normalizeMessages(messages)
+      const retained = normalized.slice(-MAX_MESSAGES_PER_CONVERSATION)
+      removedCount += Math.max(0, normalized.length - retained.length)
+      state.messages[conversationKey] = retained
+    }
+    return removedCount
+  }
+
+  const pruneMemoryJobs = () => {
+    const entries = Object.entries(state.memoryJobs || {}).map(([id, job], order) => ({ id, job, order }))
+    if (entries.length <= MAX_MEMORY_JOBS) return 0
+    entries.sort((left, right) => {
+      const leftPending = left.job?.status === 'pending'
+      const rightPending = right.job?.status === 'pending'
+      if (leftPending !== rightPending) return leftPending ? -1 : 1
+      const updatedOrder = String(right.job?.updatedAt || '').localeCompare(String(left.job?.updatedAt || ''))
+      if (updatedOrder !== 0) return updatedOrder
+      const createdOrder = String(right.job?.createdAt || '').localeCompare(String(left.job?.createdAt || ''))
+      if (createdOrder !== 0) return createdOrder
+      return right.order - left.order
+    })
+    state.memoryJobs = Object.fromEntries(entries.slice(0, MAX_MEMORY_JOBS).map(({ id, job }) => [id, job]))
+    return entries.length - MAX_MEMORY_JOBS
+  }
+
+  const prunedMessageCount = pruneConversationMessages()
+  const prunedMemoryJobCount = pruneMemoryJobs()
+
   // Sync-write contract: persist() writes the full state to disk synchronously
   // and returns a deep clone of that persisted state. Many call sites depend on
   // the synchronous return — they mutate state, call persist(), and use the
@@ -353,8 +387,6 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     writeJsonAtomic(storePath, state)
     return clone(state)
   }
-
-  if (recoveredMemoryJobCount > 0) persist()
 
   const getState = () => clone(state)
 
@@ -415,12 +447,12 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     if (!state.conversations[conversationKey]) throw new Error(`AI talk conversation does not exist: ${conversationKey}`)
     const timestamp = now()
     const current = state.messages[conversationKey] || []
-    const normalized = normalizeMessages(messages).map((message, index) => ({
+    const normalized = normalizeMessages(messages).map((message) => ({
       ...message,
-      id: message.id || createMessageId({ sessionId, conversationId, index: current.length + index }),
+      id: message.id || createMessageId({ sessionId, conversationId }),
       createdAt: message.createdAt || timestamp
     }))
-    state.messages[conversationKey] = [...current, ...normalized]
+    state.messages[conversationKey] = [...current, ...normalized].slice(-MAX_MESSAGES_PER_CONVERSATION)
     state.conversations[conversationKey] = {
       ...state.conversations[conversationKey],
       updatedAt: timestamp
@@ -435,13 +467,13 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     const current = state.messages[conversationKey] || []
     if (current.length) return []
     const timestamp = now()
-    const normalized = normalizeMessages(messages).map((message, index) => ({
+    const normalized = normalizeMessages(messages).map((message) => ({
       ...message,
-      id: message.id || createMessageId({ sessionId, conversationId, index }),
+      id: message.id || createMessageId({ sessionId, conversationId }),
       createdAt: message.createdAt || timestamp
     }))
     if (!normalized.length) return []
-    state.messages[conversationKey] = normalized
+    state.messages[conversationKey] = normalized.slice(-MAX_MESSAGES_PER_CONVERSATION)
     state.conversations[conversationKey] = {
       ...state.conversations[conversationKey],
       updatedAt: timestamp
@@ -536,22 +568,68 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     reason: typeof memory?.reason === 'string' ? memory.reason : ''
   })
 
+  let activeMemoryIds = new Set()
+  let activeMemoryKeyIndex = new Map()
+
+  const createActiveMemoryKey = (memory) => [
+    memory.scope,
+    memory.scope === 'petPack' ? memory.petPackId : '',
+    normalizeMemoryTextKey(memory.text)
+  ].join('\u0000')
+
+  const removeMemoryFromActiveIndexes = (memory) => {
+    if (memory?.status !== 'active' || !memory.id) return
+    activeMemoryIds.delete(memory.id)
+    const key = createActiveMemoryKey(memory)
+    if (activeMemoryKeyIndex.get(key) !== memory.id) return
+    activeMemoryKeyIndex.delete(key)
+    for (const candidateId of activeMemoryIds) {
+      const candidate = state.memories[candidateId]
+      if (candidate?.status === 'active' && createActiveMemoryKey(candidate) === key) {
+        activeMemoryKeyIndex.set(key, candidateId)
+        break
+      }
+    }
+  }
+
+  const addMemoryToActiveIndexes = (memory) => {
+    if (memory?.status !== 'active' || !memory.id) return
+    activeMemoryIds.add(memory.id)
+    activeMemoryKeyIndex.set(createActiveMemoryKey(memory), memory.id)
+  }
+
+  const setMemory = (memoryId, memory) => {
+    const id = typeof memoryId === 'string' && memoryId ? memoryId : memory?.id
+    if (!id) return null
+    const current = state.memories[id] ? normalizeExistingMemory(state.memories[id]) : null
+    removeMemoryFromActiveIndexes(current)
+    const normalized = normalizeExistingMemory({ ...memory, id })
+    state.memories[id] = normalized
+    addMemoryToActiveIndexes(normalized)
+    return normalized
+  }
+
+  const rebuildActiveMemoryIndexes = () => {
+    activeMemoryIds = new Set()
+    activeMemoryKeyIndex = new Map()
+    for (const [id, candidate] of Object.entries(state.memories || {})) {
+      const memory = normalizeExistingMemory({ ...candidate, id: candidate?.id || id })
+      state.memories[id] = memory
+      addMemoryToActiveIndexes(memory)
+    }
+  }
+
   const findActiveMemory = (memory) => {
-    const textKey = normalizeMemoryTextKey(memory.text)
-    return Object.values(state.memories).find((candidate) => (
-      candidate?.status === 'active' &&
-      candidate.scope === memory.scope &&
-      (candidate.scope !== 'petPack' || candidate.petPackId === memory.petPackId) &&
-      normalizeMemoryTextKey(candidate.text) === textKey
-    ))
+    const memoryId = activeMemoryKeyIndex.get(createActiveMemoryKey(memory))
+    return memoryId ? state.memories[memoryId] : undefined
   }
 
   // Keep the active memory set bounded. When it exceeds MAX_ACTIVE_MEMORIES,
   // demote the lowest-value entries (importance + confidence, then recency) to
-  // 'superseded' rather than deleting them, so the audit trail is preserved and
-  // findActiveMemory/listMemories stay O(active) instead of O(all-time).
+  // 'superseded' before bounded inactive-history pruning. Active lookup remains
+  // O(active) instead of growing with all-time history.
   const pruneActiveMemories = () => {
-    const activeIds = Object.keys(state.memories).filter((id) => state.memories[id]?.status === 'active')
+    const activeIds = Array.from(activeMemoryIds)
     if (activeIds.length <= MAX_ACTIVE_MEMORIES) return 0
     const ranked = activeIds
       .map((id) => {
@@ -566,10 +644,35 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     const timestamp = now()
     for (let i = 0; i < demoteCount; i += 1) {
       const id = ranked[i].id
-      state.memories[id] = normalizeExistingMemory({ ...state.memories[id], status: 'superseded', updatedAt: timestamp })
+      setMemory(id, { ...state.memories[id], status: 'superseded', updatedAt: timestamp })
     }
     return demoteCount
   }
+
+  const pruneInactiveMemories = () => {
+    const inactive = Object.entries(state.memories || {})
+      .filter(([, memory]) => memory?.status !== 'active')
+      .map(([id, memory], order) => ({ id, memory, order }))
+      .sort((left, right) => {
+        const updatedOrder = String(right.memory?.updatedAt || '').localeCompare(String(left.memory?.updatedAt || ''))
+        if (updatedOrder !== 0) return updatedOrder
+        return right.order - left.order
+      })
+    if (inactive.length <= MAX_INACTIVE_MEMORIES) return 0
+    for (const { id } of inactive.slice(MAX_INACTIVE_MEMORIES)) delete state.memories[id]
+    return inactive.length - MAX_INACTIVE_MEMORIES
+  }
+
+  rebuildActiveMemoryIndexes()
+  const prunedActiveMemoryCount = pruneActiveMemories()
+  const prunedInactiveMemoryCount = pruneInactiveMemories()
+  if (
+    recoveredMemoryJobCount > 0 ||
+    prunedMessageCount > 0 ||
+    prunedMemoryJobCount > 0 ||
+    prunedActiveMemoryCount > 0 ||
+    prunedInactiveMemoryCount > 0
+  ) persist()
 
   const applyMemoryOperations = ({ petPackId, conversationId = '', messageIds = [], operations = [] } = {}) => {
     const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
@@ -598,12 +701,12 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
           useCount: memory.operation === 'reinforce' ? Math.max(0, Number(existing.useCount) || 0) + 1 : Math.max(0, Number(existing.useCount) || 0),
           reason: memory.reason || existing.reason
         })
-        state.memories[next.id] = next
+        setMemory(next.id, next)
         applied.push({ id: next.id, operation: memory.operation, scope: next.scope })
         continue
       }
       const id = createMemoryId()
-      state.memories[id] = normalizeExistingMemory({
+      setMemory(id, {
         id,
         scope: memory.scope,
         petPackId: memory.scope === 'petPack' ? packId : '',
@@ -633,6 +736,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       }
     }
     pruneActiveMemories()
+    pruneInactiveMemories()
     persist()
     return { applied, filtered }
   }
@@ -641,10 +745,10 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     const packId = typeof petPackId === 'string' ? petPackId.trim() : ''
     const scopeFilter = MEMORY_SCOPES.has(scope) ? scope : ''
     const max = Math.max(0, Number(limit) || 0)
-    const memories = Object.values(state.memories)
-      .map(normalizeExistingMemory)
+    const memories = Array.from(activeMemoryIds)
+      .map((id) => state.memories[id])
+      .filter(Boolean)
       .filter((memory) => (
-        memory.status === 'active' &&
         (!scopeFilter || memory.scope === scopeFilter) &&
         (memory.scope === 'global' || (memory.scope === 'petPack' && memory.petPackId === packId))
       ))
@@ -672,7 +776,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
         updatedAt: timestamp,
         useCount: Math.max(0, Number(memory.useCount) || 0) + 1
       })
-      state.memories[id] = next
+      setMemory(id, next)
       updated.push(next)
     }
     if (updated.length) persist()
@@ -682,11 +786,12 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
   const deleteMemory = (memoryId) => {
     const id = typeof memoryId === 'string' ? memoryId.trim() : ''
     if (!id || !state.memories[id]) return null
-    state.memories[id] = normalizeExistingMemory({
+    setMemory(id, {
       ...state.memories[id],
       status: 'deleted',
       updatedAt: now()
     })
+    pruneInactiveMemories()
     persist()
     return clone(state.memories[id])
   }
@@ -696,17 +801,20 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     if (!packId) throw new Error('petPackId is required')
     const timestamp = now()
     let deletedCount = 0
-    for (const [id, candidate] of Object.entries(state.memories)) {
-      const memory = normalizeExistingMemory(candidate)
-      if (memory.status !== 'active' || memory.scope !== 'petPack' || memory.petPackId !== packId) continue
-      state.memories[id] = normalizeExistingMemory({
+    for (const id of Array.from(activeMemoryIds)) {
+      const memory = state.memories[id]
+      if (memory?.scope !== 'petPack' || memory.petPackId !== packId) continue
+      setMemory(id, {
         ...memory,
         status: 'deleted',
         updatedAt: timestamp
       })
       deletedCount += 1
     }
-    if (deletedCount > 0) persist()
+    if (deletedCount > 0) {
+      pruneInactiveMemories()
+      persist()
+    }
     return { petPackId: packId, deletedCount }
   }
 
@@ -721,8 +829,9 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       updatedAt: now(),
       errorCode: ''
     }
+    pruneMemoryJobs()
     persist()
-    return clone(state.memoryJobs[id])
+    return state.memoryJobs[id] ? clone(state.memoryJobs[id]) : null
   }
 
   const finishMemoryJob = (jobId, patch = {}) => {
@@ -736,8 +845,9 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       filteredCount: Number.isFinite(Number(patch.filteredCount)) ? Number(patch.filteredCount) : state.memoryJobs[jobId].filteredCount,
       updatedAt: now()
     }
+    pruneMemoryJobs()
     persist()
-    return clone(state.memoryJobs[jobId])
+    return state.memoryJobs[jobId] ? clone(state.memoryJobs[jobId]) : null
   }
 
   const interruptPendingMemoryJobs = (errorCode = 'shutdown_interrupted') => {
@@ -756,7 +866,10 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       }
       interruptedCount += 1
     }
-    if (interruptedCount > 0) persist()
+    if (interruptedCount > 0) {
+      pruneMemoryJobs()
+      persist()
+    }
     return { interruptedCount }
   }
 

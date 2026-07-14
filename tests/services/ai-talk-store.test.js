@@ -583,3 +583,118 @@ test('ai talk store caps active memories by demoting lowest-value entries', () =
     .every((m) => Number(m.importance) === 0)
   assert.equal(demotedAreLowValue, true, 'lowest-value entries are the ones demoted')
 })
+
+test('ai talk store retains newest conversation messages with unique ids after repeated pruning', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-07-15T00:00:00.000Z' })
+  const { sessionId, conversationId } = store.ensureMainConversation({
+    entrypoint: 'control-center',
+    petPackId: 'mochi-cat',
+    personaHash: 'hash-a'
+  })
+  store.appendMessages(sessionId, conversationId, Array.from({ length: 410 }, (_, index) => ({
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    content: `message-${index}`
+  })))
+  for (let index = 410; index < 425; index += 1) {
+    store.appendMessages(sessionId, conversationId, [{ role: 'user', content: `message-${index}` }])
+  }
+
+  const messages = store.getMessages(sessionId, conversationId)
+
+  assert.equal(messages.length, 400)
+  assert.equal(messages[0].content, 'message-25')
+  assert.equal(messages.at(-1).content, 'message-424')
+  assert.equal(new Set(messages.map((message) => message.id)).size, messages.length)
+})
+
+test('ai talk store caps memory jobs and retains pending work ahead of older terminal jobs', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-07-15T00:00:00.000Z' })
+  const pending = store.createMemoryJob({ petPackId: 'mochi-cat', conversationId: 'pending-conversation' })
+  for (let index = 0; index < 205; index += 1) {
+    const job = store.createMemoryJob({ petPackId: 'mochi-cat', conversationId: `conversation-${index}` })
+    store.finishMemoryJob(job.id, { status: 'completed', appliedCount: index })
+  }
+
+  const jobs = Object.values(store.getState().memoryJobs)
+
+  assert.equal(jobs.length, 200)
+  assert.equal(jobs.some((job) => job.id === pending.id && job.status === 'pending'), true)
+  assert.equal(jobs.some((job) => job.conversationId === 'conversation-0'), false)
+  assert.equal(jobs.some((job) => job.conversationId === 'conversation-204'), true)
+})
+
+test('ai talk store prunes inactive memory history during load and persists the bounded state', () => {
+  const storePath = createTempStorePath()
+  const state = {
+    schemaVersion: 1,
+    sessions: {},
+    conversations: {},
+    messages: {},
+    personaOverrides: {},
+    memories: Object.fromEntries(Array.from({ length: 425 }, (_, index) => {
+      const timestamp = `2026-07-15T00:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z`
+      return [`memory-${index}`, {
+        id: `memory-${index}`,
+        scope: 'global',
+        petPackId: '',
+        text: `inactive memory ${index}`,
+        tags: [],
+        confidence: 0.5,
+        importance: 0.5,
+        sourceConversationId: '',
+        sourceMessageIds: [],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        lastUsedAt: '',
+        lastEvidenceAt: timestamp,
+        useCount: 0,
+        status: index % 2 === 0 ? 'superseded' : 'deleted',
+        supersedes: '',
+        reason: ''
+      }]
+    })),
+    petUtterances: {},
+    memoryJobs: {},
+    traces: {}
+  }
+  fs.mkdirSync(path.dirname(storePath), { recursive: true })
+  fs.writeFileSync(storePath, `${JSON.stringify(state, null, 2)}\n`)
+
+  const store = createAiTalkStore({ storePath, now: () => '2026-07-15T01:00:00.000Z' })
+  const inactive = Object.values(store.getState().memories).filter((memory) => memory.status !== 'active')
+  const persisted = JSON.parse(fs.readFileSync(storePath, 'utf8'))
+
+  assert.equal(inactive.length, 400)
+  assert.equal(store.getState().memories['memory-0'], undefined)
+  assert.ok(store.getState().memories['memory-424'])
+  assert.equal(Object.keys(persisted.memories).length, 400)
+})
+
+test('ai talk store keeps active memory lookup consistent across delete clear and reload', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({ storePath, now: () => '2026-07-15T00:00:00.000Z' })
+  const first = store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    operations: [{ operation: 'create', scope: 'global', text: 'User likes tea.', confidence: 0.8, importance: 0.7 }]
+  }).applied[0]
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    operations: [{ operation: 'reinforce', scope: 'global', text: 'User likes tea.', confidence: 0.9, importance: 0.8 }]
+  })
+  store.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    operations: [{ operation: 'create', scope: 'petPack', text: 'Mochi helped with a release.', confidence: 0.8, importance: 0.8 }]
+  })
+  store.deleteMemory(first.id)
+  store.clearPetPackMemories('mochi-cat')
+
+  const reloaded = createAiTalkStore({ storePath, now: () => '2026-07-15T00:01:00.000Z' })
+
+  assert.deepEqual(reloaded.listMemories({ petPackId: 'mochi-cat', limit: 0 }), [])
+  const recreated = reloaded.applyMemoryOperations({
+    petPackId: 'mochi-cat',
+    operations: [{ operation: 'create', scope: 'global', text: 'User likes tea.', confidence: 0.7, importance: 0.6 }]
+  }).applied[0]
+  assert.notEqual(recreated.id, first.id)
+  assert.equal(reloaded.listMemories({ petPackId: 'mochi-cat', limit: 0 }).length, 1)
+})
