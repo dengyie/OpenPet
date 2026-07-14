@@ -276,7 +276,9 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       'app.ready',
       'plugins.bundled.synced',
       'app.before-quit',
-      'app.will-quit'
+      'ai-talk.shutdown.started',
+      'app.will-quit',
+      'ai-talk.shutdown.completed'
     ])
     assert.equal(quitCalls, 1)
   } finally {
